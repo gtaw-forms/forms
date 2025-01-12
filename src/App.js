@@ -218,6 +218,21 @@ function App() {
             return "Unknown Browser";
         }
     }
+    function getBrowserName(userAgent) {
+        if (userAgent.includes("Chrome") && !userAgent.includes("Edg")) {
+            return "Google Chrome";
+        } else if (userAgent.includes("Safari") && !userAgent.includes("Chrome")) {
+            return "Safari";
+        } else if (userAgent.includes("Firefox")) {
+            return "Mozilla Firefox";
+        } else if (userAgent.includes("Edg")) {
+            return "Microsoft Edge";
+        } else if (userAgent.includes("MSIE") || userAgent.includes("Trident")) {
+            return "Internet Explorer";
+        } else {
+            return "Unknown Browser";
+        }
+    }
 
     const generateBBCode = () => {
         const {
@@ -258,13 +273,17 @@ Based on the information gathered from the scene investigation and the decedent'
 [list=none][color=transparent]spacer[/color][center][b]B. PHOTOGRAPHIC DOCUMENTARY RECORD[/b][/center]
 
 [divbox=transparent][center][size=85][b][u]SCENE PHOTOGRAPHY[/u][/b][/size][/center][hr][/hr]
+[divbox=transparent][center][size=85][b][u]SCENE PHOTOGRAPHY[/u][/b][/size][/center][hr][/hr]
 ${scenePhotosBBCode}
 [/divbox]
 
 [divbox=transparent][center][size=85][b][u](( OUT OF CHARACTER ))[/u][/b][/size][/center][hr][/hr]
+[divbox=transparent][center][size=85][b][u](( OUT OF CHARACTER ))[/u][/b][/size][/center][hr][/hr]
 [size=75] This section clarifies whether or not if the player was character killed or player killed. 
 In this case the player was; ${typeOfDeath}
+In this case the player was; ${typeOfDeath}
 
+[morgue screen, cinjuries, cdna links: [/size]
 [morgue screen, cinjuries, cdna links: [/size]
 ${additionalImagesBBCode}
 [/divbox]
@@ -1258,6 +1277,7 @@ ${notificationText}
                         </h3>
                     </div>
                     <h2>Generated BBCode</h2>
+
 
                     <div className="bbcode-output">
                         <pre>{bbCodeVersion === 1 ? generateBBCode() : bbCodeVersion === 2 ? generateBBCode2() : generateInternalBBCode()}</pre>
