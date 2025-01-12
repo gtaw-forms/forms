@@ -1,6 +1,35 @@
+/* ==========================================================================
+   Base styles
+   ========================================================================== */
+   body {
+    color: #eeeeeeb0;
+    background: #010409;
+    font: 100% system-ui;
+}
+
+/* ==========================================================================
+   Layout
+   ========================================================================== */
 .App {
     font-family: Arial, sans-serif;
     margin: 20px;
+}
+
+.header-info-wrapper {
+    display: flex;
+    background: #0d1117;
+    justify-content: center;
+    margin-bottom: 5px;
+    width: 100%;
+    border-radius: 8px;
+}
+
+.header-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    text-align: center;
 }
 
 .container {
@@ -8,6 +37,7 @@
     justify-content: space-between;
 }
 
+/* Container styles */
 .form-container {
     width: 35%;
     background-color: #0d1117;
@@ -24,24 +54,22 @@
     flex-direction: column;
 }
 
-.bbcode-output, .title-output {
-    background-color: #0d1117;
-    padding: 10px;
-    border-radius: 8px;
-    overflow: auto;
-    margin-bottom: 20px;
-}
-
+/* ==========================================================================
+   Form Elements
+   ========================================================================== */
 form {
     display: flex;
     flex-direction: column;
 }
 
 label {
-    margin-bottom: 8px
+    margin-bottom: 8px;
 }
 
-input, textarea, select {
+/* Input fields */
+input,
+textarea,
+select {
     background-color: #16202c;
     width: 100%;
     padding: 8px;
@@ -50,41 +78,299 @@ input, textarea, select {
     border-radius: 4px;
     color: #acb1cad3;
 }
-img {
-    max-width: 100%;
-    height: auto;
+
+/* Bootstrap Form Control Overrides */
+.form-control {
+    background-color: #16202c;
+    color: #acb1cad3;
+    border: 1px solid #30363d;
 }
 
+    .form-control:focus {
+        background-color: #16202c;
+        color: #acb1cad3;
+        border-color: #58a6ff;
+        box-shadow: 0 0 0 0.25rem rgba(88, 166, 255, 0.25);
+    }
+
+    .form-control::placeholder {
+        color: #8b949e;
+    }
+
+/* Bootstrap Input Group Overrides */
+.input-group .form-control {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.input-group .btn {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+/* Form Label Styling */
+.form-label {
+    color: #acb1cad3;
+    margin-bottom: 0.5rem;
+}
+
+.helper-text {
+    display: block;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    color: #8b949e;
+    opacity: 0.8;
+}
+
+.radio-container {
+    display: flex;
+    align-items: center;
+    margin-top: 0.5rem;
+}
+
+.radio-label {
+    color: #acb1cad3;
+    margin: 0;
+    white-space: nowrap;
+}
+
+.radio-group {
+    display: flex;
+    gap: 1rem;
+    margin-left: 0.5rem;
+}
+
+.form-check-inline {
+    margin-right: 0;
+}
+
+.radio-inline-container {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.radio-text {
+    color: #acb1cad3;
+    margin: 0;
+    white-space: nowrap;
+}
+
+.radio-button-group {
+    display: flex;
+    gap: 2rem;
+}
+
+/* ==========================================================================
+   Buttons
+   ========================================================================== */
 button {
-    padding: 9px 50px;
+    margin-top: 10px;
+    margin-right: 10px;
+    margin-bottom: 5px;
+    padding: 10px;
     background-color: grey;
     color: white;
-    border: tr;
-    border-radius: 10px;
+    border: none;
+    border-radius: 4px;
     cursor: pointer;
-    margin-bottom: 5px;
-    margin-right: 10px; /* Adjust the value as needed */
 }
 
     button:hover {
-        background-color: deeppink; /*rebecca rose credits*/
+        background-color: #262626;
     }
+
+
+.upload-button {
+    padding: 8px 15px;
+    background-color: #4CAF50;
+    justify-content: center;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 1px;
+}
+
+    .upload-button:hover {
+        background-color: #45a049;
+    }
+
+    .upload-button i {
+        font-size: 16px;
+    }
+
+/* ===== Button Styles ===== */
+.bbcode-button i {
+    font-size: 16px;
+}
+
+.bbcode-button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 15px;
+    background-color: #4CAF50;
+    color: white;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+    .bbcode-button:hover {
+        background-color: #45a049;
+    }
+
+    .bbcode-button i {
+        font-size: 16px;
+    }
+
+.close-button {
+    background: none;
+    border: none;
+    color: #eeeeeeb0;
+    cursor: pointer;
+    font-size: 20px;
+    padding: 5px;
+}
+
+close-button:hover {
+    color: #fff;
+}
+
+.changelog-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background-color: #4CAF50;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-bottom: 10px;
+    transition: background-color 0.3s;
+    min-width: 15px;
+    text-align: center;
+    flex: 0 1 200px;
+}
+
+    .changelog-button:hover {
+        background-color: #45a049;
+    }
+
+    .changelog-button i {
+        font-size: 16px;
+        margin-right: 5px;
+    }
+
+
+/* ==========================================================================
+   Output Display
+   ========================================================================== */
+.bbcode-output,
+.title-output {
+    background-color: #0d1117;
+    padding: 10px;
+    border-radius: 8px;
+    overflow: auto;
+    margin-bottom: 20px;
+}
 
 pre {
     white-space: pre-wrap;
     margin: 0;
 }
 
-body {
-    color: #010409;
-    background: #fff;
-    font: 100% system-ui;
+/* ==========================================================================
+   Image Handling
+   ========================================================================== */
+img {
+    max-width: 100%;
+    height: auto;
 }
 
+.image-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+/* Upload Container */
+.upload-container {
+    display: block;
+    margin-bottom: 15px;
+}
+
+.input-group {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+}
+
+.input-group {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+}
+
+input,
+textarea,
+select {
+    background-color: #16202c;
+    color: #acb1cad3;
+    border: 1px solid #30363d;
+}
+
+.btn-success {
+    background-color: #4CAF50;
+    border: none;
+    border-radius: 4px;
+    color: white;
+    cursor: pointer;
+}
+
+    .btn-success:hover {
+        background-color: #45a049;
+    }
+
+    .btn-success:disabled {
+        background-color: #4CAF50;
+        border-color: #4CAF50;
+        opacity: 0.65;
+    }
+
+/* ==========================================================================
+   Links
+   ========================================================================== */
 a {
     color: #0033cc;
 }
 
+.checkbox-container {
+    display: flex;
+    gap: 15px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.9em;
+    color: #8b949e;
+}
+
+/* ==========================================================================
+   Dark Theme
+   ========================================================================== */
 @media (prefers-color-scheme: dark) {
     body {
         color: #eeeeeeb0;
@@ -95,3 +381,404 @@ a {
             color: #809fff;
         }
 }
+
+/* Modal Styles */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+.modal {
+    background-color: #0d1117;
+    border-radius: 8px;
+    padding: 20px;
+    width: 90%;
+    max-width: 500px;
+    color: #eeeeeeb0;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.imgbb-attribution {
+    font-size: 0.8em;
+    color: #8b949e;
+    margin-top: 5px;
+    font-style: italic;
+    text-align: right;
+}
+
+    .imgbb-attribution a {
+        color: #58a6ff;
+        text-decoration: none;
+    }
+
+        .imgbb-attribution a:hover {
+            text-decoration: underline;
+        }
+
+.decedent-header {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 8px;
+}
+
+
+.checkbox-label input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+}
+
+.version-toggle {
+    background-color: #4CAF50;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-bottom: 20px;
+    transition: background-color 0.3s;
+}
+
+    .version-toggle:hover {
+        background-color: #45a049;
+    }
+
+
+/* ===== Form Toggle Components ===== */
+.report-toggle {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* ===== Input Group Layouts ===== */
+.input-group-horizontal {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+    .input-group-horizontal input[type="checkbox"] {
+        width: auto;
+        margin: 0;
+    }
+
+/* ===== Label Styles ===== */
+.label-text {
+    color: #8b949e;
+    font-size: 0.9em;
+}
+
+/* ===== Notification Components ===== */
+.notification-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.notification-icon {
+    font-size: 1.2em;
+    color: #fff;
+}
+
+.notification-text {
+    font-size: 1em;
+    font-weight: 500;
+}
+
+.notification {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    background-color: #4CAF50;
+    color: white;
+    border-radius: 4px;
+    margin: 10px 0;
+}
+
+    .notification i {
+        font-size: 1.2em;
+    }
+
+    .notification span {
+        font-size: 1em;
+    }
+
+.notification-wrapper {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    min-width: 300px;
+    animation: slideIn 0.3s ease-out;
+}
+
+.notification-content {
+    background-color: #4CAF50;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+    .notification-content.error {
+        background-color: #f44336;
+    }
+
+.notification-dismiss {
+    background: none;
+    border: none;
+    color: white;
+    margin-left: auto;
+    cursor: pointer;
+    padding: 5px;
+    opacity: 0.8;
+}
+
+    .notification-dismiss:hover {
+        opacity: 1;
+    }
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.notification-exit {
+    animation: slideOut 0.3s ease-in forwards;
+}
+
+@keyframes slideOut {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+
+.agency-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin: 10px 0;
+}
+
+.agency-button {
+    background: none;
+    border: none;
+    padding: 0;
+    transition: opacity 0.2s ease;
+}
+
+    .agency-button:hover {
+        opacity: 0.8;
+    }
+
+.helper-text {
+    display: block;
+    font-size: 0.7em;
+    color: #666;
+    margin-top: 5px;
+    font-style: italic;
+}
+
+.label-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 5px;
+}
+
+    .label-container .helper-text {
+        color: #666;
+        font-size: 0.8em;
+        font-style: italic;
+    }
+
+.form-type-header {
+    text-align: center;
+    margin: 20px 0;
+    padding: 10px;
+    border-radius: 5px;
+}
+
+    .form-type-header h3 {
+        margin: 0;
+        color: #acb1cad3;
+        font-weight: 500;
+    }
+
+.remove-party-button {
+    padding: 5px 10px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-left: 10px;
+}
+
+    .remove-party-button:hover {
+        background-color: #45a049;
+    }
+
+.party-input {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    width: 100%;
+}
+
+    .party-input input {
+        flex: 1;
+        height: 35px;
+        padding: 5px 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+
+    .party-input span {
+        min-width: 25px;
+        text-align: right;
+    }
+
+.remove-party-button {
+    height: 35px;
+    padding: 0 15px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+.add-party-button {
+    height: 35px;
+    margin-top: 10px;
+    padding: 0 15px;
+    font-size: 14px;
+}
+
+.parties-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.party-input {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+    .party-input input {
+        flex: 1;
+        padding: 5px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+
+.add-party-button {
+    margin-top: 10px;
+    padding: 5px 10px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+    .add-party-button:hover {
+        background-color: #45a049;
+    }
+
+.button-group {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin: 10px 0;
+}
+
+.button-container {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin: 20px 0;
+}
+
+.version-info {
+    font-size: 0.9em;
+    color: #666;
+    padding: 8px 0;
+    letter-spacing: 0.5px;
+    line-height: 1.4;
+}
+
+.contact-info {
+    font-size: 0.9em;
+    color: #666;
+    padding: 8px 0;
+    letter-spacing: 0.5px;
+    line-height: 1.4;
+}
+
+.discord-link {
+    color: #5865F2;
+    font-weight: 500;
+    padding: 0 4px;
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+.form-select {
+    background-color: #16202c;
+    color: #acb1cad3;
+    border: 1px solid #30363d;
+}
+
+    .form-select:focus {
+        background-color: #16202c;
+        color: #acb1cad3;
+        border-color: #58a6ff;
+        box-shadow: 0 0 0 0.25rem rgba(88, 166, 255, 0.25);
+    }
+
+    .form-select option {
+        background-color: #16202c;
+        color: #acb1cad3;
+    }
