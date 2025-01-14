@@ -31,7 +31,7 @@ function App() {
         coronerDiscord: '',
         coronerPHNumber: '50056',
         deathReport: '',
-        additionalReports: '',
+        additionalReports: [],
         showAdditionalReports: false,
         internalReport: '',
         internalAdditionalReports: '',
@@ -40,6 +40,7 @@ function App() {
         partiesInvolved: [''],
         // test
         treatmentLocation: '',
+        moreDeathReports: ['']
     });
     const [isUploading, setIsUploading] = useState(false);
     const [isJohnDoe, setIsJohnDoe] = useState(false);
@@ -218,23 +219,8 @@ function App() {
             return "Unknown Browser";
         }
     }
-    function getBrowserName(userAgent) {
-        if (userAgent.includes("Chrome") && !userAgent.includes("Edg")) {
-            return "Google Chrome";
-        } else if (userAgent.includes("Safari") && !userAgent.includes("Chrome")) {
-            return "Safari";
-        } else if (userAgent.includes("Firefox")) {
-            return "Mozilla Firefox";
-        } else if (userAgent.includes("Edg")) {
-            return "Microsoft Edge";
-        } else if (userAgent.includes("MSIE") || userAgent.includes("Trident")) {
-            return "Internet Explorer";
-        } else {
-            return "Unknown Browser";
-        }
-    }
 
-    const generateBBCode = () => {
+    const generateDeath = () => {
         const {
             coronerRank,
             placeOfDeath,
@@ -273,17 +259,13 @@ Based on the information gathered from the scene investigation and the decedent'
 [list=none][color=transparent]spacer[/color][center][b]B. PHOTOGRAPHIC DOCUMENTARY RECORD[/b][/center]
 
 [divbox=transparent][center][size=85][b][u]SCENE PHOTOGRAPHY[/u][/b][/size][/center][hr][/hr]
-[divbox=transparent][center][size=85][b][u]SCENE PHOTOGRAPHY[/u][/b][/size][/center][hr][/hr]
 ${scenePhotosBBCode}
 [/divbox]
 
 [divbox=transparent][center][size=85][b][u](( OUT OF CHARACTER ))[/u][/b][/size][/center][hr][/hr]
-[divbox=transparent][center][size=85][b][u](( OUT OF CHARACTER ))[/u][/b][/size][/center][hr][/hr]
 [size=75] This section clarifies whether or not if the player was character killed or player killed. 
 In this case the player was; ${typeOfDeath}
-In this case the player was; ${typeOfDeath}
 
-[morgue screen, cinjuries, cdna links: [/size]
 [morgue screen, cinjuries, cdna links: [/size]
 ${additionalImagesBBCode}
 [/divbox]
@@ -306,7 +288,7 @@ This document is provided for official purposes only and is not to be construed 
         return bbCode;
     };
 
-    const generateBBCode2 = () => {
+    const generateEmail = () => {
         const {
             requestingOfficer,
             department,
@@ -316,7 +298,6 @@ This document is provided for official purposes only and is not to be construed 
             coronerPHNumber,
             deathReport,
             additionalReports,
-            showAdditionalReports
         } = formData;
 
         // Base BBCode template
@@ -358,20 +339,24 @@ If you have further enquiries, feel free to reach out to the following individua
 [*] Phone Number: ${coronerPHNumber}
 [*] (( Discord: ${coronerDiscord} ))[/list]
 
-[altspoiler=Forensic and Pathology Report]
+[altspoiler=Coroner Report]
 ${deathReport}
 [code]
 ${deathReport}
 [/code]
 [/altspoiler]
-
-${showAdditionalReports && additionalReports ? `
-[altspoiler=Additional Coroner Reports]
-${additionalReports}
+${additionalReports && additionalReports.length > 0
+                ? additionalReports
+                    .filter(report => report.trim())
+                    .map((report, index) => `
+[altspoiler=Additional Coroner Report #${index + 1}]
+${report}
 [code]
-${additionalReports}[/code]
-[/altspoiler]
-` : ''}
+${report}
+[/code]
+[/altspoiler]`).join('\n\n')
+                : ''
+            }
 
 Kind regards
 ${coronerRank} ${coronerName}[/b]
@@ -392,7 +377,6 @@ Pillbox Hill Medical Center - Pathology  and Forensic Medicine
             incidentDateTime,
             policeNotification,
             treatmentLocation,
-            showInternalAdditionalReports,
             incidentPhotos,
         } = formData;
 
@@ -446,13 +430,12 @@ ${notificationText}
             additionalImages: '',
             requestingOfficer: '',
             deathReport: '',
-            additionalReports: '',
-            showAdditionalReports: false,
+            additionalReports: [],
             internalReport: '',
             internalAdditionalReports: '',
-            showInternalAdditionalReports: false,
             policeNotification: '',
-            partiesInvolved: ['']
+            partiesInvolved: [''],
+            moreDeathReports: ['']
         });
         showNotification('Form cleared successfully!', 'check-circle');
     };
@@ -504,6 +487,82 @@ ${notificationText}
             ...prev,
             partiesInvolved: prev.partiesInvolved.filter((_, index) => index !== indexToRemove)
         }));
+    };
+
+    // Add new state
+    const [parsedBBCode, setParsedBBCode] = useState('');
+
+    // Add parse function
+    const parseBBCode = () => {
+        const bbCode = generateDeath();
+        setParsedBBCode(bbCode);
+        setFormData(prev => ({
+            ...prev,
+            deathReport: bbCode
+        }));
+        showNotification('BBCode parsed and copied to Death Report field!', 'check-circle');
+    };
+
+    // Add clear function
+    const clearParsedBBCode = () => {
+        setParsedBBCode('');
+        setFormData(prev => ({
+            ...prev,
+            deathReport: ''
+        }));
+        showNotification('Parsed BBCode cleared!', 'trash-alt');
+    };
+
+    // Add functions to handle reports
+    const addDeathReport = () => {
+        setFormData(prev => ({
+            ...prev,
+            moreDeathReports: [...prev.moreDeathReports, '']
+        }));
+    };
+
+    const removeDeathReport = (indexToRemove) => {
+        setFormData(prev => ({
+            ...prev,
+            moreDeathReports: prev.moreDeathReports.filter((_, index) => index !== indexToRemove)
+        }));
+    };
+
+    const handleDeathReportChange = (index, value) => {
+        setFormData(prev => {
+            const newReports = [...prev.moreDeathReports];
+            newReports[index] = value;
+            return {
+                ...prev,
+                moreDeathReports: newReports
+            };
+        });
+    };
+
+    // Add functions to handle additional reports
+    const addReport = () => {
+        setFormData(prev => ({
+            ...prev,
+            additionalReports: [...prev.additionalReports, '']
+        }));
+    };
+
+    const removeReport = (indexToRemove) => {
+        setFormData(prev => ({
+            ...prev,
+            additionalReports: prev.additionalReports.filter((_, index) => index !== indexToRemove)
+        }));
+    };
+
+    const handleReportChange = (index, value) => {
+        setFormData(prev => {
+            const newReports = [...prev.additionalReports];
+            newReports[index] = value;
+            return {
+                ...prev,
+                additionalReports: newReports
+            };
+        });
     };
 
     return (
@@ -563,7 +622,6 @@ ${notificationText}
                     )}
                     <a href="https://github.com/LPX-Dev/phmc-death-report/tree/gh-pages" target="_blank" rel="noopener noreferrer">
                         <h5>This website is fully open source and was made by Fr0sty, you can report bugs in the PHMC Discord.</h5></a>
-                    <br></br>
                     <div className="button-group">
                         <button
                             type="button"
@@ -784,7 +842,7 @@ ${notificationText}
                                 </Form.Group>
                                 <Form.Group className="mb-3">
                                     <Form.Label>
-                                        Badge Number: ((/badge [Your ID]))
+                                        Badge Number: 
                                     </Form.Label>
                                     <Form.Control
                                         type="text"
@@ -827,7 +885,7 @@ ${notificationText}
                                         </Button>
 
                                     </InputGroup>
-                                    <span className="imgbb-attribution">
+                                    <span className="helper-text">
                                         Hosted by ImgBB! - <a href="https://imgbb.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
                                     </span>
                                 </Form.Group>
@@ -862,12 +920,11 @@ ${notificationText}
                                             {isUploading ? 'Uploading...' : 'Upload Images'}
                                         </Button>
                                     </div>
-                                    <span className="imgbb-attribution">
+                                    <span className="helper-text">
                                         Hosted by ImgBB! - <a href="https://imgbb.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
                                     </span>
 
                                 </Form.Group>
-
                             </>
                         ) : bbCodeVersion === 2 ? (
                             <>
@@ -942,10 +999,10 @@ ${notificationText}
                                 <Form.Group className="mb-3">
                                     <Form.Label>
                                         Coroner Contact Number:
-                                        </Form.Label>
-                                        <span className="helper-text">
-                                            (By default PHMC Landline is added, if you have a work number please add it)
-                                        </span>
+                                    </Form.Label>
+                                    <span className="helper-text">
+                                        (By default PHMC Landline is added, if you have a work number please add it)
+                                    </span>
 
                                     <Form.Control
                                         as="textarea"
@@ -955,7 +1012,7 @@ ${notificationText}
                                         rows="1"
                                         required
                                         className="form-control"
-                                        />
+                                    />
                                 </Form.Group>
                                 <Form.Group className="mb-3">
                                     <Form.Label>Coroner Discord Name:</Form.Label>
@@ -980,19 +1037,19 @@ ${notificationText}
                                         required
                                         className="form-control"
                                     />
-                                    </Form.Group>
-                                    <Form.Group className="mb-3">
-                                        <Form.Label>Decedent OOC Name:</Form.Label>
-                                        <Form.Control
-                                            as="textarea"
-                                            name="decedentOOC"
-                                            value={formData.decedentOOC}
-                                            onChange={handleChange}
-                                            rows="1"
-                                            required
-                                            className="form-control"
-                                        />
-                                    </Form.Group>
+                                </Form.Group>
+                                <Form.Group className="mb-3">
+                                    <Form.Label>Decedent OOC Name:</Form.Label>
+                                    <Form.Control
+                                        as="textarea"
+                                        name="decedentOOC"
+                                        value={formData.decedentOOC}
+                                        onChange={handleChange}
+                                        rows="1"
+                                        required
+                                        className="form-control"
+                                    />
+                                </Form.Group>
 
                                 <Form.Group className="mb-3">
                                     <Form.Label>Paste Death Report BBCode:</Form.Label>
@@ -1007,33 +1064,56 @@ ${notificationText}
                                     />
                                 </Form.Group>
                                 <Form.Group className="mb-3">
-                                    <div className="input-group-horizontal">
-                                        <Form.Label>Additional Reports:</Form.Label>
-                                        <Form.Check
-                                            type="checkbox"
-                                            checked={formData.showAdditionalReports}
-                                            onChange={(e) => setFormData(prev => ({
-                                                ...prev,
-                                                showAdditionalReports: e.target.checked
-                                            }))}
-                                        />
+                                    <Form.Label>Additional Reports:</Form.Label>
+                                    <div className="reports-container">
+                                        {formData.additionalReports.map((report, index) => (
+                                            <div key={index} className="report-input">
+                                                <Form.Control
+                                                    as="textarea"
+                                                    value={report}
+                                                    onChange={(e) => handleReportChange(index, e.target.value)}
+                                                    placeholder="Paste additional coroner report here"
+                                                    rows="4"
+                                                    className="form-control"
+                                                />
+                                                <Button
+                                                    variant="danger"
+                                                    onClick={() => removeReport(index)}
+                                                    className="remove-report-button"
+                                                >
+                                                    REMOVE REPORT
+                                                </Button>
+                                            </div>
+                                        ))}
+                                        <Button
+                                            variant="primary"
+                                            onClick={addReport}
+                                            className="add-report-button"
+                                        >
+                                            <i className="fas fa-plus"></i> Add Report
+                                        </Button>
                                     </div>
-                                    {formData.showAdditionalReports && (
-                                        <>
-                                            <Form.Label>Additional Coroner Reports</Form.Label>
-                                            <Form.Control
-                                                as="textarea"
-                                                id="additionalReports"
-                                                name="additionalReports"
-                                                value={formData.additionalReports}
-                                                onChange={handleChange}
-                                                rows="4"
-                                                placeholder="Paste additional coroner reports here"
-                                                className="form-control"
-                                            />
-                                        </>
-                                    )}
                                 </Form.Group>
+                                {bbCodeVersion === 2 && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={parseBBCode}
+                                            className="upload-button"
+                                        >
+                                            <i className="fas fa-copy"></i>
+                                            Parse to Death Report
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={clearParsedBBCode}
+                                            className="upload-button"
+                                        >
+                                            <i className="fas fa-times"></i>
+                                            Clear Parsed BBCode
+                                        </button>
+                                    </>
+                                )}
                             </>
                         ) : (
                             // BBCode 3 - Internal Report
@@ -1109,10 +1189,10 @@ ${notificationText}
                                 <Form.Group className="mb-3">
                                     <Form.Label>
                                         Coroner Contact Number:
-                                            </Form.Label>
-                                            <span className="helper-text">
-                                                (By default PHMC Landline is added, if you have a work number please add it)
-                                            </span>
+                                    </Form.Label>
+                                    <span className="helper-text">
+                                        (By default PHMC Landline is added, if you have a work number please add it)
+                                    </span>
                                     <Form.Control
                                         as="textarea"
                                         name="coronerPHNumber"
@@ -1121,7 +1201,7 @@ ${notificationText}
                                         rows="1"
                                         required
                                         className="form-control"
-                                        />
+                                    />
 
                                 </Form.Group>
                                 <Form.Group className="mb-3">
@@ -1249,14 +1329,17 @@ ${notificationText}
                                 </Form.Group>
                             </>
                         )}
-                        <button
-                            type="button"
-                            onClick={clearForm}
-                            className="upload-button"
-                        >
-                            <i className="fas fa-trash-alt"></i>
-                            Clear Form
-                        </button>
+                        <div className="button-group">
+                            <button
+                                type="button"
+                                onClick={clearForm}
+                                className="upload-button"
+                            >
+                                <i className="fas fa-trash-alt"></i>
+                                Clear Form
+                            </button>
+
+                        </div>
                     </form>
                 </div>
                 <div className="output-container">
@@ -1273,14 +1356,12 @@ ${notificationText}
                         <h3>You are viewing:
                             {bbCodeVersion === 1 ? ' Death Investigation Report' :
                                 bbCodeVersion === 2 ? ' Coroner Email Generator' :
-                                    'You shouldn`t be able to see this!'}
+                                    ' Mitch`s Testing Grounds - This area has no use yet'}
                         </h3>
                     </div>
                     <h2>Generated BBCode</h2>
-
-
                     <div className="bbcode-output">
-                        <pre>{bbCodeVersion === 1 ? generateBBCode() : bbCodeVersion === 2 ? generateBBCode2() : generateInternalBBCode()}</pre>
+                        <pre>{bbCodeVersion === 1 ? generateDeath() : bbCodeVersion === 2 ? generateEmail() : generateInternalBBCode()}</pre>
                     </div>
                     <h1>Generated Title</h1>
                     <div className="title-output">
@@ -1380,7 +1461,7 @@ ${notificationText}
                             type="button"
                             className="changelog-button"
                             onClick={() => {
-                                const bbCode = bbCodeVersion === 1 ? generateBBCode() : bbCodeVersion === 2 ? generateBBCode2() : generateInternalBBCode();
+                                const bbCode = bbCodeVersion === 1 ? generateDeath() : bbCodeVersion === 2 ? generateEmail() : generateInternalBBCode();
                                 const currentDateTime = new Date().toLocaleString();
                                 const userAgent = navigator.userAgent;
                                 const browserName = getBrowserName(userAgent);

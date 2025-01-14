@@ -58,22 +58,15 @@
 /* ==========================================================================
    Form Elements
    ========================================================================== */
-/* ==========================================================================
-   Form Elements
-   ========================================================================== */
 form {
     display: flex;
     flex-direction: column;
 }
 
 label {
-    margin-bottom: 8px;;
+    margin-bottom: 8px;
 }
 
-/* Input fields */
-input,
-textarea,
-select {
 /* Input fields */
 input,
 textarea,
@@ -82,7 +75,7 @@ select {
     width: 100%;
     padding: 8px;
     margin-bottom: 16px;
-    border: 1px solid #ccc;
+    border: 1px solid #30363d;
     border-radius: 4px;
     color: #acb1cad3;
 }
@@ -124,10 +117,11 @@ select {
 
 .helper-text {
     display: block;
-    margin-top: 0.5rem;
-    margin-bottom: 0.5rem;
     font-size: 0.875rem;
     color: #8b949e;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+    font-style: italic;
     opacity: 0.8;
 }
 
@@ -173,9 +167,6 @@ select {
 /* ==========================================================================
    Buttons
    ========================================================================== */
-/* ==========================================================================
-   Buttons
-   ========================================================================== */
 button {
     margin-top: 10px;
     margin-right: 10px;
@@ -185,13 +176,11 @@ button {
     color: white;
     border: none;
     border-radius: 4px;
-    border: none;
-    border-radius: 4px;
     cursor: pointer;
 }
 
     button:hover {
-        background-color: #262626;
+        background-color: #45a049;
     }
 
 
@@ -228,7 +217,6 @@ button {
     padding: 8px 15px;
     background-color: #4CAF50;
     color: white;
-    align-items: center;
     justify-content: center;
     border: none;
     border-radius: 4px;
@@ -253,7 +241,7 @@ button {
     padding: 5px;
 }
 
-close-button:hover {
+.close-button:hover {
     color: #fff;
 }
 
@@ -321,12 +309,6 @@ img {
 .upload-container {
     display: block;
     margin-bottom: 15px;
-}
-
-.input-group {
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
 }
 
 .input-group {
@@ -618,14 +600,6 @@ a {
         opacity: 0.8;
     }
 
-.helper-text {
-    display: block;
-    font-size: 0.7em;
-    color: #666;
-    margin-top: 5px;
-    font-style: italic;
-}
-
 .label-container {
     display: flex;
     align-items: center;
@@ -653,18 +627,17 @@ a {
     }
 
 .remove-party-button {
-    padding: 5px 10px;
+    height: 35px;
+    padding: 0 15px;
     background-color: #4CAF50;
     color: white;
     border: none;
     border-radius: 4px;
     cursor: pointer;
+    font-size: 14px;
+    white-space: nowrap;
     margin-left: 10px;
 }
-
-    .remove-party-button:hover {
-        background-color: #45a049;
-    }
 
 .party-input {
     display: flex;
@@ -678,27 +651,10 @@ a {
         flex: 1;
         height: 35px;
         padding: 5px 10px;
-        border: 1px solid #ccc;
+        border: 1px solid #30363d;
         border-radius: 4px;
         font-size: 14px;
     }
-
-    .party-input span {
-        min-width: 25px;
-        text-align: right;
-    }
-
-.remove-party-button {
-    height: 35px;
-    padding: 0 15px;
-    background-color: #4CAF50;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-    white-space: nowrap;
-}
 
 .add-party-button {
     height: 35px;
@@ -712,19 +668,6 @@ a {
     flex-direction: column;
     gap: 10px;
 }
-
-.party-input {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-    .party-input input {
-        flex: 1;
-        padding: 5px;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-    }
 
 .add-party-button {
     margin-top: 10px;
@@ -795,3 +738,43 @@ a {
         background-color: #16202c;
         color: #acb1cad3;
     }
+
+.reports-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.report-input {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.report-input span {
+    min-width: 25px;
+    padding-top: 8px;
+}
+
+.report-input textarea {
+    flex: 1;
+}
+
+.add-report-button,
+.remove-report-button {
+    height: 35px;
+    padding: 0 15px;
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+.add-report-button {
+    margin-top: 10px;
+    background-color: #4CAF50;
+    color: white;
+}
+
+.remove-report-button {
+    background-color: #dc3545;
+    color: white;
+}
