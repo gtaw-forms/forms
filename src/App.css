@@ -38,7 +38,6 @@
 }
 
 /* Container styles */
-/* Container styles */
 .form-container {
     width: 35%;
     background-color: #0d1117;
@@ -54,7 +53,23 @@
     display: flex;
     flex-direction: column;
 }
+.char-counter {
+    padding: 8px;
+    margin-bottom: 8px;
+    border-radius: 4px;
+    background-color: #0d1117;
+    color: #eee;
+}
 
+.char-counter-warning {
+    background-color: #c0392b;
+}
+
+.char-counter-warning-message {
+    color: #fff;
+    font-weight: bold;
+    margin-top: 4px;
+}
 /* ==========================================================================
    Form Elements
    ========================================================================== */
@@ -83,19 +98,19 @@ select {
 /* Bootstrap Form Control Overrides */
 .form-control {
     background-color: #16202c;
-    color: #acb1cad3;
+    color: #eeeeeeb0;
     border: 1px solid #30363d;
 }
 
     .form-control:focus {
         background-color: #16202c;
-        color: #acb1cad3;
+        color: #eeeeeeb0;
         border-color: #58a6ff;
         box-shadow: 0 0 0 0.25rem rgba(88, 166, 255, 0.25);
     }
 
     .form-control::placeholder {
-        color: #8b949e;
+        color: #eeeeeeb0;
     }
 
 /* Bootstrap Input Group Overrides */
@@ -117,7 +132,7 @@ select {
 
 .helper-text {
     display: block;
-    font-size: 0.875rem;
+    font-size: 0.7rem;
     color: #8b949e;
     margin-top: 0.5rem;
     margin-bottom: 0.5rem;
@@ -158,119 +173,6 @@ select {
     margin: 0;
     white-space: nowrap;
 }
-
-.radio-button-group {
-    display: flex;
-    gap: 2rem;
-}
-
-/* ==========================================================================
-   Buttons
-   ========================================================================== */
-button {
-    margin-top: 10px;
-    margin-right: 10px;
-    margin-bottom: 5px;
-    padding: 10px;
-    background-color: grey;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-    button:hover {
-        background-color: #45a049;
-    }
-
-
-.upload-button {
-    padding: 8px 15px;
-    background-color: #4CAF50;
-    justify-content: center;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 1px;
-}
-
-    .upload-button:hover {
-        background-color: #45a049;
-    }
-
-    .upload-button i {
-        font-size: 16px;
-    }
-
-/* ===== Button Styles ===== */
-.bbcode-button i {
-    font-size: 16px;
-}
-
-.bbcode-button {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 15px;
-    background-color: #4CAF50;
-    color: white;
-    justify-content: center;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-    .bbcode-button:hover {
-        background-color: #45a049;
-    }
-
-    .bbcode-button i {
-        font-size: 16px;
-    }
-
-.close-button {
-    background: none;
-    border: none;
-    color: #eeeeeeb0;
-    cursor: pointer;
-    font-size: 20px;
-    padding: 5px;
-}
-
-.close-button:hover {
-    color: #fff;
-}
-
-.changelog-button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    background-color: #4CAF50;
-    color: white;
-    padding: 10px 20px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    margin-bottom: 10px;
-    transition: background-color 0.3s;
-    min-width: 15px;
-    text-align: center;
-    flex: 0 1 200px;
-}
-
-    .changelog-button:hover {
-        background-color: #45a049;
-    }
-
-    .changelog-button i {
-        font-size: 16px;
-        margin-right: 5px;
-    }
 
 
 /* ==========================================================================
@@ -321,7 +223,7 @@ input,
 textarea,
 select {
     background-color: #16202c;
-    color: #acb1cad3;
+    color: #eeeeeeb0;
     border: 1px solid #30363d;
 }
 
@@ -405,8 +307,6 @@ a {
 .modal-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    margin-bottom: 15px;
 }
 
 .imgbb-attribution {
@@ -434,10 +334,33 @@ a {
 }
 
 
-.checkbox-label input[type="checkbox"] {
-    width: auto;
+input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
     margin: 0;
+    cursor: pointer;
+    background-color: #16202c;
+    border: 1px solid #30363d;
+    border-radius: 3px;
+    appearance: none;
+    -webkit-appearance: none;
 }
+
+    input[type="checkbox"]:checked {
+        background-color: #58a6ff;
+        border-color: #58a6ff;
+        position: relative;
+    }
+
+        input[type="checkbox"]:checked::after {
+            content: '✓';
+            position: absolute;
+            color: #fff;
+            font-size: 12px;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+        }
 
 .version-toggle {
     background-color: #4CAF50;
@@ -582,23 +505,6 @@ a {
     }
 }
 
-.agency-buttons {
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-    margin: 10px 0;
-}
-
-.agency-button {
-    background: none;
-    border: none;
-    padding: 0;
-    transition: opacity 0.2s ease;
-}
-
-    .agency-button:hover {
-        opacity: 0.8;
-    }
 
 .label-container {
     display: flex;
@@ -626,19 +532,6 @@ a {
         font-weight: 500;
     }
 
-.remove-party-button {
-    height: 35px;
-    padding: 0 15px;
-    background-color: #4CAF50;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-    white-space: nowrap;
-    margin-left: 10px;
-}
-
 .party-input {
     display: flex;
     align-items: center;
@@ -656,12 +549,6 @@ a {
         font-size: 14px;
     }
 
-.add-party-button {
-    height: 35px;
-    margin-top: 10px;
-    padding: 0 15px;
-    font-size: 14px;
-}
 
 .parties-container {
     display: flex;
@@ -669,33 +556,6 @@ a {
     gap: 10px;
 }
 
-.add-party-button {
-    margin-top: 10px;
-    padding: 5px 10px;
-    background-color: #4CAF50;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-    .add-party-button:hover {
-        background-color: #45a049;
-    }
-
-.button-group {
-    display: flex;
-    gap: 10px;
-    justify-content: center;
-    margin: 10px 0;
-}
-
-.button-container {
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-    margin: 20px 0;
-}
 
 .version-info {
     font-size: 0.9em;
@@ -723,15 +583,27 @@ a {
 
 .form-select {
     background-color: #16202c;
-    color: #acb1cad3;
+    color: #eeeeeeb0;
     border: 1px solid #30363d;
 }
+.is-invalid {
+    border-color: red !important;
+    box-shadow: 0 0 0 0.2rem rgba(255, 0, 0, 0.25) !important; /* Optional: adds a red glow */
+}
 
-    .form-select:focus {
-        background-color: #16202c;
+.is-invalid::placeholder {
+    color: #eeeeeeb0 !important;
+    opacity: 1; /* Required for Firefox */
+}
+
+.is-invalid,
+.is-invalid:focus {
+    color:  #acb1cad3 !important;
+}    .form-select:focus {
+        background-color: #2c1616;
         color: #acb1cad3;
-        border-color: #58a6ff;
-        box-shadow: 0 0 0 0.25rem rgba(88, 166, 255, 0.25);
+        border-color: #16202c;
+        box-shadow: 0 0 0 0.25rem rgba(147, 151, 155, 0.25);
     }
 
     .form-select option {
@@ -751,30 +623,31 @@ a {
     gap: 10px;
 }
 
-.report-input span {
-    min-width: 25px;
-    padding-top: 8px;
+    .report-input span {
+        min-width: 25px;
+        padding-top: 8px;
+    }
+
+    .report-input textarea {
+        flex: 1;
+    }
+
+
+.hide-selector-option {
+    margin-top: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: #acb1cad3;
 }
 
-.report-input textarea {
-    flex: 1;
-}
+    .hide-selector-option input[type="checkbox"] {
+        width: auto;
+        margin: 0;
+    }
 
-.add-report-button,
-.remove-report-button {
-    height: 35px;
-    padding: 0 15px;
-    font-size: 14px;
-    white-space: nowrap;
-}
-
-.add-report-button {
-    margin-top: 10px;
-    background-color: #4CAF50;
-    color: white;
-}
-
-.remove-report-button {
-    background-color: #dc3545;
-    color: white;
-}
+    .hide-selector-option label {
+        font-size: 0.9rem;
+        cursor: pointer;
+    }

@@ -1,19 +1,23 @@
 {
-  "name": "my-app",
+  "name": "phmc-app-forms",
   "version": "0.1.0",
-  "homepage": "https://LPX-dev.github.io/phmc-death-report",
+  "homepage": "https://phmc-forms.github.io/forms",
   "private": true,
   "dependencies": {
     "@emotion/react": "^11.13.5",
     "@emotion/styled": "^11.13.5",
+    "@fortawesome/fontawesome-free": "^6.7.2",
     "@mui/material": "^6.1.8",
     "@testing-library/jest-dom": "^5.17.0",
     "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^13.5.0",
     "react": "^18.3.1",
+    "react-bootstrap": "^2.10.9",
+    "react-bootstrap-typeahead": "^7.0.0-rc.5",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0",
     "react-scripts": "5.0.1",
+    "react-select": "^5.10.1",
     "web-vitals": "^2.1.4"
   },
   "scripts": {
@@ -22,8 +26,7 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject",
-    "postbuild": "git add . && git commit -m 'Automated build commit' && git push origin main"
+    "eject": "react-scripts eject"
   },
   "eslintConfig": {
     "extends": [
@@ -44,8 +47,8 @@
     ]
   },
   "devDependencies": {
-    "eslint": "^9.17.0",
     "@babel/plugin-transform-private-property-in-object": "^7.25.9",
+    "eslint": "^9.17.0",
     "gh-pages": "^6.2.0"
   }
 }
