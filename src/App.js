@@ -19,7 +19,7 @@ import surgeon from './assets/surgeon.png'
 import application from './assets/application.png'
 import nurse from './assets/nurse.png'
 import PHMCLogo from './assets/phmc.png'
-import dentist from './assets/dentist.png'
+import developer from './assets/developer.png'
 import corpse from './assets/corpse.png'
 import Paperwork from './assets/myPaperwork2.png';
 import Feedback from './assets/feedback.png';
@@ -2507,6 +2507,35 @@ ${phmcEmployee}
             }
         });
     };
+    useEffect(() => {
+        window.onerror = (message, source, lineno, colno, error) => {
+            const errorMessage = `
+                Error: ${message}
+                Source: ${source}
+                Line: ${lineno}
+                Column: ${colno}
+                Error Object: ${error ? error.stack : 'No stack available'}
+            `;
+
+            // Access Discord Webhook URL from environment variable
+            const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+
+            // Send error message to Discord
+            fetch(discordWebhookUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    content: `**ERROR REPORT**\n${errorMessage}`
+                })
+            }).catch(error => {
+                console.error("Error sending error message to Discord:", error);
+            });
+
+            return true; // Prevent default error handling
+        };
+    }, []);
 
     useEffect(() => {
         clearOldLocalStorage();
@@ -2698,7 +2727,7 @@ ${phmcEmployee}
                             <div className="agency-row">
                                 <button
                                     className="agency-select-button"
-                                    onClick={() => handleAgencySelect(1)} // Death Report 
+                                    onClick={() => handleAgencySelect(1)}  
                                 >
                                     <img src={application}
                                         className="Center"
@@ -2708,36 +2737,47 @@ ${phmcEmployee}
                                 </button>
                                 <button
                                     className="agency-select-button"
-                                    onClick={() => handleAgencySelect(4)} // Dentist Forms
+                                    onClick={() => handleAgencySelect(20)}
                                 >
-                                    <img src={dentist}
+                                    <img src={PHMCLogo}
                                         className="Center"
                                         alt="Feedback"
                                     />
-                                    <span>Dentist</span>
+                                    <span>(NEW!) General Consultation Forms </span>
                                 </button>
                                 <button
                                     className="agency-select-button"
-                                    onClick={() => handleAgencySelect(6)} // Physical Evaluation (Internal Medicine)
+                                    onClick={() => handleAgencySelect(19)}
                                 >
-                                    <img src={nurse}
+                                    <img src={phmcpaletobay}
                                         className="Center"
                                         alt="Feedback"
                                     />
-                                    <span>Physical Evaluation (UPDATE ID)</span>
+                                    <span>(NEW!) Emergency Room Protocol </span>
                                 </button>
                                 <button
                                     className="agency-select-button"
-                                    onClick={() => handleAgencySelect(5)}
+                                    onClick={() => handleAgencySelect(22)}
                                 >
                                     <img src={surgeon}
                                         className="Center"
                                         alt="Feedback"
                                     />
-                                    <span>Surgical Ops - (PENDING UPDATE) </span>
+                                    <span>(NEW!) Commentary Note Form  </span>
                                 </button>
                                                             </div>
                             <div className="agency-row">
+                            <button
+                                    className="agency-select-button"
+                                    onClick={() => handleAgencySelect(14)}
+                                >
+                                    <img src={psychology}
+                                        className="Center"
+                                        alt="Feedback"
+                                    />
+                                    <span>(NEW!) Mental Health Forms </span>
+                                </button>
+
                                 <button
                                     className="agency-select-button"
                                     onClick={() => handleAgencySelect(9)}
@@ -2750,24 +2790,24 @@ ${phmcEmployee}
                                 </button>
                                 <button
                                     className="agency-select-button"
-                                    onClick={() => handleAgencySelect(14)}
+                                    onClick={() => handleAgencySelect(6)}
                                 >
-                                    <img src={psychology}
+                                    <img src={nurse}
                                         className="Center"
                                         alt="Feedback"
                                     />
-                                    <span>Psychology Forms - UPDATE ID</span>
+                                    <span>Physical Evaluation </span>
                                 </button>
                                 <button
-                                    className="agency-select-button"
-                                    onClick={() => handleAgencySelect(19)}
-                                >
-                                    <img src={phmcpaletobay}
-                                        className="Center"
-                                        alt="Feedback"
-                                    />
-                                    <span>PHMC Testing Forms </span>
-                                </button>
+                                className="agency-select-button"
+                                onClick={() => handleAgencySelect(25)}
+                            >
+                                <img src={developer}
+                                    className="Center"
+                                    alt="Feedback"
+                                />
+                                <span>Dev Testing Grounds </span>
+                            </button>
 
                             </div>
                         </div>
@@ -2818,7 +2858,7 @@ ${phmcEmployee}
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 1.5.43d - ⚡ Placeholder_Update</h3>
+                                    <h3>Changelog - Version 1.6 - ❄️ Frostbite Update </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -2829,9 +2869,11 @@ ${phmcEmployee}
                                 </div>
                                 <div className="modal-content">
                                     <ul>
-                                        <li>Security updates</li>
-                                        <li>Add Field</li>
-                                        <li>Add Field</li>
+                                        <li>All new forms added (Emergency Room Protocol | Mental Health | Commentary)</li>
+                                        <li>Security and backend fixes</li>
+                                        <li>Quality of Life changes to Coroner forms</li>
+                                        <li>Improved image processing</li>
+                                        <li> Work in progress Business Card Generator </li>
 
                                     </ul>
                                 </div>
@@ -3045,20 +3087,20 @@ ${phmcEmployee}
                                 )}
                             </>
                         )}
-                        {(bbCodeVersion === 19 || bbCodeVersion === 14 || bbCodeVersion === 16|| bbCodeVersion === 20 || bbCodeVersion === 21 || bbCodeVersion === 22 || bbCodeVersion === 23) && (
+                        {( bbCodeVersion === 20 || bbCodeVersion === 21) && (
                             <>
                                 <button
                                     className="changelog-button"
                                     onClick={() => setShowPHMCModal(true)}
                                 >
-                                    <span>Developer Testing Forms </span>
+                                    <span>Switch General Consultation Forms </span>
                                 </button>
 
                                 {showPHMCModal && (
                                     <div className="modal-overlay" onClick={() => setShowPHMCModal(false)}>
                                         <div className="agency-selector-modal" onClick={e => e.stopPropagation()}>
                                             <div className="modal-header">
-                                                <h4>Select Developer Testing Forms (null)</h4>
+                                                <h4>Select General Consultation Form (2)</h4>
                                                 <button
                                                     className="close-button"
                                                     onClick={() => setShowPHMCModal(false)}
@@ -3071,23 +3113,13 @@ ${phmcEmployee}
                                                 <div className="agency-row">
                                                     <button
                                                         className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(19)}
-                                                    >
-                                                        <img src={PHMCLogo}
-                                                            className="Center"
-                                                            alt="Feedback"
-                                                        />
-                                                        <span>Emergency Protocol Form </span>
-                                                    </button>
-                                                    <button
-                                                        className="agency-select-button"
                                                         onClick={() => handleAgencySelect(20)}
                                                     >
                                                         <img src={PHMCLogo}
                                                             className="Center"
                                                             alt="Feedback"
                                                         />
-                                                        <span>General Consultation PHMC </span>
+                                                        <span>General Consultation | PHMC </span>
                                                     </button>
                                                     <button
                                                         className="agency-select-button"
@@ -3097,50 +3129,7 @@ ${phmcEmployee}
                                                             className="Center"
                                                             alt="Feedback"
                                                         />
-                                                        <span>General Consultation PBC                                                        </span>
-                                                    </button>
-                                                    <button
-                                                        className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(23)}
-                                                    >
-                                                        <img src={phmcpaletobay}
-                                                            className="Center"
-                                                            alt="Feedback"
-                                                        />
-                                                        <span>COMMENTARY NOTE | PBC </span>
-                                                    </button>
-
-                                                    </div>
-                                                    <div className="agency-row">
-                                                    <button
-                                                        className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(22)}
-                                                    >
-                                                        <img src={PHMCLogo}
-                                                            className="Center"
-                                                            alt="Feedback"
-                                                        />
-                                                        <span>COMMENTARY NOTE (PHMC)                                                        </span>
-                                                    </button>
-                                                    <button
-                                                        className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(14)}
-                                                    >
-                                                        <img src={PHMCLogo}
-                                                            className="Center"
-                                                            alt="Feedback"
-                                                        />
-                                                        <span>Mental Health - PHMC </span>
-                                                    </button>
-                                                    <button
-                                                        className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(16)}
-                                                    >
-                                                        <img src={phmcpaletobay}
-                                                            className="Center"
-                                                            alt="Feedback"
-                                                        />
-                                                        <span>Mental Health - PBC </span>
+                                                        <span>General Consultation | PBC </span>
                                                     </button>
 
                                                 </div>
@@ -3194,6 +3183,108 @@ ${phmcEmployee}
                                                             alt="Feedback"
                                                         />
                                                         <span>Emergency Medicine Consult | ADD FILES </span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                        {(bbCodeVersion === 22 || bbCodeVersion === 23) && (
+                            <>
+                                <button
+                                    className="changelog-button"
+                                    onClick={() => setShowPHMCModal(true)}
+                                >
+                                    <span>Switch Commentary Note Form </span>
+                                </button>
+
+                                {showPHMCModal && (
+                                    <div className="modal-overlay" onClick={() => setShowPHMCModal(false)}>
+                                        <div className="agency-selector-modal" onClick={e => e.stopPropagation()}>
+                                            <div className="modal-header">
+                                                <h4>Select Commentary Note Form (2)</h4>
+                                                <button
+                                                    className="close-button"
+                                                    onClick={() => setShowPHMCModal(false)}
+                                                    aria-label="Close selector"
+                                                >
+                                                    <i className="fas fa-times"></i>
+                                                </button>
+                                            </div>
+                                            <div className="agency-selector-buttons">
+                                                <div className="agency-row">
+                                                    <button
+                                                        className="agency-select-button"
+                                                        onClick={() => handleAgencySelect(22)}
+                                                    >
+                                                        <img src={PHMCLogo}
+                                                            className="Center"
+                                                            alt="Feedback"
+                                                        />
+                                                        <span>Commentary Note | PHMC </span>
+                                                    </button>
+                                                    <button
+                                                        className="agency-select-button"
+                                                        onClick={() => handleAgencySelect(23)}
+                                                    >
+                                                        <img src={phmcpaletobay}
+                                                            className="Center"
+                                                            alt="Feedback"
+                                                        />
+                                                        <span>Commentary Note | PBC </span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                        {(bbCodeVersion === 14 || bbCodeVersion === 16) && (
+                            <>
+                                <button
+                                    className="changelog-button"
+                                    onClick={() => setShowPHMCModal(true)}
+                                >
+                                    <span>Switch Mental Health Form </span>
+                                </button>
+
+                                {showPHMCModal && (
+                                    <div className="modal-overlay" onClick={() => setShowPHMCModal(false)}>
+                                        <div className="agency-selector-modal" onClick={e => e.stopPropagation()}>
+                                            <div className="modal-header">
+                                                <h4>Select Mental Health Form (2)</h4>
+                                                <button
+                                                    className="close-button"
+                                                    onClick={() => setShowPHMCModal(false)}
+                                                    aria-label="Close selector"
+                                                >
+                                                    <i className="fas fa-times"></i>
+                                                </button>
+                                            </div>
+                                            <div className="agency-selector-buttons">
+                                                <div className="agency-row">
+                                                    <button
+                                                        className="agency-select-button"
+                                                        onClick={() => handleAgencySelect(14)}
+                                                    >
+                                                        <img src={PHMCLogo}
+                                                            className="Center"
+                                                            alt="Feedback"
+                                                        />
+                                                        <span>Mental Health - PHMC </span>
+                                                    </button>
+                                                    <button
+                                                        className="agency-select-button"
+                                                        onClick={() => handleAgencySelect(16)}
+                                                    >
+                                                        <img src={phmcpaletobay}
+                                                            className="Center"
+                                                            alt="Feedback"
+                                                        />
+                                                        <span>Mental Health | PBC </span>
                                                     </button>
                                                 </div>
                                             </div>
@@ -10252,6 +10343,7 @@ ${phmcEmployee}
                     }
                 });
             }}
+            
                         >
                             <i className="fas fa-clipboard"></i>
                             Copy {bbCodeVersion === 1 ? "Death Report" :
