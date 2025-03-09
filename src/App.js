@@ -267,33 +267,51 @@ function App() {
     const handleImageUpload = async (event, fieldName) => {
         const files = event.target.files;
         if (!files.length) return;
-
+    
         setIsUploading(true);
         const uploadedUrls = [];
-
+    
         try {
-            for (let file of files) {
+            // Access Imgur API credentials from environment variables
+            const imgurAccessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
+    
+            // Function to upload a single file with a delay
+            const uploadFileWithDelay = async (file, delay) => {
+                await new Promise(resolve => setTimeout(resolve, delay)); // Introduce delay
                 const formData = new FormData();
                 formData.append('image', file);
-                // Access ImgBB API key from environment variable
-                const imgBBApiKey = process.env.REACT_APP_IMGBB_API_KEY;
-
-                const response = await fetch(`https://api.imgbb.com/1/upload?key=${imgBBApiKey}`, {
+    
+                const response = await fetch('https://api.imgur.com/3/image', {
                     method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${imgurAccessToken}`, // Use access token
+                    },
                     body: formData,
                 });
+    
                 const data = await response.json();
+                return data;
+            };
+    
+            const delayBetweenUploads = 1000; // 1 second delay
+    
+            for (let file of files) {
+                const data = await uploadFileWithDelay(file, delayBetweenUploads);
+    
                 if (data.success) {
-                    uploadedUrls.push(data.data.url);
+                    uploadedUrls.push(data.data.link);
+                } else {
+                    console.error('Imgur upload failed:', data.data.error);
+                    showNotification(`Imgur upload failed: ${data.data.error}`, 'exclamation-circle');
                 }
             }
-
+    
             if (uploadedUrls.length > 0) {
                 const currentValue = formData[fieldName];
                 const newValue = currentValue
                     ? `${currentValue}, ${uploadedUrls.join(', ')}`
                     : uploadedUrls.join(', ');
-
+    
                 setFormData(prev => ({
                     ...prev,
                     [fieldName]: newValue
@@ -306,8 +324,8 @@ function App() {
         } finally {
             setIsUploading(false);
         }
-    };
-
+    };    
+    
     const [showChangelog, setShowChangelog] = useState(false);
 
     const [coronerList] = useState([
