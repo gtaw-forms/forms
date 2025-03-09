@@ -274,12 +274,14 @@ function App() {
         try {
             // Access Imgur API credentials from environment variables
             const imgurAccessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
+            const imgurAlbumId = process.env.REACT_APP_IMGUR_ALBUM_ID // Album ID
     
             // Function to upload a single file with a delay
             const uploadFileWithDelay = async (file, delay) => {
                 await new Promise(resolve => setTimeout(resolve, delay)); // Introduce delay
                 const formData = new FormData();
                 formData.append('image', file);
+                formData.append('album', imgurAlbumId); // Add album ID
     
                 const response = await fetch('https://api.imgur.com/3/image', {
                     method: 'POST',
@@ -324,9 +326,8 @@ function App() {
         } finally {
             setIsUploading(false);
         }
-    };    
-    
-    const [showChangelog, setShowChangelog] = useState(false);
+    };
+        const [showChangelog, setShowChangelog] = useState(false);
 
     const [coronerList] = useState([
         { name: 'Anne Carter', badge: '4892', rank: 'Chief Medical Examiner', discord: 'ralof.from.riverwood', category: 'Chief Boss' },
