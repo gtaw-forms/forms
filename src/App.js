@@ -2778,7 +2778,7 @@ ${phmcEmployee}
                                     <span>(NEW!) Mental Health Forms </span>
                                 </button>
 
-                                <button
+{/*                                 <button
                                     className="agency-select-button"
                                     onClick={() => handleAgencySelect(9)}
                                 >
@@ -2788,7 +2788,7 @@ ${phmcEmployee}
                                     />
                                     <span>Obstetrics & Gynecology Forms </span>
                                 </button>
-                                <button
+ */}                                <button
                                     className="agency-select-button"
                                     onClick={() => handleAgencySelect(6)}
                                 >
@@ -10026,7 +10026,7 @@ ${phmcEmployee}
                             />
                         </a>
                     </div>
-                    {<div className="form-type-header">
+{/*                     {<div className="form-type-header">
                         <h3>DEV_TEXT: You are viewing:
                             {bbCodeVersion === 1 ? ' generateDeath - FULLY TESTED' :
                                 bbCodeVersion === 2 ? ' generateEmail - FULLY TESTED' :
@@ -10051,7 +10051,7 @@ ${phmcEmployee}
                                                                                                                 ' MISSING TITLE - CHANGE DEV_TEXT'}
                         </h3>
                     </div>}
-                    <div className="bbcode-section">
+ */}                    <div className="bbcode-section">
                         <div className={`char-counter ${getBBCodeContent().length > 60000 ? 'char-counter-warning' : ''}`}>
                             Character Counter: {getBBCodeContent().length}/60000
                             {getBBCodeContent().length > 60000 && (
