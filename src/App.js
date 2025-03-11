@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import Select from 'react-select';
-
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import Notification from './components/Notification';
-import { Form, Button, InputGroup } from 'react-bootstrap';
-
+import { Modal, Form, Button, InputGroup } from 'react-bootstrap';
 // logos
 import LSPDLogo from './assets/lspd.png'
 import LSSDLogo from './assets/lssd.png'
@@ -16,6 +14,8 @@ import gyne from './assets/gyne.png'
 import email from './assets/email.png'
 import gynecology from './assets/gynecology.png'
 import surgeon from './assets/surgeon.png'
+import PHMCCivilian from './assets/PHMCCivilian.png'
+import Civilian from './assets/Civilian.png'
 import application from './assets/application.png'
 import nurse from './assets/nurse.png'
 import PHMCLogo from './assets/phmc.png'
@@ -27,10 +27,12 @@ import phmcpaletobay from './assets/phmcpaletobaylogo.png'
 
 
 // css fun
+
 import './App.css';
 import './buttons.css'
 
 import 'react-bootstrap-typeahead/css/Typeahead.css';
+import { FormHelperText } from '@mui/material';
 
 
 // HALF OF THIS CODE IS SPAGHETTI, A MESS, IT CAUSES ME HEADACHES, I WILL NOT REFACTOR BECAUSE ITS 1K LINES LONG
@@ -54,6 +56,8 @@ function App() {
         coronerEmployee: '',
         decedentOOC: '',
         scenePhotos: '',
+        patientMedInfoFormatOther: '',
+        patientZIP: '',
         lastName: '',
         coronerBadge: '',
         // email stuff
@@ -119,6 +123,7 @@ function App() {
         patientMedicalRecord: '',
         patientGender: '',
         patientDateofBirth: '',
+        patientDateOfBirth: '',
         patientMedicalHistory: '',
         patientEmail: '',
         patientAddress: '',
@@ -128,6 +133,7 @@ function App() {
         patientBloodType: '',
         patientChronicDiseases: '',
         patientBP: '',
+        SubmitDate: new Date().toISOString().split('T')[0], 
         // New fields for Medical Consultation Internal Medicine 2
         patientResperation: '',
         patientConsultation: '',
@@ -226,6 +232,31 @@ function App() {
         patientID: '',
         rank: '',
         patientProcedure: '',
+        patientPhoneType: '',
+        patientPhoneMobile: '',
+        patientPhoneHome: '',
+        patientPhoneWork: '',
+        patientPhoneOther: '',
+        patientGenderMale: '',
+        patientGenderFemale: '',
+        MedicalRecordsRelease: [],
+        MedicalRecordsRelease:  '',
+        PurposeMedicalInformationReleaseFormat: [],
+        PurposeMedicalInformationReleaseFormat: '',
+        PurposeMedicalInformationRelease: '',
+        PurposeAttorney: '',
+        PurposePersonal: '',
+        PurposeFurtherCare  : '',
+        PurposeOther: '',
+        CarePurposeMedicalInformationRelease: '',
+        patientMedInfoReleaseOther: '',
+        MedicalRecordsReleaseOther: '',
+        StupidDateFrom: '',
+        StupidDateTo: '',
+        patientFirstName: '',
+        patientMiddleName: '',
+        patientLastName: '',
+        patientTitle: '',
 
 
     });
@@ -235,13 +266,37 @@ function App() {
     const [isDoctor, setIsDoctor] = useState(false);
     const [isNurse, setIsNurse] = useState(false);
     const [isPsych, setIsPsych] = useState(false);
-    const [bbCodeVersion, setBbCodeVersion] = useState(1);
     const [notification, setNotification] = useState(null);
     const [commitInfo, setCommitInfo] = useState({ sha: '', date: null });
     const [rank, setRank] = useState('');
-
-    // Add state near other useState declarations
     const [showPHMCModal, setShowPHMCModal] = useState(false);
+    useEffect(() => {
+        window.onerror = (message, source, lineno, colno, error) => {
+            const errorMessage = `
+                Error: ${message}
+                Source: ${source}
+                Line: ${lineno}
+                Column: ${colno}
+                Error Object: ${error ? error.stack : 'No stack available'}
+            `;
+
+            const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+
+            fetch(discordWebhookUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    content: `**ERROR REPORT**\n${errorMessage}`
+                })
+            }).catch(error => {
+                console.error("Error sending error message to Discord:", error);
+            });
+
+            return true; // Prevent default error handling
+        };
+    }, []);
 
 
     useEffect(() => {
@@ -263,7 +318,6 @@ function App() {
             })
             .catch(error => console.error('Error fetching commit:', error));
     }, []);
-
     const handleImageUpload = async (event, fieldName) => {
         const files = event.target.files;
         if (!files.length) return;
@@ -327,7 +381,9 @@ function App() {
             setIsUploading(false);
         }
     };
-        const [showChangelog, setShowChangelog] = useState(false);
+
+    
+    const [showChangelog, setShowChangelog] = useState(false);
 
     const [coronerList] = useState([
         { name: 'Anne Carter', badge: '4892', rank: 'Chief Medical Examiner', discord: 'ralof.from.riverwood', category: 'Chief Boss' },
@@ -403,8 +459,85 @@ function App() {
         if (!signature) return '';
         return signature.startsWith('http') ? `[img]${signature}[/img]` : signature;
     };
+    const [bbCodeVersion, setBbCodeVersion] = useState(() => {
+        const storedVersion = localStorage.getItem('bbCodeVersion');
+        return storedVersion ? parseInt(storedVersion, 10) : 1;
+    });
 
-    // Kaden Malik's Torture Chamber
+    useEffect(() => {
+        localStorage.setItem('bbCodeVersion', bbCodeVersion.toString());
+    }, [bbCodeVersion]);
+    const [showMissingEmployeeModal, setShowMissingEmployeeModal] = useState(false);
+    const [missingEmployeeData, setMissingEmployeeData] = useState({
+        coronerName: '',
+        coronerDiscord: '',
+        coronerRank: '',
+        coronerPHNumber: '',
+        phmcEmployee: '',
+    });
+    const handleMissingEmployeeChange = (e) => {
+        setMissingEmployeeData({
+            ...missingEmployeeData,
+            [e.target.name]: e.target.value
+        });
+    };
+const handleMissingEmployeeSubmit = async () => {
+    try {
+        const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+
+        if (!webhookURL) {
+            console.error('Something has gone wrong with the .env file.');
+            setNotification({
+                message: 'Discord webhook URL is not defined.',
+                icon: 'fas fa-exclamation-triangle',
+            });
+            return;
+        }
+
+        const response = await fetch(webhookURL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                content: `New Employee Name Request by: ${missingEmployeeData.phmcEmployee} !\n{ name: '${missingEmployeeData.coronerName}', badge: '${missingEmployeeData.coronerDiscord}', rank: '${missingEmployeeData.coronerRank}', discord: '${missingEmployeeData.coronerDiscord}', category: '${missingEmployeeData.coronerRank}' },`,
+            }),
+        });
+
+        if (response.ok) {
+            setNotification({
+                message: 'Success! Added to next server restart',
+                icon: 'fas fa-check-circle',
+            });
+            setShowMissingEmployeeModal(false);
+            setMissingEmployeeData({
+                coronerName: '',
+                coronerDiscord: '',
+                coronerRank: '',
+                coronerPHNumber: '',
+                phmcEmployee: '',
+            });
+            // Add fade-out effect
+            setTimeout(() => {
+                setNotification(null);
+            }, 2000); // 2 seconds
+        } else {
+            console.error('Failed to send message to Discord webhook.');
+            setNotification({
+                message: 'Failed to submit. Please try again.',
+                icon: 'fas fa-exclamation-triangle',
+
+            });
+        }
+    } catch (error) {
+        console.error('Error submitting data:', error);
+        setNotification({
+            message: 'An error occurred. Please try again.',
+            icon: 'fas fa-exclamation-triangle',
+        });
+    }
+};
+//     // Kaden Malik's Torture Chamber
     const departmentLarge = [
         { value: 'InternalMedicine', label: 'Internal Medicine' },
         { value: 'Emergency Medicine', label: 'Emergency Medicine' },
@@ -440,6 +573,19 @@ function App() {
         { value: 'patientTempNormal', label: 'Normal' },
         { value: 'patientHypothermic', label: 'Hypothermic' },
         { value: 'patientHyperthermic', label: 'Hyperthermic' }
+    ];
+    const patientTitle = [
+        { value: 'Mr', label: 'Mr' },
+        { value: 'Mrs', label: 'Mrs' },
+        { value: 'Ms', label: 'Ms' },
+        { value: 'Other', label: 'Other' }
+    ];
+
+    const patientPhone = [
+        { value: 'Mobile', label: 'Mobile' },
+        { value: 'Home', label: 'Home' },
+        { value: 'Work', label: 'Work' },
+        { value: 'Other', label: 'Other' }
     ];
     const heartRate = [
         { value: 'patientHeartRateNormal', label: 'Normal' },
@@ -496,10 +642,35 @@ function App() {
         { value: 'Infarct', label: 'Infarct/Embolism' },
         { value: 'Tumor', label: 'Tumor' }
     ];
+    const gender = [
+        { value: 'Male', label: 'Male' },
+        { value: 'Female', label: 'Female' },
+    ];
 
     const admission = [
         { value: 'Yes', label: 'Yes' },
         { value: 'No', label: 'No' },
+    ];
+    const PurposeMedicalInformationRelease = [
+        { value: 'Further Treatment', label: 'Further Treatment / Continued Care' },
+        { value: 'Personal', label: 'Personal Use' },
+        { value: 'Attorney', label: 'Attorney Client' },
+        { value: 'Other', label: 'Other' },
+    ];
+    const PurposeMedicalInformationReleaseFormat = [
+        { value: 'CopyofRecords', label: 'Copy of Record Pickup' },
+        { value: 'VerbalRelease', label: 'Verbal Release' },
+        { value: 'ElectronicRelease', label: 'Electronical Release' },
+        { value: 'Other', label: 'Other' },
+    ];
+    const MedicalRecordsRelease = [
+        { value: 'ERVisit', label: 'Emergency Room Visit: ER notes, progress notes, consultations, procedure notes, test results' },
+        { value: 'HospitalStay', label: 'Hospital Stay: History and physical, progress notes, consultations, operative reports, discharge summary, test results' },
+        { value: 'Outpatient', label: 'Outpatient Surgery/Procedure: History and physical, progress notes, consultations, procedure notes, test results' },
+        { value: 'OfficeClinic', label: 'Clinic, Office Visit or Immediate Care: Office notes, progress notes, procedure notes, test results' },
+        { value: 'PsychologyVisits', label: 'Psychology Visits: Office notes, progress notes, procedure notes, evaluation results' },
+        { value: 'Other', label: 'Other' }
+
     ];
     const followup = [
         { value: 'AsNeeded', label: 'As Needed' },
@@ -2191,7 +2362,108 @@ ${phmcEmployee}
     `
                     return bbCode;
                     };
-    
+
+                    const generateMedicalRecordRelease = () => {
+                        const {
+                            patientFirstName,
+                            patientMiddleName,
+                            patientLastName,
+                            patientPH,
+                            patientDateOfBirth,
+                            patientAddress,
+                            patientZIP,
+                            patientEmail,
+                            patientMedInfoReleaseOther,
+                            phmcEmployee,
+                            MedicalRecordsReleaseOther,
+                            patientMedInfoFormatOther,
+                            StupidDateFrom,
+                            StupidDateTo,
+                            SubmitDate,
+                        } = formData;
+                        let bbCode = `[divbox=white] [center] [img]https://i.imgur.com/Hxjt4M2.png[/img] [/center] [/divbox]
+[divbox=white]
+[br][/br][color=#800000][size=150][b]I. PATIENT INFORMATION[/b][/size][/color][hr][/hr]
+[list=none][b]Title:[/b] [i](select one)[/i]
+[list=none][${formData.patientTitle === 'Mr' ? 'x' : ''}] Mr.
+[*][${formData.patientTitle === 'Mrs' ? 'x' : ''}] Mrs.
+[*][${formData.patientTitle === 'Ms' ? 'x' : ''}] Ms.
+[*][${formData.patientTitle === 'Other' ? 'x' : ''}] Other[/list]
+[b]First Name:[/b]
+[i]${patientFirstName}[/i][br][/br]
+[b]Middle Name:[/b] [i](optional)[/i]
+[i]${patientMiddleName}[/i][br][/br]
+[b]Last Name:[/b]
+[i]${patientLastName}[/i][br][/br]
+[b]Gender:[/b] [i](select one)[/i]
+[list=none]
+[*][${formData.patientGender === 'Male' ? 'X' : ''}] Male
+[*][${formData.patientGender === 'Female' ? 'X' : ''}] Female[/list]
+[b]Date of Birth:[/b]
+[i]${patientDateOfBirth}[/i][br][/br]
+[b]Address:[/b]
+[i]${patientAddress}[/i][br][/br]
+[b]ZIP / Postal Code:[/b]
+[i]${patientZIP}[/i][br][/br][/list]
+[br][/br][color=#800000][size=150][b]II. CONTACT INFORMATION[/b][/size][/color][hr][/hr]
+[list=none]
+[b]Phone Type:[/b] [i](select one)[/i]
+[list=none]
+[*][${formData.patientPhoneType === 'Mobile' ? 'X' : ''}] Mobile
+[*][${formData.patientPhoneType === 'Home' ? 'X' : ''}] Home
+[*][${formData.patientPhoneType === 'Work' ? 'X' : ''}] Work
+[*][${formData.patientPhoneType === 'Other' ? 'X' : ''}] Other[/list][b]Phone Number:[/b]
+[i]${patientPH}[/i][br][/br]
+[b]Email:[/b]
+[i]${patientEmail}[/i][br][/br][/list]
+[br][/br][color=#800000][size=150][b]III. RELEASE INFORMATION[/b][/size][/color][hr][/hr]
+[list=none][b]Purpose of Medical Information Release:[/b]
+[list=none]
+[*][${formData.CarePurposeMedicalInformationRelease === 'Further Treatment' ? 'X' : ''}] Further Treatment / Continued 
+[*][${formData.CarePurposeMedicalInformationRelease === 'Personal' ? 'X' : ''}] Personal Use
+[*][${formData.CarePurposeMedicalInformationRelease === 'Attorney' ? 'X' : ''}] Attorney / Client
+[*][${formData.CarePurposeMedicalInformationRelease === 'Other' ? 'X' : ''}] Other: ${patientMedInfoReleaseOther}[/list][/list]
+[list=none][b]Format of Medical Information Release:[/b]
+[list=none]
+[*][${formData.PurposeMedicalInformationReleaseFormat === 'CopyofRecords' ? 'X' : ''}] Copy of Record to be picked up
+[*][${formData.PurposeMedicalInformationReleaseFormat === 'VerbalRelease' ? 'X' : ''}] Verbal Release (e.g. phone conversation)
+[*][${formData.PurposeMedicalInformationReleaseFormat === 'ElectronicRelease' ? 'X' : ''}] Electronical Release (sent via email)
+[*][${formData.PurposeMedicalInformationReleaseFormat === 'Other' ? 'X' : ''}] Other: ${patientMedInfoFormatOther}[/list][/list]
+[list=none][b]Date Range:[/b]
+[i]I authorize the release of information covering the period(s) of treatment:[/i]
+[list=none]
+[*][b]From:[/b] [i]${StupidDateFrom}[/i]    
+[*][b]To:[/b] [i]${StupidDateTo}[/i][/list][/list]
+[list=none][b]Medical Records to be Released:[/b] [i](check all that apply)[/i]
+[list=none]
+[*][${formData.MedicalRecordsRelease?.includes('ERVisit') ? 'X' : ''}] [b]Emergency Room Visit[/b] (ER notes, progress notes, consultations, procedure notes, test results)
+[*][${formData.MedicalRecordsRelease?.includes('HospitalStay') ? 'X' : ''}] [b]Hospital Stay[/b] (History and physical, progress notes, consultations, operative reports, discharge summary, test results)
+[*][${formData.MedicalRecordsRelease?.includes('Outpatient') ? 'X' : ''}] [b]Outpatient Surgery/Procedure[/b] (History and physical, progress notes, consultations, procedure notes, test results)
+[*][${formData.MedicalRecordsRelease?.includes('OfficeClinic') ? 'X' : ''}] [b]Clinic, Office Visit or Immediate Care[/b] (Office notes, progress notes, procedure notes, test results)
+[*][${formData.MedicalRecordsRelease?.includes('PsychologyVisits') ? 'X' : ''}] [b]Psychology Visits[/b] (Office notes, progress notes, procedure notes, evaluation results)
+[*][${formData.MedicalRecordsRelease?.includes('Other') ? 'X' : ''}] [b]Other Records:[/b] ${MedicalRecordsReleaseOther}[/list][/list]
+[list=none][b]Practitioner's name seen by:[/b]
+[i]${phmcEmployee}[/i]
+[br][/br][/list]
+[color=#800000][size=150][b]IV. AUTHORIZATION FOR RELEASE INFORMATION[/b][/size][/color][hr][/hr][br][/br]
+[list=none]I, ${patientFirstName} ${patientMiddleName} ${patientLastName}, hereby authorize Pillbox Hill Medical Center to disclose my individually identifiable health information. I understand that this authorization is voluntary and I may refuse to sign this authorization. I further understand that my health care will not be affected if I do not sign this form.
+
+I, ${patientFirstName} ${patientMiddleName} ${patientLastName}, understand that if the recipient authorized to receive the information is not a covered entity, the released information may no longer be protected by federal and state privacy regulations.
+
+I, ${patientFirstName} ${patientMiddleName} ${patientLastName}, further understand that I may revoke this authorization at any time by notifying, in writing, the Pillbox Hill Medical Center facility where this authorization is being signed. I also understand the revocation must be signed and dated with a date that is later than the date on this authorization. The revocation will not affect any releases made prior to the receipt of the written revocation.
+
+I, ${patientFirstName} ${patientMiddleName} ${patientLastName}, understand the record might not be complete, if it is a recent visit, and additional documentation could be added after submitting this request. 
+
+By typing my name below, I, ${patientFirstName} ${patientMiddleName} ${patientLastName}, certify that this information can be used for the purpose of processing my Authorization for Medical Records Release request. I consider this as my electronic signature for this request.
+[br][/br]
+[/list]
+[list=none][b]Signature:[/b] 
+[i]${patientFirstName} ${patientMiddleName} ${patientLastName}[/i][br][/br]
+[b]Date:[/b]
+[i]${SubmitDate}[/i][/list][/divbox]`
+return bbCode;
+};
+
     // Update BBCode generation logic
     const bbCode = bbCodeVersion === 1 ? generateDeath() :
         bbCodeVersion === 2 ? generateEmail() :
@@ -2210,6 +2482,8 @@ ${phmcEmployee}
                                                                                     bbCodeVersion === 21 ? generateConsultationNotesPBC() :
                                                                                     bbCodeVersion === 22 ? generateCommentaryNotePHMC() :
                                                                                     bbCodeVersion === 23 ? generateCommentaryNotePBC() :
+                                                                                    bbCodeVersion === 24 ? generateMedicalRecordRelease() :
+
 
                                                                                 generateDeath();
 
@@ -2221,6 +2495,9 @@ ${phmcEmployee}
         } else if (bbCodeVersion === 2) {
             const { decedentName, decedentOOC } = formData;
             return `Coroner Report - ${decedentName} | ((${decedentOOC}))`;
+        } else if (bbCodeVersion === 24) {
+            const { patientFirstName,  patientLastName } = formData;
+            return `[RELEASE REQUEST] ${patientFirstName} ${patientLastName} `;
         } else if (bbCodeVersion === 18) {
             const { department } = formData;
             return `Agency Incident Report - ${department}`;
@@ -2257,6 +2534,7 @@ ${phmcEmployee}
             coronerDiscord: '',
             coronerPHNumber: '50056',
             deathReport: '',
+            SubmitDate: '',
             additionalReports: [],
             showAdditionalReports: false,
             internalReport: '',
@@ -2404,12 +2682,35 @@ ${phmcEmployee}
             patientBloodPressureHypotension: false,
             patientBloodPressureHypertension: false,
             assignedDepartment: '',
-            lab: [], // Initialize lab as an empty array
+            lab: [],
             departmentLarge: '',
             patientChiefComplaint: '',
             patientID: '',
             rank: '',
+            patientTitle: [],
+            patientPhoneType: [],
+            patientPhoneType: '',
+            patientGender: [],
             patientProcedure: '',
+            PurposeMedicalInformationRelease: '',
+            PurposeAttorney: '',
+            PurposePersonal: '',
+            PurposeFurtherCare  : '',
+            PurposeOther: '',
+            MedicalRecordsRelease: [],
+            MedicalRecordsRelease:  '',
+            MedicalRecordsReleaseOther: '',
+            StupidDateFrom: '',
+            StupidDateTo: '',
+            patientFirstName: '',
+            patientMiddleName: '',
+            patientLastName: '',
+            patientTitle: '',
+            patientZIP: '',
+            patientDateOfBirth: '',
+            patientMedInfoFormatOther: '',
+    
+    
         });
         const fieldsToRemove = [
             'dateTime',
@@ -2478,6 +2779,8 @@ ${phmcEmployee}
             case 23:
                 return generateCommentaryNotePBC();
             default:
+            case 24:
+                return generateMedicalRecordRelease();
                 return '';
         }
     };
@@ -2526,35 +2829,6 @@ ${phmcEmployee}
             }
         });
     };
-    useEffect(() => {
-        window.onerror = (message, source, lineno, colno, error) => {
-            const errorMessage = `
-                Error: ${message}
-                Source: ${source}
-                Line: ${lineno}
-                Column: ${colno}
-                Error Object: ${error ? error.stack : 'No stack available'}
-            `;
-
-            // Access Discord Webhook URL from environment variable
-            const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-
-            // Send error message to Discord
-            fetch(discordWebhookUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    content: `**ERROR REPORT**\n${errorMessage}`
-                })
-            }).catch(error => {
-                console.error("Error sending error message to Discord:", error);
-            });
-
-            return true; // Prevent default error handling
-        };
-    }, []);
 
     useEffect(() => {
         clearOldLocalStorage();
@@ -2616,7 +2890,7 @@ ${phmcEmployee}
         }
     };
     const handleChange = (e) => {
-        const { name, value } = e.target;
+        const { name, value, type, checked } = e.target;
         setFormData(prev => ({
             ...prev,
             [name]: value
@@ -2638,7 +2912,19 @@ ${phmcEmployee}
                 localStorage.setItem(`${field}_timestamp`, timestamp);
             });
         }
-
+        // Gender processing
+        if (name === 'patientGender') {
+            setFormData(prevFormData => ({
+                ...prevFormData,
+                patientGender: value,
+            }));
+        } else {
+            setFormData(prevFormData => ({
+                ...prevFormData,
+                [name]: type === 'checkbox' ? checked : value
+            }));
+        }
+    
         // Handle 3-hour expiry fields
         if (['pronouncedTimeOfDeath', 'department', 'dateTime', 'placeOfDeath', 'mannerOfDeath'].includes(name)) {
             localStorage.setItem(name, value);
@@ -2709,7 +2995,8 @@ ${phmcEmployee}
         20: "Consultation Notes (PHMC)",
         21: "Consultation Notes (PBC)",
         22: "Commentary Note (PHMC)",
-        23: "Commentary Note (PBC)"
+        23: "Commentary Note (PBC)",
+        24: "Medical Release Records"
     };
 
     const handleAgencySelect = (version) => {
@@ -2744,6 +3031,17 @@ ${phmcEmployee}
                         </div>
                         <div className="agency-selector-buttons">
                             <div className="agency-row">
+                            <button
+                                    className="agency-select-button"
+                                    onClick={() => handleAgencySelect(24)}
+                                >
+                                    <img src={Civilian}
+                                        className="Center"
+                                        alt="Feedback"
+                                    />
+                                    <span>Civilian - Medical Record Release </span>
+                                </button>
+
                                 <button
                                     className="agency-select-button"
                                     onClick={() => handleAgencySelect(1)}  
@@ -2774,7 +3072,9 @@ ${phmcEmployee}
                                     />
                                     <span>(NEW!) Emergency Room Protocol </span>
                                 </button>
-                                <button
+                                                            </div>
+                            <div className="agency-row">
+                            <button
                                     className="agency-select-button"
                                     onClick={() => handleAgencySelect(22)}
                                 >
@@ -2784,8 +3084,7 @@ ${phmcEmployee}
                                     />
                                     <span>(NEW!) Commentary Note Form  </span>
                                 </button>
-                                                            </div>
-                            <div className="agency-row">
+
                             <button
                                     className="agency-select-button"
                                     onClick={() => handleAgencySelect(14)}
@@ -2817,9 +3116,9 @@ ${phmcEmployee}
                                     />
                                     <span>Physical Evaluation </span>
                                 </button>
-                                <button
+{/*                                 <button
                                 className="agency-select-button"
-                                onClick={() => handleAgencySelect(25)}
+                                onClick={() => handleAgencySelect(24)}
                             >
                                 <img src={developer}
                                     className="Center"
@@ -2827,7 +3126,7 @@ ${phmcEmployee}
                                 />
                                 <span>Dev Testing Grounds </span>
                             </button>
-
+ */}
                             </div>
                         </div>
                         <div className="hide-selector-option">
@@ -2864,6 +3163,8 @@ ${phmcEmployee}
             </div>
             <div className="container">
                 <div className="form-container">
+                <div className="button-group">
+
                     <button
                         type="button"
                         className="changelog-button"
@@ -2872,12 +3173,19 @@ ${phmcEmployee}
                         <i className="fas fa-history"></i>
                         View Changelog
                     </button>
-
+                    <button
+                        type="button"
+                        className="changelog-button"
+                        onClick={() => setShowMissingEmployeeModal(true)}
+                    >
+                        Missing Employee / Coroner?
+                    </button>
+</div>
                     {showChangelog && (
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 1.6 - ❄️ Frostbite Update </h3>
+                                    <h3>Changelog - Version 1.6.5 - ❄️ Frostbite Update </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -2888,11 +3196,13 @@ ${phmcEmployee}
                                 </div>
                                 <div className="modal-content">
                                     <ul>
-                                        <li>All new forms added (Emergency Room Protocol | Mental Health | Commentary)</li>
-                                        <li>Security and backend fixes</li>
-                                        <li>Quality of Life changes to Coroner forms</li>
-                                        <li>Improved image processing</li>
-                                        <li> Work in progress Business Card Generator </li>
+                                        <li>All new forms added (Civilian - Request Medical Records)</li>
+                                        <li>Changed to the Imgur API</li>
+                                        <li>Add Employee / Coroner (Beta) added</li>
+                                        <li>Error Handling</li>
+                                        <li>Backend support for new Civilian forms (Waiting BBCode) </li>
+                                        <li> Kaden Malik Torture Chamber Established </li> 
+                                        <li> Update Size: 24.5 KB | Lines added: 1520 | 7</li>
 
                                     </ul>
                                 </div>
@@ -3383,7 +3693,10 @@ ${phmcEmployee}
                                         })
                                     }}
                                 />
-                                <Form.Label><br></br>Dispatch Date and Time:</Form.Label>
+                                <FormHelperText></FormHelperText>
+                                <Form.Label></Form.Label>
+                                <Form.Label>Dispatch Time | Decedent Time of Death</Form.Label>
+                                <div style={{ display: 'flex', gap: '10px' }}>
                                 <Form.Control
                                     type="datetime-local"
                                     name="dateTime"
@@ -3392,6 +3705,15 @@ ${phmcEmployee}
                                     required
                                     className={`form-control ${!formData.dateTime ? 'is-invalid' : ''}`}
                                 />
+                                <Form.Control
+                                    type="datetime-local"
+                                    name="pronouncedTimeOfDeath"
+                                    value={formData.pronouncedTimeOfDeath}
+                                    onChange={handleChange}
+                                    required
+                                    className={`form-control ${!formData.pronouncedTimeOfDeath ? 'is-invalid' : ''}`}
+                                />
+                                </div>
                                 <Form.Select
                                     name="department"
                                     value={formData.department}
@@ -3433,24 +3755,27 @@ ${phmcEmployee}
                                         />
                                     </div>
                                 </div>
-                                <Form.Control
-                                    type="text"
-                                    name="decedentName"
-                                    value={formData.decedentName}
-                                    onChange={handleChange}
-                                    placeholder="Decedent's IC name"
-                                    required
-                                    className={`form-control ${!formData.decedentName ? 'is-invalid' : ''}`}
-                                />
-                                <Form.Control
-                                    type="text"
-                                    name="decedentOOC"
-                                    value={formData.decedentOOC}
-                                    onChange={handleChange}
-                                    placeholder="Decedent's OOC name"
-                                    required
-                                    className={`form-control ${!formData.decedentOOC ? 'is-invalid' : ''}`}
-                                />
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="decedentName"
+                                            value={formData.decedentName}
+                                            onChange={handleChange}
+                                            placeholder="Decedent's IC name"
+                                            required
+                                            className={`form-control ${!formData.decedentName ? 'is-invalid' : ''}`}
+                                        />
+                                        <Form.Control
+                                        type="text"
+                                        name="decedentOOC"
+                                        value={formData.decedentOOC}
+                                        onChange={handleChange}
+                                        placeholder="Decedent's OOC name"
+                                        required
+                                        className={`form-control ${!formData.decedentOOC ? 'is-invalid' : ''}`}
+                                        />
+                                    </div>
+
                                 <Form.Select
                                     name="typeOfDeath"
                                     value={formData.typeOfDeath}
@@ -3486,15 +3811,6 @@ ${phmcEmployee}
                                     <option value="Undetermined">Undetermined - the evidence is insufficient to determine the manner of death</option>
                                 </Form.Select>
 
-                                <Form.Label>Pronounced Time of Death:</Form.Label>
-                                <Form.Control
-                                    type="datetime-local"
-                                    name="pronouncedTimeOfDeath"
-                                    value={formData.pronouncedTimeOfDeath}
-                                    onChange={handleChange}
-                                    required
-                                    className={`form-control ${!formData.pronouncedTimeOfDeath ? 'is-invalid' : ''}`}
-                                />
                                 <Form.Control
                                     as="textarea"
                                     name="synopsis"
@@ -8761,7 +9077,6 @@ ${phmcEmployee}
                                         })
                                     }}
                                 /><Form.Label></Form.Label>
-
                                 <Form.Control
                                     as="textarea"
                                     name="patientDiagnosis"
@@ -10021,6 +10336,420 @@ ${phmcEmployee}
                                 <Form.Label></Form.Label>
 
                             </>
+                     ) : bbCodeVersion === 24 ? ( // Medical Record Release
+                                                        <>
+                                                        
+                                <Form.Group className="mb-3">
+                                <Form.Label>Title / First Name / Middle Name / Lastname / Date of Birth</Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Select
+                                    name="patientTitle"
+                                    value={formData.patientTitle}
+                                    onChange={handleChange}
+                                    required
+                                    className={`form-control ${!formData.patientTitle ? 'is-invalid' : ''}`}
+                                >
+                                    <option value="" disabled>Title</option>
+                                    {patientTitle.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                </Form.Select>
+
+                                        <Form.Control
+                                            type="text"
+                                            name="patientFirstName"
+                                            value={formData.patientFirstName}
+                                            onChange={handleChange}
+                                            placeholder="First Name"
+                                            required
+                                            className={`form-control ${!formData.patientFirstName ? 'is-invalid' : ''}`}
+
+                                        />
+
+                                        <Form.Control
+                                            type="text"
+                                            name="patientMiddleName"
+                                            value={formData.patientMiddleName}
+                                            onChange={handleChange}
+                                            placeholder="Middle Name (Optional)"
+                                            className={`form-control ${!formData.patientMiddleName ? 'is-invalid' : ''}`}
+
+                                        />
+                                            <Form.Control
+                                            type="text"
+                                            name="patientLastName"
+                                            value={formData.patientLastName}
+                                            onChange={handleChange}
+                                            placeholder="Last Name"
+                                            required
+                                            className={`form-control ${!formData.patientLastName ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="date"
+                                            name="patientDateOfBirth"
+                                            value={formData.patientDateOfBirth}
+                                            onChange={handleChange}
+                                            placeholder="Date of Birth"
+                                            required
+                                            className={`form-control ${!formData.patientDateOfBirth ? 'is-invalid' : ''}`}
+
+                                        />
+
+                                    </div>
+                                    <Form.Label>Gender:</Form.Label>
+                                        <Form.Check
+                                            type="radio"
+                                            label="   Male"
+                                            name="patientGender"
+                                            value="Male"
+                                            checked={formData.patientGender === 'Male'}
+                                            onChange={handleChange}
+                                        />
+                                        <Form.Check
+                                            type="radio"
+                                            label="   Female"
+                                            name="patientGender"
+                                            value="Female"
+                                            checked={formData.patientGender === 'Female'}
+                                            onChange={handleChange}
+                                        />
+
+                                </Form.Group>
+                                <Form.Group className="mb-3">
+                                    <Form.Label>Address & ZIP / Postal Code</Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientAddress"
+                                            value={formData.patientAddress}
+                                            onChange={handleChange}
+                                            placeholder="Address (Number, Floor, Street)"
+                                            required
+                                            className={`form-control ${!formData.patientAddress ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientZIP"
+                                            value={formData.patientZIP}
+                                            onChange={handleChange}
+                                            placeholder="ZIP / Postal Code ((You can make this up))"
+                                            required
+                                            className={`form-control ${!formData.patientZIP ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+                                </Form.Group>
+                                    <Form.Label>Contact Information</Form.Label>
+                                    <div className="input-group">
+                                    <Form.Select
+                                    name="patientPhoneType"
+                                    value={formData.patientPhoneType}
+                                    onChange={(e) => {
+                                        const selectedType = e.target.value;
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            patientPhoneType: selectedType,
+                                            patientPhoneMobile: selectedType === 'Mobile' ? prev.patientPhoneMobile : '',
+                                            patientPhoneHome: selectedType === 'Home' ? prev.patientPhoneHome : '',
+                                            patientPhoneWork: selectedType === 'Work' ? prev.patientPhoneWork : '',
+                                            patientPhoneOther: selectedType === 'Other' ? prev.patientPhoneOther : '',
+                                        }));
+                                    }}
+                                    required
+                                    className={`form-control ${!formData.patientPhoneType ? 'is-invalid' : ''}`}
+                                >
+                                    <option value="" disabled>Phone Type</option>
+                                    {patientPhone.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.value}</option>
+                                    ))}
+                                </Form.Select>        
+                                                               
+                                 <Form.Control
+                                            type="text"
+                                            name="patientPH"
+                                            value={formData.patientPH}
+                                            onChange={handleChange}
+                                            placeholder="Phone Number"
+                                            required
+                                            className={`form-control ${!formData.patientPH ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientEmail"
+                                            value={formData.patientEmail}
+                                            onChange={handleChange}
+                                            placeholder="Email Address"
+                                            required
+                                            className={`form-control ${!formData.patientEmail ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+                                    <Form.Label>Purpose of Medical Information Release</Form.Label>
+                                    <Form.Select
+                                    name="CarePurposeMedicalInformationRelease"
+                                    value={formData.CarePurposeMedicalInformationRelease}
+                                    onChange={(e) => {
+                                        const selectedType = e.target.value;
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            CarePurposeMedicalInformationRelease: selectedType,
+                                            PurposeFurtherCare: selectedType === 'Further Treatment' ? prev.PurposeFurtherCare : '',
+                                            PurposePersonal: selectedType === 'Personal' ? prev.PurposePersonal : '',
+                                            PurposeAttorney: selectedType === 'Attorney' ? prev.PurposeAttorney : '',
+                                            PurposeOther: selectedType === 'Other' ? prev.PurposeOther : '',
+                                        }));
+                                    }}
+                                    required
+                                    className={`form-control ${!formData.CarePurposeMedicalInformationRelease ? 'is-invalid' : ''}`}
+                                >
+                                    <option value="" disabled>Release Information</option>
+                                    {PurposeMedicalInformationRelease.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.value}</option>
+                                    ))}
+                                </Form.Select>
+                                {formData.CarePurposeMedicalInformationRelease === 'Other' && (
+                                    <Form.Control
+                                        type="text"
+                                        name="patientMedInfoReleaseOther"
+                                        value={formData.patientMedInfoReleaseOther}
+                                        onChange={handleChange}
+                                        placeholder="Add a different release reason (Ex: Insurance / Courts)"
+                                        required
+                                        className={`form-control ${!formData.patientMedInfoReleaseOther ? 'is-invalid' : ''}`}
+
+                                    />
+                                )}
+
+                                    <Form.Label>Format of Medical Information Release </Form.Label>
+                                    <Form.Select
+                                    name="PurposeMedicalInformationReleaseFormat"
+                                    value={formData.PurposeMedicalInformationReleaseFormat || ""}
+                                    onChange={(e) => {
+                                        const selectedType = e.target.value;
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            PurposeMedicalInformationReleaseFormat: selectedType,
+                                            CopyofRecords: selectedType === 'CopyofRecords' ? prev.CopyofRecords : '',
+                                            VerbalRelease: selectedType === 'VerbalRelease' ? prev.VerbalRelease : '',
+                                            ElectronicRelease: selectedType === 'ElectronicRelease' ? prev.ElectronicRelease : '',
+                                            Other: selectedType === 'Other' ? prev.Other : '',
+                                        }));
+                                    }}
+                                    required
+                                    className={`form-control ${!formData.PurposeMedicalInformationReleaseFormat ? 'is-invalid' : ''}`}
+                                >
+                                    <option value="" disabled>Release Information</option>
+                                    {PurposeMedicalInformationReleaseFormat.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                </Form.Select>                               
+                                 {formData.PurposeMedicalInformationReleaseFormat === 'Other' && (
+                                    <Form.Control
+                                        type="text"
+                                        name="patientMedInfoFormatOther"
+                                        value={formData.patientMedInfoFormatOther}
+                                        onChange={handleChange}
+                                        placeholder="Add a different release option (Ex: FAX)"
+                                        required
+                                        className={`form-control ${!formData.patientMedInfoFormatOther ? 'is-invalid' : ''}`}
+
+                                    />
+                                )}
+                                  <Form.Label>Record Release Time Frame </Form.Label>
+
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="StupidDateFrom"
+                                            value={formData.StupidDateFrom}
+                                            onChange={handleChange}
+                                            placeholder="Treatment Date From"
+                                            required
+                                            className={`form-control ${!formData.StupidDateFrom ? 'is-invalid' : ''}`}
+                                        />
+                                        <Form.Control
+                                        type="text"
+                                        name="StupidDateTo"
+                                        value={formData.StupidDateTo}
+                                        onChange={handleChange}
+                                        placeholder="Treatment Date To"
+                                        required
+                                        className={`form-control ${!formData.StupidDateTo ? 'is-invalid' : ''}`}
+                                        />
+                                    </div>
+
+                                    <Form.Label>Medical Records to be Released </Form.Label>
+                                    <Select
+                                            isMulti
+                                            name="MedicalRecordsRelease"
+                                            value={formData.MedicalRecordsRelease ? MedicalRecordsRelease.filter(option =>
+                                                formData.MedicalRecordsRelease.includes(option.value)
+                                            ) : []}
+                                                onChange={(selectedOptions) => {
+                                                setFormData(prev => ({
+                                                    ...prev,
+                                                    MedicalRecordsRelease: selectedOptions ? selectedOptions.map(option => option.value) : []
+                                                }));
+                                            }}
+                                            options={MedicalRecordsRelease}
+                                            className={`form-control ${!formData.MedicalRecordsRelease ? 'is-invalid' : ''}`}
+                                            placeholder="Select Release Options (Multiple Choice)"
+                                            styles={{                                        
+                                                control: (base) => ({
+                                            ...base,
+                                            minHeight: '38px',
+                                            backgroundColor: '#16202c',
+                                            color: '#eeeeeeb0',
+                                            borderColor: '#6c757d',
+                                            '&:hover': {
+                                                borderColor: '#eeeeeeb0'
+                                            }
+                                        }),
+                                        menu: (base) => ({
+                                            ...base,
+                                            backgroundColor: '#16202c',
+                                            zIndex: 1000,
+                                            border: '1px solid #6c757d',
+                                            borderRadius: '0.375rem'
+                                        }),
+                                        option: (base, state) => ({
+                                            ...base,
+                                            backgroundColor: state.isFocused ? '#30363d' : '#16202c',
+                                            color: '#eeeeeeb0',
+                                            padding: '0.5rem 1rem',
+                                            '&:hover': {
+                                                backgroundColor: '#30363d'
+                                            }
+                                        }),
+                                        multiValue: (base) => ({
+                                            ...base,
+                                            backgroundColor: '#30363d',
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        multiValueLabel: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        multiValueRemove: (base) => ({
+                                            ...base,
+                                            color: '#6c757d',
+                                            '&:hover': {
+                                                backgroundColor: '#dc3545',
+                                                color: '#fff'
+                                            }
+                                        }),
+                                        input: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        placeholder: (base) => ({
+                                            ...base,
+                                            color: '#6c757d'
+                                        })
+                                    }}
+                                    />
+                                                                        <Form.Label></Form.Label>                                                               
+
+                                    {formData.MedicalRecordsRelease && formData.MedicalRecordsRelease.includes('Other') && (
+                                    <Form.Control
+                                        type="text"
+                                        name="MedicalRecordsReleaseOther"
+                                        value={formData.MedicalRecordsReleaseOther}
+                                        onChange={handleChange}
+                                        placeholder="Please specify other records to be released"
+                                        required
+                                    />
+                                )}
+                                    <Form.Label></Form.Label>                                                               
+                                    <Form.Label></Form.Label>
+                            <Select
+                                    name="phmcEmployee"
+                                    value={phmcGroupedOptions
+                                        .flatMap(group => group.options)
+                                        .find(option => option.value === formData.phmcEmployee) || null}
+                                    onChange={(selectedOption) => {
+                                        handleChange({
+                                            target: {
+                                                name: 'phmcEmployee',
+                                                value: selectedOption?.value || ''
+                                            }
+                                        });
+                                        if (selectedOption) {
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                phmcSignature: selectedOption.signature || ''
+                                            }));
+                                        } else {
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                phmcSignature: ''
+                                            }));
+                                        }
+                                    }}
+                                    options={phmcGroupedOptions}
+                                    isClearable
+                                    placeholder="Which Doctor Treated You? (You can type to search!)"
+                                    className="form-control"  // Match Bootstrap styling
+                                    styles={{
+                                        control: (base) => ({
+                                            ...base,
+                                            backgroundColor: '#16202c',
+                                            color: '#eeeeeeb0',
+                                            borderColor: '#6c757d',
+                                            '&:hover': {
+                                                borderColor: '#eeeeeeb0'
+                                            }
+                                        }),
+                                        menu: (base) => ({
+                                            ...base,
+                                            backgroundColor: '#16202c',
+                                            zIndex: 1000
+                                        }),
+                                        option: (base, state) => ({
+                                            ...base,
+                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        singleValue: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        input: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        placeholder: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        group: (base) => ({
+                                            ...base,
+                                            paddingTop: 8,
+                                            paddingBottom: 8
+                                        }),
+                                        groupHeading: (base) => ({
+                                            ...base,
+                                            color: '#6c757d',
+                                            fontWeight: 600,
+                                            textTransform: 'uppercase',
+                                            fontSize: '0.75rem',
+                                            marginBottom: 4
+                                        })
+                                    }}
+                                />
+                                    <Form.Label></Form.Label>
+
+                                    <Form.Label>Authorization For Release Information</Form.Label>
+                                    <Form.Control
+    type="date"
+    name="SubmitDate"
+    value={formData.SubmitDate || new Date().toISOString().split('T')[0]}
+    onChange={handleChange}
+    readOnly
+                                />                                            </>
                         ) : null}
                         <div className="button-group">
                             <button
@@ -10035,7 +10764,70 @@ ${phmcEmployee}
                     </form>
                 </div>
                 <div className="output-container">
-                    <div className="image-container">
+    {showMissingEmployeeModal && (
+        <div className="modal-overlay">
+            <div className="modal">
+                <Modal.Header>
+                    <Modal.Title>Add Missing Employee / Coroner</Modal.Title>
+                    <Button variant="secondary" className="close" onClick={() => setShowMissingEmployeeModal(false)}>
+                        <span>&times;</span>
+                    </Button>
+                </Modal.Header>
+                <Modal.Body>
+                    <Form>
+                        <Form.Group className="mb-3">
+                            <Form.Control
+                                type="text"
+                                name="coronerName"
+                                value={missingEmployeeData.coronerName}
+                                onChange={handleMissingEmployeeChange}
+                                placeholder='Employee Name'
+
+                            />
+                            <Form.Control
+                                type="text"
+                                name="coronerDiscord"
+                                value={missingEmployeeData.coronerDiscord}
+                                onChange={handleMissingEmployeeChange}
+                                placeholder='Employee Discord Tags'
+                            />
+                            <Form.Control
+                                type="text"
+                                name="coronerRank"
+                                value={missingEmployeeData.coronerRank}
+                                onChange={handleMissingEmployeeChange}
+                                placeholder='Employee Rank / Position'
+                            />
+                            <Form.Control
+                                type="text"
+                                name="coronerPHNumber"
+                                value={missingEmployeeData.coronerPHNumber}
+                                onChange={handleMissingEmployeeChange}
+                                placeholder='Employee PH number (Optional)'
+                            />
+                            <Form.Control
+                                type="text"
+                                name="phmcEmployee"
+                                value={missingEmployeeData.phmcEmployee}
+                                onChange={handleMissingEmployeeChange}
+                                placeholder='Requesting Employee Name (Spam Filter)'
+                            />
+
+                        </Form.Group>
+                    </Form>
+                </Modal.Body>
+                <Modal.Footer>
+                    <Button variant="secondary" onClick={() => setShowMissingEmployeeModal(false)}>
+                        Cancel
+                    </Button>
+                    <Button variant="primary" onClick={handleMissingEmployeeSubmit}>
+                        Submit
+                    </Button>
+                </Modal.Footer>
+            </div>
+        </div>
+    )}
+<div className="image-container">
                         <a href="http://discord.gg/rrzJ4EeHfK" target="_blank" rel="noopener noreferrer">
                             <img src={Feedback}
                                 height={350}
@@ -10045,7 +10837,9 @@ ${phmcEmployee}
                             />
                         </a>
                     </div>
-{/*                     {<div className="form-type-header">
+                    <div id="missing-employee-modal"></div>
+                                        
+{/*                    {<div className="form-type-header">
                         <h3>DEV_TEXT: You are viewing:
                             {bbCodeVersion === 1 ? ' generateDeath - FULLY TESTED' :
                                 bbCodeVersion === 2 ? ' generateEmail - FULLY TESTED' :
@@ -10065,13 +10859,13 @@ ${phmcEmployee}
                                                                                                             bbCodeVersion === 21 ? 'General Consultation PBC' :
                                                                                                                 bbCodeVersion === 22 ? 'PHMC Commentary Note' :
                                                                                                                     bbCodeVersion === 23 ? 'PBC Commentary Note' :
-
+                                                                                                                        bbCodeVersion === 24 ? 'Medical Record Release' :
 
                                                                                                                 ' MISSING TITLE - CHANGE DEV_TEXT'}
                         </h3>
                     </div>}
  */}                    <div className="bbcode-section">
-                        <div className={`char-counter ${getBBCodeContent().length > 60000 ? 'char-counter-warning' : ''}`}>
+                            <div className={`char-counter ${getBBCodeContent().length > 60000 ? 'char-counter-warning' : ''}`}>
                             Character Counter: {getBBCodeContent().length}/60000
                             {getBBCodeContent().length > 60000 && (
                                 <div className="char-counter-warning-message">
@@ -10079,7 +10873,6 @@ ${phmcEmployee}
                                 </div>
                             )}
                         </div>
-
                         <div className="button-group">
                             <Button
                                 variant="primary"
@@ -10124,6 +10917,7 @@ ${phmcEmployee}
                                                                                                                         bbCodeVersion === 21 ? generateConsultationNotesPBC() :
                                                                                                                             bbCodeVersion === 22 ? generateCommentaryNotePHMC() :
                                                                                                                                 bbCodeVersion === 23 ? generateCommentaryNotePBC() :
+                                                                                                                                bbCodeVersion === 24 ? generateMedicalRecordRelease() :
                                                                                                                     generatePhysEvalInternalMed()}
                                     </pre>
                                 </div>
@@ -10271,7 +11065,6 @@ ${phmcEmployee}
                             <i className="fas fa-copy"></i>
                             Copy Title
                         </button>
-
                         <button
                             type="button"
                             className="changelog-button"
@@ -10293,10 +11086,12 @@ ${phmcEmployee}
                                                                                                         bbCodeVersion === 21 ? generateConsultationNotesPBC() :
                                                                                                         bbCodeVersion === 22 ? generateCommentaryNotePHMC() :
                                                                                                         bbCodeVersion === 23 ? generateCommentaryNotePBC() :
+                                                                                                        bbCodeVersion === 24 ? generateMedicalRecordRelease() :
+                                                                                                        bbCodeVersion === 25 ? generateMedicalRecordRelease() :
 
                                                                                                             generateDeath();
                                 const currentDateTime = new Date().toLocaleString();
-                                const { decedentName, coronerEmployee, coronerRank, patientName, decedentOOC, phmcEmployee, requestingOfficer, patientID } = formData;
+                                const { decedentName, coronerEmployee, coronerRank, patientName, decedentOOC, phmcEmployee, requestingOfficer, patientID, patientFirstName, patientLastName} = formData;
                                 const version = bbCodeVersion === 1 ? "Decedent Report" :
                                     bbCodeVersion === 2 ? "Coroner Report" :
                                         bbCodeVersion === 3 ? "Medical Consultation (IM) Main File" :
@@ -10318,6 +11113,7 @@ ${phmcEmployee}
                                                                                                                 bbCodeVersion === 21 ? "General Consultation PBC" :
                                                                                                                     bbCodeVersion === 22 ? "PHMC Commentary Note" :
                                                                                                                         bbCodeVersion === 23 ? "PBC Commentary Note" :
+                                                                                                                        bbCodeVersion === 24 ? "Medical Record Release" :
                                                                                                             "THIS PAGE IS LACKING A TITLE, INFORM FROSTY / ALYSON FROST!";
 
                 navigator.clipboard.writeText(bbCode).then(() => {
@@ -10331,7 +11127,7 @@ ${phmcEmployee}
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({
-                            content: ` ** DEBUG LOGS | TRACE |  gh-pages ${commitInfo.sha} **\n${coronerRank}  ${coronerEmployee} / ${phmcEmployee} has used your website.\nPatient / Decedent Name: ${patientName || decedentName || patientID}\nDecdent Name OOC: ${decedentOOC} \nTime: ${currentDateTime}\nForm: ${version}\nRequesting Officer: ${requestingOfficer}`
+                            content: ` ** DEBUG LOGS | TRACE |  gh-pages ${commitInfo.sha} **\n${coronerRank}  ${coronerEmployee} / ${phmcEmployee} / ${patientFirstName} ${patientLastName} has used your website.\nPatient / Decedent Name: ${patientName || decedentName || patientID}\nDecdent Name OOC: ${decedentOOC} \nTime: ${currentDateTime}\nForm: ${version}\nRequesting Officer: ${requestingOfficer}`
                         })
                     }).catch(error => {
                         console.error('Error:', error);
@@ -10387,9 +11183,10 @@ ${phmcEmployee}
                                                                                                         bbCodeVersion === 21 ? 'General Consultation PBC' :
                                                                                                         bbCodeVersion === 22 ? 'PHMC Commentary Note' :
                                                                                                         bbCodeVersion === 23 ? 'PBC Commentary Note' :
+                                                                                                        bbCodeVersion === 24 ? 'Medical Record Release' :
                                                                                                         "DEBUG - update title logic"}
                         </button>
-                        {(bbCodeVersion !== 1 && bbCodeVersion !== 2 && bbCodeVersion !== 18) && (
+                        {(bbCodeVersion !== 1 && bbCodeVersion !== 2 && bbCodeVersion !== 24 && bbCodeVersion !== 18) && (
                             <div className="button-group">
                                 <Button
                                     variant="secondary"
@@ -10406,9 +11203,7 @@ ${phmcEmployee}
                                     Search Patient Medical Record
                                 </Button>                            </div>
                         )}
-
                     </div>
-
 
                     {bbCodeVersion === 1 && (
                         <div className="image-container">
@@ -10423,6 +11218,20 @@ ${phmcEmployee}
                             </a>
                         </div>
                     )}
+                                        {bbCodeVersion === 24 && (
+                        <div className="image-container">
+                            <a href="https://phmc.gta.world/posting.php?mode=post&f=109" target="_blank" rel="noopener noreferrer">
+                                <img
+                                    src={PHMCCivilian}
+                                    height={350}
+                                    width={350}
+                                    className="Center"
+                                    alt="PHMC Civilian Paperwork"
+                                />
+                            </a>
+                        </div>
+                    )}
+
                 </div>
             </div>
         </div>

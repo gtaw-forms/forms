@@ -23,7 +23,6 @@
     width: 100%;
     border-radius: 8px;
 }
-
 .header-info {
     display: flex;
     flex-direction: column;
@@ -39,14 +38,13 @@
 
 /* Container styles */
 .form-container {
-    width: 35%;
-    background-color: #0d1117;
-    padding: 20px;
-    border-radius: 8px;
-}
-
+    width: 35% !important;
+    background-color: #0d1117 !important;
+    padding: 20px !important;
+    border-radius: 8px !important;
+  }
 .output-container {
-    width: 60%;
+    width: 60% !important;
     background-color: #0d1117;
     padding: 20px;
     border-radius: 8px;
@@ -77,7 +75,7 @@ form {
     display: flex;
     flex-direction: column;
 }
-
+  
 label {
     margin-bottom: 8px;
 }

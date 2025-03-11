@@ -206,12 +206,11 @@
     }
 
 .button-group {
-    display: flex;
-    gap: 10px;
-    justify-content: center;
-    margin: 10px 0;
+  display: flex; /* Use flexbox to arrange buttons horizontally */
+  gap: 10px; /* Add some space between buttons */
+  justify-content: center; /* Center the buttons horizontally */
+  margin-bottom: 15px; /* Add some space below the button group */
 }
-
 .button-container {
     display: flex;
     justify-content: center;
