@@ -663,13 +663,24 @@ const handleMissingEmployeeSubmit = async () => {
         { value: 'ElectronicRelease', label: 'Electronical Release' },
         { value: 'Other', label: 'Other' },
     ];
+    const patientBloodType = [
+        { value: 'A+', label: 'A+' },
+        { value: 'A-', label: 'A-' },
+        { value: 'B+', label:  'B+' },
+        { value: 'B-', label: 'B-' },
+        { value: 'O+', label: 'O+' },
+        { value: 'O-', label: 'O-' },
+        { value: 'AB+', label: 'AB+' },
+        { value: 'AB-', label: 'AB-' },
+    ];
+
     const MedicalRecordsRelease = [
         { value: 'ERVisit', label: 'Emergency Room Visit: ER notes, progress notes, consultations, procedure notes, test results' },
         { value: 'HospitalStay', label: 'Hospital Stay: History and physical, progress notes, consultations, operative reports, discharge summary, test results' },
         { value: 'Outpatient', label: 'Outpatient Surgery/Procedure: History and physical, progress notes, consultations, procedure notes, test results' },
         { value: 'OfficeClinic', label: 'Clinic, Office Visit or Immediate Care: Office notes, progress notes, procedure notes, test results' },
         { value: 'PsychologyVisits', label: 'Psychology Visits: Office notes, progress notes, procedure notes, evaluation results' },
-        { value: 'Other', label: 'Other' }
+        { value: 'Other', label: 'Other' },
 
     ];
     const followup = [
@@ -2001,7 +2012,7 @@ PATIENT ${patientID}
 
 Date: ${date}
 Signed: ${rank} ${lastName}
-[/center][td][center][img]https://i.imgur.com/OjzBdlL.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PALETO BAY CLINIC[/b]
+[/center][td][center][img]https://i.imgur.com/LkRKav2.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PALETO BAY CLINIC[/b]
 PALETO BAY BLVD.
 PO BOX 685
 PALETO BAY, SAN ANDREAS
@@ -2238,7 +2249,7 @@ ${patientMedicine}
     Date: ${date}
     
     Signed: ${phmcRank} ${lastName}
-[/center][td][center][img]https://i.imgur.com/OjzBdlL.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PALETO BAY CLINIC[/b]
+[/center][td][center][img]https://i.imgur.com/LkRKav2.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PALETO BAY CLINIC[/b]
 PALETO BAY BLVD.
 PO BOX 685
 PALETO BAY, SAN ANDREAS
@@ -2339,7 +2350,7 @@ PATIENT ID: ${patientID}
 
 Date: ${date}
 
-[/center][td][center][img]https://i.imgur.com/OjzBdlL.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PALETO BAY CLINIC[/b]
+[/center][td][center][img]https://i.imgur.com/LkRKav2.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PALETO BAY CLINIC[/b]
 PALETO BAY BLVD.
 PO BOX 685
 PALETO BAY, SAN ANDREAS
@@ -2463,7 +2474,110 @@ By typing my name below, I, ${patientFirstName} ${patientMiddleName} ${patientLa
 [i]${SubmitDate}[/i][/list][/divbox]`
 return bbCode;
 };
+const generateBasicPatientFile = () => {
+    const {
+        patientName,
+        patientAddress,
+        patientRace,
+        patientGender,
+        patientPH,
+        patientDiscord,
+        patientEmergencyContact,
+        patientEmergencyContactNumber,
+        patientEmergencyContactRelation,
+        patientEmergencyContactDiscord,
+        patientTitle,
+        patientAllergies,
+        patientCurrentMedicine,
+        patientChronicDiseases,
+        patientNotes,
+        date,
+        patientID,
+    } = formData;
 
+    let bbCode = `[table][tr][td][center][br][/br][br][/br][b]Patient Information[/b]
+
+[size=110]PATIENT ${patientID}
+
+${patientName}
+[/size]
+
+[/center][td][center][img]https://i.imgur.com/QMaz0OC.png[/img][img]https://i.imgur.com/LkRKav2.png[/img]
+[b][size=150]BASIC PATIENT INFORMATION[/size][/center][/table]
+[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]General Information[/b][/color][/size][/center][/divboxcolor]
+[table][tr][td] Title: ${patientTitle}[/td][td] Full Name: ${patientName}
+[tr][td] Date of Birth: ${date} [/td][td] Home Address: ${patientAddress}
+[tr][td] Gender Identity: ${patientGender} [/td][td] Ethnicity: ${patientRace}
+[tr][td] Phone Number: ${patientPH} [/td][td] ((Discord ID: ${patientDiscord}))
+[/table]
+[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Emergency Contact[/b][/color][/size][/center][/divboxcolor]
+[table][tr][td] Full Name: ${patientEmergencyContact} [/td][td] Relationship: ${patientEmergencyContactRelation}
+[tr][td] Phone Number: ${patientEmergencyContactNumber} [/td][td] ((Discord ID: ${patientEmergencyContactDiscord}))
+[/table]
+[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Medical History[/b][/color][/size][/center][/divboxcolor]
+[table][tr][td][b][size=105]Past History[/size][/b][color=transparent]youarecool[/color][/td][td][color=transparent]ifyoureadthisyouareawesomebutdontdeletemeplease![/color]
+[tr][td] Blood Type: [/td][td] [cb${formData.patientBloodType === 'A+' ? 'c' : ''}] A+ [cb${formData.patientBloodType === 'A-' ? 'c' : ''}] A- [cb${formData.patientBloodType === 'B+' ? 'c' : ''}] B+ [cb${formData.patientBloodType === 'B-' ? 'c' : ''}] B- [cb${formData.patientBloodType === 'O+' ? 'c' : ''}] O+ [cb${formData.patientBloodType === 'O-' ? 'c' : ''}] O- [cb${formData.patientBloodType === 'AB+' ? 'c' : ''}] AB+ [cb${formData.patientBloodType === 'AB-' ? 'c' : ''}] AB-
+[tr][td] Known Allergies: [/td][td] ${patientAllergies}
+[tr][td] Current Medications: [/td][td] ${patientCurrentMedicine}
+[tr][td] Chronic Conditions: [/td][td] ${patientChronicDiseases}
+[tr][td] Traumas & Injuries: [/td][td] ${patientNotes}
+[/table] 
+`
+    return bbCode;
+    };
+    const generateBasicPatientFileStaff = () => {
+        const {
+            patientName,
+            patientAddress,
+            patientRace,
+            patientGender,
+            patientPH,
+            patientDiscord,
+            patientEmergencyContact,
+            patientEmergencyContactNumber,
+            patientEmergencyContactRelation,
+            patientEmergencyContactDiscord,
+            patientTitle,
+            patientAllergies,
+            patientCurrentMedicine,
+            patientChronicDiseases,
+            patientNotes,
+            date,
+            patientID,
+        } = formData;
+    
+        let bbCode = `[table][tr][td][center][br][/br][br][/br][b]Patient Information[/b]
+    
+    [size=110]PATIENT ${patientID}
+    
+    ${patientName}
+    [/size]
+    
+    [/center][td][center][img]https://i.imgur.com/QMaz0OC.png[/img][img]https://i.imgur.com/LkRKav2.png[/img]
+    [b][size=150]BASIC PATIENT INFORMATION[/size][/center][/table]
+    [divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]General Information[/b][/color][/size][/center][/divboxcolor]
+    [table][tr][td] Title: ${patientTitle}[/td][td] Full Name: ${patientName}
+    [tr][td] Date of Birth: ${date} [/td][td] Home Address: ${patientAddress}
+    [tr][td] Gender Identity: ${patientGender} [/td][td] Ethnicity: ${patientRace}
+    [tr][td] Phone Number: ${patientPH} [/td][td] ((Discord ID: ${patientDiscord}))
+    [/table]
+    [divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Emergency Contact[/b][/color][/size][/center][/divboxcolor]
+    [table][tr][td] Full Name: ${patientEmergencyContact} [/td][td] Relationship: ${patientEmergencyContactRelation}
+    [tr][td] Phone Number: ${patientEmergencyContactNumber} [/td][td] ((Discord ID: ${patientEmergencyContactDiscord}))
+    [/table]
+    [divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Medical History[/b][/color][/size][/center][/divboxcolor]
+    [table][tr][td][b][size=105]Past History[/size][/b][color=transparent]youarecool[/color][/td][td][color=transparent]ifyoureadthisyouareawesomebutdontdeletemeplease![/color]
+    [tr][td] Blood Type: [/td][td] [cb${formData.patientBloodType === 'A+' ? 'c' : ''}] A+ [cb${formData.patientBloodType === 'A-' ? 'c' : ''}] A- [cb${formData.patientBloodType === 'B+' ? 'c' : ''}] B+ [cb${formData.patientBloodType === 'B-' ? 'c' : ''}] B- [cb${formData.patientBloodType === 'O+' ? 'c' : ''}] O+ [cb${formData.patientBloodType === 'O-' ? 'c' : ''}] O- [cb${formData.patientBloodType === 'AB+' ? 'c' : ''}] AB+ [cb${formData.patientBloodType === 'AB-' ? 'c' : ''}] AB-
+    [tr][td] Known Allergies: [/td][td] ${patientAllergies}
+    [tr][td] Current Medications: [/td][td] ${patientCurrentMedicine}
+    [tr][td] Chronic Conditions: [/td][td] ${patientChronicDiseases}
+    [tr][td] Traumas & Injuries: [/td][td] ${patientNotes}
+    [/table] 
+    `
+        return bbCode;
+        };
+    
+    
     // Update BBCode generation logic
     const bbCode = bbCodeVersion === 1 ? generateDeath() :
         bbCodeVersion === 2 ? generateEmail() :
@@ -2483,6 +2597,8 @@ return bbCode;
                                                                                     bbCodeVersion === 22 ? generateCommentaryNotePHMC() :
                                                                                     bbCodeVersion === 23 ? generateCommentaryNotePBC() :
                                                                                     bbCodeVersion === 24 ? generateMedicalRecordRelease() :
+                                                                                        bbCodeVersion === 25 ? generateBasicPatientFile() :
+                                                                                            bbCodeVersion === 26 ? generateBasicPatientFileStaff() :
 
 
                                                                                 generateDeath();
@@ -2501,6 +2617,12 @@ return bbCode;
         } else if (bbCodeVersion === 18) {
             const { department } = formData;
             return `Agency Incident Report - ${department}`;
+        } else if (bbCodeVersion === 25) {
+            const { patientName } = formData;
+            return `[Medical Information Registration] -  ${patientName}`;
+        } else if (bbCodeVersion === 26) {
+            const { patientID, patientName } = formData;
+            return `${patientID} -  ${patientName}`;
         } else if (bbCodeVersion === 14  || bbCodeVersion === 16 || bbCodeVersion === 17) {
             const { patientMedicalRecord, patientName } = formData;
             return `[${patientMedicalRecord}] - ${patientName}`;
@@ -2705,7 +2827,6 @@ return bbCode;
             patientFirstName: '',
             patientMiddleName: '',
             patientLastName: '',
-            patientTitle: '',
             patientZIP: '',
             patientDateOfBirth: '',
             patientMedInfoFormatOther: '',
@@ -2996,7 +3117,8 @@ return bbCode;
         21: "Consultation Notes (PBC)",
         22: "Commentary Note (PHMC)",
         23: "Commentary Note (PBC)",
-        24: "Medical Release Records"
+        24: "Medical Release Records",
+        25: "Basic Patient File"
     };
 
     const handleAgencySelect = (version) => {
@@ -3116,9 +3238,64 @@ return bbCode;
                                     />
                                     <span>Physical Evaluation </span>
                                 </button>
-{/*                                 <button
+                             <button
                                 className="agency-select-button"
-                                onClick={() => handleAgencySelect(24)}
+                                onClick={() => handleAgencySelect(26)}
+                            >
+                                <img src={developer}
+                                    className="Center"
+                                    alt="Feedback"
+                                />
+                                <span>Patient Medical Records </span>
+                            </button>
+
+                            </div>
+{/*                             <div className="agency-row">
+                            <button
+                                    className="agency-select-button"
+                                    onClick={() => handleAgencySelect(22)}
+                                >
+                                    <img src={surgeon}
+                                        className="Center"
+                                        alt="Feedback"
+                                    />
+                                    <span>(NEW!) Commentary Note Form  </span>
+                                </button>
+
+                            <button
+                                    className="agency-select-button"
+                                    onClick={() => handleAgencySelect(14)}
+                                >
+                                    <img src={psychology}
+                                        className="Center"
+                                        alt="Feedback"
+                                    />
+                                    <span>(NEW!) Mental Health Forms </span>
+                                </button>
+
+                              <button
+                                    className="agency-select-button"
+                                    onClick={() => handleAgencySelect(9)}
+                                >
+                                    <img src={gynecology}
+                                        className="Center"
+                                        alt="Feedback"
+                                    />
+                                    <span>Obstetrics & Gynecology Forms </span>
+                                </button>
+                                    <button
+                                    className="agency-select-button"
+                                    onClick={() => handleAgencySelect(6)}
+                                >
+                                    <img src={nurse}
+                                        className="Center"
+                                        alt="Feedback"
+                                    />
+                                    <span>Physical Evaluation </span>
+                                </button>
+                             <button
+                                className="agency-select-button"
+                                onClick={() => handleAgencySelect(25)}
                             >
                                 <img src={developer}
                                     className="Center"
@@ -3126,8 +3303,9 @@ return bbCode;
                                 />
                                 <span>Dev Testing Grounds </span>
                             </button>
- */}
+
                             </div>
+ */}
                         </div>
                         <div className="hide-selector-option">
                             <input
@@ -3614,6 +3792,58 @@ return bbCode;
                                                             alt="Feedback"
                                                         />
                                                         <span>Mental Health | PBC </span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                        {(bbCodeVersion === 24 || bbCodeVersion === 25) && (
+                            <>
+                                <button
+                                    className="changelog-button"
+                                    onClick={() => setShowPHMCModal(true)}
+                                >
+                                    <i className="fas fa-times"></i>
+                                    <span>Change Civilian Hospital Forms</span>
+                                </button>
+
+                                {showPHMCModal && (
+                                    <div className="modal-overlay" onClick={() => setShowPHMCModal(false)}>
+                                        <div className="agency-selector-modal" onClick={e => e.stopPropagation()}>
+                                            <div className="modal-header">
+                                                <h4>Select Civilian Forms (2)</h4>
+                                                <button
+                                                    className="close-button"
+                                                    onClick={() => setShowPHMCModal(false)}
+                                                    aria-label="Close selector"
+                                                >
+                                                    <i className="fas fa-times"></i>
+                                                </button>
+                                            </div>
+                                            <div className="agency-selector-buttons">
+                                                <div className="agency-row">
+                                                    <button
+                                                        className="agency-select-button"
+                                                        onClick={() => handleAgencySelect(24)}
+                                                    >
+                                                        <img src={Civilian}
+                                                            className="Center"
+                                                            alt="Feedback"
+                                                        />
+                                                        <span>Civilian - Medical Record Release </span>
+                                                    </button>
+                                                    <button
+                                                        className="agency-select-button"
+                                                        onClick={() => handleAgencySelect(25)}
+                                                    >
+                                                        <img src={nurse}
+                                                            className="Center"
+                                                            alt="Feedback"
+                                                        />
+                                                        <span>Basic Patient File </span>
                                                     </button>
                                                 </div>
                                             </div>
@@ -10343,18 +10573,17 @@ return bbCode;
                                 <Form.Label>Title / First Name / Middle Name / Lastname / Date of Birth</Form.Label>
                                     <div style={{ display: 'flex', gap: '10px' }}>
                                     <Form.Select
-                                    name="patientTitle"
-                                    value={formData.patientTitle}
-                                    onChange={handleChange}
-                                    required
-                                    className={`form-control ${!formData.patientTitle ? 'is-invalid' : ''}`}
-                                >
-                                    <option value="" disabled>Title</option>
-                                    {patientTitle.map((option) => (
-                                        <option key={option.value} value={option.value}>{option.label}</option>
-                                    ))}
-                                </Form.Select>
-
+    name="patientTitle"
+    value={formData.patientTitle}
+    onChange={handleChange}
+    required
+    className={`form-control ${!formData.patientTitle ? 'is-invalid' : ''}`}
+>
+    <option value="" disabled>Title</option>
+    {patientTitle.map((option) => (
+        <option key={option.value} value={option.value}>{option.label}</option>
+    ))}
+</Form.Select>
                                         <Form.Control
                                             type="text"
                                             name="patientFirstName"
@@ -10749,7 +10978,439 @@ return bbCode;
     value={formData.SubmitDate || new Date().toISOString().split('T')[0]}
     onChange={handleChange}
     readOnly
-                                />                                            </>
+                                />                                            
+                                </>
+                                                     ) : bbCodeVersion === 25 ? ( // Basic Patient File
+                                                        <>
+                                                        
+                                <Form.Group className="mb-3">
+                                <Form.Label>Patient ID, leave blank if unsure</Form.Label>
+                                <Form.Control
+                                            type="text"
+                                            name="patientID"
+                                            value={formData.patientID}
+                                            onChange={handleChange}
+                                            placeholder="Patient ID  (Optional)"
+                                            className={`form-control ${!formData.patientID ? 'is-invalid' : ''}`}
+
+                                        />
+                                <Form.Label>Title / Patient Name Name  / Date of Birth</Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Select
+                                    name="patientTitle"
+                                    value={formData.patientTitle}
+                                    onChange={handleChange}
+                                    required
+                                    className={`form-control ${!formData.patientTitle ? 'is-invalid' : ''}`}
+                                >
+                                    <option value="" disabled>Title</option>
+                                    {patientTitle.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                </Form.Select>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientName"
+                                            value={formData.patientName}
+                                            onChange={handleChange}
+                                            placeholder="Patient Name"
+                                            required
+                                            className={`form-control ${!formData.patientName ? 'is-invalid' : ''}`}
+
+                                        />
+
+                                        <Form.Control
+                                            type="date"
+                                            name="date"
+                                            value={formData.date}
+                                            onChange={handleChange}
+                                            placeholder="Date of Birth"
+                                            required
+                                            className={`form-control ${!formData.date ? 'is-invalid' : ''}`}
+
+                                        />
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '10px' }}>
+                                            <Form.Control
+                                            type="text"
+                                            name="patientAddress"
+                                            value={formData.patientAddress}
+                                            onChange={handleChange}
+                                            placeholder="Patient Home Address"
+                                            required
+                                            className={`form-control ${!formData.patientAddress ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientGender"
+                                            value={formData.patientGender}
+                                            onChange={handleChange}
+                                            placeholder="Patient Gender"
+                                            required
+                                            className={`form-control ${!formData.patientGender ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientRace"
+                                            value={formData.patientRace}
+                                            onChange={handleChange}
+                                            placeholder="Patient Race"
+                                            required
+                                            className={`form-control ${!formData.patientRace ? 'is-invalid' : ''}`}
+
+                                        />
+
+                                    </div>
+
+                                </Form.Group>
+                                    <div className="input-group">                                                               
+                                 <Form.Control
+                                            type="text"
+                                            name="patientPH"
+                                            value={formData.patientPH}
+                                            onChange={handleChange}
+                                            placeholder="Patient Phone Number"
+                                            required
+                                            className={`form-control ${!formData.patientPH ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientDiscord"
+                                            value={formData.patientDiscord}
+                                            onChange={handleChange}
+                                            placeholder="(( Patient Discord ID )) "
+                                            required
+                                            className={`form-control ${!formData.patientDiscord ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+
+                                    <Form.Label>Emergency Contact Information </Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientEmergencyContact"
+                                            value={formData.patientEmergencyContact}
+                                            onChange={handleChange}
+                                            placeholder="Emergency Contact Full Name"
+                                            required
+                                            className={`form-control ${!formData.patientEmergencyContact ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientEmergencyContactRelation"
+                                            value={formData.patientEmergencyContactRelation}
+                                            onChange={handleChange}
+                                            placeholder="Emergency Contact Relation to Patient"
+                                            required
+                                            className={`form-control ${!formData.patientEmergencyContactRelation ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientEmergencyContactNumber"
+                                            value={formData.patientEmergencyContactNumber}
+                                            onChange={handleChange}
+                                            placeholder="Emergency Contact Contact Number"
+                                            required
+                                            className={`form-control ${!formData.patientEmergencyContactNumber ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientEmergencyContactDiscord"
+                                            value={formData.patientEmergencyContactDiscord}
+                                            onChange={handleChange}
+                                            placeholder="(( Patient Emergency Contact Discord )) "
+                                            required
+                                            className={`form-control ${!formData.patientEmergencyContactDiscord ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+                                  <Form.Label>Medical History </Form.Label>
+
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                <Form.Select
+                                    name="patientBloodType"
+                                    value={formData.patientBloodType || ""}
+                                    onChange={handleChange}
+                                    required
+                                    className={`form-control ${!formData.patientBloodType ? 'is-invalid' : ''}`}
+                                >
+                                    <option value="" disabled>Patient Blood Type</option>
+                                    {patientBloodType.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                </Form.Select>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientAllergies"
+                                            value={formData.patientAllergies}
+                                            onChange={handleChange}
+                                            placeholder="Patient Known Allergies"
+                                            required
+                                            className={`form-control ${!formData.patientAllergies ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientCurrentMedicine"
+                                            value={formData.patientCurrentMedicine}
+                                            onChange={handleChange}
+                                            placeholder="Patient Current Medicine"
+                                            required
+                                            className={`form-control ${!formData.patientCurrentMedicine ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientChronicDiseases"
+                                            value={formData.patientChronicDiseases}
+                                            onChange={handleChange}
+                                            placeholder="Patient Chronic Conditions"
+                                            required
+                                            className={`form-control ${!formData.patientChronicDiseases ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientNotes"
+                                            value={formData.patientNotes}
+                                            onChange={handleChange}
+                                            placeholder="Patient Traumas & Injuries"
+                                            required
+                                            className={`form-control ${!formData.patientNotes ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+
+                                </>
+                                                     ) : bbCodeVersion === 26 ? ( //Staff Basic Patient File
+                                                        <>
+                                                        
+                                <Form.Group className="mb-3">
+                                <Form.Label>Patient ID, leave blank if unsure</Form.Label>
+                                <Form.Control
+                                            type="text"
+                                            name="patientID"
+                                            value={formData.patientID}
+                                            onChange={handleChange}
+                                            placeholder="Patient ID  (Optional)"
+                                            className={`form-control ${!formData.patientID ? 'is-invalid' : ''}`}
+
+                                        />
+                                <Form.Label>Title / Patient Name Name  / Date of Birth</Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Select
+                                    name="patientTitle"
+                                    value={formData.patientTitle}
+                                    onChange={handleChange}
+                                    required
+                                    className={`form-control ${!formData.patientTitle ? 'is-invalid' : ''}`}
+                                >
+                                    <option value="" disabled>Title</option>
+                                    {patientTitle.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                </Form.Select>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientName"
+                                            value={formData.patientName}
+                                            onChange={handleChange}
+                                            placeholder="Patient Name"
+                                            required
+                                            className={`form-control ${!formData.patientName ? 'is-invalid' : ''}`}
+
+                                        />
+
+                                        <Form.Control
+                                            type="date"
+                                            name="date"
+                                            value={formData.date}
+                                            onChange={handleChange}
+                                            placeholder="Date of Birth"
+                                            required
+                                            className={`form-control ${!formData.date ? 'is-invalid' : ''}`}
+
+                                        />
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '10px' }}>
+                                            <Form.Control
+                                            type="text"
+                                            name="patientAddress"
+                                            value={formData.patientAddress}
+                                            onChange={handleChange}
+                                            placeholder="Patient Home Address"
+                                            required
+                                            className={`form-control ${!formData.patientAddress ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientGender"
+                                            value={formData.patientGender}
+                                            onChange={handleChange}
+                                            placeholder="Patient Gender"
+                                            required
+                                            className={`form-control ${!formData.patientGender ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientRace"
+                                            value={formData.patientRace}
+                                            onChange={handleChange}
+                                            placeholder="Patient Race"
+                                            required
+                                            className={`form-control ${!formData.patientRace ? 'is-invalid' : ''}`}
+
+                                        />
+
+                                    </div>
+
+                                </Form.Group>
+                                    <div className="input-group">                                                               
+                                 <Form.Control
+                                            type="text"
+                                            name="patientPH"
+                                            value={formData.patientPH}
+                                            onChange={handleChange}
+                                            placeholder="Patient Phone Number"
+                                            required
+                                            className={`form-control ${!formData.patientPH ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientDiscord"
+                                            value={formData.patientDiscord}
+                                            onChange={handleChange}
+                                            placeholder="(( Patient Discord ID )) "
+                                            required
+                                            className={`form-control ${!formData.patientDiscord ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+
+                                    <Form.Label>Emergency Contact Information </Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientEmergencyContact"
+                                            value={formData.patientEmergencyContact}
+                                            onChange={handleChange}
+                                            placeholder="Emergency Contact Full Name"
+                                            required
+                                            className={`form-control ${!formData.patientEmergencyContact ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientEmergencyContactRelation"
+                                            value={formData.patientEmergencyContactRelation}
+                                            onChange={handleChange}
+                                            placeholder="Emergency Contact Relation to Patient"
+                                            required
+                                            className={`form-control ${!formData.patientEmergencyContactRelation ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientEmergencyContactNumber"
+                                            value={formData.patientEmergencyContactNumber}
+                                            onChange={handleChange}
+                                            placeholder="Emergency Contact Contact Number"
+                                            required
+                                            className={`form-control ${!formData.patientEmergencyContactNumber ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientEmergencyContactDiscord"
+                                            value={formData.patientEmergencyContactDiscord}
+                                            onChange={handleChange}
+                                            placeholder="(( Patient Emergency Contact Discord )) "
+                                            required
+                                            className={`form-control ${!formData.patientEmergencyContactDiscord ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+                                  <Form.Label>Medical History </Form.Label>
+
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                <Form.Select
+                                    name="patientBloodType"
+                                    value={formData.patientBloodType || ""}
+                                    onChange={handleChange}
+                                    required
+                                    className={`form-control ${!formData.patientBloodType ? 'is-invalid' : ''}`}
+                                >
+                                    <option value="" disabled>Patient Blood Type</option>
+                                    {patientBloodType.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                </Form.Select>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientAllergies"
+                                            value={formData.patientAllergies}
+                                            onChange={handleChange}
+                                            placeholder="Patient Known Allergies"
+                                            required
+                                            className={`form-control ${!formData.patientAllergies ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientCurrentMedicine"
+                                            value={formData.patientCurrentMedicine}
+                                            onChange={handleChange}
+                                            placeholder="Patient Current Medicine"
+                                            required
+                                            className={`form-control ${!formData.patientCurrentMedicine ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientChronicDiseases"
+                                            value={formData.patientChronicDiseases}
+                                            onChange={handleChange}
+                                            placeholder="Patient Chronic Conditions"
+                                            required
+                                            className={`form-control ${!formData.patientChronicDiseases ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientNotes"
+                                            value={formData.patientNotes}
+                                            onChange={handleChange}
+                                            placeholder="Patient Traumas & Injuries"
+                                            required
+                                            className={`form-control ${!formData.patientNotes ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+
+                                </>
+
                         ) : null}
                         <div className="button-group">
                             <button
@@ -10839,8 +11500,8 @@ return bbCode;
                     </div>
                     <div id="missing-employee-modal"></div>
                                         
-{/*                    {<div className="form-type-header">
-                        <h3>DEV_TEXT: You are viewing:
+      {/*             {<div className="form-type-header">
+                    <h3>DEV_TEXT: You are viewing:
                             {bbCodeVersion === 1 ? ' generateDeath - FULLY TESTED' :
                                 bbCodeVersion === 2 ? ' generateEmail - FULLY TESTED' :
                                         bbCodeVersion === 4 ? ' generateDental' :
@@ -10860,11 +11521,13 @@ return bbCode;
                                                                                                                 bbCodeVersion === 22 ? 'PHMC Commentary Note' :
                                                                                                                     bbCodeVersion === 23 ? 'PBC Commentary Note' :
                                                                                                                         bbCodeVersion === 24 ? 'Medical Record Release' :
+                                                                                                                            bbCodeVersion === 25 ? 'Basic Patient File' :
+                                                                                                                            bbCodeVersion === 26 ? 'Basic Patient File - Staff' :
 
                                                                                                                 ' MISSING TITLE - CHANGE DEV_TEXT'}
                         </h3>
                     </div>}
- */}                    <div className="bbcode-section">
+ */}                  <div className="bbcode-section">
                             <div className={`char-counter ${getBBCodeContent().length > 60000 ? 'char-counter-warning' : ''}`}>
                             Character Counter: {getBBCodeContent().length}/60000
                             {getBBCodeContent().length > 60000 && (
@@ -10918,6 +11581,8 @@ return bbCode;
                                                                                                                             bbCodeVersion === 22 ? generateCommentaryNotePHMC() :
                                                                                                                                 bbCodeVersion === 23 ? generateCommentaryNotePBC() :
                                                                                                                                 bbCodeVersion === 24 ? generateMedicalRecordRelease() :
+                                                                                                                                bbCodeVersion === 25 ? generateBasicPatientFile() :
+                                                                                                                                bbCodeVersion === 26 ? generateBasicPatientFileStaff() : 
                                                                                                                     generatePhysEvalInternalMed()}
                                     </pre>
                                 </div>
@@ -11087,7 +11752,8 @@ return bbCode;
                                                                                                         bbCodeVersion === 22 ? generateCommentaryNotePHMC() :
                                                                                                         bbCodeVersion === 23 ? generateCommentaryNotePBC() :
                                                                                                         bbCodeVersion === 24 ? generateMedicalRecordRelease() :
-                                                                                                        bbCodeVersion === 25 ? generateMedicalRecordRelease() :
+                                                                                                        bbCodeVersion === 25 ? generateBasicPatientFile() :
+                                                                                                        bbCodeVersion === 26 ? generateBasicPatientFileStaff() :
 
                                                                                                             generateDeath();
                                 const currentDateTime = new Date().toLocaleString();
@@ -11114,7 +11780,9 @@ return bbCode;
                                                                                                                     bbCodeVersion === 22 ? "PHMC Commentary Note" :
                                                                                                                         bbCodeVersion === 23 ? "PBC Commentary Note" :
                                                                                                                         bbCodeVersion === 24 ? "Medical Record Release" :
-                                                                                                            "THIS PAGE IS LACKING A TITLE, INFORM FROSTY / ALYSON FROST!";
+                                                                                                                        bbCodeVersion === 25 ? 'Basic Patient File' :
+                                                                                                                        bbCodeVersion === 26 ? 'Staff Patient Medical File' : 
+                                                                                                            "Something has gone wrong, sorry about that! Please inform the website maintainer!";
 
                 navigator.clipboard.writeText(bbCode).then(() => {
                     showNotification(`${version} copied!`, 'check-circle');
@@ -11184,6 +11852,8 @@ return bbCode;
                                                                                                         bbCodeVersion === 22 ? 'PHMC Commentary Note' :
                                                                                                         bbCodeVersion === 23 ? 'PBC Commentary Note' :
                                                                                                         bbCodeVersion === 24 ? 'Medical Record Release' :
+                                                                                                        bbCodeVersion === 25 ? 'Basic Patient File' :
+                                                                                                        bbCodeVersion === 26 ? 'Staff Patient Medical Record' : 
                                                                                                         "DEBUG - update title logic"}
                         </button>
                         {(bbCodeVersion !== 1 && bbCodeVersion !== 2 && bbCodeVersion !== 24 && bbCodeVersion !== 18) && (
@@ -11218,9 +11888,35 @@ return bbCode;
                             </a>
                         </div>
                     )}
-                                        {bbCodeVersion === 24 && (
+                    {bbCodeVersion === 24 && (
                         <div className="image-container">
                             <a href="https://phmc.gta.world/posting.php?mode=post&f=109" target="_blank" rel="noopener noreferrer">
+                                <img
+                                    src={PHMCCivilian}
+                                    height={350}
+                                    width={350}
+                                    className="Center"
+                                    alt="PHMC Civilian Paperwork"
+                                />
+                            </a>
+                        </div>
+                    )}
+                    {bbCodeVersion === 25 && (
+                        <div className="image-container">
+                            <a href="https://phmc.gta.world/posting.php?mode=post&f=221" target="_blank" rel="noopener noreferrer">
+                                <img
+                                    src={PHMCCivilian}
+                                    height={350}
+                                    width={350}
+                                    className="Center"
+                                    alt="PHMC Civilian Paperwork"
+                                />
+                            </a>
+                        </div>
+                    )}
+                    {bbCodeVersion === 26 && (
+                        <div className="image-container">
+                            <a href="https://phmc.gta.world/posting.php?mode=post&f=97" target="_blank" rel="noopener noreferrer">
                                 <img
                                     src={PHMCCivilian}
                                     height={350}

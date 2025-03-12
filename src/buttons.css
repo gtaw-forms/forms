@@ -439,8 +439,8 @@ input[type="radio"] {
     border-radius: 8px;
     padding: 1.9rem;
     width: 100%;
-    max-height: 550px;
-    max-width: 700px;
+    max-height: 800px;
+    max-width: 760px;
 }
 
 .surgery-button {
