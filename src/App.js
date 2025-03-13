@@ -765,7 +765,7 @@ const handleMissingEmployeeSubmit = async () => {
 
 The County Coroner's Office has been called regarding the decease that occurred at the location of [b]${placeOfDeath}[/b]. Upon receiving the call from[b] ${departmentFullName(department)}[/b], Coroner's Office dispatched a ${coronerRank} to the crime scene to conduct an investigation on the [b]${dateTime}[/b].
 
-The ${coronerRank}, [b]${coronerEmployee}[/b], Serial Number [b]${coronerBadge}[/b], arrived at the scene and identified the individual as [b]${decedentName}[/b], who was pronounced dead at [b]${pronouncedTimeOfDeath}[/b]. Following an initial investigation, The ${coronerRank} came up with the following [b]synopsis[/b]: ${synopsis}
+The ${coronerRank}, [b]${coronerEmployee}[/b], Serial Number [b]${coronerBadge}[/b], arrived at the scene and identified the individual as [b]${decedentName}[/b], who is estimated to have died at [b]${pronouncedTimeOfDeath}[/b]. Following an initial investigation, The ${coronerRank} came up with the following [b]synopsis[/b]: ${synopsis}
 
 Based on the information gathered from the scene investigation and the decedent's medical history (if available), the probable cause of death was determined to be [b]${probableCauseOfDeath}[/b]. The manner of death was classified as [b]${mannerOfDeath}[/b].
 [/divbox]
