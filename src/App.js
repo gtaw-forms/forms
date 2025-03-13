@@ -12772,7 +12772,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                     </div>
                     <div id="missing-employee-modal"></div>
                                         
-               {<div className="form-type-header">
+{/*                {<div className="form-type-header">
                     <h3>DEV_TEXT: You are viewing:
                             {bbCodeVersion === 1 ? ' generateDeath - FULLY TESTED' :
                                 bbCodeVersion === 2 ? ' generateEmail - FULLY TESTED' :
@@ -12801,7 +12801,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                                                                                                 ' MISSING TITLE - CHANGE DEV_TEXT'}
                         </h3>
                     </div>}
-                  <div className="bbcode-section">
+ */}                  <div className="bbcode-section">
                             <div className={`char-counter ${getBBCodeContent().length > 60000 ? 'char-counter-warning' : ''}`}>
                             Character Counter: {getBBCodeContent().length}/60000
                             {getBBCodeContent().length > 60000 && (
