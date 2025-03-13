@@ -11,8 +11,11 @@ import maternity from './assets/maternity.png'
 import obstetrical from './assets/obstetrical.png'
 import psychology from './assets/psychology.png'
 import gyne from './assets/gyne.png'
+import emergency from './assets/emergency.png'
+import empathy from './assets/empathy.png'
 import email from './assets/email.png'
 import gynecology from './assets/gynecology.png'
+import teeth from './assets/teeth.png'
 import surgeon from './assets/surgeon.png'
 import PHMCCivilian from './assets/PHMCCivilian.png'
 import Civilian from './assets/Civilian.png'
@@ -22,9 +25,54 @@ import PHMCLogo from './assets/phmc.png'
 import developer from './assets/developer.png'
 import corpse from './assets/corpse.png'
 import Paperwork from './assets/myPaperwork2.png';
+import paperwork2 from './assets/paperwork.png'
 import Feedback from './assets/feedback.png';
 import phmcpaletobay from './assets/phmcpaletobaylogo.png'
-
+import {
+    PurposeMedicalInformationRelease,
+    PurposeMedicalInformationReleaseFormat,
+    patientBloodType,
+    MedicalRecordsRelease,
+    followup,
+    departmentLarge,
+    assignedDepartment,
+    paletoClinicDepartment,
+    painLevel,
+    vitals,
+    patientTitle,
+    patientPhone,
+    heartRate,
+    breathing,
+    bloodPressure,
+    findings,
+    lungs,
+    pupils,
+    wounds,
+    ecg,
+    sono,
+    lab,
+    gender,
+    admission,
+    phmcList,
+    coronerList,
+    formatSignature,
+    BodyMassIndex,
+    patientConsent,
+    procedureGood,
+    complications,
+    patientJob,
+    patientJobRisks,
+    patientAllergiesRisk,
+    patientOther,
+    patientMedicineRegular,
+    predisposition,
+    maritalStatus,
+    numberChildren,
+    financialStatus,
+    dnr,
+    dnrOrder,
+    attorney
+} from './data';
 
 // css fun
 
@@ -204,6 +252,14 @@ function App() {
         patientFemale: false,
         patientFormYes: false,
         patientFormNo: false,
+        patientFormYes2: false,
+        patientFormNo2: false,
+        patientConsent: '',
+        patientConsentOption: '',
+        patientConsentNo: '',
+        patientConsentYes: '',
+        patientComplicationOptions: '',
+        complications: '',
         //surgical ops v2 overhaul
         patientComplaint: '',
         triageNoPain: false,
@@ -257,7 +313,62 @@ function App() {
         patientMiddleName: '',
         patientLastName: '',
         patientTitle: '',
+        patientComplicationsYes: '',
+        patientComplicationsNo: '',
+        procedureGoodOptions: '',
+        procedureGoodYes: '',
+        procedureGoodNo: '',
+        BodyMassIndex: '',
+        phmcRank: '',
+        vitals: '',
+        heartRate: '',
+        bloodPressure: '',
+        careerRisks: '',
+        patientJob: '',
+        patientcareerNo: '',
+        patientJobRisks: '',
+        patientAllergiesRisk: '',
+        patientMedicineRegular: '',
+        patientOther: '',
+        predisposition: '',
+        breathing: '',
+        patientTherapy: '',
+        patientFamily: '',
+        patientGentic: '',
+        patientTriggers: '',
+        patientTherapy: '', 
+        patientFamSocial: '',
+        patientMental: '', 
+        maritalStatus: '', 
+        numberChildren: '', 
+        financialStatus: '', 
+        dnr: '', 
+        dnrOrder: '',
+        attorney: '', 
+        patientTherapy: '', 
+        patientSupport: '', 
+        patientHarm: '',
+        patientFam: '',
+        patientGenetic: '',
+        patientReligion: '',
+        patientSmoker: '', 
+        patientAlcohol: '',
+        patientDrugs: '',
+        patientExercise: '',
+        patientDiet: '',
+        patientSleep: '',
+        patientSexLife: '', 
+        patientJobRisks: '',
+        patientHazards: '', 
+        patientOther: '', 
+        patientGender: '',
+        attorneyName: '',
+        attorneyPH: '',
+        attorneyRelation: '',
+        dnrOther: '',
+        patientEmergencyContactDiscord: '',
 
+        
 
     });
     const [isUploading, setIsUploading] = useState(false);
@@ -266,6 +377,8 @@ function App() {
     const [isDoctor, setIsDoctor] = useState(false);
     const [isNurse, setIsNurse] = useState(false);
     const [isPsych, setIsPsych] = useState(false);
+    const [isSurgeon, setIsSurgeon] = useState(false);
+
     const [notification, setNotification] = useState(null);
     const [commitInfo, setCommitInfo] = useState({ sha: '', date: null });
     const [rank, setRank] = useState('');
@@ -385,80 +498,6 @@ function App() {
     
     const [showChangelog, setShowChangelog] = useState(false);
 
-    const [coronerList] = useState([
-        { name: 'Anne Carter', badge: '4892', rank: 'Chief Medical Examiner', discord: 'ralof.from.riverwood', category: 'Chief Boss' },
-        { name: 'Elena Hill', badge: '108273', rank: 'Deputy Chief Medical Examiner', discord: 'unity0034', category: 'Chief Boss' },
-        { name: 'Laurent Hall', badge: '91338854', rank: 'Supervisor Forensic Attendant', discord: 'faethewtich', category: 'Supervisor' },
-        { name: 'Chloe Howard', badge: '54372', rank: 'Medical Examiner', discord: 'lovely4ngel', category: 'Medical Examiner' },
-        { name: 'Wesley Kramer', badge: '16511', rank: 'Coroner Investigator', discord: 'lucasin16', category: 'Coroner Investigator' },
-        { name: 'Roger Rose', badge: '1552', rank: 'Coroner Investigator', discord: 'nazmaldun', category: 'Coroner Investigator' },
-        { name: 'Pubert Kennedy', badge: '171763', rank: 'Forensic Attendant', discord: 'mynameiscian', category: 'Forensic Attendant' },
-        { name: 'Alyson Frost', badge: '5573', rank: 'Coroner Investigator', discord: 'fr0sty.js', category: 'Coroner Investigator' },
-        { name: 'Arthur Blackwood', badge: '153528', rank: 'Medical Examiner', discord: 'deputysmall', category: 'Medical Examiner' },
-        { name: 'Ellie Paisley', badge: '151785', rank: 'Coroner Investigator', discord: 'hoperunsthin', category: 'Coroner Investigator' },
-        { name: 'Adam Kilroy', badge: '128989', rank: 'Coroner Investigator', discord: 'simon4444', category: 'Coroner Investigator' },
-        { name: 'Dominic Castañeda', badge: '', rank: 'Medical Examiner', discord: 'hangonda', category: 'Medical Examiner' }, 
-        { name: 'Avery Purcell', badge: '181311', rank: 'Coroner Investigator', discord: 'urkaaa_', category: 'Coroner Investigator' },
-        { name: 'Luna Rosario', badge: '157235', rank: 'Coroner Investigator', discord: 'assszzz', category: 'Coroner Investigator' },
-    ]);
-
-    const [phmcList] = useState([
-        // NPC Leadership and Supervisor
-        { name: 'Doctor Smith', lastName: 'Smith', signature: 'Doctor Smith ', category: '(( NPC DOCTOR ))' },
-        { name: 'Evelyn Bleichroder', lastName: 'Bleichroder', signature: 'https://i.imgur.com/knYKimz.png', category: 'Leadership' },
-        { name: 'Amaya Kim', lastName: 'Kim', signature: 'https://i.imgur.com/ZSy7QZs.png', category: 'Leadership' },
-        { name: 'Kaden Malik', lastName: 'Malik', signature: 'https://i.imgur.com/K9G0mZ9.png', category: 'Leadership' },
-        { name: 'Lyla Malik', lastName: 'Malik', signature: 'https://i.imgur.com/jvttdmC.png', category: 'Leadership' },
-        { name: 'Roan Roybal', lastName: 'Roybal', signature: 'https://i.imgur.com/vtbmbuT.png', category: 'Leadership' },
-        { name: 'Sydney Lear', lastName: 'Lear', signature: 'https://i.imgur.com/lASeSxM.png', category: 'Hospital Supervisor' },
-        { name: 'Danielle Shaw', lastName: 'Shaw', signature: '', category: 'Hospital Supervisor' },
-
-        // Physician
-        { name: 'Raven Lewis', lastName: 'Lewis', signature: 'https://i.imgur.com/BwM3SOT.png', category: 'Physician' },
-        { name: 'Kaiden Weiner', lastName: 'Weiner', signature: 'https://i.imgur.com/jDT3FNr.png', category: 'Physician' },
-        { name: 'Freya Stiglitz', lastName: 'Stiglitz', signature: 'Doctor Freya Stiglitz', category: 'Physician' },
-        { name: 'Lyanna Nystrom', lastName: 'Nystrom', signature: '', category: 'Physician' },
-        { name: 'Esme Crawford', lastName: 'Crawford', signature: '', category: 'Physician Assistant' },
-        { name: 'Julie Kang	', lastName: 'Kang', signature: '', category: 'Physician Assistant' },
-
-
-        // Misc roles
-        { name: 'Gavin Reed	', lastName: 'Reed', signature: '', category: 'Pharmacist' },
-        { name: 'Sanad Qaqish	', lastName: 'Qaqish', signature: '', category: 'Dentist' },
-
-        // Internal Medicine
-        { name: 'Lillian Chandler	', lastName: 'Chandler', signature: '', category: 'Psychiatrist' },
-        { name: 'Ulrica Vacker', lastName: 'Vacker', signature: '', category: 'Psychiatrist' },
-
-        // Psychologist
-        { name: 'Julian Leander	', lastName: 'Leander', signature: '', category: 'Psychologist' },
-        { name: 'Madison Cooper	', lastName: 'Cooper', signature: '', category: 'Psychologist' },
-        { name: 'Paolina Russo	', lastName: 'Russo', signature: '', category: 'Psychologist' },
-        { name: 'Rahi Badman', lastName: 'Badman', signature: '', category: 'Psychologist' },
-        { name: 'Sarah Hyun		', lastName: 'Hyun', signature: '', category: 'Psychologist' },
-        { name: 'Nicole Robinson', lastName: 'Robinson', signature: '', category: 'Psychologist' },
-
-        // Nurses
-        { name: 'Ash Edelweiss		', lastName: 'Edelweiss', signature: '', category: 'Nursing' },
-        { name: 'Erika Krieger	', lastName: 'Krieger', signature: '', category: 'Nursing' },
-        { name: 'Jaya Tiwari', lastName: 'Tiwari', signature: '', category: 'Nursing' },
-        { name: 'Khinara Bishop	', lastName: 'Bishop', signature: '', category: 'Nursing' },
-        { name: 'Lindsay Thompson	', lastName: 'Thompson', signature: '', category: 'Nursing' },
-        { name: 'Mireille Simmonds	', lastName: 'Simmonds', signature: '', category: 'Nursing' },
-        { name: 'Nina Kim', lastName: 'Kim', signature: '', category: 'Nursing' },
-        { name: 'Nour Hayek	', lastName: 'Hayek', signature: '', category: 'Nursing' },
-        { name: 'Rayne Krauser	', lastName: 'Krauser', signature: '', category: 'Nursing' },
-        { name: 'Rubina Nerkararyan	', lastName: 'Nerkararyan', signature: '', category: 'Nursing' },
-        { name: 'Sandra Dawson	', lastName: 'Dawson', signature: '', category: 'Nursing' },
-        { name: 'Skylar Marsh', lastName: 'Marsh', signature: '', category: 'Nursing' },
-        { name: 'Tamina Dellavedova	', lastName: 'Dellavedova', signature: '', category: 'Nursing' },
-        { name: 'Winter Calderone', lastName: 'Calderone', signature: '', category: 'Nursing' },
-
-    ]);
-    const formatSignature = (signature) => {
-        if (!signature) return '';
-        return signature.startsWith('http') ? `[img]${signature}[/img]` : signature;
-    };
     const [bbCodeVersion, setBbCodeVersion] = useState(() => {
         const storedVersion = localStorage.getItem('bbCodeVersion');
         return storedVersion ? parseInt(storedVersion, 10) : 1;
@@ -537,157 +576,6 @@ const handleMissingEmployeeSubmit = async () => {
         });
     }
 };
-//     // Kaden Malik's Torture Chamber
-    const departmentLarge = [
-        { value: 'InternalMedicine', label: 'Internal Medicine' },
-        { value: 'Emergency Medicine', label: 'Emergency Medicine' },
-        { value: 'SurgicalDepartment', label: 'Surgical Department' },
-        { value: 'Midwifery', label: 'Midwifery' },
-        { value: 'PhysicalTherapy', label: 'Physical Therapy' },
-        { value: 'Dentistry', label: 'Dentistry' },
-        { value: 'MentalHealth', label: 'Mental Health' },
-        { value: 'Administration', label: 'Administration' }
-    ];
-
-    const assignedDepartment = [
-        { value: 'InternalMedicine', label: 'Internal Medicine' },
-        { value: 'SurgicalDepartment', label: 'Surgical Department' },
-        { value: 'Midwifery', label: 'Midwifery' },
-        { value: 'Dialysis', label: 'Dialysis' }
-    ];
-    const paletoClinicDepartment = [
-        { value: 'InternalMedicine', label: 'Internal Medicine' },
-        { value: 'SurgicalDepartment', label: 'Surgical Department' },
-    ];
-
-    // Triage System for ER Protocol
-    const painLevel = [
-        { value: 'patientNoPain', label: 'No pain/non-urgent' },
-        { value: 'patientNormalPain', label: 'Normal pain/less-urgent' },
-        { value: 'patientMildPain', label: 'Mild pain/urgent' },
-        { value: 'patientSeverePain', label: 'Severe pain/urgent' },
-        { value: 'patientCritical', label: 'Critical/Emergent' }
-    ];
-    // Vitals for ER Protocol
-    const vitals = [
-        { value: 'patientTempNormal', label: 'Normal' },
-        { value: 'patientHypothermic', label: 'Hypothermic' },
-        { value: 'patientHyperthermic', label: 'Hyperthermic' }
-    ];
-    const patientTitle = [
-        { value: 'Mr', label: 'Mr' },
-        { value: 'Mrs', label: 'Mrs' },
-        { value: 'Ms', label: 'Ms' },
-        { value: 'Other', label: 'Other' }
-    ];
-
-    const patientPhone = [
-        { value: 'Mobile', label: 'Mobile' },
-        { value: 'Home', label: 'Home' },
-        { value: 'Work', label: 'Work' },
-        { value: 'Other', label: 'Other' }
-    ];
-    const heartRate = [
-        { value: 'patientHeartRateNormal', label: 'Normal' },
-        { value: 'patientHeartRateBradycardia', label: 'Bradycardia' },
-        { value: 'patientHeartRateTachycardia', label: 'Tachycardia' }
-    ];
-    const breathing = [
-        { value: 'patientBreathingNormal', label: 'Normal' },
-        { value: 'patientBreathingSlow', label: 'Slow' },
-        { value: 'patientBreathingFast', label: 'Fast' },
-        { value: 'patientBreathingObstructed', label: 'Obstructed' }
-    ];
-    const bloodPressure = [
-        { value: 'patientBloodPressureNormal', label: 'Normal' },
-        { value: 'patientBloodPressureHypotension', label: 'Hypotension' },
-        { value: 'patientBloodPressureHypertension', label: 'Hypertension' }
-    ];
-    // Findings for ER Protocol
-    const findings = [
-        { value: 'patientNormal', label: 'Normal' },
-        { value: 'patientImpared', label: 'Impared' }
-    ];
-    const lungs = [
-        { value: 'patientNormal', label: 'Normal' },
-        { value: 'patientRhonchi', label: 'Rhonchi' },
-        { value: 'patientCrack', label: 'Crackles' }
-    ];
-    const pupils = [
-        { value: 'patientPupilsNormal', label: 'Normal' },
-        { value: 'patientPupilsAbnormal', label: 'Abnormal' }
-    ];
-    const wounds = [
-        { value: 'patientNoWounds', label: 'No wounds' },
-        { value: 'patientFractures', label: 'Fractures' },
-        { value: 'patientBleeding', label: 'Bleeding' },
-        { value: 'patientHematoma', label: 'Hematoma' }
-    ];
-    const ecg = [
-        { value: 'patientSinusRhythm', label: 'Sinus Rhythm' },
-        { value: 'patientArrhythmia', label: 'Arrhythmia' },
-        { value: 'patientInfaction', label: 'Infaction' }
-    ];
-    const sono = [
-        { value: 'patientNormal', label: 'Normal' },
-        { value: 'patientFluids', label: 'Fluids' },
-        { value: 'patientTissue', label: 'Tissue' }
-    ];
-    const lab = [
-        { value: 'WNL', label: 'Within Normal Limits' },
-        { value: 'Anemia', label: 'Anemia' },
-        { value: 'Inflammation/Infection', label: 'Inflammation/Infection' },
-        { value: 'Dysfunction', label: 'Dysfunction' },
-        { value: 'ElectrolyteImbalance', label: 'Electrolyte Imbalance' },
-        { value: 'Infarct', label: 'Infarct/Embolism' },
-        { value: 'Tumor', label: 'Tumor' }
-    ];
-    const gender = [
-        { value: 'Male', label: 'Male' },
-        { value: 'Female', label: 'Female' },
-    ];
-
-    const admission = [
-        { value: 'Yes', label: 'Yes' },
-        { value: 'No', label: 'No' },
-    ];
-    const PurposeMedicalInformationRelease = [
-        { value: 'Further Treatment', label: 'Further Treatment / Continued Care' },
-        { value: 'Personal', label: 'Personal Use' },
-        { value: 'Attorney', label: 'Attorney Client' },
-        { value: 'Other', label: 'Other' },
-    ];
-    const PurposeMedicalInformationReleaseFormat = [
-        { value: 'CopyofRecords', label: 'Copy of Record Pickup' },
-        { value: 'VerbalRelease', label: 'Verbal Release' },
-        { value: 'ElectronicRelease', label: 'Electronical Release' },
-        { value: 'Other', label: 'Other' },
-    ];
-    const patientBloodType = [
-        { value: 'A+', label: 'A+' },
-        { value: 'A-', label: 'A-' },
-        { value: 'B+', label:  'B+' },
-        { value: 'B-', label: 'B-' },
-        { value: 'O+', label: 'O+' },
-        { value: 'O-', label: 'O-' },
-        { value: 'AB+', label: 'AB+' },
-        { value: 'AB-', label: 'AB-' },
-    ];
-
-    const MedicalRecordsRelease = [
-        { value: 'ERVisit', label: 'Emergency Room Visit: ER notes, progress notes, consultations, procedure notes, test results' },
-        { value: 'HospitalStay', label: 'Hospital Stay: History and physical, progress notes, consultations, operative reports, discharge summary, test results' },
-        { value: 'Outpatient', label: 'Outpatient Surgery/Procedure: History and physical, progress notes, consultations, procedure notes, test results' },
-        { value: 'OfficeClinic', label: 'Clinic, Office Visit or Immediate Care: Office notes, progress notes, procedure notes, test results' },
-        { value: 'PsychologyVisits', label: 'Psychology Visits: Office notes, progress notes, procedure notes, evaluation results' },
-        { value: 'Other', label: 'Other' },
-
-    ];
-    const followup = [
-        { value: 'AsNeeded', label: 'As Needed' },
-        { value: 'Recommended', label: 'Recommended' },
-        { value: 'Electiveprocedure', label: 'No' },
-    ];
 
     // Separate PHMC options
     const phmcGroupedOptions = Object.entries(
@@ -774,6 +662,7 @@ const handleMissingEmployeeSubmit = async () => {
             setIsDoctor(e.target.checked);
             setIsNurse(false);
             setIsPsych(false);
+            setIsSurgeon(false);
             if (e.target.checked) {
                 setRank('DOC');
                 setFormData(prev => ({ ...prev, phmcRank: 'DOC' }));
@@ -785,6 +674,7 @@ const handleMissingEmployeeSubmit = async () => {
             setIsNurse(e.target.checked);
             setIsDoctor(false);
             setIsPsych(false);
+            setIsSurgeon(false);
             if (e.target.checked) {
                 setRank('NURSE');
                 setFormData(prev => ({ ...prev, phmcRank: 'NURSE' }));
@@ -796,9 +686,22 @@ const handleMissingEmployeeSubmit = async () => {
             setIsPsych(e.target.checked);
             setIsDoctor(false);
             setIsNurse(false);
+            setIsSurgeon(false);
             if (e.target.checked) {
                 setRank('PSYCH');
                 setFormData(prev => ({ ...prev, phmcRank: 'PSYCH' }));
+            } else {
+                setRank('');
+                setFormData(prev => ({ ...prev, phmcRank: '' }));
+            }
+        } else if (type === 'surgeon') {
+            setIsSurgeon(e.target.checked);
+            setIsDoctor(false);
+            setIsNurse(false);
+            setIsPsych(false);
+            if (e.target.checked) {
+                setRank('SURGEON');
+                setFormData(prev => ({ ...prev, phmcRank: 'Surgeon' }));
             } else {
                 setRank('');
                 setFormData(prev => ({ ...prev, phmcRank: '' }));
@@ -1078,234 +981,239 @@ ${patientSummary}
         return bbCode;
     };
 
-    // Add new generation Surgical Ops function 5
+    // Add new generation Surgical Ops function 5 generateSurgicalOps
     const generateSurgicalOps = () => {
         const {
             phmcEmployee,
             extraStaff,
-            patientName,
-            patientMedicine,
-            patientConsent,
-            patientMedicalRecord,
-            patientAllergies,
-            surgeryComplications,
-            surgeryProcedures,
-            drugType,
-            postDrugtype,
-            surgicalSummery,
-            surgeryTime,
+            patientID,
+            patientSummaryConsultation,
+            patientAddress,
+            date,
+            patientSummary,
+            lastName,
+            surgeryProcedures
         } = formData;
+        const extraStaffNames = Array.isArray(extraStaff) ? extraStaff.join(', ') : extraStaff;
 
-        let bbCode = `[divbox=transparent] [center] [img]https://i.imgur.com/bUn7H8J.png[/img] [/center] [/divbox]
-[divbox=lightgrey][size=150]
+        let bbCode = `[divbox=white][table][tr][td][center][br][/br][br][/br][b]SURGICAL REPORT[/b]
 
-[center][b]OPERATIVE REPORT
-PILLBOX HILL MEDICAL CENTER[/b]
-[size=50][i]Elgin Avenue, Pillbox Hill, Los Santos, SA[/i][/size][/center][/size]
+PATIENT ${patientID}
 
-[/divbox][divbox=transparent][justify]
+Date: ${date}
+Signed: ${rank} ${lastName}
 
-[divbox=lightgrey][b]SECTION 1: PERSONNEL[/b][/divbox]
-[divbox=transparent][table][tr][td][b]1.1: [/b] Lead Surgeon[/td][td]
+[/center][td][center][img]https://i.imgur.com/QMaz0OC.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PILLBOX HILL MEDICAL CENTER[/b]
+ELGIN AVE. / STRAWBERRY AVE.
+PO BOX 742
+LOS SANTOS, SAN ANDREAS
+P: 50056[/size][/center][/table][/divbox]
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Personnel[/b][/color][/center][/divboxcolor]
+[table][tr][td]Lead Surgeon[/td][td]
 ${phmcEmployee}
 [/td][/tr]
-
-[tr][td][b]1.2: [/b] Additional Staff (Leave N/A if NPCed)[/td][td]
+[tr][td]Additional Staff [i](leave empty if none)[/i][/td][td]
 ${extraStaff}
-[/td][/tr]
+[/td][/tr][/table]
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Surgical Inquiry[/b][/color][/center][/divboxcolor]
+[table]
 
-[tr][td][b]1.3: [/b] Patient Name[/td][td]
-${patientName}
-[/td][/tr]
-
-[tr][td][b]1.3: [/b] Medical Record Number[/td][td]
-${patientMedicalRecord}
-[/td][/tr]
-
-[/table][/divbox]
-
-[divbox=lightgrey][b]SECTION 2: SURGICAL INQUIRY[/b][/divbox]
-[divbox=transparent][table]
-
-[tr][td][b]2.1: [/b]Did the patient or their family consent, or did they have a life threatening or severe injury that requires immediate surgical intervention?[/td][td]
-${patientConsent}
-[/td][/tr]
-
-[tr][td][b]2.2: [/b]Did any medical complications occur during the surgery?[/td][td]
-${surgeryComplications}
-[/td][/tr]
-
-[tr][td][b]2.3: [/b]Was the procedure completed successfully, and did it result in the desired clinical outcome?[/td][td]
+[tr][td]Name of the procedure[/td][td]
 ${surgeryProcedures}
-[/td][/tr]
 
-[/table][/divbox]
+[tr][td]Did the patient or their family consent, or did they have a life threatening or severe injury that requires immediate surgical intervention?[/td][td]
+[cb${formData.patientConsentOption === 'Yes' ? 'c' : ''}] Yes
+[cb${formData.patientConsentOption === 'No' ? 'c' : ''}] No
 
-[divbox=lightgrey][b]SECTION 3: POST-ANESTHESIA REPORT[/b][/divbox]
-[divbox=transparent][table]
-
-[tr][td][b]3.1: [/b]Known Current Medication:[/td][td]${patientMedicine}
 
 [/td][/tr]
 
-[tr][td][b]3.2: [/b]Known Allergies:[/td][td]${patientAllergies}
-
+[tr][td]Did any medical complications occur during the surgery?[/td][td]
+[cb${formData.patientComplicationOptions === 'Yes' ? 'c' : ''}] Yes
+[cb${formData.patientComplicationOptions === 'No' ? 'c' : ''}] No
+procedureGood
 [/td][/tr]
 
-[tr][td][b]3.3: [/b]Type & Dosage of Anesthesia Administered:[/td][td]${drugType}
+[tr][td]Was the procedure completed successfully, and did it result in the desired clinical outcome?[/td][td]
+[cb${formData.procedureGoodOptions === 'Yes' ? 'c' : ''}] Yes
+[cb${formData.procedureGoodOptions === 'No' ? 'c' : ''}] No
+[/td][/tr]
+[/table]
+
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Post-Anesthesia Report[/b][/color][/center][/divboxcolor]
+[table]
+
+[tr][td]Type & Dosage of Anesthesia Administered[/td][td] ${patientSummaryConsultation}
 [/td][/tr]
 
-[tr][td][b]3.4: [/b]Post-Operative Anesthesia Details:[/td][td]${postDrugtype}
+[tr][td]Post-Operative Anesthesia Details[/td][td]${patientAddress}
 [/td][/tr]
 
-[/table][/divbox]
+[/table]
 
-[divbox=lightgrey][b]SECTION 4: SUMMARY OF SURGICAL PROCEDURE PERFORMED[/b][/divbox]
-[divbox=transparent][list=none]
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Summary of Surgical Procedure[/b][/color][/center][/divboxcolor]
+[table]
 
-${surgicalSummery}
+[tr][td]
+${patientSummary}
 
-[/list][/divbox][divbox=lightgrey][b]SECTION 5: SIGNATURE OF THE LEAD SURGEON[/b][/divbox]
-
-[divbox=transparent][table][tr][td][b]5.1[/b] Full name (Signature)[/td][td]${phmcEmployee}[/td][/tr]
-[tr][td][b]5.2[/b] Full Name (Print)[/td][td]${phmcEmployee}
-[tr][td][b]5.3[/b] Date of Surgery[/td][td]${surgeryTime}[/table][/divbox]
-`;
+[/table]`;
 
         return bbCode;
     };
 
-    // Base BBCode for ID 6 Physical Evaluation (Internal Medicine)
+    // Base BBCode for ID 6 Physical Evaluation (Internal Medicine generatePhysEvalInternalMed)
 
     const generatePhysEvalInternalMed = () => {
         const {
-            phmcEmployee,
-            patientName,
-            patientDateofBirth,
-            patientGender,
-            patientMedicine,
-            patientAllergies,
+            patientID,
+            date,
+            lastName,
             patientHeight,
             patientWeight,
-            patientRace,
-            patientBMI,
-            patientTemperature,
-            patientBPM,
-            patientpulse,
-            patientDiscord,
-            patientOxi,
-            patientBP,
+            phmcRank,
+            careerRisks,
+            patientAllergies,
+            patientMedicine,
+            patientcareerNo,
+            patientSummary,
             patientCareer,
             patientImpairments,
-            patientPastDiseases,
-            patientAssessment,
-            appointmentDate,
-            patientPH
         } = formData;
 
-        let bbCode = `[divbox=transparent] [center] [img]https://i.imgur.com/bUn7H8J.png[/img] [/center] [/divbox]
-[divbox=lightgrey][size=150]
+        let bbCode = `[divbox=white][table][tr][td][center][br][/br][br][/br][b]PHYSICAL EXAMINATION[/b]
 
-[center][b]DEPARTMENT OF INTERNAL MEDICINE
-PILLBOX HILL MEDICAL CENTER[/b]
-[size=50][i]Elgin Avenue, Pillbox Hill, Los Santos, SA[/i][/size][/center][/size]
+PATIENT ${patientID}
 
-[/divbox][divbox=transparent][justify]
-
-[i]To provide guidance for workforce members at Pillbox Hill Medical Center regarding the use and disclosure of Protected Health Information in accordance with applicable law. It is the policy that all Protected Health Information be used and disclosed in accordance with applicable San Andreas and federal law, and in the best interests of the patient. "Disclose" and "Disclosure" means the release of, transfer of, provision of, access to, or divulging in any manner, of Protected Health Information outside of Pillbox Hill Medical Center or to persons other than its workforce members. Disclosure means a release to persons or entities other than to the patient who is the subject of the information.[/i]
-
-
-[/justify][/divbox]
-
-[divbox=lightgrey][b]SECTION 0: PERSONAL INFORMATION[/b][/divbox]
-[divbox=transparent][table][tr][td]Identifying
-Information[/td][td]
-[b]Name:[/b] ${patientName}
-[b]DOB:[/b] ${patientDateofBirth}
-[b]Sex:[/b] ${patientGender}
-[b]Race:[/b] ${patientRace}
-[/td][/tr][tr][td]Contact
-Information[/td]
-[td][b]Telephone Number:[/b] ${patientPH}
-[b]Email:[/b] ${patientDiscord}
+Date: ${date}
+Signed: ${phmcRank} ${lastName}
+[/center][td][center][img]https://i.imgur.com/QMaz0OC.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PILLBOX HILL MEDICAL CENTER[/b]
+ELGIN AVE. / STRAWBERRY AVE.
+PO BOX 742
+LOS SANTOS, SAN ANDREAS
+P: 50056[/size][/center][/table][/divbox]
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Patient Measurements[/b][/color][/center][/divboxcolor]
+[table][tr][td][list=none][br][/br]Height: ${patientHeight}
+[br][/br]
+Weight: ${patientWeight}
+[/list][td]
+[list=none][u]Body Mass Index: [/u][br][/br]
+[cb${formData.BodyMassIndex === 'Underweight' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Underweight' ? 'c' : ''}] Underweight
+[cb${formData.BodyMassIndex === 'Normal' ? 'c' : ''}][/cb] Normal
+[cb${formData.BodyMassIndex === 'Overweight' ? 'c' : ''}][/cb] Overweight
+[cb${formData.BodyMassIndex === 'Obese' ? 'c' : ''}][/cb] Obese
+[cb${formData.BodyMassIndex === 'ExtremeObese' ? 'c' : ''}][/cb] Extremely Obese
+[/table]
+[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Vitals[/b][/color][/center][/divboxcolor]
+[table][tr][td][center]Temperature: [cb${formData.vitals === 'patientTempNormal' ? 'c' : ''}] Normal [cb${formData.vitals === 'patientHypothermic' ? 'c' : ''}] Hypothermic [cb${formData.vitals === 'patientHyperthermic' ? 'c' : ''}] Hyperthermic[/center]
+[td][center]Heart Rate: [cb${formData.heartRate === 'patientHeartRateNormal' ? 'c' : ''}] Normal [cb${formData.heartRate === 'patientHeartRateBradycardia' ? 'c' : ''}] Bradycardia [cb${formData.heartRate === 'patientHeartRateTachycardia' ? 'c' : ''}] Tachycardia[/center][/table]
+[table][tr][td][center]Breathing: [cb${formData.breathing === 'patientBreathingNormal' ? 'c' : ''}] Normal [cb${formData.breathing === 'patientBreathingSlow' ? 'c' : ''}] Slow [cb${formData.breathing === 'patientBreathingFast' ? 'c' : ''}] Fast [cb${formData.breathing === 'patientBreathingObstructed' ? 'c' : ''}] Obstructed[/center]
+[td][center]Blood Pressure: [cb${formData.bloodPressure === 'patientBloodPressureNormal' ? 'c' : ''}] Normal [cb${formData.bloodPressure === 'patientBloodPressureHypotension' ? 'c' : ''}] Hypotension [cb${formData.bloodPressure === 'patientBloodPressureHypertension' ? 'c' : ''}] Hypertension [/center][/table]
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Anamnesis[/b][/color][/center][/divboxcolor]
+[table][tr][td][list=none][u]Does the patient have a job? [/u][br][/br]
+[cb${formData.patientJob === 'Yes' ? 'c' : ''}][/cb${formData.patientJob === 'Yes' ? 'c' : ''}] Yes: ${patientCareer}
+[cb${formData.patientJob === 'No' ? 'c' : ''}][/cb${formData.patientJob === 'No' ? 'c' : ''}] No: ${patientcareerNo} [/list]
+[td][list=none][u]If yes, are harmful risk factors present? [/u][br][/br]
+[cb${formData.patientJobRisks === 'Yes' ? 'c' : ''}][/cb${formData.patientJobRisks === 'Yes' ? 'c' : ''}] Yes: ${careerRisks}
+[cb${formData.patientJobRisks === 'No' ? 'c' : ''}][/cb${formData.patientJobRisks === 'No' ? 'c' : ''}] No [/list]
 [/td][/tr]
-[tr][td]Examination
-Information[/td][td]
-[b]Date of Examination:[/b] ${appointmentDate}
-[b]Personnel in Charge of Examination:[/b] ${phmcEmployee}
-[/td][/tr][/table][/divbox]
-
-[divbox=lightgrey][b]SECTION 1: PATIENT MEASUREMENTS[/b][/divbox]
-[divbox=transparent][table][tr][td][b]1.1[/b] Height[/td][td]
-${patientHeight}
+[tr][td][list=none][u]Are allergies or risks (implants, case of incompatibility, pacemaker, etc.) present?[/u][br][/br]
+[cb${formData.patientAllergiesRisk === 'Yes' ? 'c' : ''}][/cb${formData.patientAllergiesRisk === 'Yes' ? 'c' : ''}] Yes: ${patientAllergies}
+[cb${formData.patientAllergiesRisk === 'No' ? 'c' : ''}][/cb${formData.patientAllergiesRisk === 'No' ? 'c' : ''}] No [/list]
+[td][list=none][u]Does the patient take medications on a regular basis? [/u][br][/br]
+[cb${formData.patientMedicineRegular === 'Yes' ? 'c' : ''}][/cb${formData.patientMedicineRegular === 'Yes' ? 'c' : ''}] Yes: ${patientMedicine}
+[cb${formData.patientMedicineRegular === 'No' ? 'c' : ''}][/cb${formData.patientMedicineRegular === 'No' ? 'c' : ''}] No[/list]
 [/td][/tr]
+[tr][td][list=none][u]Does the patient have other medical condition(s) or physical impairments?[/u][br][/br]
+[cb${formData.patientOther === 'Yes' ? 'c' : ''}][/cb${formData.patientOther === 'Yes' ? 'c' : ''}] Yes: ${patientImpairments}
+[cb${formData.patientOther === 'No' ? 'c' : ''}][/cb${formData.patientOther === 'No' ? 'c' : ''}] No [/list]
+[td][list=none][u]Genetic Predisposition[/u][br][/br]
+[cb${formData.predisposition === 'Existing' ? 'c' : ''}][/cb${formData.predisposition === 'Existing' ? 'c' : ''}] Existing
+[cb${formData.predisposition === 'NonExisting' ? 'c' : ''}][/cb${formData.predisposition === 'NonExisting' ? 'c' : ''}] Non-existing [/list]
+[/td][/tr][/table]
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Evaluation Summary[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none][u]Assessment Statement: [/u][br][/br]
+${patientSummary}
+[br][/br][/left][/list][/table]
 
-[tr][td][b]1.2[/b] Weight[/td][td]
-${patientWeight}
+`;
+
+        return bbCode;
+    };
+        // Base BBCode for ID 28 Physical Evaluation (Internal Medicine generatePhysEvalInternalMedPBC)
+
+    const generatePhysEvalInternalMedPBC = () => {
+        const {
+            patientID,
+            date,
+            lastName,
+            patientHeight,
+            patientWeight,
+            phmcRank,
+            careerRisks,
+            patientAllergies,
+            patientMedicine,
+            patientcareerNo,
+            patientSummary,
+            patientCareer,
+            patientImpairments,
+        } = formData;
+
+        let bbCode = `[divbox=white][table][tr][td][center][br][/br][br][/br][b]PHYSICAL EXAMINATION[/b]
+
+PATIENT ${patientID}
+
+Date: ${date}
+Signed: ${phmcRank} ${lastName}
+[/center][td][center][img]https://i.imgur.com/LkRKav2.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PALETO BAY CLINIC[/b]
+PALETO BAY BLVD.
+PO BOX 685
+PALETO BAY, SAN ANDREAS
+P: 50056[/size][/center][/table][/divbox]
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Patient Measurements[/b][/color][/center][/divboxcolor]
+[table][tr][td][list=none][br][/br]Height: ${patientHeight}
+[br][/br]
+Weight: ${patientWeight}
+[/list][td]
+[list=none][u]Body Mass Index: [/u][br][/br]
+[cb${formData.BodyMassIndex === 'Underweight' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Underweight' ? 'c' : ''}] Underweight
+[cb${formData.BodyMassIndex === 'Normal' ? 'c' : ''}][/cb] Normal
+[cb${formData.BodyMassIndex === 'Overweight' ? 'c' : ''}][/cb] Overweight
+[cb${formData.BodyMassIndex === 'Obese' ? 'c' : ''}][/cb] Obese
+[cb${formData.BodyMassIndex === 'ExtremeObese' ? 'c' : ''}][/cb] Extremely Obese
+[/table]
+[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Vitals[/b][/color][/center][/divboxcolor]
+[table][tr][td][center]Temperature: [cb${formData.vitals === 'patientTempNormal' ? 'c' : ''}] Normal [cb${formData.vitals === 'patientHypothermic' ? 'c' : ''}] Hypothermic [cb${formData.vitals === 'patientHyperthermic' ? 'c' : ''}] Hyperthermic[/center]
+[td][center]Heart Rate: [cb${formData.heartRate === 'patientHeartRateNormal' ? 'c' : ''}] Normal [cb${formData.heartRate === 'patientHeartRateBradycardia' ? 'c' : ''}] Bradycardia [cb${formData.heartRate === 'patientHeartRateTachycardia' ? 'c' : ''}] Tachycardia[/center][/table]
+[table][tr][td][center]Breathing: [cb${formData.breathing === 'patientBreathingNormal' ? 'c' : ''}] Normal [cb${formData.breathing === 'patientBreathingSlow' ? 'c' : ''}] Slow [cb${formData.breathing === 'patientBreathingFast' ? 'c' : ''}] Fast [cb${formData.breathing === 'patientBreathingObstructed' ? 'c' : ''}] Obstructed[/center]
+[td][center]Blood Pressure: [cb${formData.bloodPressure === 'patientBloodPressureNormal' ? 'c' : ''}] Normal [cb${formData.bloodPressure === 'patientBloodPressureHypotension' ? 'c' : ''}] Hypotension [cb${formData.bloodPressure === 'patientBloodPressureHypertension' ? 'c' : ''}] Hypertension [/center][/table]
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Anamnesis[/b][/color][/center][/divboxcolor]
+[table][tr][td][list=none][u]Does the patient have a job? [/u][br][/br]
+[cb${formData.patientJob === 'Yes' ? 'c' : ''}][/cb${formData.patientJob === 'Yes' ? 'c' : ''}] Yes: ${patientCareer}
+[cb${formData.patientJob === 'No' ? 'c' : ''}][/cb${formData.patientJob === 'No' ? 'c' : ''}] No: ${patientcareerNo} [/list]
+[td][list=none][u]If yes, are harmful risk factors present? [/u][br][/br]
+[cb${formData.patientJobRisks === 'Yes' ? 'c' : ''}][/cb${formData.patientJobRisks === 'Yes' ? 'c' : ''}] Yes: ${careerRisks}
+[cb${formData.patientJobRisks === 'No' ? 'c' : ''}][/cb${formData.patientJobRisks === 'No' ? 'c' : ''}] No [/list]
 [/td][/tr]
-
-[tr][td][b]1.3[/b] Body Mass Index[/td][td]
-Index Value:
-${patientBMI}
+[tr][td][list=none][u]Are allergies or risks (implants, case of incompatibility, pacemaker, etc.) present?[/u][br][/br]
+[cb${formData.patientAllergiesRisk === 'Yes' ? 'c' : ''}][/cb${formData.patientAllergiesRisk === 'Yes' ? 'c' : ''}] Yes: ${patientAllergies}
+[cb${formData.patientAllergiesRisk === 'No' ? 'c' : ''}][/cb${formData.patientAllergiesRisk === 'No' ? 'c' : ''}] No [/list]
+[td][list=none][u]Does the patient take medications on a regular basis? [/u][br][/br]
+[cb${formData.patientMedicineRegular === 'Yes' ? 'c' : ''}][/cb${formData.patientMedicineRegular === 'Yes' ? 'c' : ''}] Yes: ${patientMedicine}
+[cb${formData.patientMedicineRegular === 'No' ? 'c' : ''}][/cb${formData.patientMedicineRegular === 'No' ? 'c' : ''}] No[/list]
 [/td][/tr]
+[tr][td][list=none][u]Does the patient have other medical condition(s) or physical impairments?[/u][br][/br]
+[cb${formData.patientOther === 'Yes' ? 'c' : ''}][/cb${formData.patientOther === 'Yes' ? 'c' : ''}] Yes: ${patientImpairments}
+[cb${formData.patientOther === 'No' ? 'c' : ''}][/cb${formData.patientOther === 'No' ? 'c' : ''}] No [/list]
+[td][list=none][u]Genetic Predisposition[/u][br][/br]
+[cb${formData.predisposition === 'Existing' ? 'c' : ''}][/cb${formData.predisposition === 'Existing' ? 'c' : ''}] Existing
+[cb${formData.predisposition === 'NonExisting' ? 'c' : ''}][/cb${formData.predisposition === 'NonExisting' ? 'c' : ''}] Non-existing [/list]
+[/td][/tr][/table]
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Evaluation Summary[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none][u]Assessment Statement: [/u][br][/br]
+${patientSummary}
+[br][/br][/left][/list][/table]
 
-[/table][/divbox]
-
-[divbox=lightgrey][b]SECTION 2: VITALS[/b][/divbox]
-[divbox=transparent][table][tr][td][b]2.1[/b] Body Temperature[/td][td]
-${patientTemperature}
-[/td][/tr]
-
-[tr][td][b]2.2[/b] Heart Rate[/td][td]
-${patientBPM} BPM
-[/td][/tr]
-
-[tr][td][b]2.3[/b] Respiration Rate[/td][td]
-${patientpulse} BPM
-[/td][/tr]
-
-[tr][td][b]2.4[/b] Pulse Oximetry[/td][td]
-${patientOxi} %
-[/td][/tr]
-
-[tr][td][b]2.5[/b] Blood Pressure[/td][td]
-${patientBP} MMHG
-[/td][/tr]
-
-[/table][/divbox]
-
-[divbox=lightgrey][b]SECTION 3: PATIENT ANAMNESIS[/b][/divbox]
-[divbox=transparent][table]
-
-[tr][td][b]3.1[/b] Patient had a job in the past[/td][td]
-${patientCareer}
-[/td][/tr]
-
-[tr][td][b]3.2[/b] Were other medical condition(s) or physical impairments found that would preclude the patient from rigorous duties[/td][td]
-${patientImpairments}
-[/td][/tr]
-
-[tr][td][b]3.3[/b] Patient has allergies/risks (implants, case of incompatibility, pacemaker, etc.)[/td][td]
-${patientAllergies}
-[/td][/tr]
-
-[tr][td][b]3.4[/b] Patient takes medication on a regular basis[/td][td]
-${patientMedicine}
-[/td][/tr]
-
-[tr][td][b]3.5[/b] Patient or family members have the following diseases: [/td][td]
-${patientPastDiseases}
-[/td][/tr]
-
-[/table][/divbox]
-
-[divbox=lightgrey][b]SECTION 4: ASSESSMENT SUMMARY[/b][/divbox]
-[divbox=transparent][list=none]
-
-${patientAssessment}
-[/list][/divbox][divbox=lightgrey][b]SECTION 5: SIGNATURE OF PERSON IN CHARGE OF EXAMINATION[/b][/divbox]
-
-[divbox=transparent][table][tr][td]Examiner's Signature:[/td][td]${phmcEmployee}[/td][/tr][/table][/divbox]
 `;
 
         return bbCode;
@@ -2577,13 +2485,196 @@ ${patientName}
         return bbCode;
         };
     
+    const generateEmailPHMCEmail = () => {
+        const {
+            scenePhotos,
+            decedentName,
+            patientNotes,
+            synopsis,
+            phmcEmployee,
+            decedentOOC,
+            patientCareer,
+        } = formData;
+        const scenePhotosBBCode = scenePhotos.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
+
+        let bbCode = `[divbox=na][br][/br][imageleft]https://i.imgur.com/dkdFQtg.png[/imageleft] [b][size=110]Pillbox Hill Medical Center[/size][/b] 
+[center][/center][br][/br]
+[center][size=130][/center][/size]
+[center][size=150][b]RE: ${patientNotes} [/b][/size][/center]
+
+[hr][/hr][br][/br][list=none]
+Dear ${decedentName},
+
+${synopsis}
+
+
+Respectfully submitted,
+${scenePhotosBBCode} 
+[/list][hr][/hr][list=none]
+[b][size=105]${phmcEmployee}[/size][/b]
+[size=85]${decedentOOC}
+${patientCareer}
+[/size]
+
+[b]Pillbox Hill Medical Center[/b]
+[size=85]Elgin Avenue/Strawberry Avenue, Pillbox Hill, Los Santos, SA
+Phone: 50056
+Mail: [url=https://phmc.gta.world/ucp.php?i=pm&mode=compose&g=40]info@phmc.health[/url]
+Website: [url=https://phmc.gta.world/index.php]www.phmc.health[/url]
+
+Follow us on Facebrowser: [url=https://face.gta.world/pages/PHMC?ref=qs]Pillbox Hill Medical Center[/url][/size]
+
+[size=70][i]The contents of this message and any attachments are confidential. They are intended for the named recipient(s) only.  If you have received this email by mistake, please notify the sender immediately and do not disclose the contents to anyone or make copies thereof.[/i][/size][/divbox] 
+`
+        return bbCode;
+        };
+        const generateHUGEFUCKINGFORM = () => {
+            const {
+                patientName,
+                patientAddress,
+                patientRace,
+                patientGender,
+                patientPH,
+                patientDiscord,
+                patientEmergencyContact,
+                patientEmergencyContactNumber,
+                patientEmergencyContactRelation,
+                patientEmergencyContactDiscord,
+                patientTitle,
+                patientAllergies,
+                patientCurrentMedicine,
+                patientChronicDiseases,
+                patientNotes,
+                date,
+                patientID,
+                patientTherapy, 
+                patientTriggers,
+                patientSupport,
+                patientHarm,
+                patientFam,
+                patientGenetic,
+                patientMental,
+                patientFamSocial,
+                maritalStatus,
+                numberChildren,
+                patientReligion,
+                financialStatus,
+                attorneyName,
+                attorneyRelation,
+                attorneyPH,
+                patientDateOfBirth,
+                patientSmoker, 
+                patientAlcohol,
+                patientDrugs,
+                patientExercise,
+                patientDiet,
+                patientSleep,
+                patientSexLife, 
+                patientJobRisks,
+                patientHazards, 
+                patientOther, 
+                dnrOther,
+                decedentOOC
+                    } = formData;
+    
+            let bbCode = `[table][tr][td][center][br][/br][br][/br][b]Patient Information[/b]
+
+[size=110]PATIENT ${patientID}
+
+${patientName}
+[/size]
+
+[/center][td][center][img]https://i.imgur.com/QMaz0OC.png[/img][img]https://i.imgur.com/LkRKav2.png[/img]
+[b][size=150]BASIC PATIENT INFORMATION[/size][/center][/table]
+[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]General Information[/b][/color][/size][/center][/divboxcolor]
+[table][tr][td] Title: ${patientTitle}[/td][td] Full Name: ${patientName}
+[tr][td] Date of Birth: ${patientDateOfBirth} [/td][td] Home Address: ${patientAddress}
+[tr][td] Gender Identity: ${patientGender} [/td][td] Ethnicity: ${patientRace}
+[tr][td] Phone Number: ${patientPH} [/td][td] ((Discord ID: ${patientDiscord}))
+[/table]
+    [divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Emergency Contact[/b][/color][/size][/center][/divboxcolor]
+    [table][tr][td] Full Name: ${patientEmergencyContact} [/td][td] Relationship: ${patientEmergencyContactRelation}
+    [tr][td] Phone Number: ${patientEmergencyContactNumber} [/td][td] ((Discord ID: ${patientEmergencyContactDiscord}))
+[/table]
+[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Medical History[/b][/color][/size][/center][/divboxcolor]
+[table][tr][td][b][size=105]Past History[/size][/b][color=transparent]youarecool[/color][/td][td][color=transparent]ifyoureadthisyouareawesomebutdontdeletemeplease![/color]
+[tr][td] Blood Type: [/td][td] [cb${formData.patientBloodType === 'A+' ? 'c' : ''}] A+ [cb${formData.patientBloodType === 'A-' ? 'c' : ''}] A- [cb${formData.patientBloodType === 'B+' ? 'c' : ''}] B+ [cb${formData.patientBloodType === 'B-' ? 'c' : ''}] B- [cb${formData.patientBloodType === 'O+' ? 'c' : ''}] O+ [cb${formData.patientBloodType === 'O-' ? 'c' : ''}] O- [cb${formData.patientBloodType === 'AB+' ? 'c' : ''}] AB+ [cb${formData.patientBloodType === 'AB-' ? 'c' : ''}] AB-
+[tr][td] Known Allergies: [/td][td] ${patientAllergies}
+[tr][td] Current Medications: [/td][td] ${patientCurrentMedicine}
+[tr][td] Chronic Conditions: [/td][td] ${patientChronicDiseases}
+[tr][td] Traumas & Injuries: [/td][td] ${patientNotes}
+[/table]
+[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Mental Health History[/b][/color][/size][/center][/divboxcolor]
+[table][tr][td][b][size=105]Past History[/size][/b][color=transparent]youarecool[/color][/td][td][color=transparent]ifyoureadthisyouareawesomebutdontdeletemeplease![/color]
+[tr][td] Diagnosed Mental Health Conditions: [/td][td] ${patientMental}
+[tr][td] Therapies & Counseling: [/td][td] ${patientTherapy}
+[tr][td] Triggers or Sensors: [/td][td] ${patientTriggers}
+[tr][td] Support & Coping Systems: [/td][td] ${patientSupport}
+[tr][td] Self-Harm History or Tendencies: [/td][td] ${patientHarm}
+[/table]
+[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Family Medical History[/b][/color][/size][/center][/divboxcolor]
+[table][tr][td][b][size=105]Past History[/size][/b][color=transparent]youarecool[/color][/td][td][color=transparent]ifyoureadthisyouareawesomebutdontdeletemeplease![/color]
+[tr][td] Immediate Family Members: [/td][td] ${patientFam}
+[tr][td] Known Genetic Conditions: [/td][td] ${patientGenetic}
+[tr][td] Family Social History: [/td][td] ${patientFamSocial}
+[/table]
+[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Social Information[/b][/color][/size][/center][/divboxcolor]
+[table][tr][td] Marital Status: [cb${formData.maritalStatus === 'Single' ? 'c' : ''}] Single [cb${formData.maritalStatus === 'Married' ? 'c' : ''}] Married [cb${formData.maritalStatus === 'Divorced' ? 'c' : ''}] Divorced/Widowed [/td][td] Number of Children: [cb${formData.numberChildren === '0' ? 'c' : ''}] 0 [cb${formData.numberChildren === '1' ? 'c' : ''}] 1 or more
+[tr][td] Cultural and/or Religious Considerations: ${patientReligion} [/td][td] Financial Status: [cb${formData.financialStatus === 'LowIncome' ? 'c' : ''}] Low Income [cb${formData.financialStatus === 'MiddleIncome' ? 'c' : ''}] Average Income [cb${formData.financialStatus === 'HighIncome' ? 'c' : ''}] High Income
+[/table]
+[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Lifestyle Information[/b][/color][/size][/center][/divboxcolor]
+[table][tr][td] Smoking Status: ${patientSmoker} [/td][td] Alcohol Use: ${patientAlcohol}[/td][td] Other Substances: ${patientDrugs}
+[tr][td] Exercise Habits: ${patientExercise}[/td][td] Dietary Information: ${patientDiet}[/td][td] Sleep Patterns: ${patientSleep}
+[tr][td] Sexual Health: ${patientSexLife}[/td][td] Occupational Hazards: ${patientJobRisks}[/td][td] Environmental Hazards: ${patientHazards}[/table]
+[table][tr][td] Other Information & Preferences: ${patientOther}
+[/table]
+[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Advanced Directives[/b][/color][/size][/center][/divboxcolor]
+[divbox=transparent][list=none]I, ${patientName}, hereby provide the following advance directives regarding my healthcare, to be followed in the event that I become unable to make decisions about my medical treatment:
+
+[list=1][*] [size=110]Living Will[/size]: In the event I am unable to communicate, I direct the following regarding life-sustaining treatments:
+[cb${formData.dnr === 'ProlongLife' ? 'c' : ''}][/cb${formData.dnr === 'ProlongLife' ? 'c' : ''}]I want all available measures taken to prolong my life.
+[cb${formData.dnr === 'ComfortOfLife' ? 'c' : ''}][/cb${formData.dnr === 'ComfortOfLife' ? 'c' : ''}]I want only treatments focused on comfort and quality of life, even if it means not prolonging life.
+[cb${formData.dnr === 'other' ? 'c' : ''}][/cb${formData.dnr === 'other' ? 'c' : ''}]Other instructions: ${dnrOther}
+
+[*][size=110]Healthcare Power of Attorney[/size]:
+[cb${formData.attorney === 'Yes' ? 'c' : ''}][/cb${formData.attorney === 'Yes' ? 'c' : ''}]have appointed the following person as my Healthcare Proxy/Agent to make medical decisions on my behalf:
+[list=none]Full Name: ${attorneyName}
+Relationship to Patient: ${attorneyRelation}
+Phone Number: ${attorneyPH}[/list]
+
+[cb${formData.attorney === 'No' ? 'c' : ''}][/cb${formData.attorney === 'No' ? 'c' : ''}]I have not appointed a Healthcare Proxy/Agent at this time.
+[*] [size=110]Do Not Resuscitate (DNR) Order[/size]:
+[cb${formData.dnrOrder === 'Yes' ? 'c' : ''}][/cb${formData.dnrOrder === 'Yes' ? 'c' : ''}]I have a DNR order in place, instructing medical staff not to perform CPR or other life-saving measures if my heart stops.
+[cb${formData.dnrOrder === 'No' ? 'c' : ''}][/cb${formData.dnrOrder === 'No' ? 'c' : ''}]I do not have a DNR order in place at this time.
+
+[*] [size=110]Consent to Share Advance Directives[/size]:
+I authorize Pillbox Hill Medical Center to keep a copy of my advance directives in my medical record and to share this information with medical staff and emergency personnel as needed to ensure my healthcare wishes are respected.[/list]
+I understand that I may revise or revoke these directives at any time by providing written notice.
+
+Signature: [i][u]${patientName}[/u][/i]
+Date: ${date}[/divbox]
+[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Disclaimer[/b][/color][/size][/center][/divboxcolor]
+[divbox=transparent][list=none]I, ${patientName}, hereby declare that the information provided in this medical history form is true, accurate, and complete to the best of my knowledge. I understand that this information will be stored securely within the systems of Pillbox Hill Medical Center and may be accessed by authorized healthcare professionals involved in my care.
+
+I, ${patientName}, upon submitting this form, consent to the sharing of my medical information among healthcare professionals within Pillbox Hill Medical Center for the purpose of providing comprehensive and coordinated healthcare services. I acknowledge that this information may be used for diagnosis, treatment, and other healthcare-related activities in accordance with applicable laws and regulations, including the Health Insurance Portability and Accountability Act (HIPAA).
+
+I, ${patientName}, retain the right to revoke this consent at any time by notifying Pillbox Hill Medical Center in writing. However, I also understand that revoking consent may limit the ability of healthcare professionals to provide me with optimal and coordinated care.[/list][/divbox]
+[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Payment[/b][/color][/size][/center][/divboxcolor]
+[table][tr][td] Please attach an unedited confirmation of your payment, unless you are exempt. [size=70](see question 14 in the FAQ thread on how to pay)[/size][/td][td]
+[url=${decedentOOC}]Proof Of Payment [/url]
+[/table]`
+            return bbCode;
+            };
+    
     
     // Update BBCode generation logic
     const bbCode = bbCodeVersion === 1 ? generateDeath() :
         bbCodeVersion === 2 ? generateEmail() :
+        bbCodeVersion === 3 ? generateHUGEFUCKINGFORM() :  
                 bbCodeVersion === 4 ? generateDental() :
                     bbCodeVersion === 5 ? generateSurgicalOps() :
                         bbCodeVersion === 6 ? generatePhysEvalInternalMed() :
+                            bbCodeVersion === 7 ? generatePhysEvalInternalMedPBC() :
                                     bbCodeVersion === 9 ? generateObsMainFile() :
                                         bbCodeVersion === 10 ? generateObsFollowUp() :
                                                 bbCodeVersion === 12 ? generateGyneMainFile() :
@@ -2599,7 +2690,7 @@ ${patientName}
                                                                                     bbCodeVersion === 24 ? generateMedicalRecordRelease() :
                                                                                         bbCodeVersion === 25 ? generateBasicPatientFile() :
                                                                                             bbCodeVersion === 26 ? generateBasicPatientFileStaff() :
-
+                                                                                            bbCodeVersion === 27 ? generateEmailPHMCEmail() : 
 
                                                                                 generateDeath();
 
@@ -2617,6 +2708,10 @@ ${patientName}
         } else if (bbCodeVersion === 18) {
             const { department } = formData;
             return `Agency Incident Report - ${department}`;
+        } else if (bbCodeVersion === 3) {
+            const { patientName } = formData;
+            return `[Medical Information Registration] -  ${patientName}`;
+
         } else if (bbCodeVersion === 25) {
             const { patientName } = formData;
             return `[Medical Information Registration] -  ${patientName}`;
@@ -2637,6 +2732,7 @@ ${patientName}
             placeOfDeath: '',
             department: '',
             dateTime: '',
+            BodyMassIndex: '',
             serialNumber: '',
             decedentName: '',
             phmcEmployee: '',
@@ -2830,8 +2926,57 @@ ${patientName}
             patientZIP: '',
             patientDateOfBirth: '',
             patientMedInfoFormatOther: '',
+            complications: '',
+            patientComplicationOptions: '',
+            patientConsentOption: '',
+            procedureGoodOptions: '',
+            phmcRank: [],    
+            careerRisks: '',
+            patientJob: '',
+            patientJobRisks: '',
+            patientAllergiesRisk: '',
+            patientMedicineRegular: '',
+            patientOther: '',
+            predisposition: '',
+            patientHarm: '', 
+            patientSupport: '',
+            patientTherapy: '',
+            patientFamily: '',
+            patientGentic: '',
+            patientTriggers: '',
+            patientTherapy: '', 
+            patientFamSocial: '',
+            patientMental: '', 
+            maritalStatus: '', 
+            numberChildren: '', 
+            financialStatus: '', 
+            dnr: '', 
+            dnrOrder: '',
+            patientDiscord: '',
+            attorney: '',
+            patientTherapy: '', 
+            patientSupport: '', 
+            patientHarm: '',
+            patientFam: '',
+            patientGenetic: '',
+            patientReligion: '',
+            patientSmoker: '', 
+            patientAlcohol: '',
+            patientDrugs: '',
+            patientExercise: '',
+            patientDiet: '',
+            patientSleep: '',
+            patientSexLife: '', 
+            patientJobRisks: '',
+            patientHazards: '', 
+            patientOther: '', 
+            attorneyName: '',
+            attorneyPH: '',
+            attorneyRelation: '',
+            dnrOther: '',
+            patientEmergencyContactDiscord: '',
     
-    
+
         });
         const fieldsToRemove = [
             'dateTime',
@@ -2869,12 +3014,16 @@ ${patientName}
                 return generateDeath();
             case 2:
                 return generateEmail();
+            case 3: 
+                return generateHUGEFUCKINGFORM();
             case 4:
                 return generateDental();
             case 5:
                 return generateSurgicalOps();
             case 6:
                 return generatePhysEvalInternalMed();
+            case 7: 
+                return generatePhysEvalInternalMedPBC();
             case 9:
                 return generateObsMainFile();
             case 10:
@@ -2902,7 +3051,6 @@ ${patientName}
             default:
             case 24:
                 return generateMedicalRecordRelease();
-                return '';
         }
     };
     const parseBBCode = () => {
@@ -3012,11 +3160,11 @@ ${patientName}
     };
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: value
+        setFormData(prevFormData => ({
+            ...prevFormData,
+            [name]: type === 'checkbox' ? checked : (type === 'select-multiple' ? Array.from(e.target.selectedOptions, option => option.value) : value)
         }));
-        // If rank is being set here, make sure it's properly updated
+
         if (name === 'rank') {
             setRank(value);
         }
@@ -3104,7 +3252,8 @@ ${patientName}
         3: "Internal Medicine",
         4: "Dental Report",
         5: "Surgery Report",
-        6: "Physical Evaluation (IM)",
+        6: "Physical Evaluation (PHMC)",
+        7: "Physical Evaluation (PBC)",
         9: "Obs Main File",
         10: "Obs Follow Up",
         12: "Gynecology - Main File",
@@ -3142,7 +3291,7 @@ ${patientName}
                 <div className="modal-overlay">
                     <div className="agency-selector-modal">
                         <div className="modal-header">
-                            <h4>Department Selection</h4>
+                            <h4>Form Selection</h4>
                             <button
                                 className="close-button"
                                 onClick={() => setShowAgencySelector(false)}
@@ -3161,7 +3310,7 @@ ${patientName}
                                         className="Center"
                                         alt="Feedback"
                                     />
-                                    <span>Civilian - Medical Record Release </span>
+                                    <span>Civilian Medical Record Release </span>
                                 </button>
 
                                 <button
@@ -3176,23 +3325,23 @@ ${patientName}
                                 </button>
                                 <button
                                     className="agency-select-button"
-                                    onClick={() => handleAgencySelect(20)}
+                                    onClick={() => handleAgencySelect(19)}
                                 >
-                                    <img src={PHMCLogo}
+                                    <img src={emergency}
                                         className="Center"
                                         alt="Feedback"
                                     />
-                                    <span>(NEW!) General Consultation Forms </span>
+                                    <span>ER Protocol </span>
                                 </button>
                                 <button
                                     className="agency-select-button"
-                                    onClick={() => handleAgencySelect(19)}
+                                    onClick={() => handleAgencySelect(20)}
                                 >
-                                    <img src={PHMCLogo}
+                                    <img src={empathy}
                                         className="Center"
                                         alt="Feedback"
                                     />
-                                    <span>(NEW!) Emergency Room Protocol </span>
+                                    <span>General Consultation </span>
                                 </button>
                                                             </div>
                             <div className="agency-row">
@@ -3200,11 +3349,11 @@ ${patientName}
                                     className="agency-select-button"
                                     onClick={() => handleAgencySelect(22)}
                                 >
-                                    <img src={surgeon}
+                                    <img src={paperwork2}
                                         className="Center"
                                         alt="Feedback"
                                     />
-                                    <span>(NEW!) Commentary Note Form  </span>
+                                    <span>Commentary Notes </span>
                                 </button>
 
                             <button
@@ -3215,7 +3364,7 @@ ${patientName}
                                         className="Center"
                                         alt="Feedback"
                                     />
-                                    <span>(NEW!) Mental Health Forms </span>
+                                    <span> Mental Health </span>
                                 </button>
 
 {/*                                 <button
@@ -3240,72 +3389,52 @@ ${patientName}
                                 </button>
                              <button
                                 className="agency-select-button"
-                                onClick={() => handleAgencySelect(26)}
+                                onClick={() => handleAgencySelect(27)}
                             >
-                                <img src={developer}
+                                <img src={email}
                                     className="Center"
                                     alt="Feedback"
                                 />
-                                <span>Patient Medical Records </span>
+                                <span>Email Forms </span>
                             </button>
 
                             </div>
-{/*                             <div className="agency-row">
+                             <div className="agency-row">
                             <button
                                     className="agency-select-button"
-                                    onClick={() => handleAgencySelect(22)}
+                                    onClick={() => handleAgencySelect(4)}
+                                >
+                                    <img src={teeth}
+                                        className="Center"
+                                        alt="Feedback"
+                                    />
+                                    <span>Dental </span>
+                                </button>
+
+                            <button
+                                    className="agency-select-button"
+                                    onClick={() => handleAgencySelect(9)}
+                                >
+                                    <img src={obstetrical}
+                                        className="Center"
+                                        alt="Feedback"
+                                    />
+                                    <span>Gynecology & Obs</span>
+                                </button>
+
+                              <button
+                                    className="agency-select-button"
+                                    onClick={() => handleAgencySelect(27)}
                                 >
                                     <img src={surgeon}
                                         className="Center"
                                         alt="Feedback"
                                     />
-                                    <span>(NEW!) Commentary Note Form  </span>
+                                    <span>Surgical Ops </span>
                                 </button>
 
-                            <button
-                                    className="agency-select-button"
-                                    onClick={() => handleAgencySelect(14)}
-                                >
-                                    <img src={psychology}
-                                        className="Center"
-                                        alt="Feedback"
-                                    />
-                                    <span>(NEW!) Mental Health Forms </span>
-                                </button>
-
-                              <button
-                                    className="agency-select-button"
-                                    onClick={() => handleAgencySelect(9)}
-                                >
-                                    <img src={gynecology}
-                                        className="Center"
-                                        alt="Feedback"
-                                    />
-                                    <span>Obstetrics & Gynecology Forms </span>
-                                </button>
-                                    <button
-                                    className="agency-select-button"
-                                    onClick={() => handleAgencySelect(6)}
-                                >
-                                    <img src={nurse}
-                                        className="Center"
-                                        alt="Feedback"
-                                    />
-                                    <span>Physical Evaluation </span>
-                                </button>
-                             <button
-                                className="agency-select-button"
-                                onClick={() => handleAgencySelect(25)}
-                            >
-                                <img src={developer}
-                                    className="Center"
-                                    alt="Feedback"
-                                />
-                                <span>Dev Testing Grounds </span>
-                            </button>
 
                             </div>
- */}
                         </div>
                         <div className="hide-selector-option">
                             <input
@@ -3363,7 +3492,7 @@ ${patientName}
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 1.6.5 - ❄️ Frostbite Update </h3>
+                                    <h3>Changelog - Version 1.7 - ❄️ Frostbite Update </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -3374,14 +3503,12 @@ ${patientName}
                                 </div>
                                 <div className="modal-content">
                                     <ul>
-                                        <li>All new forms added (Civilian - Request Medical Records)</li>
-                                        <li>Changed to the Imgur API</li>
-                                        <li>Add Employee / Coroner (Beta) added</li>
-                                        <li>Error Handling</li>
-                                        <li>Backend support for new Civilian forms (Waiting BBCode) </li>
-                                        <li> Kaden Malik Torture Chamber Established </li> 
-                                        <li> Update Size: 24.5 KB | Lines added: 1520 | 7</li>
-
+                                        <li> Added: PHMC & PBC Physical Evaluation</li>
+                                        <li>Added: Surgical Report Rework</li>
+                                        <li>(CIVILIAN) Patient File Basic + Detailed</li>
+                                        <li>PHMC Email Templates</li>
+                                        <li>Form Selection has been reorganised</li>
+                                        <li> Various updates (Migration from Select to Form.Select in progress) </li> 
                                     </ul>
                                 </div>
                             </div>
@@ -3401,7 +3528,7 @@ ${patientName}
                             onClick={toggleAgencySelector}
                         >
                             <i className="fas fa-exchange-alt"></i>
-                            Switch Department
+                            Select Form
                         </button>
 
                         {(bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 18) && (
@@ -3467,7 +3594,7 @@ ${patientName}
                             </>
                         )}
 
-                        {(bbCodeVersion === 3 || bbCodeVersion === 7) && (
+                        {(bbCodeVersion === 6 || bbCodeVersion === 7) && (
                             <>
                                 <button
                                     className="changelog-button"
@@ -3494,13 +3621,13 @@ ${patientName}
                                                 <div className="agency-row">
                                                     <button
                                                         className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(3)}
+                                                        onClick={() => handleAgencySelect(6)}
                                                     >
                                                         <img src={PHMCLogo}
                                                             className="Center"
                                                             alt="Feedback"
                                                         />
-                                                        <span>Internal Medicine Consult | NEW FILE </span>
+                                                        <span>Internal Medicine PHMC </span>
                                                     </button>
                                                     <button
                                                         className="agency-select-button"
@@ -3510,7 +3637,7 @@ ${patientName}
                                                             className="Center"
                                                             alt="Feedback"
                                                         />
-                                                        <span>Internal Medicine Consult | ADD FILES </span>
+                                                        <span>Internal Medicine PBC </span>
                                                     </button>
                                                 </div>
                                             </div>
@@ -3800,7 +3927,7 @@ ${patientName}
                                 )}
                             </>
                         )}
-                        {(bbCodeVersion === 24 || bbCodeVersion === 25) && (
+                        {(bbCodeVersion === 3 || bbCodeVersion === 24 || bbCodeVersion === 25) && (
                             <>
                                 <button
                                     className="changelog-button"
@@ -3814,7 +3941,7 @@ ${patientName}
                                     <div className="modal-overlay" onClick={() => setShowPHMCModal(false)}>
                                         <div className="agency-selector-modal" onClick={e => e.stopPropagation()}>
                                             <div className="modal-header">
-                                                <h4>Select Civilian Forms (2)</h4>
+                                                <h4>Select Civilian Forms (3)</h4>
                                                 <button
                                                     className="close-button"
                                                     onClick={() => setShowPHMCModal(false)}
@@ -3845,6 +3972,17 @@ ${patientName}
                                                         />
                                                         <span>Basic Patient File </span>
                                                     </button>
+                                                    <button
+                                                        className="agency-select-button"
+                                                        onClick={() => handleAgencySelect(3)}
+                                                    >
+                                                        <img src={nurse}
+                                                            className="Center"
+                                                            alt="Feedback"
+                                                        />
+                                                        <span>Detailed Patient File </span>
+                                                    </button>
+
                                                 </div>
                                             </div>
                                         </div>
@@ -4451,228 +4589,575 @@ ${patientName}
                                     </div>
                                 </Form.Group>
                             </>
-                        ) : bbCodeVersion === 3 ? (
-                            <>
-                                <p>The FORM below is intended for the opening of a medical file, it must appear at the top.</p>
-                                <Form.Label>Employee Credentials:</Form.Label>
-
-                                <Select
-                                    name="phmcEmployee"
-                                    value={phmcGroupedOptions
-                                        .flatMap(group => group.options)
-                                        .find(option => option.value === formData.phmcEmployee) || null}
-                                    onChange={(selectedOption) => {
-                                        handleChange({
-                                            target: {
-                                                name: 'phmcEmployee',
-                                                value: selectedOption?.value || ''
-                                            }
-                                        });
-                                        if (selectedOption) {
-                                            setFormData(prev => ({
-                                                ...prev,
-                                                phmcSignature: selectedOption.signature || ''
-                                            }));
-                                        } else {
-                                            setFormData(prev => ({
-                                                ...prev,
-                                                phmcSignature: ''
-                                            }));
-                                        }
-                                    }}
-                                    options={phmcGroupedOptions}
-                                    isClearable
-                                    placeholder="Search or select doctor..."
-                                    className="form-control"  // Match Bootstrap styling
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#6c757d',
-                                            '&:hover': {
-                                                borderColor: '#eeeeeeb0'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        group: (base) => ({
-                                            ...base,
-                                            paddingTop: 8,
-                                            paddingBottom: 8
-                                        }),
-                                        groupHeading: (base) => ({
-                                            ...base,
-                                            color: '#6c757d',
-                                            fontWeight: 600,
-                                            textTransform: 'uppercase',
-                                            fontSize: '0.75rem',
-                                            marginBottom: 4
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
+                        ) : bbCodeVersion === 3 ? ( // HUGE FUCKING FORM
+                        <>
+                                                        <Form.Label>Patient ID, leave blank if unsure</Form.Label>
                                 <Form.Control
-                                    type="text"
-                                    name="phmcSignature"
-                                    value={formData.phmcSignature}
+                                            type="text"
+                                            name="patientID"
+                                            value={formData.patientID}
+                                            onChange={handleChange}
+                                            placeholder="Patient ID  (Optional)"
+                                            className={`form-control ${!formData.patientID ? 'is-invalid' : ''}`}
+
+                                        />
+                                <Form.Label>Title / Patient Name Name  / Date of Birth</Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Select
+                                    name="patientTitle"
+                                    value={formData.patientTitle}
                                     onChange={handleChange}
-                                    placeholder="Employee Signature"
                                     required
-                                />
+                                    className={`form-control ${!formData.patientTitle ? 'is-invalid' : ''}`}
+                                >
+                                    <option value="" disabled>Title</option>
+                                    {patientTitle.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                </Form.Select>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientName"
+                                            value={formData.patientName}
+                                            onChange={handleChange}
+                                            placeholder="Patient Name"
+                                            required
+                                            className={`form-control ${!formData.patientName ? 'is-invalid' : ''}`}
 
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Section 1: Medical Patient Record</Form.Label>
-                                    <Form.Control
+                                        />
+
+                                        <Form.Control
+                                            type="date"
+                                            name="patientDateOfBirth"
+                                            value={formData.patientDateOfBirth}
+                                            onChange={handleChange}
+                                            placeholder="Date of Birth"
+                                            required
+                                            className={`form-control ${!formData.patientDateOfBirth ? 'is-invalid' : ''}`}
+
+                                        />
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '10px' }}>
+                                            <Form.Control
+                                            type="text"
+                                            name="patientAddress"
+                                            value={formData.patientAddress}
+                                            onChange={handleChange}
+                                            placeholder="Patient Home Address"
+                                            required
+                                            className={`form-control ${!formData.patientAddress ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientGender"
+                                            value={formData.patientGender}
+                                            onChange={handleChange}
+                                            placeholder="Patient Gender"
+                                            required
+                                            className={`form-control ${!formData.patientGender ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientRace"
+                                            value={formData.patientRace}
+                                            onChange={handleChange}
+                                            placeholder="Patient Race"
+                                            required
+                                            className={`form-control ${!formData.patientRace ? 'is-invalid' : ''}`}
+
+                                        />
+
+                                    </div>
+
+                                    <div className="input-group">                                                               
+                                 <Form.Control
+                                            type="text"
+                                            name="patientPH"
+                                            value={formData.patientPH}
+                                            onChange={handleChange}
+                                            placeholder="Patient Phone Number"
+                                            required
+                                            className={`form-control ${!formData.patientPH ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientDiscord"
+                                            value={formData.patientDiscord}
+                                            onChange={handleChange}
+                                            placeholder="(( Patient Discord ID )) "
+                                            required
+                                            className={`form-control ${!formData.patientDiscord ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+                                    <Form.Label>Emergency Contact Information </Form.Label>
+
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientEmergencyContact"
+                                            value={formData.patientEmergencyContact}
+                                            onChange={handleChange}
+                                            placeholder="Emergency Contact Full Name"
+                                            required
+                                            className={`form-control ${!formData.patientEmergencyContact ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientEmergencyContactRelation"
+                                            value={formData.patientEmergencyContactRelation}
+                                            onChange={handleChange}
+                                            placeholder="Emergency Contact Relation to Patient"
+                                            required
+                                            className={`form-control ${!formData.patientEmergencyContactRelation ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientEmergencyContactNumber"
+                                            value={formData.patientEmergencyContactNumber}
+                                            onChange={handleChange}
+                                            placeholder="Emergency Contact Contact Number"
+                                            required
+                                            className={`form-control ${!formData.patientEmergencyContactNumber ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientEmergencyContactDiscord"
+                                            value={formData.patientEmergencyContactDiscord}
+                                            onChange={handleChange}
+                                            placeholder="(( Patient Emergency Contact Discord )) "
+                                            required
+                                            className={`form-control ${!formData.patientEmergencyContactDiscord ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+
+                                <Form.Label>Medical History </Form.Label>
+
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                <Form.Select
+                                    name="patientBloodType"
+                                    value={formData.patientBloodType || ""}
+                                    onChange={handleChange}
+                                    required
+                                    className={`form-control ${!formData.patientBloodType ? 'is-invalid' : ''}`}
+                                >
+                                    <option value="" disabled>Patient Blood Type</option>
+                                    {patientBloodType.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                </Form.Select>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientAllergies"
+                                            value={formData.patientAllergies}
+                                            onChange={handleChange}
+                                            placeholder="Patient Known Allergies"
+                                            required
+                                            className={`form-control ${!formData.patientAllergies ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientCurrentMedicine"
+                                            value={formData.patientCurrentMedicine}
+                                            onChange={handleChange}
+                                            placeholder="Patient Current Medicine"
+                                            required
+                                            className={`form-control ${!formData.patientCurrentMedicine ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientChronicDiseases"
+                                            value={formData.patientChronicDiseases}
+                                            onChange={handleChange}
+                                            placeholder="Patient Chronic Conditions"
+                                            required
+                                            className={`form-control ${!formData.patientChronicDiseases ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientNotes"
+                                            value={formData.patientNotes}
+                                            onChange={handleChange}
+                                            placeholder="Patient Traumas & Injuries"
+                                            required
+                                            className={`form-control ${!formData.patientNotes ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+                                        <Form.Label>Mental Health History </Form.Label>
+
+                                        <div style={{ display: 'flex', gap: '10px' }}>
+                                            <Form.Control
+                                            type="text"
+                                            name="patientMental"
+                                            value={formData.patientMental}
+                                            onChange={handleChange}
+                                            placeholder="Diagnosed Mental Health Conditions"
+                                            required
+                                            className={`form-control ${!formData.patientAddress ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientTherapy"
+                                            value={formData.patientTherapy}
+                                            onChange={handleChange}
+                                            placeholder="Therapies & Counseling"
+                                            required
+                                            className={`form-control ${!formData.patientTherapy ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientTriggers"
+                                            value={formData.patientTriggers}
+                                            onChange={handleChange}
+                                            placeholder="Triggers or Sensors"
+                                            required
+                                            className={`form-control ${!formData.patientTriggers ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                            <Form.Control
+                                            type="text"
+                                            name="patientSupport"
+                                            value={formData.patientSupport}
+                                            onChange={handleChange}
+                                            placeholder="Support & Coping Systems"
+                                            required
+                                            className={`form-control ${!formData.patientSupport ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientHarm"
+                                            value={formData.patientHarm}
+                                            onChange={handleChange}
+                                            placeholder="Self-Harm History or Tendencies"
+                                            required
+                                            className={`form-control ${!formData.patientHarm ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+                                    <Form.Label>Family Medical History </Form.Label>
+
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
                                         type="text"
-                                        name="patientMedicalRecord"
-                                        value={formData.patientMedicalRecord}
+                                        name="patientFam"
+                                        value={formData.patientFam}
                                         onChange={handleChange}
-                                        placeholder="Patient Number"
+                                        placeholder="Immediate Family Members"
                                         required
+                                        className={`form-control ${!formData.patientFam ? 'is-invalid' : ''}`}
+
                                     />
-                                </Form.Group>
-
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Section 2: Patient Demographics</Form.Label>
                                     <Form.Control
                                         type="text"
-                                        name="patientName"
-                                        value={formData.patientName}
+                                        name="patientGenetic"
+                                        value={formData.patientGenetic}
                                         onChange={handleChange}
-                                        placeholder="Patient Name"
+                                        placeholder="Known Genetic Conditions"
                                         required
+                                        className={`form-control ${!formData.patientGenetic ? 'is-invalid' : ''}`}
+
+                                    />
+                                    <Form.Control
+                                        type="text"
+                                        name="patientFamSocial"
+                                        value={formData.patientFamSocial}
+                                        onChange={handleChange}
+                                        placeholder="Family Social History"
+                                        required
+                                        className={`form-control ${!formData.patientFamSocial ? 'is-invalid' : ''}`}
+
+                                    />
+                                    </div>
+                                    <Form.Label>Social Status </Form.Label>
+
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Select
+                                    name="maritalStatus"
+                                    value={formData.maritalStatus}
+                                    onChange={handleChange}
+                                    required
+                                    className={`form-control ${!formData.maritalStatus ? 'is-invalid' : ''}`}
+                                >
+                                    <option value="" disabled>Marital Status</option>
+                                    {maritalStatus.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                </Form.Select>
+                                <Form.Select
+                                    name="numberChildren"
+                                    value={formData.numberChildren}
+                                    onChange={handleChange}
+                                    required
+                                    className={`form-control ${!formData.numberChildren ? 'is-invalid' : ''}`}
+                                >
+                                    <option value="" disabled>Number of Children</option>
+                                    {numberChildren.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                </Form.Select>
+                                    <Form.Control
+                                        type="text"
+                                        name="patientReligion"
+                                        value={formData.patientReligion}
+                                        onChange={handleChange}
+                                        placeholder="Patient's Religion"
+                                        required
+                                        className={`form-control ${!formData.patientReligion ? 'is-invalid' : ''}`}
                                     />
                                     <Form.Select
-                                        name="patientGender"
-                                        value={formData.patientGender}
-                                        onChange={handleChange}
-                                        required
-                                    >
-                                        <option value="">Select Gender</option>
-                                        <option value="Male">Male</option>
-                                        <option value="Female">Female</option>
-                                    </Form.Select>
-                                    <Form.Text className="text-muted">
-                                        Patient's date of birth
-                                    </Form.Text>
-                                    <Form.Control
-                                        type="date"
-                                        name="patientDateofBirth"
-                                        value={formData.patientDateofBirth}
-                                        onChange={handleChange}
-                                        placeholder="Date of Birth"
-                                        required
-                                    />
-                                    <Form.Control
-                                        type="tel"
-                                        name="patientPH"
-                                        value={formData.patientPH}
-                                        onChange={handleChange}
-                                        placeholder="Telephone Number"
-                                        required
-                                    />
-                                    <Form.Control
-                                        type="email"
-                                        name="patientEmail"
-                                        value={formData.patientEmail}
-                                        onChange={handleChange}
-                                        placeholder="Email Address / ((Include a Discord handle if available))"
-                                    />
-                                    <Form.Control
-                                        type="text"
-                                        name="patientAddress"
-                                        value={formData.patientAddress}
-                                        onChange={handleChange}
-                                        placeholder="Home Address"
-                                        required
-                                    />
-                                </Form.Group>
+                                    name="financialStatus"
+                                    value={formData.financialStatus}
+                                    onChange={handleChange}
+                                    required
+                                    className={`form-control ${!formData.financialStatus ? 'is-invalid' : ''}`}
+                                >
+                                    <option value="" disabled>Income Bracket</option>
+                                    {financialStatus.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                </Form.Select>
+                                    </div>
+                                    <Form.Label>Lifestyle Information </Form.Label>
 
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Section 3: Emergency Contact Information</Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        name="patientEmergencyContact"
-                                        value={formData.patientEmergencyContact}
-                                        onChange={handleChange}
-                                        placeholder="Emergency Contact Name"
-                                        required
-                                    />
-                                    <Form.Control
-                                        type="tel"
-                                        name="patientEmergencyContactNumber"
-                                        value={formData.patientEmergencyContactNumber}
-                                        onChange={handleChange}
-                                        placeholder="Emergency Contact Number"
-                                        required
-                                    />
-                                    <Form.Control
-                                        type="text"
-                                        name="patientEmergencyContactRelation"
-                                        value={formData.patientEmergencyContactRelation}
-                                        onChange={handleChange}
-                                        placeholder="Relation to Patient"
-                                        required
-                                    />
-                                </Form.Group>
+                                        <div style={{ display: 'flex', gap: '10px' }}>
+                                            <Form.Control
+                                            type="text"
+                                            name="patientSmoker"
+                                            value={formData.patientSmoker}
+                                            onChange={handleChange}
+                                            placeholder="Patient Smoker Status"
+                                            required
+                                            className={`form-control ${!formData.patientSmoker ? 'is-invalid' : ''}`}
 
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Section 4: Health Status Information</Form.Label>
-                                    <Form.Select
-                                        name="patientBloodType"
-                                        value={formData.patientBloodType}
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientAlcohol"
+                                            value={formData.patientAlcohol}
+                                            onChange={handleChange}
+                                            placeholder="Patient Alcohol Use"
+                                            required
+                                            className={`form-control ${!formData.patientAlcohol ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientDrugs"
+                                            value={formData.patientDrugs}
+                                            onChange={handleChange}
+                                            placeholder="Other Substance Usage"
+                                            required
+                                            className={`form-control ${!formData.patientDrugs ? 'is-invalid' : ''}`}
+
+                                        />
+                                            <Form.Control
+                                            type="text"
+                                            name="patientExercise"
+                                            value={formData.patientExercise}
+                                            onChange={handleChange}
+                                            placeholder="Patient Exercise Habits"
+                                            required
+                                            className={`form-control ${!formData.patientExercise ? 'is-invalid' : ''}`}
+
+                                        />
+
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientDiet"
+                                            value={formData.patientDiet}
+                                            onChange={handleChange}
+                                            placeholder="Patient Dietary Information"
+                                            required
+                                            className={`form-control ${!formData.patientDiet ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientSleep"
+                                            value={formData.patientSleep}
+                                            onChange={handleChange}
+                                            placeholder="Patient Sleeping Patterns"
+                                            required
+                                            className={`form-control ${!formData.patientSleep ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientSexLife"
+                                            value={formData.patientSexLife}
+                                            onChange={handleChange}
+                                            placeholder="Patient Sexual Health"
+                                            required
+                                            className={`form-control ${!formData.patientSexLife ? 'is-invalid' : ''}`}
+
+                                        />
+
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientJobRisks"
+                                            value={formData.patientJobRisks}
+                                            onChange={handleChange}
+                                            placeholder="Patient Job Risks"
+                                            required
+                                            className={`form-control ${!formData.patientJobRisks ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientHazards"
+                                            value={formData.patientHazards}
+                                            onChange={handleChange}
+                                            placeholder="Patient Occupational Hazards"
+                                            required
+                                            className={`form-control ${!formData.patientHazards ? 'is-invalid' : ''}`}
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientOther"
+                                            value={formData.patientOther}
+                                            onChange={handleChange}
+                                            placeholder="Other Information & Preferences"
+                                            required
+                                            className={`form-control ${!formData.patientOther ? 'is-invalid' : ''}`}
+                                        />
+
+                                        </div>
+                                        <Form.Label>Advanced Directives </Form.Label>
+
+                                        <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Select
+                                        name="dnr"
+                                        value={formData.dnr}
                                         onChange={handleChange}
                                         required
-                                    >
-                                        <option value="">Select Blood Type</option>
-                                        <option value="A+">A+</option>
-                                        <option value="A-">A-</option>
-                                        <option value="B+">B+</option>
-                                        <option value="B-">B-</option>
-                                        <option value="AB+">AB+</option>
-                                        <option value="AB-">AB-</option>
-                                        <option value="O+">O+</option>
-                                        <option value="O-">O-</option>
-                                    </Form.Select>
-                                    <Form.Control
-                                        as="textarea"
-                                        name="patientChronicDiseases"
-                                        value={formData.patientChronicDiseases}
+                                        className={`form-control ${!formData.dnr ? 'is-invalid' : ''}`}
+                                        >
+                                        <option value="" disabled>Living Will</option>
+                                        {dnr.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                        </Form.Select>
+                                        <Form.Select
+                                        name="attorney"
+                                        value={formData.attorney}
                                         onChange={handleChange}
-                                        placeholder="Known Chronic Diseases"
-                                        rows="2"
-                                    />
-                                    <Form.Control
-                                        as="textarea"
-                                        name="patientAllergies"
-                                        value={formData.patientAllergies}
+                                        required
+                                        className={`form-control ${!formData.attorney ? 'is-invalid' : ''}`}
+                                        >
+                                        <option value="" disabled>Healthcare Power of Attorney</option>
+                                        {attorney.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                        </Form.Select>
+                                        <Form.Select
+                                        name="dnrOrder"
+                                        value={formData.dnrOrder}
                                         onChange={handleChange}
-                                        placeholder="Known Allergies"
-                                        rows="2"
+                                        required
+                                        className={`form-control ${!formData.dnrOrder ? 'is-invalid' : ''}`}
+                                        >
+                                        <option value="" disabled>Do Not Resuscitate Order </option>
+                                        {dnrOrder.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                        </Form.Select>
+                                        </div>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                {formData.dnr === 'other' && (
+                                    <Form.Control
+                                    type="text"
+                                    name="dnrOther"
+                                    value={formData.dnrOther}
+                                    onChange={handleChange}
+                                    placeholder="dnrOther"
+                                    required
+                                    className="form-control"
                                     />
-                                </Form.Group>
-                            </>
+                                )}
+
+                                        {formData.attorney === 'Yes' && (
+                                    <Form.Control
+                                    type="text"
+                                    name="attorneyName"
+                                    value={formData.attorneyName}
+                                    onChange={handleChange}
+                                    placeholder="attorneyName"
+                                    required
+                                    className="form-control"
+                                    />
+                                )}
+                                    {formData.attorney === 'Yes' && (
+                                    <Form.Control
+                                    type="text"
+                                    name="attorneyRelation"
+                                    value={formData.attorneyRelation}
+                                    onChange={handleChange}
+                                    placeholder="attorneyRelation"
+                                    required
+                                    className="form-control"
+                                    />
+                                )}
+                                    {formData.attorney === 'Yes' && (
+                                    <Form.Control
+                                    type="text"
+                                    name="attorneyPH"
+                                    value={formData.attorneyPH}
+                                    onChange={handleChange}
+                                    placeholder="attorneyPH"
+                                    required
+                                    className="form-control"
+                                    />
+                                )}
+                                        </div>
+                                        <Form.Label>Date and Proof of Payment </Form.Label>
+
+                                        <Form.Control
+                                            type="date"
+                                            name="date"
+                                            value={formData.date}
+                                            onChange={handleChange}
+                                            placeholder="date"
+                                            required
+                                            className={`form-control ${!formData.date ? 'is-invalid' : ''}`}
+                                        />
+                                    <Form.Control
+                                    type="text"
+                                    name="decedentOOC"
+                                    value={formData.decedentOOC}
+                                    onChange={handleChange}
+                                    placeholder="Proof of Payment URL"
+                                    required
+                                    className="form-control"
+                                    />
+
+
+                                </>
                         ) : bbCodeVersion === 4 ? (
                             // Dental Consultation fields
                             <>
@@ -4901,44 +5386,92 @@ ${patientName}
                         ) : bbCodeVersion === 5 ? (
                             <>
                                 <p>The FORM below must be used and added to the file for each surgery appointment, following the others.</p>
-                                <Form.Label>Employee Credentials:</Form.Label>
+                                <Form.Label>Patient ID, leave blank if unsure</Form.Label>
+                                <Form.Control
+                                            type="text"
+                                            name="patientID"
+                                            value={formData.patientID}
+                                            onChange={handleChange}
+                                            placeholder="Patient ID  (Optional)"
+                                            className={`form-control ${!formData.patientID ? 'is-invalid' : ''}`}
 
+                                        />
+                                    <Form.Label>Appointment Date</Form.Label>
+                                    <Form.Control
+                                        type="date"
+                                        name="date"
+                                        value={formData.date}
+                                        onChange={handleChange}
+                                        className={`form-control ${!formData.date ? 'is-invalid' : ''}`}
+
+                                        required
+                                    />
+
+                                <div className="radio-inline-container">
+                                <span className="radio-text">Role:</span>
+                                    <Form.Check
+                                        type="radio"
+                                        id="doctorRank"
+                                        label="   Doctor"
+                                        checked={isDoctor}
+                                        onChange={handlePHMCRank('doctor')}
+                                        inline
+                                    />
+                                    <Form.Check
+                                        type="radio"
+                                        id="nurseRank"
+                                        label="   Nurse"
+                                        checked={isNurse}
+                                        onChange={handlePHMCRank('nurse')}
+                                        inline
+                                    />
+                                    <Form.Check
+                                        type="radio"
+                                        id="psychRank"
+                                        label="   Psychiatrist"
+                                        checked={isPsych}
+                                        onChange={handlePHMCRank('psych')}
+                                        inline
+                                    /> 
+                                                                        <Form.Check
+                                        type="radio"
+                                        id="surgeonRank"
+                                        label="   Surgeon"
+                                        checked={isSurgeon}
+                                        onChange={handlePHMCRank('surgeon')}
+                                        inline
+                                    /> 
+
+                                    </div>
+                                <Form.Label></Form.Label>
+
+ 
                                 <Select
                                     name="phmcEmployee"
                                     value={phmcGroupedOptions
                                         .flatMap(group => group.options)
                                         .find(option => option.value === formData.phmcEmployee) || null}
                                     onChange={(selectedOption) => {
-                                        handleChange({
-                                            target: {
-                                                name: 'phmcEmployee',
-                                                value: selectedOption?.value || ''
-                                            }
-                                        });
-                                        if (selectedOption) {
-                                            setFormData(prev => ({
-                                                ...prev,
-                                                phmcSignature: selectedOption.signature || ''
-                                            }));
-                                        } else {
-                                            setFormData(prev => ({
-                                                ...prev,
-                                                phmcSignature: ''
-                                            }));
-                                        }
+                                        // eslint-disable-next-line no-unused-vars
+                                        const lastName = selectedOption ? selectedOption.lastName : '';
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            phmcEmployee: selectedOption ? selectedOption.value : '',
+                                            lastName: selectedOption ? selectedOption.lastName : '' // Use lastName from the selected option
+                                        }));
                                     }}
                                     options={phmcGroupedOptions}
                                     isClearable
-                                    placeholder="Search or select doctor..."
-                                    className="form-control"  // Match Bootstrap styling
+                                    placeholder="Search or select Surgeon..."
+                                    className="form-control"
                                     styles={{
                                         control: (base) => ({
                                             ...base,
                                             backgroundColor: '#16202c',
                                             color: '#eeeeeeb0',
-                                            borderColor: '#6c757d',
+                                            borderColor: '#30363d',
                                             '&:hover': {
-                                                borderColor: '#eeeeeeb0'
+                                                borderColor: '#30363d'
                                             }
                                         }),
                                         menu: (base) => ({
@@ -4962,188 +5495,241 @@ ${patientName}
                                         placeholder: (base) => ({
                                             ...base,
                                             color: '#eeeeeeb0'
-                                        }),
-                                        group: (base) => ({
-                                            ...base,
-                                            paddingTop: 8,
-                                            paddingBottom: 8
-                                        }),
-                                        groupHeading: (base) => ({
-                                            ...base,
-                                            color: '#6c757d',
-                                            fontWeight: 600,
-                                            textTransform: 'uppercase',
-                                            fontSize: '0.75rem',
-                                            marginBottom: 4
                                         })
                                     }}
                                 />
                                 <Form.Label></Form.Label>
-                                <Form.Control
-                                    type="text"
-                                    name="phmcSignature"
-                                    value={formData.phmcSignature}
-                                    onChange={handleChange}
-                                    placeholder="Employee Signature"
-                                    required
-                                />
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Additional Staff:</Form.Label>
+
+                                <Select
+                                    isMulti
+                                    name="extraStaff"
+                                    options={phmcGroupedOptions.map(group => ({
+                                        label: group.label,
+                                        options: group.options.map(option => ({ value: option.value, label: option.label }))
+                                    }))}
+                                    value={Array.isArray(formData.extraStaff)
+                                        ? formData.extraStaff.map(staff => ({ value: staff, label: staff }))
+                                        : []}
+                                    onChange={(selectedOptions) => {
+                                        const selectedValues = selectedOptions ? selectedOptions.map(option => option.value) : [];
+                                        handleChange({
+                                            target: {
+                                                name: 'extraStaff',
+                                                value: selectedValues
+                                            }
+                                        });
+                                    }}
+                                    className="form-control"
+                                    placeholder="Enter staff present (( Leave empty if none)  )) "
+                                    styles={{                                        
+                                        control: (base) => ({
+                                    ...base,
+                                    minHeight: '38px',
+                                    backgroundColor: '#16202c',
+                                    color: '#eeeeeeb0',
+                                    borderColor: '#6c757d',
+                                    '&:hover': {
+                                        borderColor: '#eeeeeeb0'
+                                    }
+                                }),
+                                menu: (base) => ({
+                                    ...base,
+                                    backgroundColor: '#16202c',
+                                    zIndex: 1000,
+                                    border: '1px solid #6c757d',
+                                    borderRadius: '0.375rem'
+                                }),
+                                option: (base, state) => ({
+                                    ...base,
+                                    backgroundColor: state.isFocused ? '#30363d' : '#16202c',
+                                    color: '#eeeeeeb0',
+                                    padding: '0.5rem 1rem',
+                                    '&:hover': {
+                                        backgroundColor: '#30363d'
+                                    }
+                                }),
+                                multiValue: (base) => ({
+                                    ...base,
+                                    backgroundColor: '#30363d',
+                                    color: '#eeeeeeb0'
+                                }),
+                                multiValueLabel: (base) => ({
+                                    ...base,
+                                    color: '#eeeeeeb0'
+                                }),
+                                multiValueRemove: (base) => ({
+                                    ...base,
+                                    color: '#6c757d',
+                                    '&:hover': {
+                                        backgroundColor: '#dc3545',
+                                        color: '#fff'
+                                    }
+                                }),
+                                input: (base) => ({
+                                    ...base,
+                                    color: '#eeeeeeb0'
+                                }),
+                                placeholder: (base) => ({
+                                    ...base,
+                                    color: '#6c757d'
+                                })
+                            }}
+                        />                                
+                                <Form.Label></Form.Label>
+                                    <Form.Label>Surgical Inquiry   </Form.Label>
                                     <Form.Control
                                         type="text"
-                                        name="extraStaff"
-                                        value={formData.extraStaff}
-                                        onChange={handleChange}
-                                        required
-                                        className="form-control"
-                                        placeholder="Enter staff present (( Leave N/A if NPCed )) "
-                                    />
-                                </Form.Group>
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Patient Name</Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        name="patientName"
-                                        value={formData.patientName}
-                                        onChange={handleChange}
-                                        required
-                                        className="form-control"
-                                        placeholder="Eden Sawyer"
-                                    />
-                                </Form.Group>
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Medical Record Number:</Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        name="patientMedicalRecord"
-                                        value={formData.patientMedicalRecord}
-                                        onChange={handleChange}
-                                        required
-                                        className="form-control"
-                                        placeholder="Enter patient's medical record number"
-                                    />
-                                </Form.Group>
-                                <h5>Section 2: Surgical Inquiry</h5>
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Did the patient or their family consent, or did they have a life threatening or severe injury that requires immediate surgical intervention?</Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        name="patientConsent"
-                                        value={formData.patientConsent}
-                                        onChange={handleChange}
-                                        required
-                                        className="form-control"
-                                        placeholder=""
-                                    />
-                                </Form.Group>
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Did any medical complications occur during the surgery</Form.Label>
-                                    <Form.Select
-                                        name="surgeryComplications"
-                                        value={formData.surgeryComplications}
-                                        onChange={handleChange}
-                                        required
-                                        className="form-select"
-                                    >
-                                        <option value="">Select...</option>
-                                        <option value="Yes">Yes</option>
-                                        <option value="No">No</option>
-                                    </Form.Select>
-                                </Form.Group>
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Was the procedure completed successfully, and did it result in the desired clinical outcome?</Form.Label>
-                                    <Form.Select
                                         name="surgeryProcedures"
                                         value={formData.surgeryProcedures}
                                         onChange={handleChange}
+                                        placeholder="Name of the procedure	"
                                         required
-                                        className="form-control"
-                                    >
-                                        <option value="">Select...</option>
-                                        <option value="Yes">Yes</option>
-                                        <option value="No">No</option>
-                                    </Form.Select>
-                                </Form.Group>
-                                <h5>Section 3: Post-Anesthesia Report</h5>
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Known Current Medication:</Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        name="patientMedicine"
-                                        value={formData.patientMedicine}
-                                        onChange={handleChange}
-                                        required
-                                        className="form-control"
-                                        placeholder="Enter patient's current medication"
                                     />
-                                </Form.Group>
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Known Allergies:</Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        name="patientAllergies"
-                                        value={formData.patientAllergies}
-                                        onChange={handleChange}
-                                        required
-                                        className="form-control"
-                                        placeholder="Enter patient's known allergies"
-                                    />
-                                </Form.Group>
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Type & Dosage of Anesthesia Administered:</Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        name="drugType"
-                                        value={formData.drugType}
-                                        onChange={handleChange}
-                                        required
-                                        className="form-control"
-                                        placeholder="Enter patient's known allergies"
-                                    />
-                                </Form.Group>
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Post-Operative Anesthesia Details:</Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        name="postDrugtype"
-                                        value={formData.postDrugtype}
-                                        onChange={handleChange}
-                                        required
-                                        className="form-control"
-                                        placeholder="Post Operative Anesthesia Details"
-                                    />
-                                </Form.Group>
-                                <h5>Section 4: Summary of Surgical Procedure Performed</h5>
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Summerize Surgical Procedure:</Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        name="surgicalSummery"
-                                        value={formData.surgicalSummery}
-                                        onChange={handleChange}
-                                        required
-                                        className="form-control"
-                                        placeholder="Summary of surgical procedure performed"
-                                        rows="4"
-                                    />
-                                </Form.Group>
-                                <h5>SECTION 5: DATE OF SURGERY</h5>
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Date of Surgery:</Form.Label>
-                                    <Form.Control
-                                        type="date"
-                                        name="surgeryTime"
-                                        value={formData.surgeryTime}
-                                        onChange={handleChange}
-                                        required
-                                        className="form-control"
-                                    />
-                                </Form.Group>
 
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Select
+                                    name="patientConsentOption"
+                                    value={formData.patientConsentOption}
+                                    onChange={(e) => {
+                                        const selectedType = e.target.value;
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            patientConsentOption: selectedType,
+                                            patientConsentYes: selectedType === 'Yes' ? prev.patientConsentYes : '',
+                                            patientConsentNo: selectedType === 'No' ? prev.patientConsentNo : '',
+                                        }));
+                                    }}
+                                    required
+                                    className={`form-control ${!formData.patientConsentOption ? 'is-invalid' : ''}`}
+                                >
+                                    <option value="" disabled>Patient Consented?</option>
+                                    {patientConsent.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.value}</option>
+                                    ))}
+                                </Form.Select>        
+                                <Form.Select
+                                    name="patientComplicationOptions"
+                                    value={formData.patientComplicationOptions}
+                                    onChange={(e) => {
+                                        const selectedType = e.target.value;
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            patientComplicationOptions: selectedType,
+                                            patientComplicationsYes: selectedType === 'Yes' ? prev.patientComplicationsYes : '',
+                                            patientComplicationsNo: selectedType === 'No' ? prev.patientComplicationsNo : '',
+                                        }));
+                                    }}
+                                    required
+                                    className={`form-control ${!formData.patientComplicationOptions ? 'is-invalid' : ''}`}
+                                >
+                                    <option value="" disabled>Surgery Complications?</option>
+                                    {complications.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.value}</option>
+                                    ))}
+                                </Form.Select>
+                                <Form.Select
+                                    name="procedureGoodOptions"
+                                    value={formData.procedureGoodOptions}
+                                    onChange={(e) => {
+                                        const selectedType = e.target.value;
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            procedureGoodOptions: selectedType,
+                                            procedureGoodYes: selectedType === 'Yes' ? prev.procedureGoodYes : '',
+                                            procedureGoodNo: selectedType === 'No' ? prev.procedureGoodNo : '',
+                                        }));
+                                    }}
+                                    required
+                                    className={`form-control ${!formData.procedureGoodOptions ? 'is-invalid' : ''}`}
+                                >
+                                    <option value="" disabled>Procedure Good?</option>
+                                    {procedureGood.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.value}</option>
+                                    ))}
+                                </Form.Select>
+                                </div>
+
+                                    <Form.Label> Post-Anesthesia Report</Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Control
+                                        as="textarea"
+                                        name="patientSummaryConsultation"
+                                        value={formData.patientSummaryConsultation}
+                                        onChange={handleChange}
+                                        placeholder="Summary of Consultation"
+                                        rows="4"
+                                        required
+                                        className={`form-control ${!formData.patientSummaryConsultation ? 'is-invalid' : ''}`}
+                                    />
+                                    <Form.Control
+                                        as="textarea"
+                                        name="patientAddress"
+                                        value={formData.patientAddress}
+                                        onChange={handleChange}
+                                        rows="4"
+                                        required
+                                        className={`form-control ${!formData.patientAddress ? 'is-invalid' : ''}`}
+                                        placeholder="Post-Operative Anesthesia Details	"
+                                    /></div>
+                                    <Form.Label> Summary of Surgical Procedure</Form.Label>
+                                    <Form.Control
+                                        as="textarea"
+                                        name="patientSummary"
+                                        value={formData.patientSummary}
+                                        onChange={handleChange}
+                                        rows="4"
+                                        required
+                                        className={`form-control ${!formData.patientSummary ? 'is-invalid' : ''}`}
+                                        placeholder="Summary of Surgical Procedure	"
+                                    />
                             </>
                         ) : bbCodeVersion === 6 ? ( // generatePhysEvalInternalMed
                             <>
                                 <p>The FORM below must be used and added to the file for each medical appointment, following the others.</p>
+                                <Form.Label>Patient ID | Date:</Form.Label>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+
+                                <Form.Control
+                                    type="text"
+                                    name="patientID"
+                                    value={formData.patientID}
+                                    onChange={handleChange}
+                                    placeholder="Patient ID"
+                                    required
+                                    className="form-control"
+                                />
+
+                                <Form.Control
+                                    type="date"
+                                    name="date"
+                                    value={formData.date}
+                                    onChange={handleChange}
+                                    required
+                                    className="form-control"
+                                    
+                                /> </div>
+
+                                <div className="radio-inline-container">
+
+                                    <span className="radio-text">Role:</span>
+                                    <Form.Check
+                                        type="radio"
+                                        id="doctorRank"
+                                        label="   Doctor"
+                                        checked={isDoctor}
+                                        onChange={handlePHMCRank('doctor')}
+                                        inline
+                                    />
+                                    <Form.Check
+                                        type="radio"
+                                        id="nurseRank"
+                                        label="   Nurse"
+                                        checked={isNurse}
+                                        onChange={handlePHMCRank('nurse')}
+                                        inline
+                                    />
+                                      </div>
+                                <Form.Label></Form.Label>
                                 <Form.Label>Employee Credentials:</Form.Label>
 
                                 <Select
@@ -5152,36 +5738,26 @@ ${patientName}
                                         .flatMap(group => group.options)
                                         .find(option => option.value === formData.phmcEmployee) || null}
                                     onChange={(selectedOption) => {
-                                        handleChange({
-                                            target: {
-                                                name: 'phmcEmployee',
-                                                value: selectedOption?.value || ''
-                                            }
-                                        });
-                                        if (selectedOption) {
-                                            setFormData(prev => ({
-                                                ...prev,
-                                                phmcSignature: selectedOption.signature || ''
-                                            }));
-                                        } else {
-                                            setFormData(prev => ({
-                                                ...prev,
-                                                phmcSignature: ''
-                                            }));
-                                        }
+                                        // eslint-disable-next-line no-unused-vars
+                                        const lastName = selectedOption ? selectedOption.lastName : '';
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            phmcEmployee: selectedOption ? selectedOption.value : '',
+                                            lastName: selectedOption ? selectedOption.lastName : '' // Use lastName from the selected option
+                                        }));
                                     }}
                                     options={phmcGroupedOptions}
                                     isClearable
                                     placeholder="Search or select doctor..."
-                                    className="form-control"  // Match Bootstrap styling
+                                    className="form-control"
                                     styles={{
                                         control: (base) => ({
                                             ...base,
                                             backgroundColor: '#16202c',
                                             color: '#eeeeeeb0',
-                                            borderColor: '#6c757d',
+                                            borderColor: '#30363d',
                                             '&:hover': {
-                                                borderColor: '#eeeeeeb0'
+                                                borderColor: '#30363d'
                                             }
                                         }),
                                         menu: (base) => ({
@@ -5205,88 +5781,15 @@ ${patientName}
                                         placeholder: (base) => ({
                                             ...base,
                                             color: '#eeeeeeb0'
-                                        }),
-                                        group: (base) => ({
-                                            ...base,
-                                            paddingTop: 8,
-                                            paddingBottom: 8
-                                        }),
-                                        groupHeading: (base) => ({
-                                            ...base,
-                                            color: '#6c757d',
-                                            fontWeight: 600,
-                                            textTransform: 'uppercase',
-                                            fontSize: '0.75rem',
-                                            marginBottom: 4
                                         })
                                     }}
                                 />
                                 <Form.Label></Form.Label>
-                                <Form.Control
-                                    type="text"
-                                    name="phmcSignature"
-                                    value={formData.phmcSignature}
-                                    onChange={handleChange}
-                                    placeholder="Employee Signature"
-                                    required
-                                />
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Patient Information</Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        name="patientName"
-                                        value={formData.patientName}
-                                        onChange={handleChange}
-                                        placeholder="Patient Name"
-                                        required
-                                    />
-                                    <Form.Control
-                                        type="text"
-                                        name="patientGender"
-                                        value={formData.patientGender}
-                                        onChange={handleChange}
-                                        placeholder="Gender"
-                                        required
-                                    />
-                                    <Form.Text className="text-muted">
-                                        Patient's date of birth
-                                    </Form.Text>
-                                    <Form.Control
-                                        type="date"
-                                        name="patientDateofBirth"
-                                        value={formData.patientDateofBirth}
-                                        onChange={handleChange}
-                                        placeholder="Date of Birth"
-                                        required
-                                    />
-                                    <Form.Control
-                                        type="text"
-                                        name="patientRace"
-                                        value={formData.patientRace}
-                                        onChange={handleChange}
-                                        placeholder="Patient Race"
-                                        required
-                                    />
 
-                                    <Form.Control
-                                        type="tel"
-                                        name="patientPH"
-                                        value={formData.patientPH}
-                                        onChange={handleChange}
-                                        placeholder="Phone Number"
-                                    />
-                                    <Form.Control
-                                        type="text"
-                                        name="patientDiscord"
-                                        value={formData.patientDiscord}
-                                        onChange={handleChange}
-                                        placeholder="Patient Email ((And Discord))"
-                                    />
 
-                                </Form.Group>
+                                    <Form.Label>Patient Measurements</Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
 
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Measurements</Form.Label>
                                     <Form.Control
                                         type="text"
                                         name="patientHeight"
@@ -5301,125 +5804,677 @@ ${patientName}
                                         onChange={handleChange}
                                         placeholder="Weight"
                                     />
-                                    <Form.Control
-                                        type="text"
-                                        name="patientBMI"
-                                        value={formData.patientBMI}
-                                        onChange={handleChange}
-                                        placeholder="BMI"
-                                    />
-                                </Form.Group>
 
-                                <Form.Group className="mb-3">
+                                    <Form.Select
+                                        name="BodyMassIndex"
+                                        value={formData.BodyMassIndex}
+                                        onChange={(e) => {
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                BodyMassIndex: e.target.value
+                                            }));
+                                        }}
+                                        className="form-control"
+                                    >
+                                        <option value="" disabled>Body Mass Index</option>
+                                        {BodyMassIndex.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </Form.Select></div>
+
+
                                     <Form.Label>Vitals</Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        name="patientTemperature"
-                                        value={formData.patientTemperature}
-                                        onChange={handleChange}
-                                        placeholder="Temperature"
-                                    />
-                                    <Form.Control
-                                        type="text"
-                                        name="patientBPM"
-                                        value={formData.patientBPM}
-                                        onChange={handleChange}
-                                        placeholder="Heart Rate (BPM)"
-                                    />
-                                    <Form.Control
-                                        type="text"
-                                        name="patientpulse"
-                                        value={formData.patientpulse}
-                                        onChange={handleChange}
-                                        placeholder="Respiration Rate"
-                                    />
-                                    <Form.Control
-                                        type="text"
-                                        name="patientOxi"
-                                        value={formData.patientOxi}
-                                        onChange={handleChange}
-                                        placeholder="Oxygen Saturation (%)"
-                                    />
-                                    <Form.Control
-                                        type="text"
-                                        name="patientBP"
-                                        value={formData.patientBP}
-                                        onChange={handleChange}
-                                        placeholder="Blood Pressure (MMHG)"
-                                    />
-                                </Form.Group>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Select
+                                        name="vitals"
+                                        value={formData.vitals}
+                                        onChange={(e) => {
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                vitals: e.target.value
+                                            }));
+                                        }}
+                                        className="form-control"
+                                    >
+                                        <option value="" disabled>Select Temperature</option>
+                                        {vitals.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </Form.Select>
+                                    <Form.Select
+                                        name="heartRate"
+                                        value={formData.heartRate}
+                                        onChange={(e) => {
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                heartRate: e.target.value
+                                            }));
+                                        }}
+                                        className="form-control"
+                                    >
+                                        <option value="" disabled>Select Heart Rate</option>
+                                        {heartRate.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </Form.Select>
+                                    <Form.Select
+                                        name="breathing"
+                                        value={formData.breathing}
+                                        onChange={(e) => {
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                breathing: e.target.value
+                                            }));
+                                        }}
+                                        className="form-control"
+                                    >
+                                        <option value="" disabled>breathing</option>
+                                        {breathing.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </Form.Select>
+                                    <Form.Select
+                                        name="bloodPressure"
+                                        value={formData.bloodPressure}
+                                        onChange={(e) => {
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                bloodPressure: e.target.value
+                                            }));
+                                        }}
+                                        className="form-control"
+                                    >
+                                        <option value="" disabled>Blood Pressure</option>
+                                        {bloodPressure.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </Form.Select></div>
 
                                 <Form.Group className="mb-3">
-                                    <Form.Label>Medical History</Form.Label>
+                                    <Form.Label>Anamnesis</Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Select
+                                        name="patientJob"
+                                        value={formData.patientJob}
+                                        onChange={(e) => {
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                patientJob: e.target.value
+                                            }));
+                                        }}
+                                        className="form-control"
+                                    >
+                                        <option value="" disabled>Patient Job</option>
+                                        {patientJob.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </Form.Select>
+                                    <Form.Select
+                                        name="patientJobRisks"
+                                        value={formData.patientJobRisks}
+                                        onChange={(e) => {
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                patientJobRisks: e.target.value
+                                            }));
+                                        }}
+                                        className="form-control"
+                                    >
+                                        <option value="" disabled>Job Risks (Optional) </option>
+                                        {patientJobRisks.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </Form.Select>
+                                    <Form.Select
+                                        name="patientAllergiesRisk"
+                                        value={formData.patientAllergiesRisk}
+                                        onChange={(e) => {
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                patientAllergiesRisk: e.target.value
+                                            }));
+                                        }}
+                                        className="form-control"
+                                    >
+                                        <option value="" disabled>patientAllergiesRisk</option>
+                                        {patientAllergiesRisk.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </Form.Select>
+</div>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    {formData.patientJob === 'Yes' && (
                                     <Form.Control
-                                        type="text"
-                                        name="patientCareer"
-                                        value={formData.patientCareer}
-                                        onChange={handleChange}
-                                        placeholder="Previous Occupation"
+                                    type="text"
+                                    name="patientCareer"
+                                    value={formData.patientCareer}
+                                    onChange={handleChange}
+                                    placeholder="Patient Job"
+                                    required
+                                    className="form-control"
                                     />
+                                )}
+                                    {formData.patientJob === 'No' && (
                                     <Form.Control
-                                        as="textarea"
-                                        name="patientImpairments"
-                                        value={formData.patientImpairments}
-                                        onChange={handleChange}
-                                        placeholder="Medical Conditions/Impairments"
-                                        rows="3"
+                                    type="text"
+                                    name="patientCareer"
+                                    value={formData.patientCareer}
+                                    onChange={handleChange}
+                                    placeholder="Patient Job No"
+                                    required
+                                    className="form-control"
                                     />
+                                )} 
+                                    {formData.patientJobRisks === 'Yes' && (
                                     <Form.Control
-                                        as="textarea"
-                                        name="patientMedicine"
-                                        value={formData.patientMedicine}
-                                        onChange={handleChange}
-                                        placeholder="Patient Medicine (Regular Basis)"
-                                        rows="2"
+                                    type="text"
+                                    name="careerRisks"
+                                    value={formData.careerRisks}
+                                    onChange={handleChange}
+                                    placeholder="Patient Job Risks"
+                                    required
+                                    className="form-control"
                                     />
+                                )} 
+                                  {formData.patientAllergiesRisk === 'Yes' && (
                                     <Form.Control
-                                        as="textarea"
-                                        name="patientAllergies"
-                                        value={formData.patientAllergies}
-                                        onChange={handleChange}
-                                        placeholder="Known Allergies"
-                                        rows="2"
+                                    type="text"
+                                    name="patientAllergies"
+                                    value={formData.patientAllergies}
+                                    onChange={handleChange}
+                                    placeholder="Patient Job Risks"
+                                    required
+                                    className="form-control"
                                     />
+                                )} 
 
-                                    <Form.Control
-                                        as="textarea"
-                                        name="patientPastDiseases"
-                                        value={formData.patientPastDiseases}
-                                        onChange={handleChange}
-                                        placeholder="Family Medical History"
-                                        rows="3"
-                                    />
-                                </Form.Group>
+                                </div>
+                                
+                                <div style={{ display: 'flex', gap: '10px' }}>
 
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Assessment</Form.Label>
+                                <Form.Select
+                                        name="patientMedicineRegular"
+                                        value={formData.patientMedicineRegular}
+                                        onChange={(e) => {
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                patientMedicineRegular: e.target.value
+                                            }));
+                                        }}
+                                        className="form-control"
+                                    >
+                                        <option value="" disabled>patientMedicineRegular</option>
+                                        {patientMedicineRegular.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </Form.Select>
+                                    <Form.Select
+                                        name="patientOther"
+                                        value={formData.patientOther}
+                                        onChange={(e) => {
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                patientOther: e.target.value
+                                            }));
+                                        }}
+                                        className="form-control"
+                                    >
+                                        <option value="" disabled>patientOther</option>
+                                        {patientOther.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </Form.Select>
+                                    <Form.Select
+                                        name="predisposition"
+                                        value={formData.predisposition}
+                                        onChange={(e) => {
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                predisposition: e.target.value
+                                            }));
+                                        }}
+                                        className="form-control"
+                                    >
+                                        <option value="" disabled>predisposition</option>
+                                        {predisposition.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </Form.Select></div>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+
+                                    {formData.patientMedicineRegular === 'Yes' && (
                                     <Form.Control
+                                    type="text"
+                                    name="patientMedicine"
+                                    value={formData.patientMedicine}
+                                    onChange={handleChange}
+                                    placeholder="patientMedicine"
+                                    required
+                                    className="form-control"
+                                    />
+                                )} 
+                                    {formData.patientOther === 'Yes' && (
+                                    <Form.Control
+                                    type="text"
+                                    name="patientImpairments"
+                                    value={formData.patientImpairments}
+                                    onChange={handleChange}
+                                    placeholder="patientImpairments"
+                                    required
+                                    className="form-control"
+                                    />
+                                )} </div>
+                                        <Form.Control
                                         as="textarea"
-                                        name="patientAssessment"
-                                        value={formData.patientAssessment}
+                                        name="patientSummary"
+                                        value={formData.patientSummary}
                                         onChange={handleChange}
-                                        placeholder="Assessment Summary"
                                         rows="4"
-                                    />
-                                </Form.Group>
-
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Examination Date</Form.Label>
-                                    <Form.Control
-                                        type="datetime-local"
-                                        name="appointmentDate"
-                                        value={formData.appointmentDate}
-                                        onChange={handleChange}
                                         required
+                                        className={`form-control ${!formData.patientSummary ? 'is-invalid' : ''}`}
+                                        placeholder="Assessment Statement"
                                     />
                                 </Form.Group>
-
                             </>
+                                                    ) : bbCodeVersion === 7 ? ( // generatePhysEvalInternalMed
+                                                        <>
+                                                            <p>The FORM below must be used and added to the file for each medical appointment, following the others.</p>
+                                                            <Form.Label>Patient ID | Date:</Form.Label>
+                                                            <div style={{ display: 'flex', gap: '10px' }}>
+                            
+                                                            <Form.Control
+                                                                type="text"
+                                                                name="patientID"
+                                                                value={formData.patientID}
+                                                                onChange={handleChange}
+                                                                placeholder="Patient ID"
+                                                                required
+                                                                className="form-control"
+                                                            />
+                            
+                                                            <Form.Control
+                                                                type="date"
+                                                                name="date"
+                                                                value={formData.date}
+                                                                onChange={handleChange}
+                                                                required
+                                                                className="form-control"
+                                                                
+                                                            /> </div>
+                            
+                                                            <div className="radio-inline-container">
+                            
+                                                                <span className="radio-text">Role:</span>
+                                                                <Form.Check
+                                                                    type="radio"
+                                                                    id="doctorRank"
+                                                                    label="   Doctor"
+                                                                    checked={isDoctor}
+                                                                    onChange={handlePHMCRank('doctor')}
+                                                                    inline
+                                                                />
+                                                                <Form.Check
+                                                                    type="radio"
+                                                                    id="nurseRank"
+                                                                    label="   Nurse"
+                                                                    checked={isNurse}
+                                                                    onChange={handlePHMCRank('nurse')}
+                                                                    inline
+                                                                />
+                                                                  </div>
+                                                            <Form.Label></Form.Label>
+                                                            <Form.Label>Employee Credentials:</Form.Label>
+                            
+                                                            <Select
+                                                                name="phmcEmployee"
+                                                                value={phmcGroupedOptions
+                                                                    .flatMap(group => group.options)
+                                                                    .find(option => option.value === formData.phmcEmployee) || null}
+                                                                onChange={(selectedOption) => {
+                                                                    // eslint-disable-next-line no-unused-vars
+                                                                    const lastName = selectedOption ? selectedOption.lastName : '';
+                                                                    setFormData(prev => ({
+                                                                        ...prev,
+                                                                        phmcEmployee: selectedOption ? selectedOption.value : '',
+                                                                        lastName: selectedOption ? selectedOption.lastName : '' // Use lastName from the selected option
+                                                                    }));
+                                                                }}
+                                                                options={phmcGroupedOptions}
+                                                                isClearable
+                                                                placeholder="Search or select doctor..."
+                                                                className="form-control"
+                                                                styles={{
+                                                                    control: (base) => ({
+                                                                        ...base,
+                                                                        backgroundColor: '#16202c',
+                                                                        color: '#eeeeeeb0',
+                                                                        borderColor: '#30363d',
+                                                                        '&:hover': {
+                                                                            borderColor: '#30363d'
+                                                                        }
+                                                                    }),
+                                                                    menu: (base) => ({
+                                                                        ...base,
+                                                                        backgroundColor: '#16202c',
+                                                                        zIndex: 1000
+                                                                    }),
+                                                                    option: (base, state) => ({
+                                                                        ...base,
+                                                                        backgroundColor: state.isFocused ? 'Grey' : '#16202c',
+                                                                        color: '#eeeeeeb0'
+                                                                    }),
+                                                                    singleValue: (base) => ({
+                                                                        ...base,
+                                                                        color: '#eeeeeeb0'
+                                                                    }),
+                                                                    input: (base) => ({
+                                                                        ...base,
+                                                                        color: '#eeeeeeb0'
+                                                                    }),
+                                                                    placeholder: (base) => ({
+                                                                        ...base,
+                                                                        color: '#eeeeeeb0'
+                                                                    })
+                                                                }}
+                                                            />
+                                                            <Form.Label></Form.Label>
+                            
+                            
+                                                                <Form.Label>Patient Measurements</Form.Label>
+                                                                <div style={{ display: 'flex', gap: '10px' }}>
+                            
+                                                                <Form.Control
+                                                                    type="text"
+                                                                    name="patientHeight"
+                                                                    value={formData.patientHeight}
+                                                                    onChange={handleChange}
+                                                                    placeholder="Height"
+                                                                />
+                                                                <Form.Control
+                                                                    type="text"
+                                                                    name="patientWeight"
+                                                                    value={formData.patientWeight}
+                                                                    onChange={handleChange}
+                                                                    placeholder="Weight"
+                                                                />
+                            
+                                                                <Form.Select
+                                                                    name="BodyMassIndex"
+                                                                    value={formData.BodyMassIndex}
+                                                                    onChange={(e) => {
+                                                                        setFormData(prev => ({
+                                                                            ...prev,
+                                                                            BodyMassIndex: e.target.value
+                                                                        }));
+                                                                    }}
+                                                                    className="form-control"
+                                                                >
+                                                                    <option value="" disabled>Body Mass Index</option>
+                                                                    {BodyMassIndex.map((option) => (
+                                                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                                                    ))}
+                                                                </Form.Select></div>
+                            
+                            
+                                                                <Form.Label>Vitals</Form.Label>
+                                                                <div style={{ display: 'flex', gap: '10px' }}>
+                                                                <Form.Select
+                                                                    name="vitals"
+                                                                    value={formData.vitals}
+                                                                    onChange={(e) => {
+                                                                        setFormData(prev => ({
+                                                                            ...prev,
+                                                                            vitals: e.target.value
+                                                                        }));
+                                                                    }}
+                                                                    className="form-control"
+                                                                >
+                                                                    <option value="" disabled>Select Temperature</option>
+                                                                    {vitals.map((option) => (
+                                                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                                                    ))}
+                                                                </Form.Select>
+                                                                <Form.Select
+                                                                    name="heartRate"
+                                                                    value={formData.heartRate}
+                                                                    onChange={(e) => {
+                                                                        setFormData(prev => ({
+                                                                            ...prev,
+                                                                            heartRate: e.target.value
+                                                                        }));
+                                                                    }}
+                                                                    className="form-control"
+                                                                >
+                                                                    <option value="" disabled>Select Heart Rate</option>
+                                                                    {heartRate.map((option) => (
+                                                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                                                    ))}
+                                                                </Form.Select>
+                                                                <Form.Select
+                                                                    name="breathing"
+                                                                    value={formData.breathing}
+                                                                    onChange={(e) => {
+                                                                        setFormData(prev => ({
+                                                                            ...prev,
+                                                                            breathing: e.target.value
+                                                                        }));
+                                                                    }}
+                                                                    className="form-control"
+                                                                >
+                                                                    <option value="" disabled>breathing</option>
+                                                                    {breathing.map((option) => (
+                                                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                                                    ))}
+                                                                </Form.Select>
+                                                                <Form.Select
+                                                                    name="bloodPressure"
+                                                                    value={formData.bloodPressure}
+                                                                    onChange={(e) => {
+                                                                        setFormData(prev => ({
+                                                                            ...prev,
+                                                                            bloodPressure: e.target.value
+                                                                        }));
+                                                                    }}
+                                                                    className="form-control"
+                                                                >
+                                                                    <option value="" disabled>Blood Pressure</option>
+                                                                    {bloodPressure.map((option) => (
+                                                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                                                    ))}
+                                                                </Form.Select></div>
+                            
+                                                            <Form.Group className="mb-3">
+                                                                <Form.Label>Anamnesis</Form.Label>
+                                                                <div style={{ display: 'flex', gap: '10px' }}>
+                                                                <Form.Select
+                                                                    name="patientJob"
+                                                                    value={formData.patientJob}
+                                                                    onChange={(e) => {
+                                                                        setFormData(prev => ({
+                                                                            ...prev,
+                                                                            patientJob: e.target.value
+                                                                        }));
+                                                                    }}
+                                                                    className="form-control"
+                                                                >
+                                                                    <option value="" disabled>Patient Job</option>
+                                                                    {patientJob.map((option) => (
+                                                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                                                    ))}
+                                                                </Form.Select>
+                                                                <Form.Select
+                                                                    name="patientJobRisks"
+                                                                    value={formData.patientJobRisks}
+                                                                    onChange={(e) => {
+                                                                        setFormData(prev => ({
+                                                                            ...prev,
+                                                                            patientJobRisks: e.target.value
+                                                                        }));
+                                                                    }}
+                                                                    className="form-control"
+                                                                >
+                                                                    <option value="" disabled>Job Risks (Optional) </option>
+                                                                    {patientJobRisks.map((option) => (
+                                                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                                                    ))}
+                                                                </Form.Select>
+                                                                <Form.Select
+                                                                    name="patientAllergiesRisk"
+                                                                    value={formData.patientAllergiesRisk}
+                                                                    onChange={(e) => {
+                                                                        setFormData(prev => ({
+                                                                            ...prev,
+                                                                            patientAllergiesRisk: e.target.value
+                                                                        }));
+                                                                    }}
+                                                                    className="form-control"
+                                                                >
+                                                                    <option value="" disabled>patientAllergiesRisk</option>
+                                                                    {patientAllergiesRisk.map((option) => (
+                                                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                                                    ))}
+                                                                </Form.Select>
+                            </div>
+                                                                <div style={{ display: 'flex', gap: '10px' }}>
+                                                                {formData.patientJob === 'Yes' && (
+                                                                <Form.Control
+                                                                type="text"
+                                                                name="patientCareer"
+                                                                value={formData.patientCareer}
+                                                                onChange={handleChange}
+                                                                placeholder="Patient Job"
+                                                                required
+                                                                className="form-control"
+                                                                />
+                                                            )}
+                                                                {formData.patientJob === 'No' && (
+                                                                <Form.Control
+                                                                type="text"
+                                                                name="patientCareer"
+                                                                value={formData.patientCareer}
+                                                                onChange={handleChange}
+                                                                placeholder="Patient Job No"
+                                                                required
+                                                                className="form-control"
+                                                                />
+                                                            )} 
+                                                                {formData.patientJobRisks === 'Yes' && (
+                                                                <Form.Control
+                                                                type="text"
+                                                                name="careerRisks"
+                                                                value={formData.careerRisks}
+                                                                onChange={handleChange}
+                                                                placeholder="Patient Job Risks"
+                                                                required
+                                                                className="form-control"
+                                                                />
+                                                            )} 
+                                                              {formData.patientAllergiesRisk === 'Yes' && (
+                                                                <Form.Control
+                                                                type="text"
+                                                                name="patientAllergies"
+                                                                value={formData.patientAllergies}
+                                                                onChange={handleChange}
+                                                                placeholder="Patient Job Risks"
+                                                                required
+                                                                className="form-control"
+                                                                />
+                                                            )} 
+                            
+                                                            </div>
+                                                            
+                                                            <div style={{ display: 'flex', gap: '10px' }}>
+                            
+                                                            <Form.Select
+                                                                    name="patientMedicineRegular"
+                                                                    value={formData.patientMedicineRegular}
+                                                                    onChange={(e) => {
+                                                                        setFormData(prev => ({
+                                                                            ...prev,
+                                                                            patientMedicineRegular: e.target.value
+                                                                        }));
+                                                                    }}
+                                                                    className="form-control"
+                                                                >
+                                                                    <option value="" disabled>patientMedicineRegular</option>
+                                                                    {patientMedicineRegular.map((option) => (
+                                                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                                                    ))}
+                                                                </Form.Select>
+                                                                <Form.Select
+                                                                    name="patientOther"
+                                                                    value={formData.patientOther}
+                                                                    onChange={(e) => {
+                                                                        setFormData(prev => ({
+                                                                            ...prev,
+                                                                            patientOther: e.target.value
+                                                                        }));
+                                                                    }}
+                                                                    className="form-control"
+                                                                >
+                                                                    <option value="" disabled>patientOther</option>
+                                                                    {patientOther.map((option) => (
+                                                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                                                    ))}
+                                                                </Form.Select>
+                                                                <Form.Select
+                                                                    name="predisposition"
+                                                                    value={formData.predisposition}
+                                                                    onChange={(e) => {
+                                                                        setFormData(prev => ({
+                                                                            ...prev,
+                                                                            predisposition: e.target.value
+                                                                        }));
+                                                                    }}
+                                                                    className="form-control"
+                                                                >
+                                                                    <option value="" disabled>predisposition</option>
+                                                                    {predisposition.map((option) => (
+                                                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                                                    ))}
+                                                                </Form.Select></div>
+                                                                <div style={{ display: 'flex', gap: '10px' }}>
+                            
+                                                                {formData.patientMedicineRegular === 'Yes' && (
+                                                                <Form.Control
+                                                                type="text"
+                                                                name="patientMedicine"
+                                                                value={formData.patientMedicine}
+                                                                onChange={handleChange}
+                                                                placeholder="patientMedicine"
+                                                                required
+                                                                className="form-control"
+                                                                />
+                                                            )} 
+                                                                {formData.patientOther === 'Yes' && (
+                                                                <Form.Control
+                                                                type="text"
+                                                                name="patientImpairments"
+                                                                value={formData.patientImpairments}
+                                                                onChange={handleChange}
+                                                                placeholder="patientImpairments"
+                                                                required
+                                                                className="form-control"
+                                                                />
+                                                            )} </div>
+                                                                    <Form.Control
+                                                                    as="textarea"
+                                                                    name="patientSummary"
+                                                                    value={formData.patientSummary}
+                                                                    onChange={handleChange}
+                                                                    rows="4"
+                                                                    required
+                                                                    className={`form-control ${!formData.patientSummary ? 'is-invalid' : ''}`}
+                                                                    placeholder="Assessment Statement"
+                                                                />
+                                                            </Form.Group>
+                                                        </>
+                            
                         ) : bbCodeVersion === 8 ? ( // Emergency Medical File2
                             <>
                                 <h5>(The FORM below is intended for the opening of a basic medical file, it must appear at the top.)</h5>
+                                <p> This form isn't exactly optimal at the current moment, it will be updated in due course.  </p>
+
                                 <Form.Label>Employee Credentials:</Form.Label>
 
                                 <Select
@@ -5645,8 +6700,8 @@ ${patientName}
                             </>
                         ) : bbCodeVersion === 9 ? ( // generateObsMainFile
                             <>
-                                <h5>OBSTETRICS ONLY - MAIN FILE</h5>
-                                <h5>(The FORM below is intended for the opening of a basic medical file, it must appear at the top.)</h5>
+                                <p> This form isn't exactly optimal at the current moment, it will be updated in due course.  </p>
+
                                 <Form.Label>Employee Credentials:</Form.Label>
 
                                 <Select
@@ -6094,6 +7149,8 @@ ${patientName}
                         ) : bbCodeVersion === 10 ? ( // generateObsFollowup
                             <>
                                 <h5> The FORM below should be used and added to the file, following the others.<br></br>(( Please note that it isn't mandatory to make a medical record for every patient you meet in the ER. You can either do it if you feel like it, offer it to the patient or simply do it at the patient's request. ))</h5>
+                                <p> This form isn't exactly optimal at the current moment, it will be updated in due course.  </p>
+
                                 <Form.Label>Employee Credentials:</Form.Label>
 
                                 <Select
@@ -6416,6 +7473,8 @@ ${patientName}
                         ) : bbCodeVersion === 12 ? ( // generateGyneMainFile
                             <>
                                 <h5>(The FORM below is intended for the opening of a basic medical file, it must appear at the top.)</h5>
+                                <p> This form isn't exactly optimal at the current moment, it will be updated in due course.  </p>
+
                                 <Form.Label>Employee Credentials:</Form.Label>
 
                                 <Select
@@ -7778,6 +8837,8 @@ ${patientName}
                             </>
                         ) : bbCodeVersion === 19 ? ( // Emergency Room Forms - generateERForm
                             <>
+                  <p>If you require assistance with this form <a href="https://phmc.gta.world/viewforum.php?f=66" target="_blank" rel="noopener noreferrer">use this link! It should contain the information you require.  </a> If you still need help, use the PHMC Discord. </p>
+                                <p> This form isn't exactly optimal at the current moment, it will be updated in due course.  </p>
                                 <Form.Control
                                     type="text"
                                     name="patientID"
@@ -7932,8 +8993,7 @@ ${patientName}
                                 />
                                 <Form.Label></Form.Label>
 
-                                <Form.Label>Vitals Section</Form.Label>
-
+                                <Form.Label>Vitals Section - Restructure This Mitch </Form.Label>
                                 <Select
                                     name="vitals"
                                     value={vitals.find(option => option.value === formData.vitals)}
@@ -8584,8 +9644,11 @@ ${patientName}
 
 
                             </>
-                        ) : bbCodeVersion === 20 ? ( // Emergency Room Forms - generateERForm
-                            <>
+                        ) : bbCodeVersion === 20 ? ( // Emergency Room Forms - generateERForm aaaaaaa
+                            <> 
+                                <p>If you require assistance with this form <a href="https://phmc.gta.world/viewforum.php?f=66" target="_blank" rel="noopener noreferrer">use this link! It should contain the information you require.  </a> If you still need help, use the PHMC Discord. </p>
+                                <p> This form isn't exactly optimal at the current moment, it will be updated in due course.  </p>
+
                                 <Form.Control
                                     type="text"
                                     name="patientID"
@@ -8908,7 +9971,7 @@ ${patientName}
                                     }}
                                     options={bloodPressure}
                                     isClearable
-                                    placeholder="Patient Heart Rate"
+                                    placeholder="Patient Blood Pressure"
                                     className="form-control"
                                     styles={{
                                         control: (base) => ({
@@ -9450,6 +10513,9 @@ ${patientName}
                             </>
                         ) : bbCodeVersion === 21 ? ( // GENERAL CONSULTATION (PBC)
                             <>
+                                                            <p>If you require assistance with this form <a href="https://phmc.gta.world/viewforum.php?f=66" target="_blank" rel="noopener noreferrer">use this link! It should contain the information you require.  </a> If you still need help, use the PHMC Discord. </p>
+                                                            <p> This form isn't exactly optimal at the current moment, it will be updated in due course.  </p>
+
                                 <Form.Control
                                     type="text"
                                     name="patientID"
@@ -10572,18 +11638,18 @@ ${patientName}
                                 <Form.Group className="mb-3">
                                 <Form.Label>Title / First Name / Middle Name / Lastname / Date of Birth</Form.Label>
                                     <div style={{ display: 'flex', gap: '10px' }}>
-                                    <Form.Select
-    name="patientTitle"
-    value={formData.patientTitle}
-    onChange={handleChange}
-    required
-    className={`form-control ${!formData.patientTitle ? 'is-invalid' : ''}`}
->
-    <option value="" disabled>Title</option>
-    {patientTitle.map((option) => (
-        <option key={option.value} value={option.value}>{option.label}</option>
-    ))}
-</Form.Select>
+                                            <Form.Select
+                                            name="patientTitle"
+                                            value={formData.patientTitle}
+                                            onChange={handleChange}
+                                            required
+                                            className={`form-control ${!formData.patientTitle ? 'is-invalid' : ''}`}
+                                        >
+                                            <option value="" disabled>Title</option>
+                                            {patientTitle.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </Form.Select>
                                         <Form.Control
                                             type="text"
                                             name="patientFirstName"
@@ -10921,7 +11987,7 @@ ${patientName}
                                     options={phmcGroupedOptions}
                                     isClearable
                                     placeholder="Which Doctor Treated You? (You can type to search!)"
-                                    className="form-control"  // Match Bootstrap styling
+                                    className="form-control"
                                     styles={{
                                         control: (base) => ({
                                             ...base,
@@ -11410,7 +12476,213 @@ ${patientName}
                                     </div>
 
                                 </>
+                                                     ) : bbCodeVersion === 27 ? ( //PHMC Email Internal
+                                                        <>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientNotes"
+                                            value={formData.patientNotes}
+                                            onChange={handleChange}
+                                            placeholder="Email Subject"
+                                            required
+                                            className={`form-control ${!formData.patientNotes ? 'is-invalid' : ''}`}
 
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="decedentName"
+                                            value={formData.decedentName}
+                                            onChange={handleChange}
+                                            placeholder="Email Recipient"
+                                            required
+                                            className={`form-control ${!formData.decedentName ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                        as="textarea"
+                                        name="synopsis"
+                                        value={formData.synopsis}
+                                        onChange={handleChange}
+                                        rows="4"
+                                        placeholder="Email Body"
+                                        required
+                                        className={`form-control ${!formData.synopsis ? 'is-invalid' : ''}`}
+                                    />
+                                    </div>
+                                    <Form.Group className="mb-3 upload-container">
+                                    <InputGroup>
+                                        <Form.Control
+                                            as="textarea"
+                                            rows="4"
+                                            name="scenePhotos"
+                                            value={formData.scenePhotos}
+                                            onChange={handleChange}
+                                            required
+                                            className={`form-control ${!formData.scenePhotos ? 'is-invalid' : ''}`}
+                                            placeholder="Employee Signature Image"
+                                            onPaste={(e) => {
+                                                console.log('Paste event triggered');
+                                                const clipboardData = e.clipboardData || window.clipboardData;
+                                                const pastedData = clipboardData.getData('text');
+                                                const items = clipboardData.items;
+
+                                                console.log('Pasted content:', pastedData);
+                                                console.log('Clipboard items:', items);
+
+                                                let hasImageItem = false;
+
+                                                // Check if pasted content is a URL
+                                                const urlRegex = /(https?:\/\/[^\s]+)/g;
+                                                const containsUrl = urlRegex.test(pastedData);
+
+                                                console.log('Contains URL:', containsUrl);
+
+                                                // Handle image files from clipboard
+                                                for (let i = 0; i < items.length; i++) {
+                                                    console.log('Checking item:', items[i].type);
+                                                    if (items[i].type.indexOf('image') !== -1) {
+                                                        hasImageItem = true;
+                                                        const file = items[i].getAsFile();
+                                                        handleImageUpload({ target: { files: [file] } }, 'scenePhotos');
+                                                        e.preventDefault();
+                                                        break;
+                                                    }
+                                                }
+
+                                                // If it's a URL and not an image file, allow direct paste
+                                                if (containsUrl && !hasImageItem) {
+                                                    console.log('Processing URL paste');
+
+                                                    // Get current value and cursor position
+                                                    const currentValue = formData.scenePhotos || '';
+                                                    const cursorPos = e.target.selectionStart;
+
+                                                    console.log('Current value:', currentValue);
+                                                    console.log('Cursor position:', cursorPos);
+
+                                                    // Add comma if there's existing content
+                                                    const separator = currentValue && currentValue.trim().length > 0 ? ', ' : '';
+                                                    const newValue = currentValue.slice(0, cursorPos) +
+                                                        (cursorPos > 0 ? separator : '') +
+                                                        pastedData +
+                                                        currentValue.slice(cursorPos);
+
+                                                    console.log('New value:', newValue);
+
+                                                    // Update form data
+                                                    setFormData(prev => ({
+                                                        ...prev,
+                                                        scenePhotos: newValue
+                                                    }));
+
+                                                    e.preventDefault();
+                                                } else {
+                                                    console.log('No URL detected or image item present');
+                                                }
+                                            }}
+                                        />
+                                        <Button
+                                            variant="success"
+                                            disabled={isUploading}
+                                            onClick={() => {
+                                                const input = document.createElement('input');
+                                                input.type = 'file';
+                                                input.accept = 'image/*';
+                                                input.multiple = true;
+                                                input.onchange = (e) => handleImageUpload(e, 'scenePhotos');
+                                                input.click();
+                                            }}
+                                        >
+                                            <i className={`fas ${isUploading ? 'fa-spinner fa-spin' : 'fa-upload'}`}></i>
+                                            {isUploading ? 'Uploading...' : 'Upload Images'}
+                                        </Button>
+
+                                    </InputGroup>
+                                    <span className="helper-text">
+                                        This supports clipboard uploading, ctrl + V! | Hosted by ImgBB! - <a href="https://imgbb.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+                                    </span>
+                                </Form.Group>
+
+                                    <Select
+                                    name="phmcEmployee"
+                                    value={phmcGroupedOptions
+                                        .flatMap(group => group.options)
+                                        .find(option => option.value === formData.phmcEmployee) || null}
+                                    onChange={(selectedOption) => {
+                                        // eslint-disable-next-line no-unused-vars
+                                        const lastName = selectedOption ? selectedOption.lastName : '';
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            phmcEmployee: selectedOption ? selectedOption.value : '',
+                                            lastName: selectedOption ? selectedOption.lastName : '' // Use lastName from the selected option
+                                        }));
+                                    }}
+                                    options={phmcGroupedOptions}
+                                    isClearable
+                                    placeholder="Search or select doctor..."
+                                    className="form-control"
+                                    styles={{
+                                        control: (base) => ({
+                                            ...base,
+                                            backgroundColor: '#16202c',
+                                            color: '#eeeeeeb0',
+                                            borderColor: '#30363d',
+                                            '&:hover': {
+                                                borderColor: '#30363d'
+                                            }
+                                        }),
+                                        menu: (base) => ({
+                                            ...base,
+                                            backgroundColor: '#16202c',
+                                            zIndex: 1000
+                                        }),
+                                        option: (base, state) => ({
+                                            ...base,
+                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        singleValue: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        input: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        placeholder: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        })
+                                    }}
+                                />
+                                <Form.Label></Form.Label>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="decedentOOC"
+                                            value={formData.decedentOOC}
+                                            onChange={handleChange}
+                                            placeholder="PHMC Rank / Position"
+                                            required
+                                            className={`form-control ${!formData.decedentOOC ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientCareer"
+                                            value={formData.patientCareer}
+                                            onChange={handleChange}
+                                            placeholder="Assigned Department"
+                                            required
+                                            className={`form-control ${!formData.patientCareer ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+
+</>
                         ) : null}
                         <div className="button-group">
                             <button
@@ -11500,13 +12772,15 @@ ${patientName}
                     </div>
                     <div id="missing-employee-modal"></div>
                                         
-      {/*             {<div className="form-type-header">
+               {<div className="form-type-header">
                     <h3>DEV_TEXT: You are viewing:
                             {bbCodeVersion === 1 ? ' generateDeath - FULLY TESTED' :
                                 bbCodeVersion === 2 ? ' generateEmail - FULLY TESTED' :
+                                    bbCodeVersion === 3 ? 'HUGE FUCKING FORM' : 
                                         bbCodeVersion === 4 ? ' generateDental' :
                                             bbCodeVersion === 5 ? ' generateSurgicalOps ' :
                                                 bbCodeVersion === 6 ? ' generatePhysEvalInternalMed ' :
+                                                    bbCodeVersion === 7 ? 'GeneratePhysEvalInternalMedPBC' :
                                                             bbCodeVersion === 9 ? ' generateObsMainFile - FULLY TESTED' :
                                                                 bbCodeVersion === 10 ? `generateObsFollowUp - FULLY TESTED` :
                                                                         bbCodeVersion === 12 ? `generateGyneMainFile - FULLY TESTED` :
@@ -11527,7 +12801,7 @@ ${patientName}
                                                                                                                 ' MISSING TITLE - CHANGE DEV_TEXT'}
                         </h3>
                     </div>}
- */}                  <div className="bbcode-section">
+                  <div className="bbcode-section">
                             <div className={`char-counter ${getBBCodeContent().length > 60000 ? 'char-counter-warning' : ''}`}>
                             Character Counter: {getBBCodeContent().length}/60000
                             {getBBCodeContent().length > 60000 && (
@@ -11565,9 +12839,11 @@ ${patientName}
                                     <pre>
                                         {bbCodeVersion === 1 ? generateDeath() :
                                             bbCodeVersion === 2 ? generateEmail() :
+                                                bbCodeVersion === 3 ? generateHUGEFUCKINGFORM() :
                                                     bbCodeVersion === 4 ? generateDental() :
                                                         bbCodeVersion === 5 ? generateSurgicalOps() :
                                                             bbCodeVersion === 6 ? generatePhysEvalInternalMed() :
+                                                                bbCodeVersion === 7 ? generatePhysEvalInternalMedPBC() :
                                                                         bbCodeVersion === 9 ? generateObsMainFile() :
                                                                             bbCodeVersion === 10 ? generateObsFollowUp() :
                                                                                     bbCodeVersion === 12 ? generateGyneMainFile() :
@@ -11582,8 +12858,9 @@ ${patientName}
                                                                                                                                 bbCodeVersion === 23 ? generateCommentaryNotePBC() :
                                                                                                                                 bbCodeVersion === 24 ? generateMedicalRecordRelease() :
                                                                                                                                 bbCodeVersion === 25 ? generateBasicPatientFile() :
-                                                                                                                                bbCodeVersion === 26 ? generateBasicPatientFileStaff() : 
-                                                                                                                    generatePhysEvalInternalMed()}
+                                                                                                                                bbCodeVersion === 26 ? generateBasicPatientFileStaff() :
+                                                                                                                                bbCodeVersion === 27 ? generateEmailPHMCEmail() :  
+                                                                                                                    generateDeath()}
                                     </pre>
                                 </div>
                             </>
@@ -11722,9 +12999,17 @@ ${patientName}
                             className="changelog-button"
                             onClick={() => {
                                 const title = generateTitle();
-                                navigator.clipboard.writeText(title).then(() => {
-                                    showNotification('Title copied to clipboard!', 'check-circle');
-                                });
+                                if (navigator.clipboard && navigator.clipboard.writeText) {
+                                    navigator.clipboard.writeText(title).then(() => {
+                                        showNotification('Title copied to clipboard!', 'check-circle');
+                                    }).catch(err => {
+                                        console.error('Failed to copy: ', err);
+                                        showNotification('Failed to copy title to clipboard!', 'exclamation-triangle');
+                                    });
+                                } else {
+                                    console.warn("Clipboard API not available");
+                                    showNotification('Clipboard API not available!', 'exclamation-triangle');
+                                }
                             }}
                         >
                             <i className="fas fa-copy"></i>
@@ -11736,9 +13021,11 @@ ${patientName}
                             onClick={() => {
                                 const bbCode = bbCodeVersion === 1 ? generateDeath() :
                                     bbCodeVersion === 2 ? generateEmail() :
+                                    bbCodeVersion === 3 ? generateHUGEFUCKINGFORM() : 
                                             bbCodeVersion === 4 ? generateDental() :
                                                 bbCodeVersion === 5 ? generateSurgicalOps() :
                                                     bbCodeVersion === 6 ? generatePhysEvalInternalMed() :
+                                                    bbCodeVersion === 7 ? generatePhysEvalInternalMedPBC() : 
                                                                 bbCodeVersion === 9 ? generateObsMainFile() :
                                                                     bbCodeVersion === 10 ? generateObsFollowUp() :
                                                                             bbCodeVersion === 12 ? generateGyneMainFile() :
@@ -11754,17 +13041,18 @@ ${patientName}
                                                                                                         bbCodeVersion === 24 ? generateMedicalRecordRelease() :
                                                                                                         bbCodeVersion === 25 ? generateBasicPatientFile() :
                                                                                                         bbCodeVersion === 26 ? generateBasicPatientFileStaff() :
+                                                                                                        bbCodeVersion === 27 ? generateEmailPHMCEmail() : 
 
                                                                                                             generateDeath();
                                 const currentDateTime = new Date().toLocaleString();
                                 const { decedentName, coronerEmployee, coronerRank, patientName, decedentOOC, phmcEmployee, requestingOfficer, patientID, patientFirstName, patientLastName} = formData;
                                 const version = bbCodeVersion === 1 ? "Decedent Report" :
                                     bbCodeVersion === 2 ? "Coroner Report" :
-                                        bbCodeVersion === 3 ? "Medical Consultation (IM) Main File" :
+                                        bbCodeVersion === 3 ? "HUGE FUCKING FORM" :
                                             bbCodeVersion === 4 ? "Dental Report " :
                                                 bbCodeVersion === 5 ? "Surgical Report " :
-                                                    bbCodeVersion === 6 ? "Physical Evaluation (IM)" :
-                                                        bbCodeVersion === 7 ? "Medical Consultation (IM) - Add File" :
+                                                    bbCodeVersion === 6 ? "Physical Evaluation (PHMC)" :
+                                                        bbCodeVersion === 7 ? "Physical Evaluation (IM) - PBC" :
                                                             bbCodeVersion === 8 ? "Medical Consultation (EM) - Main File" :
                                                                 bbCodeVersion === 9 ? "Obstetrics - Main File" :
                                                                     bbCodeVersion === 10 ? "Obstetrics - Follow Up" :
@@ -11782,6 +13070,7 @@ ${patientName}
                                                                                                                         bbCodeVersion === 24 ? "Medical Record Release" :
                                                                                                                         bbCodeVersion === 25 ? 'Basic Patient File' :
                                                                                                                         bbCodeVersion === 26 ? 'Staff Patient Medical File' : 
+                                                                                                                        bbCodeVersion === 27 ? 'PHMC Internal Email' : 
                                                                                                             "Something has gone wrong, sorry about that! Please inform the website maintainer!";
 
                 navigator.clipboard.writeText(bbCode).then(() => {
@@ -11831,11 +13120,11 @@ ${patientName}
                             <i className="fas fa-clipboard"></i>
                             Copy {bbCodeVersion === 1 ? "Death Report" :
                                 bbCodeVersion === 2 ? "Coroner Report" :
-                                    bbCodeVersion === 3 ? "Internal Medicine" :
+                                    bbCodeVersion === 3 ? "Detailed Patient File" :
                                         bbCodeVersion === 4 ? "Internal Medicine Report" :
                                             bbCodeVersion === 5 ? "Surgical Operations Report" :
-                                                bbCodeVersion === 6 ? "Physical Evaluation Report" :
-                                                    bbCodeVersion === 7 ? "Medical Consultation Report v2" :
+                                                bbCodeVersion === 6 ? "Physical Evaluation Report PHMC" :
+                                                    bbCodeVersion === 7 ? "Physical Evaluation Report PBC" :
                                                         bbCodeVersion === 8 ? "Emergency Medicine Consultation" :
                                                             bbCodeVersion === 9 ? "Obs & Gynae Main File" :
                                                                 bbCodeVersion === 10 ? "Obs & Gynae Follow Up" :
@@ -11854,25 +13143,10 @@ ${patientName}
                                                                                                         bbCodeVersion === 24 ? 'Medical Record Release' :
                                                                                                         bbCodeVersion === 25 ? 'Basic Patient File' :
                                                                                                         bbCodeVersion === 26 ? 'Staff Patient Medical Record' : 
+                                                                                                        bbCodeVersion === 27 ? 'PHMC Email' : 
                                                                                                         "DEBUG - update title logic"}
                         </button>
-                        {(bbCodeVersion !== 1 && bbCodeVersion !== 2 && bbCodeVersion !== 24 && bbCodeVersion !== 18) && (
-                            <div className="button-group">
-                                <Button
-                                    variant="secondary"
-                                    onClick={() => {
-                                        if (!formData.patientName && !formData.patientMedicalRecord) {
-                                            showNotification("Please fill in the Patient Name or Patient Medical Number");
-                                            return;
-                                        }
-                                        window.open(`https://phmc.gta.world/search.php?keywords=${formData.patientMedicalRecord}+${formData.patientName}&terms=all&author=&sc=1&sf=all&sr=posts&sk=t&sd=d&st=0&ch=300&t=0&submit=Search`, '_blank')
-                                    }}
-                                    className="search-button"
-                                >
-                                    <i className="fas fa-search"></i>
-                                    Search Patient Medical Record
-                                </Button>                            </div>
-                        )}
+                        
                     </div>
 
                     {bbCodeVersion === 1 && (
@@ -11888,6 +13162,20 @@ ${patientName}
                             </a>
                         </div>
                     )}
+                                        {bbCodeVersion === 3 && (
+                        <div className="image-container">
+                            <a href="https://phmc.gta.world/posting.php?mode=post&f=221" target="_blank" rel="noopener noreferrer">
+                                <img
+                                    src={PHMCCivilian}
+                                    height={350}
+                                    width={350}
+                                    className="Center"
+                                    alt="PHMC Civilian Paperwork"
+                                />
+                            </a>
+                        </div>
+                    )}
+
                     {bbCodeVersion === 24 && (
                         <div className="image-container">
                             <a href="https://phmc.gta.world/posting.php?mode=post&f=109" target="_blank" rel="noopener noreferrer">
@@ -11896,7 +13184,7 @@ ${patientName}
                                     height={350}
                                     width={350}
                                     className="Center"
-                                    alt="PHMC Civilian Paperwork"
+                                    alt="Basic Patient File"
                                 />
                             </a>
                         </div>
