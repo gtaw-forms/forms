@@ -3310,7 +3310,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                         className="Center"
                                         alt="Feedback"
                                     />
-                                    <span>Civilian Medical Record Release </span>
+                                    <span>[Civilian] Medical Release Form | Patient Files </span>
                                 </button>
 
                                 <button
@@ -3400,7 +3400,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
 
                             </div>
                              <div className="agency-row">
-                            <button
+{/*                             <button
                                     className="agency-select-button"
                                     onClick={() => handleAgencySelect(4)}
                                 >
@@ -3410,8 +3410,8 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     />
                                     <span>Dental </span>
                                 </button>
-
-                            <button
+ */}
+{/*                             <button
                                     className="agency-select-button"
                                     onClick={() => handleAgencySelect(9)}
                                 >
@@ -3421,7 +3421,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     />
                                     <span>Gynecology & Obs</span>
                                 </button>
-
+ */}
                               <button
                                     className="agency-select-button"
                                     onClick={() => handleAgencySelect(27)}
