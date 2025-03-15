@@ -513,14 +513,15 @@ function App() {
         coronerRank: '',
         coronerPHNumber: '',
         phmcEmployee: '',
+        coronerEmployee: '',
     });
-    const handleMissingEmployeeChange = (e) => {
-        setMissingEmployeeData({
-            ...missingEmployeeData,
-            [e.target.name]: e.target.value
-        });
+    const handleMissingEmployeeChange = (value, type) => {
+        setMissingEmployeeData(prevData => ({
+            ...prevData,
+            [type]: value,
+        }));
     };
-const handleMissingEmployeeSubmit = async () => {
+            const handleMissingEmployeeSubmit = async () => {
     try {
         const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
@@ -539,7 +540,7 @@ const handleMissingEmployeeSubmit = async () => {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                content: `New Employee Name Request by: ${missingEmployeeData.phmcEmployee} !\n{ name: '${missingEmployeeData.coronerName}', badge: '${missingEmployeeData.coronerDiscord}', rank: '${missingEmployeeData.coronerRank}', discord: '${missingEmployeeData.coronerDiscord}', category: '${missingEmployeeData.coronerRank}' },`,
+                content: `New Employee Name Request by: ${missingEmployeeData.phmcEmployee} ${missingEmployeeData.coronerEmployee}  \n name: ${missingEmployeeData.coronerName} \n badge/department: ${missingEmployeeData.coronerDiscord}\n rank: ${missingEmployeeData.coronerRank}\n discord: ${missingEmployeeData.coronerDiscord}`,
             }),
         });
 
@@ -555,6 +556,7 @@ const handleMissingEmployeeSubmit = async () => {
                 coronerRank: '',
                 coronerPHNumber: '',
                 phmcEmployee: '',
+                coronerEmployee: '',
             });
             // Add fade-out effect
             setTimeout(() => {
@@ -12702,60 +12704,244 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
             <div className="modal">
                 <Modal.Header>
                     <Modal.Title>Add Missing Employee / Coroner</Modal.Title>
+
                     <Button variant="secondary" className="close" onClick={() => setShowMissingEmployeeModal(false)}>
                         <span>&times;</span>
+                        
                     </Button>
                 </Modal.Header>
+                <div className="radio-inline-container">
+
+                    <span className="radio-text">Who is missing:</span>
+                    <Form.Check
+                        type="radio"
+                        id="doctorRank"
+                        label="   Coroner"
+                        checked={isDoctor}
+                        onChange={handlePHMCRank('doctor')}
+                        inline
+                    />
+                    <Form.Check
+                        type="radio"
+                        id="nurseRank"
+                        label="   Hospital Staff"
+                        checked={isNurse}
+                        onChange={handlePHMCRank('nurse')}
+                        inline
+                    />
+                    </div>
+
                 <Modal.Body>
                     <Form>
-                        <Form.Group className="mb-3">
-                            <Form.Control
-                                type="text"
-                                name="coronerName"
-                                value={missingEmployeeData.coronerName}
-                                onChange={handleMissingEmployeeChange}
-                                placeholder='Employee Name'
+                    {isDoctor && (
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                    <Form.Control
+                        type="text"
+                        name="coronerName"
+                        value={missingEmployeeData.coronerName}
+                        onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerName')}
+                        placeholder='Employee Name'
 
-                            />
-                            <Form.Control
-                                type="text"
-                                name="coronerDiscord"
-                                value={missingEmployeeData.coronerDiscord}
-                                onChange={handleMissingEmployeeChange}
-                                placeholder='Employee Discord Tags'
-                            />
-                            <Form.Control
-                                type="text"
-                                name="coronerRank"
-                                value={missingEmployeeData.coronerRank}
-                                onChange={handleMissingEmployeeChange}
-                                placeholder='Employee Rank / Position'
-                            />
+                        />
+                        <Form.Control
+                        type="text"
+                        name="coronerDiscord"
+                        value={missingEmployeeData.coronerDiscord}
+                        onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerDiscord')}
+                        placeholder='Employee Discord Tags'
+                        />
+                        <Form.Control
+                        type="text"
+                        name="coronerRank"
+                        value={missingEmployeeData.coronerRank}
+                        onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerRank')}
+                        placeholder='Employee Rank / Position'
+                        />
+                                                    
+                        </div>
+
+                        )}
+                    {isDoctor && (
+                    <div style={{ display: 'flex', gap: '10px' }}>
                             <Form.Control
                                 type="text"
                                 name="coronerPHNumber"
                                 value={missingEmployeeData.coronerPHNumber}
-                                onChange={handleMissingEmployeeChange}
+                                onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerPHNumber')}
                                 placeholder='Employee PH number (Optional)'
                             />
+                        </div>
+
+                        )}
+                        {isDoctor && (
+    <Select
+        name="coronerEmployee"
+        value={missingEmployeeData.coronerEmployee ? coronerGroupedOptions
+            .flatMap(group => group.options)
+            .find(option => option.value === missingEmployeeData.coronerEmployee) || null : null}
+            onChange={(selectedOption) => handleMissingEmployeeChange(selectedOption.value, 'coronerEmployee')}
+            options={coronerGroupedOptions}
+        isClearable
+        placeholder="Who is requesting this missing employee..."
+        className={`form-control ${!formData.coronerEmployee ? 'is-invalid' : ''}`}
+        styles={{
+            control: (base) => ({
+                ...base,
+                backgroundColor: '#16202c',
+                color: '#eeeeeeb0',
+                borderColor: '#6c757d',
+                '&:hover': {
+                    borderColor: '#eeeeeeb0'
+                }
+            }),
+            menu: (base) => ({
+                ...base,
+                backgroundColor: '#16202c',
+                zIndex: 1000
+            }),
+            option: (base, state) => ({
+                ...base,
+                backgroundColor: state.isFocused ? 'Grey' : '#16202c',
+                color: '#eeeeeeb0'
+            }),
+            singleValue: (base) => ({
+                ...base,
+                color: '#eeeeeeb0'
+            }),
+            input: (base) => ({
+                ...base,
+                color: '#eeeeeeb0'
+            }),
+            placeholder: (base) => ({
+                ...base,
+                color: '#eeeeeeb0'
+            }),
+            group: (base) => ({
+                ...base,
+                paddingTop: 8,
+                paddingBottom: 8
+            }),
+            groupHeading: (base) => ({
+                ...base,
+                color: '#6c757d',
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                fontSize: '0.75rem',
+                marginBottom: 4
+            })
+        }}
+    />
+)}
+                    {isNurse && (
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                    <Form.Control
+                        type="text"
+                        name="coronerName"
+                        value={missingEmployeeData.coronerName}
+                        onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerName')}
+                        placeholder='Employee Name'
+
+                        />
+                        <Form.Control
+                        type="text"
+                        name="coronerDiscord"
+                        value={missingEmployeeData.coronerDiscord}
+                        onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerDiscord')}
+                        placeholder='Employee Department'
+                        />
+                        <Form.Control
+                        type="text"
+                        name="coronerRank"
+                        value={missingEmployeeData.coronerRank}
+                        onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerRank')}
+                        placeholder='Employee Rank / Position'
+                        />
+                                                    
+                        </div>
+
+                        )}
+                    {isNurse && (
+                    <div style={{ display: 'flex', gap: '10px' }}>
                             <Form.Control
                                 type="text"
-                                name="phmcEmployee"
-                                value={missingEmployeeData.phmcEmployee}
-                                onChange={handleMissingEmployeeChange}
-                                placeholder='Requesting Employee Name (Spam Filter)'
+                                name="coronerPHNumber"
+                                value={missingEmployeeData.coronerPHNumber}
+                                onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerPHNumber')}
+                                placeholder='Employee PH number (Optional)'
                             />
+                        </div>
 
-                        </Form.Group>
+                        )}
+{isNurse && (
+    <Select
+        name="phmcEmployee"
+        value={missingEmployeeData.phmcEmployee ? phmcGroupedOptions
+            .flatMap(group => group.options)
+            .find(option => option.value === missingEmployeeData.phmcEmployee) || null : null}
+        onChange={(selectedOption) => handleMissingEmployeeChange(selectedOption.value, 'phmcEmployee')}
+        options={phmcGroupedOptions}
+        isClearable
+        placeholder="Who is requesting this missing employee..."
+        className={`form-control ${!formData.phmcEmployee ? 'is-invalid' : ''}`}
+        styles={{
+            control: (base) => ({
+                ...base,
+                backgroundColor: '#16202c',
+                color: '#eeeeeeb0',
+                borderColor: '#6c757d',
+                '&:hover': {
+                    borderColor: '#eeeeeeb0'
+                }
+            }),
+            menu: (base) => ({
+                ...base,
+                backgroundColor: '#16202c',
+                zIndex: 1000
+            }),
+            option: (base, state) => ({
+                ...base,
+                backgroundColor: state.isFocused ? 'Grey' : '#16202c',
+                color: '#eeeeeeb0'
+            }),
+            singleValue: (base) => ({
+                ...base,
+                color: '#eeeeeeb0'
+            }),
+            input: (base) => ({
+                ...base,
+                color: '#eeeeeeb0'
+            }),
+            placeholder: (base) => ({
+                ...base,
+                color: '#eeeeeeb0'
+            }),
+            group: (base) => ({
+                ...base,
+                paddingTop: 8,
+                paddingBottom: 8
+            }),
+            groupHeading: (base) => ({
+                ...base,
+                color: '#6c757d',
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                fontSize: '0.75rem',
+                marginBottom: 4
+            })
+        }}
+    />
+)}
+
                     </Form>
                 </Modal.Body>
                 <Modal.Footer>
-                    <Button variant="secondary" onClick={() => setShowMissingEmployeeModal(false)}>
-                        Cancel
-                    </Button>
                     <Button variant="primary" onClick={handleMissingEmployeeSubmit}>
                         Submit
                     </Button>
+                    <Button variant="secondary" onClick={() => setShowMissingEmployeeModal(false)}>
+                        Cancel
+                    </Button>
+
                 </Modal.Footer>
             </div>
         </div>
@@ -12796,7 +12982,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                                                                                                     bbCodeVersion === 23 ? 'PBC Commentary Note' :
                                                                                                                         bbCodeVersion === 24 ? 'Medical Record Release' :
                                                                                                                             bbCodeVersion === 25 ? 'Basic Patient File' :
-                                                                                                                            bbCodeVersion === 26 ? 'Basic Patient File - Staff' :
+                                                                  <                                                          bbCodeVersion === 26 ? 'Basic Patient File - Staff' :
 
                                                                                                                 ' MISSING TITLE - CHANGE DEV_TEXT'}
                         </h3>
