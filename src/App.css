@@ -34,17 +34,19 @@
 .container {
     display: flex;
     justify-content: space-between;
+    flex-direction: column; /* Stack form and output on smaller screens */
 }
 
 /* Container styles */
 .form-container {
-    width: 35% !important;
+    width: 100% !important; /* Take full width on smaller screens */
     background-color: #0d1117 !important;
     padding: 20px !important;
     border-radius: 8px !important;
-  }
+    margin-bottom: 20px; /* Add some spacing below the form */
+}
 .output-container {
-    width: 60% !important;
+    width: 100% !important; /* Take full width on smaller screens */
     background-color: #0d1117;
     padding: 20px;
     border-radius: 8px;
@@ -650,3 +652,32 @@ input[type="checkbox"] {
         font-size: 0.9rem;
         cursor: pointer;
     }
+    @media (max-width: 768px) {
+        /* Styles to apply on screens smaller than 768px */
+        .header-info-wrapper {
+            text-align: center; /* Center header info on smaller screens */
+        }
+    
+        .agency-selector-buttons {
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); /* Adjust grid for smaller screens */
+        }
+    
+        /* Adjust font sizes for better readability */
+        body {
+            font-size: 14px;
+        }
+    }
+
+@media (min-width: 769px) {
+    .container {
+        flex-direction: row; /* Keep side-by-side layout on larger screens */
+    }
+
+    .form-container {
+        width: 35% !important; /* Restore original width on larger screens */
+    }
+
+    .output-container {
+        width: 60% !important; /* Restore original width on larger screens */
+    }
+}

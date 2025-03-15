@@ -87,6 +87,7 @@ import { FormHelperText } from '@mui/material';
 // IM SORRY FOR WHOEVER WORKS ON THIS GITHUB REPOSITORY 
 // - FROSTYYY
 function App() {
+    const [isMobile, setIsMobile] = useState(false);
     const [formData, setFormData] = useState({
         coronerRank: 'Forensic Attendant',
         placeOfDeath: '',
@@ -367,10 +368,23 @@ function App() {
         attorneyRelation: '',
         dnrOther: '',
         patientEmergencyContactDiscord: '',
-
-        
-
     });
+    useEffect(() => {
+        const handleResize = () => {
+            setIsMobile(window.innerWidth <= 768); // Adjust breakpoint as needed
+        };
+
+        // Set initial value
+        handleResize();
+
+        // Listen for window resize events
+        window.addEventListener('resize', handleResize);
+
+        // Clean up the event listener on unmount
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+
     const [isUploading, setIsUploading] = useState(false);
     const [isJohnDoe, setIsJohnDoe] = useState(false);
     const [isJaneDoe, setIsJaneDoe] = useState(false);
@@ -378,8 +392,8 @@ function App() {
     const [isNurse, setIsNurse] = useState(false);
     const [isPsych, setIsPsych] = useState(false);
     const [isSurgeon, setIsSurgeon] = useState(false);
-
     const [notification, setNotification] = useState(null);
+    const [selectedForm, setSelectedForm] = useState(null);
     const [commitInfo, setCommitInfo] = useState({ sha: '', date: null });
     const [rank, setRank] = useState('');
     const [showPHMCModal, setShowPHMCModal] = useState(false);
@@ -3233,21 +3247,6 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
         });
     };
 
-    // Add new state
-    const [showAgencySelector, setShowAgencySelector] = useState(true);
-    const [hideAgencySelector, setHideAgencySelector] = useState(localStorage.getItem('hideAgencySelector') === 'true');
-    // Add this helper function to check and format signature
-
-    useEffect(() => {
-        setShowAgencySelector(!hideAgencySelector);
-    }, [hideAgencySelector]);
-
-    const handleHideSelector = (e) => {
-        const isChecked = e.target.checked;
-        setHideAgencySelector(isChecked);
-        localStorage.setItem('hideAgencySelector', isChecked);
-    };
-
     const versionNames = {
         1: "Death Report",
         2: "Email Generator",
@@ -3272,6 +3271,10 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
         25: "Basic Patient File"
     };
 
+
+    const [hideAgencySelector, setHideAgencySelector] = useState(localStorage.getItem('hideAgencySelector') === 'true');
+    const [showAgencySelector, setShowAgencySelector] = useState(!hideAgencySelector);
+
     const handleAgencySelect = (version) => {
         setBbCodeVersion(version);
         setShowPHMCModal(false);
@@ -3282,6 +3285,24 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
     const toggleAgencySelector = () => {
         setShowAgencySelector(prev => !prev);
     };
+
+
+    const handleSelectorChange = (event) => {
+        const checked = event.target.checked;
+        setHideAgencySelector(checked);
+        localStorage.setItem('hideAgencySelector', checked.toString());
+    };
+
+
+    useEffect(() => {
+        setShowAgencySelector(!hideAgencySelector);
+    }, [hideAgencySelector]);
+
+
+    useEffect(() => {
+        setShowAgencySelector(!hideAgencySelector);
+    }, [hideAgencySelector]);
+
 
     // Add state near other useState declarations
     const [showBBCode, setShowBBCode] = useState(false);
@@ -3302,149 +3323,134 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                 <i className="fas fa-times"></i>
                             </button>
                         </div>
-                        <div className="agency-selector-buttons">
-                            <div className="agency-row">
-                            <button
-                                    className="agency-select-button"
-                                    onClick={() => handleAgencySelect(24)}
-                                >
-                                    <img src={Civilian}
-                                        className="Center"
-                                        alt="Feedback"
-                                    />
-                                    <span>[Civilian] Medical Release Form | Patient Files </span>
-                                </button>
-
-                                <button
-                                    className="agency-select-button"
-                                    onClick={() => handleAgencySelect(1)}  
-                                >
-                                    <img src={application}
-                                        className="Center"
-                                        alt="Feedback"
-                                    />
-                                    <span>Forensic Services </span>
-                                </button>
-                                <button
-                                    className="agency-select-button"
-                                    onClick={() => handleAgencySelect(19)}
-                                >
-                                    <img src={emergency}
-                                        className="Center"
-                                        alt="Feedback"
-                                    />
-                                    <span>ER Protocol </span>
-                                </button>
-                                <button
-                                    className="agency-select-button"
-                                    onClick={() => handleAgencySelect(20)}
-                                >
-                                    <img src={empathy}
-                                        className="Center"
-                                        alt="Feedback"
-                                    />
-                                    <span>General Consultation </span>
-                                </button>
-                                                            </div>
-                            <div className="agency-row">
-                            <button
-                                    className="agency-select-button"
-                                    onClick={() => handleAgencySelect(22)}
-                                >
-                                    <img src={paperwork2}
-                                        className="Center"
-                                        alt="Feedback"
-                                    />
-                                    <span>Commentary Notes </span>
-                                </button>
-
-                            <button
-                                    className="agency-select-button"
-                                    onClick={() => handleAgencySelect(14)}
-                                >
-                                    <img src={psychology}
-                                        className="Center"
-                                        alt="Feedback"
-                                    />
-                                    <span> Mental Health </span>
-                                </button>
-
-{/*                                 <button
-                                    className="agency-select-button"
-                                    onClick={() => handleAgencySelect(9)}
-                                >
-                                    <img src={gynecology}
-                                        className="Center"
-                                        alt="Feedback"
-                                    />
-                                    <span>Obstetrics & Gynecology Forms </span>
-                                </button>
- */}                                <button
-                                    className="agency-select-button"
-                                    onClick={() => handleAgencySelect(6)}
-                                >
-                                    <img src={nurse}
-                                        className="Center"
-                                        alt="Feedback"
-                                    />
-                                    <span>Physical Evaluation </span>
-                                </button>
-                             <button
-                                className="agency-select-button"
-                                onClick={() => handleAgencySelect(27)}
+                        {isMobile ? (
+                            <Form.Select
+                                onChange={(e) => {
+                                    handleAgencySelect(parseInt(e.target.value));
+                                }}
                             >
-                                <img src={email}
-                                    className="Center"
-                                    alt="Feedback"
-                                />
-                                <span>Email Forms </span>
-                            </button>
+                                <option value="">Select a form</option>
+                                <option value="24">[Civilian] Medical Release Form | Patient Files</option>
+                                <option value="1">Forensic Services</option>
+                                <option value="19">ER Protocol</option>
+                                <option value="20">General Consultation</option>
+                                <option value="22">Commentary Notes</option>
+                                <option value="14">Mental Health</option>
+                                <option value="6">Physical Evaluation</option>
+                                <option value="27">Email Forms</option>
+                                <option value="27">Surgical Ops</option>
+                            </Form.Select>
+                        ) : (
+                            <div className="agency-selector-buttons">
+                                <div className="agency-row">
+                                    <button
+                                        className="agency-select-button"
+                                        onClick={() => handleAgencySelect(24)}
+                                    >
+                                        <img src={Civilian}
+                                            className="Center"
+                                            alt="Feedback"
+                                        />
+                                        <span>[Civilian] Medical Release Form | Patient Files </span>
+                                    </button>
 
+                                    <button
+                                        className="agency-select-button"
+                                        onClick={() => handleAgencySelect(1)}
+                                    >
+                                        <img src={application}
+                                            className="Center"
+                                            alt="Feedback"
+                                        />
+                                        <span>Forensic Services </span>
+                                    </button>
+                                    <button
+                                        className="agency-select-button"
+                                        onClick={() => handleAgencySelect(19)}
+                                    >
+                                        <img src={emergency}
+                                            className="Center"
+                                            alt="Feedback"
+                                        />
+                                        <span>ER Protocol </span>
+                                    </button>
+                                    <button
+                                        className="agency-select-button"
+                                        onClick={() => handleAgencySelect(20)}
+                                    >
+                                        <img src={empathy}
+                                            className="Center"
+                                            alt="Feedback"
+                                        />
+                                        <span>General Consultation </span>
+                                    </button>
+                                </div>
+                                <div className="agency-row">
+                                    <button
+                                        className="agency-select-button"
+                                        onClick={() => handleAgencySelect(22)}
+                                    >
+                                        <img src={paperwork2}
+                                            className="Center"
+                                            alt="Feedback"
+                                        />
+                                        <span>Commentary Notes </span>
+                                    </button>
+
+                                    <button
+                                        className="agency-select-button"
+                                        onClick={() => handleAgencySelect(14)}
+                                    >
+                                        <img src={psychology}
+                                            className="Center"
+                                            alt="Feedback"
+                                        />
+                                        <span> Mental Health </span>
+                                    </button>
+
+                                    <button
+                                        className="agency-select-button"
+                                        onClick={() => handleAgencySelect(6)}
+                                    >
+                                        <img src={nurse}
+                                            className="Center"
+                                            alt="Feedback"
+                                        />
+                                        <span>Physical Evaluation </span>
+                                    </button>
+                                    <button
+                                        className="agency-select-button"
+                                        onClick={() => handleAgencySelect(27)}
+                                    >
+                                        <img src={email}
+                                            className="Center"
+                                            alt="Feedback"
+                                        />
+                                        <span>Email Forms </span>
+                                    </button>
+
+                                </div>
+                                <div className="agency-row">
+                                    <button
+                                        className="agency-select-button"
+                                        onClick={() => handleAgencySelect(27)}
+                                    >
+                                        <img src={surgeon}
+                                            className="Center"
+                                            alt="Feedback"
+                                        />
+                                        <span>Surgical Ops </span>
+                                    </button>
+                                </div>
                             </div>
-                             <div className="agency-row">
-{/*                             <button
-                                    className="agency-select-button"
-                                    onClick={() => handleAgencySelect(4)}
-                                >
-                                    <img src={teeth}
-                                        className="Center"
-                                        alt="Feedback"
-                                    />
-                                    <span>Dental </span>
-                                </button>
- */}
-{/*                             <button
-                                    className="agency-select-button"
-                                    onClick={() => handleAgencySelect(9)}
-                                >
-                                    <img src={obstetrical}
-                                        className="Center"
-                                        alt="Feedback"
-                                    />
-                                    <span>Gynecology & Obs</span>
-                                </button>
- */}
-                              <button
-                                    className="agency-select-button"
-                                    onClick={() => handleAgencySelect(27)}
-                                >
-                                    <img src={surgeon}
-                                        className="Center"
-                                        alt="Feedback"
-                                    />
-                                    <span>Surgical Ops </span>
-                                </button>
-
-
-                            </div>
-                        </div>
+                        )}
                         <div className="hide-selector-option">
                             <input
                                 type="checkbox"
                                 id="hideSelector"
                                 checked={hideAgencySelector}
-                                onChange={handleHideSelector}
-                            />
+                                onChange={handleAgencySelect} 
+                                />
                             <label htmlFor="hideSelector">Don't show this popup again</label>
                         </div>
                     </div>
@@ -3494,7 +3500,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 1.7.4 - ❄️ Frostbite Update </h3>
+                                    <h3>Changelog - Version 1.7.5 - ❄️ Frostbite Update </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -3505,6 +3511,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                 </div>
                                 <div className="modal-content">
                                     <ul>
+                                       <li> Alpha mobile support - Very likely bugs, please report them to Frosty on Discord.</li>
                                         <li> Added: PHMC & PBC Physical Evaluation</li>
                                         <li>Added: Surgical Report Rework</li>
                                         <li>(CIVILIAN) Patient File Basic + Detailed</li>
@@ -3603,8 +3610,8 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     className="changelog-button"
                                     onClick={() => setShowPHMCModal(true)}
                                 >
-                                    <i className="fas fa-times"></i>
-                                    <span>Internal Medicine Consultation Forms</span>
+                                    <i className="fas fa-exchange-alt"></i>
+                                    <span>Switch Physical Evaluation Forms</span>
                                 </button>
 
                                 {showPHMCModal && (
@@ -3630,7 +3637,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                                             className="Center"
                                                             alt="Feedback"
                                                         />
-                                                        <span>Internal Medicine PHMC </span>
+                                                        <span>Physical Evaluation PHMC </span>
                                                     </button>
                                                     <button
                                                         className="agency-select-button"
@@ -3640,7 +3647,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                                             className="Center"
                                                             alt="Feedback"
                                                         />
-                                                        <span>Internal Medicine PBC </span>
+                                                        <span>Physical Evaluation PBC </span>
                                                     </button>
                                                 </div>
                                             </div>
@@ -3936,7 +3943,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     className="changelog-button"
                                     onClick={() => setShowPHMCModal(true)}
                                 >
-                                    <i className="fas fa-times"></i>
+                                    <i className="fas fa-exchange-alt"></i>
                                     <span>Change Civilian Hospital Forms</span>
                                 </button>
 
@@ -4585,7 +4592,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                                 onClick={clearParsedBBCode}
                                                 className="remove-report-button"
                                             >
-                                                <i className="fas fa-times"></i> Clear BBCode
+                                                <i className="fas fa-exchange-alt"></i> Clear BBCode
                                             </Button>
                                         </div>
 
