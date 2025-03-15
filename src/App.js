@@ -3494,7 +3494,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 1.7 - ❄️ Frostbite Update </h3>
+                                    <h3>Changelog - Version 1.7.4 - ❄️ Frostbite Update </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -3511,6 +3511,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                         <li>PHMC Email Templates</li>
                                         <li>Form Selection has been reorganised</li>
                                         <li> Various updates (Migration from Select to Form.Select in progress) </li> 
+                                        <li> Updated the Missing Employee field</li>
                                     </ul>
                                 </div>
                             </div>
