@@ -15,14 +15,13 @@ import emergency from './assets/emergency.png'
 import empathy from './assets/empathy.png'
 import email from './assets/email.png'
 import gynecology from './assets/gynecology.png'
-import teeth from './assets/teeth.png'
 import surgeon from './assets/surgeon.png'
 import PHMCCivilian from './assets/PHMCCivilian.png'
 import Civilian from './assets/Civilian.png'
 import application from './assets/application.png'
 import nurse from './assets/nurse.png'
 import PHMCLogo from './assets/phmc.png'
-import developer from './assets/developer.png'
+// import developer from './assets/developer.png'
 import corpse from './assets/corpse.png'
 import Paperwork from './assets/myPaperwork2.png';
 import paperwork2 from './assets/paperwork.png'
@@ -125,7 +124,6 @@ function App() {
         // surgical operations fields
         extraStaff: '',
         patientName: '',
-        patientConsent: '',
         patientAllergies: '',
         surgeryComplications: '',
         surgeryProcedures: '',
@@ -218,7 +216,6 @@ function App() {
         patientFetalMeasurements: '', // Added
         patientCurrentMedicine: '', // Missing field for current medications
         patientAdditionalPregnancy: '', // Missing field for previous pregnancies status
-        patientJob: '', // Missing field for patient employment
         patientJobTasks: '', // Missing field for job duties
         patientLivingHabits: '', // Missing field for living habits
         patientPreHealth: '', // Missing field for pre-pregnancy health
@@ -327,7 +324,6 @@ function App() {
         careerRisks: '',
         patientJob: '',
         patientcareerNo: '',
-        patientJobRisks: '',
         patientAllergiesRisk: '',
         patientMedicineRegular: '',
         patientOther: '',
@@ -337,7 +333,6 @@ function App() {
         patientFamily: '',
         patientGentic: '',
         patientTriggers: '',
-        patientTherapy: '', 
         patientFamSocial: '',
         patientMental: '', 
         maritalStatus: '', 
@@ -346,7 +341,6 @@ function App() {
         dnr: '', 
         dnrOrder: '',
         attorney: '', 
-        patientTherapy: '', 
         patientSupport: '', 
         patientHarm: '',
         patientFam: '',
@@ -361,8 +355,6 @@ function App() {
         patientSexLife: '', 
         patientJobRisks: '',
         patientHazards: '', 
-        patientOther: '', 
-        patientGender: '',
         attorneyName: '',
         attorneyPH: '',
         attorneyRelation: '',
@@ -1047,7 +1039,6 @@ ${surgeryProcedures}
 [tr][td]Did any medical complications occur during the surgery?[/td][td]
 [cb${formData.patientComplicationOptions === 'Yes' ? 'c' : ''}] Yes
 [cb${formData.patientComplicationOptions === 'No' ? 'c' : ''}] No
-procedureGood
 [/td][/tr]
 
 [tr][td]Was the procedure completed successfully, and did it result in the desired clinical outcome?[/td][td]
@@ -2571,10 +2562,7 @@ Follow us on Facebrowser: [url=https://face.gta.world/pages/PHMC?ref=qs]Pillbox 
                 patientGenetic,
                 patientMental,
                 patientFamSocial,
-                maritalStatus,
-                numberChildren,
                 patientReligion,
-                financialStatus,
                 attorneyName,
                 attorneyRelation,
                 attorneyPH,
@@ -3250,7 +3238,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
     const versionNames = {
         1: "Death Report",
         2: "Email Generator",
-        3: "Internal Medicine",
+        3: "Patient File - Advanced",
         4: "Dental Report",
         5: "Surgery Report",
         6: "Physical Evaluation (PHMC)",
@@ -3268,7 +3256,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
         22: "Commentary Note (PHMC)",
         23: "Commentary Note (PBC)",
         24: "Medical Release Records",
-        25: "Basic Patient File"
+        25: "Patient File - Basic"
     };
 
 
@@ -3338,7 +3326,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                 <option value="14">Mental Health</option>
                                 <option value="6">Physical Evaluation</option>
                                 <option value="27">Email Forms</option>
-                                <option value="27">Surgical Ops</option>
+                                <option value="5">Surgical Ops</option>
                             </Form.Select>
                         ) : (
                             <div className="agency-selector-buttons">
@@ -3433,7 +3421,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                 <div className="agency-row">
                                     <button
                                         className="agency-select-button"
-                                        onClick={() => handleAgencySelect(27)}
+                                        onClick={() => handleAgencySelect(5)}
                                     >
                                         <img src={surgeon}
                                             className="Center"
@@ -3500,7 +3488,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 1.7.5 - ❄️ Frostbite Update </h3>
+                                    <h3>Changelog - Version 1.7.8 HOTFIX - ❄️ Frostbite Update </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -3511,6 +3499,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                 </div>
                                 <div className="modal-content">
                                     <ul>
+                                        <li> Surgery has been rushed into surgery and has been fixed </li>
                                        <li> Alpha mobile support - Very likely bugs, please report them to Frosty on Discord.</li>
                                         <li> Added: PHMC & PBC Physical Evaluation</li>
                                         <li>Added: Surgical Report Rework</li>
@@ -3519,6 +3508,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                         <li>Form Selection has been reorganised</li>
                                         <li> Various updates (Migration from Select to Form.Select in progress) </li> 
                                         <li> Updated the Missing Employee field</li>
+                                        
                                     </ul>
                                 </div>
                             </div>
@@ -13242,7 +13232,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                 const { decedentName, coronerEmployee, coronerRank, patientName, decedentOOC, phmcEmployee, requestingOfficer, patientID, patientFirstName, patientLastName} = formData;
                                 const version = bbCodeVersion === 1 ? "Decedent Report" :
                                     bbCodeVersion === 2 ? "Coroner Report" :
-                                        bbCodeVersion === 3 ? "HUGE FUCKING FORM" :
+                                        bbCodeVersion === 3 ? "Patient File - Advanced" :
                                             bbCodeVersion === 4 ? "Dental Report " :
                                                 bbCodeVersion === 5 ? "Surgical Report " :
                                                     bbCodeVersion === 6 ? "Physical Evaluation (PHMC)" :
