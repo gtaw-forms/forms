@@ -80,8 +80,6 @@ import './buttons.css'
 
 import 'react-bootstrap-typeahead/css/Typeahead.css';
 import { FormHelperText } from '@mui/material';
-
-
 // HALF OF THIS CODE IS SPAGHETTI, A MESS, IT CAUSES ME HEADACHES, I WILL NOT REFACTOR BECAUSE ITS 1K LINES LONG
 // IM SORRY FOR WHOEVER WORKS ON THIS GITHUB REPOSITORY 
 // - FROSTYYY
@@ -376,7 +374,51 @@ function App() {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-
+    useEffect(() => {
+        window.onerror = async (message, source, lineno, colno, error) => {
+            let lineContent = '';
+            try {
+                // Attempt to fetch the line content from the source file
+                const response = await fetch(source);
+                if (response.ok) {
+                    const fileContent = await response.text();
+                    const lines = fileContent.split('\n');
+                    lineContent = lines[lineno - 1] || 'Line content not available';
+                } else {
+                    lineContent = `Failed to fetch source file: ${response.status} ${response.statusText}`;
+                }
+            } catch (fetchError) {
+                lineContent = `Error fetching source file: ${fetchError.message}`;
+            }
+    
+            const errorMessage = `
+                Error: ${message}
+                Source: ${source}
+                Line: ${lineno}
+                Column: ${colno}
+                Line Content: ${lineContent}
+                Error Object: ${error ? error.stack : 'No stack available'}
+            `;
+    
+            const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+    
+            fetch(discordWebhookUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    content: `**ERROR REPORT**\n${errorMessage}`
+                })
+            }).catch(error => {
+                console.error("Error sending error message to Discord:", error);
+            });
+    
+            return true; // Prevent default error handling
+        };
+    }, []);
+    
+    
     const [isUploading, setIsUploading] = useState(false);
     const [isJohnDoe, setIsJohnDoe] = useState(false);
     const [isJaneDoe, setIsJaneDoe] = useState(false);
@@ -389,33 +431,6 @@ function App() {
     const [commitInfo, setCommitInfo] = useState({ sha: '', date: null });
     const [rank, setRank] = useState('');
     const [showPHMCModal, setShowPHMCModal] = useState(false);
-    useEffect(() => {
-        window.onerror = (message, source, lineno, colno, error) => {
-            const errorMessage = `
-                Error: ${message}
-                Source: ${source}
-                Line: ${lineno}
-                Column: ${colno}
-                Error Object: ${error ? error.stack : 'No stack available'}
-            `;
-
-            const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-
-            fetch(discordWebhookUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    content: `**ERROR REPORT**\n${errorMessage}`
-                })
-            }).catch(error => {
-                console.error("Error sending error message to Discord:", error);
-            });
-
-            return true; // Prevent default error handling
-        };
-    }, []);
 
 
     useEffect(() => {
@@ -3123,11 +3138,9 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
         setFormData(newFormData);
     }, []); //  The empty dependency array [] ensures this effect runs only once after the initial render.
     const handleSelectChange = (selectedOption, type) => {
-
         const timestamp = Date.now();
-
+    
         if (selectedOption) {
-
             if (type === 'coroner') {
                 // Update formData and localStorage for coroner
                 setFormData(prev => ({
@@ -3137,7 +3150,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                     coronerRank: selectedOption.rank,
                     coronerDiscord: selectedOption.discord
                 }));
-
+    
                 // Save to localStorage with timestamp
                 localStorage.setItem('coronerEmployee', selectedOption.value);
                 localStorage.setItem('coronerBadge', selectedOption.badge);
@@ -3152,7 +3165,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                 localStorage.removeItem(field);
                 localStorage.removeItem(`${field}_timestamp`);
             });
-
+    
             setFormData(prev => ({
                 ...prev,
                 coronerEmployee: '',
@@ -3162,7 +3175,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
             }));
         }
     };
-    const handleChange = (e) => {
+        const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
         setFormData(prevFormData => ({
             ...prevFormData,
@@ -3488,7 +3501,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 1.7.8 HOTFIX - ❄️ Frostbite Update </h3>
+                                    <h3>Changelog - Version 1.7.8 HOTFIX2 - ❄️ Frostbite Update </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -3500,15 +3513,8 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                 <div className="modal-content">
                                     <ul>
                                         <li> Surgery has been rushed into surgery and has been fixed </li>
-                                       <li> Alpha mobile support - Very likely bugs, please report them to Frosty on Discord.</li>
-                                        <li> Added: PHMC & PBC Physical Evaluation</li>
-                                        <li>Added: Surgical Report Rework</li>
-                                        <li>(CIVILIAN) Patient File Basic + Detailed</li>
-                                        <li>PHMC Email Templates</li>
-                                        <li>Form Selection has been reorganised</li>
-                                        <li> Various updates (Migration from Select to Form.Select in progress) </li> 
-                                        <li> Updated the Missing Employee field</li>
-                                        
+                                        <li> Emergency hotfix to resolve a issue with Add Employee clearing fields </li> 
+                                       <li> Alpha mobile support - Very likely bugs, please report them to Frosty on Discord.</li>                                        
                                     </ul>
                                 </div>
                             </div>
@@ -12772,63 +12778,63 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
 
                         )}
                         {isDoctor && (
-    <Select
-        name="coronerEmployee"
-        value={missingEmployeeData.coronerEmployee ? coronerGroupedOptions
-            .flatMap(group => group.options)
-            .find(option => option.value === missingEmployeeData.coronerEmployee) || null : null}
-            onChange={(selectedOption) => handleMissingEmployeeChange(selectedOption.value, 'coronerEmployee')}
-            options={coronerGroupedOptions}
-        isClearable
-        placeholder="Who is requesting this missing employee..."
-        className={`form-control ${!formData.coronerEmployee ? 'is-invalid' : ''}`}
-        styles={{
-            control: (base) => ({
-                ...base,
-                backgroundColor: '#16202c',
-                color: '#eeeeeeb0',
-                borderColor: '#6c757d',
-                '&:hover': {
-                    borderColor: '#eeeeeeb0'
-                }
-            }),
-            menu: (base) => ({
-                ...base,
-                backgroundColor: '#16202c',
-                zIndex: 1000
-            }),
-            option: (base, state) => ({
-                ...base,
-                backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                color: '#eeeeeeb0'
-            }),
-            singleValue: (base) => ({
-                ...base,
-                color: '#eeeeeeb0'
-            }),
-            input: (base) => ({
-                ...base,
-                color: '#eeeeeeb0'
-            }),
-            placeholder: (base) => ({
-                ...base,
-                color: '#eeeeeeb0'
-            }),
-            group: (base) => ({
-                ...base,
-                paddingTop: 8,
-                paddingBottom: 8
-            }),
-            groupHeading: (base) => ({
-                ...base,
-                color: '#6c757d',
-                fontWeight: 600,
-                textTransform: 'uppercase',
-                fontSize: '0.75rem',
-                marginBottom: 4
-            })
-        }}
-    />
+                            <Select
+    name="coronerEmployee"
+    value={missingEmployeeData.coronerEmployee ? coronerGroupedOptions
+        .flatMap(group => group.options)
+        .find(option => option.value === missingEmployeeData.coronerEmployee) || null : null}
+    onChange={(selectedOption) => handleMissingEmployeeChange(selectedOption?.value || '', 'coronerEmployee')}
+    options={coronerGroupedOptions}
+    isClearable
+    placeholder="Who is requesting this missing employee..."
+    className={`form-control ${!formData.coronerEmployee ? 'is-invalid' : ''}`}
+    styles={{
+        control: (base) => ({
+            ...base,
+            backgroundColor: '#16202c',
+            color: '#eeeeeeb0',
+            borderColor: '#6c757d',
+            '&:hover': {
+                borderColor: '#eeeeeeb0'
+            }
+        }),
+        menu: (base) => ({
+            ...base,
+            backgroundColor: '#16202c',
+            zIndex: 1000
+        }),
+        option: (base, state) => ({
+            ...base,
+            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
+            color: '#eeeeeeb0'
+        }),
+        singleValue: (base) => ({
+            ...base,
+            color: '#eeeeeeb0'
+        }),
+        input: (base) => ({
+            ...base,
+            color: '#eeeeeeb0'
+        }),
+        placeholder: (base) => ({
+            ...base,
+            color: '#eeeeeeb0'
+        }),
+        group: (base) => ({
+            ...base,
+            paddingTop: 8,
+            paddingBottom: 8
+        }),
+        groupHeading: (base) => ({
+            ...base,
+            color: '#6c757d',
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            fontSize: '0.75rem',
+            marginBottom: 4
+        })
+    }}
+/>
 )}
                     {isNurse && (
                     <div style={{ display: 'flex', gap: '10px' }}>
@@ -12876,7 +12882,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
         value={missingEmployeeData.phmcEmployee ? phmcGroupedOptions
             .flatMap(group => group.options)
             .find(option => option.value === missingEmployeeData.phmcEmployee) || null : null}
-        onChange={(selectedOption) => handleMissingEmployeeChange(selectedOption.value, 'phmcEmployee')}
+        onChange={(selectedOption) => handleMissingEmployeeChange(selectedOption?.value || '', 'phmcEmployee')}
         options={phmcGroupedOptions}
         isClearable
         placeholder="Who is requesting this missing employee..."
