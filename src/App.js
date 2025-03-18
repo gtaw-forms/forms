@@ -50,7 +50,6 @@ import {
     ecg,
     sono,
     lab,
-    gender,
     admission,
     phmcList,
     coronerList,
@@ -561,7 +560,7 @@ function App() {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                content: `New Employee Name Request by: ${missingEmployeeData.phmcEmployee} ${missingEmployeeData.coronerEmployee}  \n name: ${missingEmployeeData.coronerName} \n badge/department: ${missingEmployeeData.coronerDiscord}\n rank: ${missingEmployeeData.coronerRank}`,
+                content: `<@228306972204597248> New Employee Name Request by: ${missingEmployeeData.phmcEmployee} ${missingEmployeeData.coronerEmployee}  \n name: ${missingEmployeeData.coronerName} \n badge/department: ${missingEmployeeData.coronerDiscord}\n rank: ${missingEmployeeData.coronerRank}`,
             }),
         });
 
