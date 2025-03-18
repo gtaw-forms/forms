@@ -561,7 +561,7 @@ function App() {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                content: `New Employee Name Request by: ${missingEmployeeData.phmcEmployee} ${missingEmployeeData.coronerEmployee}  \n name: ${missingEmployeeData.coronerName} \n badge/department: ${missingEmployeeData.coronerDiscord}\n rank: ${missingEmployeeData.coronerRank}\n discord: ${missingEmployeeData.coronerDiscord}`,
+                content: `New Employee Name Request by: ${missingEmployeeData.phmcEmployee} ${missingEmployeeData.coronerEmployee}  \n name: ${missingEmployeeData.coronerName} \n badge/department: ${missingEmployeeData.coronerDiscord}\n rank: ${missingEmployeeData.coronerRank}`,
             }),
         });
 

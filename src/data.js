@@ -275,6 +275,10 @@ export const dnrOrder = [
     { name: 'Tamina Dellavedova	', lastName: 'Dellavedova', signature: '', category: 'Nursing' },
     { name: 'Winter Calderone', lastName: 'Calderone', signature: '', category: 'Nursing' },
 
+    // ems
+    { name: 'Will Flanary', lastName: 'Flanary', signature: '', catagory: 'Emergency Medical Services' },
+
+
 ];
 export const coronerList = [
     { name: 'Anne Carter', badge: '4892', rank: 'Chief Medical Examiner', discord: 'ralof.from.riverwood', category: 'Chief Boss' },
