@@ -295,6 +295,9 @@ export const coronerList = [
     { name: 'Dominic Castañeda', badge: '', rank: 'Medical Examiner', discord: 'hangonda', category: 'Medical Examiner' },
     { name: 'Avery Purcell', badge: '181311', rank: 'Coroner Investigator', discord: 'urkaaa_', category: 'Coroner Investigator' },
     { name: 'Luna Rosario', badge: '157235', rank: 'Coroner Investigator', discord: 'assszzz', category: 'Coroner Investigator' },
+    { name: 'Norah Reed', badge: '93014', rank: 'Forensic Attendant', discord: 'amnesia5290', category: 'Forensic Attendant' },
+    { name: 'James McKinney', badge: 'ID_MISSING_ERROR', rank: 'Forensic Attendant', discord: 'boots7163', category: 'Forensic Attendant' },
+
 ];
 
 export const formatSignature = (signature) => {
