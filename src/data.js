@@ -229,7 +229,7 @@ export const dnrOrder = [
     { name: 'Evelyn Bleichroder', lastName: 'Bleichroder', signature: 'https://i.imgur.com/knYKimz.png', category: 'Leadership' },
     { name: 'Amaya Kim', lastName: 'Kim', signature: 'https://i.imgur.com/ZSy7QZs.png', category: 'Leadership' },
     { name: 'Kaden Malik', lastName: 'Malik', signature: 'https://i.imgur.com/K9G0mZ9.png', category: 'Leadership' },
-    { name: 'Lyla Malik', lastName: 'Malik', signature: 'https://i.imgur.com/jvttdmC.png', category: 'Leadership' },
+    { name: 'Lyla Epps', lastName: 'Epps', signature: 'https://i.imgur.com/jvttdmC.png', category: 'Leadership' },
     { name: 'Roan Roybal', lastName: 'Roybal', signature: 'https://i.imgur.com/vtbmbuT.png', category: 'Leadership' },
     { name: 'Sydney Lear', lastName: 'Lear', signature: 'https://i.imgur.com/lASeSxM.png', category: 'Hospital Supervisor' },
     { name: 'Danielle Shaw', lastName: 'Shaw', signature: '', category: 'Hospital Supervisor' },
