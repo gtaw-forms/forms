@@ -3188,43 +3188,37 @@ ${patientSafety}
                                                                                 generateDeath();
                                                                                 // generateError();
 
-/*     const generateTitle = () => {
-        if (bbCodeVersion === 1) {
+   
+// Coroner Titles
+const generateTitle = () => {       
+if (bbCodeVersion === 1) {
             const { typeOfDeath, decedentName, decedentOOC, dateTime } = formData;
             const date = new Date(dateTime).toLocaleDateString('en-US');
             return `[${typeOfDeath}] ${decedentName} ((${decedentOOC})) - ${date}`;
+// Coroner Email 
         } else if (bbCodeVersion === 2) {
             const { decedentName, decedentOOC } = formData;
             return `Coroner Report - ${decedentName} | ((${decedentOOC}))`;
-        } else if (bbCodeVersion === 24) {
-            const { patientFirstName,  patientLastName } = formData;
-            return `[RELEASE REQUEST] ${patientFirstName} ${patientLastName} `;
-        } else if (bbCodeVersion === 18) {
-            const { department } = formData;
-            return `Agency Incident Report - ${department}`;
+
+// Civilian Forms
         } else if (bbCodeVersion === 3) {
             const { patientName } = formData;
             return `[Medical Information Registration] -  ${patientName}`;
-        } else if (bbCodeVersion === 25) {
+        } else if (bbCodeVersion === 24) {
+            const { patientFirstName,  patientLastName } = formData;
+            return `[RELEASE REQUEST] ${patientFirstName} ${patientLastName} `;
+        } else if (bbCodeVersion === 25 || bbCodeVersion === 26) {
             const { patientName } = formData;
             return `[Medical Information Registration] -  ${patientName}`;
-        } else if (bbCodeVersion === 26) {
-            const { patientID, patientName } = formData;
-            return `${patientID} -  ${patientName}`;
-        } else if (bbCodeVersion === 14  || bbCodeVersion === 16 || bbCodeVersion === 17) {
-            const { patientMedicalRecord, patientName } = formData;
-            return `[${patientMedicalRecord}] - ${patientName}`;
-        } else if (bbCodeVersion === 27  || bbCodeVersion === 28 ) {
-            const { patientID, patientName } = formData;
-            return `[${patientID}] - ${patientName}`;
-
+// PHMC Email 
         } else {
             const { patientMedicalRecord, patientName } = formData;
             return `${patientMedicalRecord} - ${patientName}`;
         }
     };
+// Everything else
 
- */    const clearForm = () => {
+   const clearForm = () => {
         setFormData({
             coronerRank: 'Forensic Attendant',
             placeOfDeath: '',
@@ -4899,7 +4893,7 @@ ${patientSafety}
 
                                     </InputGroup>
                                     <span className="helper-text">
-                                        This supports clipboard uploading, ctrl + V! | Hosted by ImgBB! - <a href="https://imgbb.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+                                        This supports clipboard uploading, ctrl + V! | Hosted by Imgur! - <a href="https://imgur.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
                                     </span>
                                 </Form.Group>
                                 <Form.Group className="mb-3 upload-container">
@@ -4991,7 +4985,7 @@ ${patientSafety}
                                         </Button>
                                     </div>
                                     <span className="helper-text">
-                                        This supports clipboard uploading, ctrl + V! | Hosted by ImgBB! - <a href="https://imgbb.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+                                    This supports clipboard uploading, ctrl + V! | Hosted by Imgur! - <a href="https://imgur.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
                                     </span>
     <label>Morgue Bugs:</label>
                                     <Form.Check
@@ -9439,7 +9433,7 @@ ${patientSafety}
 
                                     </InputGroup>
                                     <span className="helper-text">
-                                        This supports clipboard uploading, ctrl + V! | Hosted by ImgBB! - <a href="https://imgbb.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+                                    This supports clipboard uploading, ctrl + V! | Hosted by Imgur! - <a href="https://imgur.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
                                     </span>
                                 </Form.Group>
                             </>
@@ -11858,7 +11852,7 @@ ${patientSafety}
 
                                     </InputGroup>
                                     <span className="helper-text">
-                                        This supports clipboard uploading, ctrl + V! | Hosted by ImgBB! - <a href="https://imgbb.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+                                    This supports clipboard uploading, ctrl + V! | Hosted by Imgur! - <a href="https://imgur.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
                                     </span>
                                 </Form.Group>
 
@@ -13344,7 +13338,7 @@ ${patientSafety}
                     <h3>DEV_TEXT: You are viewing:
                             {bbCodeVersion === 1 ? ' generateDeath - FULLY TESTED' :
                                 bbCodeVersion === 2 ? ' generateEmail - FULLY TESTED' :
-                                    bbCodeVersion === 3 ? 'HUGE FUCKING FORM' : 
+                                    bbCodeVersion === 3 ? 'Patient File - Advanced' : 
                                         bbCodeVersion === 4 ? ' generateDental' :
                                             bbCodeVersion === 5 ? ' generateSurgicalOps ' :
                                                 bbCodeVersion === 6 ? ' generatePhysEvalInternalMed ' :
@@ -13364,12 +13358,15 @@ ${patientSafety}
                                                                                                                     bbCodeVersion === 23 ? 'PBC Commentary Note' :
                                                                                                                         bbCodeVersion === 24 ? 'Medical Record Release' :
                                                                                                                             bbCodeVersion === 25 ? 'Basic Patient File' :
-                                                                  <                                                          bbCodeVersion === 26 ? 'Basic Patient File - Staff' :
+                                                                                                                           bbCodeVersion === 26 ? 'Basic Patient File - Staff' :
+                                                                                                                            bbCodeVersion === 27 ? 'Email PHMC Email' :
+                                                                                                                            bbCodeVersion === 28 ? 'Psych Eval PHMC' :
+                                                                                                                            bbCodeVersion === 29 ? 'Psych Eval PBC' :
 
                                                                                                                 ' MISSING TITLE - CHANGE DEV_TEXT'}
                         </h3>
                     </div>}
- */}                  
+ */}               
  <div className="bbcode-section">
  <div className={`char-counter ${getBBCodeContent()?.length > 60000 ? 'char-counter-warning' : ''}`}>
     Character Counter: {getBBCodeContent()?.length ?? 'Error'}/60000
@@ -13486,16 +13483,16 @@ ${patientSafety}
                             </>
                         )}
                     </div>
-{/*                     {bbCodeVersion !== 5 && (
-                        <>
-                            <h1>Generated Title</h1>
-                            <div className="title-output">
-                                <pre>{generateTitle()}</pre>
-                            </div>
-                        </>
-                    )}
-
- */}                    {bbCodeVersion === 2 && (
+                    {
+    (bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 3 || bbCodeVersion === 24 || bbCodeVersion === 25) && (
+        <>
+            <h1>Generated Title</h1>
+            <div className="title-output">
+                <pre>{generateTitle()}</pre>
+            </div>
+        </>
+    )
+}                  {bbCodeVersion === 2 && (
                         <div className="agency-buttons">
                             <h5>Agency Email Methods: </h5>
                             <a
@@ -13570,7 +13567,10 @@ ${patientSafety}
                     )}
 
                     <div className="button-container">
-{/*                         <button
+                        
+                    {
+    (bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 3 || bbCodeVersion === 24 || bbCodeVersion === 25) && (
+                     <button
                             type="button"
                             className="changelog-button"
                             onClick={() => {
@@ -13591,7 +13591,8 @@ ${patientSafety}
                             <i className="fas fa-copy"></i>
                             Copy Title
                         </button>
- */}                        <button
+                    )}
+                       <button
                             type="button"
                             className="changelog-button"
                             onClick={() => {
@@ -13724,8 +13725,8 @@ ${patientSafety}
                                                                                                         bbCodeVersion === 25 ? 'Basic Patient File' :
                                                                                                         bbCodeVersion === 26 ? 'Staff Patient Medical Record' : 
                                                                                                         bbCodeVersion === 27 ? 'PHMC Email' : 
-                                                                                                        // bbCodeVersion === 28 ? 'Psychological Evaluation PHMC' :
-                                                                                                        // bbCodeVersion === 29 ? 'Psychological Evaluation PBC' :
+                                                                                                        bbCodeVersion === 28 ? 'Psychological Evaluation PHMC' :
+                                                                                                         bbCodeVersion === 29 ? 'Psychological Evaluation PBC' :
                                                                                                         "DEBUG - update title logic"}
                         </button>
                         
