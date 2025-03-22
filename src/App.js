@@ -69,7 +69,18 @@ import {
     financialStatus,
     dnr,
     dnrOrder,
-    attorney
+    attorney,
+    departmentFullName,
+    Appearance,
+    Behavior,
+    Speech,
+    Mood,
+    Affect,
+    Risk,
+    ThoughtProcess,
+    ThoughtContent,
+    Insight,
+    Cognition
 } from './data';
 
 // css fun
@@ -327,7 +338,6 @@ function App() {
         patientTherapy: '',
         patientFamily: '',
         patientGentic: '',
-        patientTriggers: '',
         patientFamSocial: '',
         patientMental: '', 
         maritalStatus: '', 
@@ -355,6 +365,39 @@ function App() {
         attorneyRelation: '',
         dnrOther: '',
         patientEmergencyContactDiscord: '',
+        patientSecondaryDiagnosis: '', 
+        // new values
+        patientTriggers: '',
+        patientStress: '',
+        patientSymptoms: '',
+        patientDrugsUsage: '',
+        patientTreatmentMedicine: '',
+        patientSafety: '',
+        patientFollowUp: '',
+        patientTreatmentPlan: '',
+        patientRelationship: '',
+        patientRiskAssessment: '',
+        patientTherapyMedicine: '',
+        Speech: '',
+        Behavior: '',
+        Appearance: '',
+        Mood: '',
+        Affect: '',
+        Risk: '',
+        ThoughtProcess: '',
+        ThoughtContent: '',
+        Insight: '',
+        Cognition: '',
+        admission: '',
+        followup: '',
+        sono: '',
+        pupils: '',
+        lungs: '',
+        painLevel: '',
+        wounds: '',
+        findings: '',
+        patientFindings:'',
+        paletoClinicDepartment: '',
     });
     useEffect(() => {
         const handleResize = () => {
@@ -524,6 +567,9 @@ function App() {
     useEffect(() => {
         localStorage.setItem('bbCodeVersion', bbCodeVersion.toString());
     }, [bbCodeVersion]);
+    const [showFeatureRequestModal, setShowFeatureRequestModal] = useState(false);
+    const [featureRequest, setFeatureRequest] = useState('');
+    const [discordName, setDiscordName] = useState('');
     const [showMissingEmployeeModal, setShowMissingEmployeeModal] = useState(false);
     const [missingEmployeeData, setMissingEmployeeData] = useState({
         coronerName: '',
@@ -539,7 +585,7 @@ function App() {
             [type]: value,
         }));
     };
-            const handleMissingEmployeeSubmit = async () => {
+const handleMissingEmployeeSubmit = async () => {
     try {
         const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
@@ -596,7 +642,54 @@ function App() {
         });
     }
 };
+const handleFeatureRequestSubmit = async () => {
+    const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
+    if (!webhookURL) {
+        console.error('Something has gone wrong.');
+        setNotification({
+            message: 'Internal Server Error..',
+            icon: 'fas fa-exclamation-triangle',
+        });
+        return;
+    }
+
+    try {
+        const response = await fetch(process.env.REACT_APP_DISCORD_WEBHOOK_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                content: `New Feature Request: ${featureRequest} - Discord: ${discordName}`,
+            }),
+        });
+
+        if (response.ok) {
+            setNotification({
+                message: 'Thanks for your feedback! I will work on it soon',
+                icon: 'fas fa-check-circle',
+            });
+            setShowFeatureRequestModal(false); // Close the modal
+            setTimeout(() => {
+                setNotification(null);
+            }, 2000); // 2 seconds
+        } else {
+            console.error('Failed to send message to Discord webhook.');
+            setNotification({
+                message: 'Failed to submit. Please try again.',
+                icon: 'fas fa-exclamation-triangle',
+
+            });
+        }
+    } catch (error) {
+        console.error('Error submitting data:', error);
+        setNotification({
+            message: 'An error occurred. Please try again.',
+            icon: 'fas fa-exclamation-triangle',
+        });
+    }
+};
     // Separate PHMC options
     const phmcGroupedOptions = Object.entries(
         phmcList.reduce((groups, employee) => {
@@ -729,30 +822,6 @@ function App() {
         }
     };
 
-    const departmentFullName = (abbreviation) => {
-        switch (abbreviation) {
-            case 'LSPD':
-                return 'Los Santos Police Department';
-            case 'LSFD':
-                return 'Los Santos Fire Department';
-            case 'LSSD':
-                return 'Los Santos Sheriff Department';
-            case 'PHMC':
-                return 'Pillbox Hill Medical Center';
-            case 'SANFIRE':
-                return 'San Andreas Department of Forestry and Fire Protection';
-            case 'SADCR':
-                return 'San Andreas Department of Corrections and Rehabilitation';
-            case 'LSGOV':
-                return 'Los Santos City Government';
-            case '911 Call':
-                return 'Emergency 911 Dispatch Center';
-            case 'Protech':
-                return 'ProTech Security Solutions';
-            default:
-                return '';
-        }
-    };
 
     const generateDeath = () => {
         const {
@@ -2110,7 +2179,7 @@ PO BOX 742
 LOS SANTOS, SAN ANDREAS
 P: 50056[/size][/center][/table][/divbox]
 [divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Anamnesis[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Chief Complaint: [/u][br][/br]
+[table][tr][td][left][list=none][u]Reason for Visit: [/u][br][/br]
 ${patientChiefComplaint}
 [br][/br]
 [u]Assigned Department: [/u][br][/br]
@@ -2142,7 +2211,7 @@ ${patientSecondaryDiagnosis}[/left][/list][/table]
 [cb${formData.admission === 'Yes' ? 'c' : ''}] Yes
 [cb${formData.admission === 'No' ? 'c' : ''}] No
 [br][/br]
-[u]Procedure/Free Text: [/u][br][/br]
+[u]Treatment plan/Free Text: [/u][br][/br]
 ${patientProcedure}
 [br][/br]
 [u]Medication: [/u][br][/br]
@@ -2171,61 +2240,61 @@ ${patientMedicine}
     
             let bbCode = `[divbox=white][table][tr][td][center][br][/br][br][/br][b]Consultation Notes[/b]
     
-    PATIENT ID: ${patientID}
-    
-    Date: ${date}
-    
-    Signed: ${phmcRank} ${lastName}
+PATIENT ID: ${patientID}
+
+Date: ${date}
+
+Signed: ${phmcRank} ${lastName}
 [/center][td][center][img]https://i.imgur.com/LkRKav2.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PALETO BAY CLINIC[/b]
 PALETO BAY BLVD.
 PO BOX 685
 PALETO BAY, SAN ANDREAS
 P: 50056[/size][/center][/table][/divbox]
 [divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Anamnesis[/b][/color][/center][/divboxcolor]
-    [table][tr][td][left][list=none][u]Chief Complaint: [/u][br][/br]
-    ${patientChiefComplaint}
-    [br][/br]
-    [u]Assigned Department: [/u][br][/br]
-    [cb${formData.paletoClinicDepartment === 'InternalMedicine' ? 'c' : ''}] Internal Medicine 
-    [cb${formData.paletoClinicDepartment === 'SurgicalDepartment' ? 'c' : ''}] Surgical Department
-    [/table]
+[table][tr][td][left][list=none][u]Reason for Visit: [/u][br][/br]
+${patientChiefComplaint}
+[br][/br]
+[u]Assigned Department: [/u][br][/br]
+[cb${formData.paletoClinicDepartment === 'InternalMedicine' ? 'c' : ''}] Internal Medicine 
+[cb${formData.paletoClinicDepartment === 'SurgicalDepartment' ? 'c' : ''}] Surgical Department
+[/table]
 [divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Vitals[/b][/color][/center][/divboxcolor]
-    [table][tr][td][center]Temperature: [cb${formData.vitals === 'patientTempNormal' ? 'c' : ''}] Normal [cb${formData.vitals === 'patientHypothermic' ? 'c' : ''}] Hypothermic [cb${formData.vitals === 'patientHyperthermic' ? 'c' : ''}] Hyperthermic[/center]
-    [td][center]Heart Rate: [cb${formData.heartRate === 'patientHeartRateNormal' ? 'c' : ''}] Normal [cb${formData.heartRate === 'patientHeartRateBradycardia' ? 'c' : ''}] Bradycardia [cb${formData.heartRate === 'patientHeartRateTachycardia' ? 'c' : ''}] Tachycardia[/center][/table]
-    [table][tr][td][center]Breathing: [cb${formData.breathing === 'patientBreathingNormal' ? 'c' : ''}] Normal [cb${formData.breathing === 'patientBreathingSlow' ? 'c' : ''}] Slow [cb${formData.breathing === 'patientBreathingFast' ? 'c' : ''}] Fast [cb${formData.breathing === 'patientBreathingObstructed' ? 'c' : ''}] Obstructed[/center]
-    [td][center]Blood Pressure: [cb${formData.bloodPressure === 'patientBloodPressureNormal' ? 'c' : ''}] Normal [cb${formData.bloodPressure === 'patientBloodPressureHypotension' ? 'c' : ''}] Hypotension [cb${formData.bloodPressure === 'patientBloodPressureHypertension' ? 'c' : ''}] Hypertension [/center][/table]
+[table][tr][td][center]Temperature: [cb${formData.vitals === 'patientTempNormal' ? 'c' : ''}] Normal [cb${formData.vitals === 'patientHypothermic' ? 'c' : ''}] Hypothermic [cb${formData.vitals === 'patientHyperthermic' ? 'c' : ''}] Hyperthermic[/center]
+[td][center]Heart Rate: [cb${formData.heartRate === 'patientHeartRateNormal' ? 'c' : ''}] Normal [cb${formData.heartRate === 'patientHeartRateBradycardia' ? 'c' : ''}] Bradycardia [cb${formData.heartRate === 'patientHeartRateTachycardia' ? 'c' : ''}] Tachycardia[/center][/table]
+[table][tr][td][center]Breathing: [cb${formData.breathing === 'patientBreathingNormal' ? 'c' : ''}] Normal [cb${formData.breathing === 'patientBreathingSlow' ? 'c' : ''}] Slow [cb${formData.breathing === 'patientBreathingFast' ? 'c' : ''}] Fast [cb${formData.breathing === 'patientBreathingObstructed' ? 'c' : ''}] Obstructed[/center]
+[td][center]Blood Pressure: [cb${formData.bloodPressure === 'patientBloodPressureNormal' ? 'c' : ''}] Normal [cb${formData.bloodPressure === 'patientBloodPressureHypotension' ? 'c' : ''}] Hypotension [cb${formData.bloodPressure === 'patientBloodPressureHypertension' ? 'c' : ''}] Hypertension [/center][/table]
 [divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Findings[/b][/color][/center][/divboxcolor]
-    [table][tr][td][center]General Health Condition (GHC): [cb${formData.findings === 'patientNormal' ? 'c' : ''}] Normal [cb${formData.findings === 'patientImpared' ? 'c' : ''}] Impaired[/center]
-    [td][center]Lungs (Auscultation): [cb${formData.lungs === 'patientNormal' ? 'c' : ''}] Normal [cb${formData.findings === 'patientRhonchi' ? 'c' : ''}] Rhonchi [cb${formData.findings === 'patientCrack' ? 'c' : ''}] Crackles [/center][/table]
-    [table][tr][td][center]Pupils: [cb${formData.pupils === 'patientPupilsNormal' ? 'c' : ''}] Normal [cb${formData.pupils === 'patientPupilsAbnormal' ? 'c' : ''}] Abnormal [/center]
-    [td][center]Wounds: [cb${formData.wounds === 'patientFractures' ? 'c' : ''}] Fracture(s) [cb${formData.wounds === 'patientBleeding' ? 'c' : ''}] Bleeding [cb${formData.wounds === 'patientHematoma' ? 'c' : ''}] Hematoma [cb${formData.wounds === 'patientNoWounds' ? 'c' : ''}] None [/center][/table]
-    [table][tr][td][center]ECG: [cb${formData.ecg === 'patientSinusRhythm' ? 'c' : ''}] Sinus rhythm [cb${formData.ecg === 'patientArrhythmia' ? 'c' : ''}] Arrhythmia [cb${formData.ecg === 'patientInfaction' ? 'c' : ''}] Infarct [/center]
-    [td][center]Sono: [cb${formData.sono === 'patientNormal' ? 'c' : ''}] Normal [cb${formData.sono === 'patientFluids' ? 'c' : ''}] Fluids [cb${formData.sono === 'patientTissue' ? 'c' : ''}] Tissue Change[/center][/table]
-    [table][tr][td][center]Lab: [cb${formData.lab.includes('WNL') ? 'c' : ''}] WNL  [cb${formData.lab.includes('Anemia') ? 'c' : ''}] Anemia [cb${formData.lab.includes('Inflammation/Infection') ? 'c' : ''}] Inflammation/Infection [cb${formData.lab.includes('Dysfunction') ? 'c' : ''}] Dysfunction/Disorder [cb${formData.lab.includes('ElectrolyteImbalance') ? 'c' : ''}] Electrolyte Imbalance [cb${formData.lab.includes('Infarct') ? 'c' : ''}] Infarct/Embolism [cb${formData.lab.includes('Tumor') ? 'c' : ''}] Tumor [/center][/table]
+[table][tr][td][center]General Health Condition (GHC): [cb${formData.findings === 'patientNormal' ? 'c' : ''}] Normal [cb${formData.findings === 'patientImpared' ? 'c' : ''}] Impaired[/center]
+[td][center]Lungs (Auscultation): [cb${formData.lungs === 'patientNormal' ? 'c' : ''}] Normal [cb${formData.findings === 'patientRhonchi' ? 'c' : ''}] Rhonchi [cb${formData.findings === 'patientCrack' ? 'c' : ''}] Crackles [/center][/table]
+[table][tr][td][center]Pupils: [cb${formData.pupils === 'patientPupilsNormal' ? 'c' : ''}] Normal [cb${formData.pupils === 'patientPupilsAbnormal' ? 'c' : ''}] Abnormal [/center]
+[td][center]Wounds: [cb${formData.wounds === 'patientFractures' ? 'c' : ''}] Fracture(s) [cb${formData.wounds === 'patientBleeding' ? 'c' : ''}] Bleeding [cb${formData.wounds === 'patientHematoma' ? 'c' : ''}] Hematoma [cb${formData.wounds === 'patientNoWounds' ? 'c' : ''}] None [/center][/table]
+[table][tr][td][center]ECG: [cb${formData.ecg === 'patientSinusRhythm' ? 'c' : ''}] Sinus rhythm [cb${formData.ecg === 'patientArrhythmia' ? 'c' : ''}] Arrhythmia [cb${formData.ecg === 'patientInfaction' ? 'c' : ''}] Infarct [/center]
+[td][center]Sono: [cb${formData.sono === 'patientNormal' ? 'c' : ''}] Normal [cb${formData.sono === 'patientFluids' ? 'c' : ''}] Fluids [cb${formData.sono === 'patientTissue' ? 'c' : ''}] Tissue Change[/center][/table]
+[table][tr][td][center]Lab: [cb${formData.lab.includes('WNL') ? 'c' : ''}] WNL  [cb${formData.lab.includes('Anemia') ? 'c' : ''}] Anemia [cb${formData.lab.includes('Inflammation/Infection') ? 'c' : ''}] Inflammation/Infection [cb${formData.lab.includes('Dysfunction') ? 'c' : ''}] Dysfunction/Disorder [cb${formData.lab.includes('ElectrolyteImbalance') ? 'c' : ''}] Electrolyte Imbalance [cb${formData.lab.includes('Infarct') ? 'c' : ''}] Infarct/Embolism [cb${formData.lab.includes('Tumor') ? 'c' : ''}] Tumor [/center][/table]
 [divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Discharge Diagnosis[/b][/color][/center][/divboxcolor]
-    [table][tr][td][left][list=none][u]Primary Diagnosis: [/u][br][/br]
-    ${patientDiagnosis}
-    [br][/br][u]Secondary Diagnosis: [/u][br][/br]
-    ${patientSecondaryDiagnosis}[/left][/list][/table]
+[table][tr][td][left][list=none][u]Primary Diagnosis: [/u][br][/br]
+${patientDiagnosis}
+[br][/br][u]Secondary Diagnosis: [/u][br][/br]
+${patientSecondaryDiagnosis}[/left][/list][/table]
 [divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Therapy[/b][/color][/center][/divboxcolor]
-    [table][tr][td][left][list=none][u]Admission: [/u][br][/br]
-    [cb${formData.admission === 'Yes' ? 'c' : ''}] Yes
-    [cb${formData.admission === 'No' ? 'c' : ''}] No
-    [br][/br]
-    [u]Procedure/Free Text: [/u][br][/br]
-    ${patientProcedure}
-    [br][/br]
-    [u]Additional Notes: [/u][br][/br]
-    ${patientNotes}
-    [br][/br]
-    [u]Medication: [/u][br][/br]
-    ${patientMedicine}
-    [br][/br]
-    [u]Follow-Up: [/u][br][/br]
-    [cb${formData.followup === 'AsNeeded' ? 'c' : ''}] As needed
-    [cb${formData.followup === 'Recommended' ? 'c' : ''}] Recommended
-    [cb${formData.followup === 'ElectiveProcedure' ? 'c' : ''}] Elective procedure 
-    [/left][/list][/table]`
+[table][tr][td][left][list=none][u]Admission: [/u][br][/br]
+[cb${formData.admission === 'Yes' ? 'c' : ''}] Yes
+[cb${formData.admission === 'No' ? 'c' : ''}] No
+[br][/br]
+[u]Treatment plan/Free Text: [/u][br][/br]
+${patientProcedure}
+[br][/br]
+[u]Additional Notes: [/u][br][/br]
+${patientNotes}
+[br][/br]
+[u]Medication: [/u][br][/br]
+${patientMedicine}
+[br][/br]
+[u]Follow-Up: [/u][br][/br]
+[cb${formData.followup === 'AsNeeded' ? 'c' : ''}] As needed
+[cb${formData.followup === 'Recommended' ? 'c' : ''}] Recommended
+[cb${formData.followup === 'ElectiveProcedure' ? 'c' : ''}] Elective procedure 
+[/left][/list][/table]`
             return bbCode;
             };
             const generateCommentaryNotePHMC = () => {
@@ -2682,7 +2751,414 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
             return bbCode;
             };
     
-    
+// generatePsychEvalPHMC
+const generatePsychEvalPHMC = () => {
+    const {
+        patientID,
+        date,
+        phmcRank,
+        lastName,
+        patientChiefComplaint,
+        patientTriggers,
+        patientStress,
+        patientTreatment,
+        patientFamily,
+        patientJobRisks,
+        patientMedicalRecord,
+        patientAllergies,
+        patientChronicDiseases,
+        patientVisitReason,
+        patientSymptoms,
+        patientCondition,
+        patientDrugs,
+        patientDrugsUsage,
+        patientMental,
+        patientJob,
+        patientFam,
+        patientLegal,
+        patientRelationship,
+        patientFindings,
+        patientTreatmentPlan,
+        patientSafety,
+        patientFollowUp,
+        patientTreatmentMedicine,
+        patientDiagnosis,
+        patientTherapy,
+        patientRiskAssessment,
+        patientTherapyMedicine,
+    } = formData;
+
+    let bbCode = `[divbox=white][table][tr][td][center][br][/br][br][/br][b]Session Notes[/b]
+PATIENT ${patientID}
+Date: ${date}
+Signed: ${phmcRank} ${lastName}
+[/center][td][center][img]https://i.imgur.com/QMaz0OC.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PILLBOX HILL MEDICAL CENTER[/b]
+ELGIN AVE. / STRAWBERRY AVE.
+PO BOX 742
+LOS SANTOS, SAN ANDREAS
+P: 50056[/size][/center][/table][/divbox]
+
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Anamnesis[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none][u]Chief Complaint: [/u][br][/br]
+${patientChiefComplaint}
+[br][/br]
+[u]Assigned Department: [/u][br][/br]
+[cbc] Mental Health
+[br][/br][/list][/td][/tr][/table]
+
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Presenting Problem[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none][u]Description of the issue (e.g., anxiety, depression, psychosis): [/u][br][/br]
+${patientVisitReason}
+[br][/br]
+[u]Onset and duration of symptoms: [/u][br][/br]
+${patientSymptoms}
+[br][/br]
+[u]Triggers or stressors: [/u][br][/br]
+${patientTriggers}
+[br][/br]
+[u]Impact on daily life: [/u][br][/br]
+${patientStress}
+[/list][/td][/tr][/table]
+
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Mental Status Examination (MSE)[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none]
+[u]Appearance: [/u][br][/br]
+[cb${formData.Appearance === 'Good' ? 'c' : ''}] Well-groomed [cb${formData.Appearance === 'Disheveled' ? 'c' : ''}] Disheveled [cb${formData.Appearance === 'Inappropriate' ? 'c' : ''}] Inappropriate
+[br][/br]
+[u]Behavior: [/u][br][/br]
+[cb${formData.Behavior === 'Cooperative' ? 'c' : ''}] Cooperative [cb${formData.Behavior === 'Agitated' ? 'c' : ''}] Agitated [cb${formData.Behavior === 'Withdrawn' ? 'c' : ''}] Withdrawn
+[br][/br]
+[u]Speech: [/u][br][/br]
+[cb${formData.Speech === 'Normal' ? 'c' : ''}] Normal [cb${formData.Speech === 'Pressured' ? 'c' : ''}] Pressured [cb${formData.Speech === 'Slurred' ? 'c' : ''}] Slurred [cbcb${formData.Speech === 'Slow' ? 'c' : ''}] Slow
+[br][/br]
+[u]Mood: [/u][br][/br]
+[cb${formData.Mood === 'Euthymic' ? 'c' : ''}] Euthymic [cb${formData.Mood === 'Depressed' ? 'c' : ''}] Depressed [cb${formData.Mood === 'Anxious' ? 'c' : ''}] Anxious [cb${formData.Mood === 'Angry' ? 'c' : ''}] Angry
+[br][/br]
+[u]Affect: [/u][br][/br]
+[cb${formData.Affect === 'Congruent' ? 'c' : ''}] Congruent [cb${formData.Affect === 'Flat' ? 'c' : ''}] Flat [cb${formData.Affect === 'Inappropriate' ? 'c' : ''}] Inappropriate
+[br][/br]
+[u]Thought Process: [/u][br][/br]
+[cb${formData.ThoughtProcess === 'Logical' ? 'c' : ''}] Logical [cb${formData.ThoughtProcess === 'Organized' ? 'c' : ''}] Organized [cb${formData.ThoughtProcess === 'Tangential' ? 'c' : ''}] Tangential [cb${formData.ThoughtProcess === 'Disorganized' ? 'c' : ''}] Disorganized
+[br][/br]
+[u]Thought Content: [/u][br][/br]
+[cb${formData.ThoughtContent === 'Nodelusions' ? 'c' : ''}] No delusions [cb${formData.ThoughtContent === 'Delusions' ? 'c' : ''}] Delusions [cb${formData.ThoughtContent === 'Hallucinations' ? 'c' : ''}] Hallucinations [cb${formData.ThoughtContent === 'Suicidal' ? 'c' : ''}] Suicidal thoughts [cb${formData.ThoughtContent === 'Homicidal' ? 'c' : ''}] Homicidal thoughts
+[br][/br]
+[u]Insight and Judgment: [/u][br][/br]
+[cb${formData.Insight === 'Intact' ? 'c' : ''}] Intact [cb${formData.Insight === 'Limited' ? 'c' : ''}] Limited [cb${formData.Insight === 'Poor' ? 'c' : ''}] Poor
+[br][/br]
+[u]Cognition: [/u][br][/br]
+[cb${formData.Cognition === 'Oriented' ? 'c' : ''}] Oriented to time, place, person [cb${formData.Cognition === 'Memory' ? 'c' : ''}] Memory intact [cb${formData.Cognition === 'Attention' ? 'c' : ''}] Attention intact
+[/list][/td][/tr][/table]
+
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Psychiatric History[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none]
+[u]Past psychiatric diagnoses and treatments: [/u][br][/br]
+${patientTreatment}
+[br][/br]
+[u]Hospitalizations: [/u][br][/br]
+${patientMedicalRecord}
+[br][/br]
+[u]Family psychiatric history: [/u][br][/br]
+${patientFamily}
+[br][/br]
+[u]History of self-harm or suicide attempts: [/u][br][/br]
+${patientJobRisks}
+[/list][/td][/tr][/table]
+
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Medical History[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none]
+[u]Current and past medical conditions: [/u][br][/br]
+${patientCondition}
+[br][/br]
+[u]Medications (including psychiatric and non-psychiatric): [/u][br][/br]
+${patientChronicDiseases}
+[br][/br]
+[u]Allergies: [/u][br][/br]
+${patientAllergies}
+[/list][/td][/tr][/table]
+
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Substance Use History[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none]
+[u]Use of alcohol, drugs, nicotine, and other substances: [/u][br][/br]
+${patientDrugs}
+[br][/br]
+[u]Frequency and duration of use: [/u][br][/br]
+${patientDrugsUsage}
+[br][/br]
+[u]Impact on mental health: [/u][br][/br]
+${patientMental}
+[/list][/td][/tr][/table]
+
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Psychosocial History[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none]
+[u]Childhood and family background: [/u][br][/br]
+${patientFam}
+[br][/br]
+[u]Education and employment history: [/u][br][/br]
+${patientJob}
+[br][/br]
+[u]Relationships and support system: [/u][br][/br]
+${patientRelationship}
+[br][/br]
+[u]Legal issues: [/u][br][/br]
+${patientLegal}
+[/list][/td][/tr][/table]
+
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Risk Assessment[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none]
+[cb${formData.Risk === 'Suicidal' ? 'c' : ''}] Suicidal ideation or attempts [cb${formData.Risk === 'Homicidal' ? 'c' : ''}] Homicidal thoughts or violent behavior [cb${formData.Risk === 'Self' ? 'c' : ''}] Self-injury or harm to others
+[br][/br]
+[u]Details: [/u][br][/br]
+${patientRiskAssessment}
+[/list][/td][/tr][/table]
+
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Findings[/b][/color][/center][/divboxcolor]
+[table][tr][td][list=none]
+Notes: ${patientFindings}
+[/list][/td][/tr][/table]
+
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Discharge Diagnosis[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none]
+[u]Primary Diagnosis: [/u][br][/br]
+${patientDiagnosis}
+[/list][/td][/tr][/table]
+
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Therapy[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none][u]Admission: [/u][br][/br]
+[cb${formData.admission === 'Yes' ? 'c' : ''}] Yes [cb${formData.admission === 'No' ? 'c' : ''}] No
+[br][/br]
+[u]Treatment Plan: [/u][br][/br]
+${patientTreatmentPlan}
+[br][/br]
+[u]Medication: [/u][br][/br]
+${patientTherapyMedicine}
+[br][/br]
+[u]Follow-Up: [/u][br][/br]
+[cb${formData.followup === 'AsNeeded' ? 'c' : ''}] As needed [cb${formData.followup === 'Recommended' ? 'c' : ''}] Recommended
+
+[/list][/td][/tr][/table]
+
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Treatment Plan/Recommendations[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none]
+[u]Medications: [/u][br][/br]
+${patientTreatmentMedicine}
+[br][/br]
+[u]Therapy (e.g., CBT, DBT): [/u][br][/br]
+${patientTherapy}
+[br][/br]
+[u]Follow-up appointments: [/u][br][/br]
+${patientFollowUp}
+[br][/br]
+[u]Safety planning (if at risk): [/u][br][/br]
+${patientSafety}
+[/list][/td][/tr][/table]`
+    return bbCode;
+    };
+// generatePsychEvalPBC
+const generatePsychEvalPBC = () => {
+    const {
+        patientID,
+        date,
+        Affect,
+        phmcRank,
+        lastName,
+        patientChiefComplaint,
+        patientTriggers,
+        patientStress,
+        patientTreatment,
+        patientFamily,
+        patientJobRisks,
+        patientMedicalRecord,
+        patientAllergies,
+        patientChronicDiseases,
+        patientVisitReason,
+        patientSymptoms,
+        patientCondition,
+        patientDrugs,
+        patientDrugsUsage,
+        patientMental,
+        patientJob,
+        patientFam,
+        patientLegal,
+        patientRelationship,
+        patientFindings,
+        patientTreatmentPlan,
+        patientSafety,
+        patientFollowUp,
+        patientTreatmentMedicine,
+        patientDiagnosis,
+        patientTherapy,
+        patientRiskAssessment,
+        patientTherapyMedicine,
+    } = formData;
+
+    let bbCode = `[divbox=white][table][tr][td][center][br][/br][br][/br][b]Session Notes[/b]
+PATIENT ${patientID}
+Date: ${date}
+Signed: ${phmcRank} ${lastName}
+[/center][td][center][img]https://i.imgur.com/LkRKav2.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PALETO BAY CLINIC[/b]
+PALETO BAY BLVD.
+PO BOX 685
+PALETO BAY, SAN ANDREAS
+P: 50056[/size][/center][/table][/divbox]
+
+[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Anamnesis[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none][u]Chief Complaint: [/u][br][/br]
+${patientChiefComplaint}
+[br][/br]
+[u]Assigned Department: [/u][br][/br]
+[cbc] Mental Health
+[br][/br][/list][/td][/tr][/table]
+
+[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Presenting Problem[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none][u]Description of the issue (e.g., anxiety, depression, psychosis): [/u][br][/br]
+${patientVisitReason}
+[br][/br]
+[u]Onset and duration of symptoms: [/u][br][/br]
+${patientSymptoms}
+[br][/br]
+[u]Triggers or stressors: [/u][br][/br]
+${patientTriggers}
+[br][/br]
+[u]Impact on daily life: [/u][br][/br]
+${patientStress}
+[/list][/td][/tr][/table]
+
+[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Mental Status Examination (MSE)[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none]
+[u]Appearance: [/u][br][/br]
+[cb${formData.Appearance === 'Good' ? 'c' : ''}] Well-groomed [cb${formData.Appearance === 'Disheveled' ? 'c' : ''}] Disheveled [cb${formData.Appearance === 'Inappropriate' ? 'c' : ''}] Inappropriate
+[br][/br]
+[u]Behavior: [/u][br][/br]
+[cb${formData.Behavior === 'Cooperative' ? 'c' : ''}] Cooperative [cb${formData.Behavior === 'Agitated' ? 'c' : ''}] Agitated [cb${formData.Behavior === 'Withdrawn' ? 'c' : ''}] Withdrawn
+[br][/br]
+[u]Speech: [/u][br][/br]
+[cb${formData.Speech === 'Normal' ? 'c' : ''}] Normal [cb${formData.Speech === 'Pressured' ? 'c' : ''}] Pressured [cb${formData.Speech === 'Slurred' ? 'c' : ''}] Slurred [cbcb${formData.Speech === 'Slow' ? 'c' : ''}] Slow
+[br][/br]
+[u]Mood: [/u][br][/br]
+[cb${formData.Mood === 'Euthymic' ? 'c' : ''}] Euthymic [cb${formData.Mood === 'Depressed' ? 'c' : ''}] Depressed [cb${formData.Mood === 'Anxious' ? 'c' : ''}] Anxious [cb${formData.Mood === 'Angry' ? 'c' : ''}] Angry
+[br][/br]
+[u]Affect: [/u][br][/br]
+[cb${formData.Affect === 'Congruent' ? 'c' : ''}] Congruent [cb${formData.Affect === 'Flat' ? 'c' : ''}] Flat [cb${formData.Affect === 'Inappropriate' ? 'c' : ''}] Inappropriate
+[br][/br]
+[u]Thought Process: [/u][br][/br]
+[cb${formData.ThoughtProcess === 'Logical' ? 'c' : ''}] Logical [cb${formData.ThoughtProcess === 'Organized' ? 'c' : ''}] Organized [cb${formData.ThoughtProcess === 'Tangential' ? 'c' : ''}] Tangential [cb${formData.ThoughtProcess === 'Disorganized' ? 'c' : ''}] Disorganized
+[br][/br]
+[u]Thought Content: [/u][br][/br]
+[cb${formData.ThoughtContent === 'Nodelusions' ? 'c' : ''}] No delusions [cb${formData.ThoughtContent === 'Delusions' ? 'c' : ''}] Delusions [cb${formData.ThoughtContent === 'Hallucinations' ? 'c' : ''}] Hallucinations [cb${formData.ThoughtContent === 'Suicidal' ? 'c' : ''}] Suicidal thoughts [cb${formData.ThoughtContent === 'Homicidal' ? 'c' : ''}] Homicidal thoughts
+[br][/br]
+[u]Insight and Judgment: [/u][br][/br]
+[cb${formData.Insight === 'Intact' ? 'c' : ''}] Intact [cb${formData.Insight === 'Limited' ? 'c' : ''}] Limited [cb${formData.Insight === 'Poor' ? 'c' : ''}] Poor
+[br][/br]
+[u]Cognition: [/u][br][/br]
+[cb${formData.Cognition === 'Oriented' ? 'c' : ''}] Oriented to time, place, person [cb${formData.Cognition === 'Memory' ? 'c' : ''}] Memory intact [cb${formData.Cognition === 'Attention' ? 'c' : ''}] Attention intact
+[/list][/td][/tr][/table]
+
+[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Psychiatric History[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none]
+[u]Past psychiatric diagnoses and treatments: [/u][br][/br]
+${patientTreatment}
+[br][/br]
+[u]Hospitalizations: [/u][br][/br]
+${patientMedicalRecord}
+[br][/br]
+[u]Family psychiatric history: [/u][br][/br]
+${patientFamily}
+[br][/br]
+[u]History of self-harm or suicide attempts: [/u][br][/br]
+${patientJobRisks}
+[/list][/td][/tr][/table]
+
+[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Medical History[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none]
+[u]Current and past medical conditions: [/u][br][/br]
+${patientCondition}
+[br][/br]
+[u]Medications (including psychiatric and non-psychiatric): [/u][br][/br]
+${patientChronicDiseases}
+[br][/br]
+[u]Allergies: [/u][br][/br]
+${patientAllergies}
+[/list][/td][/tr][/table]
+
+[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Substance Use History[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none]
+[u]Use of alcohol, drugs, nicotine, and other substances: [/u][br][/br]
+${patientDrugs}
+[br][/br]
+[u]Frequency and duration of use: [/u][br][/br]
+${patientDrugsUsage}
+[br][/br]
+[u]Impact on mental health: [/u][br][/br]
+${patientMental}
+[/list][/td][/tr][/table]
+
+[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Psychosocial History[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none]
+[u]Childhood and family background: [/u][br][/br]
+${patientFam}
+[br][/br]
+[u]Education and employment history: [/u][br][/br]
+${patientJob}
+[br][/br]
+[u]Relationships and support system: [/u][br][/br]
+${patientRelationship}
+[br][/br]
+[u]Legal issues: [/u][br][/br]
+${patientLegal}
+[/list][/td][/tr][/table]
+
+[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Risk Assessment[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none]
+[cb${formData.Risk === 'Suicidal' ? 'c' : ''}] Suicidal ideation or attempts [cb${formData.Risk === 'Homicidal' ? 'c' : ''}] Homicidal thoughts or violent behavior [cb${formData.Risk === 'Self' ? 'c' : ''}] Self-injury or harm to others
+[br][/br]
+[u]Details: [/u][br][/br]
+${patientRiskAssessment}
+[/list][/td][/tr][/table]
+
+[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Findings[/b][/color][/center][/divboxcolor]
+[table][tr][td][list=none]
+Notes: ${patientFindings}
+[/list][/td][/tr][/table]
+
+[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Discharge Diagnosis[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none]
+[u]Primary Diagnosis: [/u][br][/br]
+${patientDiagnosis}
+[/list][/td][/tr][/table]
+
+[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Therapy[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none][u]Admission: [/u][br][/br]
+[cb${formData.admission === 'Yes' ? 'c' : ''}] Yes [cb${formData.admission === 'No' ? 'c' : ''}] No
+[br][/br]
+[u]Treatment Plan: [/u][br][/br]
+${patientTreatmentPlan}
+[br][/br]
+[u]Medication: [/u][br][/br]
+${patientTherapyMedicine}
+[br][/br]
+[u]Follow-Up: [/u][br][/br]
+[cb${formData.followup === 'AsNeeded' ? 'c' : ''}] As needed [cb${formData.followup === 'Recommended' ? 'c' : ''}] Recommended
+
+[/list][/td][/tr][/table]
+
+[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Treatment Plan/Recommendations[/b][/color][/center][/divboxcolor]
+[table][tr][td][left][list=none]
+[u]Medications: [/u][br][/br]
+${patientTreatmentMedicine}
+[br][/br]
+[u]Therapy (e.g., CBT, DBT): [/u][br][/br]
+${patientTherapy}
+[br][/br]
+[u]Follow-up appointments: [/u][br][/br]
+${patientFollowUp}
+[br][/br]
+[u]Safety planning (if at risk): [/u][br][/br]
+${patientSafety}
+[/list][/td][/tr][/table]`
+    return bbCode;
+    };
+
     // Update BBCode generation logic
     const bbCode = bbCodeVersion === 1 ? generateDeath() :
         bbCodeVersion === 2 ? generateEmail() :
@@ -2707,10 +3183,12 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                                                                         bbCodeVersion === 25 ? generateBasicPatientFile() :
                                                                                             bbCodeVersion === 26 ? generateBasicPatientFileStaff() :
                                                                                             bbCodeVersion === 27 ? generateEmailPHMCEmail() : 
-
+                                                                                            bbCodeVersion === 28 ? generatePsychEvalPHMC() :
+                                                                                            bbCodeVersion === 29 ? generatePsychEvalPBC() :
                                                                                 generateDeath();
+                                                                                // generateError();
 
-    const generateTitle = () => {
+/*     const generateTitle = () => {
         if (bbCodeVersion === 1) {
             const { typeOfDeath, decedentName, decedentOOC, dateTime } = formData;
             const date = new Date(dateTime).toLocaleDateString('en-US');
@@ -2727,7 +3205,6 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
         } else if (bbCodeVersion === 3) {
             const { patientName } = formData;
             return `[Medical Information Registration] -  ${patientName}`;
-
         } else if (bbCodeVersion === 25) {
             const { patientName } = formData;
             return `[Medical Information Registration] -  ${patientName}`;
@@ -2737,12 +3214,17 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
         } else if (bbCodeVersion === 14  || bbCodeVersion === 16 || bbCodeVersion === 17) {
             const { patientMedicalRecord, patientName } = formData;
             return `[${patientMedicalRecord}] - ${patientName}`;
+        } else if (bbCodeVersion === 27  || bbCodeVersion === 28 ) {
+            const { patientID, patientName } = formData;
+            return `[${patientID}] - ${patientName}`;
+
         } else {
             const { patientMedicalRecord, patientName } = formData;
             return `${patientMedicalRecord} - ${patientName}`;
         }
     };
-    const clearForm = () => {
+
+ */    const clearForm = () => {
         setFormData({
             coronerRank: 'Forensic Attendant',
             placeOfDeath: '',
@@ -2863,7 +3345,6 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
             patientFetalMeasurements: '',
             patientCurrentMedicine: '',
             patientAdditionalPregnancy: '',
-            patientJob: '',
             patientJobTasks: '',
             patientLivingHabits: '',
             patientPreHealth: '',
@@ -2896,6 +3377,14 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
             patientFemale: false,
             patientFormYes: false,
             patientFormNo: false,
+            patientFormYes2: false,
+            patientFormNo2: false,
+            patientConsent: '',
+            patientConsentOption: '',
+            patientConsentNo: '',
+            patientConsentYes: '',
+            patientComplicationOptions: '',
+            complications: '',
             patientComplaint: '',
             triageNoPain: false,
             triageNormalPain: false,
@@ -2921,80 +3410,111 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
             patientChiefComplaint: '',
             patientID: '',
             rank: '',
-            patientTitle: [],
-            patientPhoneType: [],
-            patientPhoneType: '',
-            patientGender: [],
             patientProcedure: '',
+            patientPhoneType: '',
+            patientPhoneMobile: '',
+            patientPhoneHome: '',
+            patientPhoneWork: '',
+            patientPhoneOther: '',
+            patientGenderMale: '',
+            patientGenderFemale: '',
+            MedicalRecordsRelease: [],
+            PurposeMedicalInformationReleaseFormat: [],
             PurposeMedicalInformationRelease: '',
             PurposeAttorney: '',
             PurposePersonal: '',
-            PurposeFurtherCare  : '',
+            PurposeFurtherCare: '',
             PurposeOther: '',
-            MedicalRecordsRelease: [],
-            MedicalRecordsRelease:  '',
+            CarePurposeMedicalInformationRelease: '',
+            patientMedInfoReleaseOther: '',
             MedicalRecordsReleaseOther: '',
             StupidDateFrom: '',
             StupidDateTo: '',
             patientFirstName: '',
             patientMiddleName: '',
             patientLastName: '',
-            patientZIP: '',
-            patientDateOfBirth: '',
-            patientMedInfoFormatOther: '',
-            complications: '',
-            patientComplicationOptions: '',
-            patientConsentOption: '',
+            patientTitle: '',
+            patientComplicationsYes: '',
+            patientComplicationsNo: '',
             procedureGoodOptions: '',
-            phmcRank: [],    
+            procedureGoodYes: '',
+            procedureGoodNo: '',
+            vitals: '',
+            heartRate: '',
+            bloodPressure: '',
             careerRisks: '',
             patientJob: '',
-            patientJobRisks: '',
+            patientcareerNo: '',
             patientAllergiesRisk: '',
             patientMedicineRegular: '',
             patientOther: '',
             predisposition: '',
-            patientHarm: '', 
-            patientSupport: '',
+            breathing: '',
             patientTherapy: '',
             patientFamily: '',
             patientGentic: '',
-            patientTriggers: '',
-            patientTherapy: '', 
             patientFamSocial: '',
-            patientMental: '', 
-            maritalStatus: '', 
-            numberChildren: '', 
-            financialStatus: '', 
-            dnr: '', 
+            patientMental: '',
+            maritalStatus: '',
+            numberChildren: '',
+            financialStatus: '',
+            dnr: '',
             dnrOrder: '',
-            patientDiscord: '',
             attorney: '',
-            patientTherapy: '', 
-            patientSupport: '', 
+            patientSupport: '',
             patientHarm: '',
             patientFam: '',
             patientGenetic: '',
             patientReligion: '',
-            patientSmoker: '', 
+            patientSmoker: '',
             patientAlcohol: '',
             patientDrugs: '',
             patientExercise: '',
             patientDiet: '',
             patientSleep: '',
-            patientSexLife: '', 
+            patientSexLife: '',
             patientJobRisks: '',
-            patientHazards: '', 
-            patientOther: '', 
+            patientHazards: '',
             attorneyName: '',
             attorneyPH: '',
             attorneyRelation: '',
             dnrOther: '',
             patientEmergencyContactDiscord: '',
-    
-
+            patientSecondaryDiagnosis: '',
+            patientTriggers: '',
+            patientStress: '',
+            patientSymptoms: '',
+            patientDrugsUsage: '',
+            patientTreatmentMedicine: '',
+            patientSafety: '',
+            patientFollowUp: '',
+            patientTreatmentPlan: '',
+            patientRelationship: '',
+            patientRiskAssessment: '',
+            patientTherapyMedicine: '',
+            Speech: '',
+            Behavior: '',
+            Appearance: '',
+            Mood: '',
+            Affect: '',
+            Risk: '',
+            ThoughtProcess: '',
+            ThoughtContent: '',
+            Insight: '',
+            Cognition: '',
+            admission: '',
+            followup: '',
+            sono: '',
+            pupils: '',
+            lungs: '',
+            painLevel: '',
+            wounds: '',
+            findings: '',
+            patientFindings: '',
+            paletoClinicDepartment: '',
         });
-        const fieldsToRemove = [
+
+            const fieldsToRemove = [
             'dateTime',
             'department',
             'pronouncedTimeOfDeath',
@@ -3024,6 +3544,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
 
     // Add new state
     const [parsedBBCode, setParsedBBCode] = useState('');
+    // update Switch logic
     const getBBCodeContent = () => {
         switch (bbCodeVersion) {
             case 1:
@@ -3064,10 +3585,20 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                 return generateCommentaryNotePHMC();
             case 23:
                 return generateCommentaryNotePBC();
-            default:
             case 24:
                 return generateMedicalRecordRelease();
-        }
+            case 25:
+                return generateBasicPatientFile();
+            case 26:
+                return generateBasicPatientFileStaff();
+            case 27:
+                return generateEmailPHMCEmail();
+             case 28: 
+                return generatePsychEvalPHMC();
+            case 29:
+              return generatePsychEvalPBC();
+            default:
+       }
     };
     const parseBBCode = () => {
         const bbCode = generateDeath();
@@ -3266,7 +3797,12 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
         22: "Commentary Note (PHMC)",
         23: "Commentary Note (PBC)",
         24: "Medical Release Records",
-        25: "Patient File - Basic"
+        25: "Patient File - Basic",
+        26: "Patient File - Staff",
+        27: "Email Forms",
+        28: "Psychological Evaluation PHMC",
+        29: "Psychological Evaluation PBC",
+
     };
 
 
@@ -3296,10 +3832,6 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
         setShowAgencySelector(!hideAgencySelector);
     }, [hideAgencySelector]);
 
-
-    useEffect(() => {
-        setShowAgencySelector(!hideAgencySelector);
-    }, [hideAgencySelector]);
 
 
     // Add state near other useState declarations
@@ -3337,6 +3869,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                 <option value="6">Physical Evaluation</option>
                                 <option value="27">Email Forms</option>
                                 <option value="5">Surgical Ops</option>
+                                <option value="28">Psychological Evaluation- WIP</option>
                             </Form.Select>
                         ) : (
                             <div className="agency-selector-buttons">
@@ -3439,6 +3972,17 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                         />
                                         <span>Surgical Ops </span>
                                     </button>
+                                    <button
+                                        className="agency-select-button"
+                                        onClick={() => handleAgencySelect(28)}
+                                    >
+                                        <img src={psychology}
+                                            className="Center"
+                                            alt="Feedback"
+                                        />
+                                        <span>Psychological Evaluation </span>
+                                    </button>
+
                                 </div>
                             </div>
                         )}
@@ -3493,12 +4037,20 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                     >
                         Missing Employee / Coroner?
                     </button>
+                    <button
+                        type="button"
+                        className="changelog-button"
+                        onClick={() => setShowFeatureRequestModal(true)}
+                    >
+                        Suggest a Feature
+                    </button>
+
 </div>
                     {showChangelog && (
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 1.7.8 HOTFIX2 - ❄️ Frostbite Update </h3>
+                                    <h3>Changelog - Version 1.8 - ❄️ Frostbite Update </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -3509,9 +4061,11 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                 </div>
                                 <div className="modal-content">
                                     <ul>
-                                        <li> Surgery has been rushed into surgery and has been fixed </li>
-                                        <li> Emergency hotfix to resolve a issue with Add Employee clearing fields </li> 
-                                       <li> Alpha mobile support - Very likely bugs, please report them to Frosty on Discord.</li>                                        
+                                        <li> Title Generation has been disabled.</li>
+                                        <li>  Psychological Evaluation Forms have been added for PHMC/PBC</li>
+                                        <li> Better error handling </li> 
+                                       <li> Mobile support enters beta.</li>           
+                                       <li> Bootstrap Select depricated unless for Multi select forms.</li>                             
                                     </ul>
                                 </div>
                             </div>
@@ -3649,6 +4203,59 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                 )}
                             </>
                         )}
+                                                {(bbCodeVersion === 28 || bbCodeVersion === 29) && (
+                            <>
+                                <button
+                                    className="changelog-button"
+                                    onClick={() => setShowPHMCModal(true)}
+                                >
+                                    <i className="fas fa-exchange-alt"></i>
+                                    <span>Switch Psychological Evaluation Form</span>
+                                </button>
+
+                                {showPHMCModal && (
+                                    <div className="modal-overlay" onClick={() => setShowPHMCModal(false)}>
+                                        <div className="agency-selector-modal" onClick={e => e.stopPropagation()}>
+                                            <div className="modal-header">
+                                                <h4>Select Psychological Evaluation Form (2)</h4>
+                                                <button
+                                                    className="close-button"
+                                                    onClick={() => setShowPHMCModal(false)}
+                                                    aria-label="Close selector"
+                                                >
+                                                    <i className="fas fa-times"></i>
+                                                </button>
+                                            </div>
+                                            <div className="agency-selector-buttons">
+                                                <div className="agency-row">
+                                                    <button
+                                                        className="agency-select-button"
+                                                        onClick={() => handleAgencySelect(28)}
+                                                    >
+                                                        <img src={PHMCLogo}
+                                                            className="Center"
+                                                            alt="Feedback"
+                                                        />
+                                                        <span>Psychological Evaluation | PHMC </span>
+                                                    </button>
+                                                    <button
+                                                        className="agency-select-button"
+                                                        onClick={() => handleAgencySelect(29)}
+                                                    >
+                                                        <img src={phmcpaletobay}
+                                                            className="Center"
+                                                            alt="Feedback"
+                                                        />
+                                                        <span>Psychological Evaluation | PBC </span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )}
+
                         {(bbCodeVersion === 9 || bbCodeVersion === 10 || bbCodeVersion === 12 || bbCodeVersion === 13) && (
                             <>
                                 <button
@@ -5399,6 +6006,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                             className={`form-control ${!formData.patientID ? 'is-invalid' : ''}`}
 
                                         />
+
                                     <Form.Label>Appointment Date</Form.Label>
                                     <Form.Control
                                         type="date"
@@ -5689,6 +6297,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                         ) : bbCodeVersion === 6 ? ( // generatePhysEvalInternalMed
                             <>
                                 <p>The FORM below must be used and added to the file for each medical appointment, following the others.</p>
+                                <p> This form contains various small cosmetic issues, they'll be solved in the coming week(S)</p>
                                 <Form.Label>Patient ID | Date:</Form.Label>
                                 <div style={{ display: 'flex', gap: '10px' }}>
 
@@ -5871,7 +6480,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                         }}
                                         className="form-control"
                                     >
-                                        <option value="" disabled>breathing</option>
+                                        <option value="" disabled>Breathing</option>
                                         {breathing.map((option) => (
                                             <option key={option.value} value={option.value}>{option.label}</option>
                                         ))}
@@ -5939,7 +6548,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                         }}
                                         className="form-control"
                                     >
-                                        <option value="" disabled>patientAllergiesRisk</option>
+                                        <option value="" disabled>Patient Allergies Risk</option>
                                         {patientAllergiesRisk.map((option) => (
                                             <option key={option.value} value={option.value}>{option.label}</option>
                                         ))}
@@ -6006,7 +6615,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                         }}
                                         className="form-control"
                                     >
-                                        <option value="" disabled>patientMedicineRegular</option>
+                                        <option value="" disabled>Patient Medicine Regular?</option>
                                         {patientMedicineRegular.map((option) => (
                                             <option key={option.value} value={option.value}>{option.label}</option>
                                         ))}
@@ -6022,7 +6631,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                         }}
                                         className="form-control"
                                     >
-                                        <option value="" disabled>patientOther</option>
+                                        <option value="" disabled>Patient Imparements?</option>
                                         {patientOther.map((option) => (
                                             <option key={option.value} value={option.value}>{option.label}</option>
                                         ))}
@@ -6038,7 +6647,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                         }}
                                         className="form-control"
                                     >
-                                        <option value="" disabled>predisposition</option>
+                                        <option value="" disabled>Predisposition</option>
                                         {predisposition.map((option) => (
                                             <option key={option.value} value={option.value}>{option.label}</option>
                                         ))}
@@ -6264,7 +6873,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                                                     }}
                                                                     className="form-control"
                                                                 >
-                                                                    <option value="" disabled>breathing</option>
+                                                                    <option value="" disabled>Breathing</option>
                                                                     {breathing.map((option) => (
                                                                         <option key={option.value} value={option.value}>{option.label}</option>
                                                                     ))}
@@ -6476,7 +7085,6 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                         ) : bbCodeVersion === 8 ? ( // Emergency Medical File2
                             <>
                                 <h5>(The FORM below is intended for the opening of a basic medical file, it must appear at the top.)</h5>
-                                <p> This form isn't exactly optimal at the current moment, it will be updated in due course.  </p>
 
                                 <Form.Label>Employee Credentials:</Form.Label>
 
@@ -6703,7 +7311,6 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                             </>
                         ) : bbCodeVersion === 9 ? ( // generateObsMainFile
                             <>
-                                <p> This form isn't exactly optimal at the current moment, it will be updated in due course.  </p>
 
                                 <Form.Label>Employee Credentials:</Form.Label>
 
@@ -7152,7 +7759,6 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                         ) : bbCodeVersion === 10 ? ( // generateObsFollowup
                             <>
                                 <h5> The FORM below should be used and added to the file, following the others.<br></br>(( Please note that it isn't mandatory to make a medical record for every patient you meet in the ER. You can either do it if you feel like it, offer it to the patient or simply do it at the patient's request. ))</h5>
-                                <p> This form isn't exactly optimal at the current moment, it will be updated in due course.  </p>
 
                                 <Form.Label>Employee Credentials:</Form.Label>
 
@@ -7476,7 +8082,6 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                         ) : bbCodeVersion === 12 ? ( // generateGyneMainFile
                             <>
                                 <h5>(The FORM below is intended for the opening of a basic medical file, it must appear at the top.)</h5>
-                                <p> This form isn't exactly optimal at the current moment, it will be updated in due course.  </p>
 
                                 <Form.Label>Employee Credentials:</Form.Label>
 
@@ -8168,7 +8773,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                             </>
                         ) : bbCodeVersion === 14 ? ( // generateMentalHealthPHMC
                             <>
-                                                            <Form.Control
+                            <Form.Control
                                     type="text"
                                     name="patientID"
                                     value={formData.patientID}
@@ -8841,7 +9446,6 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                         ) : bbCodeVersion === 19 ? ( // Emergency Room Forms - generateERForm
                             <>
                   <p>If you require assistance with this form <a href="https://phmc.gta.world/viewforum.php?f=66" target="_blank" rel="noopener noreferrer">use this link! It should contain the information you require.  </a> If you still need help, use the PHMC Discord. </p>
-                                <p> This form isn't exactly optimal at the current moment, it will be updated in due course.  </p>
                                 <Form.Control
                                     type="text"
                                     name="patientID"
@@ -8849,7 +9453,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     onChange={handleChange}
                                     placeholder="Patient ID"
                                     required
-                                    className="form-control"
+                                    className={`form-control ${!formData.patientID ? 'is-invalid' : ''}`}
                                 />
 
                                 <Form.Label>Date:</Form.Label>
@@ -8859,7 +9463,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     value={formData.date}
                                     onChange={handleChange}
                                     required
-                                    className="form-control"
+                                    className={`form-control ${!formData.date ? 'is-invalid' : ''}`}
                                 />
 
                                 <div className="radio-inline-container">
@@ -8901,7 +9505,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     options={phmcGroupedOptions}
                                     isClearable
                                     placeholder="Search or select doctor..."
-                                    className="form-control"
+                                    className={`form-control ${!formData.phmcEmployee ? 'is-invalid' : ''}`}
                                     styles={{
                                         control: (base) => ({
                                             ...base,
@@ -8937,6 +9541,20 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     }}
                                 />
                                 <Form.Label></Form.Label>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Select
+                                                name="painLevel"
+                                                value={formData.painLevel}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.painLevel ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Pain Scale </option>
+                                                {painLevel.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+
                                 <Form.Control
                                     type="text"
                                     name="patientChiefComplaint"
@@ -8944,547 +9562,138 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     onChange={handleChange}
                                     placeholder="Patient Chief Complaint"
                                     required
-                                    className="form-control"
-                                />
-
-                                <Select
-                                    name="painLevel"
-                                    value={painLevel.find(option => option.value === formData.painLevel)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            painLevel: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={painLevel}
-                                    isClearable
-                                    placeholder="Select Pain Level..."
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
-
-                                <Form.Label>Vitals Section - Restructure This Mitch </Form.Label>
-                                <Select
-                                    name="vitals"
-                                    value={vitals.find(option => option.value === formData.vitals)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            vitals: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={vitals}
-                                    isClearable
-                                    placeholder="Temperature"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
-
-                                <Select
-                                    name="heartRate"
-                                    value={heartRate.find(option => option.value === formData.heartRate)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            heartRate: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={heartRate}
-                                    isClearable
-                                    placeholder="Patient Heart Rate"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
-
-                                <Select
-                                    name="breathing"
-                                    value={breathing.find(option => option.value === formData.breathing)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            breathing: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={breathing}
-                                    isClearable
-                                    placeholder="Patient Breathing"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
-
-                                <Select
-                                    name="bloodPressure"
-                                    value={bloodPressure.find(option => option.value === formData.bloodPressure)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            bloodPressure: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={bloodPressure}
-                                    isClearable
-                                    placeholder="Patient Blood Pressure"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-
-                                <Form.Label></Form.Label>
-
-                                <Form.Label>Findings Section</Form.Label>
-                                <Select
-                                    name="findings"
-                                    value={findings.find(option => option.value === formData.findings)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            findings: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={findings}
-                                    isClearable
-                                    placeholder="General Health Conditions..."
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
-
-                                <Select
-                                    name="lungs"
-                                    value={lungs.find(option => option.value === formData.lungs)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            lungs: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={lungs}
-                                    isClearable
-                                    placeholder="Patient Lungs (Auscultation)"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                /><Form.Label></Form.Label>
-
-                                <Select
-                                    name="pupils"
-                                    value={pupils.find(option => option.value === formData.pupils)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            pupils: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={pupils}
-                                    isClearable
-                                    placeholder="Patient pupils"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                /><Form.Label></Form.Label>
-
-                                <Select
-                                    name="wounds"
-                                    value={wounds.find(option => option.value === formData.wounds)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            wounds: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={wounds}
-                                    isClearable
-                                    placeholder="Patient wounds"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                /><Form.Label></Form.Label>
-
-                                <Select
-                                    name="ecg"
-                                    value={ecg.find(option => option.value === formData.ecg)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            ecg: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={ecg}
-                                    isClearable
-                                    placeholder="ECG Results"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                /><Form.Label></Form.Label>
-
-                                <Select
-                                    name="sono"
-                                    value={sono.find(option => option.value === formData.sono)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            sono: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={sono}
-                                    isClearable
-                                    placeholder="Sonography Results"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
-
+                                    className={`form-control ${!formData.patientChiefComplaint ? 'is-invalid' : ''}`}
+                                    />
+</div>
+                                <Form.Label>Vitals Section </Form.Label>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Select
+                                                name="vitals"
+                                                value={formData.vitals}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.vitals ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Vitals</option>
+                                                {vitals.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="heartRate"
+                                                value={formData.heartRate}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.heartRate ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Heart Rate</option>
+                                                {heartRate.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="breathing"
+                                                value={formData.breathing}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.breathing ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Breathing</option>
+                                                {breathing.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="bloodPressure"
+                                                value={formData.bloodPressure}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.bloodPressure ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Blood Pressure</option>
+                                                {bloodPressure.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            </div>
+                                            <Form.Label>Findings </Form.Label>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Select
+                                                name="findings"
+                                                value={formData.findings}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.findings ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>General Health Conditions</option>
+                                                {findings.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="lungs"
+                                                value={formData.lungs}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.lungs ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Patient Lungs</option>
+                                                {lungs.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="pupils"
+                                                value={formData.pupils}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.pupils ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Patient Pupils</option>
+                                                {pupils.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            </div>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                            
+                                            <Form.Select
+                                                name="wounds"
+                                                value={formData.wounds}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.wounds ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Patient Wounds</option>
+                                                {wounds.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="ecg"
+                                                value={formData.ecg}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.wounds ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>ECG Results</option>
+                                                {ecg.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="sono"
+                                                value={formData.sono}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.wounds ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Sonography Results</option>
+                                                {sono.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            </div>
                                 <Select
                                     isMulti
                                     name="lab"
@@ -9498,7 +9707,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                         }));
                                     }}
                                     options={lab}
-                                    className="form-control"
+                                    className={`form-control ${!formData.lab ? 'is-invalid' : ''}`}
                                     placeholder="Select lab results..."
                                     styles={{
                                         control: (base) => ({
@@ -9553,7 +9762,10 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                             color: '#6c757d'
                                         })
                                     }}
-                                /><Form.Label></Form.Label>
+                                />
+                                <Form.Label></Form.Label>
+                                <Form.Label>Preliminary Diagnosis </Form.Label>
+                                <div style={{ display: 'flex', gap: '10px' }}>
 
                                 <Form.Control
                                     as="textarea"
@@ -9563,7 +9775,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     rows="4"
                                     placeholder="Patient Diagnosis"
                                     required
-                                    className="form-control"
+                                    className={`form-control ${!formData.patientDiagnosis ? 'is-invalid' : ''}`}
                                 />
                                 <Form.Control
                                     as="textarea"
@@ -9573,57 +9785,25 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     rows="4"
                                     placeholder="Patient's Secondary Diagnosis"
                                     required
-                                    className="form-control"
+                                    className={`form-control ${!formData.patientSecondaryDiagnosis ? 'is-invalid' : ''}`}
                                 />
-                                <Select
-                                    name="admission"
-                                    value={admission.find(option => option.value === formData.admission)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            admission: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={admission}
-                                    isClearable
-                                    placeholder="Was Patient Admitted?"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
+                                </div>
+                                <Form.Label>Therapy </Form.Label>
 
+                                <Form.Select
+                                    name="admission"
+                                    value={formData.admission}
+                                    onChange={handleChange}
+                                    required
+                                    className={`form-control ${!formData.admission ? 'is-invalid' : ''}`}
+                                >
+                                    <option value="" disabled>Patient Admitted?</option>
+                                    {admission.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                </Form.Select>
+
+                                <div style={{ display: 'flex', gap: '10px' }}>
                                 <Form.Control
                                     as="textarea"
                                     name="patientProcedure"
@@ -9632,7 +9812,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     rows="4"
                                     placeholder="Procedure's conducted on Patient"
                                     required
-                                    className="form-control"
+                                    className={`form-control ${!formData.patientProcedure ? 'is-invalid' : ''}`}
                                 />
                                 <Form.Control
                                     as="textarea"
@@ -9642,15 +9822,15 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     rows="4"
                                     placeholder="Medication provided to Patient"
                                     required
-                                    className="form-control"
+                                    className={`form-control ${!formData.patientMedicine ? 'is-invalid' : ''}`}
                                 />
+                                </div>
 
 
                             </>
                         ) : bbCodeVersion === 20 ? ( // Emergency Room Forms - generateERForm aaaaaaa
                             <> 
                                 <p>If you require assistance with this form <a href="https://phmc.gta.world/viewforum.php?f=66" target="_blank" rel="noopener noreferrer">use this link! It should contain the information you require.  </a> If you still need help, use the PHMC Discord. </p>
-                                <p> This form isn't exactly optimal at the current moment, it will be updated in due course.  </p>
 
                                 <Form.Control
                                     type="text"
@@ -9659,7 +9839,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     onChange={handleChange}
                                     placeholder="Patient ID"
                                     required
-                                    className="form-control"
+                                    className={`form-control ${!formData.patientID ? 'is-invalid' : ''}`}
                                 />
 
                                 <Form.Label>Date:</Form.Label>
@@ -9669,7 +9849,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     value={formData.date}
                                     onChange={handleChange}
                                     required
-                                    className="form-control"
+                                    className={`form-control ${!formData.date ? 'is-invalid' : ''}`}
                                 />
 
                                 <div className="radio-inline-container">
@@ -9755,6 +9935,8 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     }}
                                 />
                                 <Form.Label></Form.Label>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+
                                 <Form.Control
                                     type="text"
                                     name="patientChiefComplaint"
@@ -9762,547 +9944,153 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     onChange={handleChange}
                                     placeholder="Patient Chief Complaint"
                                     required
-                                    className="form-control"
-                                />
+                                    className={`form-control ${!formData.patientChiefComplaint ? 'is-invalid' : ''}`}
+                                    />
+                                                        <Form.Select
+                                name="assignedDepartment"
+                                value={formData.assignedDepartment}
+                                onChange={handleChange}
+                                required
+                                className={`form-control ${!formData.assignedDepartment ? 'is-invalid' : ''}`}
+                            >
+                                <option value="" disabled>Assigned Department</option>
+                                {assignedDepartment.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                            </Form.Select>
 
-                                <Select
-                                    name="assignedDepartment"
-                                    value={assignedDepartment.find(option => option.value === formData.assignedDepartment)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            assignedDepartment: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={assignedDepartment}
-                                    isClearable
-                                    placeholder="Select Department..."
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
+                                </div> 
 
-                                <Form.Label>Vitals Section</Form.Label>
 
-                                <Select
-                                    name="vitals"
-                                    value={vitals.find(option => option.value === formData.vitals)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            vitals: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={vitals}
-                                    isClearable
-                                    placeholder="Temperature"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
-
-                                <Select
-                                    name="heartRate"
-                                    value={heartRate.find(option => option.value === formData.heartRate)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            heartRate: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={heartRate}
-                                    isClearable
-                                    placeholder="Patient Heart Rate"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
-
-                                <Select
-                                    name="breathing"
-                                    value={breathing.find(option => option.value === formData.breathing)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            breathing: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={breathing}
-                                    isClearable
-                                    placeholder="Patient Breathing"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
-
-                                <Select
-                                    name="bloodPressure"
-                                    value={bloodPressure.find(option => option.value === formData.bloodPressure)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            bloodPressure: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={bloodPressure}
-                                    isClearable
-                                    placeholder="Patient Blood Pressure"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-
-                                <Form.Label></Form.Label>
-
-                                <Form.Label>Findings Section</Form.Label>
-                                <Select
-                                    name="findings"
-                                    value={findings.find(option => option.value === formData.findings)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            findings: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={findings}
-                                    isClearable
-                                    placeholder="General Health Conditions..."
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
-
-                                <Select
-                                    name="lungs"
-                                    value={lungs.find(option => option.value === formData.lungs)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            lungs: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={lungs}
-                                    isClearable
-                                    placeholder="Patient Lungs (Auscultation)"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                /><Form.Label></Form.Label>
-
-                                <Select
-                                    name="pupils"
-                                    value={pupils.find(option => option.value === formData.pupils)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            pupils: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={pupils}
-                                    isClearable
-                                    placeholder="Patient pupils"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                /><Form.Label></Form.Label>
-
-                                <Select
-                                    name="wounds"
-                                    value={wounds.find(option => option.value === formData.wounds)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            wounds: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={wounds}
-                                    isClearable
-                                    placeholder="Patient wounds"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                /><Form.Label></Form.Label>
-
-                                <Select
-                                    name="ecg"
-                                    value={ecg.find(option => option.value === formData.ecg)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            ecg: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={ecg}
-                                    isClearable
-                                    placeholder="ECG Results"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                /><Form.Label></Form.Label>
-
-                                <Select
-                                    name="sono"
-                                    value={sono.find(option => option.value === formData.sono)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            sono: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={sono}
-                                    isClearable
-                                    placeholder="Sonography Results"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
+                                <Form.Label>Vitals Section </Form.Label>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Select
+                                                name="vitals"
+                                                value={formData.vitals}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.vitals ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Vitals</option>
+                                                {vitals.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="heartRate"
+                                                value={formData.heartRate}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.heartRate ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Heart Rate</option>
+                                                {heartRate.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="breathing"
+                                                value={formData.breathing}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.breathing ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Breathing</option>
+                                                {breathing.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="bloodPressure"
+                                                value={formData.bloodPressure}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.bloodPressure ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Blood Pressure</option>
+                                                {bloodPressure.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            </div>
+                                            <Form.Label>Findings </Form.Label>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Select
+                                                name="findings"
+                                                value={formData.findings}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.findings ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>General Health Conditions</option>
+                                                {findings.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="lungs"
+                                                value={formData.lungs}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.lungs ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Patient Lungs</option>
+                                                {lungs.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="pupils"
+                                                value={formData.pupils}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.pupils ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Patient Pupils</option>
+                                                {pupils.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            </div>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                            
+                                            <Form.Select
+                                                name="wounds"
+                                                value={formData.wounds}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.wounds ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Patient Wounds</option>
+                                                {wounds.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="ecg"
+                                                value={formData.ecg}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.wounds ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>ECG Results</option>
+                                                {ecg.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="sono"
+                                                value={formData.sono}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.wounds ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Sonography Results</option>
+                                                {sono.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            </div>
 
                                 <Select
                                     isMulti
@@ -10373,6 +10161,9 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                         })
                                     }}
                                 /><Form.Label></Form.Label>
+                            <Form.Label>Preliminary Diagnosis </Form.Label>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+
                                 <Form.Control
                                     as="textarea"
                                     name="patientDiagnosis"
@@ -10381,7 +10172,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     rows="4"
                                     placeholder="Patient Diagnosis"
                                     required
-                                    className="form-control"
+                                    className={`form-control ${!formData.patientDiagnosis ? 'is-invalid' : ''}`}
                                 />
                                 <Form.Control
                                     as="textarea"
@@ -10391,58 +10182,22 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     rows="4"
                                     placeholder="Patient's Secondary Diagnosis"
                                     required
-                                    className="form-control"
+                                    className={`form-control ${!formData.patientSecondaryDiagnosis ? 'is-invalid' : ''}`}
                                 />
-                                <Select
-                                    name="admission"
-                                    value={admission.find(option => option.value === formData.admission)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            admission: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={admission}
-                                    isClearable
-                                    placeholder="Was Patient Admitted?"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
-
-
+                                </div>
+                                <Form.Select
+                                name="admission"
+                                value={formData.admission}
+                                onChange={handleChange}
+                                required
+                                className={`form-control ${!formData.admission ? 'is-invalid' : ''}`}
+                            >
+                                <option value="" disabled>Admission</option>
+                                {admission.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                            </Form.Select>
+                                <div style={{ display: 'flex', gap: '10px' }}>
                                 <Form.Control
                                     as="textarea"
                                     name="patientProcedure"
@@ -10451,7 +10206,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     rows="4"
                                     placeholder="Procedure's conducted on Patient"
                                     required
-                                    className="form-control"
+                                    className={`form-control ${!formData.patientProcedure ? 'is-invalid' : ''}`}
                                 />
                                 <Form.Control
                                     as="textarea"
@@ -10461,63 +10216,25 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     rows="4"
                                     placeholder="Medication provided to Patient"
                                     required
-                                    className="form-control"
+                                    className={`form-control ${!formData.patientProcedure ? 'is-invalid' : ''}`}
                                 />
-                                <Select
-                                    name="followup"
-                                    value={followup.find(option => option.value === formData.followup)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            followup: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={followup}
-                                    isClearable
-                                    placeholder="Select Followup Process..."
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
-
-
+                                <Form.Select
+                                name="followup"
+                                value={formData.followup}
+                                onChange={handleChange}
+                                required
+                                className={`form-control ${!formData.followup ? 'is-invalid' : ''}`}
+                            >
+                                <option value="" disabled>Follow Up?</option>
+                                {followup.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                            </Form.Select>
+                                </div> 
                             </>
                         ) : bbCodeVersion === 21 ? ( // GENERAL CONSULTATION (PBC)
                             <>
                                                             <p>If you require assistance with this form <a href="https://phmc.gta.world/viewforum.php?f=66" target="_blank" rel="noopener noreferrer">use this link! It should contain the information you require.  </a> If you still need help, use the PHMC Discord. </p>
-                                                            <p> This form isn't exactly optimal at the current moment, it will be updated in due course.  </p>
 
                                 <Form.Control
                                     type="text"
@@ -10526,7 +10243,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     onChange={handleChange}
                                     placeholder="Patient ID"
                                     required
-                                    className="form-control"
+                                    className={`form-control ${!formData.patientID ? 'is-invalid' : ''}`}
                                 />
 
                                 <Form.Label>Date:</Form.Label>
@@ -10536,7 +10253,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     value={formData.date}
                                     onChange={handleChange}
                                     required
-                                    className="form-control"
+                                    className={`form-control ${!formData.date ? 'is-invalid' : ''}`}
                                 />
 
                                 <div className="radio-inline-container">
@@ -10622,6 +10339,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     }}
                                 />
                                 <Form.Label></Form.Label>
+                                <div style={{ display: 'flex', gap: '10px' }}>
                                 <Form.Control
                                     type="text"
                                     name="patientChiefComplaint"
@@ -10629,548 +10347,151 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     onChange={handleChange}
                                     placeholder="Patient Chief Complaint"
                                     required
-                                    className="form-control"
+                                    className={`form-control ${!formData.patientChiefComplaint ? 'is-invalid' : ''}`}
                                 />
-
-                                <Select
+                            <Form.Select
                                     name="paletoClinicDepartment"
-                                    value={paletoClinicDepartment.find(option => option.value === formData.paletoClinicDepartment)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            paletoClinicDepartment: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={paletoClinicDepartment}
-                                    isClearable
-                                    placeholder="Select Department..."
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
+                                    value={formData.paletoClinicDepartment}
+                                    onChange={handleChange}
+                                    required
+                                    className={`form-control ${!formData.paletoClinicDepartment ? 'is-invalid' : ''}`}
+                                >
+                                    <option value="" disabled>Assigned Department</option>
+                                    {paletoClinicDepartment.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                </Form.Select></div> 
 
-                                <Form.Label>Vitals Section</Form.Label>
 
-                                <Select
-                                    name="vitals"
-                                    value={vitals.find(option => option.value === formData.vitals)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            vitals: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={vitals}
-                                    isClearable
-                                    placeholder="Temperature"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
-
-                                <Select
-                                    name="heartRate"
-                                    value={heartRate.find(option => option.value === formData.heartRate)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            heartRate: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={heartRate}
-                                    isClearable
-                                    placeholder="Patient Heart Rate"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
-
-                                <Select
-                                    name="breathing"
-                                    value={breathing.find(option => option.value === formData.breathing)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            breathing: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={breathing}
-                                    isClearable
-                                    placeholder="Patient Breathing"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
-
-                                <Select
-                                    name="bloodPressure"
-                                    value={bloodPressure.find(option => option.value === formData.bloodPressure)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            bloodPressure: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={bloodPressure}
-                                    isClearable
-                                    placeholder="Patient Blood Pressure"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-
-                                <Form.Label></Form.Label>
-
-                                <Form.Label>Findings Section</Form.Label>
-                                <Select
-                                    name="findings"
-                                    value={findings.find(option => option.value === formData.findings)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            findings: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={findings}
-                                    isClearable
-                                    placeholder="General Health Conditions..."
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
-
-                                <Select
-                                    name="lungs"
-                                    value={lungs.find(option => option.value === formData.lungs)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            lungs: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={lungs}
-                                    isClearable
-                                    placeholder="Patient Lungs (Auscultation)"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                /><Form.Label></Form.Label>
-
-                                <Select
-                                    name="pupils"
-                                    value={pupils.find(option => option.value === formData.pupils)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            pupils: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={pupils}
-                                    isClearable
-                                    placeholder="Patient pupils"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                /><Form.Label></Form.Label>
-
-                                <Select
-                                    name="wounds"
-                                    value={wounds.find(option => option.value === formData.wounds)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            wounds: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={wounds}
-                                    isClearable
-                                    placeholder="Patient wounds"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                /><Form.Label></Form.Label>
-
-                                <Select
-                                    name="ecg"
-                                    value={ecg.find(option => option.value === formData.ecg)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            ecg: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={ecg}
-                                    isClearable
-                                    placeholder="ECG Results"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                /><Form.Label></Form.Label>
-
-                                <Select
-                                    name="sono"
-                                    value={sono.find(option => option.value === formData.sono)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            sono: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={sono}
-                                    isClearable
-                                    placeholder="Sonography Results"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
-
+                                <Form.Label>Vitals Section </Form.Label>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Select
+                                                name="vitals"
+                                                value={formData.vitals}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.vitals ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Vitals</option>
+                                                {vitals.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="heartRate"
+                                                value={formData.heartRate}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.heartRate ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Heart Rate</option>
+                                                {heartRate.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="breathing"
+                                                value={formData.breathing}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.breathing ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Breathing</option>
+                                                {breathing.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="bloodPressure"
+                                                value={formData.bloodPressure}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.bloodPressure ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Blood Pressure</option>
+                                                {bloodPressure.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            </div>
+                                            <Form.Label>Findings </Form.Label>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Select
+                                                name="findings"
+                                                value={formData.findings}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.findings ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>General Health Conditions</option>
+                                                {findings.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="lungs"
+                                                value={formData.lungs}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.lungs ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Patient Lungs</option>
+                                                {lungs.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="pupils"
+                                                value={formData.pupils}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.pupils ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Patient Pupils</option>
+                                                {pupils.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            </div>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                            
+                                            <Form.Select
+                                                name="wounds"
+                                                value={formData.wounds}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.wounds ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Patient Wounds</option>
+                                                {wounds.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="ecg"
+                                                value={formData.ecg}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.wounds ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>ECG Results</option>
+                                                {ecg.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="sono"
+                                                value={formData.sono}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.wounds ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Sonography Results</option>
+                                                {sono.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            </div>
                                 <Select
                                     isMulti
                                     name="lab"
@@ -11241,6 +10562,9 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     }}
                                 /><Form.Label></Form.Label>
 
+                            <Form.Label>Preliminary Diagnosis </Form.Label>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+
                                 <Form.Control
                                     as="textarea"
                                     name="patientDiagnosis"
@@ -11249,7 +10573,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     rows="4"
                                     placeholder="Patient Diagnosis"
                                     required
-                                    className="form-control"
+                                    className={`form-control ${!formData.patientDiagnosis ? 'is-invalid' : ''}`}
                                 />
                                 <Form.Control
                                     as="textarea"
@@ -11259,57 +10583,22 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     rows="4"
                                     placeholder="Patient's Secondary Diagnosis"
                                     required
-                                    className="form-control"
+                                    className={`form-control ${!formData.patientSecondaryDiagnosis ? 'is-invalid' : ''}`}
                                 />
-                                <Select
-                                    name="admission"
-                                    value={admission.find(option => option.value === formData.admission)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            admission: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={admission}
-                                    isClearable
-                                    placeholder="Was Patient Admitted?"
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
-                                <Form.Group className="mb-3">
+                                </div>
+                                <Form.Select
+                                name="admission"
+                                value={formData.admission}
+                                onChange={handleChange}
+                                required
+                                className={`form-control ${!formData.admission ? 'is-invalid' : ''}`}
+                            >
+                                <option value="" disabled>Admission</option>
+                                {admission.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                            </Form.Select>
+                                <div style={{ display: 'flex', gap: '10px' }}>
                                 <Form.Control
                                     as="textarea"
                                     name="patientProcedure"
@@ -11318,7 +10607,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     rows="4"
                                     placeholder="Procedure's conducted on Patient"
                                     required
-                                    className="form-control"
+                                    className={`form-control ${!formData.patientProcedure ? 'is-invalid' : ''}`}
                                 />
                                 <Form.Control
                                     as="textarea"
@@ -11328,57 +10617,21 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                     rows="4"
                                     placeholder="Medication provided to Patient"
                                     required
-                                    className="form-control"
+                                    className={`form-control ${!formData.patientMedicine ? 'is-invalid' : ''}`}
                                 />
-                                <Select
-                                    name="followup"
-                                    value={followup.find(option => option.value === formData.followup)}
-                                    onChange={(selectedOption) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            followup: selectedOption ? selectedOption.value : ''
-                                        }));
-                                    }}
-                                    options={followup}
-                                    isClearable
-                                    placeholder="Select Followup Process..."
-                                    className="form-control"
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                                <Form.Label></Form.Label>
-                                </Form.Group>
+                                <Form.Select
+                                name="followup"
+                                value={formData.followup}
+                                onChange={handleChange}
+                                required
+                                className={`form-control ${!formData.followup ? 'is-invalid' : ''}`}
+                            >
+                                <option value="" disabled>Follow Up?</option>
+                                {followup.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                            </Form.Select>
+                                </div> 
 
                             </>
                         ) : bbCodeVersion === 22 ? ( // COMMENTARY NOTE (phmc)
@@ -12685,7 +11938,1093 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                         />
                                     </div>
 
-</>
+                                    </>
+                                                     ) : bbCodeVersion === 28 ? ( //PHMC Shrink Internal
+                                                        <>
+                                <Form.Control
+                                    type="text"
+                                    name="patientID"
+                                    value={formData.patientID}
+                                    onChange={handleChange}
+                                    placeholder="Patient ID"
+                                    required
+                                    className={`form-control ${!formData.patientID ? 'is-invalid' : ''}`}
+                                    />
+
+                                <Form.Label>Date:</Form.Label>
+                                <Form.Control
+                                    type="date"
+                                    name="date"
+                                    value={formData.date}
+                                    onChange={handleChange}
+                                    required
+                                    className={`form-control ${!formData.date ? 'is-invalid' : ''}`}
+                                    />
+
+                                <div className="radio-inline-container">
+
+                                    <span className="radio-text">Role:</span>
+                                    <Form.Check
+                                        type="radio"
+                                        id="doctorRank"
+                                        label="   Doctor"
+                                        checked={isDoctor}
+                                        onChange={handlePHMCRank('doctor')}
+                                        inline
+                                    />
+                                    <Form.Check
+                                        type="radio"
+                                        id="nurseRank"
+                                        label="   Nurse"
+                                        checked={isNurse}
+                                        onChange={handlePHMCRank('nurse')}
+                                        inline
+                                    />
+                                    <Form.Check
+                                        type="radio"
+                                        id="psychRank"
+                                        label="   Psychiatrist"
+                                        checked={isPsych}
+                                        onChange={handlePHMCRank('psych')}
+                                        inline
+                                    />  </div>
+                                <Form.Label></Form.Label>
+
+ 
+                                <Select
+                                    name="phmcEmployee"
+                                    value={phmcGroupedOptions
+                                        .flatMap(group => group.options)
+                                        .find(option => option.value === formData.phmcEmployee) || null}
+                                    onChange={(selectedOption) => {
+                                        // eslint-disable-next-line no-unused-vars
+                                        const lastName = selectedOption ? selectedOption.lastName : '';
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            phmcEmployee: selectedOption ? selectedOption.value : '',
+                                            lastName: selectedOption ? selectedOption.lastName : '' // Use lastName from the selected option
+                                        }));
+                                    }}
+                                    options={phmcGroupedOptions}
+                                    isClearable
+                                    placeholder="Search or select doctor..."
+                                    className="form-control"
+                                    styles={{
+                                        control: (base) => ({
+                                            ...base,
+                                            backgroundColor: '#16202c',
+                                            color: '#eeeeeeb0',
+                                            borderColor: '#30363d',
+                                            '&:hover': {
+                                                borderColor: '#30363d'
+                                            }
+                                        }),
+                                        menu: (base) => ({
+                                            ...base,
+                                            backgroundColor: '#16202c',
+                                            zIndex: 1000
+                                        }),
+                                        option: (base, state) => ({
+                                            ...base,
+                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        singleValue: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        input: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        placeholder: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        })
+                                    }}
+                                />
+                                <Form.Label></Form.Label>
+                                        <Form.Control
+                                        as="textarea"
+                                        name="patientChiefComplaint"
+                                        value={formData.patientChiefComplaint}
+                                        onChange={handleChange}
+                                        placeholder="Patient Chief Complaint"
+                                        rows="3"
+                                        className={`form-control ${!formData.patientChiefComplaint ? 'is-invalid' : ''}`}
+                                        />
+
+                                    <Form.Label> Presenting Problem</Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientVisitReason"
+                                            value={formData.patientVisitReason}
+                                            onChange={handleChange}
+                                            placeholder="Description of the issue (eg: anxiety, depression)"
+                                            required
+                                            className={`form-control ${!formData.patientVisitReason ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientSymptoms"
+                                            value={formData.patientSymptoms}
+                                            onChange={handleChange}
+                                            placeholder="Onset and duration of symptoms"
+                                            required
+                                            className={`form-control ${!formData.patientSymptoms ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientTriggers"
+                                            value={formData.patientTriggers}
+                                            onChange={handleChange}
+                                            placeholder="Triggers or stressors:"
+                                            required
+                                            className={`form-control ${!formData.patientTherapyMedicine ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientStress"
+                                            value={formData.patientStress}
+                                            onChange={handleChange}
+                                            placeholder="Impact on daily life:"
+                                            required
+                                            className={`form-control ${!formData.patientCareer ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+
+                                    <Form.Label> Mental Status Examination (MSE) </Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+
+                                    <Form.Select
+                                            name="Appearance"
+                                            value={formData.Appearance}
+                                            onChange={handleChange}
+                                            required
+                                            className={`form-control ${!formData.Appearance ? 'is-invalid' : ''}`}
+                                        >
+                                            <option value="" disabled>Appearance</option>
+                                            {Appearance.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </Form.Select>
+                                        <Form.Select
+                                            name="Behavior"
+                                            value={formData.Behavior}
+                                            onChange={handleChange}
+                                            required
+                                            className={`form-control ${!formData.Behavior ? 'is-invalid' : ''}`}
+                                        >
+                                            <option value="" disabled>Behavior</option>
+                                            {Behavior.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </Form.Select>
+                                        <Form.Select
+                                            name="Speech"
+                                            value={formData.Speech}
+                                            onChange={handleChange}
+                                            required
+                                            className={`form-control ${!formData.Speech ? 'is-invalid' : ''}`}
+                                        >
+                                            <option value="" disabled>Speech</option>
+                                            {Speech.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </Form.Select>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Select
+                                                name="Mood"
+                                                value={formData.Mood}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.Mood ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Mood</option>
+                                                {Mood.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="Affect"
+                                                value={formData.Affect}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.Affect ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Affect</option>
+                                                {Behavior.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="ThoughtProcess"
+                                                value={formData.ThoughtProcess}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.ThoughtProcess ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Thought Process</option>
+                                                {ThoughtProcess.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Select
+                                                name="ThoughtContent"
+                                                value={formData.ThoughtContent}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.ThoughtContent ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Thought Content</option>
+                                                {ThoughtContent.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="Insight"
+                                                value={formData.Insight}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.Insight ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Insight</option>
+                                                {Insight.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="Cognition"
+                                                value={formData.Cognition}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.Cognition ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Cognition</option>
+                                                {Cognition.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            </div>
+                                            <Form.Label> Psychiatric History </Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Control
+                                        as="textarea"
+                                        name="patientTreatment"
+                                        value={formData.patientTreatment}
+                                        onChange={handleChange}
+                                        placeholder="Past psychiatric diagnoses and treatments:"
+                                        rows="3"
+                                        className={`form-control ${!formData.patientTreatment ? 'is-invalid' : ''}`}
+                                        />
+                                        <Form.Control
+                                        as="textarea"
+                                        name="patientMedicalRecord"
+                                        value={formData.patientMedicalRecord}
+                                        onChange={handleChange}
+                                        placeholder="Hospitalizations"
+                                        rows="3"
+                                        className={`form-control ${!formData.patientMedicalRecord ? 'is-invalid' : ''}`}
+                                                        />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Control
+                                        as="textarea"
+                                        name="patientFamily"
+                                        value={formData.patientFamily}
+                                        onChange={handleChange}
+                                        placeholder="Family psychiatric history:"
+                                        rows="3"
+                                        className={`form-control ${!formData.patientFamily ? 'is-invalid' : ''}`}
+                                         />
+                                        <Form.Control
+                                        as="textarea"
+                                        name="patientJobRisks"
+                                        value={formData.patientJobRisks}
+                                        onChange={handleChange}
+                                        placeholder="History of self-harm or suicide attempts"
+                                        rows="3"
+                                        className={`form-control ${!formData.patientJobRisks ? 'is-invalid' : ''}`}
+                                                        />
+                                        </div>
+                                        <Form.Label> Medical History </Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Control
+                                        as="textarea"
+                                        name="patientCondition"
+                                        value={formData.patientCondition}
+                                        onChange={handleChange}
+                                        placeholder="Current and past medical conditions:"
+                                        rows="3"
+                                        className={`form-control ${!formData.patientCondition ? 'is-invalid' : ''}`}
+                                         />
+                                        <Form.Control
+                                        as="textarea"
+                                        name="patientChronicDiseases"
+                                        value={formData.patientChronicDiseases}
+                                        onChange={handleChange}
+                                        placeholder="Medications (including psychiatric and non-psychiatric):"
+                                        rows="3"
+                                        className={`form-control ${!formData.patientChronicDiseases ? 'is-invalid' : ''}`}
+                                        />
+                                        <Form.Control
+                                        as="textarea"
+                                        name="patientAllergies"
+                                        value={formData.patientAllergies}
+                                        onChange={handleChange}
+                                        placeholder="Patient Allergies"
+                                        rows="3"
+                                        className={`form-control ${!formData.patientAllergies ? 'is-invalid' : ''}`}
+                                        />
+                                    </div>
+                                    <Form.Label> Substance Abuse History </Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Control
+                                        type="text"
+                                        name="patientDrugs"
+                                        value={formData.patientDrugs}
+                                        onChange={handleChange}
+                                        placeholder="Use of alcohol, drugs, nicotine, and other substances:"
+                                        className={`form-control ${!formData.patientDrugs ? 'is-invalid' : ''}`}
+                                         />
+                                        <Form.Control
+                                        type="text"
+                                        name="patientDrugsUsage"
+                                        value={formData.patientDrugsUsage}
+                                        onChange={handleChange}
+                                        placeholder="Frequency and duration of use:"
+                                        className={`form-control ${!formData.patientDrugsUsage ? 'is-invalid' : ''}`}
+                                        />
+                                        <Form.Control
+                                        type="text"
+                                        name="patientMental"
+                                        value={formData.patientMental}
+                                        onChange={handleChange}
+                                        placeholder="Impact on mental health"
+                                        className={`form-control ${!formData.patientMental ? 'is-invalid' : ''}`}
+                                        />
+                                    </div>
+                                    <Form.Label> Psychosocial History </Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Control
+                                        type="text"
+                                        name="patientFam"
+                                        value={formData.patientFam}
+                                        onChange={handleChange}
+                                        placeholder="Childhood and family background:"
+                                        className={`form-control ${!formData.patientFam ? 'is-invalid' : ''}`}
+                                         />
+                                        <Form.Control
+                                        type="text"
+                                        name="patientJob"
+                                        value={formData.patientJob}
+                                        onChange={handleChange}
+                                        placeholder="Education and employment history:"
+                                        className={`form-control ${!formData.patientJob ? 'is-invalid' : ''}`}
+                                        />
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                        type="text"
+                                        name="patientRelationship"
+                                        value={formData.patientRelationship}
+                                        onChange={handleChange}
+                                        placeholder="Relationships and support system:"
+                                        className={`form-control ${!formData.patientRelationship ? 'is-invalid' : ''}`}
+                                        />
+                                        <Form.Control
+                                        type="text"
+                                        name="patientLegal"
+                                        value={formData.patientLegal}
+                                        onChange={handleChange}
+                                        placeholder="Legal issues"
+                                        className={`form-control ${!formData.patientLegal ? 'is-invalid' : ''}`}
+                                        />
+                                    </div>
+                                    <Form.Label> Risk Assessment </Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Select
+                                        name="Risk"
+                                        value={formData.Risk}
+                                        onChange={handleChange}
+                                        required
+                                        className={`form-control ${!formData.Risk ? 'is-invalid' : ''}`}
+                                    >
+                                        <option value="" disabled>Risk Assessment</option>
+                                        {Risk.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </Form.Select>
+                                        <Form.Control
+                                        type="text"
+                                        name="patientRiskAssessment"
+                                        value={formData.patientRiskAssessment}
+                                        onChange={handleChange}
+                                        placeholder="Risk Assessment Details:"
+                                        className={`form-control ${!formData.patientRiskAssessment ? 'is-invalid' : ''}`}
+                                        />
+                                        </div>
+                                        <Form.Label> Findings </Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                        type="text"
+                                        name="patientFindings"
+                                        value={formData.patientFindings}
+                                        onChange={handleChange}
+                                        placeholder="Patient Notes / Findings:"
+                                        className={`form-control ${!formData.patientFindings ? 'is-invalid' : ''}`}
+                                        />
+                                        </div>
+
+                                        <Form.Label> Discharge Diagnosis </Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                        type="text"
+                                        name="patientDiagnosis"
+                                        value={formData.patientDiagnosis}
+                                        onChange={handleChange}
+                                        placeholder="Primary Diagnosis:"
+                                        className={`form-control ${!formData.patientDiagnosis ? 'is-invalid' : ''}`}
+                                        />
+                                        </div>
+                                        <Form.Label> Therapy </Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Select
+                                        name="admission"
+                                        value={formData.admission}
+                                        onChange={handleChange}
+                                        required
+                                        className={`form-control ${!formData.admission ? 'is-invalid' : ''}`}
+                                    >
+                                        <option value="" disabled>Admission</option>
+                                        {admission.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </Form.Select>
+                                        <Form.Control
+                                        type="text"
+                                        name="patientTreatmentPlan"
+                                        value={formData.patientTreatmentPlan}
+                                        onChange={handleChange}
+                                        placeholder="Treatment Plan:"
+                                        className={`form-control ${!formData.patientTreatmentPlan ? 'is-invalid' : ''}`}
+                                        />
+                                        <Form.Control
+                                        type="text"
+                                        name="patientTherapyMedicine"
+                                        value={formData.patientTherapyMedicine}
+                                        onChange={handleChange}
+                                        placeholder="Medicine:"
+                                        className={`form-control ${!formData.patientTherapyMedicine ? 'is-invalid' : ''}`}
+                                        />
+                                        <Form.Select
+                                        name="followup"
+                                        value={formData.followup}
+                                        onChange={handleChange}
+                                        required
+                                        className={`form-control ${!formData.followup ? 'is-invalid' : ''}`}
+                                    >
+                                        <option value="" disabled>Follow Up</option>
+                                        {followup.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </Form.Select>
+
+                                        </div>
+                                        <Form.Label> Treatment Plan / Recommendations </Form.Label>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                        type="text"
+                                        name="patientTreatmentMedicine"
+                                        value={formData.patientTreatmentMedicine}
+                                        onChange={handleChange}
+                                        placeholder="Medications:"
+                                        className={`form-control ${!formData.patientTreatmentMedicine ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                        type="text"
+                                        name="patientTherapy"
+                                        value={formData.patientTherapy}
+                                        onChange={handleChange}
+                                        placeholder="Therapy (e.g., CBT, DBT):"
+                                        className={`form-control ${!formData.patientTherapy ? 'is-invalid' : ''}`}
+                                        /></div> 
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                        type="text"
+                                        name="patientFollowUp"
+                                        value={formData.patientFollowUp}
+                                        onChange={handleChange}
+                                        placeholder="Follow-up appointments:"
+                                        className={`form-control ${!formData.patientFollowUp ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                        type="text"
+                                        name="patientSafety"
+                                        value={formData.patientSafety}
+                                        onChange={handleChange}
+                                        placeholder="Safety planning (if at risk):"
+                                        className={`form-control ${!formData.patientSafety ? 'is-invalid' : ''}`}
+                                        />
+
+                                        </div>
+
+                                        </>
+                                                     ) : bbCodeVersion === 29 ? ( //PHMC Shrink Internal
+                                                        <>
+                                <Form.Control
+                                    type="text"
+                                    name="patientID"
+                                    value={formData.patientID}
+                                    onChange={handleChange}
+                                    placeholder="Patient ID"
+                                    required
+                                    className={`form-control ${!formData.patientID ? 'is-invalid' : ''}`}
+                                    />
+
+                                <Form.Label>Date:</Form.Label>
+                                <Form.Control
+                                    type="date"
+                                    name="date"
+                                    value={formData.date}
+                                    onChange={handleChange}
+                                    required
+                                    className={`form-control ${!formData.date ? 'is-invalid' : ''}`}
+                                    />
+
+                                <div className="radio-inline-container">
+
+                                    <span className="radio-text">Role:</span>
+                                    <Form.Check
+                                        type="radio"
+                                        id="doctorRank"
+                                        label="   Doctor"
+                                        checked={isDoctor}
+                                        onChange={handlePHMCRank('doctor')}
+                                        inline
+                                    />
+                                    <Form.Check
+                                        type="radio"
+                                        id="nurseRank"
+                                        label="   Nurse"
+                                        checked={isNurse}
+                                        onChange={handlePHMCRank('nurse')}
+                                        inline
+                                    />
+                                    <Form.Check
+                                        type="radio"
+                                        id="psychRank"
+                                        label="   Psychiatrist"
+                                        checked={isPsych}
+                                        onChange={handlePHMCRank('psych')}
+                                        inline
+                                    />  </div>
+                                <Form.Label></Form.Label>
+
+ 
+                                <Select
+                                    name="phmcEmployee"
+                                    value={phmcGroupedOptions
+                                        .flatMap(group => group.options)
+                                        .find(option => option.value === formData.phmcEmployee) || null}
+                                    onChange={(selectedOption) => {
+                                        // eslint-disable-next-line no-unused-vars
+                                        const lastName = selectedOption ? selectedOption.lastName : '';
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            phmcEmployee: selectedOption ? selectedOption.value : '',
+                                            lastName: selectedOption ? selectedOption.lastName : '' // Use lastName from the selected option
+                                        }));
+                                    }}
+                                    options={phmcGroupedOptions}
+                                    isClearable
+                                    placeholder="Search or select doctor..."
+                                    className="form-control"
+                                    styles={{
+                                        control: (base) => ({
+                                            ...base,
+                                            backgroundColor: '#16202c',
+                                            color: '#eeeeeeb0',
+                                            borderColor: '#30363d',
+                                            '&:hover': {
+                                                borderColor: '#30363d'
+                                            }
+                                        }),
+                                        menu: (base) => ({
+                                            ...base,
+                                            backgroundColor: '#16202c',
+                                            zIndex: 1000
+                                        }),
+                                        option: (base, state) => ({
+                                            ...base,
+                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        singleValue: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        input: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        placeholder: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        })
+                                    }}
+                                />
+                                <Form.Label></Form.Label>
+                                        <Form.Control
+                                        as="textarea"
+                                        name="patientChiefComplaint"
+                                        value={formData.patientChiefComplaint}
+                                        onChange={handleChange}
+                                        placeholder="Patient Chief Complaint"
+                                        rows="3"
+                                        className={`form-control ${!formData.patientChiefComplaint ? 'is-invalid' : ''}`}
+                                        />
+
+                                    <Form.Label> Presenting Problem</Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientVisitReason"
+                                            value={formData.patientVisitReason}
+                                            onChange={handleChange}
+                                            placeholder="Description of the issue (eg: anxiety, depression)"
+                                            required
+                                            className={`form-control ${!formData.patientVisitReason ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientSymptoms"
+                                            value={formData.patientSymptoms}
+                                            onChange={handleChange}
+                                            placeholder="Onset and duration of symptoms"
+                                            required
+                                            className={`form-control ${!formData.patientSymptoms ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="patientTriggers"
+                                            value={formData.patientTriggers}
+                                            onChange={handleChange}
+                                            placeholder="Triggers or stressors:"
+                                            required
+                                            className={`form-control ${!formData.patientTherapyMedicine ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                            type="text"
+                                            name="patientStress"
+                                            value={formData.patientStress}
+                                            onChange={handleChange}
+                                            placeholder="Impact on daily life:"
+                                            required
+                                            className={`form-control ${!formData.patientCareer ? 'is-invalid' : ''}`}
+
+                                        />
+                                    </div>
+
+                                    <Form.Label> Mental Status Examination (MSE) </Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+
+                                    <Form.Select
+                                            name="Appearance"
+                                            value={formData.Appearance}
+                                            onChange={handleChange}
+                                            required
+                                            className={`form-control ${!formData.Appearance ? 'is-invalid' : ''}`}
+                                        >
+                                            <option value="" disabled>Appearance</option>
+                                            {Appearance.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </Form.Select>
+                                        <Form.Select
+                                            name="Behavior"
+                                            value={formData.Behavior}
+                                            onChange={handleChange}
+                                            required
+                                            className={`form-control ${!formData.Behavior ? 'is-invalid' : ''}`}
+                                        >
+                                            <option value="" disabled>Behavior</option>
+                                            {Behavior.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </Form.Select>
+                                        <Form.Select
+                                            name="Speech"
+                                            value={formData.Speech}
+                                            onChange={handleChange}
+                                            required
+                                            className={`form-control ${!formData.Speech ? 'is-invalid' : ''}`}
+                                        >
+                                            <option value="" disabled>Speech</option>
+                                            {Speech.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </Form.Select>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Select
+                                                name="Mood"
+                                                value={formData.Mood}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.Mood ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Mood</option>
+                                                {Mood.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="Affect"
+                                                value={formData.Affect}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.Affect ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Affect</option>
+                                                {Behavior.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="ThoughtProcess"
+                                                value={formData.ThoughtProcess}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.ThoughtProcess ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Thought Process</option>
+                                                {ThoughtProcess.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Select
+                                                name="ThoughtContent"
+                                                value={formData.ThoughtContent}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.ThoughtContent ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Thought Content</option>
+                                                {ThoughtContent.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="Insight"
+                                                value={formData.Insight}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.Insight ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Insight</option>
+                                                {Insight.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            <Form.Select
+                                                name="Cognition"
+                                                value={formData.Cognition}
+                                                onChange={handleChange}
+                                                required
+                                                className={`form-control ${!formData.Cognition ? 'is-invalid' : ''}`}
+                                            >
+                                                <option value="" disabled>Cognition</option>
+                                                {Cognition.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </Form.Select>
+                                            </div>
+                                            <Form.Label> Psychiatric History </Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Control
+                                        as="textarea"
+                                        name="patientTreatment"
+                                        value={formData.patientTreatment}
+                                        onChange={handleChange}
+                                        placeholder="Past psychiatric diagnoses and treatments:"
+                                        rows="3"
+                                        className={`form-control ${!formData.patientTreatment ? 'is-invalid' : ''}`}
+                                        />
+                                        <Form.Control
+                                        as="textarea"
+                                        name="patientMedicalRecord"
+                                        value={formData.patientMedicalRecord}
+                                        onChange={handleChange}
+                                        placeholder="Hospitalizations"
+                                        rows="3"
+                                        className={`form-control ${!formData.patientMedicalRecord ? 'is-invalid' : ''}`}
+                                                        />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Control
+                                        as="textarea"
+                                        name="patientFamily"
+                                        value={formData.patientFamily}
+                                        onChange={handleChange}
+                                        placeholder="Family psychiatric history:"
+                                        rows="3"
+                                        className={`form-control ${!formData.patientFamily ? 'is-invalid' : ''}`}
+                                         />
+                                        <Form.Control
+                                        as="textarea"
+                                        name="patientJobRisks"
+                                        value={formData.patientJobRisks}
+                                        onChange={handleChange}
+                                        placeholder="History of self-harm or suicide attempts"
+                                        rows="3"
+                                        className={`form-control ${!formData.patientJobRisks ? 'is-invalid' : ''}`}
+                                                        />
+                                        </div>
+                                        <Form.Label> Medical History </Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Control
+                                        as="textarea"
+                                        name="patientCondition"
+                                        value={formData.patientCondition}
+                                        onChange={handleChange}
+                                        placeholder="Current and past medical conditions:"
+                                        rows="3"
+                                        className={`form-control ${!formData.patientCondition ? 'is-invalid' : ''}`}
+                                         />
+                                        <Form.Control
+                                        as="textarea"
+                                        name="patientChronicDiseases"
+                                        value={formData.patientChronicDiseases}
+                                        onChange={handleChange}
+                                        placeholder="Medications (including psychiatric and non-psychiatric):"
+                                        rows="3"
+                                        className={`form-control ${!formData.patientChronicDiseases ? 'is-invalid' : ''}`}
+                                        />
+                                        <Form.Control
+                                        as="textarea"
+                                        name="patientAllergies"
+                                        value={formData.patientAllergies}
+                                        onChange={handleChange}
+                                        placeholder="Patient Allergies"
+                                        rows="3"
+                                        className={`form-control ${!formData.patientAllergies ? 'is-invalid' : ''}`}
+                                        />
+                                    </div>
+                                    <Form.Label> Substance Abuse History </Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Control
+                                        type="text"
+                                        name="patientDrugs"
+                                        value={formData.patientDrugs}
+                                        onChange={handleChange}
+                                        placeholder="Use of alcohol, drugs, nicotine, and other substances:"
+                                        className={`form-control ${!formData.patientDrugs ? 'is-invalid' : ''}`}
+                                         />
+                                        <Form.Control
+                                        type="text"
+                                        name="patientDrugsUsage"
+                                        value={formData.patientDrugsUsage}
+                                        onChange={handleChange}
+                                        placeholder="Frequency and duration of use:"
+                                        className={`form-control ${!formData.patientDrugsUsage ? 'is-invalid' : ''}`}
+                                        />
+                                        <Form.Control
+                                        type="text"
+                                        name="patientMental"
+                                        value={formData.patientMental}
+                                        onChange={handleChange}
+                                        placeholder="Impact on mental health"
+                                        className={`form-control ${!formData.patientMental ? 'is-invalid' : ''}`}
+                                        />
+                                    </div>
+                                    <Form.Label> Psychosocial History </Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Control
+                                        type="text"
+                                        name="patientFam"
+                                        value={formData.patientFam}
+                                        onChange={handleChange}
+                                        placeholder="Childhood and family background:"
+                                        className={`form-control ${!formData.patientFam ? 'is-invalid' : ''}`}
+                                         />
+                                        <Form.Control
+                                        type="text"
+                                        name="patientJob"
+                                        value={formData.patientJob}
+                                        onChange={handleChange}
+                                        placeholder="Education and employment history:"
+                                        className={`form-control ${!formData.patientJob ? 'is-invalid' : ''}`}
+                                        />
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                        type="text"
+                                        name="patientRelationship"
+                                        value={formData.patientRelationship}
+                                        onChange={handleChange}
+                                        placeholder="Relationships and support system:"
+                                        className={`form-control ${!formData.patientRelationship ? 'is-invalid' : ''}`}
+                                        />
+                                        <Form.Control
+                                        type="text"
+                                        name="patientLegal"
+                                        value={formData.patientLegal}
+                                        onChange={handleChange}
+                                        placeholder="Legal issues"
+                                        className={`form-control ${!formData.patientLegal ? 'is-invalid' : ''}`}
+                                        />
+                                    </div>
+                                    <Form.Label> Risk Assessment </Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Select
+                                        name="Risk"
+                                        value={formData.Risk}
+                                        onChange={handleChange}
+                                        required
+                                        className={`form-control ${!formData.Risk ? 'is-invalid' : ''}`}
+                                    >
+                                        <option value="" disabled>Risk Assessment</option>
+                                        {Risk.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </Form.Select>
+                                        <Form.Control
+                                        type="text"
+                                        name="patientRiskAssessment"
+                                        value={formData.patientRiskAssessment}
+                                        onChange={handleChange}
+                                        placeholder="Risk Assessment Details:"
+                                        className={`form-control ${!formData.patientRiskAssessment ? 'is-invalid' : ''}`}
+                                        />
+                                        </div>
+                                        <Form.Label> Findings </Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                        type="text"
+                                        name="patientFindings"
+                                        value={formData.patientFindings}
+                                        onChange={handleChange}
+                                        placeholder="Patient Notes / Findings:"
+                                        className={`form-control ${!formData.patientFindings ? 'is-invalid' : ''}`}
+                                        />
+                                        </div>
+
+                                        <Form.Label> Discharge Diagnosis </Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                        type="text"
+                                        name="patientDiagnosis"
+                                        value={formData.patientDiagnosis}
+                                        onChange={handleChange}
+                                        placeholder="Primary Diagnosis:"
+                                        className={`form-control ${!formData.patientDiagnosis ? 'is-invalid' : ''}`}
+                                        />
+                                        </div>
+                                        <Form.Label> Therapy </Form.Label>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Select
+                                        name="admission"
+                                        value={formData.admission}
+                                        onChange={handleChange}
+                                        required
+                                        className={`form-control ${!formData.admission ? 'is-invalid' : ''}`}
+                                    >
+                                        <option value="" disabled>Admission</option>
+                                        {admission.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </Form.Select>
+                                        <Form.Control
+                                        type="text"
+                                        name="patientTreatmentPlan"
+                                        value={formData.patientTreatmentPlan}
+                                        onChange={handleChange}
+                                        placeholder="Treatment Plan:"
+                                        className={`form-control ${!formData.patientTreatmentPlan ? 'is-invalid' : ''}`}
+                                        />
+                                        <Form.Control
+                                        type="text"
+                                        name="patientTherapyMedicine"
+                                        value={formData.patientTherapyMedicine}
+                                        onChange={handleChange}
+                                        placeholder="Medicine:"
+                                        className={`form-control ${!formData.patientTherapyMedicine ? 'is-invalid' : ''}`}
+                                        />
+                                        <Form.Select
+                                        name="followup"
+                                        value={formData.followup}
+                                        onChange={handleChange}
+                                        required
+                                        className={`form-control ${!formData.followup ? 'is-invalid' : ''}`}
+                                    >
+                                        <option value="" disabled>Follow Up</option>
+                                        {followup.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </Form.Select>
+
+                                        </div>
+                                        <Form.Label> Treatment Plan / Recommendations </Form.Label>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                        type="text"
+                                        name="patientTreatmentMedicine"
+                                        value={formData.patientTreatmentMedicine}
+                                        onChange={handleChange}
+                                        placeholder="Medications:"
+                                        className={`form-control ${!formData.patientTreatmentMedicine ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                        type="text"
+                                        name="patientTherapy"
+                                        value={formData.patientTherapy}
+                                        onChange={handleChange}
+                                        placeholder="Therapy (e.g., CBT, DBT):"
+                                        className={`form-control ${!formData.patientTherapy ? 'is-invalid' : ''}`}
+                                        /></div> 
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                        type="text"
+                                        name="patientFollowUp"
+                                        value={formData.patientFollowUp}
+                                        onChange={handleChange}
+                                        placeholder="Follow-up appointments:"
+                                        className={`form-control ${!formData.patientFollowUp ? 'is-invalid' : ''}`}
+
+                                        />
+                                        <Form.Control
+                                        type="text"
+                                        name="patientSafety"
+                                        value={formData.patientSafety}
+                                        onChange={handleChange}
+                                        placeholder="Safety planning (if at risk):"
+                                        className={`form-control ${!formData.patientSafety ? 'is-invalid' : ''}`}
+                                        />
+
+                                        </div>
+
+                                                        </>
                         ) : null}
                         <div className="button-group">
                             <button
@@ -12947,6 +13286,48 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
             </div>
         </div>
     )}
+        {showFeatureRequestModal && (
+        <div className="modal-overlay">
+            <div className="modal">
+                <Modal.Header>
+                    <Modal.Title>Suggest a Feature</Modal.Title>
+                    <Button variant="secondary" className="close" onClick={() => setShowFeatureRequestModal(false)}>
+                        <span>&times;</span>
+                    </Button>
+                </Modal.Header>
+                <Modal.Body>
+                    <Form>
+                        <Form.Group>
+                            <Form.Label>Feature Request:</Form.Label>
+                            <Form.Control
+                                as="textarea"
+                                rows={3}
+                                value={featureRequest}
+                                onChange={(e) => setFeatureRequest(e.target.value)}
+                                placeholder="Enter your feature request here... If you require new forms to be added, contact the Maintainer in Discord"
+                            />
+                            <Form.Control
+                            type="text"
+                            name="discordName"
+                            value={discordName}
+                            onChange={(e) => setDiscordName(e.target.value)}
+                            placeholder="Enter your Discord Name / ID"
+                        />
+                        </Form.Group>
+                    </Form>
+                </Modal.Body>
+                <Modal.Footer>
+                    <Button variant="primary" onClick={handleFeatureRequestSubmit}>
+                        Submit
+                    </Button>
+                    <Button variant="secondary" onClick={() => setShowFeatureRequestModal(false)}>
+                        Cancel
+                    </Button>
+                </Modal.Footer>
+            </div>
+        </div>
+    )}
+
 <div className="image-container">
                         <a href="http://discord.gg/rrzJ4EeHfK" target="_blank" rel="noopener noreferrer">
                             <img src={Feedback}
@@ -12988,15 +13369,21 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                                                                                                 ' MISSING TITLE - CHANGE DEV_TEXT'}
                         </h3>
                     </div>}
- */}                  <div className="bbcode-section">
-                            <div className={`char-counter ${getBBCodeContent().length > 60000 ? 'char-counter-warning' : ''}`}>
-                            Character Counter: {getBBCodeContent().length}/60000
-                            {getBBCodeContent().length > 60000 && (
-                                <div className="char-counter-warning-message">
-                                    Hi, you found a new warning: Note that PHPBB has a default Character Limit (60000), some forums are different. You may need to split this form up if you encounter issues!
-                                </div>
-                            )}
-                        </div>
+ */}                  
+ <div className="bbcode-section">
+ <div className={`char-counter ${getBBCodeContent()?.length > 60000 ? 'char-counter-warning' : ''}`}>
+    Character Counter: {getBBCodeContent()?.length ?? 'Error'}/60000
+    {getBBCodeContent()?.length > 60000 && (
+        <div className="char-counter-warning-message">
+            Hi, you found a new warning: Note that PHPBB has a default Character Limit (60000), some forums are different. You may need to split this form up if you encounter issues!
+        </div>
+    )}
+    {getBBCodeContent() == null ? (
+        <div className="char-counter-warning-message">
+            Error: Contact a developer, getBBCodeContent() returned null or undefined.
+        </div>
+    ) : null}
+</div>
                         <div className="button-group">
                             <Button
                                 variant="primary"
@@ -13047,6 +13434,8 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                                                                                                                 bbCodeVersion === 25 ? generateBasicPatientFile() :
                                                                                                                                 bbCodeVersion === 26 ? generateBasicPatientFileStaff() :
                                                                                                                                 bbCodeVersion === 27 ? generateEmailPHMCEmail() :  
+                                                                                                                                bbCodeVersion === 28 ? generatePsychEvalPHMC() :
+                                                                                                                                 bbCodeVersion === 29 ? generatePsychEvalPBC() :
                                                                                                                     generateDeath()}
                                     </pre>
                                 </div>
@@ -13097,7 +13486,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                             </>
                         )}
                     </div>
-                    {bbCodeVersion !== 5 && (
+{/*                     {bbCodeVersion !== 5 && (
                         <>
                             <h1>Generated Title</h1>
                             <div className="title-output">
@@ -13106,7 +13495,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                         </>
                     )}
 
-                    {bbCodeVersion === 2 && (
+ */}                    {bbCodeVersion === 2 && (
                         <div className="agency-buttons">
                             <h5>Agency Email Methods: </h5>
                             <a
@@ -13181,7 +13570,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                     )}
 
                     <div className="button-container">
-                        <button
+{/*                         <button
                             type="button"
                             className="changelog-button"
                             onClick={() => {
@@ -13202,7 +13591,7 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                             <i className="fas fa-copy"></i>
                             Copy Title
                         </button>
-                        <button
+ */}                        <button
                             type="button"
                             className="changelog-button"
                             onClick={() => {
@@ -13229,6 +13618,8 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                                                                                         bbCodeVersion === 25 ? generateBasicPatientFile() :
                                                                                                         bbCodeVersion === 26 ? generateBasicPatientFileStaff() :
                                                                                                         bbCodeVersion === 27 ? generateEmailPHMCEmail() : 
+                                                                                                         bbCodeVersion === 28 ? generatePsychEvalPHMC() :
+                                                                                                        bbCodeVersion === 29 ? generatePsychEvalPBC() :
 
                                                                                                             generateDeath();
                                 const currentDateTime = new Date().toLocaleString();
@@ -13258,6 +13649,8 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                                                                                                         bbCodeVersion === 25 ? 'Basic Patient File' :
                                                                                                                         bbCodeVersion === 26 ? 'Staff Patient Medical File' : 
                                                                                                                         bbCodeVersion === 27 ? 'PHMC Internal Email' : 
+                                                                                                                        bbCodeVersion === 28 ? 'Psychological Evaluation PHMC' : 
+                                                                                                                        bbCodeVersion === 29 ? 'Psychological Evaluation PBC' :
                                                                                                             "Something has gone wrong, sorry about that! Please inform the website maintainer!";
 
                 navigator.clipboard.writeText(bbCode).then(() => {
@@ -13331,6 +13724,8 @@ I, ${patientName}, retain the right to revoke this consent at any time by notify
                                                                                                         bbCodeVersion === 25 ? 'Basic Patient File' :
                                                                                                         bbCodeVersion === 26 ? 'Staff Patient Medical Record' : 
                                                                                                         bbCodeVersion === 27 ? 'PHMC Email' : 
+                                                                                                        // bbCodeVersion === 28 ? 'Psychological Evaluation PHMC' :
+                                                                                                        // bbCodeVersion === 29 ? 'Psychological Evaluation PBC' :
                                                                                                         "DEBUG - update title logic"}
                         </button>
                         

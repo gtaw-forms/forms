@@ -223,6 +223,62 @@ export const dnrOrder = [
     { value: 'Yes', label: 'Yes' },
     { value: 'No', label: 'No'}
 ]
+// shrink chaos
+export const Appearance = [
+    { value: 'Good', label: 'Well-groomed' },
+    { value: 'Disheveled', label: 'Disheveled'},
+    { value: 'Inappropriate', label: 'Inappropriate'},
+]
+export const Behavior = [
+    { value: 'Cooperative', label: 'Cooperative' },
+    { value: 'Agitated', label: 'Agitated'},
+    { value: 'Withdrawn', label: 'Withdrawn'},
+]
+export const Speech = [ 
+    { value: 'Normal', label: 'Normal' },
+    { value: 'Pressured', label: 'Pressured'},
+    { value: 'Slurred', label: 'Slurred'},
+    { value: 'Slow', label: 'Slow'},
+]
+export const Mood = [
+    { value: 'Euthymic', label: 'Euthymic' },
+    { value: 'Depressed', label: 'Depressed'},
+    { value: 'Anxious', label: 'Anxious'},
+    { value: 'Angry', label: 'Angry'},
+]
+export const Affect =[ 
+    { value: 'Congruent', label: 'Congruent' },
+    { value: 'Flat', label: 'Flat'},
+    { value: 'Inappropriate', label: 'Inappropriate'},
+]
+export const ThoughtProcess = [
+    { value: 'Logical', label: 'Logical' },
+    { value: 'Organized', label: 'Organized'},
+    { value: 'Tangential', label: 'Tangential'},
+    { value: 'Disorganised', label: 'Disorganised'},
+]
+export const ThoughtContent = [
+    { value: 'Nodelusions', label: 'Nodelusions' },
+    { value: 'Delusions', label: 'Delusions'},
+    { value: 'Hallucinations', label: 'Hallucinations'},
+    { value: 'Suicidal', label: 'Suicidal'},
+    { value: 'Homicidal', label: 'Homicidal'},
+]
+export const Insight = [
+    { value: 'Intact', label: 'Intact' },
+    { value: 'Limited', label: 'Limited'},
+    { value: 'Poor', label: 'Poor'},
+]
+export const Cognition = [
+    { value: 'Oriented', label: 'Oriented' },
+    { value: 'Memory', label: 'Memory'},
+    { value: 'Attention', label: 'Attention'},
+]
+export const Risk = [
+    { value: 'Suicidal', label: 'Suicidal' },
+    { value: 'Homicidal', label: 'Homicidal'},
+    { value: 'Self', label: 'Self'},
+]
     export const phmcList = [
     // NPC Leadership and Supervisor
     { name: 'Doctor Smith', lastName: 'Smith', signature: 'Doctor Smith ', category: '(( NPC DOCTOR ))' },
@@ -276,9 +332,7 @@ export const dnrOrder = [
     { name: 'Winter Calderone', lastName: 'Calderone', signature: '', category: 'Nursing' },
 
     // ems
-    { name: 'Will Flanary', lastName: 'Flanary', signature: '', catagory: 'Emergency Medical Services' },
-
-
+    { name: 'Will Flanary', lastName: 'Flanary', signature: '', category: 'Emergency Medical Services' },
 ];
 export const coronerList = [
     { name: 'Anne Carter', badge: '4892', rank: 'Chief Medical Examiner', discord: 'ralof.from.riverwood', category: 'Chief Boss' },
