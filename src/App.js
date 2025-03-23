@@ -1192,7 +1192,7 @@ Weight: ${patientWeight}
 [cb${formData.BodyMassIndex === 'Obese' ? 'c' : ''}][/cb] Obese
 [cb${formData.BodyMassIndex === 'ExtremeObese' ? 'c' : ''}][/cb] Extremely Obese
 [/table]
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Vitals[/b][/color][/center][/divboxcolor]
+[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Vitals[/b][/color][/center][/divboxcolor]
 [table][tr][td][center]Temperature: [cb${formData.vitals === 'patientTempNormal' ? 'c' : ''}] Normal [cb${formData.vitals === 'patientHypothermic' ? 'c' : ''}] Hypothermic [cb${formData.vitals === 'patientHyperthermic' ? 'c' : ''}] Hyperthermic[/center]
 [td][center]Heart Rate: [cb${formData.heartRate === 'patientHeartRateNormal' ? 'c' : ''}] Normal [cb${formData.heartRate === 'patientHeartRateBradycardia' ? 'c' : ''}] Bradycardia [cb${formData.heartRate === 'patientHeartRateTachycardia' ? 'c' : ''}] Tachycardia[/center][/table]
 [table][tr][td][center]Breathing: [cb${formData.breathing === 'patientBreathingNormal' ? 'c' : ''}] Normal [cb${formData.breathing === 'patientBreathingSlow' ? 'c' : ''}] Slow [cb${formData.breathing === 'patientBreathingFast' ? 'c' : ''}] Fast [cb${formData.breathing === 'patientBreathingObstructed' ? 'c' : ''}] Obstructed[/center]
@@ -2670,7 +2670,7 @@ ${patientName}
 [/size]
 
 [/center][td][center][img]https://i.imgur.com/QMaz0OC.png[/img][img]https://i.imgur.com/LkRKav2.png[/img]
-[b][size=150]BASIC PATIENT INFORMATION[/size][/center][/table]
+[b][size=150]ADVANCED PATIENT INFORMATION[/size][/center][/table]
 [divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]General Information[/b][/color][/size][/center][/divboxcolor]
 [table][tr][td] Title: ${patientTitle}[/td][td] Full Name: ${patientName}
 [tr][td] Date of Birth: ${patientDateOfBirth} [/td][td] Home Address: ${patientAddress}
@@ -3792,7 +3792,7 @@ if (bbCodeVersion === 1) {
         23: "Commentary Note (PBC)",
         24: "Medical Release Records",
         25: "Patient File - Basic",
-        26: "Patient File - Staff",
+        26: "Patient File - Advanced",
         27: "Email Forms",
         28: "Psychological Evaluation PHMC",
         29: "Psychological Evaluation PBC",
@@ -4044,7 +4044,7 @@ if (bbCodeVersion === 1) {
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 1.8 - ❄️ Frostbite Update </h3>
+                                    <h3>Changelog - Version 1.8.2 - ❄️ Frostbite Update </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -4055,12 +4055,10 @@ if (bbCodeVersion === 1) {
                                 </div>
                                 <div className="modal-content">
                                     <ul>
-                                        <li> Title Generation has been disabled.</li>
-                                        <li>  Psychological Evaluation Forms have been added for PHMC/PBC</li>
-                                        <li> Better error handling </li> 
-                                       <li> Mobile support enters beta.</li>           
-                                       <li> Bootstrap Select depricated unless for Multi select forms.</li>                             
+                                        <li> Title Generation has been restored.</li>
+                                        <li> Fixed issues with Patient Information (Advanced) and Physical Evaluation </li>
                                     </ul>
+                                    - frosty
                                 </div>
                             </div>
                         </div>
