@@ -413,7 +413,6 @@ function App() {
         // Clean up the event listener on unmount
         return () => window.removeEventListener('resize', handleResize);
     }, []);
-
     useEffect(() => {
         window.onerror = async (message, source, lineno, colno, error) => {
             let lineContent = '';
@@ -456,8 +455,7 @@ function App() {
     
             return true; // Prevent default error handling
         };
-    }, []);
-    
+    }, []);    
     
     const [isUploading, setIsUploading] = useState(false);
     const [isJohnDoe, setIsJohnDoe] = useState(false);
@@ -654,6 +652,13 @@ const handleFeatureRequestSubmit = async () => {
         return;
     }
 
+    // Collect debug information
+    const debugInfo = {
+        bbCodeVersion: bbCodeVersion,
+        userAgent: navigator.userAgent,
+        errors: localStorage.getItem('consoleErrors') || 'No errors were logged',
+    };
+
     try {
         const response = await fetch(process.env.REACT_APP_DISCORD_WEBHOOK_URL, {
             method: 'POST',
@@ -661,7 +666,7 @@ const handleFeatureRequestSubmit = async () => {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                content: `New Feature Request: ${featureRequest} - Discord: ${discordName}`,
+                content: `New Bug/Feature Request: ${featureRequest} - Discord: ${discordName}\nDebug Info: ${JSON.stringify(debugInfo, null, 2)}`,
             }),
         });
 
@@ -689,8 +694,7 @@ const handleFeatureRequestSubmit = async () => {
             icon: 'fas fa-exclamation-triangle',
         });
     }
-};
-    // Separate PHMC options
+};    // Separate PHMC options
     const phmcGroupedOptions = Object.entries(
         phmcList.reduce((groups, employee) => {
             const categoryName = employee.category || 'Uncategorized';
@@ -822,6 +826,80 @@ const handleFeatureRequestSubmit = async () => {
         }
     };
 
+    useEffect(() => {
+        // Store console errors in localStorage
+        let consoleErrors = [];
+        const originalConsoleError = console.error;
+    
+        console.error = function(message) {
+            consoleErrors.push({
+                message: message,
+                bbCodeVersion: bbCodeVersion, 
+            });
+            localStorage.setItem('consoleErrors', JSON.stringify(consoleErrors));
+            sendErrorToDiscord(message, bbCodeVersion);
+            originalConsoleError.apply(console, arguments);
+        };
+    
+        window.onerror = async (message, source, lineno, colno, error) => {
+            let lineContent = '';
+            try {
+                // Attempt to fetch the line content from the source file
+                const response = await fetch(source);
+                if (response.ok) {
+                    const fileContent = await response.text();
+                    const lines = fileContent.split('\n');
+                    lineContent = lines[lineno - 1] || 'Line content not available';
+                } else {
+                    lineContent = `Failed to fetch source file: ${response.status} ${response.statusText}`;
+                }
+            } catch (fetchError) {
+                lineContent = `Error fetching source file: ${fetchError.message}`;
+            }
+    
+            const errorMessage = `
+                Error: ${message}
+                Source: ${source}
+                Line: ${lineno}
+                Column: ${colno}
+                Line Content: ${lineContent}
+                Error Object: ${error ? error.stack : 'No stack available'}
+                BBCode Version: ${bbCodeVersion}
+            `;
+    
+            sendErrorToDiscord(errorMessage, bbCodeVersion); // Send window.onerror to Discord
+    
+            return true; // Prevent default error handling
+        };
+    
+        // Cleanup function to restore original console.error
+        return () => {
+            console.error = originalConsoleError;
+        };
+    }, [bbCodeVersion]);
+    
+    const sendErrorToDiscord = async (errorMessage, bbCodeVersion) => {
+        const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+    
+        if (!discordWebhookUrl) {
+            console.error("Discord webhook URL is not defined in .env file.");
+            return;
+        }
+    
+        try {
+            await fetch(discordWebhookUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    content: `**ERROR REPORT**\nBBCode Version: ${bbCodeVersion}\n${errorMessage}`
+                })
+            });
+        } catch (error) {
+            console.error("Error sending error message to Discord:", error);
+        }
+    };
 
     const generateDeath = () => {
         const {
@@ -4036,7 +4114,7 @@ if (bbCodeVersion === 1) {
                         className="changelog-button"
                         onClick={() => setShowFeatureRequestModal(true)}
                     >
-                        Suggest a Feature
+                        Report Bug / Feature Request
                     </button>
 
 </div>
@@ -13282,7 +13360,7 @@ if (bbCodeVersion === 1) {
         <div className="modal-overlay">
             <div className="modal">
                 <Modal.Header>
-                    <Modal.Title>Suggest a Feature</Modal.Title>
+                    <Modal.Title>Bug / Feature Request</Modal.Title>
                     <Button variant="secondary" className="close" onClick={() => setShowFeatureRequestModal(false)}>
                         <span>&times;</span>
                     </Button>
@@ -13290,13 +13368,13 @@ if (bbCodeVersion === 1) {
                 <Modal.Body>
                     <Form>
                         <Form.Group>
-                            <Form.Label>Feature Request:</Form.Label>
+                            <Form.Label>Bug / Feature Request:</Form.Label>
                             <Form.Control
                                 as="textarea"
                                 rows={3}
                                 value={featureRequest}
                                 onChange={(e) => setFeatureRequest(e.target.value)}
-                                placeholder="Enter your feature request here... If you require new forms to be added, contact the Maintainer in Discord"
+                                placeholder="If you have located a bug, please provide as much information as possible (Pictures are also very helpful!). If you are requesting a feature, please provide a detailed description of the feature you would like to see."
                             />
                             <Form.Control
                             type="text"
