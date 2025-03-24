@@ -574,8 +574,10 @@ function App() {
         coronerDiscord: '',
         coronerRank: '',
         coronerPHNumber: '',
-        phmcEmployee: '',
         coronerEmployee: '',
+        coronerBadge: '',
+        phmcEmployee: '',
+
     });
     const handleMissingEmployeeChange = (value, type) => {
         setMissingEmployeeData(prevData => ({
@@ -602,7 +604,7 @@ const handleMissingEmployeeSubmit = async () => {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                content: `<@228306972204597248> New Employee Name Request by: ${missingEmployeeData.phmcEmployee} ${missingEmployeeData.coronerEmployee}  \n name: ${missingEmployeeData.coronerName} \n badge/department: ${missingEmployeeData.coronerDiscord}\n rank: ${missingEmployeeData.coronerRank}`,
+                content: `<@228306972204597248> New Employee Name Request by: ${missingEmployeeData.phmcEmployee} ${missingEmployeeData.coronerEmployee}  \n name: ${missingEmployeeData.coronerName} \n discord/department: ${missingEmployeeData.coronerDiscord}\n rank: ${missingEmployeeData.coronerRank} \n badge: ${missingEmployeeData.coronerBadge}`,
             }),
         });
 
@@ -617,8 +619,9 @@ const handleMissingEmployeeSubmit = async () => {
                 coronerDiscord: '',
                 coronerRank: '',
                 coronerPHNumber: '',
-                phmcEmployee: '',
                 coronerEmployee: '',
+                coronerBadge: '',
+                phmcEmployee: '',
             });
             // Add fade-out effect
             setTimeout(() => {
@@ -4135,6 +4138,7 @@ if (bbCodeVersion === 1) {
                                     <ul>
                                         <li> Title Generation has been restored.</li>
                                         <li> Fixed issues with Patient Information (Advanced) and Physical Evaluation </li>
+                                        <li> Names have been rotated in.</li>
                                     </ul>
                                     - frosty
                                 </div>
@@ -13180,6 +13184,14 @@ if (bbCodeVersion === 1) {
                                 onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerPHNumber')}
                                 placeholder='Employee PH number (Optional)'
                             />
+                            <Form.Control
+                            type="text"
+                            name="coronerBadge"
+                            value={missingEmployeeData.coronerBadge}
+                            onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerBadge')}
+                            placeholder='Employee Badge Number (Required)'
+                            />
+
                         </div>
 
                         )}

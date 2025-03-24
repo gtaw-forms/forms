@@ -340,7 +340,6 @@ export const coronerList = [
     { name: 'Laurent Hall', badge: '91338854', rank: 'Supervisor Forensic Attendant', discord: 'faethewtich', category: 'Supervisor' },
     { name: 'Chloe Howard', badge: '54372', rank: 'Medical Examiner', discord: 'lovely4ngel', category: 'Medical Examiner' },
     { name: 'Wesley Kramer', badge: '16511', rank: 'Coroner Investigator', discord: 'lucasin16', category: 'Coroner Investigator' },
-    { name: 'Roger Rose', badge: '1552', rank: 'Coroner Investigator', discord: 'nazmaldun', category: 'Coroner Investigator' },
     { name: 'Pubert Kennedy', badge: '171763', rank: 'Forensic Attendant', discord: 'mynameiscian', category: 'Forensic Attendant' },
     { name: 'Alyson Frost', badge: '5573', rank: 'Coroner Investigator', discord: 'fr0sty.js', category: 'Coroner Investigator' },
     { name: 'Arthur Blackwood', badge: '153528', rank: 'Medical Examiner', discord: 'deputysmall', category: 'Medical Examiner' },
@@ -351,7 +350,7 @@ export const coronerList = [
     { name: 'Luna Rosario', badge: '157235', rank: 'Coroner Investigator', discord: 'assszzz', category: 'Coroner Investigator' },
     { name: 'Norah Reed', badge: '93014', rank: 'Forensic Attendant', discord: 'amnesia5290', category: 'Forensic Attendant' },
     { name: 'James McKinney', badge: 'ID_MISSING_ERROR', rank: 'Forensic Attendant', discord: 'boots7163', category: 'Forensic Attendant' },
-
+    { name: 'Lierin Sherwood', badge: '175994', rank: 'Forensic Attendant', discord: 'nazmaldun', category: 'Forensic Attendant' },
 ];
 
 export const formatSignature = (signature) => {
