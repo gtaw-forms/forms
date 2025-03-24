@@ -13154,7 +13154,7 @@ if (bbCodeVersion === 1) {
                         name="coronerName"
                         value={missingEmployeeData.coronerName}
                         onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerName')}
-                        placeholder='Employee Name'
+                        placeholder='Coroner Name'
 
                         />
                         <Form.Control
@@ -13162,14 +13162,14 @@ if (bbCodeVersion === 1) {
                         name="coronerDiscord"
                         value={missingEmployeeData.coronerDiscord}
                         onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerDiscord')}
-                        placeholder='Employee Discord Tags'
+                        placeholder='Coroner Discord Tags'
                         />
                         <Form.Control
                         type="text"
                         name="coronerRank"
                         value={missingEmployeeData.coronerRank}
                         onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerRank')}
-                        placeholder='Employee Rank / Position'
+                        placeholder='Coroner Rank / Position'
                         />
                                                     
                         </div>
@@ -13182,14 +13182,14 @@ if (bbCodeVersion === 1) {
                                 name="coronerPHNumber"
                                 value={missingEmployeeData.coronerPHNumber}
                                 onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerPHNumber')}
-                                placeholder='Employee PH number (Optional)'
+                                placeholder='Coroner PH number (Optional)'
                             />
                             <Form.Control
                             type="text"
                             name="coronerBadge"
                             value={missingEmployeeData.coronerBadge}
                             onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerBadge')}
-                            placeholder='Employee Badge Number (Required)'
+                            placeholder='Coroner Badge Number (Required or things will go boom)'
                             />
 
                         </div>
