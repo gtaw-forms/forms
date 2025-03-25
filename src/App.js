@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Select from 'react-select';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import Notification from './components/Notification';
 import { Modal, Form, Button, InputGroup } from 'react-bootstrap';
+import domtoimage from 'dom-to-image';
 // logos
 import LSPDLogo from './assets/lspd.png'
 import LSSDLogo from './assets/lssd.png'
@@ -26,7 +27,9 @@ import corpse from './assets/corpse.png'
 import Paperwork from './assets/myPaperwork2.png';
 import paperwork2 from './assets/paperwork.png'
 import Feedback from './assets/feedback.png';
+import BusinessCardImage from './assets/business-card.png';
 import phmcpaletobay from './assets/phmcpaletobaylogo.png'
+import './assets/fonts/Poppins-Medium.ttf';
 import {
     PurposeMedicalInformationRelease,
     PurposeMedicalInformationReleaseFormat,
@@ -467,7 +470,6 @@ function App() {
     const [notification, setNotification] = useState(null);
     const [selectedForm, setSelectedForm] = useState(null);
     const [commitInfo, setCommitInfo] = useState({ sha: '', date: null });
-    const [rank, setRank] = useState('');
     const [showPHMCModal, setShowPHMCModal] = useState(false);
 
 
@@ -3881,7 +3883,11 @@ if (bbCodeVersion === 1) {
     };
 
 
-    const [hideAgencySelector, setHideAgencySelector] = useState(localStorage.getItem('hideAgencySelector') === 'true');
+    const [hideAgencySelector, setHideAgencySelector] = useState(() => {
+        // Load the value from localStorage on component mount
+        const storedValue = localStorage.getItem('hideAgencySelector');
+        return storedValue ? JSON.parse(storedValue) : false; // Default to false if no value is stored
+    });
     const [showAgencySelector, setShowAgencySelector] = useState(!hideAgencySelector);
 
     const handleAgencySelect = (version) => {
@@ -3890,30 +3896,290 @@ if (bbCodeVersion === 1) {
         setShowAgencySelector(false);
         showNotification(`Switched to ${versionNames[version]}`, 'exchange-alt');
     };
-
+    
     const toggleAgencySelector = () => {
         setShowAgencySelector(prev => !prev);
     };
-
-
-    const handleSelectorChange = (event) => {
-        const checked = event.target.checked;
-        setHideAgencySelector(checked);
-        localStorage.setItem('hideAgencySelector', checked.toString());
-    };
-
-
     useEffect(() => {
-        setShowAgencySelector(!hideAgencySelector);
+        // Save the value to localStorage whenever hideAgencySelector changes
+        localStorage.setItem('hideAgencySelector', JSON.stringify(hideAgencySelector));
     }, [hideAgencySelector]);
-
-
-
+// business card stuff
+    const [namePosition, setNamePosition] = useState({ top: 105.5, left: 22 });
+    const [rankPosition, setRankPosition] = useState({ top: 143.65, left: 26.5 });
+    const [badgeNumberPosition, setBadgeNumberPosition] = useState({ top: 148.750, left: 450.5 }); // depricated
+    const [departmentPosition, setDepartmentPosition] = useState({ top: 185.625, left: 350.5  }); // depricated
+    const [phoneNumberPosition, setPhoneNumberPosition] = useState({ top: 229.65, left: 88.5  });
+    const businessCardRef = useRef(null); // Ref to the business card image container
+    const nameRef = useRef(null); // Ref to the name overlay
+    const rankRef = useRef(null); // Ref to the rank overlay
+    const badgeNumber = useRef(null); // Ref to the badge number overlay
+    const departmentRef = useRef(null); // Ref to the department overlay
+    const phoneNumberRef = useRef(null);
+    
+    const handleSave = () => {
+        localStorage.setItem('name', name);
+        localStorage.setItem('rank', rank);
+        localStorage.setItem('badgeNR', badgeNR);
+        localStorage.setItem('department', department);
+        localStorage.setItem('phoneNumber', phoneNumber);
+    
+        localStorage.setItem('namePosition', JSON.stringify(namePosition));
+        localStorage.setItem('rankPosition', JSON.stringify(rankPosition));
+        localStorage.setItem('badgeNumberPosition', JSON.stringify(badgeNumberPosition));
+        localStorage.setItem('departmentPosition', JSON.stringify(departmentPosition));
+        localStorage.setItem('phoneNumberPosition', JSON.stringify(phoneNumberPosition));
+        
+        // Convert the business card to an image
+        domtoimage.toPng(businessCardRef.current)
+        .then(function (dataUrl) {
+            // Upload to Imgur
+            uploadToImgur(dataUrl)
+                .then(imgurLink => {
+                    showNotification(`Business Card Saved & Uploaded to Imgur: ${imgurLink}`, 'save');
+                    // Check if navigator.clipboard is available
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        // Copy the Imgur link to the clipboard
+                        navigator.clipboard.writeText(imgurLink)
+                            .then(() => {
+                                showNotification('Imgur link copied to clipboard!', 'clipboard');
+                            })
+                            .catch(err => {
+                                console.error('Failed to copy Imgur link to clipboard:', err);
+                                showNotification('Failed to copy Imgur link to clipboard', 'error');
+                            });
+                    } else {
+                        console.warn('Clipboard API not available in this environment.');
+                        showNotification('Clipboard API not available', 'warning');
+                    }
+    
+                    // Automatically hide the notification after 5 seconds
+                    setTimeout(() => {
+                        // You might need to manage your notifications in a state to properly close it.
+                        // If you have a state for notifications, update it here to remove the notification.
+                        // For example, if you have a `setNotification` state: setNotification(null);
+                    }, 10000);
+                })
+                .catch(error => {
+                    console.error('Error uploading to Imgur:', error);
+                    showNotification('Error uploading to Imgur', 'error');
+                });
+        })
+        .catch(function (error) {
+            console.error('Error converting to image:', error);
+            showNotification('Error converting business card to image', 'error');
+        });
+    };    const uploadToImgur = async (base64Image) => {
+        const imgurClientId = process.env.REACT_APP_IMGUR_CLIENT_ID;
+        const accessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
+        const apiUrl = 'https://api.imgur.com/3/image';
+    
+        const formData = new FormData();
+        formData.append('image', base64Image.split(',')[1]); // Remove the data:image/png;base64, prefix
+    
+        const headers = {
+            'Authorization': `Client-ID ${imgurClientId}`
+        };
+    
+        if (accessToken) {
+            headers['Authorization'] = `Bearer ${accessToken}`;
+        }
+    
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: headers,
+            body: formData,
+        });
+    
+        const data = await response.json();
+    
+        if (data.success) {
+            return data.data.link;
+        } else {
+            throw new Error('Imgur upload failed');
+        }
+    };
+    
+    useEffect(() => {
+        setName(localStorage.getItem('name') || '');
+        setRank(localStorage.getItem('rank') || '');
+        setBadgeNR(localStorage.getItem('badgeNR') || '');
+        setDepartment(localStorage.getItem('department') || '');
+        setPhoneNumber(localStorage.getItem('phoneNumber') || '');
+        }, []);
+    
+    const handleDrag = (setter, ref) => (e) => {
+        e.preventDefault();
+        const cardRect = businessCardRef.current.getBoundingClientRect();
+        const elementRect = ref.current.getBoundingClientRect();
+    
+        let offsetX, offsetY;
+        // Check if the event is a touch event
+        if (e.touches) {
+            offsetX = e.touches[0].clientX - elementRect.left;
+            offsetY = e.touches[0].clientY - elementRect.top;
+        } else {
+            offsetX = e.clientX - elementRect.left;
+            offsetY = e.clientY - elementRect.top;
+        }
+    
+        const onMouseMove = (e) => {
+            let clientX, clientY;
+            if (e.touches) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+    
+            let newLeft = clientX - cardRect.left - offsetX;
+            let newTop = clientY - cardRect.top - offsetY;
+    
+            const minLeft = 0;
+            const minTop = 0;
+            const maxLeft = cardRect.width - elementRect.width;
+            const maxTop = cardRect.height - elementRect.height;
+    
+            newLeft = Math.max(minLeft, Math.min(newLeft, maxLeft));
+            newTop = Math.max(minTop, Math.min(newTop, maxTop));
+    
+            setter({
+                top: newTop,
+                left: newLeft,
+            });
+        };
+    
+        const onMouseUp = () => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            document.removeEventListener('touchmove', onMouseMove);
+            document.removeEventListener('touchend', onMouseUp);
+        };
+    
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+        document.addEventListener('touchmove', onMouseMove, { passive: true }); // Add touchmove listener
+        document.addEventListener('touchend', onMouseUp); // Add touchend listener
+    };
+    
+    const handleNameDrag = (e) => {
+        e.preventDefault();
+        const cardRect = businessCardRef.current.getBoundingClientRect();
+        const nameElementRect = nameRef.current.getBoundingClientRect();
+    
+        let offsetX, offsetY;
+        if (e.touches) {
+            offsetX = e.touches[0].clientX - nameElementRect.left;
+            offsetY = e.touches[0].clientY - nameElementRect.top;
+        } else {
+            offsetX = e.clientX - nameElementRect.left;
+            offsetY = e.clientY - nameElementRect.top;
+        }
+    
+        const onMouseMove = (e) => {
+            let clientX, clientY;
+            if (e.touches) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+    
+            let newNameLeft = clientX - cardRect.left - offsetX;
+            let newNameTop = clientY - cardRect.top - offsetY;
+    
+            const minLeft = 0;
+            const minTop = 0;
+            const maxLeft = cardRect.width - nameElementRect.width;
+            const maxTop = cardRect.height - nameElementRect.height;
+    
+            newNameLeft = Math.max(minLeft, Math.min(newNameLeft, maxLeft));
+            newNameTop = Math.max(minTop, Math.min(newNameTop, maxTop));
+    
+            const deltaLeft = newNameLeft - namePosition.left;
+            const deltaTop = newNameTop - namePosition.top;
+    
+            setNamePosition({
+                top: newNameTop,
+                left: newNameLeft,
+            });
+            setRankPosition({
+                top: rankPosition.top + deltaTop,
+                left: rankPosition.left + deltaLeft,
+            });
+            setBadgeNumberPosition({
+                top: badgeNumberPosition.top + deltaTop,
+                left: badgeNumberPosition.left + deltaLeft,
+            });
+            setDepartmentPosition({
+                top: departmentPosition.top + deltaTop,
+                left: departmentPosition.left + deltaLeft,
+            });
+            setPhoneNumberPosition({
+                top: phoneNumberPosition.top + deltaTop,
+                left: phoneNumberPosition.left + deltaLeft,
+            });
+        };
+    
+        const onMouseUp = () => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            document.removeEventListener('touchmove', onMouseMove);
+            document.removeEventListener('touchend', onMouseUp);
+        };
+    
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+        document.addEventListener('touchmove', onMouseMove, { passive: true });
+        document.addEventListener('touchend', onMouseUp);
+    };
+    const logPosition = (element) => {
+        if (element) {
+            const rect = element.getBoundingClientRect();
+            console.log(`${element.className} position: top - ${rect.top}, left - ${rect.left}`);
+        }
+    };
+    
+    const toggleBusinessCard = () => {
+        setShowBusinessCard(!showBusinessCard);
+        setShowAgencySelector(false); // Close Agency Selector
+        setShowBBCode(false); // Close BBCode modal
+        setShowImages(false); // Close Images modal
+        // Log positions when the business card is opened
+        setTimeout(() => {
+            logPosition(nameRef.current);
+            logPosition(rankRef.current);
+            logPosition(badgeNumber.current);
+            logPosition(departmentRef.current);
+            logPosition(phoneNumberRef.current);
+        }, 500); // Delay to ensure elements are rendered
+    };
     // Add state near other useState declarations
+    const [name, setName] = useState('');
+    const [rank, setRank] = useState('');
+    const [badgeNR, setBadgeNR] = useState('');
+    const [department, setDepartment] = useState('');
+    const [phoneNumber, setPhoneNumber] = useState('');
     const [showBBCode, setShowBBCode] = useState(false);
     const [showImages, setShowImages] = useState(false);
-    // Add modal to the start of return statement
-    return (
+    const [showBusinessCard, setShowBusinessCard] = useState(false);
+    
+    const handleNameChange = (e) => {
+        setName(e.target.value);
+    };
+    
+    const handleRankChange = (e) => {
+        setRank(e.target.value);
+    };
+    
+    
+    const handleDepartmentChange = (e) => {
+        setDepartment(e.target.value);
+    };
+    
+        return (
         <div className="App">
             {showAgencySelector && (
                 <div className="modal-overlay">
@@ -4057,18 +4323,20 @@ if (bbCodeVersion === 1) {
                                         />
                                         <span>Psychological Evaluation </span>
                                     </button>
-
                                 </div>
                             </div>
                         )}
                         <div className="hide-selector-option">
-                            <input
-                                type="checkbox"
-                                id="hideSelector"
-                                checked={hideAgencySelector}
-                                onChange={handleAgencySelect} 
-                                />
-                            <label htmlFor="hideSelector">Don't show this popup again</label>
+                        <input
+                        type="checkbox"
+                        id="hideSelector"
+                        checked={hideAgencySelector}
+                        onChange={(e) => {
+                            setHideAgencySelector(e.target.checked);
+                            setShowAgencySelector(!e.target.checked); // Close the selector when checked
+                        }}
+                                        />                           
+                     <label htmlFor="hideSelector">Don't show this popup again</label>
                         </div>
                     </div>
                 </div>
@@ -4109,15 +4377,34 @@ if (bbCodeVersion === 1) {
                         type="button"
                         className="changelog-button"
                         onClick={() => setShowMissingEmployeeModal(true)}
+                        style={{
+                            position: 'fixed',
+                            bottom: '20px',
+                            right: '20px',
+                            zIndex: 1000, // Ensure it's above other elements
+                        }}
                     >
                         Missing Employee / Coroner?
+                    </button>                    <button
+                        type="button"
+                        className="changelog-button"
+                        onClick={() => setShowFeatureRequestModal(true)}
+                        style={{
+                            position: 'fixed',
+                            bottom: '20px',
+                            right: '250px',
+                            zIndex: 1000, // Ensure it's above other elements
+                        }}
+
+                    >
+                        Report Bug / Feature Request
                     </button>
                     <button
                         type="button"
                         className="changelog-button"
-                        onClick={() => setShowFeatureRequestModal(true)}
+                        onClick={toggleBusinessCard}
                     >
-                        Report Bug / Feature Request
+                        Business Card Tool
                     </button>
 
 </div>
@@ -13097,8 +13384,8 @@ if (bbCodeVersion === 1) {
                                         />
 
                                         </div>
+                                        </>
 
-                                                        </>
                         ) : null}
                         <div className="button-group">
                             <button
@@ -13111,6 +13398,7 @@ if (bbCodeVersion === 1) {
                             </button>
                         </div>
                     </form>
+
                 </div>
                 <div className="output-container">
     {showMissingEmployeeModal && (
@@ -13469,7 +13757,95 @@ if (bbCodeVersion === 1) {
         </div>
     ) : null}
 </div>
-                        <div className="button-group">
+{showBusinessCard && (
+    <div className="modal-overlay">
+        <div className="agency-selector-modal business-card-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+                <h4>Business Card - Live Prod Testing</h4>
+                <button
+                    className="close-button"
+                    onClick={() => setShowBusinessCard(false)}
+                    aria-label="Close selector"
+                >
+                    <i className="fas fa-times"></i>
+                </button>
+            </div>                       
+             <div className="business-card-content">
+                                    <div className="business-card-image-container" ref={businessCardRef}  style={{ position: 'relative' }}>
+                                        <img src={BusinessCardImage} alt="Business Card" />
+                                        <div
+                                            className="name-overlay"
+                                            ref={nameRef}
+                                            style={{
+                                                position: 'absolute',
+                                                top: namePosition.top,
+                                                left: namePosition.left,
+                                                color: 'black',
+                                                fontSize: '35px',
+                                                pointerEvents: 'none',
+                                                cursor: 'default',
+                                            }}
+                                        >
+                                            {name}
+                                        </div>
+                                        <div
+                                            className="rank-overlay"
+                                            ref={rankRef}
+                                            style={{
+                                                position: 'absolute',
+                                                top: rankPosition.top,
+                                                left: rankPosition.left,
+                                                color: '#cb1212',
+                                                fontSize: '15px',
+                                                cursor: 'default',
+                                                pointerEvents: 'none',
+                                            }}
+                                        >
+                                            {rank}
+                                        </div>
+                                        <div
+                                            className="phone-number-overlay"
+                                            ref={departmentRef}
+                                            style={{
+                                                position: 'absolute',
+                                                top: phoneNumberPosition.top,
+                                                left: phoneNumberPosition.left,
+                                                color: 'black',
+                                                fontSize: '15px',
+                                                cursor: 'default',
+                                                pointerEvents: 'none',
+                                            }}
+                                        >
+                                            {department}
+                                        </div>
+                                    </div>
+                            <div className="business-card-input-fields">
+                                <Form.Control
+                                    type="text"
+                                    placeholder="Name"
+                                    value={name}
+                                    onChange={handleNameChange}
+                                />
+                                <Form.Control
+                                    type="text"
+                                    placeholder="Rank"
+                                    value={rank}
+                                    onChange={handleRankChange}
+                                />
+                            <Form.Control
+                                    type="text"
+                                    placeholder="Phone Number"
+                                    value={department}
+                                    onChange={handleDepartmentChange}
+                                />
+
+                            </div>
+                        </div>
+                        <button onClick={handleSave}>Save</button>
+        </div>
+    </div>
+)}
+<div className="button-group">
                             <Button
                                 variant="primary"
                                 onClick={() => setShowBBCode(!showBBCode)}
