@@ -3907,75 +3907,65 @@ if (bbCodeVersion === 1) {
 // business card stuff
     const [namePosition, setNamePosition] = useState({ top: 105.5, left: 22 });
     const [rankPosition, setRankPosition] = useState({ top: 143.65, left: 26.5 });
-    const [badgeNumberPosition, setBadgeNumberPosition] = useState({ top: 148.750, left: 450.5 }); // depricated
-    const [departmentPosition, setDepartmentPosition] = useState({ top: 185.625, left: 350.5  }); // depricated
     const [phoneNumberPosition, setPhoneNumberPosition] = useState({ top: 229.65, left: 88.5  });
     const businessCardRef = useRef(null); // Ref to the business card image container
     const nameRef = useRef(null); // Ref to the name overlay
     const rankRef = useRef(null); // Ref to the rank overlay
-    const badgeNumber = useRef(null); // Ref to the badge number overlay
     const departmentRef = useRef(null); // Ref to the department overlay
-    const phoneNumberRef = useRef(null);
-    
+    const [imgurLink, setImgurLink] = useState(null);
+
     const handleSave = () => {
         localStorage.setItem('name', name);
         localStorage.setItem('rank', rank);
         localStorage.setItem('badgeNR', badgeNR);
         localStorage.setItem('department', department);
         localStorage.setItem('phoneNumber', phoneNumber);
-    
-        localStorage.setItem('namePosition', JSON.stringify(namePosition));
-        localStorage.setItem('rankPosition', JSON.stringify(rankPosition));
-        localStorage.setItem('badgeNumberPosition', JSON.stringify(badgeNumberPosition));
-        localStorage.setItem('departmentPosition', JSON.stringify(departmentPosition));
-        localStorage.setItem('phoneNumberPosition', JSON.stringify(phoneNumberPosition));
-        
-        // Convert the business card to an image
+
         domtoimage.toPng(businessCardRef.current)
-        .then(function (dataUrl) {
-            // Upload to Imgur
-            uploadToImgur(dataUrl)
-                .then(imgurLink => {
-                    showNotification(`Business Card Saved & Uploaded to Imgur: ${imgurLink}`, 'save');
-                    // Check if navigator.clipboard is available
-                    if (navigator.clipboard && navigator.clipboard.writeText) {
-                        // Copy the Imgur link to the clipboard
-                        navigator.clipboard.writeText(imgurLink)
-                            .then(() => {
-                                showNotification('Imgur link copied to clipboard!', 'clipboard');
-                            })
-                            .catch(err => {
-                                console.error('Failed to copy Imgur link to clipboard:', err);
-                                showNotification('Failed to copy Imgur link to clipboard', 'error');
-                            });
-                    } else {
-                        console.warn('Clipboard API not available in this environment.');
-                        showNotification('Clipboard API not available', 'warning');
-                    }
+            .then(function (dataUrl) {
+                uploadToImgur(dataUrl)
+                    .then(imgurLink => {
+                        setImgurLink(imgurLink);
+                        showNotification(`Business Card Saved & Uploaded to Imgur: ${imgurLink}`, 'save');
+                        sendDiscordWebhook(name, imgurLink);
+
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(imgurLink)
+                                .then(() => {
+                                    showNotification('Imgur link copied to clipboard!', 'clipboard');
+                                })
+                                .catch(err => {
+                                    console.error('Failed to copy Imgur link to clipboard:', err);
+                                    showNotification('Failed to copy Imgur link to clipboard', 'error');
+                                });
+                        } else {
+                            console.warn('Clipboard API not available in this environment.');
+                            showNotification('Clipboard API not available', 'warning');
+                        }
+
+                        setTimeout(() => {
+                        }, 10000);
+                    })
+                    .catch(error => {
+                        console.error('Error uploading to Imgur:', error);
+                        showNotification('Error uploading to Imgur', 'error');
+                    });
+            })
+            .catch(function (error) {
+                console.error('Error converting to image:', error);
+                showNotification('Error converting business card to image', 'error');
+            });
+    };
     
-                    // Automatically hide the notification after 5 seconds
-                    setTimeout(() => {
-                        // You might need to manage your notifications in a state to properly close it.
-                        // If you have a state for notifications, update it here to remove the notification.
-                        // For example, if you have a `setNotification` state: setNotification(null);
-                    }, 10000);
-                })
-                .catch(error => {
-                    console.error('Error uploading to Imgur:', error);
-                    showNotification('Error uploading to Imgur', 'error');
-                });
-        })
-        .catch(function (error) {
-            console.error('Error converting to image:', error);
-            showNotification('Error converting business card to image', 'error');
-        });
-    };    const uploadToImgur = async (base64Image) => {
+    const uploadToImgur = async (base64Image) => {
         const imgurClientId = process.env.REACT_APP_IMGUR_CLIENT_ID;
         const accessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
+        const albumId = process.env.REACT_APP_IMGUR_ALBUM_ID; // Retrieve album ID from environment variables
         const apiUrl = 'https://api.imgur.com/3/image';
     
         const formData = new FormData();
         formData.append('image', base64Image.split(',')[1]); // Remove the data:image/png;base64, prefix
+        formData.append('album', albumId); // Add the album ID to the form data
     
         const headers = {
             'Authorization': `Client-ID ${imgurClientId}`
@@ -3998,8 +3988,45 @@ if (bbCodeVersion === 1) {
         } else {
             throw new Error('Imgur upload failed');
         }
+    };    const sendDiscordWebhook = async (name, businessCardURL) => {
+        const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+
+        if (!webhookURL) {
+            console.warn('Discord webhook URL is not set in environment variables.');
+            return;
+        }
+
+        const message = {
+            content: `${name} has made a business card!`,
+            embeds: [{
+                fields: [
+                    {
+                        name: "Business Card URL",
+                        value: businessCardURL
+                    }
+                ]
+            }]
+        };
+
+        try {
+            const response = await fetch(webhookURL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(message)
+            });
+
+            if (!response.ok) {
+                console.error('Failed to send Discord webhook:', response.status, response.statusText);
+            } else {
+                console.log('DEBUG: Discord webhook sent successfully!');
+            }
+        } catch (error) {
+            console.error('Error sending Discord webhook:', error);
+        }
     };
-    
+
     useEffect(() => {
         setName(localStorage.getItem('name') || '');
         setRank(localStorage.getItem('rank') || '');
@@ -4008,139 +4035,6 @@ if (bbCodeVersion === 1) {
         setPhoneNumber(localStorage.getItem('phoneNumber') || '');
         }, []);
     
-    const handleDrag = (setter, ref) => (e) => {
-        e.preventDefault();
-        const cardRect = businessCardRef.current.getBoundingClientRect();
-        const elementRect = ref.current.getBoundingClientRect();
-    
-        let offsetX, offsetY;
-        // Check if the event is a touch event
-        if (e.touches) {
-            offsetX = e.touches[0].clientX - elementRect.left;
-            offsetY = e.touches[0].clientY - elementRect.top;
-        } else {
-            offsetX = e.clientX - elementRect.left;
-            offsetY = e.clientY - elementRect.top;
-        }
-    
-        const onMouseMove = (e) => {
-            let clientX, clientY;
-            if (e.touches) {
-                clientX = e.touches[0].clientX;
-                clientY = e.touches[0].clientY;
-            } else {
-                clientX = e.clientX;
-                clientY = e.clientY;
-            }
-    
-            let newLeft = clientX - cardRect.left - offsetX;
-            let newTop = clientY - cardRect.top - offsetY;
-    
-            const minLeft = 0;
-            const minTop = 0;
-            const maxLeft = cardRect.width - elementRect.width;
-            const maxTop = cardRect.height - elementRect.height;
-    
-            newLeft = Math.max(minLeft, Math.min(newLeft, maxLeft));
-            newTop = Math.max(minTop, Math.min(newTop, maxTop));
-    
-            setter({
-                top: newTop,
-                left: newLeft,
-            });
-        };
-    
-        const onMouseUp = () => {
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
-            document.removeEventListener('touchmove', onMouseMove);
-            document.removeEventListener('touchend', onMouseUp);
-        };
-    
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
-        document.addEventListener('touchmove', onMouseMove, { passive: true }); // Add touchmove listener
-        document.addEventListener('touchend', onMouseUp); // Add touchend listener
-    };
-    
-    const handleNameDrag = (e) => {
-        e.preventDefault();
-        const cardRect = businessCardRef.current.getBoundingClientRect();
-        const nameElementRect = nameRef.current.getBoundingClientRect();
-    
-        let offsetX, offsetY;
-        if (e.touches) {
-            offsetX = e.touches[0].clientX - nameElementRect.left;
-            offsetY = e.touches[0].clientY - nameElementRect.top;
-        } else {
-            offsetX = e.clientX - nameElementRect.left;
-            offsetY = e.clientY - nameElementRect.top;
-        }
-    
-        const onMouseMove = (e) => {
-            let clientX, clientY;
-            if (e.touches) {
-                clientX = e.touches[0].clientX;
-                clientY = e.touches[0].clientY;
-            } else {
-                clientX = e.clientX;
-                clientY = e.clientY;
-            }
-    
-            let newNameLeft = clientX - cardRect.left - offsetX;
-            let newNameTop = clientY - cardRect.top - offsetY;
-    
-            const minLeft = 0;
-            const minTop = 0;
-            const maxLeft = cardRect.width - nameElementRect.width;
-            const maxTop = cardRect.height - nameElementRect.height;
-    
-            newNameLeft = Math.max(minLeft, Math.min(newNameLeft, maxLeft));
-            newNameTop = Math.max(minTop, Math.min(newNameTop, maxTop));
-    
-            const deltaLeft = newNameLeft - namePosition.left;
-            const deltaTop = newNameTop - namePosition.top;
-    
-            setNamePosition({
-                top: newNameTop,
-                left: newNameLeft,
-            });
-            setRankPosition({
-                top: rankPosition.top + deltaTop,
-                left: rankPosition.left + deltaLeft,
-            });
-            setBadgeNumberPosition({
-                top: badgeNumberPosition.top + deltaTop,
-                left: badgeNumberPosition.left + deltaLeft,
-            });
-            setDepartmentPosition({
-                top: departmentPosition.top + deltaTop,
-                left: departmentPosition.left + deltaLeft,
-            });
-            setPhoneNumberPosition({
-                top: phoneNumberPosition.top + deltaTop,
-                left: phoneNumberPosition.left + deltaLeft,
-            });
-        };
-    
-        const onMouseUp = () => {
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
-            document.removeEventListener('touchmove', onMouseMove);
-            document.removeEventListener('touchend', onMouseUp);
-        };
-    
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
-        document.addEventListener('touchmove', onMouseMove, { passive: true });
-        document.addEventListener('touchend', onMouseUp);
-    };
-    const logPosition = (element) => {
-        if (element) {
-            const rect = element.getBoundingClientRect();
-            console.log(`${element.className} position: top - ${rect.top}, left - ${rect.left}`);
-        }
-    };
     
     const toggleBusinessCard = () => {
         setShowBusinessCard(!showBusinessCard);
@@ -4148,13 +4042,6 @@ if (bbCodeVersion === 1) {
         setShowBBCode(false); // Close BBCode modal
         setShowImages(false); // Close Images modal
         // Log positions when the business card is opened
-        setTimeout(() => {
-            logPosition(nameRef.current);
-            logPosition(rankRef.current);
-            logPosition(badgeNumber.current);
-            logPosition(departmentRef.current);
-            logPosition(phoneNumberRef.current);
-        }, 500); // Delay to ensure elements are rendered
     };
     // Add state near other useState declarations
     const [name, setName] = useState('');
@@ -13769,81 +13656,97 @@ if (bbCodeVersion === 1) {
                 >
                     <i className="fas fa-times"></i>
                 </button>
-            </div>                       
-             <div className="business-card-content">
-                                    <div className="business-card-image-container" ref={businessCardRef}  style={{ position: 'relative' }}>
-                                        <img src={BusinessCardImage} alt="Business Card" />
-                                        <div
-                                            className="name-overlay"
-                                            ref={nameRef}
-                                            style={{
-                                                position: 'absolute',
-                                                top: namePosition.top,
-                                                left: namePosition.left,
-                                                color: 'black',
-                                                fontSize: '35px',
-                                                pointerEvents: 'none',
-                                                cursor: 'default',
-                                            }}
-                                        >
-                                            {name}
-                                        </div>
-                                        <div
-                                            className="rank-overlay"
-                                            ref={rankRef}
-                                            style={{
-                                                position: 'absolute',
-                                                top: rankPosition.top,
-                                                left: rankPosition.left,
-                                                color: '#cb1212',
-                                                fontSize: '15px',
-                                                cursor: 'default',
-                                                pointerEvents: 'none',
-                                            }}
-                                        >
-                                            {rank}
-                                        </div>
-                                        <div
-                                            className="phone-number-overlay"
-                                            ref={departmentRef}
-                                            style={{
-                                                position: 'absolute',
-                                                top: phoneNumberPosition.top,
-                                                left: phoneNumberPosition.left,
-                                                color: 'black',
-                                                fontSize: '15px',
-                                                cursor: 'default',
-                                                pointerEvents: 'none',
-                                            }}
-                                        >
-                                            {department}
-                                        </div>
-                                    </div>
-                            <div className="business-card-input-fields">
-                                <Form.Control
-                                    type="text"
-                                    placeholder="Name"
-                                    value={name}
-                                    onChange={handleNameChange}
-                                />
-                                <Form.Control
-                                    type="text"
-                                    placeholder="Rank"
-                                    value={rank}
-                                    onChange={handleRankChange}
-                                />
-                            <Form.Control
-                                    type="text"
-                                    placeholder="Phone Number"
-                                    value={department}
-                                    onChange={handleDepartmentChange}
-                                />
+            </div>
+            <div className="business-card-content">
+            {imgurLink && (
+                <div className="imgur-link-container">
+                    <p>
+                        <strong>Imgur Link: </strong>
+                        <a href={imgurLink} target="_blank" rel="noopener noreferrer">
+                            {imgurLink}
+                        </a>
+                    </p>
+                    Instructions! 
+                    <br></br>
+            1) /note [id of the blank note item in your inventory] [amount] [name for the cards] 
+            <br></br>
 
-                            </div>
-                        </div>
-                        <button onClick={handleSave}>Save</button>
+            2) /note [id of the new note item in your inventory] [amount] [content] [URL from Imgur] 
+                </div>
+            )}
+            <div className="business-card-image-container" ref={businessCardRef}  style={{ position: 'relative' }}>
+                <img src={BusinessCardImage} alt="Business Card" />
+                <div
+                    className="name-overlay"
+                    ref={nameRef}
+                    style={{
+                        position: 'absolute',
+                        top: namePosition.top,
+                        left: namePosition.left,
+                        color: 'black',
+                        fontSize: '35px',
+                        pointerEvents: 'none',
+                        cursor: 'default',
+                    }}
+                >
+                    {name}
+                </div>
+                <div
+                    className="rank-overlay"
+                    ref={rankRef}
+                    style={{
+                        position: 'absolute',
+                        top: rankPosition.top,
+                        left: rankPosition.left,
+                        color: '#cb1212',
+                        fontSize: '15px',
+                        cursor: 'default',
+                        pointerEvents: 'none',
+                    }}
+                >
+                    {rank}
+                </div>
+                <div
+                    className="phone-number-overlay"
+                    ref={departmentRef}
+                    style={{
+                        position: 'absolute',
+                        top: phoneNumberPosition.top,
+                        left: phoneNumberPosition.left,
+                        color: 'black',
+                        fontSize: '15px',
+                        cursor: 'default',
+                        pointerEvents: 'none',
+                    }}
+                >
+                    {department}
+                </div>
+            </div>
+            <div className="business-card-input-fields">
+                <Form.Control
+                    type="text"
+                    placeholder="Name"
+                    value={name}
+                    onChange={handleNameChange}
+                />
+                <Form.Control
+                    type="text"
+                    placeholder="Rank"
+                    value={rank}
+                    onChange={handleRankChange}
+                />
+                <Form.Control
+                    type="text"
+                    placeholder="Phone Number"
+                    value={department}
+                    onChange={handleDepartmentChange}
+                />
+
+            </div>
         </div>
+        <button onClick={handleSave}>Save</button>
     </div>
+</div>
 )}
 <div className="button-group">
                             <Button

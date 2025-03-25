@@ -718,3 +718,21 @@ input[type="checkbox"] {
   .business-card-modal .phone-number-overlay {
     font-family: 'LufgaMedium', sans-serif;
   }
+
+  .imgur-link-container {
+    margin-bottom: 10px;
+    text-align: center;
+}
+
+.imgur-link-container p {
+    font-size: 16px;
+}
+
+.imgur-link-container a {
+    color: #007bff;
+    text-decoration: none;
+}
+
+.imgur-link-container a:hover {
+    text-decoration: underline;
+}
