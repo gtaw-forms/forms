@@ -4299,7 +4299,7 @@ if (bbCodeVersion === 1) {
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 1.8.2 - ❄️ Frostbite Update </h3>
+                                    <h3>Changelog - Version 1.8.7 - ❄️ Frostbite Update </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -4310,9 +4310,9 @@ if (bbCodeVersion === 1) {
                                 </div>
                                 <div className="modal-content">
                                     <ul>
-                                        <li> Title Generation has been restored.</li>
-                                        <li> Fixed issues with Patient Information (Advanced) and Physical Evaluation </li>
-                                        <li> Names have been rotated in.</li>
+                                        <li> Business Cards are here! - Alpha</li>
+                                        <li> New names rotated in </li>
+                                        <li> Fixed bugs because Mecovy keeps breaking stuff.</li>
                                     </ul>
                                     - frosty
                                 </div>
@@ -13648,7 +13648,7 @@ if (bbCodeVersion === 1) {
     <div className="modal-overlay">
         <div className="agency-selector-modal business-card-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-                <h4>Business Card - Live Prod Testing</h4>
+                <h4>Business Card - Public Testing</h4>
                 <button
                     className="close-button"
                     onClick={() => setShowBusinessCard(false)}
