@@ -416,49 +416,6 @@ function App() {
         // Clean up the event listener on unmount
         return () => window.removeEventListener('resize', handleResize);
     }, []);
-    useEffect(() => {
-        window.onerror = async (message, source, lineno, colno, error) => {
-            let lineContent = '';
-            try {
-                // Attempt to fetch the line content from the source file
-                const response = await fetch(source);
-                if (response.ok) {
-                    const fileContent = await response.text();
-                    const lines = fileContent.split('\n');
-                    lineContent = lines[lineno - 1] || 'Line content not available';
-                } else {
-                    lineContent = `Failed to fetch source file: ${response.status} ${response.statusText}`;
-                }
-            } catch (fetchError) {
-                lineContent = `Error fetching source file: ${fetchError.message}`;
-            }
-    
-            const errorMessage = `
-                Error: ${message}
-                Source: ${source}
-                Line: ${lineno}
-                Column: ${colno}
-                Line Content: ${lineContent}
-                Error Object: ${error ? error.stack : 'No stack available'}
-            `;
-    
-            const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-    
-            fetch(discordWebhookUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    content: `**ERROR REPORT**\n${errorMessage}`
-                })
-            }).catch(error => {
-                console.error("Error sending error message to Discord:", error);
-            });
-    
-            return true; // Prevent default error handling
-        };
-    }, []);    
     
     const [isUploading, setIsUploading] = useState(false);
     const [isJohnDoe, setIsJohnDoe] = useState(false);
@@ -3910,6 +3867,8 @@ if (bbCodeVersion === 1) {
         // Save the value to localStorage whenever hideAgencySelector changes
         localStorage.setItem('hideAgencySelector', JSON.stringify(hideAgencySelector));
     }, [hideAgencySelector]);
+
+    
 // business card stuff
     const [namePosition, setNamePosition] = useState({ top: 105.5, left: 22 });
     const [rankPosition, setRankPosition] = useState({ top: 143.65, left: 26.5 });
@@ -4084,7 +4043,45 @@ if (bbCodeVersion === 1) {
     const handleDepartmentChange = (e) => {
         setDepartment(e.target.value);
     };
+    useEffect(() => {
+        window.onerror = async (message, source, lineno, colno, error) => {
+            let lineContent = '';
+            try {
+                // Attempt to fetch the line content from the source file
+                const response = await fetch(source);
+                if (response.ok) {
+                    const fileContent = await response.text();
+                    const lines = fileContent.split('\n');
+                    lineContent = lines[lineno - 1] || 'Line content not available';
+                } else {
+                    lineContent = `Failed to fetch source file: ${response.status} ${response.statusText}`;
+                }
+            } catch (fetchError) {
+                lineContent = `Error fetching source file: ${fetchError.message}`;
+            }
     
+            const errorMessage = `
+                Error: ${message}
+                Source: ${source}
+                Line: ${lineno}
+                Column: ${colno}
+                Line Content: ${lineContent}
+                Error Object: ${error ? error.stack : 'No stack available'}
+                BBCode Version: ${bbCodeVersion}
+                Show Agency Selector: ${showAgencySelector}
+                Show Feature Request Modal: ${showFeatureRequestModal}
+                Show Missing Employee Modal: ${showMissingEmployeeModal}
+                Show Changelog: ${showChangelog}
+                Show Business Card: ${showBusinessCard}
+                Show BBCode: ${showBBCode}
+                Show Images: ${showImages}
+            `;
+    
+            sendErrorToDiscord(errorMessage, bbCodeVersion); // Send window.onerror to Discord
+    
+            return true; // Prevent default error handling
+        };
+    }, [bbCodeVersion, showAgencySelector, showFeatureRequestModal, showMissingEmployeeModal, showChangelog, showBusinessCard, showBBCode, showImages]);
         return (
         <div className="App">
             {showAgencySelector && (
