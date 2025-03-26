@@ -4051,14 +4051,18 @@ if (bbCodeVersion === 1) {
         }, []);
     
     
-    const toggleBusinessCard = () => {
-        setShowBusinessCard(!showBusinessCard);
-        setShowAgencySelector(false); // Close Agency Selector
-        setShowBBCode(false); // Close BBCode modal
-        setShowImages(false); // Close Images modal
-        // Log positions when the business card is opened
-    };
-    // Add state near other useState declarations
+        const toggleBusinessCard = () => {
+            if (/Mobi|Android/i.test(navigator.userAgent)) {
+                showNotification("Sorry, this feature is not supported on mobile devices. Please use a desktop browser.", 'warning');
+                return;
+            }
+        
+            setShowBusinessCard(!showBusinessCard);
+            setShowAgencySelector(false); // Close Agency Selector
+            setShowBBCode(false); // Close BBCode modal
+            setShowImages(false); // Close Images modal
+            // Log positions when the business card is opened
+        };    // Add state near other useState declarations
     const [name, setName] = useState('');
     const [rank, setRank] = useState('');
     const [badgeNR, setBadgeNR] = useState('');
@@ -4314,7 +4318,7 @@ if (bbCodeVersion === 1) {
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 1.8.9 - ❄️ Frostbite Update </h3>
+                                    <h3>Changelog - Version 1.8.9d - ❄️ Frostbite Update </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -4325,7 +4329,8 @@ if (bbCodeVersion === 1) {
                                 </div>
                                 <div className="modal-content">
                                     <ul>
-                                        <li> Business Cards are here! - Alpha</li>
+                                        <li> Business Cards are here! - Updated to Beta</li>
+                                        <li> Disabled Mobile Support for Business Cards</li>
                                         <li> Expanded debugging for Business Cards to track error rates </li>
                                         <li> New names rotated in </li>
                                         <li> Fixed bugs because Mecovy keeps breaking stuff.</li>
