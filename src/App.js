@@ -1984,6 +1984,7 @@ ${patientSummaryConsultation}
             patientID,
             date,
             patientChiefComplaint,
+            rank,
             patientNotes, 
             patientDiagnosis,
             patientMedicine,
@@ -3879,51 +3880,53 @@ if (bbCodeVersion === 1) {
     const departmentRef = useRef(null); // Ref to the department overlay
     const [imgurLink, setImgurLink] = useState(null);
 
-    const handleSave = () => {
-        localStorage.setItem('name', name);
-        localStorage.setItem('rank', rank);
-        localStorage.setItem('badgeNR', badgeNR);
-        localStorage.setItem('department', department);
-        localStorage.setItem('phoneNumber', phoneNumber);
-    
-        domtoimage.toPng(businessCardRef.current)
-            .then(function (dataUrl) {
-                uploadToImgur(dataUrl)
-                    .then(imgurLink => {
-                        setImgurLink(imgurLink);
-                        showNotification(`Business Card Saved & Uploaded to Imgur: ${imgurLink}`, 'save');
-                        sendDiscordWebhook(name, imgurLink);
-    
-                        if (navigator.clipboard && navigator.clipboard.writeText) {
-                            navigator.clipboard.writeText(imgurLink)
-                                .then(() => {
-                                    showNotification('Imgur link copied to clipboard!', 'clipboard');
-                                })
-                                .catch(err => {
-                                    console.error('Failed to copy Imgur link to clipboard:', err);
-                                    showNotification('Failed to copy Imgur link to clipboard', 'error');
-                                });
-                        } else {
-                            console.warn('Clipboard API not available in this environment.');
-                            showNotification('Clipboard API not available', 'warning');
-                        }
-    
-                        setTimeout(() => {
-                        }, 10000);
-                    })
-                    .catch(error => {
-                        console.error('Error uploading to Imgur:', error, error.response, error.request);
-                        showNotification('Error uploading to Imgur', 'error');
-                        sendDiscordWebhook(name, `Imgur Upload Error: ${error.message}.  Full debug: ${JSON.stringify(error)}`);
-                    });
-            })
-            .catch(function (error) {
-                console.error('Error converting to image:', error);
-                showNotification('Error converting business card to image', 'error');
-                sendDiscordWebhook(name, `Error converting business card to image: ${error.message}. Full debug: ${JSON.stringify(error)}`);
-            });
-    };
-    
+const handleSave = () => {
+    localStorage.setItem('name', name);
+    localStorage.setItem('rank', rank);
+    localStorage.setItem('badgeNR', badgeNR);
+    localStorage.setItem('department', department);
+    localStorage.setItem('phoneNumber', phoneNumber);
+
+    domtoimage.toPng(businessCardRef.current)
+        .then(function (dataUrl) {
+            uploadToImgur(dataUrl)
+                .then(imgurLink => {
+                    setImgurLink(imgurLink);
+                    showNotification(`Business Card Saved & Uploaded to Imgur: ${imgurLink}`, 'save');
+                    sendDiscordWebhook(name, imgurLink);
+
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(imgurLink)
+                            .then(() => {
+                                showNotification('Imgur link copied to clipboard!', 'clipboard');
+                            })
+                            .catch(err => {
+                                console.error('Failed to copy Imgur link to clipboard:', err);
+                                showNotification('Failed to copy Imgur link to clipboard', 'error');
+                            });
+                    } else {
+                        console.warn('Clipboard API not available in this environment.');
+                        showNotification('Clipboard API not available', 'warning');
+                    }
+
+                    setTimeout(() => {
+                    }, 10000);
+                })
+                .catch(error => {
+                    console.error('Error uploading to Imgur:', error, error.response, error.request);
+                    showNotification('Error uploading to Imgur', 'error');
+                    sendDiscordWebhook(name, `Imgur Upload Error: ${error.message}.  Full debug: ${JSON.stringify(error)}`);
+                });
+        })
+        .catch(function (error) {
+            console.error('Error converting to image:', error);
+            showNotification('Error converting business card to image', 'error');
+            sendDiscordWebhook(name, `Error converting business card to image: ${error.message}. Full debug: ${JSON.stringify(error)}`);
+            if (error.message.includes("Cannot access 'xe' before initialization")) {
+                showNotification("A rare error occurred. Please report this to the Discord with a screenshot!", 'exclamation-triangle');
+            }
+        });
+};    
     const uploadToImgur = async (base64Image) => {
         const imgurClientId = process.env.REACT_APP_IMGUR_CLIENT_ID;
         const accessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
