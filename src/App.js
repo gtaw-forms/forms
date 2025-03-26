@@ -13679,6 +13679,7 @@ const handleSave = () => {
                 </button>
             </div>
             <div className="business-card-content">
+                If you get any errors, please let me on Discord.
             {imgurLink && (
                 <div className="imgur-link-container">
                     <p>
