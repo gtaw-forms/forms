@@ -833,7 +833,7 @@ const handleFeatureRequestSubmit = async () => {
 
     useEffect(() => {
         // Store console errors in localStorage
-        let consoleErrors = [];
+        let consoleErrors = JSON.parse(localStorage.getItem('consoleErrors')) || [];
         const originalConsoleError = console.error;
     
         console.error = function (message) {
@@ -891,6 +891,12 @@ const handleFeatureRequestSubmit = async () => {
             return;
         }
     
+        // Retrieve all console errors from localStorage
+        const allConsoleErrors = JSON.parse(localStorage.getItem('consoleErrors')) || [];
+    
+        // Format all console errors into a single string
+        const formattedConsoleErrors = allConsoleErrors.map((err, index) => `Error ${index + 1}:\nMessage: ${err.message}\nBBCode Version: ${err.bbCodeVersion}\n`).join('\n');
+    
         try {
             await fetch(discordWebhookUrl, {
                 method: 'POST',
@@ -898,13 +904,14 @@ const handleFeatureRequestSubmit = async () => {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    content: `**ERROR REPORT**\nBBCode Version: ${bbCodeVersion}\n${errorMessage}`
+                    content: `**ERROR REPORT**\nBBCode Version: ${bbCodeVersion}\n${errorMessage}\n\n**All Console Errors:**\n${formattedConsoleErrors}`
                 })
             });
         } catch (error) {
             console.error("Error sending error message to Discord:", error);
         }
     };
+    
     const generateDeath = () => {
         const {
             coronerRank,
