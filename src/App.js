@@ -3953,10 +3953,12 @@ if (bbCodeVersion === 1) {
                                 .catch(err => {
                                     console.error('Failed to copy Imgur link to clipboard:', err);
                                     showNotification('Failed to copy Imgur link to clipboard', 'error');
+                                    sendErrorToDiscord(`Failed to copy Imgur link to clipboard: ${err.message}. Full debug: ${JSON.stringify(err)}`, bbCodeVersion);
                                 });
                         } else {
                             console.warn('Clipboard API not available in this environment.');
                             showNotification('Clipboard API not available', 'warning');
+                            sendErrorToDiscord('Clipboard API not available in this environment.', bbCodeVersion);
                         }
     
                         setTimeout(() => {
@@ -3965,7 +3967,8 @@ if (bbCodeVersion === 1) {
                     .catch(error => {
                         console.error('Error uploading to Imgur:', error, error.response, error.request);
                         showNotification('Error uploading to Imgur', 'error');
-                        sendDiscordWebhook(name, `Imgur Upload Error: ${error.message}.  Full debug: ${JSON.stringify(error)}`);
+                        const errorMessage = `Imgur Upload Error: ${error.message}. Response: ${JSON.stringify(error.response)}. Request: ${JSON.stringify(error.request)}`;
+                        sendErrorToDiscord(errorMessage, bbCodeVersion);
                     })
                     .finally(() => {
                         setIsSaving(false); // Re-enable the button
@@ -3974,11 +3977,10 @@ if (bbCodeVersion === 1) {
             .catch(function (error) {
                 console.error('Error converting to image:', error);
                 showNotification('Error converting business card to image', 'error');
-                sendDiscordWebhook(name, `Error converting business card to image: ${error.message}. Full debug: ${JSON.stringify(error)}`);
+                sendErrorToDiscord(`Error converting business card to image: ${error.message}. Full debug: ${JSON.stringify(error)}`, bbCodeVersion);
                 setIsSaving(false); // Re-enable the button in case of error
             });
-    };
-    
+    };    
         const uploadToImgur = async (base64Image) => {
         const imgurClientId = process.env.REACT_APP_IMGUR_CLIENT_ID;
         const accessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
