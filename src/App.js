@@ -794,9 +794,11 @@ const handleFeatureRequestSubmit = async () => {
         const originalConsoleError = console.error;
     
         console.error = function (message) {
+            const timestamp = new Date().getTime(); // Get current timestamp
             consoleErrors.push({
                 message: message,
                 bbCodeVersion: bbCodeVersion,
+                timestamp: timestamp, // Store timestamp with the error
             });
             localStorage.setItem('consoleErrors', JSON.stringify(consoleErrors));
             sendErrorToDiscord(message, bbCodeVersion);
@@ -834,12 +836,18 @@ const handleFeatureRequestSubmit = async () => {
             return true; // Prevent default error handling
         };
     
-        // Cleanup function to restore original console.error
+        // Cleanup function to restore original console.error and clear old errors
         return () => {
             console.error = originalConsoleError;
+    
+            // Clear errors older than 30 minutes (1800000 milliseconds)
+            const now = new Date().getTime();
+            const thirtyMinutes = 1800000;
+            const updatedErrors = consoleErrors.filter(error => now - error.timestamp < thirtyMinutes);
+            localStorage.setItem('consoleErrors', JSON.stringify(updatedErrors));
         };
     }, [bbCodeVersion]);
-    
+
     const sendErrorToDiscord = async (errorMessage, bbCodeVersion) => {
         const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
     
@@ -854,21 +862,57 @@ const handleFeatureRequestSubmit = async () => {
         // Format all console errors into a single string
         const formattedConsoleErrors = allConsoleErrors.map((err, index) => `Error ${index + 1}:\nMessage: ${err.message}\nBBCode Version: ${err.bbCodeVersion}\n`).join('\n');
     
-        try {
-            await fetch(discordWebhookUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    content: `**ERROR REPORT**\nBBCode Version: ${bbCodeVersion}\n${errorMessage}\n\n**All Console Errors:**\n${formattedConsoleErrors}`
-                })
-            });
-        } catch (error) {
-            console.error("Error sending error message to Discord:", error);
-        }
-    };
+        // Combine the main error message and console errors
+        let fullMessage = `**ERROR REPORT**\nBBCode Version: ${bbCodeVersion}\n${errorMessage}\n\n**All Console Errors:**\n${formattedConsoleErrors}`;
     
+        // Discord's message limit is 2000 characters
+        if (fullMessage.length > 2000) {
+            // Split the message into chunks
+            const chunks = [];
+            let currentChunk = '';
+            const lines = fullMessage.split('\n');
+    
+            for (const line of lines) {
+                if (currentChunk.length + line.length + 1 <= 2000) {
+                    currentChunk += line + '\n';
+                } else {
+                    chunks.push(currentChunk);
+                    currentChunk = line + '\n';
+                }
+            }
+            chunks.push(currentChunk);
+    
+            for (const chunk of chunks) {
+                try {
+                    await fetch(discordWebhookUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            content: chunk
+                        })
+                    });
+                } catch (error) {
+                    console.error("Error sending error message to Discord:", error);
+                }
+            }
+        } else {
+            try {
+                await fetch(discordWebhookUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        content: fullMessage
+                    })
+                });
+            } catch (error) {
+                console.error("Error sending error message to Discord:", error);
+            }
+        }
+    };    
     const generateDeath = () => {
         const {
             coronerRank,
@@ -1124,6 +1168,7 @@ ${patientSummary}
             patientID,
             patientSummaryConsultation,
             patientAddress,
+            rank,
             date,
             patientSummary,
             lastName,
@@ -2041,6 +2086,7 @@ ${patientMedicine}
         const {
             lastName,
             patientID,
+            rank,
             date,
             patientChiefComplaint,
             patientNotes, 
@@ -3880,54 +3926,60 @@ if (bbCodeVersion === 1) {
     const departmentRef = useRef(null); // Ref to the department overlay
     const [imgurLink, setImgurLink] = useState(null);
 
-const handleSave = () => {
-    localStorage.setItem('name', name);
-    localStorage.setItem('rank', rank);
-    localStorage.setItem('badgeNR', badgeNR);
-    localStorage.setItem('department', department);
-    localStorage.setItem('phoneNumber', phoneNumber);
+    const [isSaving, setIsSaving] = useState(false);
 
-    domtoimage.toPng(businessCardRef.current)
-        .then(function (dataUrl) {
-            uploadToImgur(dataUrl)
-                .then(imgurLink => {
-                    setImgurLink(imgurLink);
-                    showNotification(`Business Card Saved & Uploaded to Imgur: ${imgurLink}`, 'save');
-                    sendDiscordWebhook(name, imgurLink);
-
-                    if (navigator.clipboard && navigator.clipboard.writeText) {
-                        navigator.clipboard.writeText(imgurLink)
-                            .then(() => {
-                                showNotification('Imgur link copied to clipboard!', 'clipboard');
-                            })
-                            .catch(err => {
-                                console.error('Failed to copy Imgur link to clipboard:', err);
-                                showNotification('Failed to copy Imgur link to clipboard', 'error');
-                            });
-                    } else {
-                        console.warn('Clipboard API not available in this environment.');
-                        showNotification('Clipboard API not available', 'warning');
-                    }
-
-                    setTimeout(() => {
-                    }, 10000);
-                })
-                .catch(error => {
-                    console.error('Error uploading to Imgur:', error, error.response, error.request);
-                    showNotification('Error uploading to Imgur', 'error');
-                    sendDiscordWebhook(name, `Imgur Upload Error: ${error.message}.  Full debug: ${JSON.stringify(error)}`);
-                });
-        })
-        .catch(function (error) {
-            console.error('Error converting to image:', error);
-            showNotification('Error converting business card to image', 'error');
-            sendDiscordWebhook(name, `Error converting business card to image: ${error.message}. Full debug: ${JSON.stringify(error)}`);
-            if (error.message.includes("Cannot access 'xe' before initialization")) {
-                showNotification("A rare error occurred. Please report this to the Discord with a screenshot!", 'exclamation-triangle');
-            }
-        });
-};    
-    const uploadToImgur = async (base64Image) => {
+    const handleSave = () => {
+        setIsSaving(true); // Disable the button
+    
+        localStorage.setItem('name', name);
+        localStorage.setItem('rank', rank);
+        localStorage.setItem('badgeNR', badgeNR);
+        localStorage.setItem('department', department);
+        localStorage.setItem('phoneNumber', phoneNumber);
+    
+        domtoimage.toPng(businessCardRef.current)
+            .then(function (dataUrl) {
+                uploadToImgur(dataUrl)
+                    .then(imgurLink => {
+                        setImgurLink(imgurLink);
+                        showNotification(`Business Card Saved & Uploaded to Imgur: ${imgurLink}`, 'save');
+                        sendDiscordWebhook(name, imgurLink);
+    
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(imgurLink)
+                                .then(() => {
+                                    showNotification('Imgur link copied to clipboard!', 'clipboard');
+                                })
+                                .catch(err => {
+                                    console.error('Failed to copy Imgur link to clipboard:', err);
+                                    showNotification('Failed to copy Imgur link to clipboard', 'error');
+                                });
+                        } else {
+                            console.warn('Clipboard API not available in this environment.');
+                            showNotification('Clipboard API not available', 'warning');
+                        }
+    
+                        setTimeout(() => {
+                        }, 10000);
+                    })
+                    .catch(error => {
+                        console.error('Error uploading to Imgur:', error, error.response, error.request);
+                        showNotification('Error uploading to Imgur', 'error');
+                        sendDiscordWebhook(name, `Imgur Upload Error: ${error.message}.  Full debug: ${JSON.stringify(error)}`);
+                    })
+                    .finally(() => {
+                        setIsSaving(false); // Re-enable the button
+                    });
+            })
+            .catch(function (error) {
+                console.error('Error converting to image:', error);
+                showNotification('Error converting business card to image', 'error');
+                sendDiscordWebhook(name, `Error converting business card to image: ${error.message}. Full debug: ${JSON.stringify(error)}`);
+                setIsSaving(false); // Re-enable the button in case of error
+            });
+    };
+    
+        const uploadToImgur = async (base64Image) => {
         const imgurClientId = process.env.REACT_APP_IMGUR_CLIENT_ID;
         const accessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
         const albumId = process.env.REACT_APP_IMGUR_ALBUM_ID; // Retrieve album ID from environment variables
