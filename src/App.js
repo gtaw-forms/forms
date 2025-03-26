@@ -836,10 +836,10 @@ const handleFeatureRequestSubmit = async () => {
         let consoleErrors = [];
         const originalConsoleError = console.error;
     
-        console.error = function(message) {
+        console.error = function (message) {
             consoleErrors.push({
                 message: message,
-                bbCodeVersion: bbCodeVersion, 
+                bbCodeVersion: bbCodeVersion,
             });
             localStorage.setItem('consoleErrors', JSON.stringify(consoleErrors));
             sendErrorToDiscord(message, bbCodeVersion);
@@ -905,7 +905,6 @@ const handleFeatureRequestSubmit = async () => {
             console.error("Error sending error message to Discord:", error);
         }
     };
-
     const generateDeath = () => {
         const {
             coronerRank,
@@ -3920,7 +3919,7 @@ if (bbCodeVersion === 1) {
         localStorage.setItem('badgeNR', badgeNR);
         localStorage.setItem('department', department);
         localStorage.setItem('phoneNumber', phoneNumber);
-
+    
         domtoimage.toPng(businessCardRef.current)
             .then(function (dataUrl) {
                 uploadToImgur(dataUrl)
@@ -3928,7 +3927,7 @@ if (bbCodeVersion === 1) {
                         setImgurLink(imgurLink);
                         showNotification(`Business Card Saved & Uploaded to Imgur: ${imgurLink}`, 'save');
                         sendDiscordWebhook(name, imgurLink);
-
+    
                         if (navigator.clipboard && navigator.clipboard.writeText) {
                             navigator.clipboard.writeText(imgurLink)
                                 .then(() => {
@@ -3942,18 +3941,20 @@ if (bbCodeVersion === 1) {
                             console.warn('Clipboard API not available in this environment.');
                             showNotification('Clipboard API not available', 'warning');
                         }
-
+    
                         setTimeout(() => {
                         }, 10000);
                     })
                     .catch(error => {
-                        console.error('Error uploading to Imgur:', error);
+                        console.error('Error uploading to Imgur:', error, error.response, error.request);
                         showNotification('Error uploading to Imgur', 'error');
+                        sendDiscordWebhook(name, `Imgur Upload Error: ${error.message}.  Full debug: ${JSON.stringify(error)}`);
                     });
             })
             .catch(function (error) {
                 console.error('Error converting to image:', error);
                 showNotification('Error converting business card to image', 'error');
+                sendDiscordWebhook(name, `Error converting business card to image: ${error.message}. Full debug: ${JSON.stringify(error)}`);
             });
     };
     
@@ -3975,39 +3976,47 @@ if (bbCodeVersion === 1) {
             headers['Authorization'] = `Bearer ${accessToken}`;
         }
     
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: headers,
-            body: formData,
-        });
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: headers,
+                body: formData,
+            });
     
-        const data = await response.json();
+            const data = await response.json();
     
-        if (data.success) {
-            return data.data.link;
-        } else {
-            throw new Error('Imgur upload failed');
+            if (data.success) {
+                return data.data.link;
+            } else {
+                console.error('Imgur upload failed:', data); // Log the full response for debugging
+                throw new Error(`Imgur upload failed: ${data.data.error}`);
+            }
+        } catch (error) {
+            console.error('Imgur upload failed:', error);
+            throw error; // Re-throw the error for the calling function to handle
         }
-    };    const sendDiscordWebhook = async (name, businessCardURL) => {
+    };
+    
+    const sendDiscordWebhook = async (name, messageContent) => {
         const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-
+    
         if (!webhookURL) {
             console.warn('Discord webhook URL is not set in environment variables.');
             return;
         }
-
+    
         const message = {
-            content: `${name} has made a business card!`,
+            content: `Business Card Creation Alert!`,
             embeds: [{
                 fields: [
                     {
-                        name: "Business Card URL",
-                        value: businessCardURL
+                        name: name + " has created a business card!",
+                        value: messageContent
                     }
                 ]
             }]
         };
-
+    
         try {
             const response = await fetch(webhookURL, {
                 method: 'POST',
@@ -4016,7 +4025,7 @@ if (bbCodeVersion === 1) {
                 },
                 body: JSON.stringify(message)
             });
-
+    
             if (!response.ok) {
                 console.error('Failed to send Discord webhook:', response.status, response.statusText);
             } else {
@@ -4026,7 +4035,6 @@ if (bbCodeVersion === 1) {
             console.error('Error sending Discord webhook:', error);
         }
     };
-
     useEffect(() => {
         setName(localStorage.getItem('name') || '');
         setRank(localStorage.getItem('rank') || '');
@@ -4299,7 +4307,7 @@ if (bbCodeVersion === 1) {
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 1.8.7 - ❄️ Frostbite Update </h3>
+                                    <h3>Changelog - Version 1.8.9 - ❄️ Frostbite Update </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -4311,6 +4319,7 @@ if (bbCodeVersion === 1) {
                                 <div className="modal-content">
                                     <ul>
                                         <li> Business Cards are here! - Alpha</li>
+                                        <li> Expanded debugging for Business Cards to track error rates </li>
                                         <li> New names rotated in </li>
                                         <li> Fixed bugs because Mecovy keeps breaking stuff.</li>
                                     </ul>
