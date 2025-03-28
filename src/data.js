@@ -352,7 +352,7 @@ export const coronerList = [
     { name: 'Norah Reed', badge: '93014', rank: 'Forensic Attendant', discord: 'amnesia5290', category: 'Forensic Attendant' },
     { name: 'James McKinney', badge: 'ID_MISSING_ERROR', rank: 'Forensic Attendant', discord: 'boots7163', category: 'Forensic Attendant' },
     { name: 'Luca Raymond', badge: '181726', rank: 'Forensic Attendant', discord: 'itscharlie3529', category: 'Forensic Attendant' },
-    { name: 'Roger Rose', badge: 'NULL', rank: 'NULL', discord: 'NULL', category: 'NULL' },
+    { name: 'Roger Rose', badge: '1552', rank: 'Coroner Investigator Supervisor', discord: 'nazmaldun', category: 'Coroner Investigator Supervisor' },
 ];
 
 export const formatSignature = (signature) => {
