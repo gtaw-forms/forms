@@ -563,7 +563,7 @@ const handleMissingEmployeeSubmit = async () => {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                content: `<@228306972204597248> New Employee Name Request by: ${missingEmployeeData.phmcEmployee} ${missingEmployeeData.coronerEmployee}  \n name: ${missingEmployeeData.coronerName} \n discord/department: ${missingEmployeeData.coronerDiscord}\n rank: ${missingEmployeeData.coronerRank} \n badge: ${missingEmployeeData.coronerBadge}`,
+                content: `<@228306972204597248> New Employee Name Request by: ${missingEmployeeData.phmcEmployee} ${missingEmployeeData.coronerEmployee}  \n name: ${missingEmployeeData.coronerName} \n discord/department: ${missingEmployeeData.coronerDiscord}\n rank: ${missingEmployeeData.coronerRank} \n badge: ${missingEmployeeData.coronerBadge} \n Phone Number: ${missingEmployeeData.coronerPHNumber}`,
             }),
         });
 
