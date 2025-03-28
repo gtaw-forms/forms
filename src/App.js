@@ -913,6 +913,9 @@ const handleFeatureRequestSubmit = async () => {
             }
         }
     };    
+
+    // Save Coroner Form BBCode to local storage
+
     const generateDeath = () => {
         const {
             coronerRank,
