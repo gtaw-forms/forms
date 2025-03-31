@@ -4,6 +4,9 @@ import '@fortawesome/fontawesome-free/css/all.min.css';
 import Notification from './components/Notification';
 import { Modal, Form, Button, InputGroup } from 'react-bootstrap';
 import domtoimage from 'dom-to-image';
+import SavedReportsModal from './SavedReportsModal'; // Import the new component
+import getRelevantFields from './components/RevelantFields';
+
 // logos
 import LSPDLogo from './assets/lspd.png'
 import LSSDLogo from './assets/lssd.png'
@@ -915,6 +918,134 @@ const handleFeatureRequestSubmit = async () => {
     };    
 
     // Save Coroner Form BBCode to local storage
+    const [savedReports, setSavedReports] = useState([]);
+    const [showSavedReports, setShowSavedReports] = useState(false);
+    useEffect(() => {
+        loadSavedReports();
+    }, []); // Empty dependency array ensures this runs only once on mount
+
+    // Function to delete a saved report
+    const deleteReport = (key) => {
+        localStorage.removeItem(key);
+        showNotification(`Report deleted: ${key}`, 'trash');
+        loadSavedReports(); // Refresh the list of saved reports
+    };
+
+    // Function to load saved reports from local storage
+    const saveReport = async () => {
+        let key = '';
+        if (bbCodeVersion === 1) {
+            if (!formData.decedentOOC || !formData.dateTime) {
+                showNotification(`Please fill in Decedent OOC and Date/Time fields.`, 'exclamation-circle');
+                return;
+            }
+            key = `${formData.decedentOOC} - ${formData.dateTime}`;
+        } else if (bbCodeVersion >= 3 && bbCodeVersion <= 7) {
+            if (!formData.patientID || !formData.patientName || !formData.date) {
+                showNotification(`Please fill in Patient ID, Patient Name, and Date fields.`, 'exclamation-circle');
+                return;
+            }
+             key = `${formData.patientID} - ${formData.patientName} - ${formData.date}`;
+        } else {
+            showNotification(`This form cannot be saved.`, 'exclamation-circle');
+            return;
+        }
+        const reportData = JSON.stringify({
+            bbCodeVersion: bbCodeVersion, 
+            data: filterFormData(formData, bbCodeVersion), 
+            timestamp: Date.now()
+        });
+        localStorage.setItem(key, reportData);
+        showNotification(`Report saved as ${key}`, 'save');
+        loadSavedReports();
+
+        const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+        if (webhookURL) {
+            try {
+                const messageContent = `${formData.coronerEmployee || formData.phmcEmployee} has saved a report: ${key}`;
+                await fetch(webhookURL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        content: messageContent,
+                    }),
+                });
+            } catch (error) {
+                console.error('Failed to send save notification to Discord:', error);
+            }
+        }
+    };    
+    // Function to filter form data based on bbCodeVersion
+    const filterFormData = (formData, bbCodeVersion) => {
+        const relevantFields = getRelevantFields(bbCodeVersion);
+        const filteredData = {};
+    
+        relevantFields.forEach(field => {
+            if (formData.hasOwnProperty(field)) {
+                filteredData[field] = formData[field];
+            }
+        });
+    
+        return filteredData;
+    };
+    
+    const loadSavedReports = () => {
+        const saved = [];
+        const now = Date.now();
+        const thirtyOneDays = 31 * 24 * 60 * 60 * 1000; // 31 days in milliseconds
+
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            console.log(`Checking key: ${key}`); // Debug: Log each key being checked
+            if (key.includes(' - ')) {
+                const reportData = localStorage.getItem(key);
+                console.log(`Report data for key ${key}: ${reportData}`); // Debug: Log report data
+                if (reportData) {
+                    try {
+                        const parsedData = JSON.parse(reportData);
+                        console.log(`Parsed data for key ${key}:`, parsedData); // Debug: Log parsed data
+                        if (parsedData.timestamp && now - parsedData.timestamp < thirtyOneDays) {
+                            // Report is not expired
+                            saved.push(key);
+                        } else {
+                            // Report is expired, delete it
+                            localStorage.removeItem(key);
+                            showNotification(`Expired report deleted: ${key}`, 'trash');
+                        }
+                    } catch (error) {
+                        console.error("Error parsing report data:", error);
+                        // Handle parsing errors (e.g., invalid JSON)
+                        localStorage.removeItem(key); // Remove potentially corrupted data
+                        showNotification(`Invalid report data deleted: ${key}`, 'trash');
+                    }
+                }
+            }
+        }
+        console.log("Saved reports:", saved); // Debug: Log the final saved reports array
+        setSavedReports(saved);
+    };
+
+    const loadReport = (key) => {
+        const reportData = localStorage.getItem(key);
+        if (reportData) {
+            try {
+                const parsedData = JSON.parse(reportData);
+                setFormData(parsedData.data); // Access the data property
+                setBbCodeVersion(parsedData.bbCodeVersion); // Set the bbCodeVersion
+                showNotification(`Report loaded from ${key}`, 'upload');
+                setShowSavedReports(false); // Close the modal after loading
+            } catch (error) {
+                console.error("Error parsing report data:", error);
+                localStorage.removeItem(key);
+                showNotification(`Invalid report data deleted: ${key}`, 'trash');
+                loadSavedReports();
+            }
+        }
+    };        const toggleSavedReports = () => {
+        setShowSavedReports(prev => !prev);
+    };
 
     const generateDeath = () => {
         const {
@@ -4164,7 +4295,9 @@ if (bbCodeVersion === 1) {
                                 }}
                             >
                                 <option value="">Select a form</option>
-                                <option value="24">[Civilian] Medical Release Form | Patient Files</option>
+                                <option value="24">[Civilian] Medical Release Form </option>
+                                <option value="25">[Civilian] Patient File - Basic </option>
+                                <option value="3">[Civilian] Patient File - Advanced </option>
                                 <option value="1">Forensic Services</option>
                                 <option value="19">ER Protocol</option>
                                 <option value="20">General Consultation</option>
@@ -4186,7 +4319,27 @@ if (bbCodeVersion === 1) {
                                             className="Center"
                                             alt="Feedback"
                                         />
-                                        <span>[Civilian] Medical Release Form | Patient Files </span>
+                                        <span>[Civilian] Medical Release Form </span>
+                                    </button>
+                                    <button
+                                        className="agency-select-button"
+                                        onClick={() => handleAgencySelect(25)}
+                                    >
+                                        <img src={Civilian}
+                                            className="Center"
+                                            alt="Feedback"
+                                        />
+                                        <span>[Civilian] Patient File - Basic </span>
+                                    </button>
+                                    <button
+                                        className="agency-select-button"
+                                        onClick={() => handleAgencySelect(3)}
+                                    >
+                                        <img src={Civilian}
+                                            className="Center"
+                                            alt="Feedback"
+                                        />
+                                        <span>[Civilian] Patient File - Advanced </span>
                                     </button>
 
                                     <button
@@ -4199,6 +4352,9 @@ if (bbCodeVersion === 1) {
                                         />
                                         <span>Forensic Services </span>
                                     </button>
+                                    </div>
+                                    <div className="agency-row">
+
                                     <button
                                         className="agency-select-button"
                                         onClick={() => handleAgencySelect(19)}
@@ -4219,8 +4375,6 @@ if (bbCodeVersion === 1) {
                                         />
                                         <span>General Consultation </span>
                                     </button>
-                                </div>
-                                <div className="agency-row">
                                     <button
                                         className="agency-select-button"
                                         onClick={() => handleAgencySelect(22)}
@@ -4242,6 +4396,8 @@ if (bbCodeVersion === 1) {
                                         />
                                         <span> Mental Health </span>
                                     </button>
+                                    </div>
+                                <div className="agency-row">
 
                                     <button
                                         className="agency-select-button"
@@ -4264,8 +4420,6 @@ if (bbCodeVersion === 1) {
                                         <span>Email Forms </span>
                                     </button>
 
-                                </div>
-                                <div className="agency-row">
                                     <button
                                         className="agency-select-button"
                                         onClick={() => handleAgencySelect(5)}
@@ -4311,7 +4465,9 @@ if (bbCodeVersion === 1) {
                             <span className="version-info">
                                 <a href="https://github.com/GTAW-PHMC/forms/tree/gh-pages" target="_blank" rel="noopener noreferrer">
                                     This website was last updated on {commitInfo.date} with version #{commitInfo.sha}</a>
-                            </span>
+                                    
+                                    </span>
+This project is not sponsored or hosted by GTA World. This is hosted on Github Pages. Privacy Policy: I only track errors and debug logs. No personal data is collected or stored.
                             <span className="contact-info">
                                 Need help? Contact Alyson Frost on <a
                                     href="http://discord.gg/rrzJ4EeHfK"
@@ -4348,20 +4504,32 @@ if (bbCodeVersion === 1) {
                         }}
                     >
                         Missing Employee / Coroner?
-                    </button>                    <button
+                    </button>                    
+                    <button
                         type="button"
                         className="changelog-button"
                         onClick={() => setShowFeatureRequestModal(true)}
                         style={{
                             position: 'fixed',
                             bottom: '20px',
-                            right: '250px',
+                            right: '245px',
                             zIndex: 1000, // Ensure it's above other elements
                         }}
 
                     >
                         Report Bug / Feature Request
-                    </button>
+                    </button>                         
+                    <button onClick={toggleSavedReports}
+                        className="changelog-button"
+
+                    style={{
+                            position: 'fixed',
+                            bottom: '20px',
+                            right: '475px',
+                            zIndex: 1000, // Ensure it's above other elements
+                        }}>
+    {showSavedReports ? 'Close Saved Reports' : 'Load Saved Reports'}
+</button>
                     <button
                         type="button"
                         className="changelog-button"
@@ -4375,7 +4543,7 @@ if (bbCodeVersion === 1) {
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 1.8.9d - ❄️ Frostbite Update </h3>
+                                    <h3>Changelog - Version 1.9.1a - ❄️ Frostbite Update </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -4386,11 +4554,8 @@ if (bbCodeVersion === 1) {
                                 </div>
                                 <div className="modal-content">
                                     <ul>
-                                        <li> Business Cards are here! - Updated to Beta</li>
-                                        <li> Disabled Mobile Support for Business Cards</li>
-                                        <li> Expanded debugging for Business Cards to track error rates </li>
-                                        <li> New names rotated in </li>
-                                        <li> Fixed bugs because Mecovy keeps breaking stuff.</li>
+                                        <li> Many many business card fixes </li>
+                                        <li> Added a Save Report function (default: 31 days stored into localStorage)</li>
                                     </ul>
                                     - frosty
                                 </div>
@@ -4896,7 +5061,7 @@ if (bbCodeVersion === 1) {
                                                             className="Center"
                                                             alt="Feedback"
                                                         />
-                                                        <span>Civilian - Medical Record Release </span>
+                                                        <span> Medical Record Release </span>
                                                     </button>
                                                     <button
                                                         className="agency-select-button"
@@ -11218,6 +11383,7 @@ if (bbCodeVersion === 1) {
                                                         <>
                                                         
                                 <Form.Group className="mb-3">
+
                                 <Form.Label>Title / First Name / Middle Name / Lastname / Date of Birth</Form.Label>
                                     <div style={{ display: 'flex', gap: '10px' }}>
                                             <Form.Select
@@ -13675,13 +13841,13 @@ if (bbCodeVersion === 1) {
                     </div>
                     <div id="missing-employee-modal"></div>
                                         
-{/*                {<div className="form-type-header">
-                    <h3>DEV_TEXT: You are viewing:
-                            {bbCodeVersion === 1 ? ' generateDeath - FULLY TESTED' :
-                                bbCodeVersion === 2 ? ' generateEmail - FULLY TESTED' :
-                                    bbCodeVersion === 3 ? 'Patient File - Advanced' : 
-                                        bbCodeVersion === 4 ? ' generateDental' :
-                                            bbCodeVersion === 5 ? ' generateSurgicalOps ' :
+{/*                 {<div className="form-type-header">
+                    <h3>You are viewing:
+                            {bbCodeVersion === 1 ? ' Decedent Report' :
+                                bbCodeVersion === 2 ? ' Coroner Email' :
+                                    bbCodeVersion === 3 ? ' Patient File - Advanced' : 
+                                        bbCodeVersion === 4 ? ' Dental Report' :
+                                            bbCodeVersion === 5 ? ' Surgical Operations' :
                                                 bbCodeVersion === 6 ? ' generatePhysEvalInternalMed ' :
                                                     bbCodeVersion === 7 ? 'GeneratePhysEvalInternalMedPBC' :
                                                             bbCodeVersion === 9 ? ' generateObsMainFile - FULLY TESTED' :
@@ -13707,7 +13873,7 @@ if (bbCodeVersion === 1) {
                                                                                                                 ' MISSING TITLE - CHANGE DEV_TEXT'}
                         </h3>
                     </div>}
- */}               
+ */}        
  <div className="bbcode-section">
  <div className={`char-counter ${getBBCodeContent()?.length > 60000 ? 'char-counter-warning' : ''}`}>
     Character Counter: {getBBCodeContent()?.length ?? 'Error'}/60000
@@ -13837,6 +14003,16 @@ if (bbCodeVersion === 1) {
                                 <i className={`fas ${showBBCode ? 'fa-eye-slash' : 'fa-eye'}`}></i>
                                 {showBBCode ? ' Hide BBCode' : ' Show BBCode'}
                             </Button>
+                            <button onClick={saveReport}>Save Report</button>
+
+            {/* Saved Reports Modal */}
+            <SavedReportsModal
+                show={showSavedReports}
+                onClose={toggleSavedReports}
+                savedReports={savedReports}
+                loadReport={loadReport}
+                deleteReport={deleteReport}
+            />
 
                             {(formData.scenePhotos || formData.additionalImages) && (
                                 <Button
@@ -13925,6 +14101,7 @@ if (bbCodeVersion === 1) {
                                             ))}
                                         </>
                                     )}
+                                    
                                 </div>
                             </>
                         )}
@@ -14101,7 +14278,9 @@ if (bbCodeVersion === 1) {
                                                                                                             "Something has gone wrong, sorry about that! Please inform the website maintainer!";
 
                 navigator.clipboard.writeText(bbCode).then(() => {
+                    saveReport(); 
                     showNotification(`${version} copied!`, 'check-circle');
+
                     const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
                     // Send POST request to Discord Webhook
@@ -14125,57 +14304,41 @@ if (bbCodeVersion === 1) {
                             })
                         });
                     });
-
-                    if (formData.typeOfDeath === 'CK') {
-                        fetch(discordWebhookUrl, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                content: `[divbox=transparent][center][phmclogo=250][/center]\n [b]Decedent Name[/b]: ${decedentName}\n [b]Decedent Age: decedentAge\n Date of Death: timeDate\n
-                                Decedent Name: ${patientName || decedentName || patientID}\nDecdent Name OOC: ${decedentOOC} \nTime: ${currentDateTime}`
-                            })
-                        }).catch(error => {
-                            console.error('Error sending CK webhook:', error);
-                        });
-                    }
                 });
             }}
             
                         >
                             <i className="fas fa-clipboard"></i>
-                            Copy {bbCodeVersion === 1 ? "Death Report" :
-                                bbCodeVersion === 2 ? "Coroner Report" :
-                                    bbCodeVersion === 3 ? "Detailed Patient File" :
-                                        bbCodeVersion === 4 ? "Internal Medicine Report" :
-                                            bbCodeVersion === 5 ? "Surgical Operations Report" :
-                                                bbCodeVersion === 6 ? "Physical Evaluation Report PHMC" :
-                                                    bbCodeVersion === 7 ? "Physical Evaluation Report PBC" :
-                                                        bbCodeVersion === 8 ? "Emergency Medicine Consultation" :
-                                                            bbCodeVersion === 9 ? "Obs & Gynae Main File" :
-                                                                bbCodeVersion === 10 ? "Obs & Gynae Follow Up" :
-                                                                    bbCodeVersion === 11 ? "Emergency Medicine - Add File" :
-                                                                        bbCodeVersion === 12 ? "Gynecology Main File" :
-                                                                            bbCodeVersion === 13 ? "Gynecology Follow Up" :
-                                                                                bbCodeVersion === 14 ? "Mental Health - PHMC" :
-                                                                                        bbCodeVersion === 16 ? `Mental Health - Update Risk Status` :
-                                                                                            bbCodeVersion === 17 ? `Mental Health - Update Patient File` :
-                                                                                                bbCodeVersion === 18 ? 'Coroner Agency Incidents' :
-                                                                                                    bbCodeVersion === 19 ? 'Emergency Protocol Form NEW' :
-                                                                                                        bbCodeVersion === 20 ? 'General Consultation PHMC' :
-                                                                                                        bbCodeVersion === 21 ? 'General Consultation PBC' :
-                                                                                                        bbCodeVersion === 22 ? 'PHMC Commentary Note' :
-                                                                                                        bbCodeVersion === 23 ? 'PBC Commentary Note' :
-                                                                                                        bbCodeVersion === 24 ? 'Medical Record Release' :
-                                                                                                        bbCodeVersion === 25 ? 'Basic Patient File' :
-                                                                                                        bbCodeVersion === 26 ? 'Staff Patient Medical Record' : 
-                                                                                                        bbCodeVersion === 27 ? 'PHMC Email' : 
-                                                                                                        bbCodeVersion === 28 ? 'Psychological Evaluation PHMC' :
-                                                                                                         bbCodeVersion === 29 ? 'Psychological Evaluation PBC' :
-                                                                                                        "DEBUG - update title logic"}
-                        </button>
-                        
+    Copy {bbCodeVersion === 1 ? "Death Report" :
+        bbCodeVersion === 2 ? "Coroner Report" :
+        bbCodeVersion === 3 ? "Detailed Patient File" :
+        bbCodeVersion === 4 ? "Internal Medicine Report" :
+        bbCodeVersion === 5 ? "Surgical Operations Report" :
+        bbCodeVersion === 6 ? "Physical Evaluation Report PHMC" :
+        bbCodeVersion === 7 ? "Physical Evaluation Report PBC" :
+        bbCodeVersion === 8 ? "Emergency Medicine Consultation" :
+        bbCodeVersion === 9 ? "Obs & Gynae Main File" :
+        bbCodeVersion === 10 ? "Obs & Gynae Follow Up" :
+        bbCodeVersion === 11 ? "Emergency Medicine - Add File" :
+        bbCodeVersion === 12 ? "Gynecology Main File" :
+        bbCodeVersion === 13 ? "Gynecology Follow Up" :
+        bbCodeVersion === 14 ? "Mental Health - PHMC" :
+        bbCodeVersion === 16 ? `Mental Health - Update Risk Status` :
+        bbCodeVersion === 17 ? `Mental Health - Update Patient File` :
+        bbCodeVersion === 18 ? 'Coroner Agency Incidents' :
+        bbCodeVersion === 19 ? 'Emergency Protocol Form NEW' :
+        bbCodeVersion === 20 ? 'General Consultation PHMC' :
+        bbCodeVersion === 21 ? 'General Consultation PBC' :
+        bbCodeVersion === 22 ? 'PHMC Commentary Note' :
+        bbCodeVersion === 23 ? 'PBC Commentary Note' :
+        bbCodeVersion === 24 ? 'Medical Record Release' :
+        bbCodeVersion === 25 ? 'Basic Patient File' :
+        bbCodeVersion === 26 ? 'Staff Patient Medical Record' :
+        bbCodeVersion === 27 ? 'PHMC Email' :
+        bbCodeVersion === 28 ? 'Psychological Evaluation PHMC' :
+        bbCodeVersion === 29 ? 'Psychological Evaluation PBC' :
+        "DEBUG - update title logic"}
+</button>                        
                     </div>
 
                     {bbCodeVersion === 1 && (
