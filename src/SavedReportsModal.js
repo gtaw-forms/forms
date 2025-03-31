@@ -51,7 +51,6 @@ const reportItemStyle = { // Style for each saved report item
 const itemsPerPage = 5; // Number of reports per page
 
 const SavedReportsModal = ({ show, onClose, savedReports, loadReport, deleteReport }) => {
-    console.log("Saved reports received in modal:", savedReports);
     const [currentPage, setCurrentPage] = useState(1);
     const [sortedReports, setSortedReports] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
@@ -95,7 +94,6 @@ const SavedReportsModal = ({ show, onClose, savedReports, loadReport, deleteRepo
         if (reportData) {
             try {
                 const parsedData = JSON.parse(reportData);
-                console.log("Parsed data:", parsedData);
                 // Assuming 'decedentName' is a field in your report data
                 if (parsedData?.data?.decedentOOC) {
                     const decedentOOC = parsedData.data.decedentOOC;
@@ -110,9 +108,7 @@ const SavedReportsModal = ({ show, onClose, savedReports, loadReport, deleteRepo
         }
         return false; // Don't include if no report data
     });    
-    console.log("Filtered reports:", filteredReports);
     const currentReports = filteredReports.slice(startIndex, endIndex);
-    console.log("Current reports:", currentReports);
     
     const goToPreviousPage = () => {
         setCurrentPage(currentPage - 1);
@@ -149,7 +145,7 @@ const SavedReportsModal = ({ show, onClose, savedReports, loadReport, deleteRepo
                     {currentReports.map(key => (
                         <div key={key} style={reportItemStyle}>
                             {key}
-                            <button onClick={() => loadReport(key)} style={{ marginRight: '10px' }}>Load</button>
+                            <button onClick={() => loadReport(key)} >Load</button>
                             <button onClick={() => deleteReport(key)}>Delete</button>
                         </div>
                     ))}

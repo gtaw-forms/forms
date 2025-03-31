@@ -943,9 +943,17 @@ const handleFeatureRequestSubmit = async () => {
         } else if (bbCodeVersion >= 3 && bbCodeVersion <= 7) {
             if (!formData.patientID || !formData.patientName || !formData.date) {
                 showNotification(`Please fill in Patient ID, Patient Name, and Date fields.`, 'exclamation-circle');
+                console.log('Missing fields:', formData);
                 return;
             }
              key = `${formData.patientID} - ${formData.patientName} - ${formData.date}`;
+        } else if (bbCodeVersion === 19) {
+            if (!formData.patientID || !formData.lastName || !formData.date) {
+                showNotification(`Please fill in Patient ID, Last Name, and Date fields.`, 'exclamation-circle');
+                console.log('Missing fields:', formData);
+                return;
+            }
+            key = `${formData.patientID} - ${formData.lastName} - ${formData.date}`;
         } else {
             showNotification(`This form cannot be saved.`, 'exclamation-circle');
             return;
@@ -957,6 +965,7 @@ const handleFeatureRequestSubmit = async () => {
         });
         localStorage.setItem(key, reportData);
         showNotification(`Report saved as ${key}`, 'save');
+        console.log('Saved report data:', reportData);
         loadSavedReports();
 
         const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
@@ -977,20 +986,6 @@ const handleFeatureRequestSubmit = async () => {
             }
         }
     };    
-    // Function to filter form data based on bbCodeVersion
-    const filterFormData = (formData, bbCodeVersion) => {
-        const relevantFields = getRelevantFields(bbCodeVersion);
-        const filteredData = {};
-    
-        relevantFields.forEach(field => {
-            if (formData.hasOwnProperty(field)) {
-                filteredData[field] = formData[field];
-            }
-        });
-    
-        return filteredData;
-    };
-    
     const loadSavedReports = () => {
         const saved = [];
         const now = Date.now();
@@ -1028,7 +1023,11 @@ const handleFeatureRequestSubmit = async () => {
         if (reportData) {
             try {
                 const parsedData = JSON.parse(reportData);
-                setFormData(parsedData.data); // Access the data property
+                //setFormData(parsedData.data); // Access the data property
+                setFormData(prevFormData => ({
+                    ...prevFormData,
+                    ...parsedData.data, // Merge all loaded data
+                }));
                 setBbCodeVersion(parsedData.bbCodeVersion); // Set the bbCodeVersion
                 showNotification(`Report loaded from ${key}`, 'upload');
                 setShowSavedReports(false); // Close the modal after loading
@@ -1039,9 +1038,24 @@ const handleFeatureRequestSubmit = async () => {
                 loadSavedReports();
             }
         }
-    };        const toggleSavedReports = () => {
+    };
+    
+    const toggleSavedReports = () => {
         setShowSavedReports(prev => !prev);
     };
+// Function to filter form data based on bbCodeVersion
+const filterFormData = (formData, bbCodeVersion) => {
+    const relevantFields = getRelevantFields(bbCodeVersion);
+    const filteredData = {};
+
+    relevantFields.forEach(field => {
+        if (formData.hasOwnProperty(field)) {
+            filteredData[field] = formData[field];
+        }
+    });
+
+    return filteredData;
+};
 
     const generateDeath = () => {
         const {
