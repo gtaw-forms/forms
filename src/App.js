@@ -998,14 +998,11 @@ const handleFeatureRequestSubmit = async () => {
 
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
-            console.log(`Checking key: ${key}`); // Debug: Log each key being checked
             if (key.includes(' - ')) {
                 const reportData = localStorage.getItem(key);
-                console.log(`Report data for key ${key}: ${reportData}`); // Debug: Log report data
                 if (reportData) {
                     try {
                         const parsedData = JSON.parse(reportData);
-                        console.log(`Parsed data for key ${key}:`, parsedData); // Debug: Log parsed data
                         if (parsedData.timestamp && now - parsedData.timestamp < thirtyOneDays) {
                             // Report is not expired
                             saved.push(key);
@@ -1023,7 +1020,6 @@ const handleFeatureRequestSubmit = async () => {
                 }
             }
         }
-        console.log("Saved reports:", saved); // Debug: Log the final saved reports array
         setSavedReports(saved);
     };
 
@@ -5312,13 +5308,10 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
                                             className={`form-control ${!formData.scenePhotos ? 'is-invalid' : ''}`}
                                             placeholder="Upload Scene Photos (comma-separated)"
                                             onPaste={(e) => {
-                                                console.log('Paste event triggered');
                                                 const clipboardData = e.clipboardData || window.clipboardData;
                                                 const pastedData = clipboardData.getData('text');
                                                 const items = clipboardData.items;
 
-                                                console.log('Pasted content:', pastedData);
-                                                console.log('Clipboard items:', items);
 
                                                 let hasImageItem = false;
 
@@ -5326,11 +5319,9 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
                                                 const urlRegex = /(https?:\/\/[^\s]+)/g;
                                                 const containsUrl = urlRegex.test(pastedData);
 
-                                                console.log('Contains URL:', containsUrl);
 
                                                 // Handle image files from clipboard
                                                 for (let i = 0; i < items.length; i++) {
-                                                    console.log('Checking item:', items[i].type);
                                                     if (items[i].type.indexOf('image') !== -1) {
                                                         hasImageItem = true;
                                                         const file = items[i].getAsFile();
@@ -5342,14 +5333,11 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
 
                                                 // If it's a URL and not an image file, allow direct paste
                                                 if (containsUrl && !hasImageItem) {
-                                                    console.log('Processing URL paste');
 
                                                     // Get current value and cursor position
                                                     const currentValue = formData.scenePhotos || '';
                                                     const cursorPos = e.target.selectionStart;
 
-                                                    console.log('Current value:', currentValue);
-                                                    console.log('Cursor position:', cursorPos);
 
                                                     // Add comma if there's existing content
                                                     const separator = currentValue && currentValue.trim().length > 0 ? ', ' : '';
@@ -5358,7 +5346,6 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
                                                         pastedData +
                                                         currentValue.slice(cursorPos);
 
-                                                    console.log('New value:', newValue);
 
                                                     // Update form data
                                                     setFormData(prev => ({
@@ -5405,13 +5392,10 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
                                             className={`form-control ${!formData.additionalImages ? 'is-invalid' : ''}`}
                                             placeholder="Morgue Screen, Cinjuries, CDNA Links (comma-separated)"
                                             onPaste={(e) => {
-                                                console.log('Paste event triggered');
                                                 const clipboardData = e.clipboardData || window.clipboardData;
                                                 const pastedData = clipboardData.getData('text');
                                                 const items = clipboardData.items;
 
-                                                console.log('Pasted content:', pastedData);
-                                                console.log('Clipboard items:', items);
 
                                                 let hasImageItem = false;
 
@@ -5419,11 +5403,9 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
                                                 const urlRegex = /(https?:\/\/[^\s]+)/g;
                                                 const containsUrl = urlRegex.test(pastedData);
 
-                                                console.log('Contains URL:', containsUrl);
 
                                                 // Handle image files from clipboard
                                                 for (let i = 0; i < items.length; i++) {
-                                                    console.log('Checking item:', items[i].type);
                                                     if (items[i].type.indexOf('image') !== -1) {
                                                         hasImageItem = true;
                                                         const file = items[i].getAsFile();
@@ -5435,14 +5417,11 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
 
                                                 // If it's a URL and not an image file, allow direct paste
                                                 if (containsUrl && !hasImageItem) {
-                                                    console.log('Processing URL paste');
 
                                                     // Get current value and cursor position
                                                     const currentValue = formData.additionalImages || '';
                                                     const cursorPos = e.target.selectionStart;
 
-                                                    console.log('Current value:', currentValue);
-                                                    console.log('Cursor position:', cursorPos);
 
                                                     // Add comma if there's existing content
                                                     const separator = currentValue && currentValue.trim().length > 0 ? ', ' : '';
@@ -5451,7 +5430,6 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
                                                         pastedData +
                                                         currentValue.slice(cursorPos);
 
-                                                    console.log('New value:', newValue);
 
                                                     // Update form data
                                                     setFormData(prev => ({
@@ -12272,13 +12250,10 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
                                             className={`form-control ${!formData.scenePhotos ? 'is-invalid' : ''}`}
                                             placeholder="Employee Signature Image"
                                             onPaste={(e) => {
-                                                console.log('Paste event triggered');
                                                 const clipboardData = e.clipboardData || window.clipboardData;
                                                 const pastedData = clipboardData.getData('text');
                                                 const items = clipboardData.items;
 
-                                                console.log('Pasted content:', pastedData);
-                                                console.log('Clipboard items:', items);
 
                                                 let hasImageItem = false;
 
@@ -12286,11 +12261,9 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
                                                 const urlRegex = /(https?:\/\/[^\s]+)/g;
                                                 const containsUrl = urlRegex.test(pastedData);
 
-                                                console.log('Contains URL:', containsUrl);
 
                                                 // Handle image files from clipboard
                                                 for (let i = 0; i < items.length; i++) {
-                                                    console.log('Checking item:', items[i].type);
                                                     if (items[i].type.indexOf('image') !== -1) {
                                                         hasImageItem = true;
                                                         const file = items[i].getAsFile();
@@ -12302,14 +12275,11 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
 
                                                 // If it's a URL and not an image file, allow direct paste
                                                 if (containsUrl && !hasImageItem) {
-                                                    console.log('Processing URL paste');
 
                                                     // Get current value and cursor position
                                                     const currentValue = formData.scenePhotos || '';
                                                     const cursorPos = e.target.selectionStart;
 
-                                                    console.log('Current value:', currentValue);
-                                                    console.log('Cursor position:', cursorPos);
 
                                                     // Add comma if there's existing content
                                                     const separator = currentValue && currentValue.trim().length > 0 ? ', ' : '';
@@ -12318,7 +12288,6 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
                                                         pastedData +
                                                         currentValue.slice(cursorPos);
 
-                                                    console.log('New value:', newValue);
 
                                                     // Update form data
                                                     setFormData(prev => ({
@@ -12328,7 +12297,6 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
 
                                                     e.preventDefault();
                                                 } else {
-                                                    console.log('No URL detected or image item present');
                                                 }
                                             }}
                                         />
