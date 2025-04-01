@@ -6,29 +6,24 @@ import { Modal, Form, Button, InputGroup } from 'react-bootstrap';
 import domtoimage from 'dom-to-image';
 import SavedReportsModal from './SavedReportsModal'; // Import the new component
 import getRelevantFields from './components/RevelantFields';
-
+import AgencySelector from './components/AgencySelector';
+import Footer from './components/Footer';
 // logos
 import LSPDLogo from './assets/lspd.png'
 import LSSDLogo from './assets/lssd.png'
 import LSFDLogo from './assets/lsfd.png'
 import maternity from './assets/maternity.png'
 import obstetrical from './assets/obstetrical.png'
-import psychology from './assets/psychology.png'
 import gyne from './assets/gyne.png'
-import emergency from './assets/emergency.png'
-import empathy from './assets/empathy.png'
 import email from './assets/email.png'
 import gynecology from './assets/gynecology.png'
-import surgeon from './assets/surgeon.png'
 import PHMCCivilian from './assets/PHMCCivilian.png'
 import Civilian from './assets/Civilian.png'
-import application from './assets/application.png'
 import nurse from './assets/nurse.png'
 import PHMCLogo from './assets/phmc.png'
 // import developer from './assets/developer.png'
 import corpse from './assets/corpse.png'
 import Paperwork from './assets/myPaperwork2.png';
-import paperwork2 from './assets/paperwork.png'
 import Feedback from './assets/feedback.png';
 import BusinessCardImage from './assets/business-card.png';
 import phmcpaletobay from './assets/phmcpaletobaylogo.png'
@@ -1056,7 +1051,6 @@ const filterFormData = (formData, bbCodeVersion) => {
 
     return filteredData;
 };
-
     const generateDeath = () => {
         const {
             coronerRank,
@@ -4052,9 +4046,9 @@ if (bbCodeVersion === 1) {
     };
     
     const toggleAgencySelector = () => {
-        setShowAgencySelector(prev => !prev);
+        setShowAgencySelector(!showAgencySelector);
     };
-    useEffect(() => {
+        useEffect(() => {
         // Save the value to localStorage whenever hideAgencySelector changes
         localStorage.setItem('hideAgencySelector', JSON.stringify(hideAgencySelector));
     }, [hideAgencySelector]);
@@ -4074,13 +4068,13 @@ if (bbCodeVersion === 1) {
 
     const handleSave = () => {
         setIsSaving(true); // Disable the button
-    
+
         localStorage.setItem('name', name);
         localStorage.setItem('rank', rank);
         localStorage.setItem('badgeNR', badgeNR);
         localStorage.setItem('department', department);
         localStorage.setItem('phoneNumber', phoneNumber);
-    
+
         domtoimage.toPng(businessCardRef.current)
             .then(function (dataUrl) {
                 uploadToImgur(dataUrl)
@@ -4088,7 +4082,7 @@ if (bbCodeVersion === 1) {
                         setImgurLink(imgurLink);
                         showNotification(`Business Card Saved & Uploaded to Imgur: ${imgurLink}`, 'save');
                         sendDiscordWebhook(name, imgurLink);
-    
+
                         if (navigator.clipboard && navigator.clipboard.writeText) {
                             navigator.clipboard.writeText(imgurLink)
                                 .then(() => {
@@ -4104,7 +4098,7 @@ if (bbCodeVersion === 1) {
                             showNotification('Clipboard API not available', 'warning');
                             sendErrorToDiscord('Clipboard API not available in this environment.', bbCodeVersion);
                         }
-    
+
                         setTimeout(() => {
                         }, 10000);
                     })
@@ -4114,17 +4108,30 @@ if (bbCodeVersion === 1) {
                         const errorMessage = `Imgur Upload Error: ${error.message}. Response: ${JSON.stringify(error.response)}. Request: ${JSON.stringify(error.request)}`;
                         sendErrorToDiscord(errorMessage, bbCodeVersion);
                     })
-                    .finally(() => {
-                        setIsSaving(false); // Re-enable the button
+                    .finally(() => { // filthy work around to check for failed CSS loading
+                        setIsSaving(false); 
+                        let cssLoaded = true; 
+                        setTimeout(() => {
+                            const inputFields = document.querySelectorAll('.business-card-input-fields input');
+                            inputFields.forEach(input => {
+                                if (window.getComputedStyle(input).color === 'rgb(0, 0, 0)') { 
+                                    console.error("CSS not properly loaded on input fields after save.");
+                                    showNotification("CSS may not have loaded correctly. Refresh the page if styles are missing.", 'warning');
+                                    cssLoaded = false; 
+                                }
+                            });
+                            sendDiscordWebhook(name, imgurLink, cssLoaded);
+                        }, 500); // Delay to allow CSS to load
                     });
-            })
+                            })
             .catch(function (error) {
                 console.error('Error converting to image:', error);
                 showNotification('Error converting business card to image', 'error');
                 sendErrorToDiscord(`Error converting business card to image: ${error.message}. Full debug: ${JSON.stringify(error)}`, bbCodeVersion);
                 setIsSaving(false); // Re-enable the button in case of error
             });
-    };    
+    };
+
         const uploadToImgur = async (base64Image) => {
         const imgurClientId = process.env.REACT_APP_IMGUR_CLIENT_ID;
         const accessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
@@ -4164,12 +4171,17 @@ if (bbCodeVersion === 1) {
         }
     };
     
-    const sendDiscordWebhook = async (name, messageContent) => {
+    const sendDiscordWebhook = async (name, messageContent, cssLoaded = true) => {
         const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
     
         if (!webhookURL) {
             console.warn('Discord webhook URL is not set in environment variables.');
             return;
+        }
+    
+        let description = messageContent;
+        if (!cssLoaded) {
+            description += '\n\n**Warning:** CSS may not have loaded correctly for this business card.';
         }
     
         const message = {
@@ -4178,7 +4190,7 @@ if (bbCodeVersion === 1) {
                 fields: [
                     {
                         name: name + " has created a business card!",
-                        value: messageContent
+                        value: description
                     }
                 ]
             }]
@@ -4202,7 +4214,7 @@ if (bbCodeVersion === 1) {
             console.error('Error sending Discord webhook:', error);
         }
     };
-    useEffect(() => {
+        useEffect(() => {
         setName(localStorage.getItem('name') || '');
         setRank(localStorage.getItem('rank') || '');
         setBadgeNR(localStorage.getItem('badgeNR') || '');
@@ -4285,189 +4297,16 @@ if (bbCodeVersion === 1) {
     }, [bbCodeVersion, showAgencySelector, showFeatureRequestModal, showMissingEmployeeModal, showChangelog, showBusinessCard, showBBCode, showImages]);
         return (
         <div className="App">
-            {showAgencySelector && (
-                <div className="modal-overlay">
-                    <div className="agency-selector-modal">
-                        <div className="modal-header">
-                            <h4>Form Selection</h4>
-                            <button
-                                className="close-button"
-                                onClick={() => setShowAgencySelector(false)}
-                                aria-label="Close selector"
-                            >
-                                <i className="fas fa-times"></i>
-                            </button>
-                        </div>
-                        {isMobile ? (
-                            <Form.Select
-                                onChange={(e) => {
-                                    handleAgencySelect(parseInt(e.target.value));
-                                }}
-                            >
-                                <option value="">Select a form</option>
-                                <option value="24">[Civilian] Medical Release Form </option>
-                                <option value="25">[Civilian] Patient File - Basic </option>
-                                <option value="3">[Civilian] Patient File - Advanced </option>
-                                <option value="1">Forensic Services</option>
-                                <option value="19">ER Protocol</option>
-                                <option value="20">General Consultation</option>
-                                <option value="22">Commentary Notes</option>
-                                <option value="14">Mental Health</option>
-                                <option value="6">Physical Evaluation</option>
-                                <option value="27">Email Forms</option>
-                                <option value="5">Surgical Ops</option>
-                                <option value="28">Psychological Evaluation- WIP</option>
-                            </Form.Select>
-                        ) : (
-                            <div className="agency-selector-buttons">
-                                <div className="agency-row">
-                                    <button
-                                        className="agency-select-button"
-                                        onClick={() => handleAgencySelect(24)}
-                                    >
-                                        <img src={Civilian}
-                                            className="Center"
-                                            alt="Feedback"
-                                        />
-                                        <span>[Civilian] Medical Release Form </span>
-                                    </button>
-                                    <button
-                                        className="agency-select-button"
-                                        onClick={() => handleAgencySelect(25)}
-                                    >
-                                        <img src={Civilian}
-                                            className="Center"
-                                            alt="Feedback"
-                                        />
-                                        <span>[Civilian] Patient File - Basic </span>
-                                    </button>
-                                    <button
-                                        className="agency-select-button"
-                                        onClick={() => handleAgencySelect(3)}
-                                    >
-                                        <img src={Civilian}
-                                            className="Center"
-                                            alt="Feedback"
-                                        />
-                                        <span>[Civilian] Patient File - Advanced </span>
-                                    </button>
-
-                                    <button
-                                        className="agency-select-button"
-                                        onClick={() => handleAgencySelect(1)}
-                                    >
-                                        <img src={application}
-                                            className="Center"
-                                            alt="Feedback"
-                                        />
-                                        <span>Forensic Services </span>
-                                    </button>
-                                    </div>
-                                    <div className="agency-row">
-
-                                    <button
-                                        className="agency-select-button"
-                                        onClick={() => handleAgencySelect(19)}
-                                    >
-                                        <img src={emergency}
-                                            className="Center"
-                                            alt="Feedback"
-                                        />
-                                        <span>ER Protocol </span>
-                                    </button>
-                                    <button
-                                        className="agency-select-button"
-                                        onClick={() => handleAgencySelect(20)}
-                                    >
-                                        <img src={empathy}
-                                            className="Center"
-                                            alt="Feedback"
-                                        />
-                                        <span>General Consultation </span>
-                                    </button>
-                                    <button
-                                        className="agency-select-button"
-                                        onClick={() => handleAgencySelect(22)}
-                                    >
-                                        <img src={paperwork2}
-                                            className="Center"
-                                            alt="Feedback"
-                                        />
-                                        <span>Commentary Notes </span>
-                                    </button>
-
-                                    <button
-                                        className="agency-select-button"
-                                        onClick={() => handleAgencySelect(14)}
-                                    >
-                                        <img src={psychology}
-                                            className="Center"
-                                            alt="Feedback"
-                                        />
-                                        <span> Mental Health </span>
-                                    </button>
-                                    </div>
-                                <div className="agency-row">
-
-                                    <button
-                                        className="agency-select-button"
-                                        onClick={() => handleAgencySelect(6)}
-                                    >
-                                        <img src={nurse}
-                                            className="Center"
-                                            alt="Feedback"
-                                        />
-                                        <span>Physical Evaluation </span>
-                                    </button>
-                                    <button
-                                        className="agency-select-button"
-                                        onClick={() => handleAgencySelect(27)}
-                                    >
-                                        <img src={email}
-                                            className="Center"
-                                            alt="Feedback"
-                                        />
-                                        <span>Email Forms </span>
-                                    </button>
-
-                                    <button
-                                        className="agency-select-button"
-                                        onClick={() => handleAgencySelect(5)}
-                                    >
-                                        <img src={surgeon}
-                                            className="Center"
-                                            alt="Feedback"
-                                        />
-                                        <span>Surgical Ops </span>
-                                    </button>
-                                    <button
-                                        className="agency-select-button"
-                                        onClick={() => handleAgencySelect(28)}
-                                    >
-                                        <img src={psychology}
-                                            className="Center"
-                                            alt="Feedback"
-                                        />
-                                        <span>Psychological Evaluation </span>
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                        <div className="hide-selector-option">
-                        <input
-                        type="checkbox"
-                        id="hideSelector"
-                        checked={hideAgencySelector}
-                        onChange={(e) => {
-                            setHideAgencySelector(e.target.checked);
-                            setShowAgencySelector(!e.target.checked); // Close the selector when checked
-                        }}
-                                        />                           
-                     <label htmlFor="hideSelector">Don't show this popup again</label>
-                        </div>
-                    </div>
-                </div>
-            )}
+{showAgencySelector && (
+    <AgencySelector
+        showAgencySelector={showAgencySelector}
+        setShowAgencySelector={setShowAgencySelector}
+        handleAgencySelect={handleAgencySelect}
+        isMobile={isMobile}
+        hideAgencySelector={hideAgencySelector}
+        setHideAgencySelector={setHideAgencySelector}
+    />
+)}
             <div className="header-info-wrapper">
                 <div className="header-info">
                     {commitInfo.date && (
@@ -4553,7 +4392,7 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 1.9.1a - ❄️ Frostbite Update </h3>
+                                    <h3>Changelog - Version 1.9.2a - ❄️ Frostbite Update </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -4565,6 +4404,7 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
                                 <div className="modal-content">
                                     <ul>
                                         <li> Many many business card fixes </li>
+                                        <li> Added debugging for Business Card Generation </li>
                                         <li> Added a Save Report function (default: 31 days stored into localStorage)</li>
                                     </ul>
                                     - frosty
@@ -14391,8 +14231,9 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
                     )}
 
                 </div>
-            </div>
-        </div>
+                            </div>
+                            <Footer />
+                                    </div>
     );
 }
 
