@@ -27,6 +27,8 @@ import Paperwork from './assets/myPaperwork2.png';
 import Feedback from './assets/feedback.png';
 import BusinessCardImage from './assets/business-card.png';
 import phmcpaletobay from './assets/phmcpaletobaylogo.png'
+import ZonahCivilian from './assets/ZonahCivilian.png'
+import ZonahCoroner from './assets/zonahCoroner.png'
 import './assets/fonts/Poppins-Medium.ttf';
 import {
     PurposeMedicalInformationRelease,
@@ -13680,17 +13682,6 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
         </div>
     )}
 
-<div className="image-container">
-                        <a href="http://discord.gg/rrzJ4EeHfK" target="_blank" rel="noopener noreferrer">
-                            <img src={Feedback}
-                                height={350}
-                                alt="discord"
-                                width={350}
-                                className="Center"
-                            />
-                        </a>
-                    </div>
-                    <div id="missing-employee-modal"></div>
                                         
 {/*                 {<div className="form-type-header">
                     <h3>You are viewing:
@@ -14196,7 +14187,7 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
                         <div className="image-container">
                             <a href="https://phmc.gta.world/posting.php?mode=post&f=267" target="_blank" rel="noopener noreferrer">
                                 <img
-                                    src={Paperwork}
+                                    src={ZonahCoroner}
                                     height={350}
                                     width={350}
                                     className="Center"
@@ -14209,7 +14200,7 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
                         <div className="image-container">
                             <a href="https://phmc.gta.world/posting.php?mode=post&f=221" target="_blank" rel="noopener noreferrer">
                                 <img
-                                    src={PHMCCivilian}
+                                    src={ZonahCivilian}
                                     height={350}
                                     width={350}
                                     className="Center"
@@ -14223,7 +14214,7 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
                         <div className="image-container">
                             <a href="https://phmc.gta.world/posting.php?mode=post&f=109" target="_blank" rel="noopener noreferrer">
                                 <img
-                                    src={PHMCCivilian}
+                                    src={ZonahCivilian}
                                     height={350}
                                     width={350}
                                     className="Center"
@@ -14236,7 +14227,7 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
                         <div className="image-container">
                             <a href="https://phmc.gta.world/posting.php?mode=post&f=221" target="_blank" rel="noopener noreferrer">
                                 <img
-                                    src={PHMCCivilian}
+                                    src={ZonahCivilian}
                                     height={350}
                                     width={350}
                                     className="Center"
@@ -14249,7 +14240,7 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
                         <div className="image-container">
                             <a href="https://phmc.gta.world/posting.php?mode=post&f=97" target="_blank" rel="noopener noreferrer">
                                 <img
-                                    src={PHMCCivilian}
+                                    src={ZonahCivilian}
                                     height={350}
                                     width={350}
                                     className="Center"
