@@ -3755,18 +3755,35 @@ if (bbCodeVersion === 1) {
         showNotification('Form cleared!', 'check-circle');
     };
 
-        const showNotification = (message, icon = 'check-circle') => {
+    const showNotification = (message, icon = 'check-circle') => {
         setNotification({
-            message,
-            icon
+            message: message,
+            icon: getIconClass(icon), // Use a function to get the icon class
         });
-
+    
         setTimeout(() => {
             setNotification(null);
         }, 3000);
     };
-
-
+    
+    const getIconClass = (iconType) => {
+        switch (iconType) {
+            case 'check-circle':
+                return 'fas fa-check-circle';
+            case 'save':
+                return 'fas fa-save';
+            case 'clipboard':
+                return 'fas fa-clipboard-check';
+            case 'error':
+                return 'fas fa-exclamation-triangle';
+            case 'warning':
+                return 'fas fa-exclamation-circle';
+            case 'upload':
+                return 'fas fa-upload'; // Add the upload icon
+            default:
+                return 'fas fa-info-circle';
+        }
+    };
     // Add new state
     const [parsedBBCode, setParsedBBCode] = useState('');
     // update Switch logic
@@ -4068,13 +4085,14 @@ if (bbCodeVersion === 1) {
 
     const handleSave = () => {
         setIsSaving(true); // Disable the button
-
+        showNotification('Uploading...', 'upload'); // Show uploading notification
+    
         localStorage.setItem('name', name);
         localStorage.setItem('rank', rank);
         localStorage.setItem('badgeNR', badgeNR);
         localStorage.setItem('department', department);
         localStorage.setItem('phoneNumber', phoneNumber);
-
+    
         domtoimage.toPng(businessCardRef.current)
             .then(function (dataUrl) {
                 uploadToImgur(dataUrl)
@@ -4082,7 +4100,7 @@ if (bbCodeVersion === 1) {
                         setImgurLink(imgurLink);
                         showNotification(`Business Card Saved & Uploaded to Imgur: ${imgurLink}`, 'save');
                         sendDiscordWebhook(name, imgurLink);
-
+    
                         if (navigator.clipboard && navigator.clipboard.writeText) {
                             navigator.clipboard.writeText(imgurLink)
                                 .then(() => {
@@ -4098,7 +4116,7 @@ if (bbCodeVersion === 1) {
                             showNotification('Clipboard API not available', 'warning');
                             sendErrorToDiscord('Clipboard API not available in this environment.');
                         }
-
+    
                         setTimeout(() => {
                         }, 10000);
                     })
@@ -4109,40 +4127,40 @@ if (bbCodeVersion === 1) {
                         sendErrorToDiscord(errorMessage);
                     })
                     .finally(() => { // filthy work around to check for failed CSS loading
-                        setIsSaving(false); 
-                        let cssLoaded = true; 
+                        setIsSaving(false);
+                        let cssLoaded = true;
                         setTimeout(() => {
                             const inputFields = document.querySelectorAll('.business-card-input-fields input');
                             inputFields.forEach(input => {
-                                if (window.getComputedStyle(input).color === 'rgb(0, 0, 0)') { 
+                                if (window.getComputedStyle(input).color === 'rgb(0, 0, 0)') {
                                     console.error("CSS not properly loaded on input fields after save.");
                                     showNotification("CSS may not have loaded correctly. Refresh the page if styles are missing.", 'warning');
-                                    cssLoaded = false; 
+                                    cssLoaded = false;
                                 }
                             });
                             sendDiscordWebhook(name, imgurLink, cssLoaded);
                         }, 500); // Delay to allow CSS to load
                     });
-                            })
-                            .catch(function (error) {
-                                console.error('Error converting to image:', error);
-                                showNotification('Error converting business card to image', 'error');
-                            
-                                let errorMessage = 'An unknown error occurred.'; // Default message
-                            
-                                if (error && error.message) {
-                                    errorMessage = error.message;
-                                } else if (typeof error === 'string') {
-                                    errorMessage = error; // Use the error directly if it's a string
-                                } else {
-                                    errorMessage = JSON.stringify(error); // Stringify the error object
-                                }
-                            
-                                sendErrorToDiscord(`Error converting business card to image: ${errorMessage}. Full debug: ${JSON.stringify(error)}`);
-                                setIsSaving(false); // Re-enable the button in case of error
-                            });
-                            };
-
+            })
+            .catch(function (error) {
+                console.error('Error converting to image:', error);
+                showNotification('Error converting business card to image', 'error');
+    
+                let errorMessage = 'An unknown error occurred.'; // Default message
+    
+                if (error && error.message) {
+                    errorMessage = error.message;
+                } else if (typeof error === 'string') {
+                    errorMessage = error; // Use the error directly if it's a string
+                } else {
+                    errorMessage = JSON.stringify(error); // Stringify the error object
+                }
+    
+                sendErrorToDiscord(`Error converting business card to image: ${errorMessage}. Full debug: ${JSON.stringify(error)}`);
+                setIsSaving(false); // Re-enable the button in case of error
+            });
+    
+    };
         const uploadToImgur = async (base64Image) => {
         const imgurClientId = process.env.REACT_APP_IMGUR_CLIENT_ID;
         const accessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
