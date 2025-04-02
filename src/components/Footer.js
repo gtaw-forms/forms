@@ -9,7 +9,7 @@ const Footer = () => {
                     <span className="footer-text">
                     </span>
                          <span className="contact-info">
-                            PROUDLY PROVIDED TO GTA WORLD (EU).  
+                            PROUDLY PROVIDED TO GTA WORLD (EU). ICONS KINDLY PROVIDED BY FLATICON.
                         </span>
                     </>
                     <span className="footer-text">

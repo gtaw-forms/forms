@@ -4,10 +4,13 @@ import '@fortawesome/fontawesome-free/css/all.min.css';
 import Notification from './components/Notification';
 import { Modal, Form, Button, InputGroup } from 'react-bootstrap';
 import domtoimage from 'dom-to-image';
-import SavedReportsModal from './SavedReportsModal'; // Import the new component
+import SavedReportsModal from './SavedReportsModal'; 
 import getRelevantFields from './components/RevelantFields';
 import AgencySelector from './components/AgencySelector';
 import Footer from './components/Footer';
+import SeasonalEvents from './components/SeasonalEvents';
+import HeaderInfo from './HeaderInfo';
+
 // logos
 import LSPDLogo from './assets/lspd.png'
 import LSSDLogo from './assets/lssd.png'
@@ -17,18 +20,12 @@ import obstetrical from './assets/obstetrical.png'
 import gyne from './assets/gyne.png'
 import email from './assets/email.png'
 import gynecology from './assets/gynecology.png'
-import PHMCCivilian from './assets/PHMCCivilian.png'
 import Civilian from './assets/Civilian.png'
 import nurse from './assets/nurse.png'
 import PHMCLogo from './assets/phmc.png'
-// import developer from './assets/developer.png'
 import corpse from './assets/corpse.png'
-import Paperwork from './assets/myPaperwork2.png';
-import Feedback from './assets/feedback.png';
 import BusinessCardImage from './assets/business-card.png';
 import phmcpaletobay from './assets/phmcpaletobaylogo.png'
-import ZonahCivilian from './assets/ZonahCivilian.png'
-import ZonahCoroner from './assets/zonahCoroner.png'
 import './assets/fonts/Poppins-Medium.ttf';
 import {
     PurposeMedicalInformationRelease,
@@ -428,6 +425,8 @@ function App() {
     const [selectedForm, setSelectedForm] = useState(null);
     const [commitInfo, setCommitInfo] = useState({ sha: '', date: null });
     const [showPHMCModal, setShowPHMCModal] = useState(false);
+    const { imageSource: deathReportImage, className: deathReportClass } = SeasonalEvents({ imageType: 'deathReport' });
+    const { imageSource: civilianPaperworkImage, className: civilianPaperworkClass } = SeasonalEvents({ imageType: 'civilianPaperwork' });
 
 
     useEffect(() => {
@@ -4074,14 +4073,14 @@ if (bbCodeVersion === 1) {
 
     
 // business card stuff
-    const [namePosition, setNamePosition] = useState({ top: 105.5, left: 22 });
-    const [rankPosition, setRankPosition] = useState({ top: 143.65, left: 26.5 });
-    const [phoneNumberPosition, setPhoneNumberPosition] = useState({ top: 229.65, left: 88.5  });
-    const businessCardRef = useRef(null); // Ref to the business card image container
-    const nameRef = useRef(null); // Ref to the name overlay
-    const rankRef = useRef(null); // Ref to the rank overlay
-    const departmentRef = useRef(null); // Ref to the department overlay
-    const [imgurLink, setImgurLink] = useState(null);
+const namePosition = { top: 105.5, left: 22 };
+const rankPosition = { top: 143.65, left: 26.5 };
+const phoneNumberPosition = { top: 229.65, left: 88.5 };
+const businessCardRef = useRef(null);
+const nameRef = useRef(null); 
+const rankRef = useRef(null);
+const departmentRef = useRef(null); 
+const [imgurLink, setImgurLink] = useState(null);
 
     const [isSaving, setIsSaving] = useState(false);
 
@@ -4339,26 +4338,7 @@ if (bbCodeVersion === 1) {
     />
 )}
             <div className="header-info-wrapper">
-                <div className="header-info">
-                    {commitInfo.date && (
-                        <>
-                            <span className="version-info">
-                                <a href="https://github.com/GTAW-PHMC/forms/tree/gh-pages" target="_blank" rel="noopener noreferrer">
-                                    This website was last updated on {commitInfo.date} with version #{commitInfo.sha}</a>
-                                    
-                                    </span>
-This project is not sponsored or hosted by GTA World. This is hosted on Github Pages. Privacy Policy: I only track errors and debug logs. No personal data is collected or stored.
-                            <span className="contact-info">
-                                Need help? Contact Alyson Frost on <a
-                                    href="http://discord.gg/rrzJ4EeHfK"
-                                    className="discord-link"
-                                >
-                                    Discord  <i className="fab fa-discord"></i>
-                                </a>❄️❄️
-                            </span>
-                        </>
-                    )}
-                </div>
+            <HeaderInfo commitInfo={commitInfo} /> {/* Use the new component */}
             </div>
             <div className="container">
                 <div className="form-container">
@@ -4378,7 +4358,7 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
                         onClick={() => setShowMissingEmployeeModal(true)}
                         style={{
                             position: 'fixed',
-                            bottom: '20px',
+                            bottom: '30px',
                             right: '20px',
                             zIndex: 1000, // Ensure it's above other elements
                         }}
@@ -4391,7 +4371,7 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
                         onClick={() => setShowFeatureRequestModal(true)}
                         style={{
                             position: 'fixed',
-                            bottom: '20px',
+                            bottom: '30px',
                             right: '245px',
                             zIndex: 1000, // Ensure it's above other elements
                         }}
@@ -4404,7 +4384,7 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
 
                     style={{
                             position: 'fixed',
-                            bottom: '20px',
+                            bottom: '30px',
                             right: '475px',
                             zIndex: 1000, // Ensure it's above other elements
                         }}>
@@ -14183,73 +14163,71 @@ This project is not sponsored or hosted by GTA World. This is hosted on Github P
 </button>                        
                     </div>
 
-                    {bbCodeVersion === 1 && (
-                        <div className="image-container">
-                            <a href="https://phmc.gta.world/posting.php?mode=post&f=267" target="_blank" rel="noopener noreferrer">
-                                <img
-                                    src={ZonahCoroner}
-                                    height={350}
-                                    width={350}
-                                    className="Center"
-                                    alt="Death Reports Link"
-                                />
-                            </a>
-                        </div>
-                    )}
-                                        {bbCodeVersion === 3 && (
-                        <div className="image-container">
-                            <a href="https://phmc.gta.world/posting.php?mode=post&f=221" target="_blank" rel="noopener noreferrer">
-                                <img
-                                    src={ZonahCivilian}
-                                    height={350}
-                                    width={350}
-                                    className="Center"
-                                    alt="PHMC Civilian Paperwork"
-                                />
-                            </a>
-                        </div>
-                    )}
-
-                    {bbCodeVersion === 24 && (
-                        <div className="image-container">
-                            <a href="https://phmc.gta.world/posting.php?mode=post&f=109" target="_blank" rel="noopener noreferrer">
-                                <img
-                                    src={ZonahCivilian}
-                                    height={350}
-                                    width={350}
-                                    className="Center"
-                                    alt="Basic Patient File"
-                                />
-                            </a>
-                        </div>
-                    )}
-                    {bbCodeVersion === 25 && (
-                        <div className="image-container">
-                            <a href="https://phmc.gta.world/posting.php?mode=post&f=221" target="_blank" rel="noopener noreferrer">
-                                <img
-                                    src={ZonahCivilian}
-                                    height={350}
-                                    width={350}
-                                    className="Center"
-                                    alt="PHMC Civilian Paperwork"
-                                />
-                            </a>
-                        </div>
-                    )}
-                    {bbCodeVersion === 26 && (
-                        <div className="image-container">
-                            <a href="https://phmc.gta.world/posting.php?mode=post&f=97" target="_blank" rel="noopener noreferrer">
-                                <img
-                                    src={ZonahCivilian}
-                                    height={350}
-                                    width={350}
-                                    className="Center"
-                                    alt="PHMC Civilian Paperwork"
-                                />
-                            </a>
-                        </div>
-                    )}
-
+{bbCodeVersion === 1 && (
+    <div className="image-container">
+        <a href="https://phmc.gta.world/posting.php?mode=post&f=267" target="_blank" rel="noopener noreferrer" className={deathReportClass} title="IM IN SPACE MOM!!! HOW DO I STOP?">
+            <img
+                src={deathReportImage}
+                height={350}
+                width={350}
+                className="Center"
+                alt="Death Reports Link"
+            />
+        </a>
+    </div>
+)}
+{bbCodeVersion === 3 && (
+    <div className="image-container">
+        <a href="https://phmc.gta.world/posting.php?mode=post&f=221" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="IM IN SPACE MOM!!! HOW DO I STOP?">
+            <img
+                src={civilianPaperworkImage}
+                height={350}
+                width={350}
+                className="Center"
+                alt="PHMC Civilian Paperwork"
+            />
+        </a>
+    </div>
+)}
+{bbCodeVersion === 24 && (
+    <div className="image-container">
+        <a href="https://phmc.gta.world/posting.php?mode=post&f=109" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="IM IN SPACE MOM!!! HOW DO I STOP?">
+            <img
+                src={civilianPaperworkImage}
+                height={350}
+                width={350}
+                className="Center"
+                alt="Basic Patient File"
+            />
+        </a>
+    </div>
+)}
+{bbCodeVersion === 25 && (
+    <div className="image-container">
+        <a href="https://phmc.gta.world/posting.php?mode=post&f=221" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="IM IN SPACE MOM!!! HOW DO I STOP?">
+            <img
+                src={civilianPaperworkImage}
+                height={350}
+                width={350}
+                className="Center"
+                alt="PHMC Civilian Paperwork"
+            />
+        </a>
+    </div>
+)}
+{bbCodeVersion === 26 && (
+    <div className="image-container">
+        <a href="https://phmc.gta.world/posting.php?mode=post&f=97" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="IM IN SPACE MOM!!! HOW DO I STOP?">
+            <img
+                src={civilianPaperworkImage}
+                height={350}
+                width={350}
+                className="Center"
+                alt="PHMC Civilian Paperwork"
+            />
+        </a>
+    </div>
+)}
                 </div>
                             </div>
                             <Footer />
