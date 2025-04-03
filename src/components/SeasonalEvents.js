@@ -24,12 +24,12 @@ function getSeason() {
     const now = new Date();
     const month = now.getMonth();
     const day = now.getDate();
-    // April Fools (April 5th)
-    if (month === 3 && day >= 1 && day <= 5) {
+    // April Fools (April 2th)
+    if (month === 3 && day >= 1 && day <= 2) {
         return "AprilFools";
     }
     // Easter (April 5 to April 30)
-    if (month === 5 && day >= 5 && day <= 30) {
+    if (month === 3 && day >= 3 && day <= 30) {
         return "Easter";
     }
     // Christmas (December 1 to January 1)
@@ -43,7 +43,9 @@ function getSeason() {
 function seasonalEvents({ imageType }) {
     const season = getSeason();
     const imageSource = seasonalImages[imageType][season];
+
     let className = '';
+    //console.log(imageSource, className, season); // Debugging line to check values
 
     if (season === "AprilFools") {
         className = 'april-fools';

@@ -11,7 +11,7 @@
    Layout
    ========================================================================== */
 .App {
-    font-family: "Comic Sans MS", cursive, sans-serif !important;
+    font-family: Arial, Helvetica, sans-serif;
     margin: 20px;
 }
 .image-container a.april-fools img {
@@ -491,7 +491,11 @@ input[type="checkbox"] {
     .notification-dismiss:hover {
         opacity: 1;
     }
-
+    .notification-exit {
+        animation: slideOut 0.3s ease-in forwards;
+    }
+    
+/* ===== Keyframes for Animations ===== */    
 @keyframes slideIn {
     from {
         transform: translateX(100%);
@@ -502,10 +506,6 @@ input[type="checkbox"] {
         transform: translateX(0);
         opacity: 1;
     }
-}
-
-.notification-exit {
-    animation: slideOut 0.3s ease-in forwards;
 }
 
 @keyframes slideOut {

@@ -1,6 +1,6 @@
 {
-  "short_name": "PHMC - DMEC",
-  "name": "PHMC Death Investigation Report",
+  "short_name": "PHMC",
+  "name": "PHMC - Form Generator",
   "icons": [
     {
       "src": "favicon.ico",

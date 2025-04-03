@@ -4021,7 +4021,7 @@ if (bbCodeVersion === 1) {
 
     const versionNames = {
         1: "Death Report",
-        2: "Email Generator",
+        2: "Invalid Report Vector",
         3: "Patient File - Advanced",
         4: "Dental Report",
         5: "Surgery Report",
@@ -4403,7 +4403,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 1.9.2a - ❄️ Frostbite Update </h3>
+                                    <h3>Changelog - Version 1.9.3a - ❄️ Frostbite Update </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -4414,9 +4414,9 @@ const [imgurLink, setImgurLink] = useState(null);
                                 </div>
                                 <div className="modal-content">
                                     <ul>
-                                        <li> Many many business card fixes </li>
-                                        <li> Added debugging for Business Card Generation </li>
-                                        <li> Added a Save Report function (default: 31 days stored into localStorage)</li>
+                                        <li> Killed April Fools, added dynamic event handling.  </li>
+                                        <li> Attempt 40204823 fix for Coroner Reports (Email) handling. </li>
+                                        <li> Favicon is back and better than ever.  </li>
                                     </ul>
                                     - frosty
                                 </div>
@@ -5342,8 +5342,8 @@ const [imgurLink, setImgurLink] = useState(null);
                             </>
                         ) : bbCodeVersion === 2 ? (
                             <>
-                                <p>This generator prefills most of the forms for you, take a moment to review the BBCode prior to sending! </p>
-                                <Form.Label>Employee Credentials:</Form.Label>
+                                <p>Something has gone wrong, I cannot display this report currently </p>
+{/*                                 <Form.Label>Employee Credentials:</Form.Label>
                                 <Select
                                     name="coronerEmployee"
                                     value={coronerGroupedOptions
@@ -5532,7 +5532,7 @@ const [imgurLink, setImgurLink] = useState(null);
 
                                     </div>
                                 </Form.Group>
-                            </>
+ */}                            </>
                         ) : bbCodeVersion === 3 ? ( // HUGE FUCKING FORM
                         <>
                                                         <Form.Label>Patient ID, leave blank if unsure</Form.Label>
@@ -14071,7 +14071,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                 const currentDateTime = new Date().toLocaleString();
                                 const { decedentName, coronerEmployee, coronerRank, patientName, decedentOOC, phmcEmployee, requestingOfficer, patientID, patientFirstName, patientLastName} = formData;
                                 const version = bbCodeVersion === 1 ? "Decedent Report" :
-                                    bbCodeVersion === 2 ? "Coroner Report" :
+                                    bbCodeVersion === 2 ? "Invalid Report Vector" :
                                         bbCodeVersion === 3 ? "Patient File - Advanced" :
                                             bbCodeVersion === 4 ? "Dental Report " :
                                                 bbCodeVersion === 5 ? "Surgical Report " :
@@ -14132,7 +14132,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         >
                             <i className="fas fa-clipboard"></i>
     Copy {bbCodeVersion === 1 ? "Death Report" :
-        bbCodeVersion === 2 ? "Coroner Report" :
+        bbCodeVersion === 2 ? "Invalid Report Vector" :
         bbCodeVersion === 3 ? "Detailed Patient File" :
         bbCodeVersion === 4 ? "Internal Medicine Report" :
         bbCodeVersion === 5 ? "Surgical Operations Report" :

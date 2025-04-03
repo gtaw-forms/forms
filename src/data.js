@@ -20,7 +20,14 @@ export const patientBloodType = [
     { value: 'AB+', label: 'AB+' },
     { value: 'AB-', label: 'AB-' },
 ];
-
+// to add in next update, replace isNurse, isDoctor with Form.Select 
+export const hospitalRank = [
+    { value: 'Intern', label: 'Intern' },
+    { value: 'Resident', label: 'Resident' },
+    { value: 'Attending', label: 'Attending' },
+    { value: 'Fellow', label: 'Fellow' },
+    { value: 'Chief', label: 'Chief' },
+];
 export const MedicalRecordsRelease = [
     { value: 'ERVisit', label: 'Emergency Room Visit: ER notes, progress notes, consultations, procedure notes, test results' },
     { value: 'HospitalStay', label: 'Hospital Stay: History and physical, progress notes, consultations, operative reports, discharge summary, test results' },
