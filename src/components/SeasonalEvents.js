@@ -49,9 +49,10 @@ function seasonalEvents({ imageType }) {
 
     if (season === "AprilFools") {
         className = 'april-fools';
+    } else if (season === "Easter") {
+        className = 'easter-bounce';
     }
 
     return { imageSource, className, season };
 }
-
 export default seasonalEvents;

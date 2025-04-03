@@ -14165,7 +14165,7 @@ const [imgurLink, setImgurLink] = useState(null);
 
 {bbCodeVersion === 1 && (
     <div className="image-container">
-        <a href="https://phmc.gta.world/posting.php?mode=post&f=267" target="_blank" rel="noopener noreferrer" className={deathReportClass} title="IM IN SPACE MOM!!! HOW DO I STOP?">
+        <a href="https://phmc.gta.world/posting.php?mode=post&f=267" target="_blank" rel="noopener noreferrer" className={deathReportClass} title="Easter Bunny goes bounce bounce">
             <img
                 src={deathReportImage}
                 height={350}
@@ -14178,7 +14178,7 @@ const [imgurLink, setImgurLink] = useState(null);
 )}
 {bbCodeVersion === 3 && (
     <div className="image-container">
-        <a href="https://phmc.gta.world/posting.php?mode=post&f=221" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="IM IN SPACE MOM!!! HOW DO I STOP?">
+        <a href="https://phmc.gta.world/posting.php?mode=post&f=221" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="Easter Bunny goes bounce bounce">
             <img
                 src={civilianPaperworkImage}
                 height={350}
@@ -14191,7 +14191,7 @@ const [imgurLink, setImgurLink] = useState(null);
 )}
 {bbCodeVersion === 24 && (
     <div className="image-container">
-        <a href="https://phmc.gta.world/posting.php?mode=post&f=109" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="IM IN SPACE MOM!!! HOW DO I STOP?">
+        <a href="https://phmc.gta.world/posting.php?mode=post&f=109" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="Easter Bunny goes bounce bounce">
             <img
                 src={civilianPaperworkImage}
                 height={350}
@@ -14204,7 +14204,7 @@ const [imgurLink, setImgurLink] = useState(null);
 )}
 {bbCodeVersion === 25 && (
     <div className="image-container">
-        <a href="https://phmc.gta.world/posting.php?mode=post&f=221" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="IM IN SPACE MOM!!! HOW DO I STOP?">
+        <a href="https://phmc.gta.world/posting.php?mode=post&f=221" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="Easter Bunny goes bounce bounce">
             <img
                 src={civilianPaperworkImage}
                 height={350}
@@ -14217,7 +14217,7 @@ const [imgurLink, setImgurLink] = useState(null);
 )}
 {bbCodeVersion === 26 && (
     <div className="image-container">
-        <a href="https://phmc.gta.world/posting.php?mode=post&f=97" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="IM IN SPACE MOM!!! HOW DO I STOP?">
+        <a href="https://phmc.gta.world/posting.php?mode=post&f=97" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="Easter Bunny goes bounce bounce">
             <img
                 src={civilianPaperworkImage}
                 height={350}
