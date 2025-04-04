@@ -51,11 +51,12 @@ export const patientBloodType = [
 // to add in next update, replace isNurse, isDoctor with Form.Select 
 export const phmcRank = [
     { value: 'Nurse', label: 'Nurse' },
+    { value: 'NP', label: 'Nurse Practitioner' },
     { value: 'Psych', label: 'Psych' },
     { value: 'Physician', label: 'Physician' },
-    { value: 'Doctor', label: 'Doctor' },
     { value: 'Surgeon', label: 'Surgeon' },
-    { value: 'PATest', label: 'Physician Assistant' },
+    { value: 'PA', label: 'Physician Assistant' },
+    { value: 'Phyiscal Therapist', label: 'Physical Therapist' },
 ];
 export const MedicalRecordsRelease = [
     { value: 'ERVisit', label: 'Emergency Room Visit: ER notes, progress notes, consultations, procedure notes, test results' },
@@ -384,7 +385,7 @@ export const coronerList = [
     { name: 'Chloe Howard', badge: '54372', rank: 'Medical Examiner', discord: 'lovely4ngel', category: 'Medical Examiner' },
     { name: 'Wesley Kramer', badge: '16511', rank: 'Coroner Investigator', discord: 'lucasin16', category: 'Coroner Investigator' },
     { name: 'Pubert Kennedy', badge: '171763', rank: 'Forensic Attendant', discord: 'mynameiscian', category: 'Forensic Attendant' },
-    { name: 'Alyson Frost', badge: '5573', rank: 'Coroner Investigator', discord: 'fr0sty.js', category: 'Coroner Investigator' },
+    { name: 'Alyson Frost', badge: '5573', rank: 'Senior Coroner Investigator', discord: 'fr0sty.js', category: 'Coroner Investigator' },
     { name: 'Arthur Blackwood', badge: '153528', rank: 'Medical Examiner', discord: 'deputysmall', category: 'Medical Examiner' },
     { name: 'Ellie Paisley', badge: '151785', rank: 'Coroner Investigator', discord: 'hoperunsthin', category: 'Coroner Investigator' },
     { name: 'Adam Kilroy', badge: '128989', rank: 'Coroner Investigator', discord: 'simon4444', category: 'Coroner Investigator' },

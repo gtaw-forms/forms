@@ -416,12 +416,7 @@ function App() {
     const [isUploading, setIsUploading] = useState(false);
     const [isJohnDoe, setIsJohnDoe] = useState(false);
     const [isJaneDoe, setIsJaneDoe] = useState(false);
-    const [isDoctor, setIsDoctor] = useState(false);
-    const [isNurse, setIsNurse] = useState(false);
-    const [isPsych, setIsPsych] = useState(false);
-    const [isSurgeon, setIsSurgeon] = useState(false);
     const [notification, setNotification] = useState(null);
-    const [selectedForm, setSelectedForm] = useState(null);
     const [commitInfo, setCommitInfo] = useState({ sha: '', date: null });
     const [showPHMCModal, setShowPHMCModal] = useState(false);
     const { imageSource: deathReportImage, className: deathReportClass } = SeasonalEvents({ imageType: 'deathReport' });
@@ -734,57 +729,6 @@ const handleFeatureRequestSubmit = async () => {
         }
     };
 
-    const handlePHMCRank = (type) => (e) => {
-        if (type === 'doctor') {
-            setIsDoctor(e.target.checked);
-            setIsNurse(false);
-            setIsPsych(false);
-            setIsSurgeon(false);
-            if (e.target.checked) {
-                setRank('DOC');
-                setFormData(prev => ({ ...prev, phmcRank: 'DOC' }));
-            } else {
-                setRank('');
-                setFormData(prev => ({ ...prev, phmcRank: '' }));
-            }
-        } else if (type === 'nurse') {
-            setIsNurse(e.target.checked);
-            setIsDoctor(false);
-            setIsPsych(false);
-            setIsSurgeon(false);
-            if (e.target.checked) {
-                setRank('NURSE');
-                setFormData(prev => ({ ...prev, phmcRank: 'NURSE' }));
-            } else {
-                setRank('');
-                setFormData(prev => ({ ...prev, phmcRank: '' }));
-            }
-        } else if (type === 'psych') {
-            setIsPsych(e.target.checked);
-            setIsDoctor(false);
-            setIsNurse(false);
-            setIsSurgeon(false);
-            if (e.target.checked) {
-                setRank('PSYCH');
-                setFormData(prev => ({ ...prev, phmcRank: 'PSYCH' }));
-            } else {
-                setRank('');
-                setFormData(prev => ({ ...prev, phmcRank: '' }));
-            }
-        } else if (type === 'surgeon') {
-            setIsSurgeon(e.target.checked);
-            setIsDoctor(false);
-            setIsNurse(false);
-            setIsPsych(false);
-            if (e.target.checked) {
-                setRank('SURGEON');
-                setFormData(prev => ({ ...prev, phmcRank: 'Surgeon' }));
-            } else {
-                setRank('');
-                setFormData(prev => ({ ...prev, phmcRank: '' }));
-            }
-        }
-    };
 
     useEffect(() => {
         // Store console errors in localStorage
@@ -1309,7 +1253,7 @@ ${patientSummary}
             patientID,
             patientSummaryConsultation,
             patientAddress,
-            rank,
+            phmcRank,
             date,
             patientSummary,
             lastName,
@@ -1322,7 +1266,7 @@ ${patientSummary}
 PATIENT ${patientID}
 
 Date: ${date}
-Signed: ${rank} ${lastName}
+Signed: ${phmcRank} ${lastName}
 
 [/center][td][center][img]https://i.imgur.com/QMaz0OC.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PILLBOX HILL MEDICAL CENTER[/b]
 ELGIN AVE. / STRAWBERRY AVE.
@@ -2170,7 +2114,7 @@ ${patientSummaryConsultation}
             patientID,
             date,
             patientChiefComplaint,
-            rank,
+            phmcRank,
             patientNotes, 
             patientDiagnosis,
             patientMedicine,
@@ -2182,7 +2126,7 @@ ${patientSummaryConsultation}
 PATIENT ${patientID}
 
 Date: ${date}
-Signed: ${rank} ${lastName}
+Signed: ${phmcRank} ${lastName}
 [/center][td][center][img]https://i.imgur.com/QMaz0OC.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PILLBOX HILL MEDICAL CENTER[/b]
 ELGIN AVE. / STRAWBERRY AVE.
 PO BOX 742
@@ -2227,7 +2171,7 @@ ${patientMedicine}
         const {
             lastName,
             patientID,
-            rank,
+            phmcRank,
             date,
             patientChiefComplaint,
             patientNotes, 
@@ -2241,7 +2185,7 @@ ${patientMedicine}
 PATIENT ${patientID}
 
 Date: ${date}
-Signed: ${rank} ${lastName}
+Signed: ${phmcRank} ${lastName}
 [/center][td][center][img]https://i.imgur.com/LkRKav2.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PALETO BAY CLINIC[/b]
 PALETO BAY BLVD.
 PO BOX 685
@@ -2893,9 +2837,10 @@ Follow us on Facebrowser: [url=https://face.gta.world/pages/PHMC?ref=qs]Pillbox 
                 patientHazards, 
                 patientOther, 
                 dnrOther,
-                decedentOOC
+                scenePhotos
                     } = formData;
-    
+                    const scenePhotosBBCode = scenePhotos.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
+
             let bbCode = `[table][tr][td][center][br][/br][br][/br][b]Patient Information[/b]
 
 [size=110]PATIENT ${patientID}
@@ -2980,7 +2925,7 @@ I, ${patientName}, upon submitting this form, consent to the sharing of my medic
 I, ${patientName}, retain the right to revoke this consent at any time by notifying Pillbox Hill Medical Center in writing. However, I also understand that revoking consent may limit the ability of healthcare professionals to provide me with optimal and coordinated care.[/list][/divbox]
 [divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Payment[/b][/color][/size][/center][/divboxcolor]
 [table][tr][td] Please attach an unedited confirmation of your payment, unless you are exempt. [size=70](see question 14 in the FAQ thread on how to pay)[/size][/td][td]
-[url=${decedentOOC}]Proof Of Payment [/url]
+[url=${scenePhotos}]Proof Of Payment [/url]
 [/table]`
             return bbCode;
             };
@@ -3457,6 +3402,7 @@ if (bbCodeVersion === 1) {
             placeOfDeath: '',
             department: '',
             dateTime: '',
+            phmcRank: '',
             BodyMassIndex: '',
             serialNumber: '',
             decedentName: '',
@@ -6090,7 +6036,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                 )}
                                         </div>
                                         <Form.Label>Date and Proof of Payment </Form.Label>
-
+                                        <span className="helper-text"> 14) How do I pay the $2,000 registration fee? <br></br> To pay your $2,000 registration fee, please log into the banking website and navigate to the "Payment" section. Select your preferred payment method (e.g., credit card, debit card), insert our routing number (020000062), enter the required payment details, review the transaction, and confirm your payment. (( Type /transfer 2000 020000062 )) <br></br>If you are a minor or a low-income citizen, please state it in your registration as you are excempt from the payment. </span>
                                         <Form.Control
                                             type="date"
                                             name="date"
@@ -6100,15 +6046,48 @@ const [imgurLink, setImgurLink] = useState(null);
                                             required
                                             className={`form-control ${!formData.date ? 'is-invalid' : ''}`}
                                         />
-                                    <Form.Control
-                                    type="text"
-                                    name="decedentOOC"
-                                    value={formData.decedentOOC}
-                                    onChange={handleChange}
-                                    placeholder="Proof of Payment URL"
-                                    required
-                                    className="form-control"
-                                    />
+                                    <InputGroup>
+                                        <Form.Control
+                                            as="textarea"
+                                            rows="2"
+                                            name="scenePhotos"
+                                            value={formData.scenePhotos}
+                                            onChange={handleChange}
+                                            placeholder="Paste image URL here"
+                                            required
+                                            className="form-control"
+                                            onPaste={(e) => {
+                                                e.preventDefault();
+                                                const items = e.clipboardData.items;
+                                                for (let i = 0; i < items.length; i++) {
+                                                    if (items[i].type.indexOf('image') !== -1) {
+                                                        const file = items[i].getAsFile();
+                                                        handleImageUpload({ target: { files: [file] } }, 'scenePhotos');
+                                                    }
+                                                }
+                                            }}
+
+                                        />
+                                        <Button
+                                            variant="success"
+                                            disabled={isUploading}
+                                            onClick={() => {
+                                                const input = document.createElement('input');
+                                                input.type = 'file';
+                                                input.accept = 'image/*';
+                                                input.multiple = true;
+                                                input.onchange = (e) => handleImageUpload(e, 'scenePhotos');
+                                                input.click();
+                                            }}
+                                        >
+                                            <i className={`fas ${isUploading ? 'fa-spinner fa-spin' : 'fa-upload'}`}></i>
+                                            {isUploading ? 'Uploading...' : 'Upload Images'}
+                                        </Button>
+
+                                    </InputGroup>
+                                    <span className="helper-text">
+                                    This supports clipboard uploading, ctrl + V! | Hosted by Imgur! - <a href="https://imgur.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+                                    </span>
 
 
                                 </>
@@ -6362,43 +6341,19 @@ const [imgurLink, setImgurLink] = useState(null);
                                         required
                                     />
 
-                                <div className="radio-inline-container">
-                                <span className="radio-text">Role:</span>
-                                    <Form.Check
-                                        type="radio"
-                                        id="doctorRank"
-                                        label="   Doctor"
-                                        checked={isDoctor}
-                                        onChange={handlePHMCRank('doctor')}
-                                        inline
-                                    />
-                                    <Form.Check
-                                        type="radio"
-                                        id="nurseRank"
-                                        label="   Nurse"
-                                        checked={isNurse}
-                                        onChange={handlePHMCRank('nurse')}
-                                        inline
-                                    />
-                                    <Form.Check
-                                        type="radio"
-                                        id="psychRank"
-                                        label="   Psychiatrist"
-                                        checked={isPsych}
-                                        onChange={handlePHMCRank('psych')}
-                                        inline
-                                    /> 
-                                                                        <Form.Check
-                                        type="radio"
-                                        id="surgeonRank"
-                                        label="   Surgeon"
-                                        checked={isSurgeon}
-                                        onChange={handlePHMCRank('surgeon')}
-                                        inline
-                                    /> 
+                                <Form.Select
+                                            name="phmcRank"
+                                            value={formData.phmcRank}
+                                            onChange={handleChange}
+                                            required
+                                            className={`form-control ${!formData.phmcRank ? 'is-invalid' : ''}`}
+                                        >
+                                            <option value="" disabled>PHMC Rank</option>
+                                            {phmcRank.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </Form.Select>
 
-                                    </div>
-                                <Form.Label></Form.Label>
 
  
                                 <Select
@@ -6665,27 +6620,18 @@ const [imgurLink, setImgurLink] = useState(null);
                                     
                                 /> </div>
 
-                                <div className="radio-inline-container">
-
-                                    <span className="radio-text">Role:</span>
-                                    <Form.Check
-                                        type="radio"
-                                        id="doctorRank"
-                                        label="   Doctor"
-                                        checked={isDoctor}
-                                        onChange={handlePHMCRank('doctor')}
-                                        inline
-                                    />
-                                    <Form.Check
-                                        type="radio"
-                                        id="nurseRank"
-                                        label="   Nurse"
-                                        checked={isNurse}
-                                        onChange={handlePHMCRank('nurse')}
-                                        inline
-                                    />
-                                      </div>
-                                <Form.Label></Form.Label>
+                                            <Form.Select
+                                            name="phmcRank"
+                                            value={formData.phmcRank}
+                                            onChange={handleChange}
+                                            required
+                                            className={`form-control ${!formData.phmcRank ? 'is-invalid' : ''}`}
+                                        >
+                                            <option value="" disabled>PHMC Rank</option>
+                                            {phmcRank.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </Form.Select>
                                 <Form.Label>Employee Credentials:</Form.Label>
 
                                 <Select
@@ -7058,26 +7004,18 @@ const [imgurLink, setImgurLink] = useState(null);
                                                                 
                                                             /> </div>
 
-                                                            <div className="radio-inline-container">
-                                                                                                                                <span className="radio-text">Role:</span>
-                                                                <Form.Check
-                                                                    type="radio"
-                                                                    id="doctorRank"
-                                                                    label="   Doctor"
-                                                                    checked={isDoctor}
-                                                                    onChange={handlePHMCRank('doctor')}
-                                                                    inline
-                                                                />
-                                                                <Form.Check
-                                                                    type="radio"
-                                                                    id="nurseRank"
-                                                                    label="   Nurse"
-                                                                    checked={isNurse}
-                                                                    onChange={handlePHMCRank('nurse')}
-                                                                    inline
-                                                                />
-                                                                  </div>
-                                                            <Form.Label></Form.Label>
+<Form.Select
+                                            name="phmcRank"
+                                            value={formData.phmcRank}
+                                            onChange={handleChange}
+                                            required
+                                            className={`form-control ${!formData.phmcRank ? 'is-invalid' : ''}`}
+                                        >
+                                            <option value="" disabled>PHMC Rank</option>
+                                            {phmcRank.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </Form.Select>
                                                             <Form.Label>Employee Credentials:</Form.Label>
                             
                                                             <Select
@@ -9116,54 +9054,40 @@ const [imgurLink, setImgurLink] = useState(null);
                             </>
                         ) : bbCodeVersion === 14 ? ( // generateMentalHealthPHMC
                             <>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+
                             <Form.Control
-                                    type="text"
-                                    name="patientID"
-                                    value={formData.patientID}
-                                    onChange={handleChange}
-                                    placeholder="Patient ID"
-                                    required
-                                    className="form-control"
-                                />
+                            type="text"
+                            name="patientID"
+                            value={formData.patientID}
+                            onChange={handleChange}
+                            placeholder="Patient ID"
+                            required
+                            className="form-control"
+                            />
 
-                                <Form.Label>Date:</Form.Label>
-                                <Form.Control
-                                    type="date"
-                                    name="date"
-                                    value={formData.date}
-                                    onChange={handleChange}
-                                    required
-                                    className="form-control"
-                                />
-
-                                <div className="radio-inline-container">
-
-                                    <span className="radio-text">Role:</span>
-                                    <Form.Check
-                                        type="radio"
-                                        id="doctorRank"
-                                        label="   Doctor"
-                                        checked={isDoctor}
-                                        onChange={handlePHMCRank('doctor')}
-                                        inline
-                                    />
-                                    <Form.Check
-                                        type="radio"
-                                        id="nurseRank"
-                                        label="   Nurse"
-                                        checked={isNurse}
-                                        onChange={handlePHMCRank('nurse')}
-                                        inline
-                                    />
-                                    <Form.Check
-                                        type="radio"
-                                        id="psychRank"
-                                        label="   Psychiatrist"
-                                        checked={isPsych}
-                                        onChange={handlePHMCRank('psych')}
-                                        inline
-                                    />  </div>
-                                <Form.Label></Form.Label>
+                            <Form.Label>Date:</Form.Label>
+                            <Form.Control
+                            type="date"
+                            name="date"
+                            value={formData.date}
+                            onChange={handleChange}
+                            required
+                            className="form-control"
+                            />
+                            </div>
+                                        <Form.Select
+                                            name="phmcRank"
+                                            value={formData.phmcRank}
+                                            onChange={handleChange}
+                                            required
+                                            className={`form-control ${!formData.phmcRank ? 'is-invalid' : ''}`}
+                                        >
+                                            <option value="" disabled>PHMC Rank</option>
+                                            {phmcRank.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </Form.Select>
 
  
                                 <Select
@@ -9219,8 +9143,8 @@ const [imgurLink, setImgurLink] = useState(null);
                                     }}
                                 />
                                 <Form.Label></Form.Label>
-                                                                                    <Form.Group className="mb-3">
-                                                                    <Form.Control
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                <Form.Control
                                         as="textarea"
                                         name="patientChiefComplaint"
                                         value={formData.patientChiefComplaint}
@@ -9231,7 +9155,8 @@ const [imgurLink, setImgurLink] = useState(null);
                                                                                         />
 
                                     <Form.Control
-                                        type="text"
+                                        as="textarea"
+                                        rows="3"
                                         name="patientNotes"
                                         value={formData.patientNotes}
                                         onChange={handleChange}
@@ -9239,8 +9164,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                         required
                                         className="form-control"
                                     />
-                                <Form.Label></Form.Label>
-
+</div>
                                 <Select
                                     name="admission"
                                     value={admission.find(option => option.value === formData.admission)}
@@ -9290,6 +9214,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                 />
                                 <Form.Label></Form.Label>
                                     <Form.Label><br></br></Form.Label>
+
                                     <Form.Control
                                         as="textarea"
                                         name="patientDiagnosis"
@@ -9298,8 +9223,9 @@ const [imgurLink, setImgurLink] = useState(null);
                                         placeholder="Diagnosis"
                                         rows="3"
                                         required
-                                                                                        />
-                                                                        <Form.Control
+                                                />
+        <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Control
                                         as="textarea"
                                         name="patientProcedure"
                                         value={formData.patientProcedure}
@@ -9316,7 +9242,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                         placeholder="Patient Medicine"
                                         rows="2"
                                     />
-                                </Form.Group>
+                                    </div>
                                 <Select
                                     name="followup"
                                     value={followup.find(option => option.value === formData.followup)}
@@ -9368,54 +9294,40 @@ const [imgurLink, setImgurLink] = useState(null);
                             </>
                         ) : bbCodeVersion === 16 ? ( // generateMentalHealthPBC
                             <>
-                                                            <Form.Control
-                                    type="text"
-                                    name="patientID"
-                                    value={formData.patientID}
-                                    onChange={handleChange}
-                                    placeholder="Patient ID"
-                                    required
-                                    className="form-control"
-                                />
+                        <div style={{ display: 'flex', gap: '10px' }}>
 
-                                <Form.Label>Date:</Form.Label>
-                                <Form.Control
-                                    type="date"
-                                    name="date"
-                                    value={formData.date}
-                                    onChange={handleChange}
-                                    required
-                                    className="form-control"
-                                />
+                            <Form.Control
+                            type="text"
+                            name="patientID"
+                            value={formData.patientID}
+                            onChange={handleChange}
+                            placeholder="Patient ID"
+                            required
+                            className="form-control"
+                            />
 
-                                <div className="radio-inline-container">
-
-                                    <span className="radio-text">Role:</span>
-                                    <Form.Check
-                                        type="radio"
-                                        id="doctorRank"
-                                        label="   Doctor"
-                                        checked={isDoctor}
-                                        onChange={handlePHMCRank('doctor')}
-                                        inline
-                                    />
-                                    <Form.Check
-                                        type="radio"
-                                        id="nurseRank"
-                                        label="   Nurse"
-                                        checked={isNurse}
-                                        onChange={handlePHMCRank('nurse')}
-                                        inline
-                                    />
-                                    <Form.Check
-                                        type="radio"
-                                        id="psychRank"
-                                        label="   Psychiatrist"
-                                        checked={isPsych}
-                                        onChange={handlePHMCRank('psych')}
-                                        inline
-                                    />  </div>
-                                <Form.Label></Form.Label>
+                            <Form.Label>Date:</Form.Label>
+                            <Form.Control
+                            type="date"
+                            name="date"
+                            value={formData.date}
+                            onChange={handleChange}
+                            required
+                            className="form-control"
+                            />
+                            </div>
+                                        <Form.Select
+                                            name="phmcRank"
+                                            value={formData.phmcRank}
+                                            onChange={handleChange}
+                                            required
+                                            className={`form-control ${!formData.phmcRank ? 'is-invalid' : ''}`}
+                                        >
+                                            <option value="" disabled>PHMC Rank</option>
+                                            {phmcRank.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </Form.Select>
 
  
                                 <Select
@@ -9426,7 +9338,6 @@ const [imgurLink, setImgurLink] = useState(null);
                                     onChange={(selectedOption) => {
                                         // eslint-disable-next-line no-unused-vars
                                         const lastName = selectedOption ? selectedOption.lastName : '';
-                                        console.log("DEBUG: Last Name:", lastName); // Add this line to use the variable
                                         setFormData(prev => ({
                                             ...prev,
                                             phmcEmployee: selectedOption ? selectedOption.value : '',
@@ -9472,19 +9383,20 @@ const [imgurLink, setImgurLink] = useState(null);
                                     }}
                                 />
                                 <Form.Label></Form.Label>
-                                                                                    <Form.Group className="mb-3">
-                                                                    <Form.Control
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                <Form.Control
                                         as="textarea"
                                         name="patientChiefComplaint"
                                         value={formData.patientChiefComplaint}
                                         onChange={handleChange}
-                                        placeholder="Patient's Chief Complaint"
+                                        placeholder="Patient Chief Complaint"
                                         rows="3"
                                         required
                                                                                         />
 
                                     <Form.Control
-                                        type="text"
+                                        as="textarea"
+                                        rows="3"
                                         name="patientNotes"
                                         value={formData.patientNotes}
                                         onChange={handleChange}
@@ -9492,8 +9404,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                         required
                                         className="form-control"
                                     />
-                                <Form.Label></Form.Label>
-
+</div>
                                 <Select
                                     name="admission"
                                     value={admission.find(option => option.value === formData.admission)}
@@ -9543,6 +9454,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                 />
                                 <Form.Label></Form.Label>
                                     <Form.Label><br></br></Form.Label>
+
                                     <Form.Control
                                         as="textarea"
                                         name="patientDiagnosis"
@@ -9551,8 +9463,9 @@ const [imgurLink, setImgurLink] = useState(null);
                                         placeholder="Diagnosis"
                                         rows="3"
                                         required
-                                                                                        />
-                                                                        <Form.Control
+                                                />
+        <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Control
                                         as="textarea"
                                         name="patientProcedure"
                                         value={formData.patientProcedure}
@@ -9569,7 +9482,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                         placeholder="Patient Medicine"
                                         rows="2"
                                     />
-                                </Form.Group>
+                                    </div>
                                 <Select
                                     name="followup"
                                     value={followup.find(option => option.value === formData.followup)}
@@ -9617,6 +9530,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                         })
                                     }}
                                 />
+
                             </>
                         ) : bbCodeVersion === 18 ? ( // generateAgencyFeedback
                             <>
@@ -9739,7 +9653,6 @@ const [imgurLink, setImgurLink] = useState(null);
                                     className="form-control"
                                 />
 
-                                <Form.Group className="mb-3 upload-container">
                                     <Form.Label>
                                         ((Screenshots or Evidence)):
                                     </Form.Label>
@@ -9781,10 +9694,6 @@ const [imgurLink, setImgurLink] = useState(null);
                                         </Button>
 
                                     </InputGroup>
-                                    <span className="helper-text">
-                                    This supports clipboard uploading, ctrl + V! | Hosted by Imgur! - <a href="https://imgur.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
-                                    </span>
-                                </Form.Group>
                             </>
                         ) : bbCodeVersion === 19 ? ( // Emergency Room Forms - generateERForm
                             <>
@@ -9809,26 +9718,18 @@ const [imgurLink, setImgurLink] = useState(null);
                                     className={`form-control ${!formData.date ? 'is-invalid' : ''}`}
                                 />
 
-                                <div className="radio-inline-container">
-
-                                    <span className="radio-text">Role:</span>
-                                    <Form.Check
-                                        type="radio"
-                                        id="doctorRank"
-                                        label="   Doctor"
-                                        checked={isDoctor}
-                                        onChange={handlePHMCRank('doctor')}
-                                        inline
-                                    />
-                                    <Form.Check
-                                        type="radio"
-                                        id="nurseRank"
-                                        label="   Nurse"
-                                        checked={isNurse}
-                                        onChange={handlePHMCRank('nurse')}
-                                        inline
-                                    />  </div>
-                                <Form.Label></Form.Label>
+<Form.Select
+                                            name="phmcRank"
+                                            value={formData.phmcRank}
+                                            onChange={handleChange}
+                                            required
+                                            className={`form-control ${!formData.phmcRank ? 'is-invalid' : ''}`}
+                                        >
+                                            <option value="" disabled>PHMC Rank</option>
+                                            {phmcRank.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </Form.Select>
                                 <Form.Label>Employee Credentials:</Form.Label>
 
                                 <Select
@@ -10195,34 +10096,18 @@ const [imgurLink, setImgurLink] = useState(null);
                                     className={`form-control ${!formData.date ? 'is-invalid' : ''}`}
                                 />
 
-                                <div className="radio-inline-container">
-
-                                    <span className="radio-text">Role:</span>
-                                    <Form.Check
-                                        type="radio"
-                                        id="doctorRank"
-                                        label="   Doctor"
-                                        checked={isDoctor}
-                                        onChange={handlePHMCRank('doctor')}
-                                        inline
-                                    />
-                                    <Form.Check
-                                        type="radio"
-                                        id="nurseRank"
-                                        label="   Nurse"
-                                        checked={isNurse}
-                                        onChange={handlePHMCRank('nurse')}
-                                        inline
-                                    />
-                                    <Form.Check
-                                        type="radio"
-                                        id="psychRank"
-                                        label="   Psychiatrist"
-                                        checked={isPsych}
-                                        onChange={handlePHMCRank('psych')}
-                                        inline
-                                    />  </div>
-                                <Form.Label></Form.Label>
+<Form.Select
+                                            name="phmcRank"
+                                            value={formData.phmcRank}
+                                            onChange={handleChange}
+                                            required
+                                            className={`form-control ${!formData.phmcRank ? 'is-invalid' : ''}`}
+                                        >
+                                            <option value="" disabled>PHMC Rank</option>
+                                            {phmcRank.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </Form.Select>
                                 <Form.Label>Employee Credentials:</Form.Label>
 
                                 <Select
@@ -10599,34 +10484,18 @@ const [imgurLink, setImgurLink] = useState(null);
                                     className={`form-control ${!formData.date ? 'is-invalid' : ''}`}
                                 />
 
-                                <div className="radio-inline-container">
-
-                                    <span className="radio-text">Role:</span>
-                                    <Form.Check
-                                        type="radio"
-                                        id="doctorRank"
-                                        label="   Doctor"
-                                        checked={isDoctor}
-                                        onChange={handlePHMCRank('doctor')}
-                                        inline
-                                    />
-                                    <Form.Check
-                                        type="radio"
-                                        id="nurseRank"
-                                        label="   Nurse"
-                                        checked={isNurse}
-                                        onChange={handlePHMCRank('nurse')}
-                                        inline
-                                    />
-                                    <Form.Check
-                                        type="radio"
-                                        id="psychRank"
-                                        label="   Psychiatrist"
-                                        checked={isPsych}
-                                        onChange={handlePHMCRank('psych')}
-                                        inline
-                                    />  </div>
-                                <Form.Label></Form.Label>
+<Form.Select
+                                            name="phmcRank"
+                                            value={formData.phmcRank}
+                                            onChange={handleChange}
+                                            required
+                                            className={`form-control ${!formData.phmcRank ? 'is-invalid' : ''}`}
+                                        >
+                                            <option value="" disabled>PHMC Rank</option>
+                                            {phmcRank.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </Form.Select>
                                 <Form.Label>Employee Credentials:</Form.Label>
 
                                 <Select
@@ -12295,34 +12164,18 @@ const [imgurLink, setImgurLink] = useState(null);
                                     className={`form-control ${!formData.date ? 'is-invalid' : ''}`}
                                     />
 
-                                <div className="radio-inline-container">
-
-                                    <span className="radio-text">Role:</span>
-                                    <Form.Check
-                                        type="radio"
-                                        id="doctorRank"
-                                        label="   Doctor"
-                                        checked={isDoctor}
-                                        onChange={handlePHMCRank('doctor')}
-                                        inline
-                                    />
-                                    <Form.Check
-                                        type="radio"
-                                        id="nurseRank"
-                                        label="   Nurse"
-                                        checked={isNurse}
-                                        onChange={handlePHMCRank('nurse')}
-                                        inline
-                                    />
-                                    <Form.Check
-                                        type="radio"
-                                        id="psychRank"
-                                        label="   Psychiatrist"
-                                        checked={isPsych}
-                                        onChange={handlePHMCRank('psych')}
-                                        inline
-                                    />  </div>
-                                <Form.Label></Form.Label>
+<Form.Select
+                                            name="phmcRank"
+                                            value={formData.phmcRank}
+                                            onChange={handleChange}
+                                            required
+                                            className={`form-control ${!formData.phmcRank ? 'is-invalid' : ''}`}
+                                        >
+                                            <option value="" disabled>PHMC Rank</option>
+                                            {phmcRank.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </Form.Select>
 
  
                                 <Select
@@ -12838,34 +12691,18 @@ const [imgurLink, setImgurLink] = useState(null);
                                     className={`form-control ${!formData.date ? 'is-invalid' : ''}`}
                                     />
 
-                                <div className="radio-inline-container">
-
-                                    <span className="radio-text">Role:</span>
-                                    <Form.Check
-                                        type="radio"
-                                        id="doctorRank"
-                                        label="   Doctor"
-                                        checked={isDoctor}
-                                        onChange={handlePHMCRank('doctor')}
-                                        inline
-                                    />
-                                    <Form.Check
-                                        type="radio"
-                                        id="nurseRank"
-                                        label="   Nurse"
-                                        checked={isNurse}
-                                        onChange={handlePHMCRank('nurse')}
-                                        inline
-                                    />
-                                    <Form.Check
-                                        type="radio"
-                                        id="psychRank"
-                                        label="   Psychiatrist"
-                                        checked={isPsych}
-                                        onChange={handlePHMCRank('psych')}
-                                        inline
-                                    />  </div>
-                                <Form.Label></Form.Label>
+<Form.Select
+                                            name="phmcRank"
+                                            value={formData.phmcRank}
+                                            onChange={handleChange}
+                                            required
+                                            className={`form-control ${!formData.phmcRank ? 'is-invalid' : ''}`}
+                                        >
+                                            <option value="" disabled>PHMC Rank</option>
+                                            {phmcRank.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </Form.Select>
 
  
                                 <Select
@@ -13374,7 +13211,7 @@ const [imgurLink, setImgurLink] = useState(null);
 
                 </div>
                 <div className="output-container">
-    {showMissingEmployeeModal && (
+     {showMissingEmployeeModal && (
         <div className="modal-overlay">
             <div className="modal">
                 <Modal.Header>
@@ -13392,23 +13229,23 @@ const [imgurLink, setImgurLink] = useState(null);
                         type="radio"
                         id="doctorRank"
                         label="   Coroner"
-                        checked={isDoctor}
-                        onChange={handlePHMCRank('doctor')}
+                        checked={isJohnDoe}
+                        onChange={handleDoeChange('john')}
                         inline
                     />
                     <Form.Check
                         type="radio"
                         id="nurseRank"
                         label="   Hospital Staff"
-                        checked={isNurse}
-                        onChange={handlePHMCRank('nurse')}
+                        checked={isJaneDoe}
+                        onChange={handleDoeChange('jane')}
                         inline
                     />
                     </div>
 
                 <Modal.Body>
                     <Form>
-                    {isDoctor && (
+                    {isJohnDoe && (
                     <div style={{ display: 'flex', gap: '10px' }}>
                     <Form.Control
                         type="text"
@@ -13436,7 +13273,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         </div>
 
                         )}
-                    {isDoctor && (
+                    {isJohnDoe && (
                     <div style={{ display: 'flex', gap: '10px' }}>
                             <Form.Control
                                 type="text"
@@ -13450,13 +13287,13 @@ const [imgurLink, setImgurLink] = useState(null);
                             name="coronerBadge"
                             value={missingEmployeeData.coronerBadge}
                             onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerBadge')}
-                            placeholder='Coroner Badge Number (Required or things will go boom)'
+                            placeholder='Coroner Badge Number (Required***)'
                             />
 
                         </div>
 
                         )}
-                        {isDoctor && (
+                        {isJohnDoe && (
                             <Select
     name="coronerEmployee"
     value={missingEmployeeData.coronerEmployee ? coronerGroupedOptions
@@ -13515,7 +13352,7 @@ const [imgurLink, setImgurLink] = useState(null);
     }}
 />
 )}
-                    {isNurse && (
+                    {isJaneDoe && (
                     <div style={{ display: 'flex', gap: '10px' }}>
                     <Form.Control
                         type="text"
@@ -13543,7 +13380,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         </div>
 
                         )}
-                    {isNurse && (
+                    {isJaneDoe && (
                     <div style={{ display: 'flex', gap: '10px' }}>
                             <Form.Control
                                 type="text"
@@ -13555,7 +13392,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         </div>
 
                         )}
-{isNurse && (
+{isJaneDoe && (
     <Select
         name="phmcEmployee"
         value={missingEmployeeData.phmcEmployee ? phmcGroupedOptions
