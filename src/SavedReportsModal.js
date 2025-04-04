@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import Notification from './components/Notification';
 
 const modalStyle = {
     position: 'fixed',
@@ -41,16 +42,19 @@ const closeButtonStyle = {
     gap: '10px',
 };
 
-const reportItemStyle = { // Style for each saved report item
-    marginBottom: '5px', // Add some space between each report
-    display: 'flex', // Use flexbox to align items
-    alignItems: 'center', // Vertically align items in the center
-    gap: '25px', // Add a gap between the text and the buttons
+const reportItemStyle = {
+    marginBottom: '5px',
+    display: 'grid', // Use grid for better column layout
+    gridTemplateColumns: '1fr 1fr', // Two equal-width columns
+    alignItems: 'center',
+    gap: '5px',
+    border: '1px solid #ccc', // Add a border for better visual separation
+    padding: '5px', // Add padding for better spacing
 };
 
 const itemsPerPage = 5; // Number of reports per page
 
-const SavedReportsModal = ({ show, onClose, savedReports, loadReport, deleteReport }) => {
+const SavedReportsModal = ({ show, onClose, savedReports, loadReport, deleteReport, getBBCodeContent, showNotification }) => { // Added showNotification prop
     const [currentPage, setCurrentPage] = useState(1);
     const [sortedReports, setSortedReports] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
@@ -109,7 +113,34 @@ const SavedReportsModal = ({ show, onClose, savedReports, loadReport, deleteRepo
         return false; // Don't include if no report data
     });    
     const currentReports = filteredReports.slice(startIndex, endIndex);
+
+    const copyToClipboard = async (text) => {
+        try {
+            await navigator.clipboard.writeText(text);
+            showNotification('BBCode copied to clipboard!'); // Use the prop here
+        } catch (err) {
+            console.error('Failed to copy: ', err);
+            showNotification('Failed to copy BBCode to clipboard.', 'exclamation-circle'); // Use the prop here
+        }
+    };
     
+    const handleCopyBBCode = (key) => {
+        const reportData = localStorage.getItem(key);
+        if (reportData) {
+            try {
+                const parsedData = JSON.parse(reportData);
+                const bbcode = parsedData.bbCode; // Access the saved BBCode directly
+                copyToClipboard(bbcode);
+            } catch (error) {
+                console.error("Error parsing report data:", error);
+                showNotification('Failed to copy BBCode.  Report data may be corrupted.', 'exclamation-circle');
+            }
+        } else {
+            console.error(`Report data not found for key: ${key}`);
+            showNotification ('Failed to copy BBCode. Report not found.');
+        }
+    };
+        
     const goToPreviousPage = () => {
         setCurrentPage(currentPage - 1);
     };
@@ -123,7 +154,6 @@ const SavedReportsModal = ({ show, onClose, savedReports, loadReport, deleteRepo
             <div style={modalStyle}>
                 <div style={modalContentStyle}>
                 <div style={modalHeaderStyle}>Manage Your Reports (Beta)</div>
-
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <input
                             type="text"
@@ -142,13 +172,45 @@ const SavedReportsModal = ({ show, onClose, savedReports, loadReport, deleteRepo
                             &#x2715;
                         </button>
                     </div>
-                    {currentReports.map(key => (
-                        <div key={key} style={reportItemStyle}>
-                            {key}
-                            <button onClick={() => loadReport(key)} >Load</button>
-                            <button onClick={() => deleteReport(key)}>Delete</button>
-                        </div>
-                    ))}
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Decedent OOC Name</th>
+                                <th>Date & Time</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {currentReports.map(key => {
+                                const reportData = localStorage.getItem(key);
+                                let name = key;
+                                let dateTime = '';
+
+                                if (reportData) {
+                                    try {
+                                        const parsedData = JSON.parse(reportData);
+                                        name = parsedData.data.decedentName || key; // Use decedentName if available, otherwise use key
+                                        const timestamp = new Date(parsedData.timestamp);
+                                        dateTime = timestamp.toLocaleString();
+                                    } catch (error) {
+                                        console.error("Error parsing report data:", error);
+                                    }
+                                }
+
+                                return (
+                                    <tr key={key}>
+                                        <td>{name}</td>
+                                        <td>{dateTime}</td>
+                                        <td>
+                                            <button onClick={() => loadReport(key)}>Load</button>
+                                            <button onClick={() => deleteReport(key)}>Delete</button>
+                                            <button onClick={() => handleCopyBBCode(key)}>Copy BBCode</button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                                                    </tbody>
+                    </table>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <button onClick={goToPreviousPage} disabled={currentPage === 1}>
                             Previous

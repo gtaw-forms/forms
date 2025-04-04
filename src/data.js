@@ -1,3 +1,29 @@
+// TO DO: update the new logos
+
+import LSPDLogo from './assets/lspd.png'
+import LSSDLogo from './assets/lssd.png'
+import LSFDLogo from './assets/lsfd.png'
+import PHMCLogo from './assets/phmc.png'
+
+export const agencyData = {
+    LSPD: {
+        logo: LSPDLogo,
+        url: 'https://lspd.gta.world/ucp.php?i=pm&mode=compose'
+    },
+    LSSD: {
+        logo: LSSDLogo,
+        url: 'https://lssd.gta.world/ucp.php?i=pm&mode=compose'
+    },
+    LSFD: {
+        logo: LSFDLogo,
+        url: 'https://lsfd.gta.world/ucp.php?i=pm&mode=compose'
+    },
+    PHMC: {
+        logo: PHMCLogo,
+        url: 'https://phmc.gta.world/ucp.php?i=pm&mode=compose'
+    },
+};
+
 export const PurposeMedicalInformationRelease = [
     { value: 'Further Treatment', label: 'Further Treatment / Continued Care' },
     { value: 'Personal', label: 'Personal Use' },
@@ -10,6 +36,8 @@ export const PurposeMedicalInformationReleaseFormat = [
     { value: 'ElectronicRelease', label: 'Electronical Release' },
     { value: 'Other', label: 'Other' },
 ];
+
+
 export const patientBloodType = [
     { value: 'A+', label: 'A+' },
     { value: 'A-', label: 'A-' },
@@ -21,12 +49,13 @@ export const patientBloodType = [
     { value: 'AB-', label: 'AB-' },
 ];
 // to add in next update, replace isNurse, isDoctor with Form.Select 
-export const hospitalRank = [
-    { value: 'Intern', label: 'Intern' },
-    { value: 'Resident', label: 'Resident' },
-    { value: 'Attending', label: 'Attending' },
-    { value: 'Fellow', label: 'Fellow' },
-    { value: 'Chief', label: 'Chief' },
+export const phmcRank = [
+    { value: 'Nurse', label: 'Nurse' },
+    { value: 'Psych', label: 'Psych' },
+    { value: 'Physician', label: 'Physician' },
+    { value: 'Doctor', label: 'Doctor' },
+    { value: 'Surgeon', label: 'Surgeon' },
+    { value: 'PATest', label: 'Physician Assistant' },
 ];
 export const MedicalRecordsRelease = [
     { value: 'ERVisit', label: 'Emergency Room Visit: ER notes, progress notes, consultations, procedure notes, test results' },

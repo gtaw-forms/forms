@@ -12,9 +12,6 @@ import SeasonalEvents from './components/SeasonalEvents';
 import HeaderInfo from './HeaderInfo';
 
 // logos
-import LSPDLogo from './assets/lspd.png'
-import LSSDLogo from './assets/lssd.png'
-import LSFDLogo from './assets/lsfd.png'
 import maternity from './assets/maternity.png'
 import obstetrical from './assets/obstetrical.png'
 import gyne from './assets/gyne.png'
@@ -80,7 +77,9 @@ import {
     ThoughtProcess,
     ThoughtContent,
     Insight,
-    Cognition
+    Cognition,
+    phmcRank,
+    agencyData
 } from './data';
 
 // css fun
@@ -926,7 +925,7 @@ const handleFeatureRequestSubmit = async () => {
         showNotification(`Report deleted: ${key}`, 'trash');
         loadSavedReports(); // Refresh the list of saved reports
     };
-
+    
     // Function to load saved reports from local storage
     const saveReport = async () => {
         let key = '';
@@ -954,9 +953,11 @@ const handleFeatureRequestSubmit = async () => {
             showNotification(`This form cannot be saved.`, 'exclamation-circle');
             return;
         }
+        const bbCodeContent = getBBCodeContent(); // Generate BBCode here
         const reportData = JSON.stringify({
-            bbCodeVersion: bbCodeVersion, 
-            data: filterFormData(formData, bbCodeVersion), 
+            bbCodeVersion: bbCodeVersion,
+            data: filterFormData(formData, bbCodeVersion),
+            bbCode: bbCodeContent, // Save the BBCode
             timestamp: Date.now()
         });
         localStorage.setItem(key, reportData);
@@ -982,6 +983,32 @@ const handleFeatureRequestSubmit = async () => {
             }
         }
     };    
+    const loadReport = (key) => {
+        const reportData = localStorage.getItem(key);
+        if (reportData) {
+            try {
+                const parsedData = JSON.parse(reportData);
+                //setFormData(parsedData.data); // Access the data property
+                setFormData(prevFormData => ({
+                    ...prevFormData,
+                    ...parsedData.data, // Merge all loaded data
+                }));
+                setBbCodeVersion(parsedData.bbCodeVersion); // Set the bbCodeVersion
+                // Set the parsed BBCode
+                setParsedBBCode(parsedData.bbCode || ''); // Use the saved BBCode, default to empty string if not available
+                showNotification(`Report loaded from ${key}`, 'upload');
+                setShowSavedReports(false); // Close the modal after loading
+            } catch (error) {
+                console.error("Error parsing report data:", error);
+                localStorage.removeItem(key);
+                showNotification(`Invalid report data deleted: ${key}`, 'trash');
+                loadSavedReports();
+            }
+        }
+    };
+        const toggleSavedReports = () => {
+        setShowSavedReports(prev => !prev);
+    };
     const loadSavedReports = () => {
         const saved = [];
         const now = Date.now();
@@ -1014,31 +1041,6 @@ const handleFeatureRequestSubmit = async () => {
         setSavedReports(saved);
     };
 
-    const loadReport = (key) => {
-        const reportData = localStorage.getItem(key);
-        if (reportData) {
-            try {
-                const parsedData = JSON.parse(reportData);
-                //setFormData(parsedData.data); // Access the data property
-                setFormData(prevFormData => ({
-                    ...prevFormData,
-                    ...parsedData.data, // Merge all loaded data
-                }));
-                setBbCodeVersion(parsedData.bbCodeVersion); // Set the bbCodeVersion
-                showNotification(`Report loaded from ${key}`, 'upload');
-                setShowSavedReports(false); // Close the modal after loading
-            } catch (error) {
-                console.error("Error parsing report data:", error);
-                localStorage.removeItem(key);
-                showNotification(`Invalid report data deleted: ${key}`, 'trash');
-                loadSavedReports();
-            }
-        }
-    };
-    
-    const toggleSavedReports = () => {
-        setShowSavedReports(prev => !prev);
-    };
 // Function to filter form data based on bbCodeVersion
 const filterFormData = (formData, bbCodeVersion) => {
     const relevantFields = getRelevantFields(bbCodeVersion);
@@ -3452,21 +3454,18 @@ if (bbCodeVersion === 1) {
 
    const clearForm = () => {
         setFormData({
-            coronerRank: 'Forensic Attendant',
             placeOfDeath: '',
             department: '',
             dateTime: '',
             BodyMassIndex: '',
             serialNumber: '',
             decedentName: '',
-            phmcEmployee: '',
             phmcSignature: '',
             pronouncedTimeOfDeath: '',
             synopsis: '',
             probableCauseOfDeath: '',
             mannerOfDeath: '',
             typeOfDeath: '',
-            coronerEmployee: '',
             decedentOOC: '',
             scenePhotos: '',
             lastName: '',
@@ -5343,7 +5342,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         ) : bbCodeVersion === 2 ? (
                             <>
                                 <p>Something has gone wrong, I cannot display this report currently </p>
-{/*                                 <Form.Label>Employee Credentials:</Form.Label>
+                               <Form.Label>Employee Credentials:</Form.Label>
                                 <Select
                                     name="coronerEmployee"
                                     value={coronerGroupedOptions
@@ -5401,19 +5400,36 @@ const [imgurLink, setImgurLink] = useState(null);
                                         })
                                     }}
                                 />
-                                <Form.Group className="mb-3">
-                                    <Form.Label> <br></br>Officer Name or Badge Number:</Form.Label>
+                                <Form.Label></Form.Label>
+                                <div style={{ display: 'flex', gap: '10px' }}>
                                     <Form.Control
                                         type="text"
                                         name="requestingOfficer"
                                         value={formData.requestingOfficer}
                                         onChange={handleChange}
+                                        placeholder="Requesting Officer Name"
                                         required
                                         className={`form-control ${!formData.requestingOfficer ? 'is-invalid' : ''}`}
                                         />
-                                </Form.Group>
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Requesting Agency:</Form.Label>
+                                <Form.Select
+                                        name="department"
+                                        value={formData.department}
+                                        onChange={handleChange}
+                                        required
+                                        className={`form-control ${!formData.department ? 'is-invalid' : ''}`}
+                                    >
+                                        <option value="" disabled>Select Department</option>
+                                        <option value="LSFD">LSFD</option>
+                                        <option value="LSPD">LSPD</option>
+                                        <option value="LSSD">LSSD</option>
+                                        <option value="PHMC">PHMC</option>
+                                        <option value="SANFIRE">SANFIRE</option>
+                                        <option value="SADCR">SADCR</option>
+                                        <option value="LSGOV">LSGOV</option>
+                                    </Form.Select>
+</div>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+
                                     <Form.Select
                                         name="department"
                                         value={formData.department}
@@ -5430,14 +5446,9 @@ const [imgurLink, setImgurLink] = useState(null);
                                         <option value="SADCR">SADCR</option>
                                         <option value="LSGOV">LSGOV</option>
                                     </Form.Select>
-                                </Form.Group>
-                                <Form.Group className="mb-3">
                                     <Form.Label>
-                                        Coroner Contact Number:
+                                        Coroner PH:
                                     </Form.Label>
-                                    <span className="helper-text">
-                                        (By default PHMC Landline is added, if you have a work number please add it)
-                                    </span>
 
                                     <Form.Control
                                         type="text"
@@ -5447,29 +5458,27 @@ const [imgurLink, setImgurLink] = useState(null);
                                         required
                                         className={`form-control ${!formData.coronerPHNumber ? 'is-invalid' : ''}`}
                                     />
-                                </Form.Group>
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Decedent(s) Names:</Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        name="decedentName"
-                                        value={formData.decedentName}
-                                        onChange={handleChange}
-                                        required
-                                        className={`form-control ${!formData.decedentName ? 'is-invalid' : ''}`}
-                                    />
-                                </Form.Group>
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Decedent OOC Name:</Form.Label>
-                                    <Form.Control
+                                    </div>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                        <Form.Control
+                                            type="text"
+                                            name="decedentName"
+                                            value={formData.decedentName}
+                                            onChange={handleChange}
+                                            placeholder="Decedent's IC name"
+                                            required
+                                            className={`form-control ${!formData.decedentName ? 'is-invalid' : ''}`}
+                                        />
+                                        <Form.Control
                                         type="text"
                                         name="decedentOOC"
                                         value={formData.decedentOOC}
                                         onChange={handleChange}
+                                        placeholder="Decedent's OOC name"
                                         required
                                         className={`form-control ${!formData.decedentOOC ? 'is-invalid' : ''}`}
-                                    />
-                                </Form.Group>
+                                        />
+                                    </div>
 
                                 <Form.Group className="mb-3">
                                     <Form.Label>Paste Death Report BBCode:</Form.Label>
@@ -5532,7 +5541,7 @@ const [imgurLink, setImgurLink] = useState(null);
 
                                     </div>
                                 </Form.Group>
- */}                            </>
+                          </>
                         ) : bbCodeVersion === 3 ? ( // HUGE FUCKING FORM
                         <>
                                                         <Form.Label>Patient ID, leave blank if unsure</Form.Label>
@@ -7047,10 +7056,9 @@ const [imgurLink, setImgurLink] = useState(null);
                                                                 className="form-control"
                                                                 
                                                             /> </div>
-                            
+
                                                             <div className="radio-inline-container">
-                            
-                                                                <span className="radio-text">Role:</span>
+                                                                                                                                <span className="radio-text">Role:</span>
                                                                 <Form.Check
                                                                     type="radio"
                                                                     id="doctorRank"
@@ -13834,6 +13842,8 @@ const [imgurLink, setImgurLink] = useState(null);
                 savedReports={savedReports}
                 loadReport={loadReport}
                 deleteReport={deleteReport}
+                getBBCodeContent={getBBCodeContent} 
+                showNotification={showNotification}
             />
 
                             {(formData.scenePhotos || formData.additionalImages) && (
@@ -13937,79 +13947,31 @@ const [imgurLink, setImgurLink] = useState(null);
             </div>
         </>
     )
-}                  {bbCodeVersion === 2 && (
-                        <div className="agency-buttons">
-                            <h5>Agency Email Methods: </h5>
-                            <a
-                                href="https://lspd.gta.world/ucp.php?i=pm&mode=compose"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="agency-button"
-                            >
-                                <img
-                                    src={LSPDLogo}
-                                    alt="LSPD"
-                                    style={{
-                                        width: '50px',
-                                        height: '50px',
-                                        margin: '10px 5px',
-                                        cursor: 'pointer'
-                                    }}
-                                />
-                            </a>
-                            <a
-                                href="https://lssd.gta.world/ucp.php?i=pm&mode=compose"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="agency-button"
-                            >
-                                <img
-                                    src={LSSDLogo}
-                                    alt="LSSD"
-                                    style={{
-                                        width: '50px',
-                                        height: '50px',
-                                        margin: '10px 5px',
-                                        cursor: 'pointer'
-                                    }}
-                                />
-                            </a>
-                            <a
-                                href="https://lsfd.gta.world/ucp.php?i=pm&mode=compose"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="agency-button"
-                            >
-                                <img
-                                    src={LSFDLogo}
-                                    alt="LSFD"
-                                    style={{
-                                        width: '50px',
-                                        height: '50px',
-                                        margin: '10px 5px',
-                                        cursor: 'pointer'
-                                    }}
-                                />
-                            </a>
-                            <a
-                                href="https://phmc.gta.world/ucp.php?i=pm&mode=compose"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="agency-button"
-                            >
-                                <img
-                                    src={PHMCLogo}
-                                    alt="PHMC"
-                                    style={{
-                                        width: '50px',
-                                        height: '50px',
-                                        margin: '10px 5px',
-                                        cursor: 'pointer'
-                                    }}
-                                />
-                            </a>
-                        </div>
-                    )}
+}                
+{bbCodeVersion === 2 && (
+    <div className="agency-buttons">
+        {formData.department && agencyData[formData.department] && (
+            <a
+                href={agencyData[formData.department].url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="agency-button"
+            >
+                <img
+                    src={agencyData[formData.department].logo}
+                    alt={formData.department}
+                    style={{
+                        width: '50px',
+                        height: '50px',
+                        margin: '10px 5px',
+                        cursor: 'pointer'
+                    }}
+                />
+            </a>
+        )}
+        {!formData.department && <p>Please select a department first.</p>} {/*Informative message if no department is selected*/}
+    </div>
+)}
 
                     <div className="button-container">
                         
@@ -14189,7 +14151,7 @@ const [imgurLink, setImgurLink] = useState(null);
         </a>
     </div>
 )}
-{bbCodeVersion === 24 && (
+{bbCodeVersion === 24 || bbCodeVersion === 25 && (
     <div className="image-container">
         <a href="https://phmc.gta.world/posting.php?mode=post&f=109" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="Easter Bunny goes bounce bounce">
             <img
@@ -14202,9 +14164,9 @@ const [imgurLink, setImgurLink] = useState(null);
         </a>
     </div>
 )}
-{bbCodeVersion === 25 && (
+{bbCodeVersion !== 1 && bbCodeVersion !== 2  && bbCodeVersion !== 3 && bbCodeVersion !== 24 && bbCodeVersion !== 25 && bbCodeVersion !== 26 && (
     <div className="image-container">
-        <a href="https://phmc.gta.world/posting.php?mode=post&f=221" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="Easter Bunny goes bounce bounce">
+        <a href="https://phmc.gta.world/viewforum.php?f=97" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="Easter Bunny goes bounce bounce">
             <img
                 src={civilianPaperworkImage}
                 height={350}
