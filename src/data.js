@@ -327,16 +327,22 @@ export const Risk = [
     { name: 'Danielle Shaw', lastName: 'Shaw', signature: '', category: 'Hospital Supervisor' },
 
     // Physician
+    { name: 'Gavin Reed	', lastName: 'Reed', signature: '', category: 'Resident Physician' },
+    { name: 'Austin Rhodes    ', lastName: 'Rhodes', signature: '', category: 'Resident Physician' },
+    { name: 'Damien Heredia', lastName: 'Heredia', signature: '', category: 'Resident Physician' },
+    { name: 'Christine Lin	', lastName: 'Lin', signature: '', category: 'Resident Physician' },
+
     { name: 'Raven Lewis', lastName: 'Lewis', signature: 'https://i.imgur.com/BwM3SOT.png', category: 'Physician' },
     { name: 'Kaiden Weiner', lastName: 'Weiner', signature: 'https://i.imgur.com/jDT3FNr.png', category: 'Physician' },
     { name: 'Freya Stiglitz', lastName: 'Stiglitz', signature: 'Doctor Freya Stiglitz', category: 'Physician' },
     { name: 'Lyanna Nystrom', lastName: 'Nystrom', signature: '', category: 'Physician' },
     { name: 'Esme Crawford', lastName: 'Crawford', signature: '', category: 'Physician Assistant' },
+    { name: 'Cory Valentine', lastName: 'Valentine', signature: '', category: 'Physician Assistant' },
+
     { name: 'Julie Kang	', lastName: 'Kang', signature: '', category: 'Physician Assistant' },
 
 
     // Misc roles
-    { name: 'Gavin Reed	', lastName: 'Reed', signature: '', category: 'Pharmacist' },
     { name: 'Sanad Qaqish	', lastName: 'Qaqish', signature: '', category: 'Dentist' },
 
     // Internal Medicine
@@ -345,7 +351,7 @@ export const Risk = [
 
     // Psychologist
     { name: 'Julian Leander	', lastName: 'Leander', signature: '', category: 'Psychologist' },
-    { name: 'Madison Cooper	', lastName: 'Cooper', signature: '', category: 'Psychologist' },
+    { name: 'Nicole Robinson		', lastName: 'Robinson', signature: '', category: 'Psychologist' },
     { name: 'Paolina Russo	', lastName: 'Russo', signature: '', category: 'Psychologist' },
     { name: 'Rahi Badman', lastName: 'Badman', signature: '', category: 'Psychologist' },
     { name: 'Sarah Hyun		', lastName: 'Hyun', signature: '', category: 'Psychologist' },
