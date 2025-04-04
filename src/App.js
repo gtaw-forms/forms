@@ -5341,7 +5341,8 @@ const [imgurLink, setImgurLink] = useState(null);
                             </>
                         ) : bbCodeVersion === 2 ? (
                             <>
-                                <p>Something has gone wrong, I cannot display this report currently </p>
+                                <p>Something has gone wrong, I cannot display this report currently</p>
+                                ERROR: "Cannot display report" | "Please contact the developer" | "Debug String=true" 
                                <Form.Label>Employee Credentials:</Form.Label>
                                 <Select
                                     name="coronerEmployee"
