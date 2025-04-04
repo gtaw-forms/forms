@@ -10,6 +10,8 @@ import AgencySelector from './components/AgencySelector';
 import Footer from './components/Footer';
 import SeasonalEvents from './components/SeasonalEvents';
 import HeaderInfo from './HeaderInfo';
+import Snowfall from 'react-snowfall'; 
+import EasterEggImages from './EasterEggParticles'; 
 
 // logos
 import maternity from './assets/maternity.png'
@@ -89,6 +91,7 @@ import './buttons.css'
 
 import 'react-bootstrap-typeahead/css/Typeahead.css';
 import { FormHelperText } from '@mui/material';
+import EasterEggParticles from './EasterEggParticles';
 // HALF OF THIS CODE IS SPAGHETTI, A MESS, IT CAUSES ME HEADACHES, I WILL NOT REFACTOR BECAUSE ITS 1K LINES LONG
 // IM SORRY FOR WHOEVER WORKS ON THIS GITHUB REPOSITORY 
 // - FROSTYYY
@@ -781,12 +784,12 @@ const handleFeatureRequestSubmit = async () => {
         // Cleanup function to restore original console.error and clear old errors
         return () => {
             console.error = originalConsoleError;
-    
-            // Clear errors older than 30 minutes (1800000 milliseconds)
-            const now = new Date().getTime();
-            const thirtyMinutes = 1800000;
-            const updatedErrors = consoleErrors.filter(error => now - error.timestamp < thirtyMinutes);
-            localStorage.setItem('consoleErrors', JSON.stringify(updatedErrors));
+        
+        // Clear errors older than 2 minutes (120000 milliseconds)
+        const now = new Date().getTime();
+        const twoMinutes = 120000;
+        const updatedErrors = consoleErrors.filter(error => now - error.timestamp < twoMinutes);
+        localStorage.setItem('consoleErrors', JSON.stringify(updatedErrors));
         };
     }, [bbCodeVersion]);
 
@@ -4016,7 +4019,9 @@ if (bbCodeVersion === 1) {
         localStorage.setItem('hideAgencySelector', JSON.stringify(hideAgencySelector));
     }, [hideAgencySelector]);
 
-    
+// easter egg stuff
+const { season } = SeasonalEvents({ imageType: 'deathReport' }); // Get the season
+  
 // business card stuff
 const namePosition = { top: 105.5, left: 22 };
 const rankPosition = { top: 143.65, left: 26.5 };
@@ -4272,6 +4277,9 @@ const [imgurLink, setImgurLink] = useState(null);
     }, [bbCodeVersion, showAgencySelector, showFeatureRequestModal, showMissingEmployeeModal, showChangelog, showBusinessCard, showBBCode, showImages]);
         return (
         <div className="App">
+{season === "Easter" && <Snowfall images={EasterEggImages} snowflakeCount={150} />}
+{season === "Christmas" && <Snowfall images={EasterEggImages} snowflakeCount={500} />}
+
 {showAgencySelector && (
     <AgencySelector
         showAgencySelector={showAgencySelector}
@@ -4297,6 +4305,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         <i className="fas fa-history"></i>
                         View Changelog
                     </button>
+
                     <button
                         type="button"
                         className="changelog-button"
@@ -4348,7 +4357,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 1.9.3a - ❄️ Frostbite Update </h3>
+                                    <h3>Changelog - Version 1.9.4a - ❄️ Frostbite Update </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -4359,9 +4368,8 @@ const [imgurLink, setImgurLink] = useState(null);
                                 </div>
                                 <div className="modal-content">
                                     <ul>
-                                        <li> Killed April Fools, added dynamic event handling.  </li>
+                                        <li> NEW - Dynamic Event Handling.  </li>
                                         <li> Attempt 40204823 fix for Coroner Reports (Email) handling. </li>
-                                        <li> Favicon is back and better than ever.  </li>
                                     </ul>
                                     - frosty
                                 </div>

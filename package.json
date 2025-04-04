@@ -20,6 +20,9 @@
     "react-router-dom": "^6.28.0",
     "react-scripts": "5.0.1",
     "react-select": "^5.10.1",
+    "react-snowfall": "^2.2.0",
+    "react-tsparticles": "^2.12.2",
+    "tsparticles": "^3.8.1",
     "web-vitals": "^2.1.4"
   },
   "scripts": {
