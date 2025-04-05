@@ -4163,7 +4163,7 @@ const [imgurLink, setImgurLink] = useState(null);
         }
     };
     
-    const sendDiscordWebhook = async (name, messageContent, cssLoaded = true) => {
+    const sendDiscordWebhook = async (name, rank, phoneNumber, messageContent, errorMessage = null) => {
         const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
     
         if (!webhookURL) {
@@ -4171,38 +4171,23 @@ const [imgurLink, setImgurLink] = useState(null);
             return;
         }
     
-        let description = messageContent;
-        if (!cssLoaded) {
-            description += '\n\n**Warning:** CSS may not have loaded correctly for this business card.';
+        let description = messageContent ? messageContent : "No Image Uploaded";
+        if (errorMessage) {
+            description += `\n\n**Error:** ${errorMessage}`;
         }
     
         const message = {
             content: `Business Card Creation Alert!`,
             embeds: [{
                 fields: [
-                    {
-                        name: "Employee Name",
-                        value: name,
-                        inline: true
-                    },
-                    {
-                        name: "Employee Rank",
-                        value: rank,
-                        inline: true
-                    },
-                    {
-                        name: "Phone Number",
-                        value: phoneNumber,
-                        inline: true
-                    },
-                    {
-                        name: "Business Card Image",
-                        value: description
-                    }
+                    { name: "Employee Name", value: name, inline: true },
+                    { name: "Employee Rank", value: rank, inline: true },
+                    { name: "Phone Number", value: phoneNumber, inline: true },
+                    { name: "Business Card Image", value: description }
                 ]
             }]
         };
-        
+            
         try {
             const response = await fetch(webhookURL, {
                 method: 'POST',
