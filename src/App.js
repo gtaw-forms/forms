@@ -800,16 +800,31 @@ const handleFeatureRequestSubmit = async () => {
             console.error("Discord webhook URL is not defined in .env file.");
             return;
         }
+        const { coronerEmployee, coronerRank, coronerPHNumber, phmcEmployee, name, rank, phmcRank: phmcRankData, department, patientID } = formData;
     
+        const employeeName = coronerEmployee ? coronerEmployee : (phmcEmployee ? phmcEmployee : (name ? name : "Unknown"));
+        const employeeRank = coronerRank ? coronerRank : (phmcRankData ? phmcRankData : (rank ? rank : "Unknown"));
+        const employeePhoneNumber = coronerPHNumber ? coronerPHNumber : (department ? department : "Unknown");
+        const patientId = patientID || "N/A"; // Handle missing patientID
+        
         // Retrieve all console errors from localStorage
         const allConsoleErrors = JSON.parse(localStorage.getItem('consoleErrors')) || [];
     
         // Format all console errors into a single string
-        const formattedConsoleErrors = allConsoleErrors.map((err, index) => `Error ${index + 1}:\nMessage: ${err.message}\nBBCode Version: ${err.bbCodeVersion}\n`).join('\n');
+        const formattedConsoleErrors = allConsoleErrors.map((err, index) => `Error ${index + 1}:\nMessage: ${err.message}\nBBCode Version: ${err.bbCodeVersion}\nTimestamp: ${new Date(err.timestamp).toLocaleString()}\n`).join('\n');
     
         // Combine the main error message and console errors
-        let fullMessage = `**ERROR REPORT**\nBBCode Version: ${bbCodeVersion}\n${errorMessage}\n\n**All Console Errors:**\n${formattedConsoleErrors}`;
-    
+        let fullMessage = `**ERROR REPORT**
+        BBCode Version: ${bbCodeVersion}
+        Patient ID: ${patientId}
+        Employee: ${employeeName} (${employeeRank} ${name} )
+        Department: ${department || "Unknown"}
+        Phone: ${employeePhoneNumber}
+        Main Error: ${errorMessage}
+        
+        **All Console Errors:**
+        ${formattedConsoleErrors}`;
+            
         // Discord's message limit is 2000 characters
         if (fullMessage.length > 2000) {
             // Split the message into chunks
@@ -4035,13 +4050,11 @@ const [imgurLink, setImgurLink] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
 
     const handleSave = () => {
-        setIsSaving(true); // Disable the button
-        showNotification('Uploading...', 'upload'); // Show uploading notification
+        setIsSaving(true);
+        showNotification('Uploading...', 'upload');
     
         localStorage.setItem('name', name);
         localStorage.setItem('rank', rank);
-        localStorage.setItem('badgeNR', badgeNR);
-        localStorage.setItem('department', department);
         localStorage.setItem('phoneNumber', phoneNumber);
     
         domtoimage.toPng(businessCardRef.current)
@@ -4050,8 +4063,8 @@ const [imgurLink, setImgurLink] = useState(null);
                     .then(imgurLink => {
                         setImgurLink(imgurLink);
                         showNotification(`Business Card Saved & Uploaded to Imgur: ${imgurLink}`, 'save');
-                        sendDiscordWebhook(name, imgurLink);
-    
+                        sendDiscordWebhook(name, rank, phoneNumber, imgurLink); // Pass name, rank, and phoneNumber
+        
                         if (navigator.clipboard && navigator.clipboard.writeText) {
                             navigator.clipboard.writeText(imgurLink)
                                 .then(() => {
@@ -4075,10 +4088,10 @@ const [imgurLink, setImgurLink] = useState(null);
                         console.error('Error uploading to Imgur:', error, error.response, error.request);
                         showNotification('Error uploading to Imgur', 'error');
                         const errorMessage = `Imgur Upload Error: ${error.message}. Response: ${JSON.stringify(error.response)}. Request: ${JSON.stringify(error.request)}`;
-                        sendErrorToDiscord(errorMessage);
+                        sendDiscordWebhook(name, rank, phoneNumber, null, errorMessage); // Pass name, rank, phoneNumber, and error message
                     })
-                    .finally(() => { // filthy work around to check for failed CSS loading
-                        setIsSaving(false);
+                    .finally(() => {
+                            setIsSaving(false);
                         let cssLoaded = true;
                         setTimeout(() => {
                             const inputFields = document.querySelectorAll('.business-card-input-fields input');
@@ -4097,22 +4110,21 @@ const [imgurLink, setImgurLink] = useState(null);
                 console.error('Error converting to image:', error);
                 showNotification('Error converting business card to image', 'error');
     
-                let errorMessage = 'An unknown error occurred.'; // Default message
-    
+                let errorMessage = 'An unknown error occurred.';
                 if (error && error.message) {
                     errorMessage = error.message;
                 } else if (typeof error === 'string') {
-                    errorMessage = error; // Use the error directly if it's a string
+                    errorMessage = error;
                 } else {
-                    errorMessage = JSON.stringify(error); // Stringify the error object
+                    errorMessage = JSON.stringify(error);
                 }
     
-                sendErrorToDiscord(`Error converting business card to image: ${errorMessage}. Full debug: ${JSON.stringify(error)}`);
-                setIsSaving(false); // Re-enable the button in case of error
+                sendDiscordWebhook(name, rank, phoneNumber, null, errorMessage); // Pass name, rank, phoneNumber, and error message
+                setIsSaving(false);
             });
-    
     };
-        const uploadToImgur = async (base64Image) => {
+
+    const uploadToImgur = async (base64Image) => {
         const imgurClientId = process.env.REACT_APP_IMGUR_CLIENT_ID;
         const accessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
         const albumId = process.env.REACT_APP_IMGUR_ALBUM_ID; // Retrieve album ID from environment variables
@@ -4169,13 +4181,28 @@ const [imgurLink, setImgurLink] = useState(null);
             embeds: [{
                 fields: [
                     {
-                        name: name + " has created a business card!",
+                        name: "Employee Name",
+                        value: name,
+                        inline: true
+                    },
+                    {
+                        name: "Employee Rank",
+                        value: rank,
+                        inline: true
+                    },
+                    {
+                        name: "Phone Number",
+                        value: phoneNumber,
+                        inline: true
+                    },
+                    {
+                        name: "Business Card Image",
                         value: description
                     }
                 ]
             }]
         };
-    
+        
         try {
             const response = await fetch(webhookURL, {
                 method: 'POST',
@@ -4197,8 +4224,6 @@ const [imgurLink, setImgurLink] = useState(null);
         useEffect(() => {
         setName(localStorage.getItem('name') || '');
         setRank(localStorage.getItem('rank') || '');
-        setBadgeNR(localStorage.getItem('badgeNR') || '');
-        setDepartment(localStorage.getItem('department') || '');
         setPhoneNumber(localStorage.getItem('phoneNumber') || '');
         }, []);
     
@@ -4217,8 +4242,6 @@ const [imgurLink, setImgurLink] = useState(null);
         };    // Add state near other useState declarations
     const [name, setName] = useState('');
     const [rank, setRank] = useState('');
-    const [badgeNR, setBadgeNR] = useState('');
-    const [department, setDepartment] = useState('');
     const [phoneNumber, setPhoneNumber] = useState('');
     const [showBBCode, setShowBBCode] = useState(false);
     const [showImages, setShowImages] = useState(false);
@@ -4231,11 +4254,11 @@ const [imgurLink, setImgurLink] = useState(null);
     const handleRankChange = (e) => {
         setRank(e.target.value);
     };
-    
-    
-    const handleDepartmentChange = (e) => {
-        setDepartment(e.target.value);
+    const handlephoneNumberChange = (e) => {
+        setPhoneNumber(e.target.value);
     };
+
+    
     useEffect(() => {
         window.onerror = async (message, source, lineno, colno, error) => {
             let lineContent = '';
@@ -5295,8 +5318,6 @@ const [imgurLink, setImgurLink] = useState(null);
                             </>
                         ) : bbCodeVersion === 2 ? (
                             <>
-                                <p>Something has gone wrong, I cannot display this report currently</p>
-                                ERROR: "Cannot display report" | "Please contact the developer" | "Debug String=true" 
                                <Form.Label>Employee Credentials:</Form.Label>
                                 <Select
                                     name="coronerEmployee"
@@ -13640,7 +13661,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         pointerEvents: 'none',
                     }}
                 >
-                    {department}
+                    {phoneNumber}
                 </div>
             </div>
             <div className="business-card-input-fields">
@@ -13659,8 +13680,8 @@ const [imgurLink, setImgurLink] = useState(null);
                 <Form.Control
                     type="text"
                     placeholder="Phone Number"
-                    value={department}
-                    onChange={handleDepartmentChange}
+                    value={phoneNumber}
+                    onChange={handlephoneNumberChange}
                 />
 
             </div>
