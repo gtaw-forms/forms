@@ -1381,10 +1381,10 @@ Weight: ${patientWeight}
 [/list][td]
 [list=none][u]Body Mass Index: [/u][br][/br]
 [cb${formData.BodyMassIndex === 'Underweight' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Underweight' ? 'c' : ''}] Underweight
-[cb${formData.BodyMassIndex === 'Normal' ? 'c' : ''}][/cb] Normal
-[cb${formData.BodyMassIndex === 'Overweight' ? 'c' : ''}][/cb] Overweight
-[cb${formData.BodyMassIndex === 'Obese' ? 'c' : ''}][/cb] Obese
-[cb${formData.BodyMassIndex === 'ExtremeObese' ? 'c' : ''}][/cb] Extremely Obese
+[cb${formData.BodyMassIndex === 'Normal' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Normal' ? 'c' : ''}] Normal
+[cb${formData.BodyMassIndex === 'Overweight' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Overweight' ? 'c' : ''}] Overweight
+[cb${formData.BodyMassIndex === 'Obese' ? 'c' : ''}][/${formData.BodyMassIndex === 'Obese' ? 'c' : ''}] Obese
+[cb${formData.BodyMassIndex === 'ExtremeObese' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'ExtremeObese' ? 'c' : ''}] Extremely Obese
 [/table]
 [divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Vitals[/b][/color][/center][/divboxcolor]
 [table][tr][td][center]Temperature: [cb${formData.vitals === 'patientTempNormal' ? 'c' : ''}] Normal [cb${formData.vitals === 'patientHypothermic' ? 'c' : ''}] Hypothermic [cb${formData.vitals === 'patientHyperthermic' ? 'c' : ''}] Hyperthermic[/center]
@@ -1459,10 +1459,10 @@ Weight: ${patientWeight}
 [/list][td]
 [list=none][u]Body Mass Index: [/u][br][/br]
 [cb${formData.BodyMassIndex === 'Underweight' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Underweight' ? 'c' : ''}] Underweight
-[cb${formData.BodyMassIndex === 'Normal' ? 'c' : ''}][/cb] Normal
-[cb${formData.BodyMassIndex === 'Overweight' ? 'c' : ''}][/cb] Overweight
-[cb${formData.BodyMassIndex === 'Obese' ? 'c' : ''}][/cb] Obese
-[cb${formData.BodyMassIndex === 'ExtremeObese' ? 'c' : ''}][/cb] Extremely Obese
+[cb${formData.BodyMassIndex === 'Normal' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Normal' ? 'c' : ''}] Normal
+[cb${formData.BodyMassIndex === 'Overweight' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Overweight' ? 'c' : ''}] Overweight
+[cb${formData.BodyMassIndex === 'Obese' ? 'c' : ''}][/${formData.BodyMassIndex === 'Obese' ? 'c' : ''}] Obese
+[cb${formData.BodyMassIndex === 'ExtremeObese' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'ExtremeObese' ? 'c' : ''}] Extremely Obese
 [/table]
 [divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Vitals[/b][/color][/center][/divboxcolor]
 [table][tr][td][center]Temperature: [cb${formData.vitals === 'patientTempNormal' ? 'c' : ''}] Normal [cb${formData.vitals === 'patientHypothermic' ? 'c' : ''}] Hypothermic [cb${formData.vitals === 'patientHyperthermic' ? 'c' : ''}] Hyperthermic[/center]
@@ -2700,11 +2700,11 @@ ${patientName}
 [table][tr][td] Title: ${patientTitle}[/td][td] Full Name: ${patientName}
 [tr][td] Date of Birth: ${date} [/td][td] Home Address: ${patientAddress}
 [tr][td] Gender Identity: ${patientGender} [/td][td] Ethnicity: ${patientRace}
-[tr][td] Phone Number: ${patientPH} [/td][td] ((Discord ID: ${patientDiscord}))
+[tr][td] Phone Number: ${patientPH} [/td][td] (( Discord ID: ${patientDiscord}))
 [/table]
 [divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Emergency Contact[/b][/color][/size][/center][/divboxcolor]
 [table][tr][td] Full Name: ${patientEmergencyContact} [/td][td] Relationship: ${patientEmergencyContactRelation}
-[tr][td] Phone Number: ${patientEmergencyContactNumber} [/td][td] ((Discord ID: ${patientEmergencyContactDiscord}))
+[tr][td] Phone Number: ${patientEmergencyContactNumber} [/td][td] (( Discord ID: ${patientEmergencyContactDiscord}))
 [/table]
 [divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Medical History[/b][/color][/size][/center][/divboxcolor]
 [table][tr][td][b][size=105]Past History[/size][/b][color=transparent]youarecool[/color][/td][td][color=transparent]ifyoureadthisyouareawesomebutdontdeletemeplease![/color]
@@ -2751,11 +2751,11 @@ ${patientName}
     [table][tr][td] Title: ${patientTitle}[/td][td] Full Name: ${patientName}
     [tr][td] Date of Birth: ${date} [/td][td] Home Address: ${patientAddress}
     [tr][td] Gender Identity: ${patientGender} [/td][td] Ethnicity: ${patientRace}
-    [tr][td] Phone Number: ${patientPH} [/td][td] ((Discord ID: ${patientDiscord}))
+    [tr][td] Phone Number: ${patientPH} [/td][td] (( Discord ID: ${patientDiscord}))
     [/table]
     [divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Emergency Contact[/b][/color][/size][/center][/divboxcolor]
     [table][tr][td] Full Name: ${patientEmergencyContact} [/td][td] Relationship: ${patientEmergencyContactRelation}
-    [tr][td] Phone Number: ${patientEmergencyContactNumber} [/td][td] ((Discord ID: ${patientEmergencyContactDiscord}))
+    [tr][td] Phone Number: ${patientEmergencyContactNumber} [/td][td] (( Discord ID: ${patientEmergencyContactDiscord}))
     [/table]
     [divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Medical History[/b][/color][/size][/center][/divboxcolor]
     [table][tr][td][b][size=105]Past History[/size][/b][color=transparent]youarecool[/color][/td][td][color=transparent]ifyoureadthisyouareawesomebutdontdeletemeplease![/color]
@@ -2872,11 +2872,11 @@ ${patientName}
 [table][tr][td] Title: ${patientTitle}[/td][td] Full Name: ${patientName}
 [tr][td] Date of Birth: ${patientDateOfBirth} [/td][td] Home Address: ${patientAddress}
 [tr][td] Gender Identity: ${patientGender} [/td][td] Ethnicity: ${patientRace}
-[tr][td] Phone Number: ${patientPH} [/td][td] ((Discord ID: ${patientDiscord}))
+[tr][td] Phone Number: ${patientPH} [/td][td] (( Discord ID: ${patientDiscord}))
 [/table]
     [divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Emergency Contact[/b][/color][/size][/center][/divboxcolor]
     [table][tr][td] Full Name: ${patientEmergencyContact} [/td][td] Relationship: ${patientEmergencyContactRelation}
-    [tr][td] Phone Number: ${patientEmergencyContactNumber} [/td][td] ((Discord ID: ${patientEmergencyContactDiscord}))
+    [tr][td] Phone Number: ${patientEmergencyContactNumber} [/td][td] (( Discord ID: ${patientEmergencyContactDiscord}))
 [/table]
 [divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Medical History[/b][/color][/size][/center][/divboxcolor]
 [table][tr][td][b][size=105]Past History[/size][/b][color=transparent]youarecool[/color][/td][td][color=transparent]ifyoureadthisyouareawesomebutdontdeletemeplease![/color]
@@ -13952,7 +13952,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                 const currentDateTime = new Date().toLocaleString();
                                 const { decedentName, coronerEmployee, coronerRank, patientName, decedentOOC, phmcEmployee, requestingOfficer, patientID, patientFirstName, patientLastName} = formData;
                                 const version = bbCodeVersion === 1 ? "Decedent Report" :
-                                    bbCodeVersion === 2 ? "Invalid Report Vector" :
+                                    bbCodeVersion === 2 ? "Coroner Email" :
                                         bbCodeVersion === 3 ? "Patient File - Advanced" :
                                             bbCodeVersion === 4 ? "Dental Report " :
                                                 bbCodeVersion === 5 ? "Surgical Report " :
@@ -13967,7 +13967,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                                                                     bbCodeVersion === 14 ? "Mental Health - PHMC" :
                                                                                             bbCodeVersion === 16 ? "Mental Health - Updating Risk Status" :
                                                                                                     bbCodeVersion === 18 ? "Coroners Agency Incidents" :
-                                                                                                        bbCodeVersion === 19 ? "Emergency Protocol Form NEW" :
+                                                                                                        bbCodeVersion === 19 ? "Emergency Protocol Form" :
                                                                                                             bbCodeVersion === 20 ? "General Consultation PHMC" :
                                                                                                                 bbCodeVersion === 21 ? "General Consultation PBC" :
                                                                                                                     bbCodeVersion === 22 ? "PHMC Commentary Note" :
