@@ -1383,7 +1383,7 @@ Weight: ${patientWeight}
 [cb${formData.BodyMassIndex === 'Underweight' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Underweight' ? 'c' : ''}] Underweight
 [cb${formData.BodyMassIndex === 'Normal' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Normal' ? 'c' : ''}] Normal
 [cb${formData.BodyMassIndex === 'Overweight' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Overweight' ? 'c' : ''}] Overweight
-[cb${formData.BodyMassIndex === 'Obese' ? 'c' : ''}][/${formData.BodyMassIndex === 'Obese' ? 'c' : ''}] Obese
+[cb${formData.BodyMassIndex === 'Obese' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Obese' ? 'c' : ''}] Obese
 [cb${formData.BodyMassIndex === 'ExtremeObese' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'ExtremeObese' ? 'c' : ''}] Extremely Obese
 [/table]
 [divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Vitals[/b][/color][/center][/divboxcolor]
@@ -1461,7 +1461,7 @@ Weight: ${patientWeight}
 [cb${formData.BodyMassIndex === 'Underweight' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Underweight' ? 'c' : ''}] Underweight
 [cb${formData.BodyMassIndex === 'Normal' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Normal' ? 'c' : ''}] Normal
 [cb${formData.BodyMassIndex === 'Overweight' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Overweight' ? 'c' : ''}] Overweight
-[cb${formData.BodyMassIndex === 'Obese' ? 'c' : ''}][/${formData.BodyMassIndex === 'Obese' ? 'c' : ''}] Obese
+[cb${formData.BodyMassIndex === 'Obese' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Obese' ? 'c' : ''}] Obese
 [cb${formData.BodyMassIndex === 'ExtremeObese' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'ExtremeObese' ? 'c' : ''}] Extremely Obese
 [/table]
 [divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Vitals[/b][/color][/center][/divboxcolor]
