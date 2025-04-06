@@ -3909,6 +3909,7 @@ if (bbCodeVersion === 1) {
             }));
         }
     };
+
         const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
         setFormData(prevFormData => ({
@@ -4315,6 +4316,7 @@ const [imgurLink, setImgurLink] = useState(null);
                     </button>
 
                     <button
+                        id="missingEmployeeButton" 
                         type="button"
                         className="changelog-button"
                         onClick={() => setShowMissingEmployeeModal(true)}
@@ -4926,8 +4928,11 @@ const [imgurLink, setImgurLink] = useState(null);
                         {bbCodeVersion === 1 ? (
                             <>
                                 <p>The Coroner Report Generated needs to be filled out fully, you can upload images locally or link pictures. </p>
-                                <Form.Label>Employee Credentials:</Form.Label>
-                                <Select
+                                <Form.Label>Employee Credentials </Form.Label>
+                                <span className="helper-text">
+                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
+                                </span>
+                                                               <Select
                                     name="coronerEmployee"
                                     value={coronerGroupedOptions
                                         .flatMap(group => group.options)
@@ -5304,6 +5309,9 @@ const [imgurLink, setImgurLink] = useState(null);
                         ) : bbCodeVersion === 2 ? (
                             <>
                                <Form.Label>Employee Credentials:</Form.Label>
+                                <span className="helper-text">
+                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
+                                </span>
                                 <Select
                                     name="coronerEmployee"
                                     value={coronerGroupedOptions
@@ -6110,6 +6118,9 @@ const [imgurLink, setImgurLink] = useState(null);
                             <>
                                 <p>The generated form must be used and added to the file for each medical appointment, follow the others.</p>
                                 <Form.Label>Employee Credentials:</Form.Label>
+                                <span className="helper-text">
+                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
+                                </span>
 
                                 <Select
                                     name="phmcEmployee"
@@ -6647,6 +6658,9 @@ const [imgurLink, setImgurLink] = useState(null);
                                             ))}
                                         </Form.Select>
                                 <Form.Label>Employee Credentials:</Form.Label>
+                                <span className="helper-text">
+                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
+                                </span>
 
                                 <Select
                                     name="phmcEmployee"
@@ -7031,6 +7045,9 @@ const [imgurLink, setImgurLink] = useState(null);
                                             ))}
                                         </Form.Select>
                                                             <Form.Label>Employee Credentials:</Form.Label>
+                                <span className="helper-text">
+                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
+                                </span>
                             
                                                             <Select
                                                                 name="phmcEmployee"
@@ -7382,6 +7399,9 @@ const [imgurLink, setImgurLink] = useState(null);
                                 <h5>(The FORM below is intended for the opening of a basic medical file, it must appear at the top.)</h5>
 
                                 <Form.Label>Employee Credentials:</Form.Label>
+                                <span className="helper-text">
+                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
+                                </span>
 
                                 <Select
                                     name="phmcEmployee"
@@ -7607,7 +7627,9 @@ const [imgurLink, setImgurLink] = useState(null);
                         ) : bbCodeVersion === 9 ? ( // generateObsMainFile
                             <>
 
-                                <Form.Label>Employee Credentials:</Form.Label>
+                                 <span className="helper-text">
+                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
+                                </span>
 
                                 <Select
                                     name="phmcEmployee"
@@ -8056,6 +8078,12 @@ const [imgurLink, setImgurLink] = useState(null);
                                 <h5> The FORM below should be used and added to the file, following the others.<br></br>(( Please note that it isn't mandatory to make a medical record for every patient you meet in the ER. You can either do it if you feel like it, offer it to the patient or simply do it at the patient's request. ))</h5>
 
                                 <Form.Label>Employee Credentials:</Form.Label>
+                                <span className="helper-text">
+                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
+                                </span>
+                                <span className="helper-text">
+                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
+                                </span>
 
                                 <Select
                                     name="phmcEmployee"
@@ -8379,6 +8407,12 @@ const [imgurLink, setImgurLink] = useState(null);
                                 <h5>(The FORM below is intended for the opening of a basic medical file, it must appear at the top.)</h5>
 
                                 <Form.Label>Employee Credentials:</Form.Label>
+                                <span className="helper-text">
+                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
+                                </span>
+                                <span className="helper-text">
+                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
+                                </span>
 
                                 <Select
                                     name="phmcEmployee"
@@ -8770,6 +8804,12 @@ const [imgurLink, setImgurLink] = useState(null);
                             <>
                                 <h5> This is the GYNE FOLLOW UP FORM.<br></br>(( Please note that it isn't mandatory to make a medical record for every patient you meet in the ER. You can either do it if you feel like it, offer it to the patient or simply do it at the patient's request. ))</h5>
                                 <Form.Label>Employee Credentials:</Form.Label>
+                                <span className="helper-text">
+                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
+                                </span>
+                                <span className="helper-text">
+                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
+                                </span>
 
                                 <Select
                                     name="phmcEmployee"
@@ -9549,6 +9589,12 @@ const [imgurLink, setImgurLink] = useState(null);
                         ) : bbCodeVersion === 18 ? ( // generateAgencyFeedback
                             <>
                                 <Form.Label>Employee Credentials:</Form.Label>
+                                <span className="helper-text">
+                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
+                                </span>
+                                <span className="helper-text">
+                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
+                                </span>
 
                                 <Select
                                     name="coronerEmployee"
@@ -9745,6 +9791,12 @@ const [imgurLink, setImgurLink] = useState(null);
                                             ))}
                                         </Form.Select>
                                 <Form.Label>Employee Credentials:</Form.Label>
+                                <span className="helper-text">
+                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
+                                </span>
+                                <span className="helper-text">
+                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
+                                </span>
 
                                 <Select
                                     name="phmcEmployee"
@@ -10123,6 +10175,12 @@ const [imgurLink, setImgurLink] = useState(null);
                                             ))}
                                         </Form.Select>
                                 <Form.Label>Employee Credentials:</Form.Label>
+                                <span className="helper-text">
+                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
+                                </span>
+                                <span className="helper-text">
+                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
+                                </span>
 
                                 <Select
                                     name="phmcEmployee"
@@ -10511,6 +10569,9 @@ const [imgurLink, setImgurLink] = useState(null);
                                             ))}
                                         </Form.Select>
                                 <Form.Label>Employee Credentials:</Form.Label>
+                                <span className="helper-text">
+                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
+                                </span>
 
                                 <Select
                                     name="phmcEmployee"
@@ -10883,6 +10944,9 @@ const [imgurLink, setImgurLink] = useState(null);
                                 />
                                 <Form.Label></Form.Label>
                                 <Form.Label>Employee Credentials:</Form.Label>
+                                <span className="helper-text">
+                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
+                                </span>
 
                                 <Select
                                     name="phmcEmployee"
@@ -11010,6 +11074,9 @@ const [imgurLink, setImgurLink] = useState(null);
                                 />
                                 <Form.Label></Form.Label>
                                 <Form.Label>Employee Credentials:</Form.Label>
+                                <span className="helper-text">
+                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
+                                </span>
 
                                 <Select
                                     name="phmcEmployee"
