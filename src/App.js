@@ -540,65 +540,70 @@ function App() {
             [type]: value,
         }));
     };
-const handleMissingEmployeeSubmit = async () => {
-    try {
+    const handleMissingEmployeeSubmit = async () => {
         const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-
-        if (!webhookURL) {
-            console.error('Something has gone wrong with the .env file.');
-            setNotification({
-                message: 'Discord webhook URL is not defined.',
-                icon: 'fas fa-exclamation-triangle',
-            });
+    
+        const emptyFields = Object.entries(missingEmployeeData)
+            .filter(([key, value]) => (key !== 'coronerBadge' && (key === 'coronerName' || key === 'coronerDiscord' || key === 'coronerRank' || key === 'coronerPHNumber')) && value.trim() === "")
+            .map(([key]) => key);
+    
+        if (emptyFields.length > 0) {
+            showNotification(`Please fill in all required fields. Missing: ${emptyFields.join(', ')}`, 'exclamation-circle');
             return;
         }
-
-        const response = await fetch(webhookURL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                content: `<@228306972204597248> New Employee Name Request by: ${missingEmployeeData.phmcEmployee} ${missingEmployeeData.coronerEmployee}  \n name: ${missingEmployeeData.coronerName} \n discord/department: ${missingEmployeeData.coronerDiscord}\n rank: ${missingEmployeeData.coronerRank} \n badge: ${missingEmployeeData.coronerBadge} \n Phone Number: ${missingEmployeeData.coronerPHNumber}`,
-            }),
-        });
-
-        if (response.ok) {
-            setNotification({
-                message: 'Success! Added to next server restart',
-                icon: 'fas fa-check-circle',
-            });
-            setShowMissingEmployeeModal(false);
-            setMissingEmployeeData({
-                coronerName: '',
-                coronerDiscord: '',
-                coronerRank: '',
-                coronerPHNumber: '',
-                coronerEmployee: '',
-                coronerBadge: '',
-                phmcEmployee: '',
-            });
-            // Add fade-out effect
-            setTimeout(() => {
-                setNotification(null);
-            }, 2000); // 2 seconds
-        } else {
-            console.error('Failed to send message to Discord webhook.');
-            setNotification({
-                message: 'Failed to submit. Please try again.',
-                icon: 'fas fa-exclamation-triangle',
-
-            });
+        
+        if (!missingEmployeeData.phmcEmployee && !missingEmployeeData.coronerEmployee) {
+            showNotification('Please fill in either PHMC Employee or Coroner Employee field.', 'exclamation-circle');
+            return;
         }
-    } catch (error) {
-        console.error('Error submitting data:', error);
-        setNotification({
-            message: 'An error occurred. Please try again.',
-            icon: 'fas fa-exclamation-triangle',
-        });
-    }
-};
-const handleFeatureRequestSubmit = async () => {
+    
+        if (!webhookURL) {
+            console.error('This is not expected.....');
+            showNotification('Something has gone wrong, debug logs dispatched. ', 'exclamation-triangle');
+            return;
+        }
+    
+        const messageContent = `New Employee Name Request by: ${missingEmployeeData.phmcEmployee || missingEmployeeData.coronerEmployee || 'Unknown'}
+        Name: ${missingEmployeeData.coronerName}
+        Discord/Department: ${missingEmployeeData.coronerDiscord}
+        Rank: ${missingEmployeeData.coronerRank}
+        Badge: ${missingEmployeeData.coronerBadge} || 'empty'
+        Phone Number: ${missingEmployeeData.coronerPHNumber}`;
+    
+    
+        try {
+            const response = await fetch(webhookURL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ content: `<@228306972204597248> ${messageContent}` }),
+            });
+    
+            if (!response.ok) {
+                console.error(`Failed to send message to Discord webhook. Status: ${response.status} ${response.statusText}`);
+                showNotification(`Failed to submit. Please try again. Status: ${response.status}`, 'exclamation-triangle');
+            } else {
+                showNotification('Success! Added to next server restart', 'check-circle');
+                setShowMissingEmployeeModal(false);
+                setMissingEmployeeData({
+                    coronerName: '',
+                    coronerDiscord: '',
+                    coronerRank: '',
+                    coronerPHNumber: '',
+                    coronerEmployee: '',
+                    coronerBadge: '',
+                    phmcEmployee: '',
+                });
+                setTimeout(() => setNotification(null), 2000);
+            }
+        } catch (error) {
+            console.error('Error submitting data:', error);
+            showNotification('An error occurred. Please try again.', 'exclamation-triangle');
+        }
+    };
+        
+    const handleFeatureRequestSubmit = async () => {
     const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
     if (!webhookURL) {
@@ -814,7 +819,7 @@ const handleFeatureRequestSubmit = async () => {
         const formattedConsoleErrors = allConsoleErrors.map((err, index) => `Error ${index + 1}:\nMessage: ${err.message}\nBBCode Version: ${err.bbCodeVersion}\nTimestamp: ${new Date(err.timestamp).toLocaleString()}\n`).join('\n');
     
         // Combine the main error message and console errors
-        let fullMessage = `**ERROR REPORT**
+        let fullMessage = `**ERROR REPORT** <@228306972204597248>
         BBCode Version: ${bbCodeVersion}
         Patient ID: ${patientId}
         Employee: ${employeeName} (${employeeRank} ${name} )
