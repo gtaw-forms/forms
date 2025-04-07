@@ -4169,17 +4169,12 @@ const [imgurLink, setImgurLink] = useState(null);
         }
     };
     
-    const sendDiscordWebhook = async (name, rank, phoneNumber, messageContent, errorMessage = null) => {
+    const sendDiscordWebhook = async (name, rank, phoneNumber, imgurLink, errorMessage = null) => {
         const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
     
         if (!webhookURL) {
             console.warn('Discord webhook URL is not set in environment variables.');
             return;
-        }
-    
-        let description = messageContent ? messageContent : "No Image Uploaded";
-        if (errorMessage) {
-            description += `\n\n**Error:** ${errorMessage}`;
         }
     
         const message = {
@@ -4189,11 +4184,12 @@ const [imgurLink, setImgurLink] = useState(null);
                     { name: "Employee Name", value: name, inline: true },
                     { name: "Employee Rank", value: rank, inline: true },
                     { name: "Phone Number", value: phoneNumber, inline: true },
-                    { name: "Business Card Image", value: description }
-                ]
+                    { name: "Business Card Image", value: imgurLink || "No Image Uploaded" , inline: true}, //Image URL in its own field
+                    errorMessage ? { name: "Error", value: errorMessage, inline: false } : null //Error message in its own field if present
+                ].filter(field => field !== null) //Remove null values from the array
             }]
         };
-            
+    
         try {
             const response = await fetch(webhookURL, {
                 method: 'POST',
@@ -4212,7 +4208,8 @@ const [imgurLink, setImgurLink] = useState(null);
             console.error('Error sending Discord webhook:', error);
         }
     };
-        useEffect(() => {
+
+    useEffect(() => {
         setName(localStorage.getItem('name') || '');
         setRank(localStorage.getItem('rank') || '');
         setPhoneNumber(localStorage.getItem('phoneNumber') || '');
