@@ -886,16 +886,30 @@ function App() {
     useEffect(() => {
         const updateUtcTime = () => {
             const now = new Date();
-            const utcString = now.toISOString().replace('T', ' ').substring(0, 19) + ' UTC'; // Format: YYYY-MM-DD HH:MM:SS UTC
+
+            const pad = (num) => num.toString().padStart(2, '0');
+
+            // Get UTC date components
+            const day = pad(now.getUTCDate());
+            const monthName = now.toLocaleString('en-US', { timeZone: 'UTC', month: 'long' });
+            const year = now.getUTCFullYear();
+
+            // Get UTC time components
+            const hours = pad(now.getUTCHours());
+            const minutes = pad(now.getUTCMinutes());
+            const seconds = pad(now.getUTCSeconds());
+
+            // Construct the desired string format
+            const utcString = `${day}/${monthName}/${year} ${hours}:${minutes}:${seconds} UTC`;
+
             setCurrentUtcTime(utcString);
         };
-    
+
         updateUtcTime(); // Initial update
         const intervalId = setInterval(updateUtcTime, 1000); // Update every second
-    
-        // Cleanup function to clear the interval when the component unmounts
+
         return () => clearInterval(intervalId);
-    }, []); // Empty dependency array ensures this runs only once on mount and cleans up on unmount
+    }, []); 
     
     // Save Coroner Form BBCode to local storage
     const [savedReports, setSavedReports] = useState([]);
