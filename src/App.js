@@ -100,6 +100,8 @@ function App() {
     const [formData, setFormData] = useState({
         coronerRank: 'Forensic Attendant',
         placeOfDeath: '',
+        evidenceLockerID: '',
+        evidenceLocker: '',
         department: '',
         dateTime: '',
         serialNumber: '',
@@ -138,6 +140,7 @@ function App() {
         surgeryComplications: '',
         surgeryProcedures: '',
         drugType: '',
+        
         postDrugtype: '',
         surgicalSummery: '',
         surgeryTime: '',
@@ -878,7 +881,22 @@ function App() {
             }
         }
     };    
-
+    // UTC time stuff
+    const [currentUtcTime, setCurrentUtcTime] = useState('');
+    useEffect(() => {
+        const updateUtcTime = () => {
+            const now = new Date();
+            const utcString = now.toISOString().replace('T', ' ').substring(0, 19) + ' UTC'; // Format: YYYY-MM-DD HH:MM:SS UTC
+            setCurrentUtcTime(utcString);
+        };
+    
+        updateUtcTime(); // Initial update
+        const intervalId = setInterval(updateUtcTime, 1000); // Update every second
+    
+        // Cleanup function to clear the interval when the component unmounts
+        return () => clearInterval(intervalId);
+    }, []); // Empty dependency array ensures this runs only once on mount and cleans up on unmount
+    
     // Save Coroner Form BBCode to local storage
     const [savedReports, setSavedReports] = useState([]);
     const [showSavedReports, setShowSavedReports] = useState(false);
@@ -1038,10 +1056,20 @@ const filterFormData = (formData, bbCodeVersion) => {
             typeOfDeath,
             scenePhotos,
             additionalImages,
+            evidenceLocker,
+            evidenceLockerID
         } = formData;
 
         const scenePhotosBBCode = scenePhotos.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
         const additionalImagesBBCode = additionalImages.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
+        let evidenceLockerListItems = '[*] N/A'; // Default if no ID is provided or checkbox is off
+        if (formData.evidenceLocker === 'true' && evidenceLockerID && evidenceLockerID.trim() !== '') {
+             evidenceLockerListItems = evidenceLockerID
+                .split(',') // Split the string by commas
+                .map(item => `[*] ${item.trim()}`) // Add '[*] ' prefix to each item
+                .join('\n'); // Join items with newlines
+        }
+
         // Base BBCode for ID 1
         const bbCode = `[divbox=transparent][center][img]https://i.imgur.com/Hxjt4M2.png[/img][/center][/divbox]
 
@@ -1089,6 +1117,11 @@ ${formData.morgueStatus === 'true' ? '[b][color=red](( The Morgue Screen is curr
 Morgue screen, cinjuries, cdna links: 
 [size=85][u] THESE IMAGES ARE [B]OUT OF CHARACTER[/B] FOR INTERNAL RECORDS, DO NOT USE THESE AS EVIDENCE. [/u][/size]
 ${additionalImagesBBCode}
+
+${coronerRank} ${coronerBadge} has added something to the evidence locker: ${evidenceLocker} 
+[list]
+${evidenceLockerListItems}
+[/list]
 
 [/divbox]
 `;
@@ -3423,6 +3456,8 @@ if (bbCodeVersion === 1) {
    const clearForm = () => {
         setFormData({
             placeOfDeath: '',
+            evidenceLockerID: '',
+            evidenceLocker: '',    
             department: '',
             dateTime: '',
             phmcRank: '',
@@ -3990,7 +4025,7 @@ if (bbCodeVersion === 1) {
 
     const versionNames = {
         1: "Death Report",
-        2: "Invalid Report Vector",
+        2: "Coroner Email",
         3: "Patient File - Advanced",
         4: "Dental Report",
         5: "Surgery Report",
@@ -4993,7 +5028,12 @@ const [imgurLink, setImgurLink] = useState(null);
                                 />
                                 <FormHelperText></FormHelperText>
                                 <Form.Label></Form.Label>
-                                <Form.Label>Dispatch Time | Decedent Time of Death</Form.Label>
+                                <Form.Label>
+                                        Dispatch Time | Decedent Time of Death
+                                        <span style={{ fontSize: '0.8em', color: '#6c757d', marginLeft: '10px' }}>
+                                            (Current Server Time: {currentUtcTime})
+                                        </span>
+                                    </Form.Label>
                                 <div style={{ display: 'flex', gap: '10px' }}>
                                 <Form.Control
                                     type="datetime-local"
@@ -5119,6 +5159,34 @@ const [imgurLink, setImgurLink] = useState(null);
                                     required
                                     className={`form-control ${!formData.synopsis ? 'is-invalid' : ''}`}
                                 />
+                                    <label>Evidence Locker Submission:</label>
+                                    <Form.Check
+                                        type="checkbox"
+                                        id="evidenceLocker"
+                                        label="       I have submitted evidence to the evidence locker"
+                                        checked={formData.evidenceLocker === 'true'}
+                                        onChange={(e) => setFormData(prev => ({
+                                            ...prev,
+                                            evidenceLocker: e.target.checked.toString(),
+                                            evidenceLockerID: '' // Clear the Evidence Locker ID when unchecked
+                                        }))}
+                                    />
+                                    {formData.evidenceLocker === 'true' && (
+                                        <span className="helper-text">Please use commas (,) to seperate multiple items!</span>
+                                    )}
+                                    {formData.evidenceLocker === 'true' && (
+                                        <Form.Control
+                                            type="text"
+                                            name="evidenceLockerID"
+                                            value={formData.evidenceLockerID}
+                                            onChange={handleChange}
+                                            placeholder="Enter Evidence Locker Submission ID"
+                                            required
+                                            className={`form-control ${!formData.evidenceLockerID ? 'is-invalid' : ''}`}
+                                        />
+                                    )}
+                                    <label></label>
+
                                 <Form.Control
                                     type="text"
                                     name="probableCauseOfDeath"
@@ -14015,7 +14083,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         >
                             <i className="fas fa-clipboard"></i>
     Copy {bbCodeVersion === 1 ? "Death Report" :
-        bbCodeVersion === 2 ? "Invalid Report Vector" :
+        bbCodeVersion === 2 ? "Coroner Report" :
         bbCodeVersion === 3 ? "Detailed Patient File" :
         bbCodeVersion === 4 ? "Internal Medicine Report" :
         bbCodeVersion === 5 ? "Surgical Operations Report" :
