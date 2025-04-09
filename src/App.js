@@ -2797,8 +2797,10 @@ ${patientName}
             patientNotes,
             date,
             patientID,
+            scenePhotos,
         } = formData;
-    
+        const scenePhotosBBCode = scenePhotos.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
+
         let bbCode = `[table][tr][td][center][br][/br][br][/br][b]Patient Information[/b]
     
     [size=110]PATIENT ${patientID}
@@ -2826,6 +2828,12 @@ ${patientName}
     [tr][td] Chronic Conditions: [/td][td] ${patientChronicDiseases}
     [tr][td] Traumas & Injuries: [/td][td] ${patientNotes}
     [/table] 
+
+[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Payment[/b][/color][/size][/center][/divboxcolor]
+[table][tr][td] Please attach an unedited confirmation of your payment, unless you are exempt. [size=70](see question 14 in the FAQ thread on how to pay)[/size][/td][td]
+[url=${scenePhotos}]Proof Of Payment [/url]
+[/table]
+
     `
         return bbCode;
         };
@@ -4338,11 +4346,9 @@ const [imgurLink, setImgurLink] = useState(null);
                 .catch(error => console.error('Error fetching commit:', error));
         };
 
-        // Fetch immediately on mount
         fetchCommit();
 
-        // Set up polling to check for updates every 5 minutes (10000 ms)
-        const intervalId = setInterval(fetchCommit, 10000);
+        const intervalId = setInterval(fetchCommit, 1000);
 
         // Cleanup interval on component unmount
         return () => clearInterval(intervalId);
@@ -4489,7 +4495,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 1.9.4a - ❄️ Frostbite Update </h3>
+                                    <h3>Changelog - Version 1.9.5 - ❄️ Frostbite Update </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -4500,8 +4506,9 @@ const [imgurLink, setImgurLink] = useState(null);
                                 </div>
                                 <div className="modal-content">
                                     <ul>
-                                        <li> NEW - Dynamic Event Handling.  </li>
-                                        <li> Attempt 40204823 fix for Coroner Reports (Email) handling. </li>
+                                        <li> Overhauled error handling.  </li>
+                                        <li> Fixed various issues with isMulti Select variables. </li>
+                                        <li> Added new features to the PHMC and PBC forms. </li>
                                     </ul>
                                     - frosty
                                 </div>
@@ -7854,9 +7861,6 @@ const [imgurLink, setImgurLink] = useState(null);
                         ) : bbCodeVersion === 9 ? ( // generateObsMainFile
                             <>
 
-                                 <span className="helper-text">
-                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
-                                </span>
 
                                 <Select
                                     name="phmcEmployee"
@@ -12124,6 +12128,47 @@ const [imgurLink, setImgurLink] = useState(null);
 
                                         />
                                     </div>
+                                    <Form.Label>Date and Proof of Payment </Form.Label>
+                                        <span className="helper-text"> 14) How do I pay the $2,000 registration fee? <br></br> To pay your $2,000 registration fee, please log into the banking website and navigate to the "Payment" section. Select your preferred payment method (e.g., credit card, debit card), insert our routing number (020000062), enter the required payment details, review the transaction, and confirm your payment. (( Type /transfer 2000 020000062 )) <br></br>If you are a minor or a low-income citizen, please state it in your registration as you are excempt from the payment. </span>
+                                    <InputGroup>
+                                        <Form.Control
+                                            as="textarea"
+                                            rows="2"
+                                            name="scenePhotos"
+                                            value={formData.scenePhotos}
+                                            onChange={handleChange}
+                                            placeholder="Upload your proof of payment here!"
+                                            required
+                                            className="form-control"
+                                            onPaste={(e) => {
+                                                e.preventDefault();
+                                                const items = e.clipboardData.items;
+                                                for (let i = 0; i < items.length; i++) {
+                                                    if (items[i].type.indexOf('image') !== -1) {
+                                                        const file = items[i].getAsFile();
+                                                        handleImageUpload({ target: { files: [file] } }, 'scenePhotos');
+                                                    }
+                                                }
+                                            }}
+
+                                        />
+                                        <Button
+                                            variant="success"
+                                            disabled={isUploading}
+                                            onClick={() => {
+                                                const input = document.createElement('input');
+                                                input.type = 'file';
+                                                input.accept = 'image/*';
+                                                input.multiple = true;
+                                                input.onchange = (e) => handleImageUpload(e, 'scenePhotos');
+                                                input.click();
+                                            }}
+                                        >
+                                            <i className={`fas ${isUploading ? 'fa-spinner fa-spin' : 'fa-upload'}`}></i>
+                                            {isUploading ? 'Uploading...' : 'Upload Images'}
+                                        </Button>
+
+                                    </InputGroup>
 
                                 </>
                                                      ) : bbCodeVersion === 26 ? ( //Staff Basic Patient File
