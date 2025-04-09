@@ -4341,8 +4341,8 @@ const [imgurLink, setImgurLink] = useState(null);
         // Fetch immediately on mount
         fetchCommit();
 
-        // Set up polling to check for updates every 5 minutes (300000 ms)
-        const intervalId = setInterval(fetchCommit, 300000);
+        // Set up polling to check for updates every 5 minutes (10000 ms)
+        const intervalId = setInterval(fetchCommit, 10000);
 
         // Cleanup interval on component unmount
         return () => clearInterval(intervalId);
