@@ -9,7 +9,7 @@ import getRelevantFields from './components/RevelantFields';
 import AgencySelector from './components/AgencySelector';
 import Footer from './components/Footer';
 import SeasonalEvents from './components/SeasonalEvents';
-import HeaderInfo from './HeaderInfo';
+import HeaderInfo from './components/HeaderInfo';
 import Snowfall from 'react-snowfall'; 
 import EasterEggImages from './EasterEggParticles'; 
 
@@ -114,6 +114,12 @@ function App() {
         mannerOfDeath: '',
         typeOfDeath: '',
         coronerEmployee: '',
+        MedicalRecordsRelease: [], // Keep as array for multi-select (react-select)
+        PurposeMedicalInformationReleaseFormat: '', // *** FIX: Change from [] to '' ***
+        PurposeMedicalInformationRelease: '',
+        // ... other fields ...
+        lab: [''], // Keep as array for multi-select (react-select)
+        extraStaff: [], // Keep as array for multi-select (react-select)    
         decedentOOC: '',
         scenePhotos: '',
         patientMedInfoFormatOther: '',
@@ -134,7 +140,7 @@ function App() {
         treatmentLocation: '',
         moreDeathReports: [''],
         // surgical operations fields
-        extraStaff: '',
+        extraStaff: [],
         patientName: '',
         patientAllergies: '',
         surgeryComplications: '',
@@ -309,6 +315,7 @@ function App() {
         MedicalRecordsRelease: [],
         PurposeMedicalInformationReleaseFormat: [],
         PurposeMedicalInformationRelease: '',
+        PurposeMedicalInformationReleaseFormat: '',
         PurposeAttorney: '',
         PurposePersonal: '',
         PurposeFurtherCare  : '',
@@ -423,6 +430,8 @@ function App() {
     const [isJohnDoe, setIsJohnDoe] = useState(false);
     const [isJaneDoe, setIsJaneDoe] = useState(false);
     const [notification, setNotification] = useState(null);
+    const [showUpdateNotification, setShowUpdateNotification] = useState(false); // New state for notification visibility
+    const initialCommitSha = useRef(null); // Ref to store the initial commit SHA
     const [commitInfo, setCommitInfo] = useState({ sha: '', date: null });
     const [showPHMCModal, setShowPHMCModal] = useState(false);
     const { imageSource: deathReportImage, className: deathReportClass } = SeasonalEvents({ imageType: 'deathReport' });
@@ -3503,7 +3512,6 @@ if (bbCodeVersion === 1) {
             moreDeathReports: [''],
             extraStaff: '',
             patientName: '',
-            patientConsent: '',
             patientAllergies: '',
             surgeryComplications: '',
             surgeryProcedures: '',
@@ -4295,6 +4303,55 @@ const [imgurLink, setImgurLink] = useState(null);
         setPhoneNumber(e.target.value);
     };
 
+    // handling updates and refresh 
+    useEffect(() => {
+        const fetchCommit = () => {
+            fetch('https://api.github.com/repos/GTAW-PHMC/forms/commits/gh-pages')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`GitHub API error: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    const latestSha = data.sha.substring(0, 7);
+                    const commitDate = new Date(data.commit.author.date);
+                    const formattedDate = commitDate.toLocaleString('en-US', { /* ... date formatting options ... */ });
+
+                    // Store the first fetched SHA as the initial version
+                    if (initialCommitSha.current === null) {
+                        initialCommitSha.current = latestSha;
+                        console.log(`Initial app version loaded: ${latestSha}`);
+                    }
+
+                    setCommitInfo({
+                        sha: latestSha,
+                        date: formattedDate
+                    });
+
+                    // Check if the latest SHA is different from the initial one
+                    if (initialCommitSha.current !== null && initialCommitSha.current !== latestSha) {
+                        console.log(`New version detected! Initial: ${initialCommitSha.current}, Latest: ${latestSha}`);
+                        setShowUpdateNotification(true); // Show the update notification
+                    }
+                })
+                .catch(error => console.error('Error fetching commit:', error));
+        };
+
+        // Fetch immediately on mount
+        fetchCommit();
+
+        // Set up polling to check for updates every 5 minutes (300000 ms)
+        const intervalId = setInterval(fetchCommit, 300000);
+
+        // Cleanup interval on component unmount
+        return () => clearInterval(intervalId);
+
+    }, []); // Empty dependency array ensures this runs once on mount and sets up polling
+    const handleRefresh = () => {
+        window.location.reload(true); // Force reload from server
+    };
+
     
     useEffect(() => {
         window.onerror = async (message, source, lineno, colno, error) => {
@@ -4337,8 +4394,22 @@ const [imgurLink, setImgurLink] = useState(null);
     }, [bbCodeVersion, showAgencySelector, showFeatureRequestModal, showMissingEmployeeModal, showChangelog, showBusinessCard, showBBCode, showImages]);
         return (
         <div className="App">
-{season === "Easter" && <Snowfall images={EasterEggImages} snowflakeCount={150} />}
-{season === "Christmas" && <Snowfall images={EasterEggImages} snowflakeCount={500} />}
+{season === "Easter" && <Snowfall images={EasterEggImages} snowflakeCount={25} />}
+{season === "Christmas" && <Snowfall images={EasterEggImages} snowflakeCount={75} />}
+{showUpdateNotification && (
+                <Notification
+                    message={
+                        <>
+                            A new update is available! Please refresh your browser.
+                            <button onClick={handleRefresh} className="notification-refresh-button">
+                                Refresh Now
+                            </button>
+                        </>
+                    }
+                    icon="fas fa-sync-alt" // Example icon
+                    onDismiss={() => setShowUpdateNotification(false)} // Allow dismissing
+                />
+            )}
 
 {showAgencySelector && (
     <AgencySelector
@@ -4979,10 +5050,22 @@ const [imgurLink, setImgurLink] = useState(null);
                         {bbCodeVersion === 1 ? (
                             <>
                                 <p>The Coroner Report Generated needs to be filled out fully, you can upload images locally or link pictures. </p>
-                                <Form.Label>Employee Credentials </Form.Label>
-                                <span className="helper-text">
-                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
-                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                                    <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowMissingEmployeeModal(true)}
+                                        className="close-button"
+                                        style={{
+                                            padding: '0.25rem 0.5rem',
+                                            fontSize: '0.8rem',     
+                                            lineHeight: '1.2'       
+                                        }}
+                                    >
+                                        <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i> {/* Changed icon */}
+                                        Missing Name?
+                                    </button>
+                                </div>
                                                                <Select
                                     name="coronerEmployee"
                                     value={coronerGroupedOptions
@@ -5392,11 +5475,23 @@ const [imgurLink, setImgurLink] = useState(null);
                             </>
                         ) : bbCodeVersion === 2 ? (
                             <>
-                               <Form.Label>Employee Credentials:</Form.Label>
-                                <span className="helper-text">
-                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
-                                </span>
-                                <Select
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                                    <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowMissingEmployeeModal(true)}
+                                        className="close-button"
+                                        style={{
+                                            padding: '0.25rem 0.5rem',
+                                            fontSize: '0.8rem',     
+                                            lineHeight: '1.2'       
+                                        }}
+                                    >
+                                        <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i> {/* Changed icon */}
+                                        Missing Name?
+                                    </button>
+                                </div>
+                                                               <Select
                                     name="coronerEmployee"
                                     value={coronerGroupedOptions
                                         .flatMap(group => group.options)
@@ -6201,10 +6296,22 @@ const [imgurLink, setImgurLink] = useState(null);
                             // Dental Consultation fields
                             <>
                                 <p>The generated form must be used and added to the file for each medical appointment, follow the others.</p>
-                                <Form.Label>Employee Credentials:</Form.Label>
-                                <span className="helper-text">
-                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
-                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                                    <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowMissingEmployeeModal(true)}
+                                        className="close-button"
+                                        style={{
+                                            padding: '0.25rem 0.5rem',
+                                            fontSize: '0.8rem',     
+                                            lineHeight: '1.2'       
+                                        }}
+                                    >
+                                        <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i> {/* Changed icon */}
+                                        Missing Name?
+                                    </button>
+                                </div>
 
                                 <Select
                                     name="phmcEmployee"
@@ -6741,10 +6848,22 @@ const [imgurLink, setImgurLink] = useState(null);
                                                 <option key={option.value} value={option.value}>{option.label}</option>
                                             ))}
                                         </Form.Select>
-                                <Form.Label>Employee Credentials:</Form.Label>
-                                <span className="helper-text">
-                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
-                                </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                                    <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowMissingEmployeeModal(true)}
+                                        className="close-button"
+                                        style={{
+                                            padding: '0.25rem 0.5rem',
+                                            fontSize: '0.8rem',     
+                                            lineHeight: '1.2'       
+                                        }}
+                                    >
+                                        <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i> {/* Changed icon */}
+                                        Missing Name?
+                                    </button>
+                                </div>
 
                                 <Select
                                     name="phmcEmployee"
@@ -7128,10 +7247,22 @@ const [imgurLink, setImgurLink] = useState(null);
                                                 <option key={option.value} value={option.value}>{option.label}</option>
                                             ))}
                                         </Form.Select>
-                                                            <Form.Label>Employee Credentials:</Form.Label>
-                                <span className="helper-text">
-                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
-                                </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                                    <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowMissingEmployeeModal(true)}
+                                        className="close-button"
+                                        style={{
+                                            padding: '0.25rem 0.5rem',
+                                            fontSize: '0.8rem',     
+                                            lineHeight: '1.2'       
+                                        }}
+                                    >
+                                        <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i> {/* Changed icon */}
+                                        Missing Name?
+                                    </button>
+                                </div>
                             
                                                             <Select
                                                                 name="phmcEmployee"
@@ -7482,10 +7613,22 @@ const [imgurLink, setImgurLink] = useState(null);
                             <>
                                 <h5>(The FORM below is intended for the opening of a basic medical file, it must appear at the top.)</h5>
 
-                                <Form.Label>Employee Credentials:</Form.Label>
-                                <span className="helper-text">
-                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
-                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                                    <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowMissingEmployeeModal(true)}
+                                        className="close-button"
+                                        style={{
+                                            padding: '0.25rem 0.5rem',
+                                            fontSize: '0.8rem',     
+                                            lineHeight: '1.2'       
+                                        }}
+                                    >
+                                        <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i> {/* Changed icon */}
+                                        Missing Name?
+                                    </button>
+                                </div>
 
                                 <Select
                                     name="phmcEmployee"
@@ -8161,13 +8304,22 @@ const [imgurLink, setImgurLink] = useState(null);
                             <>
                                 <h5> The FORM below should be used and added to the file, following the others.<br></br>(( Please note that it isn't mandatory to make a medical record for every patient you meet in the ER. You can either do it if you feel like it, offer it to the patient or simply do it at the patient's request. ))</h5>
 
-                                <Form.Label>Employee Credentials:</Form.Label>
-                                <span className="helper-text">
-                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
-                                </span>
-                                <span className="helper-text">
-                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
-                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                                    <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowMissingEmployeeModal(true)}
+                                        className="close-button"
+                                        style={{
+                                            padding: '0.25rem 0.5rem',
+                                            fontSize: '0.8rem',     
+                                            lineHeight: '1.2'       
+                                        }}
+                                    >
+                                        <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i> {/* Changed icon */}
+                                        Missing Name?
+                                    </button>
+                                </div>
 
                                 <Select
                                     name="phmcEmployee"
@@ -8490,13 +8642,22 @@ const [imgurLink, setImgurLink] = useState(null);
                             <>
                                 <h5>(The FORM below is intended for the opening of a basic medical file, it must appear at the top.)</h5>
 
-                                <Form.Label>Employee Credentials:</Form.Label>
-                                <span className="helper-text">
-                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
-                                </span>
-                                <span className="helper-text">
-                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
-                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                                    <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowMissingEmployeeModal(true)}
+                                        className="close-button"
+                                        style={{
+                                            padding: '0.25rem 0.5rem',
+                                            fontSize: '0.8rem',     
+                                            lineHeight: '1.2'       
+                                        }}
+                                    >
+                                        <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i> {/* Changed icon */}
+                                        Missing Name?
+                                    </button>
+                                </div>
 
                                 <Select
                                     name="phmcEmployee"
@@ -8887,14 +9048,22 @@ const [imgurLink, setImgurLink] = useState(null);
                         ) : bbCodeVersion === 13 ? ( // generateGyneFollowUp
                             <>
                                 <h5> This is the GYNE FOLLOW UP FORM.<br></br>(( Please note that it isn't mandatory to make a medical record for every patient you meet in the ER. You can either do it if you feel like it, offer it to the patient or simply do it at the patient's request. ))</h5>
-                                <Form.Label>Employee Credentials:</Form.Label>
-                                <span className="helper-text">
-                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
-                                </span>
-                                <span className="helper-text">
-                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
-                                </span>
-
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                                    <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowMissingEmployeeModal(true)}
+                                        className="close-button"
+                                        style={{
+                                            padding: '0.25rem 0.5rem',
+                                            fontSize: '0.8rem',     
+                                            lineHeight: '1.2'       
+                                        }}
+                                    >
+                                        <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i> {/* Changed icon */}
+                                        Missing Name?
+                                    </button>
+                                </div>
                                 <Select
                                     name="phmcEmployee"
                                     value={phmcGroupedOptions
@@ -9672,13 +9841,22 @@ const [imgurLink, setImgurLink] = useState(null);
                             </>
                         ) : bbCodeVersion === 18 ? ( // generateAgencyFeedback
                             <>
-                                <Form.Label>Employee Credentials:</Form.Label>
-                                <span className="helper-text">
-                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
-                                </span>
-                                <span className="helper-text">
-                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
-                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                                    <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowMissingEmployeeModal(true)}
+                                        className="close-button"
+                                        style={{
+                                            padding: '0.25rem 0.5rem',
+                                            fontSize: '0.8rem',     
+                                            lineHeight: '1.2'       
+                                        }}
+                                    >
+                                        <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i> {/* Changed icon */}
+                                        Missing Name?
+                                    </button>
+                                </div>
 
                                 <Select
                                     name="coronerEmployee"
@@ -9874,13 +10052,22 @@ const [imgurLink, setImgurLink] = useState(null);
                                                 <option key={option.value} value={option.value}>{option.label}</option>
                                             ))}
                                         </Form.Select>
-                                <Form.Label>Employee Credentials:</Form.Label>
-                                <span className="helper-text">
-                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
-                                </span>
-                                <span className="helper-text">
-                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
-                                </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                                    <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowMissingEmployeeModal(true)}
+                                        className="close-button"
+                                        style={{
+                                            padding: '0.25rem 0.5rem',
+                                            fontSize: '0.8rem',     
+                                            lineHeight: '1.2'       
+                                        }}
+                                    >
+                                        <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i> {/* Changed icon */}
+                                        Missing Name?
+                                    </button>
+                                </div>
 
                                 <Select
                                     name="phmcEmployee"
@@ -10258,14 +10445,22 @@ const [imgurLink, setImgurLink] = useState(null);
                                                 <option key={option.value} value={option.value}>{option.label}</option>
                                             ))}
                                         </Form.Select>
-                                <Form.Label>Employee Credentials:</Form.Label>
-                                <span className="helper-text">
-                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
-                                </span>
-                                <span className="helper-text">
-                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
-                                </span>
-
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                                    <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowMissingEmployeeModal(true)}
+                                        className="close-button"
+                                        style={{
+                                            padding: '0.25rem 0.5rem',
+                                            fontSize: '0.8rem',     
+                                            lineHeight: '1.2'       
+                                        }}
+                                    >
+                                        <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i> {/* Changed icon */}
+                                        Missing Name?
+                                    </button>
+                                </div>
                                 <Select
                                     name="phmcEmployee"
                                     value={phmcGroupedOptions
@@ -10652,10 +10847,22 @@ const [imgurLink, setImgurLink] = useState(null);
                                                 <option key={option.value} value={option.value}>{option.label}</option>
                                             ))}
                                         </Form.Select>
-                                <Form.Label>Employee Credentials:</Form.Label>
-                                <span className="helper-text">
-                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
-                                </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                                    <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowMissingEmployeeModal(true)}
+                                        className="close-button"
+                                        style={{
+                                            padding: '0.25rem 0.5rem',
+                                            fontSize: '0.8rem',     
+                                            lineHeight: '1.2'       
+                                        }}
+                                    >
+                                        <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i> {/* Changed icon */}
+                                        Missing Name?
+                                    </button>
+                                </div>
 
                                 <Select
                                     name="phmcEmployee"
@@ -11027,10 +11234,22 @@ const [imgurLink, setImgurLink] = useState(null);
                                     className="form-control"
                                 />
                                 <Form.Label></Form.Label>
-                                <Form.Label>Employee Credentials:</Form.Label>
-                                <span className="helper-text">
-                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
-                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                                    <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowMissingEmployeeModal(true)}
+                                        className="close-button"
+                                        style={{
+                                            padding: '0.25rem 0.5rem',
+                                            fontSize: '0.8rem',     
+                                            lineHeight: '1.2'       
+                                        }}
+                                    >
+                                        <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i> {/* Changed icon */}
+                                        Missing Name?
+                                    </button>
+                                </div>
 
                                 <Select
                                     name="phmcEmployee"
@@ -11157,10 +11376,22 @@ const [imgurLink, setImgurLink] = useState(null);
                                     className="form-control"
                                 />
                                 <Form.Label></Form.Label>
-                                <Form.Label>Employee Credentials:</Form.Label>
-                                <span className="helper-text">
-                                Is your name missing? <a href="#" onClick={() => document.getElementById('missingEmployeeButton').click()}>Click here</a>.
-                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                                    <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowMissingEmployeeModal(true)}
+                                        className="close-button"
+                                        style={{
+                                            padding: '0.25rem 0.5rem',
+                                            fontSize: '0.8rem',     
+                                            lineHeight: '1.2'       
+                                        }}
+                                    >
+                                        <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i> {/* Changed icon */}
+                                        Missing Name?
+                                    </button>
+                                </div>
 
                                 <Select
                                     name="phmcEmployee"
@@ -11455,7 +11686,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                     <Form.Label>Format of Medical Information Release </Form.Label>
                                     <Form.Select
                                     name="PurposeMedicalInformationReleaseFormat"
-                                    value={formData.PurposeMedicalInformationReleaseFormat || ""}
+                                    value={formData.PurposeMedicalInformationReleaseFormat}
                                     onChange={(e) => {
                                         const selectedType = e.target.value;
                                         setFormData(prev => ({
@@ -13366,14 +13597,13 @@ const [imgurLink, setImgurLink] = useState(null);
                             <button
                                 type="button"
                                 onClick={clearForm}
-                                className="upload-button"
+                                className="remove-report-button"
                             >
                                 <i className="fas fa-trash-alt"></i>
                                 Clear Form
                             </button>
                         </div>
                     </form>
-
                 </div>
                 <div className="output-container">
      {showMissingEmployeeModal && (
@@ -13636,14 +13866,18 @@ const [imgurLink, setImgurLink] = useState(null);
             <div className="modal">
                 <Modal.Header>
                     <Modal.Title>Bug / Feature Request</Modal.Title>
-                    <Button variant="secondary" className="close" onClick={() => setShowFeatureRequestModal(false)}>
-                        <span>&times;</span>
-                    </Button>
+                    <button
+                                        type="button"
+                                        onClick={() => setShowFeatureRequestModal(false)}
+                                        className="close-button"
+                                    >
+                                        X
+                                    </button>
+
                 </Modal.Header>
                 <Modal.Body>
                     <Form>
                         <Form.Group>
-                            <Form.Label>Bug / Feature Request:</Form.Label>
                             <Form.Control
                                 as="textarea"
                                 rows={3}
@@ -13964,8 +14198,8 @@ const [imgurLink, setImgurLink] = useState(null);
                     src={agencyData[formData.department].logo}
                     alt={formData.department}
                     style={{
-                        width: '50px',
-                        height: '50px',
+                        width: '150px',
+                        height: '150px',
                         margin: '10px 5px',
                         cursor: 'pointer'
                     }}

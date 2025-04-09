@@ -43,7 +43,7 @@ const AgencySelector = ({ showAgencySelector, setShowAgencySelector, handleAgenc
                             <option value="6">Physical Evaluation</option>
                             <option value="27">Email Forms</option>
                             <option value="5">Surgical Ops</option>
-                            <option value="28">Psychological Evaluation- WIP</option>
+                            <option value="28">Psychological Evaluation</option>
                         </select>
                     ) : (
                         <div className="agency-selector-buttons">

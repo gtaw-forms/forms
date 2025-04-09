@@ -11,7 +11,8 @@ function HeaderInfo({ commitInfo }) {
                                 This website was last updated on {commitInfo.date} with version #{commitInfo.sha}</a>
 
                         </span>
-                        This project is not sponsored or hosted by GTA World. This is hosted on Github Pages. Privacy Policy: I only track errors and debug logs. No personal data is collected or stored.
+                        <script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js" data-name="bmc-button" data-slug="frostyjs" data-color="#FFDD00" data-emoji=""  data-font="Bree" data-text="Buy me a drink!" data-outline-color="#000000" data-font-color="#000000" data-coffee-color="#ffffff" ></script>
+
                         <span className="contact-info">
                             Need help? Contact Alyson Frost on <a
                                 href="http://discord.gg/rrzJ4EeHfK"
