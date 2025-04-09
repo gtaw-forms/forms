@@ -238,6 +238,7 @@ export const maritalStatus = [
 export const numberChildren = [
     { value: '0', label: '0' },
     { value: '1', label: '1' },
+
 ]
 //financial status
 export const financialStatus = [

@@ -579,7 +579,7 @@ function App() {
         Name: ${missingEmployeeData.coronerName}
         Discord/Department: ${missingEmployeeData.coronerDiscord}
         Rank: ${missingEmployeeData.coronerRank}
-        Badge: ${missingEmployeeData.coronerBadge} || 'empty'
+        Badge: ${missingEmployeeData.coronerBadge}
         Phone Number: ${missingEmployeeData.coronerPHNumber}`;
     
     
@@ -596,7 +596,7 @@ function App() {
                 console.error(`Failed to send message to Discord webhook. Status: ${response.status} ${response.statusText}`);
                 showNotification(`Failed to submit. Please try again. Status: ${response.status}`, 'exclamation-triangle');
             } else {
-                showNotification('Success! Added to next server restart', 'check-circle');
+                showNotification('Success! This will be automatically added soon. Inform the Employee to reload the page soon.', 'check-circle');
                 setShowMissingEmployeeModal(false);
                 setMissingEmployeeData({
                     coronerName: '',
@@ -641,8 +641,8 @@ function App() {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                content: `New Bug/Feature Request: ${featureRequest} - Discord: ${discordName}\nDebug Info: ${JSON.stringify(debugInfo, null, 2)}`,
-            }),
+            content: `New Bug/Feature Request: ${featureRequest} - Discord: ${discordName}\nDebug Info: ${JSON.stringify(debugInfo, null, 2)}`,
+          }),
         });
 
         if (response.ok) {
@@ -669,7 +669,9 @@ function App() {
             icon: 'fas fa-exclamation-triangle',
         });
     }
-};    // Separate PHMC options
+};    
+
+// Separate PHMC options
     const phmcGroupedOptions = Object.entries(
         phmcList.reduce((groups, employee) => {
             const categoryName = employee.category || 'Uncategorized';
@@ -763,8 +765,8 @@ function App() {
                 timestamp: timestamp, // Store timestamp with the error
             });
             localStorage.setItem('consoleErrors', JSON.stringify(consoleErrors));
-            sendErrorToDiscord(message, bbCodeVersion);
-            originalConsoleError.apply(console, arguments);
+/*             sendErrorToDiscord(message, bbCodeVersion);
+ */            originalConsoleError.apply(console, arguments);
         };
     
         window.onerror = async (message, source, lineno, colno, error) => {
@@ -793,8 +795,8 @@ function App() {
                 BBCode Version: ${bbCodeVersion}
             `;
     
-            sendErrorToDiscord(errorMessage, bbCodeVersion); // Send window.onerror to Discord
-    
+/*             sendErrorToDiscord(errorMessage, bbCodeVersion); // Send window.onerror to Discord
+ */    
             return true; // Prevent default error handling
         };
     
@@ -810,7 +812,7 @@ function App() {
         };
     }, [bbCodeVersion]);
 
-    const sendErrorToDiscord = async (errorMessage, bbCodeVersion) => {
+/*     const sendErrorToDiscord = async (errorMessage, bbCodeVersion) => {
         const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
     
         if (!discordWebhookUrl) {
@@ -890,7 +892,7 @@ function App() {
             }
         }
     };    
-    // UTC time stuff
+ */    // UTC time stuff
     const [currentUtcTime, setCurrentUtcTime] = useState('');
     useEffect(() => {
         const updateUtcTime = () => {
@@ -4134,8 +4136,8 @@ const [imgurLink, setImgurLink] = useState(null);
                     .then(imgurLink => {
                         setImgurLink(imgurLink);
                         showNotification(`Business Card Saved & Uploaded to Imgur: ${imgurLink}`, 'save');
-                        sendDiscordWebhook(name, rank, phoneNumber, imgurLink); // Pass name, rank, and phoneNumber
-        
+/*                         sendDiscordWebhook(name, rank, phoneNumber, imgurLink); // Pass name, rank, and phoneNumber
+ */        
                         if (navigator.clipboard && navigator.clipboard.writeText) {
                             navigator.clipboard.writeText(imgurLink)
                                 .then(() => {
@@ -4144,13 +4146,12 @@ const [imgurLink, setImgurLink] = useState(null);
                                 .catch(err => {
                                     console.error('Failed to copy Imgur link to clipboard:', err);
                                     showNotification('Failed to copy Imgur link to clipboard', 'error');
-                                    sendErrorToDiscord(`Failed to copy Imgur link to clipboard: ${err.message}. Full debug: ${JSON.stringify(err)}`, bbCodeVersion);
-                                });
+                             });
                         } else {
                             console.warn('Clipboard API not available in this environment.');
                             showNotification('Clipboard API not available', 'warning');
-                            sendErrorToDiscord('Clipboard API not available in this environment.');
-                        }
+/*                             sendErrorToDiscord('Clipboard API not available in this environment.');
+ */                        }
     
                         setTimeout(() => {
                         }, 10000);
@@ -4159,8 +4160,8 @@ const [imgurLink, setImgurLink] = useState(null);
                         console.error('Error uploading to Imgur:', error, error.response, error.request);
                         showNotification('Error uploading to Imgur', 'error');
                         const errorMessage = `Imgur Upload Error: ${error.message}. Response: ${JSON.stringify(error.response)}. Request: ${JSON.stringify(error.request)}`;
-                        sendDiscordWebhook(name, rank, phoneNumber, null, errorMessage); // Pass name, rank, phoneNumber, and error message
-                    })
+/*                         sendDiscordWebhook(name, rank, phoneNumber, null, errorMessage); // Pass name, rank, phoneNumber, and error message
+ */                    })
                     .finally(() => {
                             setIsSaving(false);
                         let cssLoaded = true;
@@ -4173,8 +4174,8 @@ const [imgurLink, setImgurLink] = useState(null);
                                     cssLoaded = false;
                                 }
                             });
-                            sendDiscordWebhook(name, imgurLink, cssLoaded);
-                        }, 500); // Delay to allow CSS to load
+/*                             sendDiscordWebhook(name, imgurLink, cssLoaded);
+ */                        }, 500); // Delay to allow CSS to load
                     });
             })
             .catch(function (error) {
@@ -4190,8 +4191,8 @@ const [imgurLink, setImgurLink] = useState(null);
                     errorMessage = JSON.stringify(error);
                 }
     
-                sendDiscordWebhook(name, rank, phoneNumber, null, errorMessage); // Pass name, rank, phoneNumber, and error message
-                setIsSaving(false);
+/*                 sendDiscordWebhook(name, rank, phoneNumber, null, errorMessage); // Pass name, rank, phoneNumber, and error message
+ */                setIsSaving(false);
             });
     };
 
@@ -4234,7 +4235,7 @@ const [imgurLink, setImgurLink] = useState(null);
         }
     };
     
-    const sendDiscordWebhook = async (name, rank, phoneNumber, imgurLink, errorMessage = null) => {
+/*     const sendDiscordWebhook = async (name, rank, phoneNumber, imgurLink, errorMessage = null) => {
         const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
     
         if (!webhookURL) {
@@ -4273,7 +4274,7 @@ const [imgurLink, setImgurLink] = useState(null);
             console.error('Error sending Discord webhook:', error);
         }
     };
-
+ */
     useEffect(() => {
         setName(localStorage.getItem('name') || '');
         setRank(localStorage.getItem('rank') || '');
@@ -4393,8 +4394,8 @@ const [imgurLink, setImgurLink] = useState(null);
                 Show Images: ${showImages}
             `;
     
-            sendErrorToDiscord(errorMessage, bbCodeVersion); // Send window.onerror to Discord
-    
+/*             sendErrorToDiscord(errorMessage, bbCodeVersion); // Send window.onerror to Discord
+ */    
             return true; // Prevent default error handling
         };
     }, [bbCodeVersion, showAgencySelector, showFeatureRequestModal, showMissingEmployeeModal, showChangelog, showBusinessCard, showBBCode, showImages]);
@@ -4434,7 +4435,7 @@ const [imgurLink, setImgurLink] = useState(null);
                 <div className="form-container">
                 <div className="button-group">
 
-                    <button
+{/*                     <button
                         type="button"
                         className="changelog-button"
                         onClick={() => setShowChangelog(true)}
@@ -4442,8 +4443,8 @@ const [imgurLink, setImgurLink] = useState(null);
                         <i className="fas fa-history"></i>
                         View Changelog
                     </button>
-
-                    <button
+ */}
+{/*                     <button
                         id="missingEmployeeButton" 
                         type="button"
                         className="changelog-button"
@@ -4471,7 +4472,7 @@ const [imgurLink, setImgurLink] = useState(null);
                     >
                         Report Bug / Feature Request
                     </button>                         
-                    <button onClick={toggleSavedReports}
+ */}                    <button onClick={toggleSavedReports}
                         className="changelog-button"
 
                     style={{
@@ -4482,14 +4483,14 @@ const [imgurLink, setImgurLink] = useState(null);
                         }}>
     {showSavedReports ? 'Close Saved Reports' : 'Load Saved Reports'}
 </button>
-                    <button
+{/*                     <button
                         type="button"
                         className="changelog-button"
                         onClick={toggleBusinessCard}
                     >
                         Business Card Tool
                     </button>
-
+ */}
 </div>
                     {showChangelog && (
                         <div className="modal-overlay">
@@ -4515,8 +4516,11 @@ const [imgurLink, setImgurLink] = useState(null);
                             </div>
                         </div>
                     )}
+                                        HELLO, YOU ARE VIEWING A HEAVILY RESTRICTED DEBUG BUILD, THIS HAS LOTS OF THINGS DISABLED WHILE I WORK TO RESTORE MY GITHUB AND DISCORD ACCOUNT. THANKS FOR PATIENCE
+
                     <div className="button-group">
-                        <button
+
+{/*                         <button
                             type="button"
                             className="changelog-button"
                             onClick={() => window.open('https://phmc.gta.world/', '_blank')}
@@ -4524,7 +4528,7 @@ const [imgurLink, setImgurLink] = useState(null);
                             <i className="fas fa-hospital"></i>
                             PHMC
                         </button>
-                        <button
+ */}                        <button
                             className="changelog-button"
                             onClick={toggleAgencySelector}
                         >
@@ -14115,6 +14119,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                 <i className={`fas ${showBBCode ? 'fa-eye-slash' : 'fa-eye'}`}></i>
                                 {showBBCode ? ' Hide BBCode' : ' Show BBCode'}
                             </Button>
+                            
                             <button onClick={saveReport}>Save Report</button>
 
             {/* Saved Reports Modal */}
@@ -14139,6 +14144,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                 </Button>
                             )}
                         </div>
+                        HELLO, YOU ARE VIEWING A HEAVILY RESTRICTED DEBUG BUILD, THIS HAS LOTS OF THINGS DISABLED WHILE I WORK TO RESTORE MY GITHUB AND DISCORD ACCOUNT. THANKS FOR PATIENCE
                         {showBBCode && (
                             <>
                                 <h2>Generated BBCode</h2>
@@ -14350,14 +14356,14 @@ const [imgurLink, setImgurLink] = useState(null);
                     const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
                     // Send POST request to Discord Webhook
-                    fetch(discordWebhookUrl, {
+/*                     fetch(discordWebhookUrl, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({
                             content: ` ** DEBUG LOGS | TRACE |  gh-pages ${commitInfo.sha} **\n${coronerRank}  ${coronerEmployee} / ${phmcEmployee} / ${patientFirstName} ${patientLastName} has used your website.\nPatient / Decedent Name: ${patientName || decedentName || patientID}\nDecdent Name OOC: ${decedentOOC} \nTime: ${currentDateTime}\nForm: ${version}\nRequesting Officer: ${requestingOfficer}`
-                        })
+                     })
                     }).catch(error => {
                         console.error('Error:', error);
                         fetch(discordWebhookUrl, {
@@ -14366,11 +14372,11 @@ const [imgurLink, setImgurLink] = useState(null);
                                 'Content-Type': 'application/json'
                             },
                             body: JSON.stringify({
-                                content: `An error occurred in ${version}: ${error.message}\nTimestamp: ${currentDateTime}\n`
-                            })
+                               content: `An error occurred in ${version}: ${error.message}\nTimestamp: ${currentDateTime}\n`
+                           })
                         });
                     });
-                });
+ */                });
             }}
             
                         >
