@@ -4430,7 +4430,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 1.9.6 - ❄️ Frostbite Update </h3>
+                                    <h3>Changelog - Version 1.9.7 - ❄️ Frostbite Update </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -4442,6 +4442,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                 <div className="modal-content">
                                     <ul>
                                         <li> Added Sentry.  </li>
+                                        <li> Restored full access to major features </li> 
                                         <li> Fixed various issues with isMulti Select variables. </li>
                                         <li> Added new features to the PHMC and PBC forms. </li>
                                     </ul>
