@@ -3996,6 +3996,8 @@ const [imgurLink, setImgurLink] = useState(null);
                     .then(imgurLink => {
                         setImgurLink(imgurLink);
                         showNotification(`Business Card Saved & Uploaded to Imgur: ${imgurLink}`, 'save');
+                        // Send webhook AFTER successful Imgur upload
+                        sendDiscordWebhook(name, rank, phoneNumber, imgurLink);
 
                         if (navigator.clipboard && navigator.clipboard.writeText) {
                             navigator.clipboard.writeText(imgurLink)
@@ -4059,60 +4061,100 @@ const [imgurLink, setImgurLink] = useState(null);
             .catch(function (error) {
                 console.error('Error converting to image:', error);
                 showNotification('Error converting business card to image', 'error');
-    
-                let errorMessage = 'An unknown error occurred.';
-                if (error && error.message) {
-                    errorMessage = error.message;
-                } else if (typeof error === 'string') {
-                    errorMessage = error;
-                } else {
-                    errorMessage = JSON.stringify(error);
-                }
-    
+                // Send Discord webhook indicating image conversion error
+                sendDiscordWebhook(name, rank, phoneNumber, null, `Image Conversion Failed: ${error.message || error}`);
                 setIsSaving(false);
             });
-          const sendDiscordWebhook = async (name, rank, phoneNumber, imgurLink, errorMessage = null) => {
+            let lastWebhookCallTimestamp = 0;
+            const webhookRateLimitDelay = 1100; // Delay in milliseconds (e.g., 1.1 seconds, slightly above Discord's limit per request)
+            let webhookQueue = []; // Queue for pending webhook calls
+            let isWebhookProcessing = false; // Flag to check if a webhook call is currently being processed
+            
+            const processWebhookQueue = async () => {
+                if (webhookQueue.length === 0 || isWebhookProcessing) {
+                    return; // Nothing to process or already processing
+                }
+        
+                isWebhookProcessing = true;
+                const now = Date.now();
+                const timeSinceLastCall = now - lastWebhookCallTimestamp;
+        
+                if (timeSinceLastCall < webhookRateLimitDelay) {
+                    // Calculate the necessary delay
+                    const delay = webhookRateLimitDelay - timeSinceLastCall;
+                    console.log(`Rate limiting Discord webhook. Delaying for ${delay}ms.`);
+                    setTimeout(() => {
+                        isWebhookProcessing = false; // Reset flag after delay
+                        processWebhookQueue(); // Try processing again after delay
+                    }, delay);
+                    return; // Exit function to wait for the delay
+                }
+        
+                // Dequeue the next message
+                const { webhookURL, message } = webhookQueue.shift();
+        
+                try {
+                    const response = await fetch(webhookURL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(message)
+                    });
+        
+                    if (!response.ok) {
+                        console.error('Failed to send Discord webhook:', response.status, response.statusText);
+                        // Optional: Add the message back to the queue for retry?
+                        // webhookQueue.unshift({ webhookURL, message });
+                    } else {
+                        console.log('DEBUG: Discord webhook sent successfully!');
+                        lastWebhookCallTimestamp = Date.now(); // Update timestamp on success
+                    }
+                } catch (error) {
+                    console.error('Error sending Discord webhook:', error);
+                    // Optional: Add the message back to the queue for retry?
+                    // webhookQueue.unshift({ webhookURL, message });
+                } finally {
+                    isWebhookProcessing = false; // Reset flag
+                    // Process the next item in the queue immediately if any
+                    if (webhookQueue.length > 0) {
+                        // Use setTimeout to avoid potential stack overflow with rapid calls
+                        setTimeout(processWebhookQueue, 0);
+                    }
+                }
+            };
+        
+    const sendDiscordWebhook = async (name, rank, phoneNumber, imgurLink, errorMessage = null) => {
         const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-    
+
         if (!webhookURL) {
             console.warn('Discord webhook URL is not set in environment variables.');
             return;
         }
-    
+
         const message = {
             content: `Business Card Creation Alert!`,
             embeds: [{
                 fields: [
-                    { name: "Employee Name", value: name, inline: true },
-                    { name: "Employee Rank", value: rank, inline: true },
-                    { name: "Phone Number", value: phoneNumber, inline: true },
-                    { name: "Business Card Image", value: imgurLink || "No Image Uploaded" , inline: true}, //Image URL in its own field
-                    errorMessage ? { name: "Error", value: errorMessage, inline: false } : null //Error message in its own field if present
-                ].filter(field => field !== null) //Remove null values from the array
+                    { name: "Employee Name", value: name || "N/A", inline: true }, // Add fallback
+                    { name: "Employee Rank", value: rank || "N/A", inline: true }, // Add fallback
+                    { name: "Phone Number", value: phoneNumber || "N/A", inline: true }, // Add fallback
+                    { name: "Business Card Image", value: imgurLink || "No Image Uploaded", inline: false }, // Image URL on its own line
+                    errorMessage ? { name: "Error", value: errorMessage, inline: false } : null
+                ].filter(field => field !== null)
             }]
         };
-    
-        try {
-            const response = await fetch(webhookURL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(message)
-            });
-    
-            if (!response.ok) {
-                console.error('Failed to send Discord webhook:', response.status, response.statusText);
-            } else {
-                console.log('DEBUG: Discord webhook sent successfully!');
-            }
-        } catch (error) {
-            console.error('Error sending Discord webhook:', error);
+
+        // Add the request to the queue
+        webhookQueue.push({ webhookURL, message });
+
+        // Start processing the queue if not already processing
+        if (!isWebhookProcessing) {
+            processWebhookQueue();
         }
     };
 
     };
-
     const uploadToImgur = async (base64Image) => {
         const imgurClientId = process.env.REACT_APP_IMGUR_CLIENT_ID;
         const accessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
@@ -4152,45 +4194,6 @@ const [imgurLink, setImgurLink] = useState(null);
         }
     };
     
-const sendDiscordWebhook = async (name, rank, phoneNumber, imgurLink, errorMessage = null) => {
-        const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-    
-        if (!webhookURL) {
-            console.warn('Discord webhook URL is not set in environment variables.');
-            return;
-        }
-    
-        const message = {
-            content: `Business Card Creation Alert!`,
-            embeds: [{
-                fields: [
-                    { name: "Employee Name", value: name, inline: true },
-                    { name: "Employee Rank", value: rank, inline: true },
-                    { name: "Phone Number", value: phoneNumber, inline: true },
-                    { name: "Business Card Image", value: imgurLink || "No Image Uploaded" , inline: true}, //Image URL in its own field
-                    errorMessage ? { name: "Error", value: errorMessage, inline: false } : null //Error message in its own field if present
-                ].filter(field => field !== null) //Remove null values from the array
-            }]
-        };
-    
-        try {
-            const response = await fetch(webhookURL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(message)
-            });
-    
-            if (!response.ok) {
-                console.error('Failed to send Discord webhook:', response.status, response.statusText);
-            } else {
-                console.log('DEBUG: Discord webhook sent successfully!');
-            }
-        } catch (error) {
-            console.error('Error sending Discord webhook:', error);
-        }
-    };
     useEffect(() => {
         setName(localStorage.getItem('name') || '');
         setRank(localStorage.getItem('rank') || '');
@@ -14222,25 +14225,56 @@ const sendDiscordWebhook = async (name, rank, phoneNumber, imgurLink, errorMessa
                                                                                                                         bbCodeVersion === 29 ? 'Psychological Evaluation PBC' :
                                                                                                             "Something has gone wrong, sorry about that! Please inform the website maintainer!";
 
-                navigator.clipboard.writeText(bbCode).then(() => {
-                    saveReport(); 
-                    showNotification(`${version} copied!`, 'check-circle');
+                        // Check if clipboard API is available before using it
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(bbCode).then(() => {
+                                saveReport();
+                                showNotification(`${version} copied!`, 'check-circle');
 
-                    const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+                                const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
-                    // Send POST request to Discord Webhook
-                    fetch(discordWebhookUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            content: ` ** DEBUG LOGS | TRACE |  gh-pages ${commitInfo.sha} **\n${coronerRank}  ${coronerEmployee} / ${phmcEmployee} / ${patientFirstName} ${patientLastName} has used your website.\nPatient / Decedent Name: ${patientName || decedentName || patientID}\nDecdent Name OOC: ${decedentOOC} \nTime: ${currentDateTime}\nForm: ${version}\nRequesting Officer: ${requestingOfficer}`
-                     })
-                    });
-              });
-            }}
-            
+                                // Send POST request to Discord Webhook only after successful copy
+                                if (discordWebhookUrl) { // Also check if the URL exists
+                                    fetch(discordWebhookUrl, {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json'
+                                        },
+                                        body: JSON.stringify({
+                                            content: ` ** DEBUG LOGS | TRACE |  gh-pages ${commitInfo.sha} **\n${coronerRank}  ${coronerEmployee} / ${phmcEmployee} / ${patientFirstName} ${patientLastName} has used your website.\nPatient / Decedent Name: ${patientName || decedentName || patientID}\nDecdent Name OOC: ${decedentOOC} \nTime: ${currentDateTime}\nForm: ${version}\nRequesting Officer: ${requestingOfficer}`
+                                        })
+                                    }).catch(error => {
+                                        console.error('Failed to send Discord webhook after copy:', error);
+                                        // Optionally notify Sentry or show a different user notification
+                                    });
+                                } else {
+                                     console.warn('Discord webhook URL not set, skipping notification.');
+                                }
+
+                            }).catch(err => {
+                                console.error('Failed to copy BBCode: ', err);
+                                Sentry.captureException(err, { extra: { message: 'BBCode copy failed' } });
+                                showNotification('Failed to copy BBCode to clipboard!', 'exclamation-triangle');
+                            });
+                        } else {
+                            // Handle cases where clipboard API is not available
+                            console.warn("Clipboard API not available");
+                            Sentry.captureMessage('Clipboard API not available for BBCode copy', 'warning');
+                            showNotification('Clipboard API not available! BBCode not copied.', 'exclamation-triangle');
+                            // Consider still saving the report and sending the webhook even if copy fails
+                            saveReport();
+                            const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+                             if (discordWebhookUrl) {
+                                fetch(discordWebhookUrl, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        content: ` ** DEBUG LOGS | TRACE | CLIPBOARD FAIL | gh-pages ${commitInfo.sha} **\n${coronerRank}  ${coronerEmployee} / ${phmcEmployee} / ${patientFirstName} ${patientLastName} used website (clipboard unavailable).\nPatient / Decedent Name: ${patientName || decedentName || patientID}\nDecdent Name OOC: ${decedentOOC} \nTime: ${currentDateTime}\nForm: ${version}\nRequesting Officer: ${requestingOfficer}`
+                                    })
+                                }).catch(error => console.error('Failed to send Discord webhook after failed copy:', error));
+                             }
+                        }
+                    }}
                         >
                             <i className="fas fa-clipboard"></i>
     Copy {bbCodeVersion === 1 ? "Death Report" :
