@@ -3983,7 +3983,7 @@ const [imgurLink, setImgurLink] = useState(null);
 
     const handleSave = () => {
         setIsSaving(true);
-        showNotification('Uploading...', 'upload');
+        showNotification('Uploading, Just a moment....', 'upload');
     
         localStorage.setItem('name', name);
         localStorage.setItem('rank', rank);
@@ -4235,98 +4235,48 @@ const [imgurLink, setImgurLink] = useState(null);
     const commitEtag = useRef(null); // Ref to store the ETag for conditional requests
     
     useEffect(() => {
-        const fetchCommit = async () => {
-            const githubPat = process.env.REACT_APP_GITHUB_PAT; 
+        const fetchCommit = () => {
+            fetch('https://api.github.com/repos/GTAW-PHMC/forms/commits/gh-pages')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`GitHub API error: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    const latestSha = data.sha.substring(0, 7);
+                    const commitDate = new Date(data.commit.author.date);
+                    const formattedDate = commitDate.toLocaleString('en-US', { /* ... date formatting options ... */ });
 
-            const url = 'https://api.github.com/repos/GTAW-PHMC/forms/commits/gh-pages';
-            const headers = {
-                'Accept': 'application/vnd.github.v3+json',
-            };
-
-            if (githubPat) {
-                headers['Authorization'] = `token ${githubPat}`; // <-- Add the Authorization header
-            } else {
-                console.warn("GitHub PAT not found in environment variables. Making unauthenticated request.");
-            }
-
-            // Add If-None-Match header if we have a stored ETag
-            if (commitEtag.current) {
-                headers['If-None-Match'] = commitEtag.current;
-            }
-
-            try {
-                const response = await fetch(url, { headers });
-
-                // --- ETag Handling ---
-                if (response.status === 304) {
-                    console.log('GitHub commit data not modified (304).');
-                    return;
-                }
-
-                if (!response.ok) {
-                     // Log rate limit specific info if available
-                    const rateLimitRemaining = response.headers.get('X-RateLimit-Remaining');
-                    const rateLimitReset = response.headers.get('X-RateLimit-Reset');
-                    let resetTime = 'N/A';
-                    if (rateLimitReset) {
-                        resetTime = new Date(rateLimitReset * 1000).toLocaleTimeString();
+                    // Store the first fetched SHA as the initial version
+                    if (initialCommitSha.current === null) {
+                        initialCommitSha.current = latestSha;
+                        console.log(`Initial app version loaded: ${latestSha}`);
                     }
 
-                    if (response.status === 403) {
-                         console.warn(`GitHub API request forbidden (403). Rate Limit Remaining: ${rateLimitRemaining}. Resets at: ${resetTime}. Check PAT permissions or rate limits.`);
-                         Sentry.captureMessage(`GitHub API request forbidden (403). Rate Limit Remaining: ${rateLimitRemaining}`, 'warning');
-                    } else if (response.status === 401) {
-                         console.error(`GitHub API authentication failed (401). Check if PAT is valid or has correct permissions.`);
-                         Sentry.captureMessage(`GitHub API authentication failed (401).`, 'error');
-                    } else {
-                        console.error(`GitHub API error: ${response.status} ${response.statusText}. Rate Limit Remaining: ${rateLimitRemaining}. Resets at: ${resetTime}`);
+                    setCommitInfo({
+                        sha: latestSha,
+                        date: formattedDate
+                    });
+
+                    // Check if the latest SHA is different from the initial one
+                    if (initialCommitSha.current !== null && initialCommitSha.current !== latestSha) {
+                        console.log(`New version detected! Initial: ${initialCommitSha.current}, Latest: ${latestSha}`);
+                        setShowUpdateNotification(true); // Show the update notification
                     }
-                    throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
-                }
-
-                // Store the new ETag for the next request
-                const newEtag = response.headers.get('ETag');
-                if (newEtag) {
-                    commitEtag.current = newEtag;
-                    // console.log(`Stored new GitHub ETag: ${newEtag}`); // Less verbose logging
-                }
-
-                // --- Process Data (only if status is 200 OK) ---
-                const data = await response.json();
-                const latestSha = data.sha.substring(0, 7);
-                const commitDate = new Date(data.commit.author.date);
-                const formattedDate = commitDate.toLocaleString('en-US', { /* ... date formatting options ... */ });
-
-                // Store the first fetched SHA as the initial version
-                if (initialCommitSha.current === null) {
-                    initialCommitSha.current = latestSha;
-                    console.log(`Initial app version loaded: ${latestSha}`);
-                }
-
-                setCommitInfo({
-                    sha: latestSha,
-                    date: formattedDate
-                });
-
-                // Check if the latest SHA is different from the initial one
-                if (initialCommitSha.current !== null && initialCommitSha.current !== latestSha) {
-                    console.log(`New version detected! Initial: ${initialCommitSha.current}, Latest: ${latestSha}`);
-                    setShowUpdateNotification(true);
-                }
-
-            } catch (error) {
-                console.error('Error fetching commit:', error);
-                Sentry.captureException(error);
-            }
+                })
+                .catch(error => console.error('Error fetching commit:', error));
         };
 
-        fetchCommit(); // Initial fetch
+        fetchCommit();
 
-        const intervalId = setInterval(fetchCommit, 300000); // 5 minutes
+        const intervalId = setInterval(fetchCommit, 300000);
 
+        // Cleanup interval on component unmount
         return () => clearInterval(intervalId);
 
-    }, []); // Empty dependency array
+    }, []); // Empty dependency array ensures this runs once on mount and sets up polling
+
     
     
         const handleRefresh = () => {
@@ -5315,7 +5265,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                             }}
                                         >
                                             <i className={`fas ${isUploading ? 'fa-spinner fa-spin' : 'fa-upload'}`}></i>
-                                            {isUploading ? 'Uploading...' : 'Upload Images'}
+                                            {isUploading ? 'Uploading, Just a moment.... ' : 'Upload Images'}
                                         </Button>
 
                                     </InputGroup>
