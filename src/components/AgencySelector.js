@@ -47,7 +47,6 @@ const AgencySelector = ({ showAgencySelector, setShowAgencySelector, handleAgenc
                         </select>
                     ) : (
                         <div className="agency-selector-buttons">
-                            YOU ARE CURRENTLY VIEWING A DEBUG BUILD, ERRORS MAY OCCUR. MY DEVELOPER ACCOUNT HAS BEEN RESTRICTED BY GITHUB AND DISCORD
                             <div className="agency-row flex flex-wrap justify-center">
                                 <button
                                     className="agency-select-button m-2 p-2 rounded-md shadow-sm bg-white hover:bg-gray-100 flex flex-col items-center"

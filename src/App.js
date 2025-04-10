@@ -12,6 +12,7 @@ import SeasonalEvents from './components/SeasonalEvents';
 import HeaderInfo from './components/HeaderInfo';
 import Snowfall from 'react-snowfall'; 
 import EasterEggImages from './EasterEggParticles'; 
+import * as Sentry from "@sentry/react";
 
 // logos
 import maternity from './assets/maternity.png'
@@ -751,148 +752,7 @@ function App() {
         }
     };
 
-
-    useEffect(() => {
-        // Store console errors in localStorage
-        let consoleErrors = JSON.parse(localStorage.getItem('consoleErrors')) || [];
-        const originalConsoleError = console.error;
-    
-        console.error = function (message) {
-            const timestamp = new Date().getTime(); // Get current timestamp
-            consoleErrors.push({
-                message: message,
-                bbCodeVersion: bbCodeVersion,
-                timestamp: timestamp, // Store timestamp with the error
-            });
-            localStorage.setItem('consoleErrors', JSON.stringify(consoleErrors));
-/*             sendErrorToDiscord(message, bbCodeVersion);
- */            originalConsoleError.apply(console, arguments);
-        };
-    
-        window.onerror = async (message, source, lineno, colno, error) => {
-            let lineContent = '';
-            try {
-                // Attempt to fetch the line content from the source file
-                const response = await fetch(source);
-                if (response.ok) {
-                    const fileContent = await response.text();
-                    const lines = fileContent.split('\n');
-                    lineContent = lines[lineno - 1] || 'Line content not available';
-                } else {
-                    lineContent = `Failed to fetch source file: ${response.status} ${response.statusText}`;
-                }
-            } catch (fetchError) {
-                lineContent = `Error fetching source file: ${fetchError.message}`;
-            }
-    
-            const errorMessage = `
-                Error: ${message}
-                Source: ${source}
-                Line: ${lineno}
-                Column: ${colno}
-                Line Content: ${lineContent}
-                Error Object: ${error ? error.stack : 'No stack available'}
-                BBCode Version: ${bbCodeVersion}
-            `;
-    
-/*             sendErrorToDiscord(errorMessage, bbCodeVersion); // Send window.onerror to Discord
- */    
-            return true; // Prevent default error handling
-        };
-    
-        // Cleanup function to restore original console.error and clear old errors
-        return () => {
-            console.error = originalConsoleError;
-        
-        // Clear errors older than 2 minutes (120000 milliseconds)
-        const now = new Date().getTime();
-        const twoMinutes = 120000;
-        const updatedErrors = consoleErrors.filter(error => now - error.timestamp < twoMinutes);
-        localStorage.setItem('consoleErrors', JSON.stringify(updatedErrors));
-        };
-    }, [bbCodeVersion]);
-
-/*     const sendErrorToDiscord = async (errorMessage, bbCodeVersion) => {
-        const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-    
-        if (!discordWebhookUrl) {
-            console.error("Discord webhook URL is not defined in .env file.");
-            return;
-        }
-        const { coronerEmployee, coronerRank, coronerPHNumber, phmcEmployee, name, rank, phmcRank: phmcRankData, department, patientID } = formData;
-    
-        const employeeName = coronerEmployee ? coronerEmployee : (phmcEmployee ? phmcEmployee : (name ? name : "Unknown"));
-        const employeeRank = coronerRank ? coronerRank : (phmcRankData ? phmcRankData : (rank ? rank : "Unknown"));
-        const employeePhoneNumber = coronerPHNumber ? coronerPHNumber : (department ? department : "Unknown");
-        const patientId = patientID || "N/A"; // Handle missing patientID
-        
-        // Retrieve all console errors from localStorage
-        const allConsoleErrors = JSON.parse(localStorage.getItem('consoleErrors')) || [];
-    
-        // Format all console errors into a single string
-        const formattedConsoleErrors = allConsoleErrors.map((err, index) => `Error ${index + 1}:\nMessage: ${err.message}\nBBCode Version: ${err.bbCodeVersion}\nTimestamp: ${new Date(err.timestamp).toLocaleString()}\n`).join('\n');
-    
-        // Combine the main error message and console errors
-        let fullMessage = `**ERROR REPORT** <@228306972204597248>
-        BBCode Version: ${bbCodeVersion}
-        Patient ID: ${patientId}
-        Employee: ${employeeName} (${employeeRank} ${name} )
-        Department: ${department || "Unknown"}
-        Phone: ${employeePhoneNumber}
-        Main Error: ${errorMessage}
-        
-        **All Console Errors:**
-        ${formattedConsoleErrors}`;
-            
-        // Discord's message limit is 2000 characters
-        if (fullMessage.length > 2000) {
-            // Split the message into chunks
-            const chunks = [];
-            let currentChunk = '';
-            const lines = fullMessage.split('\n');
-    
-            for (const line of lines) {
-                if (currentChunk.length + line.length + 1 <= 2000) {
-                    currentChunk += line + '\n';
-                } else {
-                    chunks.push(currentChunk);
-                    currentChunk = line + '\n';
-                }
-            }
-            chunks.push(currentChunk);
-    
-            for (const chunk of chunks) {
-                try {
-                    await fetch(discordWebhookUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            content: chunk
-                        })
-                    });
-                } catch (error) {
-                    console.error("Error sending error message to Discord:", error);
-                }
-            }
-        } else {
-            try {
-                await fetch(discordWebhookUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        content: fullMessage
-                    })
-                });
-            } catch (error) {
-                console.error("Error sending error message to Discord:", error);
-            }
-        }
-    };    
- */    // UTC time stuff
+    // UTC time stuff
     const [currentUtcTime, setCurrentUtcTime] = useState('');
     useEffect(() => {
         const updateUtcTime = () => {
@@ -4136,8 +3996,7 @@ const [imgurLink, setImgurLink] = useState(null);
                     .then(imgurLink => {
                         setImgurLink(imgurLink);
                         showNotification(`Business Card Saved & Uploaded to Imgur: ${imgurLink}`, 'save');
-/*                         sendDiscordWebhook(name, rank, phoneNumber, imgurLink); // Pass name, rank, and phoneNumber
- */        
+
                         if (navigator.clipboard && navigator.clipboard.writeText) {
                             navigator.clipboard.writeText(imgurLink)
                                 .then(() => {
@@ -4145,25 +4004,28 @@ const [imgurLink, setImgurLink] = useState(null);
                                 })
                                 .catch(err => {
                                     console.error('Failed to copy Imgur link to clipboard:', err);
+                                    Sentry.captureException(err); // Send clipboard error to Sentry
                                     showNotification('Failed to copy Imgur link to clipboard', 'error');
-                             });
+                                });
                         } else {
-                            console.warn('Clipboard API not available in this environment.');
+                            const clipboardWarning = 'Clipboard API not available in this environment.';
+                            console.warn(clipboardWarning);
+                            Sentry.captureMessage(clipboardWarning, 'warning'); // Send warning to Sentry
                             showNotification('Clipboard API not available', 'warning');
-/*                             sendErrorToDiscord('Clipboard API not available in this environment.');
- */                        }
+                        }
     
                         setTimeout(() => {
                         }, 10000);
                     })
                     .catch(error => {
-                        console.error('Error uploading to Imgur:', error, error.response, error.request);
+                        console.error('Error uploading to Imgur:', error);
+                        Sentry.captureException(error); // Send Imgur upload error to Sentry
                         showNotification('Error uploading to Imgur', 'error');
-                        const errorMessage = `Imgur Upload Error: ${error.message}. Response: ${JSON.stringify(error.response)}. Request: ${JSON.stringify(error.request)}`;
-/*                         sendDiscordWebhook(name, rank, phoneNumber, null, errorMessage); // Pass name, rank, phoneNumber, and error message
- */                    })
+                        // Send Discord webhook even on Imgur error, but indicate the failure
+                        sendDiscordWebhook(name, rank, phoneNumber, null, `Imgur Upload Failed: ${error.message}`);
+                    })
                     .finally(() => {
-                            setIsSaving(false);
+                        setIsSaving(false);
                         let cssLoaded = true;
                         setTimeout(() => {
                             const inputFields = document.querySelectorAll('.business-card-input-fields input');
@@ -4174,8 +4036,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                     cssLoaded = false;
                                 }
                             });
-/*                             sendDiscordWebhook(name, imgurLink, cssLoaded);
- */                        }, 500); // Delay to allow CSS to load
+                       }, 500); // Delay to allow CSS to load
                     });
             })
             .catch(function (error) {
@@ -4191,8 +4052,7 @@ const [imgurLink, setImgurLink] = useState(null);
                     errorMessage = JSON.stringify(error);
                 }
     
-/*                 sendDiscordWebhook(name, rank, phoneNumber, null, errorMessage); // Pass name, rank, phoneNumber, and error message
- */                setIsSaving(false);
+                setIsSaving(false);
             });
     };
 
@@ -4235,7 +4095,7 @@ const [imgurLink, setImgurLink] = useState(null);
         }
     };
     
-/*     const sendDiscordWebhook = async (name, rank, phoneNumber, imgurLink, errorMessage = null) => {
+const sendDiscordWebhook = async (name, rank, phoneNumber, imgurLink, errorMessage = null) => {
         const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
     
         if (!webhookURL) {
@@ -4274,7 +4134,6 @@ const [imgurLink, setImgurLink] = useState(null);
             console.error('Error sending Discord webhook:', error);
         }
     };
- */
     useEffect(() => {
         setName(localStorage.getItem('name') || '');
         setRank(localStorage.getItem('rank') || '');
@@ -4349,7 +4208,7 @@ const [imgurLink, setImgurLink] = useState(null);
 
         fetchCommit();
 
-        const intervalId = setInterval(fetchCommit, 1000);
+        const intervalId = setInterval(fetchCommit, 50000);
 
         // Cleanup interval on component unmount
         return () => clearInterval(intervalId);
@@ -4360,45 +4219,6 @@ const [imgurLink, setImgurLink] = useState(null);
     };
 
     
-    useEffect(() => {
-        window.onerror = async (message, source, lineno, colno, error) => {
-            let lineContent = '';
-            try {
-                // Attempt to fetch the line content from the source file
-                const response = await fetch(source);
-                if (response.ok) {
-                    const fileContent = await response.text();
-                    const lines = fileContent.split('\n');
-                    lineContent = lines[lineno - 1] || 'Line content not available';
-                } else {
-                    lineContent = `Failed to fetch source file: ${response.status} ${response.statusText}`;
-                }
-            } catch (fetchError) {
-                lineContent = `Error fetching source file: ${fetchError.message}`;
-            }
-    
-            const errorMessage = `
-                Error: ${message}
-                Source: ${source}
-                Line: ${lineno}
-                Column: ${colno}
-                Line Content: ${lineContent}
-                Error Object: ${error ? error.stack : 'No stack available'}
-                BBCode Version: ${bbCodeVersion}
-                Show Agency Selector: ${showAgencySelector}
-                Show Feature Request Modal: ${showFeatureRequestModal}
-                Show Missing Employee Modal: ${showMissingEmployeeModal}
-                Show Changelog: ${showChangelog}
-                Show Business Card: ${showBusinessCard}
-                Show BBCode: ${showBBCode}
-                Show Images: ${showImages}
-            `;
-    
-/*             sendErrorToDiscord(errorMessage, bbCodeVersion); // Send window.onerror to Discord
- */    
-            return true; // Prevent default error handling
-        };
-    }, [bbCodeVersion, showAgencySelector, showFeatureRequestModal, showMissingEmployeeModal, showChangelog, showBusinessCard, showBBCode, showImages]);
         return (
         <div className="App">
 {season === "Easter" && <Snowfall images={EasterEggImages} snowflakeCount={25} />}
@@ -4429,14 +4249,11 @@ const [imgurLink, setImgurLink] = useState(null);
     />
 )}
             <div className="header-info-wrapper">
-            <HeaderInfo commitInfo={commitInfo} /> {/* Use the new component */}
+            <HeaderInfo commitInfo={commitInfo} /> 
             </div>
             <div className="container">
                 <div className="form-container">
                 <div className="button-group">
-                     <button onClick={() => {throw new Error("This is your first error!");}}>Break the world</button>;
-
-
                    <button
                         type="button"
                         className="changelog-button"
@@ -4518,7 +4335,6 @@ const [imgurLink, setImgurLink] = useState(null);
                             </div>
                         </div>
                     )}
-                                        HELLO, YOU ARE VIEWING A HEAVILY RESTRICTED DEBUG BUILD, THIS HAS LOTS OF THINGS DISABLED WHILE I WORK TO RESTORE MY GITHUB AND DISCORD ACCOUNT. THANKS FOR PATIENCE
 
                     <div className="button-group">
 
@@ -14124,7 +13940,6 @@ const [imgurLink, setImgurLink] = useState(null);
                             
                             <button onClick={saveReport}>Save Report</button>
 
-            {/* Saved Reports Modal */}
             <SavedReportsModal
                 show={showSavedReports}
                 onClose={toggleSavedReports}
@@ -14146,7 +13961,6 @@ const [imgurLink, setImgurLink] = useState(null);
                                 </Button>
                             )}
                         </div>
-                        HELLO, YOU ARE VIEWING A HEAVILY RESTRICTED DEBUG BUILD, THIS HAS LOTS OF THINGS DISABLED WHILE I WORK TO RESTORE MY GITHUB AND DISCORD ACCOUNT. THANKS FOR PATIENCE
                         {showBBCode && (
                             <>
                                 <h2>Generated BBCode</h2>
@@ -14358,7 +14172,7 @@ const [imgurLink, setImgurLink] = useState(null);
                     const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
                     // Send POST request to Discord Webhook
-/*                     fetch(discordWebhookUrl, {
+                    fetch(discordWebhookUrl, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
@@ -14366,19 +14180,8 @@ const [imgurLink, setImgurLink] = useState(null);
                         body: JSON.stringify({
                             content: ` ** DEBUG LOGS | TRACE |  gh-pages ${commitInfo.sha} **\n${coronerRank}  ${coronerEmployee} / ${phmcEmployee} / ${patientFirstName} ${patientLastName} has used your website.\nPatient / Decedent Name: ${patientName || decedentName || patientID}\nDecdent Name OOC: ${decedentOOC} \nTime: ${currentDateTime}\nForm: ${version}\nRequesting Officer: ${requestingOfficer}`
                      })
-                    }).catch(error => {
-                        console.error('Error:', error);
-                        fetch(discordWebhookUrl, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                               content: `An error occurred in ${version}: ${error.message}\nTimestamp: ${currentDateTime}\n`
-                           })
-                        });
                     });
- */                });
+              });
             }}
             
                         >
