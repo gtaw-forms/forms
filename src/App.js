@@ -607,7 +607,7 @@ function App() {
                     coronerBadge: '',
                     phmcEmployee: '',
                 });
-                setTimeout(() => setNotification(null), 2000);
+                setTimeout(() => setNotification(null), 10000);
             }
         } catch (error) {
             console.error('Error submitting data:', error);
@@ -14144,7 +14144,7 @@ const [imgurLink, setImgurLink] = useState(null);
 )}
 
                     <div className="button-container">
-                        
+
                     {
     (bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 3 || bbCodeVersion === 24 || bbCodeVersion === 25) && (
                      <button
