@@ -4434,8 +4434,10 @@ const [imgurLink, setImgurLink] = useState(null);
             <div className="container">
                 <div className="form-container">
                 <div className="button-group">
+                     <button onClick={() => {throw new Error("This is your first error!");}}>Break the world</button>;
 
-{/*                     <button
+
+                   <button
                         type="button"
                         className="changelog-button"
                         onClick={() => setShowChangelog(true)}
@@ -4443,8 +4445,8 @@ const [imgurLink, setImgurLink] = useState(null);
                         <i className="fas fa-history"></i>
                         View Changelog
                     </button>
- */}
-{/*                     <button
+
+<button
                         id="missingEmployeeButton" 
                         type="button"
                         className="changelog-button"
@@ -4472,7 +4474,7 @@ const [imgurLink, setImgurLink] = useState(null);
                     >
                         Report Bug / Feature Request
                     </button>                         
- */}                    <button onClick={toggleSavedReports}
+               <button onClick={toggleSavedReports}
                         className="changelog-button"
 
                     style={{
@@ -4483,14 +4485,14 @@ const [imgurLink, setImgurLink] = useState(null);
                         }}>
     {showSavedReports ? 'Close Saved Reports' : 'Load Saved Reports'}
 </button>
-{/*                     <button
+                 <button
                         type="button"
                         className="changelog-button"
                         onClick={toggleBusinessCard}
                     >
                         Business Card Tool
                     </button>
- */}
+
 </div>
                     {showChangelog && (
                         <div className="modal-overlay">
@@ -4520,7 +4522,7 @@ const [imgurLink, setImgurLink] = useState(null);
 
                     <div className="button-group">
 
-{/*                         <button
+                     <button
                             type="button"
                             className="changelog-button"
                             onClick={() => window.open('https://phmc.gta.world/', '_blank')}
@@ -4528,7 +4530,7 @@ const [imgurLink, setImgurLink] = useState(null);
                             <i className="fas fa-hospital"></i>
                             PHMC
                         </button>
- */}                        <button
+                     <button
                             className="changelog-button"
                             onClick={toggleAgencySelector}
                         >

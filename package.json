@@ -8,6 +8,9 @@
     "@emotion/styled": "^11.13.5",
     "@fortawesome/fontawesome-free": "^6.7.2",
     "@mui/material": "^6.1.8",
+    "@sentry/cli": "^2.43.0",
+    "@sentry/react": "^9.12.0",
+    "@sentry/tracing": "^7.120.3",
     "@testing-library/jest-dom": "^5.17.0",
     "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^13.5.0",
@@ -29,10 +32,11 @@
     "predeploy": "npm run build",
     "deploy": "gh-pages -d build",
     "start": "react-scripts start",
-    "build": "react-scripts build",
+    "build": "react-scripts build && npm run sentry:sourcemaps",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "postbuild": "git add . && git commit -m 'Small-Update' && git push origin source"
+    "postbuild": "git add . && git commit -m 'Small-Update' && git push origin source",
+    "sentry:sourcemaps": "sentry-cli sourcemaps inject --org phmc-gtaw --project javascript-react ./build && sentry-cli sourcemaps upload --org phmc-gtaw --project javascript-react ./build"
   },
   "eslintConfig": {
     "extends": [
