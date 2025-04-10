@@ -4004,16 +4004,33 @@ const [imgurLink, setImgurLink] = useState(null);
                                 })
                                 .catch(err => {
                                     console.error('Failed to copy Imgur link to clipboard:', err);
-                                    Sentry.captureException(err); // Send clipboard error to Sentry
-                                    showNotification('Failed to copy Imgur link to clipboard', 'error');
+                                    // Send more detailed error info to Sentry
+                                    Sentry.captureException(err, {
+                                        extra: {
+                                            message: 'Clipboard writeText failed.',
+                                            imgurLink: imgurLink, // Include the link that failed to copy
+                                            userAgent: navigator.userAgent,
+                                        }
+                                    });
+                        
+                                    // Provide more helpful feedback to the user
+                                    let userMessage = 'Failed to copy Imgur link automatically.';
+                                    if (err.name === 'NotAllowedError') {
+                                        userMessage += ' Please grant clipboard permission when prompted by your browser.';
+                                    } else if (err.message.includes('focused')) { // Check for focus-related errors
+                                        userMessage += ' Please ensure this window is focused and try copying manually.';
+                                    } else {
+                                        userMessage += ' Please copy the link manually.';
+                                    }
+                                    showNotification(userMessage, 'error');
                                 });
                         } else {
-                            const clipboardWarning = 'Clipboard API not available in this environment.';
+                            const clipboardWarning = 'Clipboard API not available in this browser/context.';
                             console.warn(clipboardWarning);
                             Sentry.captureMessage(clipboardWarning, 'warning'); // Send warning to Sentry
-                            showNotification('Clipboard API not available', 'warning');
+                            showNotification('Clipboard API not available. Please copy the link manually.', 'warning');
                         }
-    
+                            
                         setTimeout(() => {
                         }, 10000);
                     })
@@ -4054,6 +4071,46 @@ const [imgurLink, setImgurLink] = useState(null);
     
                 setIsSaving(false);
             });
+          const sendDiscordWebhook = async (name, rank, phoneNumber, imgurLink, errorMessage = null) => {
+        const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+    
+        if (!webhookURL) {
+            console.warn('Discord webhook URL is not set in environment variables.');
+            return;
+        }
+    
+        const message = {
+            content: `Business Card Creation Alert!`,
+            embeds: [{
+                fields: [
+                    { name: "Employee Name", value: name, inline: true },
+                    { name: "Employee Rank", value: rank, inline: true },
+                    { name: "Phone Number", value: phoneNumber, inline: true },
+                    { name: "Business Card Image", value: imgurLink || "No Image Uploaded" , inline: true}, //Image URL in its own field
+                    errorMessage ? { name: "Error", value: errorMessage, inline: false } : null //Error message in its own field if present
+                ].filter(field => field !== null) //Remove null values from the array
+            }]
+        };
+    
+        try {
+            const response = await fetch(webhookURL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(message)
+            });
+    
+            if (!response.ok) {
+                console.error('Failed to send Discord webhook:', response.status, response.statusText);
+            } else {
+                console.log('DEBUG: Discord webhook sent successfully!');
+            }
+        } catch (error) {
+            console.error('Error sending Discord webhook:', error);
+        }
+    };
+
     };
 
     const uploadToImgur = async (base64Image) => {
@@ -4315,7 +4372,7 @@ const sendDiscordWebhook = async (name, rank, phoneNumber, imgurLink, errorMessa
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 1.9.5 - ❄️ Frostbite Update </h3>
+                                    <h3>Changelog - Version 1.9.6 - ❄️ Frostbite Update </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -4326,7 +4383,7 @@ const sendDiscordWebhook = async (name, rank, phoneNumber, imgurLink, errorMessa
                                 </div>
                                 <div className="modal-content">
                                     <ul>
-                                        <li> Overhauled error handling.  </li>
+                                        <li> Added Sentry.  </li>
                                         <li> Fixed various issues with isMulti Select variables. </li>
                                         <li> Added new features to the PHMC and PBC forms. </li>
                                     </ul>
