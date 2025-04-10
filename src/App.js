@@ -4234,95 +4234,99 @@ const [imgurLink, setImgurLink] = useState(null);
     const initialCommitSha = useRef(null); // Ref to store the initial commit SHA
     const commitEtag = useRef(null); // Ref to store the ETag for conditional requests
     
-        useEffect(() => {
-            const fetchCommit = async () => { // Make the function async
-                const url = 'https://api.github.com/repos/GTAW-PHMC/forms/commits/gh-pages';
-                const headers = {
-                    'Accept': 'application/vnd.github.v3+json', // Recommended header
-                };
-    
-                // Add If-None-Match header if we have a stored ETag
-                if (commitEtag.current) {
-                    headers['If-None-Match'] = commitEtag.current;
-                }
-    
-                try {
-                    const response = await fetch(url, { headers });
-    
-                    // --- ETag Handling ---
-                    // If status is 304, content hasn't changed, no need to process further
-                    if (response.status === 304) {
-                        console.log('GitHub commit data not modified (304).');
-                        return; // Exit early
-                    }
-    
-                    if (!response.ok) {
-                        // Log rate limit specific info if available
-                        if (response.status === 403) {
-                            const rateLimitRemaining = response.headers.get('X-RateLimit-Remaining');
-                            const rateLimitReset = response.headers.get('X-RateLimit-Reset');
-                            let resetTime = 'N/A';
-                            if (rateLimitReset) {
-                                resetTime = new Date(rateLimitReset * 1000).toLocaleTimeString();
-                            }
-                            console.warn(`GitHub API rate limit likely exceeded (403). Remaining: ${rateLimitRemaining}. Resets at: ${resetTime}`);
-                            Sentry.captureMessage(`GitHub API rate limit likely exceeded (403). Remaining: ${rateLimitRemaining}`, 'warning');
-                        }
-                        throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
-                    }
-    
-                    // Store the new ETag for the next request
-                    const newEtag = response.headers.get('ETag');
-                    if (newEtag) {
-                        commitEtag.current = newEtag;
-                        console.log(`Stored new GitHub ETag: ${newEtag}`);
-                    }
-    
-                    // --- Process Data (only if status is 200 OK) ---
-                    const data = await response.json();
-                    const latestSha = data.sha.substring(0, 7);
-                    const commitDate = new Date(data.commit.author.date);
-                    const formattedDate = commitDate.toLocaleString('en-US', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        timeZoneName: 'short'
-                     });
-    
-                    // Store the first fetched SHA as the initial version
-                    if (initialCommitSha.current === null) {
-                        initialCommitSha.current = latestSha;
-                        console.log(`Initial app version loaded: ${latestSha}`);
-                    }
-    
-                    setCommitInfo({
-                        sha: latestSha,
-                        date: formattedDate
-                    });
-    
-                    // Check if the latest SHA is different from the initial one
-                    if (initialCommitSha.current !== null && initialCommitSha.current !== latestSha) {
-                        console.log(`New version detected! Initial: ${initialCommitSha.current}, Latest: ${latestSha}`);
-                        setShowUpdateNotification(true); // Show the update notification
-                    }
-    
-                } catch (error) {
-                    console.error('Error fetching commit:', error);
-                    Sentry.captureException(error); // Send error to Sentry
-                    // Optionally, you could implement backoff here if errors persist
-                }
+    useEffect(() => {
+        const fetchCommit = async () => {
+            const githubPat = process.env.REACT_APP_GITHUB_PAT; 
+
+            const url = 'https://api.github.com/repos/GTAW-PHMC/forms/commits/gh-pages';
+            const headers = {
+                'Accept': 'application/vnd.github.v3+json',
             };
-    
-            fetchCommit(); // Initial fetch on mount
-    
-            const intervalId = setInterval(fetchCommit, 300000); // Interval set to 5 minutes (300,000 ms)
-    
-            // Cleanup interval on component unmount
-            return () => clearInterval(intervalId);
-    
-        }, []); // Empty dependency array ensures this runs once on mount and sets up polling
+
+            if (githubPat) {
+                headers['Authorization'] = `token ${githubPat}`; // <-- Add the Authorization header
+            } else {
+                console.warn("GitHub PAT not found in environment variables. Making unauthenticated request.");
+            }
+
+            // Add If-None-Match header if we have a stored ETag
+            if (commitEtag.current) {
+                headers['If-None-Match'] = commitEtag.current;
+            }
+
+            try {
+                const response = await fetch(url, { headers });
+
+                // --- ETag Handling ---
+                if (response.status === 304) {
+                    console.log('GitHub commit data not modified (304).');
+                    return;
+                }
+
+                if (!response.ok) {
+                     // Log rate limit specific info if available
+                    const rateLimitRemaining = response.headers.get('X-RateLimit-Remaining');
+                    const rateLimitReset = response.headers.get('X-RateLimit-Reset');
+                    let resetTime = 'N/A';
+                    if (rateLimitReset) {
+                        resetTime = new Date(rateLimitReset * 1000).toLocaleTimeString();
+                    }
+
+                    if (response.status === 403) {
+                         console.warn(`GitHub API request forbidden (403). Rate Limit Remaining: ${rateLimitRemaining}. Resets at: ${resetTime}. Check PAT permissions or rate limits.`);
+                         Sentry.captureMessage(`GitHub API request forbidden (403). Rate Limit Remaining: ${rateLimitRemaining}`, 'warning');
+                    } else if (response.status === 401) {
+                         console.error(`GitHub API authentication failed (401). Check if PAT is valid or has correct permissions.`);
+                         Sentry.captureMessage(`GitHub API authentication failed (401).`, 'error');
+                    } else {
+                        console.error(`GitHub API error: ${response.status} ${response.statusText}. Rate Limit Remaining: ${rateLimitRemaining}. Resets at: ${resetTime}`);
+                    }
+                    throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
+                }
+
+                // Store the new ETag for the next request
+                const newEtag = response.headers.get('ETag');
+                if (newEtag) {
+                    commitEtag.current = newEtag;
+                    // console.log(`Stored new GitHub ETag: ${newEtag}`); // Less verbose logging
+                }
+
+                // --- Process Data (only if status is 200 OK) ---
+                const data = await response.json();
+                const latestSha = data.sha.substring(0, 7);
+                const commitDate = new Date(data.commit.author.date);
+                const formattedDate = commitDate.toLocaleString('en-US', { /* ... date formatting options ... */ });
+
+                // Store the first fetched SHA as the initial version
+                if (initialCommitSha.current === null) {
+                    initialCommitSha.current = latestSha;
+                    console.log(`Initial app version loaded: ${latestSha}`);
+                }
+
+                setCommitInfo({
+                    sha: latestSha,
+                    date: formattedDate
+                });
+
+                // Check if the latest SHA is different from the initial one
+                if (initialCommitSha.current !== null && initialCommitSha.current !== latestSha) {
+                    console.log(`New version detected! Initial: ${initialCommitSha.current}, Latest: ${latestSha}`);
+                    setShowUpdateNotification(true);
+                }
+
+            } catch (error) {
+                console.error('Error fetching commit:', error);
+                Sentry.captureException(error);
+            }
+        };
+
+        fetchCommit(); // Initial fetch
+
+        const intervalId = setInterval(fetchCommit, 300000); // 5 minutes
+
+        return () => clearInterval(intervalId);
+
+    }, []); // Empty dependency array
     
     
         const handleRefresh = () => {
