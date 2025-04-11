@@ -399,6 +399,7 @@ export const coronerList = [
     { name: 'Luca Raymond', badge: '181726', rank: 'Forensic Attendant', discord: 'itscharlie3529', category: 'Forensic Attendant' },
     { name: 'Roger Rose', badge: '1552', rank: 'Coroner Investigator Supervisor', discord: 'nazmaldun', category: 'Coroner Investigator Supervisor' },
     { name: `Valeria Zaldívar`, badge: '183550 ', rank: 'Coroner Investigator', discord: 'hrndzz', category: 'Coroner Investigator' },
+    { name: 'Elias Harper', badge: '184060', rank: 'Coroner Investigator', discord: 'psychofr__', category: 'Coroner Investigator' },
 ];
 
 export const formatSignature = (signature) => {
