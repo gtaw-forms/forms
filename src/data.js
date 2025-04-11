@@ -401,6 +401,8 @@ export const coronerList = [
     { name: `Valeria Zaldívar`, badge: '183550 ', rank: 'Coroner Investigator', discord: 'hrndzz', category: 'Coroner Investigator' },
     { name: 'Elias Harper', badge: '184060', rank: 'Coroner Investigator', discord: 'psychofr__', category: 'Coroner Investigator' },
     { name: 'Brynn Cappelli', badge: '117468', rank: 'Coroner Investigator', discord: 'Coroner Investigator', category: 'Coroner Investigator' },
+    { name: 'William Gao', badge: '165529', rank: 'Coroner Investigator', discord: '.slump.', category: 'Coroner Investigator' },
+
 ];
 
 export const formatSignature = (signature) => {

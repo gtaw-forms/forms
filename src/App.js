@@ -554,50 +554,102 @@ function App() {
     };
     const handleMissingEmployeeSubmit = async () => {
         const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-    
-        const emptyFields = Object.entries(missingEmployeeData)
-            .filter(([key, value]) => (key !== 'coronerBadge' && (key === 'coronerName' || key === 'coronerDiscord' || key === 'coronerRank' || key === 'coronerPHNumber')) && value.trim() === "")
-            .map(([key]) => key);
-    
+
+        // Determine if it's a Coroner or PHMC request based on the radio buttons
+        const isCoronerRequest = isJohnDoe; // Assuming John Doe radio = Coroner
+        const isPhmcRequest = isJaneDoe;   // Assuming Jane Doe radio = PHMC Staff
+
+        let requiredFields = [];
+        if (isCoronerRequest) {
+            requiredFields = ['coronerName', 'coronerDiscord', 'coronerRank', 'coronerBadge']; // Badge is required for Coroners
+        } else if (isPhmcRequest) {
+            requiredFields = ['coronerName', 'coronerDiscord', 'coronerRank']; // Badge might not apply or be required for PHMC
+        } else {
+            showNotification('Please select whether the missing person is a Coroner or Hospital Staff.', 'exclamation-circle');
+            return;
+        }
+
+        const emptyFields = requiredFields.filter(key => !missingEmployeeData[key]?.trim());
+
         if (emptyFields.length > 0) {
             showNotification(`Please fill in all required fields. Missing: ${emptyFields.join(', ')}`, 'exclamation-circle');
             return;
         }
-        
-        if (!missingEmployeeData.phmcEmployee && !missingEmployeeData.coronerEmployee) {
-            showNotification('Please fill in either PHMC Employee or Coroner Employee field.', 'exclamation-circle');
-            return;
+
+        // Check if the requester field is filled
+        const requester = isCoronerRequest ? missingEmployeeData.coronerEmployee : missingEmployeeData.phmcEmployee;
+        if (!requester?.trim()) {
+             showNotification('Please select who is requesting this addition in the dropdown.', 'exclamation-circle');
+             return;
         }
-    
+
+
         if (!webhookURL) {
-            console.error('This is not expected.....');
-            showNotification('Something has gone wrong, debug logs dispatched. ', 'exclamation-triangle');
+            console.error('Discord webhook URL not configured.');
+            Sentry.captureMessage('Discord webhook URL is missing for missing employee submission.', 'error');
+            showNotification('Configuration error: Unable to submit request. Please contact the administrator.', 'exclamation-triangle');
             return;
         }
-    
-        const messageContent = `New Employee Name Request by: ${missingEmployeeData.phmcEmployee || missingEmployeeData.coronerEmployee || 'Unknown'}
-        Name: ${missingEmployeeData.coronerName}
-        Discord/Department: ${missingEmployeeData.coronerDiscord}
-        Rank: ${missingEmployeeData.coronerRank}
-        Badge: ${missingEmployeeData.coronerBadge}
-        Phone Number: ${missingEmployeeData.coronerPHNumber}`;
-    
-    
+
+        // --- Start Embed Logic ---
+        const embedData = {
+            title: `Missing ${isCoronerRequest ? 'Coroner' : 'Hospital Staff'} Addition Request`,
+            color: isCoronerRequest ? 0x8B0000 : 0x00008B, // Dark Red for Coroner, Dark Blue for PHMC
+            fields: [
+                { name: "Requested By", value: requester || "Unknown", inline: false },
+                { name: "Name", value: missingEmployeeData.coronerName || "N/A", inline: true },
+                { name: isCoronerRequest ? "Discord Tag" : "Department/Discord", value: missingEmployeeData.coronerDiscord || "N/A", inline: true },
+                { name: "Rank/Position", value: missingEmployeeData.coronerRank || "N/A", inline: true },
+            ],
+            timestamp: new Date().toISOString(),
+            footer: {
+                text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}` // Optional: Add version info
+            }
+        };
+
+        // Conditionally add Badge and Phone Number if they have values
+        if (isCoronerRequest && missingEmployeeData.coronerBadge?.trim()) {
+            embedData.fields.push({ name: "Badge", value: missingEmployeeData.coronerBadge, inline: true });
+        }
+        if (missingEmployeeData.coronerPHNumber?.trim()) {
+            embedData.fields.push({ name: "Phone Number", value: missingEmployeeData.coronerPHNumber, inline: true });
+        }
+
+        // --- Add the data.js entry field ---
+        const dataJsEntry = `{ name: '${missingEmployeeData.coronerName || 'MISSING_NAME'}', badge: '${missingEmployeeData.coronerBadge || 'MISSING_BADGE'}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', discord: '${missingEmployeeData.coronerDiscord || 'MISSING_DISCORD'}', category: '${missingEmployeeData.coronerRank || 'MISSING_CATEGORY'}' },`; // Using Rank as Category for now
+
+        embedData.fields.push({
+            name: "Add to data.js",
+            value: `\`\`\`javascript\n${dataJsEntry}\n\`\`\``, // Use code block formatting for easy copying
+            inline: false // Keep this on its own line
+        });
+        // --- End Embed Logic ---
+
         try {
             const response = await fetch(webhookURL, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ content: `<@228306972204597248> ${messageContent}` }),
+                // Send the embed structure
+                body: JSON.stringify({
+                    content: `<@228306972204597248>`, // Ping the user if needed
+                    embeds: [embedData] // Send the embed data as an array
+                }),
             });
-    
+
             if (!response.ok) {
-                console.error(`Failed to send message to Discord webhook. Status: ${response.status} ${response.statusText}`);
+                const errorText = await response.text();
+                console.error(`Failed to send message to Discord webhook. Status: ${response.status} ${response.statusText}`, errorText);
+                Sentry.captureMessage(`Discord webhook failed for missing employee: ${response.status}`, {
+                    level: 'error',
+                    extra: { statusText: response.statusText, responseBody: errorText }
+                });
                 showNotification(`Failed to submit. Please try again. Status: ${response.status}`, 'exclamation-triangle');
             } else {
                 showNotification('Success! This will be automatically added soon. Inform the Employee to reload the page soon.', 'check-circle');
                 setShowMissingEmployeeModal(false);
+                // Reset form data after successful submission
                 setMissingEmployeeData({
                     coronerName: '',
                     coronerDiscord: '',
@@ -607,11 +659,15 @@ function App() {
                     coronerBadge: '',
                     phmcEmployee: '',
                 });
+                // Reset radio buttons as well
+                setIsJohnDoe(false);
+                setIsJaneDoe(false);
                 setTimeout(() => setNotification(null), 10000);
             }
         } catch (error) {
             console.error('Error submitting data:', error);
-            showNotification('An error occurred. Please try again.', 'exclamation-triangle');
+            Sentry.captureException(error, { extra: { context: 'Missing Employee Submission Fetch' } });
+            showNotification('An network error occurred. Please try again.', 'exclamation-triangle');
         }
     };
         
@@ -741,7 +797,7 @@ function App() {
             return a.label.localeCompare(b.label);
         }
     });
-    
+
 
     const handleDoeChange = (type) => (e) => {
         if (type === 'john') {
@@ -4244,7 +4300,6 @@ const [imgurLink, setImgurLink] = useState(null);
 
     // handling updates and refresh 
     const initialCommitSha = useRef(null); // Ref to store the initial commit SHA
-    const commitEtag = useRef(null); // Ref to store the ETag for conditional requests
     
     useEffect(() => {
         const fetchCommit = () => {
@@ -13600,7 +13655,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         name="coronerDiscord"
                         value={missingEmployeeData.coronerDiscord}
                         onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerDiscord')}
-                        placeholder='Coroner Discord Tags'
+                        placeholder='Coroner Discord Name'
                         />
                         <Form.Control
                         type="text"
