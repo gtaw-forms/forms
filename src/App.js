@@ -722,14 +722,26 @@ function App() {
             return groups;
         }, {})
     ).map(([category, options]) => {
-        // Log each category group
         return {
             label: category,
             options: options.sort((a, b) => a.label.localeCompare(b.label))
         };
-    });
+    }).sort((a, b) => {
+        const priorityOrder = {
+            'Chief Boss': 1,
+            'Supervisor': 2,
+            'Missing_Category': 3,
+        };
+        const orderA = priorityOrder[a.label] || 99;
+        const orderB = priorityOrder[b.label] || 99;
 
-    // Update handleChange function
+        if (orderA !== orderB) {
+            return orderA - orderB;
+        } else {
+            return a.label.localeCompare(b.label);
+        }
+    });
+    
 
     const handleDoeChange = (type) => (e) => {
         if (type === 'john') {

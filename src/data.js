@@ -380,6 +380,7 @@ export const Risk = [
     { name: 'Will Flanary', lastName: 'Flanary', signature: '', category: 'Emergency Medical Services' },
 ];
 export const coronerList = [
+    { name: 'Missing Name', badge: 'Missing_Badge', rank: 'Missing_Rank', discord: 'missing.discord', category: 'Missing_Category' },
     { name: 'Anne Carter', badge: '4892', rank: 'Chief Medical Examiner', discord: 'ralof.from.riverwood', category: 'Chief Boss' },
     { name: 'Elena Hill', badge: '108273', rank: 'Deputy Chief Medical Examiner', discord: 'unity0034', category: 'Chief Boss' },
     { name: 'Laurent Hall', badge: '91338854', rank: 'Supervisor Forensic Attendant', discord: 'faethewtich', category: 'Supervisor' },
