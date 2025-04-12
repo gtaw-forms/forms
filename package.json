@@ -35,7 +35,7 @@
     "build": "react-scripts build && npm run sentry:sourcemaps",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "postbuild": "git add . && git commit -m 'Small-Update' && git push origin source",
+    "postbuild": "git add . && git commit && git push origin source",
     "sentry:sourcemaps": "sentry-cli sourcemaps inject --org phmc-gtaw --project javascript-react ./build && sentry-cli sourcemaps upload --org phmc-gtaw --project javascript-react ./build"
   },
   "eslintConfig": {

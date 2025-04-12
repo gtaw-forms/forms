@@ -875,14 +875,12 @@ function App() {
         } else if (bbCodeVersion >= 3 && bbCodeVersion <= 7) {
             if (!formData.patientID || !formData.patientName || !formData.date) {
                 showNotification(`Please fill in Patient ID, Patient Name, and Date fields.`, 'exclamation-circle');
-                console.log('Missing fields:', formData);
                 return;
             }
              key = `${formData.patientID} - ${formData.patientName} - ${formData.date}`;
         } else if (bbCodeVersion === 19) {
             if (!formData.patientID || !formData.lastName || !formData.date) {
                 showNotification(`Please fill in Patient ID, Last Name, and Date fields.`, 'exclamation-circle');
-                console.log('Missing fields:', formData);
                 return;
             }
             key = `${formData.patientID} - ${formData.lastName} - ${formData.date}`;
@@ -4174,7 +4172,6 @@ const [imgurLink, setImgurLink] = useState(null);
                         // Optional: Add the message back to the queue for retry?
                         // webhookQueue.unshift({ webhookURL, message });
                     } else {
-                        console.log('DEBUG: Discord webhook sent successfully!');
                         lastWebhookCallTimestamp = Date.now(); // Update timestamp on success
                     }
                 } catch (error) {
@@ -14301,23 +14298,39 @@ const [imgurLink, setImgurLink] = useState(null);
                         // Check if clipboard API is available before using it
                         if (navigator.clipboard && navigator.clipboard.writeText) {
                             navigator.clipboard.writeText(bbCode).then(() => {
-                                saveReport();
+                                saveReport(); // Save report on successful copy
                                 showNotification(`${version} copied!`, 'check-circle');
 
                                 const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
                                 // Send POST request to Discord Webhook only after successful copy
-                                if (discordWebhookUrl) { // Also check if the URL exists
+                                if (discordWebhookUrl) {
+                                    const successEmbed = {
+                                        title: "BBCode Copied Successfully",
+                                        color: 0x00FF00, // Green
+                                        fields: [
+                                            { name: "User", value: `${coronerRank || ''} ${coronerEmployee || phmcEmployee || `${patientFirstName || ''} ${patientLastName || ''}` || 'Unknown User'}`, inline: true },
+                                            { name: "Form Type", value: version || "Unknown Form", inline: true },
+                                            { name: "Patient/Decedent", value: `${patientName || decedentName || patientID || 'N/A'}`, inline: true },
+                                            { name: "OOC Name", value: decedentOOC || "N/A", inline: true },
+                                            { name: "Requesting Officer", value: requestingOfficer || "N/A", inline: true },
+                                            { name: "Timestamp", value: currentDateTime || "N/A", inline: false },
+                                        ],
+                                        footer: {
+                                            text: `PHMC Forms Tool | gh-pages ${commitInfo.sha || 'N/A'}`
+                                        },
+                                        timestamp: new Date().toISOString()
+                                    };
+
                                     fetch(discordWebhookUrl, {
                                         method: 'POST',
                                         headers: {
                                             'Content-Type': 'application/json'
                                         },
-                                        body: JSON.stringify({
-                                            content: ` ** DEBUG LOGS | TRACE |  gh-pages ${commitInfo.sha} **\n${coronerRank}  ${coronerEmployee} / ${phmcEmployee} / ${patientFirstName} ${patientLastName} has used your website.\nPatient / Decedent Name: ${patientName || decedentName || patientID}\nDecdent Name OOC: ${decedentOOC} \nTime: ${currentDateTime}\nForm: ${version}\nRequesting Officer: ${requestingOfficer}`
-                                        })
+                                        body: JSON.stringify({ embeds: [successEmbed] }) // Send the embed
                                     }).catch(error => {
                                         console.error('Failed to send Discord webhook after copy:', error);
+                                        Sentry.captureException(error, { extra: { context: 'Discord Webhook Success Send' } });
                                         // Optionally notify Sentry or show a different user notification
                                     });
                                 } else {
@@ -14328,23 +14341,45 @@ const [imgurLink, setImgurLink] = useState(null);
                                 console.error('Failed to copy BBCode: ', err);
                                 Sentry.captureException(err, { extra: { message: 'BBCode copy failed' } });
                                 showNotification('Failed to copy BBCode to clipboard!', 'exclamation-triangle');
+                                // Optionally, send a failure webhook here too if needed
                             });
                         } else {
                             // Handle cases where clipboard API is not available
                             console.warn("Clipboard API not available");
                             Sentry.captureMessage('Clipboard API not available for BBCode copy', 'warning');
                             showNotification('Clipboard API not available! BBCode not copied.', 'exclamation-triangle');
-                            // Consider still saving the report and sending the webhook even if copy fails
+
+                            // Still save the report
                             saveReport();
+
                             const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
                              if (discordWebhookUrl) {
+                                const failureEmbed = {
+                                    title: "BBCode Copy Failed (Clipboard API Unavailable)",
+                                    color: 0xFF0000, // Red
+                                    fields: [
+                                        { name: "User", value: `${coronerRank || ''} ${coronerEmployee || phmcEmployee || `${patientFirstName || ''} ${patientLastName || ''}` || 'Unknown User'}`, inline: true },
+                                        { name: "Form Type", value: version || "Unknown Form", inline: true },
+                                        { name: "Patient/Decedent", value: `${patientName || decedentName || patientID || 'N/A'}`, inline: true },
+                                        { name: "OOC Name", value: decedentOOC || "N/A", inline: true },
+                                        { name: "Requesting Officer", value: requestingOfficer || "N/A", inline: true },
+                                        { name: "Timestamp", value: currentDateTime || "N/A", inline: false },
+                                        { name: "Action", value: "Report was saved, but BBCode could not be copied automatically.", inline: false },
+                                    ],
+                                    footer: {
+                                        text: `PHMC Forms Tool | gh-pages ${commitInfo.sha || 'N/A'}`
+                                    },
+                                    timestamp: new Date().toISOString()
+                                };
+
                                 fetch(discordWebhookUrl, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                        content: ` ** DEBUG LOGS | TRACE | CLIPBOARD FAIL | gh-pages ${commitInfo.sha} **\n${coronerRank}  ${coronerEmployee} / ${phmcEmployee} / ${patientFirstName} ${patientLastName} used website (clipboard unavailable).\nPatient / Decedent Name: ${patientName || decedentName || patientID}\nDecdent Name OOC: ${decedentOOC} \nTime: ${currentDateTime}\nForm: ${version}\nRequesting Officer: ${requestingOfficer}`
-                                    })
-                                }).catch(error => console.error('Failed to send Discord webhook after failed copy:', error));
+                                    body: JSON.stringify({ embeds: [failureEmbed] }) // Send the failure embed
+                                }).catch(error => {
+                                    console.error('Failed to send Discord webhook after failed copy:', error);
+                                    Sentry.captureException(error, { extra: { context: 'Discord Webhook Clipboard Fail Send' } });
+                                });
                              }
                         }
                     }}
