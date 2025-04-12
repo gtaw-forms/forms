@@ -897,27 +897,8 @@ function App() {
         });
         localStorage.setItem(key, reportData);
         showNotification(`Report saved as ${key}`, 'save');
-        console.log('Saved report data:', reportData);
         loadSavedReports();
-
-        const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-        if (webhookURL) {
-            try {
-                const messageContent = `${formData.coronerEmployee || formData.phmcEmployee} has saved a report: ${key}`;
-                await fetch(webhookURL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        content: messageContent,
-                    }),
-                });
-            } catch (error) {
-                console.error('Failed to send save notification to Discord:', error);
-            }
-        }
-    };    
+        };    
     const loadReport = (key) => {
         const reportData = localStorage.getItem(key);
         if (reportData) {
@@ -14306,7 +14287,9 @@ const [imgurLink, setImgurLink] = useState(null);
                                 // Send POST request to Discord Webhook only after successful copy
                                 if (discordWebhookUrl) {
                                     const successEmbed = {
-                                        title: "BBCode Copied Successfully",
+                                        // Updated title to reflect both actions
+                                        title: "Someone has used your generator!",
+                                        description: "Here's the full transcript.",
                                         color: 0x00FF00, // Green
                                         fields: [
                                             { name: "User", value: `${coronerRank || ''} ${coronerEmployee || phmcEmployee || `${patientFirstName || ''} ${patientLastName || ''}` || 'Unknown User'}`, inline: true },
@@ -14315,6 +14298,8 @@ const [imgurLink, setImgurLink] = useState(null);
                                             { name: "OOC Name", value: decedentOOC || "N/A", inline: true },
                                             { name: "Requesting Officer", value: requestingOfficer || "N/A", inline: true },
                                             { name: "Timestamp", value: currentDateTime || "N/A", inline: false },
+                                            // New field indicating the save action
+                                            { name: "Action", value: "BBCode Copied & Report Saved to Local Storage", inline: false }
                                         ],
                                         footer: {
                                             text: `PHMC Forms Tool | gh-pages ${commitInfo.sha || 'N/A'}`
@@ -14327,7 +14312,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                         headers: {
                                             'Content-Type': 'application/json'
                                         },
-                                        body: JSON.stringify({ embeds: [successEmbed] }) // Send the embed
+                                        body: JSON.stringify({ embeds: [successEmbed] }) // Send the updated embed
                                     }).catch(error => {
                                         console.error('Failed to send Discord webhook after copy:', error);
                                         Sentry.captureException(error, { extra: { context: 'Discord Webhook Success Send' } });
