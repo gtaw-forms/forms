@@ -4169,36 +4169,54 @@ const [imgurLink, setImgurLink] = useState(null);
                 }
             };
         
-    const sendDiscordWebhook = async (name, rank, phoneNumber, imgurLink, errorMessage = null) => {
-        const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-
-        if (!webhookURL) {
-            console.warn('Discord webhook URL is not set in environment variables.');
-            return;
-        }
-
-        const message = {
-            content: `Business Card Creation Alert!`,
-            embeds: [{
-                fields: [
-                    { name: "Employee Name", value: name || "N/A", inline: true }, // Add fallback
-                    { name: "Employee Rank", value: rank || "N/A", inline: true }, // Add fallback
-                    { name: "Phone Number", value: phoneNumber || "N/A", inline: true }, // Add fallback
-                    { name: "Business Card Image", value: imgurLink || "No Image Uploaded", inline: false }, // Image URL on its own line
-                    errorMessage ? { name: "Error", value: errorMessage, inline: false } : null
-                ].filter(field => field !== null)
-            }]
-        };
-
-        // Add the request to the queue
-        webhookQueue.push({ webhookURL, message });
-
-        // Start processing the queue if not already processing
-        if (!isWebhookProcessing) {
-            processWebhookQueue();
-        }
-    };
-
+            const sendDiscordWebhook = async (name, rank, phoneNumber, imgurLink, errorMessage = null) => {
+                const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+        
+                if (!webhookURL) {
+                    console.warn('Discord webhook URL is not set in environment variables.');
+                    return;
+                }
+        
+                // --- Start Embed Construction ---
+                const embed = {
+                    title: "Business Card Creation Alert!", 
+                    description: "A new business card was generated.", 
+                    color: errorMessage ? 0xFF0000 : 0x00FF00, 
+                    fields: [
+                        { name: "Employee Name", value: name || "N/A", inline: true },
+                        { name: "Employee Rank", value: rank || "N/A", inline: true },
+                        { name: "Phone Number", value: phoneNumber || "N/A", inline: true },
+                        errorMessage ? { name: "Error", value: errorMessage, inline: false } : null
+                    ].filter(field => field !== null), // Filter out null fields (like the error field if no error)
+                    footer: {
+                        text: `PHMC Forms Tool | gh-pages ${commitInfo.sha || 'N/A'}`
+                    },
+                    timestamp: new Date().toISOString()
+                };
+        
+                if (imgurLink) {
+                    embed.image = {
+                        url: imgurLink
+                    };
+                } else if (!errorMessage) { // Add a note if upload succeeded but link is missing (shouldn't happen often)
+                     embed.fields.push({ name: "Image Status", value: "Image uploaded, but link is missing.", inline: false });
+                } else { // Add a note if upload failed
+                     embed.fields.push({ name: "Image Status", value: "Image upload failed.", inline: false });
+                }
+        
+        
+                const message = {
+                    embeds: [embed] 
+                };
+        
+        
+                webhookQueue.push({ webhookURL, message });
+        
+                if (!isWebhookProcessing) {
+                    processWebhookQueue();
+                }
+            };
+        
     };
     const uploadToImgur = async (base64Image) => {
         const imgurClientId = process.env.REACT_APP_IMGUR_CLIENT_ID;
