@@ -1096,14 +1096,14 @@ It is imperative that all parties handling this document respect the privacy and
 
 This document is provided for official purposes only and is not to be construed as legal advice or medical diagnosis. If additional information or clarification is needed, please contact the Forensic Medicine and Pathology Department of Pillbox Hill Medical Center.[/size][/divbox]
 
-[divbox=transparent][center][b]u)[/u][/b][/center][hr][/hr]
+[divbox=transparent][center][b][u](( OUT OF CHARACTER IMAGES ))[/u][/b][/center][hr][/hr]
 
 This section clarifies whether or not if the player was character killed or player killed.
 In this case the player was; ${typeOfDeath}
 Player OOC Name: ${decedentOOC}
-${formData.morgueStatus === 'true' ? '[b]color=red) [/color][/b]' : ''}
-Morgue screen, cinjuries, cdna links:
-[size=85][u] THESE IMAGES ARE [B]OUT OF CHARACTER[/B] FOR INTERNAL RECORDS, DO NOT USE THESE AS EVIDENCE. [/u][/size]
+${formData.morgueStatus === 'true' ? '[b][color=red](( The Morgue Screen is currently bugged and we unfortunately cannot pull Morgue Screen images )) [/color][/b]' : ''}
+ Morgue screen, cinjuries, cdna links: 
+ [size=85][u] THESE IMAGES ARE [B]OUT OF CHARACTER[/B] FOR INTERNAL RECORDS, DO NOT USE THESE AS EVIDENCE. [/u][/size]
 ${additionalImagesBBCode}
 
 ${coronerRank} ${coronerEmployee} has added something to the evidence locker: ${evidenceAdded ? 'Yes' : 'No'}
@@ -4522,6 +4522,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                         <li> Structural changes to some backend features.  </li>
                                         <li> Preparation for a major update to the introduction. </li>
                                         <li> Updated privacy policy. </li>
+                                        <li> fixed a oopsie</li>
                                     </ul>
                                     - frosty
                                 </div>
