@@ -866,39 +866,92 @@ function App() {
     // Function to load saved reports from local storage
     const saveReport = async () => {
         let key = '';
+        // --- Validation logic to determine the key ---
         if (bbCodeVersion === 1) {
             if (!formData.decedentOOC || !formData.dateTime) {
                 showNotification(`Please fill in Decedent OOC and Date/Time fields.`, 'exclamation-circle');
-                return;
+                return; // Exit if validation fails
             }
             key = `${formData.decedentOOC} - ${formData.dateTime}`;
-        } else if (bbCodeVersion >= 3 && bbCodeVersion <= 7) {
+        } else if (bbCodeVersion >= 3 && bbCodeVersion <= 7) { // Adjusted range based on your code
             if (!formData.patientID || !formData.patientName || !formData.date) {
                 showNotification(`Please fill in Patient ID, Patient Name, and Date fields.`, 'exclamation-circle');
-                return;
+                return; // Exit if validation fails
             }
              key = `${formData.patientID} - ${formData.patientName} - ${formData.date}`;
-        } else if (bbCodeVersion === 19) {
-            if (!formData.patientID || !formData.lastName || !formData.date) {
+        } else if (bbCodeVersion === 19) { // Added other relevant bbCodeVersions based on your code
+             if (!formData.patientID || !formData.lastName || !formData.date) {
                 showNotification(`Please fill in Patient ID, Last Name, and Date fields.`, 'exclamation-circle');
-                return;
+                return; // Exit if validation fails
             }
             key = `${formData.patientID} - ${formData.lastName} - ${formData.date}`;
-        } else {
-            showNotification(`This form cannot be saved.`, 'exclamation-circle');
-            return;
+        } else if (bbCodeVersion === 24 || bbCodeVersion === 25 || bbCodeVersion === 26) { // Added patient file versions
+             if (!formData.patientName || !formData.date) { // Simplified check for these forms
+                showNotification(`Please fill in Patient Name and Date fields.`, 'exclamation-circle');
+                return; // Exit if validation fails
+            }
+            key = `${formData.patientName} - ${formData.date}`; // Key based on name and date
         }
+        // Add more 'else if' blocks here for other bbCodeVersions that should be saveable
+        // Ensure each block has appropriate validation and key generation
+        else {
+            // If the form type isn't explicitly handled for saving
+            showNotification(`This form type (v${bbCodeVersion}) cannot be saved currently.`, 'exclamation-circle');
+            return; // Exit if not a saveable type
+        }
+        // --- End Validation ---
+
+        // Proceed only if validation passed and a key was generated
+        if (!key) {
+             // This should ideally not be reached if validation is correct, but acts as a safeguard
+             console.error("SaveReport: Key generation failed despite passing validation.");
+             showNotification(`An unexpected error occurred during saving.`, 'error');
+             return;
+        }
+
+
         const bbCodeContent = getBBCodeContent(); // Generate BBCode here
+        if (bbCodeContent == null) {
+            console.error("SaveReport: getBBCodeContent() returned null or undefined for version", bbCodeVersion);
+            showNotification(`Failed to generate BBCode content for saving.`, 'error');
+            return; // Don't save if BBCode generation fails
+        }
+
         const reportData = JSON.stringify({
             bbCodeVersion: bbCodeVersion,
             data: filterFormData(formData, bbCodeVersion),
             bbCode: bbCodeContent, // Save the BBCode
             timestamp: Date.now()
         });
-        localStorage.setItem(key, reportData);
-        showNotification(`Report saved as ${key}`, 'save');
-        loadSavedReports();
-        };    
+
+        try {
+            // Save the report data
+            localStorage.setItem(key, reportData);
+
+            // --- Add this section to update the count ---
+            let currentCount = parseInt(localStorage.getItem('SavedReportCount') || '0', 10);
+            if (isNaN(currentCount)) { // Handle potential non-numeric values stored previously
+                currentCount = 0;
+            }
+            localStorage.setItem('SavedReportCount', (currentCount + 1).toString());
+            // --- End of section to update count ---
+
+            showNotification(`Report saved as ${key}. Total saved: ${currentCount + 1}`, 'save');
+            loadSavedReports(); // Refresh the list in the UI
+
+        } catch (error) {
+            console.error("Error saving report to localStorage:", error);
+            Sentry.captureException(error, { extra: { context: 'localStorage.setItem', key: key } });
+
+            // Check for QuotaExceededError specifically
+            if (error.name === 'QuotaExceededError') {
+                showNotification('Storage limit reached! Cannot save report. Please delete older reports.', 'error');
+            } else {
+                showNotification('Failed to save report due to a storage error.', 'error');
+            }
+            // Do not call loadSavedReports() on error, as the save didn't complete
+        }
+    };
     const loadReport = (key) => {
         const reportData = localStorage.getItem(key);
         if (reportData) {
@@ -970,39 +1023,43 @@ const filterFormData = (formData, bbCodeVersion) => {
 
     return filteredData;
 };
-    const generateDeath = () => {
-        const {
-            coronerRank,
-            placeOfDeath,
-            department,
-            dateTime,
-            coronerEmployee,
-            coronerBadge,
-            decedentName,
-            decedentOOC,
-            pronouncedTimeOfDeath,
-            synopsis,
-            probableCauseOfDeath,
-            mannerOfDeath,
-            typeOfDeath,
-            scenePhotos,
-            additionalImages,
-            evidenceLocker,
-            evidenceLockerID
-        } = formData;
+const generateDeath = () => {
+    const {
+        coronerRank,
+        placeOfDeath,
+        department,
+        dateTime,
+        coronerEmployee,
+        coronerBadge,
+        decedentName,
+        decedentOOC,
+        pronouncedTimeOfDeath,
+        synopsis,
+        probableCauseOfDeath,
+        mannerOfDeath,
+        typeOfDeath,
+        scenePhotos,
+        additionalImages,
+        evidenceLocker, // Keep this variable
+        evidenceLockerID
+    } = formData;
 
-        const scenePhotosBBCode = scenePhotos.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
-        const additionalImagesBBCode = additionalImages.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
-        let evidenceLockerListItems = '[*] N/A'; // Default if no ID is provided or checkbox is off
-        if (formData.evidenceLocker === 'true' && evidenceLockerID && evidenceLockerID.trim() !== '') {
-             evidenceLockerListItems = evidenceLockerID
-                .split(',') // Split the string by commas
-                .map(item => `[*] ${item.trim()}`) // Add '[*] ' prefix to each item
-                .join('\n'); // Join items with newlines
-        }
+    const scenePhotosBBCode = scenePhotos.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
+    const additionalImagesBBCode = additionalImages.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
 
-        // Base BBCode for ID 1
-        const bbCode = `[divbox=transparent][center][img]https://i.imgur.com/Hxjt4M2.png[/img][/center][/divbox]
+    // Determine if evidence was added based on the checkbox state
+    const evidenceAdded = formData.evidenceLocker === 'true';
+
+    let evidenceLockerListItems = '[*] N/A'; // Default if no ID is provided or checkbox is off
+    if (evidenceAdded && evidenceLockerID && evidenceLockerID.trim() !== '') {
+         evidenceLockerListItems = evidenceLockerID
+            .split(',') // Split the string by commas
+            .map(item => `[*] ${item.trim()}`) // Add '[*] ' prefix to each item
+            .join('\n'); // Join items with newlines
+    }
+
+    // Base BBCode for ID 1
+    const bbCode = `[divbox=transparent][center][img]https://i.imgur.com/Hxjt4M2.png[/img][/center][/divbox]
 
 [divbox=transparent][br][/br][center]DEATH INVESTIGATION REPORT[/center]
 [hr][/hr]
@@ -1039,23 +1096,24 @@ It is imperative that all parties handling this document respect the privacy and
 
 This document is provided for official purposes only and is not to be construed as legal advice or medical diagnosis. If additional information or clarification is needed, please contact the Forensic Medicine and Pathology Department of Pillbox Hill Medical Center.[/size][/divbox]
 
-[divbox=transparent][center][b][u](( OUT OF CHARACTER IMAGES ))[/u][/b][/center][hr][/hr]
+[divbox=transparent][center][b]u)[/u][/b][/center][hr][/hr]
 
-This section clarifies whether or not if the player was character killed or player killed. 
+This section clarifies whether or not if the player was character killed or player killed.
 In this case the player was; ${typeOfDeath}
 Player OOC Name: ${decedentOOC}
-${formData.morgueStatus === 'true' ? '[b][color=red](( The Morgue Screen is currently bugged and we unfortunately cannot pull Morgue Screen images )) [/color][/b]' : ''}
-Morgue screen, cinjuries, cdna links: 
+${formData.morgueStatus === 'true' ? '[b]color=red) [/color][/b]' : ''}
+Morgue screen, cinjuries, cdna links:
 [size=85][u] THESE IMAGES ARE [B]OUT OF CHARACTER[/B] FOR INTERNAL RECORDS, DO NOT USE THESE AS EVIDENCE. [/u][/size]
 ${additionalImagesBBCode}
 
-${coronerRank} ${coronerBadge} has added something to the evidence locker: ${evidenceLocker} 
+${coronerRank} ${coronerEmployee} has added something to the evidence locker: ${evidenceAdded ? 'Yes' : 'No'}
 [list]
 ${evidenceLockerListItems}
 [/list]
 
 [/divbox]
 `;
+
 
         return bbCode;
     };
@@ -2652,9 +2710,11 @@ const generateBasicPatientFile = () => {
         patientCurrentMedicine,
         patientChronicDiseases,
         patientNotes,
+        scenePhotos,
         date,
         patientID,
     } = formData;
+    const scenePhotosBBCode = scenePhotos.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
 
     let bbCode = `[table][tr][td][center][br][/br][br][/br][b]Patient Information[/b]
 
@@ -2683,6 +2743,12 @@ ${patientName}
 [tr][td] Chronic Conditions: [/td][td] ${patientChronicDiseases}
 [tr][td] Traumas & Injuries: [/td][td] ${patientNotes}
 [/table] 
+
+[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Payment[/b][/color][/size][/center][/divboxcolor]
+[table][tr][td] Please attach an unedited confirmation of your payment, unless you are exempt. [size=70](see question 14 in the FAQ thread on how to pay)[/size][/td][td]
+[url=${scenePhotos}]Proof Of Payment [/url]
+[/table]
+
 `
     return bbCode;
     };
@@ -4349,7 +4415,6 @@ const [imgurLink, setImgurLink] = useState(null);
     
         return (
         <div className="App">
-{season === "Easter" && <Snowfall images={EasterEggImages} snowflakeCount={25} />}
 {season === "Christmas" && <Snowfall images={EasterEggImages} snowflakeCount={75} />}
 {showUpdateNotification && (
                 <Notification
@@ -4443,7 +4508,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 1.9.7 - ❄️ Frostbite Update </h3>
+                                    <h3>Changelog - Version 1.9.9 - ❄️ Frostbite Update </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -4454,10 +4519,9 @@ const [imgurLink, setImgurLink] = useState(null);
                                 </div>
                                 <div className="modal-content">
                                     <ul>
-                                        <li> Added Sentry.  </li>
-                                        <li> Restored full access to major features </li> 
-                                        <li> Fixed various issues with isMulti Select variables. </li>
-                                        <li> Added new features to the PHMC and PBC forms. </li>
+                                        <li> Structural changes to some backend features.  </li>
+                                        <li> Preparation for a major update to the introduction. </li>
+                                        <li> Updated privacy policy. </li>
                                     </ul>
                                     - frosty
                                 </div>
@@ -14304,10 +14368,14 @@ const [imgurLink, setImgurLink] = useState(null);
 
                                 // Send POST request to Discord Webhook only after successful copy
                                 if (discordWebhookUrl) {
+                                    let savedCount = parseInt(localStorage.getItem('SavedReportCount') || '0', 10);
+                                    if (isNaN(savedCount)) {
+                                        savedCount = 0; // Default to 0 if the stored value is invalid
+                                    }
+
                                     const successEmbed = {
-                                        // Updated title to reflect both actions
                                         title: "Someone has used your generator!",
-                                        description: "Here's the full transcript.",
+                                        description: "Here's the debug output.",
                                         color: 0x00FF00, // Green
                                         fields: [
                                             { name: "User", value: `${coronerRank || ''} ${coronerEmployee || phmcEmployee || `${patientFirstName || ''} ${patientLastName || ''}` || 'Unknown User'}`, inline: true },
@@ -14316,8 +14384,10 @@ const [imgurLink, setImgurLink] = useState(null);
                                             { name: "OOC Name", value: decedentOOC || "N/A", inline: true },
                                             { name: "Requesting Officer", value: requestingOfficer || "N/A", inline: true },
                                             { name: "Timestamp", value: currentDateTime || "N/A", inline: false },
-                                            // New field indicating the save action
-                                            { name: "Action", value: "BBCode Copied & Report Saved to Local Storage", inline: false }
+                                            { name: "Action", value: "BBCode Copied & Report Saved to Local Storage", inline: false },
+                                            // --- New field for SavedReportCount ---
+                                            { name: "Total Saved Reports", value: savedCount.toString(), inline: false }
+                                            // --- End New Field ---
                                         ],
                                         footer: {
                                             text: `PHMC Forms Tool | gh-pages ${commitInfo.sha || 'N/A'}`
@@ -14334,7 +14404,6 @@ const [imgurLink, setImgurLink] = useState(null);
                                     }).catch(error => {
                                         console.error('Failed to send Discord webhook after copy:', error);
                                         Sentry.captureException(error, { extra: { context: 'Discord Webhook Success Send' } });
-                                        // Optionally notify Sentry or show a different user notification
                                     });
                                 } else {
                                      console.warn('Discord webhook URL not set, skipping notification.');
