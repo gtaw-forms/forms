@@ -2524,6 +2524,7 @@ ${patientMedicine}
                 const {
                     phmcEmployee,
                     date,
+                    patientNotes,
                     patientID,
                 } = formData;
         
@@ -2541,6 +2542,9 @@ P: 50056[/size][/center][/table][/divbox]
 [divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Commentary Note[/b][/color][/center][/divboxcolor]
 [table][tr][td][left][list=none][u]Firstname Lastname: [/u][br][/br]
 ${phmcEmployee}
+[br][/br]
+[u]Patient Notes: [/u]
+${patientNotes}
 [br][/br]
 [u]Department: [/u][br][/br]
 [cb${formData.departmentLarge === 'EmergencyMedicine' ? 'c' : ''}] Emergency Medicine
@@ -2561,6 +2565,7 @@ ${phmcEmployee}
                         phmcEmployee,
                         date,
                         patientID,
+                        patientNotes
                     } = formData;
             
                     let bbCode = `[divbox=white][table][tr][td][center][br][/br][br][/br][b]Session Notes[/b]
@@ -2577,6 +2582,9 @@ P: 50056[/size][/center][/table][/divbox]
 [divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Commentary Note[/b][/color][/center][/divboxcolor]
 [table][tr][td][left][list=none][u]Firstname Lastname: [/u][br][/br]
 ${phmcEmployee}
+[br][/br]
+[u]Patient Notes: [/u]
+${patientNotes}
 [br][/br]
 [u]Department: [/u][br][/br]
 [cb${formData.departmentLarge === 'EmergencyMedicine' ? 'c' : ''}] Emergency Medicine
@@ -11253,6 +11261,17 @@ const [imgurLink, setImgurLink] = useState(null);
                                     required
                                     className="form-control"
                                 />
+                            <Form.Control
+                                            type="text"
+                                            name="patientNotes"
+                                            value={formData.patientNotes}
+                                            onChange={handleChange}
+                                            placeholder="Patient's Notes"
+                                            required
+                                            className={`form-control ${!formData.patientNotes ? 'is-invalid' : ''}`}
+
+                                        />
+
                                 <Form.Label></Form.Label>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
                                     <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
@@ -11395,6 +11414,17 @@ const [imgurLink, setImgurLink] = useState(null);
                                     required
                                     className="form-control"
                                 />
+                            <Form.Control
+                                            type="text"
+                                            name="patientNotes"
+                                            value={formData.patientNotes}
+                                            onChange={handleChange}
+                                            placeholder="Patient's Notes"
+                                            required
+                                            className={`form-control ${!formData.patientNotes ? 'is-invalid' : ''}`}
+
+                                        />
+
                                 <Form.Label></Form.Label>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
                                     <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
@@ -14503,22 +14533,22 @@ const [imgurLink, setImgurLink] = useState(null);
         </a>
     </div>
 )}
-{bbCodeVersion === 3 && (
+ {bbCodeVersion === 24 && (
     <div className="image-container">
-        <a href="https://phmc.gta.world/posting.php?mode=post&f=221" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="Easter Bunny goes bounce bounce">
+        <a href="https://phmc.gta.world/posting.php?mode=post&f=109" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="Easter Bunny goes bounce bounce">
             <img
                 src={civilianPaperworkImage}
                 height={350}
                 width={350}
                 className="Center"
-                alt="PHMC Civilian Paperwork"
+                alt="Request Medical Records"
             />
         </a>
     </div>
 )}
-{bbCodeVersion === 24 || bbCodeVersion === 25 && (
+ {bbCodeVersion === 3 || bbCodeVersion === 25 && (
     <div className="image-container">
-        <a href="https://phmc.gta.world/posting.php?mode=post&f=109" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="Easter Bunny goes bounce bounce">
+        <a href="https://phmc.gta.world/posting.php?mode=post&f=221" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="Easter Bunny goes bounce bounce">
             <img
                 src={civilianPaperworkImage}
                 height={350}

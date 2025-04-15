@@ -74,8 +74,8 @@ export const followup = [
 ];
 export const departmentLarge = [
     { value: 'InternalMedicine', label: 'Internal Medicine' },
-    { value: 'Emergency Medicine', label: 'Emergency Medicine' },
-    { value: 'SurgicalDepartment', label: 'Surgical Department' },
+    { value: 'EmergencyMedicine', label: 'Emergency Medicine' },
+    { value: 'Surgical', label: 'Surgical Department' },
     { value: 'Midwifery', label: 'Midwifery' },
     { value: 'PhysicalTherapy', label: 'Physical Therapy' },
     { value: 'Dentistry', label: 'Dentistry' },
