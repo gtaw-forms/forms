@@ -14,7 +14,7 @@ import Snowfall from 'react-snowfall';
 import EasterEggImages from './EasterEggParticles'; 
 import * as Sentry from "@sentry/react";
 import WebhookModal from './components/WebhookModal'; // <-- Import the new modal component
-
+import CoronerRankModal from './components/CoronerRankModal'; // <-- Import the new modal component
 // logos
 import maternity from './assets/maternity.png'
 import obstetrical from './assets/obstetrical.png'
@@ -786,6 +786,73 @@ const prepareWebhookData = () => {
 
     return payload; // Return the prepared payload
 };
+const [showCoronerRankModal, setShowCoronerRankModal] = useState(false);
+const uniqueCoronerRanks = [...new Set(coronerList.map(c => c.rank))].sort();
+const handleCoronerRankSubmit = async (rank) => {
+
+    const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+    const submitterName = formData.coronerEmployee || "Unknown Coroner";
+
+    if (!webhookURL) {
+        console.error('Discord webhook URL not configured.');
+        Sentry.captureMessage('Discord webhook URL is missing for Coroner Rank submission.', 'error');
+        showNotification('Configuration error: Unable to send rank.', 'exclamation-triangle');
+        return;
+    }
+
+    // --- Construct Embed Payload ---
+    const embed = {
+        title: "Coroner Info Update",
+        description: `**${submitterName}** submitted the following information:`,
+        color: 0x8B0000, // Dark Red (Coroner theme)
+        fields: [
+            {
+                name: "New Rank Update",
+                value: `  ** ${submitterName}** || NEW RANK: **${rank}**`, // Display the selected employee name or new rank
+                inline: false
+            }
+        ],
+        timestamp: new Date().toISOString(),
+        footer: {
+            text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}`
+        }
+    };
+
+    // --- Construct Full Payload ---
+    const payload = {
+        username: "PHMC", // Use standard PHMC username
+        avatar_url: phmcLogoUrl, // Use standard PHMC logo
+        embeds: [embed] // Send the embed
+    };
+    // --- End Payload Construction ---
+
+
+    try {
+        const response = await fetch(webhookURL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload), // Send the embed payload
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`Failed to send coroner rank embed. Status: ${response.status} ${response.statusText}`, errorText);
+            Sentry.captureMessage(`Coroner Rank webhook failed: ${response.status}`, {
+                level: 'error',
+                extra: { statusText: response.statusText, responseBody: errorText }
+            });
+            showNotification(`Failed to send rank info. Status: ${response.status}`, 'exclamation-triangle');
+        } else {
+            showNotification(`Coroner info "${rank}" submitted successfully!`, 'check-circle');
+            setShowCoronerRankModal(false); // Close modal on success
+        }
+    } catch (error) {
+        console.error('Error sending coroner rank embed:', error);
+        Sentry.captureException(error, { extra: { context: 'Coroner Rank Submission Fetch' } });
+        showNotification('A network error occurred submitting the rank info.', 'exclamation-triangle');
+    }
+};
+
 const handlePhmcWebhookSubmit = async () => {
     const payload = prepareWebhookData();
     if (!payload) return; // Exit if validation/hostname check failed
@@ -4753,6 +4820,14 @@ const [imgurLink, setImgurLink] = useState(null);
                     onDismiss={() => setShowUpdateNotification(false)} // Allow dismissing
                 />
             )}
+                    <CoronerRankModal
+                        show={showCoronerRankModal}
+                        onClose={() => setShowCoronerRankModal(false)}
+                        onSubmit={handleCoronerRankSubmit} // Pass the new handler
+                        coronerRankList={uniqueCoronerRanks} // Pass the processed list of ranks
+                        coronerList={coronerList} // <-- Pass the full coronerList from data.js
+
+                    />
 
 {showAgencySelector && (
     <AgencySelector
@@ -4831,7 +4906,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 2.0.1 - Coroner Email Rewrite </h3>
+                                    <h3>Changelog - Version 2.0.2 -  </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -4848,6 +4923,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                         <li> Misc</li>
                                         <li> Added options to remove retired employees </li> 
                                         <li> Fixed incorrect links for Patient Files </li>
+                                        <li> Update Coroner Rank Button & Modal </li> 
                                     </ul>
                                     - frosty
                                 </div>
@@ -5413,6 +5489,21 @@ const [imgurLink, setImgurLink] = useState(null);
                                         <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i> {/* Changed icon */}
                                         Missing Name?
                                     </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowCoronerRankModal(true)} // <-- Open CoronerRankModal
+                                        className="close-button" // Keep class or change if needed
+                                        style={{
+                                            padding: '0.25rem 0.5rem',
+                                            fontSize: '0.8rem',
+                                            lineHeight: '1.2'
+                                        }}
+                                        title="Select or Add Coroner Rank" // <-- Update title
+                                    >
+                                        <i className="fas fa-user-md" style={{ marginRight: '5px' }}></i> {/* <-- Update icon */}
+                                        Update Coroner Rank {/* <-- Update text */}
+                                    </button>
+
                                 </div>
                                                                <Select
                                     name="coronerEmployee"
@@ -5838,6 +5929,21 @@ const [imgurLink, setImgurLink] = useState(null);
                                         <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i> {/* Changed icon */}
                                         Missing Name?
                                     </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowCoronerRankModal(true)} // <-- Open CoronerRankModal
+                                        className="close-button" // Keep class or change if needed
+                                        style={{
+                                            padding: '0.25rem 0.5rem',
+                                            fontSize: '0.8rem',
+                                            lineHeight: '1.2'
+                                        }}
+                                        title="Select or Add Coroner Rank" // <-- Update title
+                                    >
+                                        <i className="fas fa-user-md" style={{ marginRight: '5px' }}></i> {/* <-- Update icon */}
+                                        Update Coroner Rank {/* <-- Update text */}
+                                    </button>
+
                                 </div>
                                                                <Select
                                     name="coronerEmployee"
