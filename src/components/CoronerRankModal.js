@@ -99,20 +99,24 @@ const CoronerRankModal = ({
     }, [show, coronerList]);
 
     const handleSubmit = () => {
-        const valueToSend = newRank.trim() !== '' ? newRank.trim() : selectedEmployeeName;
-        if (valueToSend) {
-            onSubmit(valueToSend);
+        // Prepare the data to send back
+        const submissionData = {
+            selectedEmployee: selectedEmployeeName, // Always send the selected employee
+            newRank: newRank.trim() // Send the new rank (will be empty if not entered)
+        };
+
+        // Check if either an employee was selected OR a new rank was entered
+        if (submissionData.selectedEmployee || submissionData.newRank) {
+            onSubmit(submissionData); // Pass the object back
         } else {
             console.warn("No employee selected or new rank entered.");
+            // Optionally show a notification here if needed
         }
     };
 
     const handleSelectChange = (selectedOption) => {
-        const employeeName = selectedOption ? selectedOption.value : '';
+        const employeeName = selectedOption ? selectedOption.value : ''; // Extract name
         setSelectedEmployeeName(employeeName);
-        if (newRank !== '') {
-            setNewRank('');
-        }
     };
 
     const handleNewRankChange = (e) => {
@@ -159,14 +163,15 @@ const CoronerRankModal = ({
                         <div className="text-center my-2" style={{ color: '#6c757d' }}></div>
 
                         <Form.Group controlId="newCoronerRankInput" className="mb-3">
-                            <Form.Label style={formLabelStyle}>Updated Coroner Rank</Form.Label>
-                            <Form.Control
-                                type="text"
-                                placeholder="Enter updated rank name..."
-                                value={newRank}
-                                onChange={handleNewRankChange}
-                                style={formControlStyle}
-                            />
+                        <Form.Label style={formLabelStyle}>Enter Updated Rank for Selected Coroner</Form.Label>
+                        <Form.Control
+                            type="text"
+                            placeholder="Enter updated rank name..." // Updated placeholder
+                            value={newRank}
+                            onChange={handleNewRankChange}
+                            style={formControlStyle}
+                            disabled={!selectedEmployeeName} // Disable if no employee is selected
+                        />
                         </Form.Group>
                     </Form>
                 </div>

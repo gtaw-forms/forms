@@ -788,10 +788,8 @@ const prepareWebhookData = () => {
 };
 const [showCoronerRankModal, setShowCoronerRankModal] = useState(false);
 const uniqueCoronerRanks = [...new Set(coronerList.map(c => c.rank))].sort();
-const handleCoronerRankSubmit = async (rank) => {
-
+const handleCoronerRankSubmit = async ({ selectedEmployee, newRank }) => { // Accept the object
     const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-    const submitterName = formData.coronerEmployee || "Unknown Coroner";
 
     if (!webhookURL) {
         console.error('Discord webhook URL not configured.');
@@ -800,18 +798,32 @@ const handleCoronerRankSubmit = async (rank) => {
         return;
     }
 
+    // Determine the description and fields based on what was submitted
+    let description = '';
+    const fields = [];
+
+    if (newRank && selectedEmployee) {
+        // Case: Updating rank for a selected employee
+        description = `Rank update requested for **${selectedEmployee}**.`;
+        fields.push({ name: "Selected Coroner", value: selectedEmployee, inline: true });
+        fields.push({ name: "New Rank Submitted", value: `**${newRank}**`, inline: true });
+    } else if (selectedEmployee) {
+        // Case: Only an employee was selected (no new rank entered) - Less likely with current modal logic, but handle it
+        description = `Coroner **${selectedEmployee}** was selected.`;
+        fields.push({ name: "Selected Coroner", value: selectedEmployee, inline: false });
+    } else {
+        // Should not happen if modal validation works, but handle as fallback
+        console.warn("handleCoronerRankSubmit called without selectedEmployee or newRank.");
+        showNotification('No information submitted.', 'warning');
+        return;
+    }
+
     // --- Construct Embed Payload ---
     const embed = {
-        title: "Coroner Info Update",
-        description: `**${submitterName}** submitted the following information:`,
+        title: "Coroner Rank Update Request", // More specific title
+        description: description,
         color: 0x8B0000, // Dark Red (Coroner theme)
-        fields: [
-            {
-                name: "New Rank Update",
-                value: `  ** ${submitterName}** || NEW RANK: **${rank}**`, // Display the selected employee name or new rank
-                inline: false
-            }
-        ],
+        fields: fields, // Use the dynamically created fields array
         timestamp: new Date().toISOString(),
         footer: {
             text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}`
@@ -826,12 +838,11 @@ const handleCoronerRankSubmit = async (rank) => {
     };
     // --- End Payload Construction ---
 
-
     try {
         const response = await fetch(webhookURL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload), // Send the embed payload
+            body: JSON.stringify(payload),
         });
 
         if (!response.ok) {
@@ -843,7 +854,9 @@ const handleCoronerRankSubmit = async (rank) => {
             });
             showNotification(`Failed to send rank info. Status: ${response.status}`, 'exclamation-triangle');
         } else {
-            showNotification(`Coroner info "${rank}" submitted successfully!`, 'check-circle');
+            // Use submittedValue for notification consistency if needed, or customize
+            const notificationValue = newRank ? `${selectedEmployee} -> ${newRank}` : selectedEmployee;
+            showNotification(`Coroner info "${notificationValue}" submitted successfully!`, 'check-circle');
             setShowCoronerRankModal(false); // Close modal on success
         }
     } catch (error) {
