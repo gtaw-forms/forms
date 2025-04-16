@@ -4717,7 +4717,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 2.0.0 - Coroner Email Rewrite </h3>
+                                    <h3>Changelog - Version 2.0.1 - Coroner Email Rewrite </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
