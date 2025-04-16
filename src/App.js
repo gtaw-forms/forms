@@ -92,10 +92,6 @@ import './buttons.css'
 
 import 'react-bootstrap-typeahead/css/Typeahead.css';
 import { FormHelperText } from '@mui/material';
-import EasterEggParticles from './EasterEggParticles';
-// HALF OF THIS CODE IS SPAGHETTI, A MESS, IT CAUSES ME HEADACHES, I WILL NOT REFACTOR BECAUSE ITS 1K LINES LONG
-// IM SORRY FOR WHOEVER WORKS ON THIS GITHUB REPOSITORY 
-// - FROSTYYY
 function App() {
     const [isMobile, setIsMobile] = useState(false);
     const [formData, setFormData] = useState({
@@ -536,196 +532,241 @@ function App() {
     const [featureRequest, setFeatureRequest] = useState('');
     const [discordName, setDiscordName] = useState('');
     const [showMissingEmployeeModal, setShowMissingEmployeeModal] = useState(false);
+    const [requestType, setRequestType] = useState('');
+    const [isRemoveStaff, setIsRemoveStaff] = useState(false); 
     const [missingEmployeeData, setMissingEmployeeData] = useState({
         coronerName: '',
         coronerDiscord: '',
         coronerRank: '',
         coronerPHNumber: '',
-        coronerEmployee: '',
+        coronerEmployee: '', // Requesting coroner
         coronerBadge: '',
-        phmcEmployee: '',
-
+        phmcEmployee: '',    // Requesting PHMC staff
+        staffToRemove: [],   // Keep for multi-select removal
+        authorizedBy: '',    // Keep for removal authorization
     });
-    const handleMissingEmployeeChange = (value, type) => {
-        setMissingEmployeeData(prevData => ({
-            ...prevData,
-            [type]: value,
-        }));
-    };
-    const handleMissingEmployeeSubmit = async () => {
-        const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
-        // Determine if it's a Coroner or PHMC request based on the radio buttons
-        const isCoronerRequest = isJohnDoe; // Assuming John Doe radio = Coroner
-        const isPhmcRequest = isJaneDoe;   // Assuming Jane Doe radio = PHMC Staff
+const handleMissingEmployeeSubmit = async () => {
+    const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
+    if (!webhookURL) {
+        console.error('Discord webhook URL not configured for employee management.');
+        Sentry.captureMessage('Discord webhook URL is missing for employee management submission.', 'error');
+        showNotification('Configuration error: Unable to submit request. Please contact the administrator.', 'exclamation-triangle');
+        return;
+    }
+
+    let embedData = {};
+    let submissionValid = false;
+    let successMessage = '';
+    let requestActionTitle = ''; // For the embed title
+
+    // --- Logic based on isJohnDoe, isJaneDoe, isRemoveStaff ---
+    if (isJohnDoe || isJaneDoe) { // Handle ADD requests
+        const isCoronerRequest = isJohnDoe;
+        requestActionTitle = `➕ Missing ${isCoronerRequest ? 'Coroner' : 'Hospital Staff'} Addition Request`;
         let requiredFields = [];
+
         if (isCoronerRequest) {
-            requiredFields = ['coronerName', 'coronerDiscord', 'coronerRank', 'coronerBadge']; // Badge is required for Coroners
-        } else if (isPhmcRequest) {
-            requiredFields = ['coronerName', 'coronerDiscord', 'coronerRank']; // Badge might not apply or be required for PHMC
-        } else {
-            showNotification('Please select whether the missing person is a Coroner or Hospital Staff.', 'exclamation-circle');
-            return;
+            requiredFields = ['coronerName', 'coronerDiscord', 'coronerRank', 'coronerBadge', 'coronerEmployee'];
+        } else { // isJaneDoe (addPhmc)
+            requiredFields = ['coronerName', 'coronerDiscord', 'coronerRank', 'phmcEmployee'];
         }
 
         const emptyFields = requiredFields.filter(key => !missingEmployeeData[key]?.trim());
-
         if (emptyFields.length > 0) {
-            showNotification(`Please fill in all required fields. Missing: ${emptyFields.join(', ')}`, 'exclamation-circle');
+            showNotification(`Please fill in all required fields for adding staff. Missing: ${emptyFields.join(', ')}`, 'exclamation-circle');
             return;
         }
 
-        // Check if the requester field is filled
         const requester = isCoronerRequest ? missingEmployeeData.coronerEmployee : missingEmployeeData.phmcEmployee;
-        if (!requester?.trim()) {
-             showNotification('Please select who is requesting this addition in the dropdown.', 'exclamation-circle');
-             return;
-        }
 
-
-        if (!webhookURL) {
-            console.error('Discord webhook URL not configured.');
-            Sentry.captureMessage('Discord webhook URL is missing for missing employee submission.', 'error');
-            showNotification('Configuration error: Unable to submit request. Please contact the administrator.', 'exclamation-triangle');
-            return;
-        }
-
-        // --- Start Embed Logic ---
-        const embedData = {
-            title: `Missing ${isCoronerRequest ? 'Coroner' : 'Hospital Staff'} Addition Request`,
+        // --- Construct ADD Embed ---
+        embedData = {
+            title: requestActionTitle,
             color: isCoronerRequest ? 0x8B0000 : 0x00008B, // Dark Red for Coroner, Dark Blue for PHMC
             fields: [
                 { name: "Requested By", value: requester || "Unknown", inline: false },
-                { name: "Name", value: missingEmployeeData.coronerName || "N/A", inline: true },
+                { name: "Name to Add", value: missingEmployeeData.coronerName || "N/A", inline: true },
                 { name: isCoronerRequest ? "Discord Tag" : "Department/Discord", value: missingEmployeeData.coronerDiscord || "N/A", inline: true },
                 { name: "Rank/Position", value: missingEmployeeData.coronerRank || "N/A", inline: true },
             ],
             timestamp: new Date().toISOString(),
-            footer: {
-                text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}` // Optional: Add version info
-            }
+            footer: { text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}` }
         };
-
-        // Conditionally add Badge and Phone Number if they have values
         if (isCoronerRequest && missingEmployeeData.coronerBadge?.trim()) {
             embedData.fields.push({ name: "Badge", value: missingEmployeeData.coronerBadge, inline: true });
         }
         if (missingEmployeeData.coronerPHNumber?.trim()) {
             embedData.fields.push({ name: "Phone Number", value: missingEmployeeData.coronerPHNumber, inline: true });
         }
+        const dataJsEntry = `{ name: '${missingEmployeeData.coronerName || 'MISSING_NAME'}', ${isCoronerRequest ? `badge: '${missingEmployeeData.coronerBadge || 'MISSING_BADGE'}', ` : ''}phNumber: '${missingEmployeeData.coronerPHNumber || ''}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', discord: '${missingEmployeeData.coronerDiscord || 'MISSING_DISCORD'}', category: '${missingEmployeeData.coronerRank || 'MISSING_CATEGORY'}' },`;
+        embedData.fields.push({ name: "Suggested data.js Entry", value: `\`\`\`javascript\n${dataJsEntry}\n\`\`\``, inline: false });
+        // --- End ADD Embed ---
 
-        // --- Add the data.js entry field ---
-        const dataJsEntry = `{ name: '${missingEmployeeData.coronerName || 'MISSING_NAME'}', badge: '${missingEmployeeData.coronerBadge || 'MISSING_BADGE'}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', discord: '${missingEmployeeData.coronerDiscord || 'MISSING_DISCORD'}', category: '${missingEmployeeData.coronerRank || 'MISSING_CATEGORY'}' },`; // Using Rank as Category for now
+        submissionValid = true;
+        successMessage = 'Addition request submitted! This will be reviewed soon.';
 
-        embedData.fields.push({
-            name: "Add to data.js",
-            value: `\`\`\`javascript\n${dataJsEntry}\n\`\`\``, // Use code block formatting for easy copying
-            inline: false // Keep this on its own line
-        });
-        // --- End Embed Logic ---
+    } else if (isRemoveStaff) { // Handle REMOVE request
+        requestActionTitle = "➖ Staff Removal Request";
+        // --- Validation for REMOVE ---
+        if (!missingEmployeeData.staffToRemove || missingEmployeeData.staffToRemove.length === 0) {
+            showNotification('Please select at least one staff member to remove.', 'warning');
+            return;
+        }
+        if (!missingEmployeeData.authorizedBy?.trim()) {
+            showNotification('Please enter your name in the "Authorized By" field.', 'warning');
+            return;
+        }
+        // --- End Validation ---
 
+        // --- Construct REMOVE Embed ---
+        embedData = {
+            title: requestActionTitle,
+            color: 0xFFA500, // Orange color for removal/warning
+            fields: [
+                { name: "Authorized By", value: missingEmployeeData.authorizedBy, inline: false },
+                {
+                    name: `Staff to Remove (${missingEmployeeData.staffToRemove.length})`,
+                    value: missingEmployeeData.staffToRemove.join('\n') || "None selected", // List names on new lines
+                    inline: false
+                },
+            ],
+            timestamp: new Date().toISOString(),
+            footer: { text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}` }
+        };
+        // --- End REMOVE Embed ---
+
+        submissionValid = true;
+        successMessage = 'Removal request submitted! This will be reviewed soon.';
+
+    } else {
+        showNotification('Please select an action (Add Coroner, Add Staff, or Remove Staff).', 'warning');
+        return;
+    }
+
+    // --- Common Submission Logic ---
+    if (submissionValid) {
         try {
             const response = await fetch(webhookURL, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                // Send the embed structure
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    content: `<@228306972204597248>`, // Ping the user if needed
-                    embeds: [embedData] // Send the embed data as an array
+                    content: `<@228306972204597248>`, // Ping user
+                    embeds: [embedData] // Send the constructed embed
                 }),
             });
 
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error(`Failed to send message to Discord webhook. Status: ${response.status} ${response.statusText}`, errorText);
-                Sentry.captureMessage(`Discord webhook failed for missing employee: ${response.status}`, {
+                Sentry.captureMessage(`Discord webhook failed for employee management: ${response.status}`, {
+                    level: 'error',
+                    extra: { statusText: response.statusText, responseBody: errorText, requestType: requestActionTitle }
+                });
+                showNotification(`Failed to submit request. Status: ${response.status}`, 'exclamation-triangle');
+            } else {
+                showNotification(successMessage, 'check-circle');
+                setShowMissingEmployeeModal(false);
+                // Reset form data including removal fields
+                setMissingEmployeeData({
+                    coronerName: '', coronerDiscord: '', coronerRank: '', coronerPHNumber: '',
+                    coronerEmployee: '', coronerBadge: '', phmcEmployee: '',
+                    staffToRemove: [], authorizedBy: '' // Ensure reset
+                });
+                // Reset radio button states
+                setIsJohnDoe(false);
+                setIsJaneDoe(false);
+                setIsRemoveStaff(false);
+            }
+        } catch (error) {
+            console.error('Error submitting employee management request:', error);
+            Sentry.captureException(error, { extra: { context: 'Employee Management Submission Fetch', requestType: requestActionTitle } });
+            showNotification('A network error occurred. Please try again.', 'exclamation-triangle');
+        }
+    }
+};
+
+    const handleFeatureRequestSubmit = async () => {
+        const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+
+        if (!webhookURL) {
+            console.error('Discord webhook URL not configured for feature requests.');
+            Sentry.captureMessage('Discord webhook URL is missing for feature request submission.', 'error');
+            showNotification('Configuration error: Unable to submit request. Please contact the administrator.', 'exclamation-triangle');
+            return;
+        }
+
+        // Basic validation
+        if (!featureRequest.trim()) {
+            showNotification('Please enter your bug report or feature request.', 'warning');
+            return;
+        }
+        if (!discordName.trim()) {
+            showNotification('Please enter your Discord name.', 'warning');
+            return;
+        }
+
+
+        // Collect debug information
+        const debugInfo = {
+            bbCodeVersion: bbCodeVersion,
+            userAgent: navigator.userAgent,
+            // Consider adding more relevant debug info if available
+            // errors: localStorage.getItem('consoleErrors') || 'No errors were logged', // Be cautious with potentially large error logs
+        };
+ 
+        // --- Start Embed Construction ---
+        const embedData = {
+            title: "📝 Bug Report / Feature Request",
+            color: 0x3498DB, // Blue color for general feedback
+            fields: [
+                { name: "Submitted By", value: discordName || "N/A", inline: true },
+                { name: "Request Type", value: "Bug/Feature", inline: true }, // You could add a radio button later to specify Bug vs Feature
+                { name: "Request Details", value: featureRequest || "No details provided.", inline: false },
+                { name: "Debug Info", value: `\`\`\`json\n${JSON.stringify(debugInfo, null, 2)}\n\`\`\``, inline: false } // Format debug info in a code block
+            ],
+            timestamp: new Date().toISOString(),
+            footer: {
+                text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}`
+            }
+        };
+        // --- End Embed Construction ---
+
+        try {
+            const response = await fetch(webhookURL, { // Use the constant webhookURL
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                // Send the embed structure
+                body: JSON.stringify({
+                    content: `<@228306972204597248>`, // Optional: Ping a specific user/role
+                    embeds: [embedData] // Send the embed data as an array
+                }),
+            });
+
+            if (response.ok) {
+                showNotification('Thanks for your feedback! I will work on it soon', 'check-circle');
+                setShowFeatureRequestModal(false); // Close the modal
+                setFeatureRequest(''); // Clear the form fields
+                setDiscordName('');   // Clear the form fields
+                // No need for setTimeout for notification, showNotification handles it
+            } else {
+                const errorText = await response.text();
+                console.error(`Failed to send message to Discord webhook. Status: ${response.status} ${response.statusText}`, errorText);
+                Sentry.captureMessage(`Discord webhook failed for feature request: ${response.status}`, {
                     level: 'error',
                     extra: { statusText: response.statusText, responseBody: errorText }
                 });
                 showNotification(`Failed to submit. Please try again. Status: ${response.status}`, 'exclamation-triangle');
-            } else {
-                showNotification('Success! This will be automatically added soon. Inform the Employee to reload the page soon.', 'check-circle');
-                setShowMissingEmployeeModal(false);
-                // Reset form data after successful submission
-                setMissingEmployeeData({
-                    coronerName: '',
-                    coronerDiscord: '',
-                    coronerRank: '',
-                    coronerPHNumber: '',
-                    coronerEmployee: '',
-                    coronerBadge: '',
-                    phmcEmployee: '',
-                });
-                // Reset radio buttons as well
-                setIsJohnDoe(false);
-                setIsJaneDoe(false);
-                setTimeout(() => setNotification(null), 10000);
             }
         } catch (error) {
-            console.error('Error submitting data:', error);
-            Sentry.captureException(error, { extra: { context: 'Missing Employee Submission Fetch' } });
+            console.error('Error submitting feature request:', error);
+            Sentry.captureException(error, { extra: { context: 'Feature Request Submission Fetch' } });
             showNotification('An network error occurred. Please try again.', 'exclamation-triangle');
         }
     };
-        
-    const handleFeatureRequestSubmit = async () => {
-    const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-
-    if (!webhookURL) {
-        console.error('Something has gone wrong.');
-        setNotification({
-            message: 'Internal Server Error..',
-            icon: 'fas fa-exclamation-triangle',
-        });
-        return;
-    }
-
-    // Collect debug information
-    const debugInfo = {
-        bbCodeVersion: bbCodeVersion,
-        userAgent: navigator.userAgent,
-        errors: localStorage.getItem('consoleErrors') || 'No errors were logged',
-    };
-
-    try {
-        const response = await fetch(process.env.REACT_APP_DISCORD_WEBHOOK_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-            content: `New Bug/Feature Request: ${featureRequest} - Discord: ${discordName}\nDebug Info: ${JSON.stringify(debugInfo, null, 2)}`,
-          }),
-        });
-
-        if (response.ok) {
-            setNotification({
-                message: 'Thanks for your feedback! I will work on it soon',
-                icon: 'fas fa-check-circle',
-            });
-            setShowFeatureRequestModal(false); // Close the modal
-            setTimeout(() => {
-                setNotification(null);
-            }, 2000); // 2 seconds
-        } else {
-            console.error('Failed to send message to Discord webhook.');
-            setNotification({
-                message: 'Failed to submit. Please try again.',
-                icon: 'fas fa-exclamation-triangle',
-
-            });
-        }
-    } catch (error) {
-        console.error('Error submitting data:', error);
-        setNotification({
-            message: 'An error occurred. Please try again.',
-            icon: 'fas fa-exclamation-triangle',
-        });
-    }
-};    
 
 // Separate PHMC options
     const phmcGroupedOptions = Object.entries(
@@ -799,25 +840,62 @@ function App() {
     });
 
 
+    // Keep this function as is
     const handleDoeChange = (type) => (e) => {
+        if (e.target.checked) {
+            setIsRemoveStaff(false); // <-- Add this line to turn off removal mode
+            // Clear removal-specific fields when switching back to add
+            setMissingEmployeeData(prev => ({
+                ...prev,
+                staffToRemove: [],
+                authorizedBy: '',
+            }));
+        }
         if (type === 'john') {
             setIsJohnDoe(e.target.checked);
             setIsJaneDoe(false);
             if (e.target.checked) {
-                setFormData(prev => ({ ...prev, decedentName: 'John Doe' }));
+                setFormData(prev => ({ ...prev, decedentName: 'John Doe' })); // This seems unrelated to the modal, but keeping it as per original code
             } else if (formData.decedentName === 'John Doe') {
-                setFormData(prev => ({ ...prev, decedentName: '' }));
+                setFormData(prev => ({ ...prev, decedentName: '' })); // This seems unrelated to the modal
             }
         } else if (type === 'jane') {
             setIsJaneDoe(e.target.checked);
             setIsJohnDoe(false);
             if (e.target.checked) {
-                setFormData(prev => ({ ...prev, decedentName: 'Jane Doe' }));
+                setFormData(prev => ({ ...prev, decedentName: 'Jane Doe' })); // This seems unrelated to the modal
             } else if (formData.decedentName === 'Jane Doe') {
-                setFormData(prev => ({ ...prev, decedentName: '' }));
+                setFormData(prev => ({ ...prev, decedentName: '' })); // This seems unrelated to the modal
             }
         }
     };
+
+    // --- NEW Handler for Remove Staff Radio ---
+    const handleRemoveStaffChange = (e) => {
+        if (e.target.checked) {
+            setIsRemoveStaff(true);
+            setIsJohnDoe(false); // Turn off other modes
+            setIsJaneDoe(false); // Turn off other modes
+            // Clear add-specific fields when switching to remove
+            setMissingEmployeeData(prev => ({
+                ...prev,
+                coronerName: '',
+                coronerDiscord: '',
+                coronerRank: '',
+                coronerPHNumber: '',
+                coronerBadge: '',
+            }));
+        }
+    };
+
+    // Keep handleMissingEmployeeChange as is
+    const handleMissingEmployeeChange = (value, type) => {
+        setMissingEmployeeData(prevData => ({
+            ...prevData,
+            [type]: value,
+        }));
+    };
+
 
     // UTC time stuff
     const [currentUtcTime, setCurrentUtcTime] = useState('');
@@ -862,7 +940,17 @@ function App() {
         showNotification(`Report deleted: ${key}`, 'trash');
         loadSavedReports(); // Refresh the list of saved reports
     };
-    
+    const combinedStaffOptions = [
+        {
+            label: 'Coroners',
+            options: coronerList.map(c => ({ value: c.name, label: `${c.name} (${c.rank || 'Coroner'})` }))
+        },
+        {
+            label: 'PHMC Staff',
+            options: phmcList.map(p => ({ value: p.name, label: `${p.name} (${p.category || 'PHMC'})` }))
+        }
+    ].filter(group => group.options.length > 0); // Filter out empty groups if any list is empty
+
     // Function to load saved reports from local storage
     const saveReport = async () => {
         let key = '';
@@ -957,27 +1045,116 @@ function App() {
         if (reportData) {
             try {
                 const parsedData = JSON.parse(reportData);
-                //setFormData(parsedData.data); // Access the data property
-                setFormData(prevFormData => ({
-                    ...prevFormData,
-                    ...parsedData.data, // Merge all loaded data
-                }));
-                setBbCodeVersion(parsedData.bbCodeVersion); // Set the bbCodeVersion
-                // Set the parsed BBCode
-                setParsedBBCode(parsedData.bbCode || ''); // Use the saved BBCode, default to empty string if not available
-                showNotification(`Report loaded from ${key}`, 'upload');
-                setShowSavedReports(false); // Close the modal after loading
+                const loadedVersion = parsedData.bbCodeVersion;
+                const loadedBbCode = parsedData.bbCode || '';
+                const loadedFormData = parsedData.data || {};
+
+                // --- Special Case: Loading a Death Report (v1) while already on Coroner Email (v2) ---
+                if (bbCodeVersion === 2 && loadedVersion === 1) {
+
+                    // --- Determine notification message BEFORE setFormData ---
+                    let notificationMessage = '';
+                    // Check the current state directly before the update is scheduled
+                    const currentDeathReportIsEmpty = !formData.deathReport || formData.deathReport.trim() === '';
+
+                    if (currentDeathReportIsEmpty) {
+                        notificationMessage = `Loaded report for ${loadedFormData.decedentName || key} into main Death Report field.`;
+                    } else {
+                        notificationMessage = `Added report for ${loadedFormData.decedentName || key} as an additional report.`;
+                    }
+                    // --- End determination ---
+
+                    setFormData(prevFormData => {
+                        let updatedName = prevFormData.decedentName || '';
+                        let updatedOoc = prevFormData.decedentOOC || '';
+                        let updatedDeathReport = prevFormData.deathReport || '';
+                        let updatedAdditionalReports = prevFormData.additionalReports || [];
+
+                        // Append decedentName
+                        if (prevFormData.decedentName && loadedFormData.decedentName) {
+                            updatedName = `${prevFormData.decedentName}, ${loadedFormData.decedentName}`;
+                        } else {
+                            updatedName = loadedFormData.decedentName || prevFormData.decedentName || '';
+                        }
+
+                        // Append decedentOOC
+                        if (prevFormData.decedentOOC && loadedFormData.decedentOOC) {
+                            updatedOoc = `${prevFormData.decedentOOC}, ${loadedFormData.decedentOOC}`;
+                        } else {
+                            updatedOoc = loadedFormData.decedentOOC || prevFormData.decedentOOC || '';
+                        }
+
+                        // Check if main deathReport field is empty (using prevFormData inside callback)
+                        if (!prevFormData.deathReport || prevFormData.deathReport.trim() === '') {
+                            updatedDeathReport = loadedBbCode;
+                        } else {
+                            updatedAdditionalReports = [...updatedAdditionalReports, loadedBbCode];
+                        }
+
+                        console.log('Updating Coroner Email Form:', {
+                            updatedName,
+                            updatedOoc,
+                            updatedDeathReport,
+                            updatedAdditionalReports
+                        });
+
+                        // Return the updated state
+                        return {
+                            ...prevFormData,
+                            decedentName: updatedName,
+                            decedentOOC: updatedOoc,
+                            deathReport: updatedDeathReport,
+                            additionalReports: updatedAdditionalReports,
+                        };
+                    });
+
+                    // Stay on Coroner Email form (v2)
+                    setParsedBBCode(''); // Clear the main BBCode display area
+                    // Use the message determined *before* setFormData
+                    showNotification(notificationMessage, 'plus-circle'); // <-- Now uses the correctly determined message
+                    setShowSavedReports(false); // Close the modal
+
+                } else {
+                    // --- Default Loading Logic (for all other cases - unchanged) ---
+                    setFormData(prevFormData => {
+                        let updatedData = { ...prevFormData, ...loadedFormData };
+                        // Append logic for loading *into* v2 (if loadedVersion is 2)
+                        if (loadedVersion === 2) {
+                            if (prevFormData.decedentName && loadedFormData.decedentName) {
+                                updatedData.decedentName = `${prevFormData.decedentName}, ${loadedFormData.decedentName}`;
+                            } else {
+                                updatedData.decedentName = loadedFormData.decedentName || prevFormData.decedentName || '';
+                            }
+                            if (prevFormData.decedentOOC && loadedFormData.decedentOOC) {
+                                updatedData.decedentOOC = `${prevFormData.decedentOOC}, ${loadedFormData.decedentOOC}`;
+                            } else {
+                                updatedData.decedentOOC = loadedFormData.decedentOOC || prevFormData.decedentOOC || '';
+                            }
+                        }
+                        return updatedData;
+                    });
+                    setBbCodeVersion(loadedVersion); // Switch to the loaded report's version
+                    setParsedBBCode(loadedBbCode); // Set the parsed BBCode display
+                    showNotification(`Report loaded from ${key}`, 'upload');
+                    setShowSavedReports(false); // Close the modal
+                }
+
             } catch (error) {
                 console.error("Error parsing report data:", error);
+                Sentry.captureException(error, { extra: { context: 'loadReport Parse Error', key: key } });
                 localStorage.removeItem(key);
                 showNotification(`Invalid report data deleted: ${key}`, 'trash');
-                loadSavedReports();
+                loadSavedReports(); // Refresh the list
             }
+        } else {
+            console.warn(`Attempted to load non-existent report with key: ${key}`);
+            showNotification(`Report not found: ${key}`, 'warning');
         }
     };
         const toggleSavedReports = () => {
         setShowSavedReports(prev => !prev);
     };
+
     const loadSavedReports = () => {
         const saved = [];
         const now = Date.now();
@@ -3868,16 +4045,6 @@ if (bbCodeVersion === 1) {
         showNotification('BBCode parsed and copied to Death Report field!', 'check-circle');
     };
 
-    // Add clear function
-    const clearParsedBBCode = () => {
-        setParsedBBCode('');
-        setFormData(prev => ({
-            ...prev,
-            deathReport: ''
-        }));
-        showNotification('Parsed BBCode cleared!', 'trash-alt');
-    };
-
 
     const clearOldLocalStorage = () => {
         const fields = [
@@ -4010,17 +4177,17 @@ if (bbCodeVersion === 1) {
         }));
     };
 
-    const addReport = () => {
-        setFormData(prev => ({
-            ...prev,
-            additionalReports: [...prev.additionalReports, '']
-        }));
-    };
 
     const removeReport = (indexToRemove) => {
         setFormData(prev => ({
             ...prev,
             additionalReports: prev.additionalReports.filter((_, index) => index !== indexToRemove)
+        }));
+    };
+    const addReport = () => {
+        setFormData(prev => ({
+            ...prev,
+            additionalReports: [...prev.additionalReports, '']
         }));
     };
 
@@ -4419,8 +4586,42 @@ const [imgurLink, setImgurLink] = useState(null);
         const handleRefresh = () => {
             window.location.reload(true);
         };
+        const [fillPhoneChecked, setFillPhoneChecked] = useState(false); // <-- Correct state declaration
 
+        const handleFillCoronerPhone = () => {
+            const selectedCoronerName = formData.coronerEmployee;
     
+            if (!selectedCoronerName) {
+                showNotification('Please select a coroner first.', 'warning');
+                setFillPhoneChecked(false); // Ensure it's unchecked if no coroner selected
+                return;
+            }
+    
+            const coroner = coronerList.find(c => c.name === selectedCoronerName);
+    
+            if (coroner) {
+                const phoneNumber = coroner.phNumber; // Get the phone number property from data.js
+    
+                if (phoneNumber && phoneNumber.trim() !== '') {
+                    setFormData(prev => ({
+                        ...prev,
+                        coronerPHNumber: phoneNumber 
+                    }));
+                    showNotification(`Phone number for ${selectedCoronerName} filled.`, 'info-circle');
+                } else {
+                    setFormData(prev => ({
+                        ...prev,
+                        coronerPHNumber: 'Number Missing!' // Update the state to show missing
+                    }));
+                    showNotification(`Phone number missing for ${selectedCoronerName}.`, 'warning');
+                }
+                setFillPhoneChecked(false); // Reset checkbox state after action
+            } else {
+                showNotification(`Selected coroner (${selectedCoronerName}) not found in the list.`, 'error');
+                setFillPhoneChecked(false); // Reset checkbox state on error
+            }
+        };
+                                
         return (
         <div className="App">
 {season === "Christmas" && <Snowfall images={EasterEggImages} snowflakeCount={75} />}
@@ -4476,7 +4677,7 @@ const [imgurLink, setImgurLink] = useState(null);
                             zIndex: 1000, // Ensure it's above other elements
                         }}
                     >
-                        Missing Employee / Coroner?
+                        Missing Employee Data?
                     </button>                    
                     <button
                         type="button"
@@ -4516,7 +4717,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 1.9.9 - ❄️ Frostbite Update </h3>
+                                    <h3>Changelog - Version 2.0.0 - Coroner Email Rewrite </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -4527,10 +4728,12 @@ const [imgurLink, setImgurLink] = useState(null);
                                 </div>
                                 <div className="modal-content">
                                     <ul>
-                                        <li> Structural changes to some backend features.  </li>
-                                        <li> Preparation for a major update to the introduction. </li>
-                                        <li> Updated privacy policy. </li>
-                                        <li> fixed a oopsie</li>
+                                        <li> Coroner Email has been re-wrote for... whatever time it is now.  </li>
+                                        <li> Now dynamically can load multiple reports. </li>
+                                        <li> Coroner Phone Numbers now actually has a use for Coroner Email. </li>
+                                        <li> Misc</li>
+                                        <li> Added options to remove retired employees </li> 
+                                        <li> Fixed incorrect links for Patient Files </li>
                                     </ul>
                                     - frosty
                                 </div>
@@ -5607,37 +5810,64 @@ const [imgurLink, setImgurLink] = useState(null);
                                         <option value="LSGOV">LSGOV</option>
                                     </Form.Select>
 </div>
-                                <div style={{ display: 'flex', gap: '10px' }}>
+<Form.Group className="mb-3">
+    <Form.Label>
+        Coroner Contact Number:
+    </Form.Label>
+    {/* Keep the input field */}
+    <Form.Control
+        type="text"
+        name="coronerPHNumber"
+        value={formData.coronerPHNumber}
+        onChange={handleChange}
+        required
+        placeholder="Coroner Phone Number"
+        className={`form-control ${!formData.coronerPHNumber ? 'is-invalid' : ''}`}
+    />
+    <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginTop: '8px' }}>
+        {/* Checkbox trigger */}
+        <Form.Check
+            type="checkbox"
+            id="fillCoronerPhoneCheckbox"
+            label="  Use selected coroner's phone number"
+            checked={fillPhoneChecked}
+            onChange={(e) => {
+                if (e.target.checked) {
+                    handleFillCoronerPhone();
+                    setFillPhoneChecked(true);
+                } else {
+                    setFillPhoneChecked(false);
+                }
+            }}
+            disabled={!formData.coronerEmployee}
+            // Remove individual marginTop if using gap in the parent div
+        />
 
-                                    <Form.Select
-                                        name="department"
-                                        value={formData.department}
-                                        onChange={handleChange}
-                                        required
-                                        className={`form-control ${!formData.department ? 'is-invalid' : ''}`}
-                                    >
-                                        <option value="" disabled>Select Department</option>
-                                        <option value="LSFD">LSFD</option>
-                                        <option value="LSPD">LSPD</option>
-                                        <option value="LSSD">LSSD</option>
-                                        <option value="PHMC">PHMC</option>
-                                        <option value="SANFIRE">SANFIRE</option>
-                                        <option value="SADCR">SADCR</option>
-                                        <option value="LSGOV">LSGOV</option>
-                                    </Form.Select>
-                                    <Form.Label>
-                                        Coroner PH:
-                                    </Form.Label>
+        {/* Missing Name Button */}
+        <button
+            type="button"
+            onClick={() => setShowMissingEmployeeModal(true)}
+            className="close-button" // You might want a different class/style for this button
+            style={{
+                padding: '0.1rem 0.1rem',
+                fontSize: '0.8rem',
+                lineHeight: '1.2',
+                // Remove position styles if they were specific to its old location
+                // Add any other styles needed for alignment or appearance
+                marginLeft: 'auto' // Pushes the button to the right if desired
+            }}
+            title="Report missing employee data" // Added tooltip
+        >
+            <i className="fas fa-question-circle" style={{ marginRight: '2px' }}></i>
+            Missing Number?
+        </button>
+    </div>
 
-                                    <Form.Control
-                                        type="text"
-                                        name="coronerPHNumber"
-                                        value={formData.coronerPHNumber}
-                                        onChange={handleChange}
-                                        required
-                                        className={`form-control ${!formData.coronerPHNumber ? 'is-invalid' : ''}`}
-                                    />
-                                    </div>
+    <span className="helper-text">
+        (Defaults to PHMC Landline. Check the box to fill from selected coroner.)
+    </span>
+</Form.Group>
+
                                 <div style={{ display: 'flex', gap: '10px' }}>
                                         <Form.Control
                                             type="text"
@@ -5708,13 +5938,6 @@ const [imgurLink, setImgurLink] = useState(null);
                                                 className="email-button"
                                             >
                                                 <i className="fas fa-copy"></i> Parse BBCode
-                                            </Button>
-                                            <Button
-                                                variant="danger"
-                                                onClick={clearParsedBBCode}
-                                                className="remove-report-button"
-                                            >
-                                                <i className="fas fa-exchange-alt"></i> Clear BBCode
                                             </Button>
                                         </div>
 
@@ -13697,41 +13920,52 @@ const [imgurLink, setImgurLink] = useState(null);
                     </form>
                 </div>
                 <div className="output-container">
-     {showMissingEmployeeModal && (
+                {showMissingEmployeeModal && (
         <div className="modal-overlay">
             <div className="modal">
                 <Modal.Header>
-                    <Modal.Title>Add Missing Employee / Coroner</Modal.Title>
-
-                    <Button variant="secondary" className="close" onClick={() => setShowMissingEmployeeModal(false)}>
+                    <Modal.Title>Manage Employee Data</Modal.Title> {/* Updated Title */}
+                    <Button variant="secondary" className="close" onClick={() => { setShowMissingEmployeeModal(false); setRequestType(''); /* Reset type on close */ }}>
                         <span>&times;</span>
-                        
                     </Button>
                 </Modal.Header>
                 <div className="radio-inline-container">
-
-                    <span className="radio-text">Who is missing:</span>
+                <span className="radio-text">Action:</span>
+                    {/* --- Use original handlers and new one --- */}
                     <Form.Check
                         type="radio"
-                        id="doctorRank"
-                        label="   Coroner"
-                        checked={isJohnDoe}
-                        onChange={handleDoeChange('john')}
+                        id="addCoronerRadio"
+                        label="Add Coroner"
+                        name="requestTypeGroup" // Add name for grouping
+                        checked={isJohnDoe} // Check against isJohnDoe
+                        onChange={handleDoeChange('john')} // Use original handler
                         inline
                     />
                     <Form.Check
                         type="radio"
-                        id="nurseRank"
-                        label="   Hospital Staff"
-                        checked={isJaneDoe}
-                        onChange={handleDoeChange('jane')}
+                        id="addPhmcRadio"
+                        label="Add Hospital Staff"
+                        name="requestTypeGroup" // Add name for grouping
+                        checked={isJaneDoe} // Check against isJaneDoe
+                        onChange={handleDoeChange('jane')} // Use original handler
                         inline
                     />
-                    </div>
+                    <Form.Check
+                        type="radio"
+                        id="removeStaffRadio"
+                        label="Remove Staff"
+                        name="requestTypeGroup" // Add name for grouping
+                        checked={isRemoveStaff} // Check against isRemoveStaff
+                        onChange={handleRemoveStaffChange} // Use NEW handler
+                        inline
+                    />
+                    {/* --- End Updated Radio Buttons --- */}
+                </div>
 
                 <Modal.Body>
                     <Form>
-                    {isJohnDoe && (
+                        {requestType === 'addPhmc' && ( 
+                            <>
                     <div style={{ display: 'flex', gap: '10px' }}>
                     <Form.Control
                         type="text"
@@ -13758,8 +13992,6 @@ const [imgurLink, setImgurLink] = useState(null);
                                                     
                         </div>
 
-                        )}
-                    {isJohnDoe && (
                     <div style={{ display: 'flex', gap: '10px' }}>
                             <Form.Control
                                 type="text"
@@ -13777,177 +14009,265 @@ const [imgurLink, setImgurLink] = useState(null);
                             />
 
                         </div>
-
+                                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                                    <Form.Control type="text" name="coronerPHNumber" value={missingEmployeeData.coronerPHNumber} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerPHNumber')} placeholder='Employee PH number (Optional)' />
+                                </div>
+                                <Select
+                                    name="phmcEmployee" // This is the REQUESTER
+                                    value={missingEmployeeData.phmcEmployee ? phmcGroupedOptions.flatMap(group => group.options).find(option => option.value === missingEmployeeData.phmcEmployee) || null : null}
+                                    onChange={(selectedOption) => handleMissingEmployeeChange(selectedOption?.value || '', 'phmcEmployee')}
+                                    options={phmcGroupedOptions}
+                                    isClearable
+                                    placeholder="Who is requesting this addition..."
+                                    className="form-control mt-2" // Added margin top
+                                    styles={{
+                                        control: (base) => ({
+                                            ...base,
+                                            backgroundColor: '#16202c',
+                                            color: '#eeeeeeb0',
+                                            borderColor: '#30363d',
+                                            '&:hover': {
+                                                borderColor: '#30363d'
+                                            }
+                                        }),
+                                        menu: (base) => ({
+                                            ...base,
+                                            backgroundColor: '#16202c',
+                                            zIndex: 1000
+                                        }),
+                                        option: (base, state) => ({
+                                            ...base,
+                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        singleValue: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        input: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        placeholder: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        })
+                                    }}
+                                />
+                            </>
                         )}
-                        {isJohnDoe && (
-                            <Select
-    name="coronerEmployee"
-    value={missingEmployeeData.coronerEmployee ? coronerGroupedOptions
-        .flatMap(group => group.options)
-        .find(option => option.value === missingEmployeeData.coronerEmployee) || null : null}
-    onChange={(selectedOption) => handleMissingEmployeeChange(selectedOption?.value || '', 'coronerEmployee')}
-    options={coronerGroupedOptions}
-    isClearable
-    placeholder="Who is requesting this missing employee..."
-    className={`form-control ${!formData.coronerEmployee ? 'is-invalid' : ''}`}
-    styles={{
-        control: (base) => ({
-            ...base,
-            backgroundColor: '#16202c',
-            color: '#eeeeeeb0',
-            borderColor: '#6c757d',
-            '&:hover': {
-                borderColor: '#eeeeeeb0'
-            }
-        }),
-        menu: (base) => ({
-            ...base,
-            backgroundColor: '#16202c',
-            zIndex: 1000
-        }),
-        option: (base, state) => ({
-            ...base,
-            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-            color: '#eeeeeeb0'
-        }),
-        singleValue: (base) => ({
-            ...base,
-            color: '#eeeeeeb0'
-        }),
-        input: (base) => ({
-            ...base,
-            color: '#eeeeeeb0'
-        }),
-        placeholder: (base) => ({
-            ...base,
-            color: '#eeeeeeb0'
-        }),
-        group: (base) => ({
-            ...base,
-            paddingTop: 8,
-            paddingBottom: 8
-        }),
-        groupHeading: (base) => ({
-            ...base,
-            color: '#6c757d',
-            fontWeight: 600,
-            textTransform: 'uppercase',
-            fontSize: '0.75rem',
-            marginBottom: 4
-        })
-    }}
-/>
-)}
-                    {isJaneDoe && (
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                    <Form.Control
-                        type="text"
-                        name="coronerName"
-                        value={missingEmployeeData.coronerName}
-                        onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerName')}
-                        placeholder='Employee Name'
 
-                        />
-                        <Form.Control
-                        type="text"
-                        name="coronerDiscord"
-                        value={missingEmployeeData.coronerDiscord}
-                        onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerDiscord')}
-                        placeholder='Employee Department'
-                        />
-                        <Form.Control
-                        type="text"
-                        name="coronerRank"
-                        value={missingEmployeeData.coronerRank}
-                        onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerRank')}
-                        placeholder='Employee Rank / Position'
-                        />
-                                                    
-                        </div>
-
+{isJohnDoe && ( // <--- Changed back to isJohnDoe
+                            <>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Control type="text" name="coronerName" value={missingEmployeeData.coronerName} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerName')} placeholder='Coroner Name' required />
+                                    <Form.Control type="text" name="coronerDiscord" value={missingEmployeeData.coronerDiscord} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerDiscord')} placeholder='Coroner Discord Name' required />
+                                    <Form.Control type="text" name="coronerRank" value={missingEmployeeData.coronerRank} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerRank')} placeholder='Coroner Rank / Position' required />
+                                </div>
+                                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                                    <Form.Control type="text" name="coronerPHNumber" value={missingEmployeeData.coronerPHNumber} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerPHNumber')} placeholder='Coroner PH number (Optional)' />
+                                    <Form.Control type="text" name="coronerBadge" value={missingEmployeeData.coronerBadge} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerBadge')} placeholder='Coroner Badge Number (Required***)' required />
+                                </div>
+                                <Select
+                                    name="coronerEmployee" // This is the REQUESTER
+                                    value={missingEmployeeData.coronerEmployee ? coronerGroupedOptions.flatMap(group => group.options).find(option => option.value === missingEmployeeData.coronerEmployee) || null : null}
+                                    onChange={(selectedOption) => handleMissingEmployeeChange(selectedOption?.value || '', 'coronerEmployee')}
+                                    options={coronerGroupedOptions}
+                                    isClearable
+                                    placeholder="Who is requesting this addition..."
+                                    className="form-control mt-2" // Added margin top
+                                    styles={{
+                                        control: (base) => ({
+                                            ...base,
+                                            backgroundColor: '#16202c',
+                                            color: '#eeeeeeb0',
+                                            borderColor: '#30363d',
+                                            '&:hover': {
+                                                borderColor: '#30363d'
+                                            }
+                                        }),
+                                        menu: (base) => ({
+                                            ...base,
+                                            backgroundColor: '#16202c',
+                                            zIndex: 1000
+                                        }),
+                                        option: (base, state) => ({
+                                            ...base,
+                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        singleValue: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        input: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        placeholder: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        })
+                                    }}
+                                />
+                            </>
                         )}
-                    {isJaneDoe && (
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                            <Form.Control
-                                type="text"
-                                name="coronerPHNumber"
-                                value={missingEmployeeData.coronerPHNumber}
-                                onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerPHNumber')}
-                                placeholder='Employee PH number (Optional)'
+
+                        {/* == ADD PHMC STAFF FIELDS (using isJaneDoe) == */}
+                        {isJaneDoe && ( // <--- Changed back to isJaneDoe
+                            <>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Form.Control type="text" name="coronerName" value={missingEmployeeData.coronerName} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerName')} placeholder='Employee Name' required />
+                                    <Form.Control type="text" name="coronerDiscord" value={missingEmployeeData.coronerDiscord} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerDiscord')} placeholder='Employee Department/Discord' required />
+                                    <Form.Control type="text" name="coronerRank" value={missingEmployeeData.coronerRank} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerRank')} placeholder='Employee Rank / Position' required />
+                                </div>
+                                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                                    <Form.Control type="text" name="coronerPHNumber" value={missingEmployeeData.coronerPHNumber} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerPHNumber')} placeholder='Employee PH number (Optional)' />
+                                    {/* Badge might not be needed for PHMC */}
+                                </div>
+                                <Select
+                                    name="phmcEmployee" // This is the REQUESTER
+                                    value={missingEmployeeData.phmcEmployee ? phmcGroupedOptions.flatMap(group => group.options).find(option => option.value === missingEmployeeData.phmcEmployee) || null : null}
+                                    onChange={(selectedOption) => handleMissingEmployeeChange(selectedOption?.value || '', 'phmcEmployee')}
+                                    options={phmcGroupedOptions}
+                                    isClearable
+                                    placeholder="Who is requesting this addition..."
+                                    className="form-control mt-2" // Added margin top
+                                    styles={{
+                                        control: (base) => ({
+                                            ...base,
+                                            backgroundColor: '#16202c',
+                                            color: '#eeeeeeb0',
+                                            borderColor: '#30363d',
+                                            '&:hover': {
+                                                borderColor: '#30363d'
+                                            }
+                                        }),
+                                        menu: (base) => ({
+                                            ...base,
+                                            backgroundColor: '#16202c',
+                                            zIndex: 1000
+                                        }),
+                                        option: (base, state) => ({
+                                            ...base,
+                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        singleValue: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        input: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        }),
+                                        placeholder: (base) => ({
+                                            ...base,
+                                            color: '#eeeeeeb0'
+                                        })
+                                    }}
+                                />
+                            </>
+                        )}
+                        {isRemoveStaff && (
+                            <>
+                                <Form.Label>Staff to Remove:</Form.Label>
+                                <Select
+                                    isMulti
+                                    name="staffToRemove"
+                                    options={combinedStaffOptions} // Use the combined list
+                                    value={combinedStaffOptions.flatMap(group => group.options).filter(option => missingEmployeeData.staffToRemove.includes(option.value))}
+                                    onChange={(selectedOptions) => {
+                                        const selectedValues = selectedOptions ? selectedOptions.map(option => option.value) : [];
+                                        handleMissingEmployeeChange(selectedValues, 'staffToRemove');
+                                    }}
+                                    isClearable
+                                    placeholder="Select staff member(s) to remove..."
+                                    className="form-control mb-2"
+                                    styles={{                                        
+                                        control: (base) => ({
+                                    ...base,
+                                    minHeight: '38px',
+                                    backgroundColor: '#16202c',
+                                    color: '#eeeeeeb0',
+                                    borderColor: '#6c757d',
+                                    '&:hover': {
+                                        borderColor: '#eeeeeeb0'
+                                    }
+                                }),
+                                menu: (base) => ({
+                                    ...base,
+                                    backgroundColor: '#16202c',
+                                    zIndex: 1000,
+                                    border: '1px solid #6c757d',
+                                    borderRadius: '0.375rem'
+                                }),
+                                option: (base, state) => ({
+                                    ...base,
+                                    backgroundColor: state.isFocused ? '#30363d' : '#16202c',
+                                    color: '#eeeeeeb0',
+                                    padding: '0.5rem 1rem',
+                                    '&:hover': {
+                                        backgroundColor: '#30363d'
+                                    }
+                                }),
+                                multiValue: (base) => ({
+                                    ...base,
+                                    backgroundColor: '#30363d',
+                                    color: '#eeeeeeb0'
+                                }),
+                                multiValueLabel: (base) => ({
+                                    ...base,
+                                    color: '#eeeeeeb0'
+                                }),
+                                multiValueRemove: (base) => ({
+                                    ...base,
+                                    color: '#6c757d',
+                                    '&:hover': {
+                                        backgroundColor: '#dc3545',
+                                        color: '#fff'
+                                    }
+                                }),
+                                input: (base) => ({
+                                    ...base,
+                                    color: '#eeeeeeb0'
+                                }),
+                                placeholder: (base) => ({
+                                    ...base,
+                                    color: '#6c757d'
+                                })
+                            }}
                             />
-                        </div>
-
+                        <Form.Label>Authorized By:</Form.Label>
+                                <Form.Control
+                                    type="text"
+                                    name="authorizedBy"
+                                    value={missingEmployeeData.authorizedBy}
+                                    onChange={(e) => handleMissingEmployeeChange(e.target.value, 'authorizedBy')}
+                                    placeholder='Your Name (Authorizing Removal)'
+                                    required
+                                />
+                                <span className="helper-text">
+                                    (Only authorized personnel should submit removal requests.)
+                                </span>
+                            </>
                         )}
-{isJaneDoe && (
-    <Select
-        name="phmcEmployee"
-        value={missingEmployeeData.phmcEmployee ? phmcGroupedOptions
-            .flatMap(group => group.options)
-            .find(option => option.value === missingEmployeeData.phmcEmployee) || null : null}
-        onChange={(selectedOption) => handleMissingEmployeeChange(selectedOption?.value || '', 'phmcEmployee')}
-        options={phmcGroupedOptions}
-        isClearable
-        placeholder="Who is requesting this missing employee..."
-        className={`form-control ${!formData.phmcEmployee ? 'is-invalid' : ''}`}
-        styles={{
-            control: (base) => ({
-                ...base,
-                backgroundColor: '#16202c',
-                color: '#eeeeeeb0',
-                borderColor: '#6c757d',
-                '&:hover': {
-                    borderColor: '#eeeeeeb0'
-                }
-            }),
-            menu: (base) => ({
-                ...base,
-                backgroundColor: '#16202c',
-                zIndex: 1000
-            }),
-            option: (base, state) => ({
-                ...base,
-                backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                color: '#eeeeeeb0'
-            }),
-            singleValue: (base) => ({
-                ...base,
-                color: '#eeeeeeb0'
-            }),
-            input: (base) => ({
-                ...base,
-                color: '#eeeeeeb0'
-            }),
-            placeholder: (base) => ({
-                ...base,
-                color: '#eeeeeeb0'
-            }),
-            group: (base) => ({
-                ...base,
-                paddingTop: 8,
-                paddingBottom: 8
-            }),
-            groupHeading: (base) => ({
-                ...base,
-                color: '#6c757d',
-                fontWeight: 600,
-                textTransform: 'uppercase',
-                fontSize: '0.75rem',
-                marginBottom: 4
-            })
-        }}
-    />
-)}
-
+                        {/* --- End Conditional Rendering --- */}
                     </Form>
                 </Modal.Body>
                 <Modal.Footer>
                     <Button variant="primary" onClick={handleMissingEmployeeSubmit}>
-                        Submit
+                        Submit Request
                     </Button>
-                    <Button variant="secondary" onClick={() => setShowMissingEmployeeModal(false)}>
+                    {/* --- Update cancel button onClick --- */}
+                    <Button variant="secondary" className="close" onClick={() => {
+                        setShowMissingEmployeeModal(false);
+                        setIsJohnDoe(false); // Reset state on close
+                        setIsJaneDoe(false); // Reset state on close
+                        setIsRemoveStaff(false); // Reset state on close
+                    }}>
                         Cancel
                     </Button>
-
                 </Modal.Footer>
             </div>
         </div>

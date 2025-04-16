@@ -1,7 +1,7 @@
 // filepath: src/SavedReportsModal.js
 import React, { useState, useEffect } from 'react';
 import Notification from './components/Notification'; // Assuming Notification component exists
-
+import * as Sentry from "@sentry/react";
 // --- Styles (keep as they are) ---
 const modalStyle = {
     position: 'fixed',
@@ -117,7 +117,7 @@ const SavedReportsModal = ({ show, onClose, savedReports, loadReport, deleteRepo
     const [currentPage, setCurrentPage] = useState(1);
     const [sortedReports, setSortedReports] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
-    const [savedReportCount, setSavedReportCount] = useState(0); // State for the count
+    const [savedReportCount, setSavedReportCount] = useState(0);
 
     // --- Effect to get and set the saved report count ---
     useEffect(() => {
@@ -157,7 +157,6 @@ const SavedReportsModal = ({ show, onClose, savedReports, loadReport, deleteRepo
     if (!show) {
         return null;
     }
-
     // Filter reports based on search query (case-insensitive)
     const filteredReports = sortedReports.filter(key =>
         key.toLowerCase().includes(searchQuery.toLowerCase())
@@ -248,7 +247,6 @@ const SavedReportsModal = ({ show, onClose, savedReports, loadReport, deleteRepo
     return (
         <div style={modalStyle}>
             <div style={modalContentStyle}>
-                {/* Updated Header */}
                 <div style={modalHeaderStyle}>
                     Manage Saved Reports ({savedReportCount} total)
                 </div>
@@ -300,7 +298,7 @@ const SavedReportsModal = ({ show, onClose, savedReports, loadReport, deleteRepo
                 )}
 
                 {totalPages > 1 && (
-                    <div style={paginationStyle}>
+                     <div style={paginationStyle}>
                         <button onClick={goToPreviousPage} disabled={currentPage === 1} style={actionButtonStyle}>
                             Previous
                         </button>

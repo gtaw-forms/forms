@@ -4,6 +4,9 @@ import LSPDLogo from './assets/lspd.png'
 import LSSDLogo from './assets/lssd.png'
 import LSFDLogo from './assets/lsfd.png'
 import PHMCLogo from './assets/phmc.png'
+import sanfire from './assets/sanfire.png'
+import sadcr from './assets/sadcr.png'
+import lsgov from './assets/lsgov.png'
 
 export const agencyData = {
     LSPD: {
@@ -21,6 +24,18 @@ export const agencyData = {
     PHMC: {
         logo: PHMCLogo,
         url: 'https://phmc.gta.world/ucp.php?i=pm&mode=compose'
+    },
+    SANFIRE: {
+        logo: sanfire,
+        url: 'https://sfm-forum.gta.world/ucp.php?i=pm&mode=compose'
+    },
+    SADCR: {
+        logo: sadcr,
+        url: 'https://sadcr.gta.world/ucp.php?i=pm&mode=compose'
+    },
+    LSGOV: {
+        logo: lsgov,
+        url: 'https://lsgov.gta.world/ucp.php?i=pm&mode=compose'
     },
 };
 
@@ -380,30 +395,26 @@ export const Risk = [
     { name: 'Will Flanary', lastName: 'Flanary', signature: '', category: 'Emergency Medical Services' },
 ];
 export const coronerList = [
-    { name: 'Developer Testing', badge: 'Developer_Testing', rank: 'Developer Testing', discord: 'developer.testing', category: 'Developer Testing' },
+    { name: 'Developer Testing', badge: 'Developer_Testing', phNumber: '123123', rank: 'Developer Testing', discord: 'developer.testing', category: 'Developer Testing' },
     { name: 'Missing Name', badge: 'Missing_Badge', rank: 'Missing_Rank', discord: 'missing.discord', category: 'Missing_Category' },
     { name: 'Anne Carter', badge: '4892', rank: 'Chief Medical Examiner', discord: 'ralof.from.riverwood', category: 'Chief Boss' },
     { name: 'Elena Hill', badge: '108273', rank: 'Deputy Chief Medical Examiner', discord: 'unity0034', category: 'Chief Boss' },
     { name: 'Laurent Hall', badge: '91338854', rank: 'Supervisor Forensic Attendant', discord: 'faethewtich', category: 'Supervisor' },
-    { name: 'Chloe Howard', badge: '54372', rank: 'Medical Examiner', discord: 'lovely4ngel', category: 'Medical Examiner' },
     { name: 'Wesley Kramer', badge: '16511', rank: 'Coroner Investigator', discord: 'lucasin16', category: 'Coroner Investigator' },
-    { name: 'Pubert Kennedy', badge: '171763', rank: 'Forensic Attendant', discord: 'mynameiscian', category: 'Forensic Attendant' },
     { name: 'Alyson Frost', badge: '5573', rank: 'Senior Coroner Investigator', discord: 'fr0sty.js', category: 'Senior Coroner Investigator' },
     { name: 'Arthur Blackwood', badge: '153528', rank: 'Senior Medical Examiner', discord: 'deputysmall', category: 'Senior Medical Examiner' },
     { name: 'Ellie Paisley', badge: '151785', rank: 'Coroner Investigator', discord: 'hoperunsthin', category: 'Coroner Investigator' },
     { name: 'Adam Kilroy', badge: '128989', rank: 'Coroner Investigator', discord: 'simon4444', category: 'Coroner Investigator' },
-    { name: 'Dominic Castañeda', badge: '', rank: 'Medical Examiner', discord: 'hangonda', category: 'Medical Examiner' },
     { name: 'Avery Purcell', badge: '181311', rank: 'Coroner Investigator', discord: 'urkaaa_', category: 'Coroner Investigator' },
     { name: 'Luna Rosario', badge: '157235', rank: 'Coroner Investigator', discord: 'assszzz', category: 'Coroner Investigator' },
     { name: 'Norah Reed', badge: '93014', rank: 'Forensic Attendant', discord: 'amnesia5290', category: 'Forensic Attendant' },
     { name: 'James McKinney', badge: 'ID_MISSING_ERROR', rank: 'Forensic Attendant', discord: 'boots7163', category: 'Forensic Attendant' },
     { name: 'Luca Raymond', badge: '181726', rank: 'Forensic Attendant', discord: 'itscharlie3529', category: 'Forensic Attendant' },
-    { name: 'Roger Rose', badge: '1552', rank: 'Coroner Investigator Supervisor', discord: 'nazmaldun', category: 'Coroner Investigator Supervisor' },
+    { name: 'Roger Rose', badge: '1552', phNumber: '45100', rank: 'Coroner Investigator Supervisor', discord: 'nazmaldun', category: 'Coroner Investigator Supervisor' },
     { name: `Valeria Zaldívar`, badge: '183550 ', rank: 'Coroner Investigator', discord: 'hrndzz', category: 'Coroner Investigator' },
-    { name: 'Elias Harper', badge: '184060', rank: 'Coroner Investigator', discord: 'psychofr__', category: 'Coroner Investigator' },
-    { name: 'Brynn Cappelli', badge: '117468', rank: 'Coroner Investigator', discord: 'Coroner Investigator', category: 'Coroner Investigator' },
-    { name: 'William Gao', badge: '165529', rank: 'Coroner Investigator', discord: '.slump.', category: 'Coroner Investigator' },
-
+    { name: 'Elias Harper', badge: '184060', phNumber: '03720028', rank: 'Coroner Investigator', discord: 'psychofr__', category: 'Coroner Investigator' },
+    { name: 'Brynn Cappelli', badge: '117468', phNumber: '22000258', rank: 'Coroner Investigator', discord: 'Coroner Investigator', category: 'Coroner Investigator' },
+    { name: 'William Gao', badge: '165529', phNumber: '75725652', rank: 'Coroner Investigator', discord: '.slump.', category: 'Coroner Investigator' },
 ];
 
 export const formatSignature = (signature) => {
