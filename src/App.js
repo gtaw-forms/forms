@@ -13,6 +13,7 @@ import HeaderInfo from './components/HeaderInfo';
 import Snowfall from 'react-snowfall'; 
 import EasterEggImages from './EasterEggParticles'; 
 import * as Sentry from "@sentry/react";
+import WebhookModal from './components/WebhookModal'; // <-- Import the new modal component
 
 // logos
 import maternity from './assets/maternity.png'
@@ -686,6 +687,120 @@ const handleMissingEmployeeSubmit = async () => {
         }
     }
 };
+const [showWebhookModal, setShowWebhookModal] = useState(false);
+const [webhookMessage, setWebhookMessage] = useState('');
+const [webhookTitle, setWebhookTitle] = useState(''); // <-- New state for title
+const phmcLogoUrl = 'https://i.imgur.com/QMaz0OC.png'; // Publicly accessible URL for the logo
+const sendWebhookPayload = async (webhookURL, payload, successMessage, context) => {
+    if (!webhookURL) {
+        console.error(`Discord webhook URL not configured for ${context}.`);
+        Sentry.captureMessage(`Discord webhook URL is missing for ${context} submission.`, 'error');
+        showNotification('Configuration error: Unable to send message.', 'exclamation-triangle');
+        return false; // Indicate failure
+    }
+
+    try {
+        const response = await fetch(webhookURL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`Failed to send ${context} webhook embed. Status: ${response.status} ${response.statusText}`, errorText);
+            Sentry.captureMessage(`Discord webhook embed failed for ${context}: ${response.status}`, {
+                level: 'error',
+                extra: { statusText: response.statusText, responseBody: errorText }
+            });
+            showNotification(`Failed to send embed to ${context}. Status: ${response.status}`, 'exclamation-triangle');
+            return false; // Indicate failure
+        } else {
+            showNotification(successMessage, 'check-circle');
+            setShowWebhookModal(false); // Close modal on success
+            setWebhookMessage(''); // Clear the message input
+            setWebhookTitle('');   // Clear the title input
+            return true; // Indicate success
+        }
+    } catch (error) {
+        console.error(`Error sending ${context} webhook embed:`, error);
+        Sentry.captureException(error, { extra: { context: `${context} Webhook Embed Submission Fetch` } });
+        showNotification(`A network error occurred sending to ${context}. Please try again.`, 'exclamation-triangle');
+        return false; // Indicate failure
+    }
+};
+const webhookBodyTemplate = `A new update detected... parsing details
+Name(s) added:
+Name(s) removed: `;
+
+    // --- Function to open the webhook modal with the template ---
+    const openWebhookModalWithTemplate = () => {
+        setWebhookTitle('New Update Detected'); // Also clear the title when opening
+        setWebhookMessage(webhookBodyTemplate); // Set the template here
+        setShowWebhookModal(true);
+    };
+
+const prepareWebhookData = () => {
+    // Hardening: Check if running on localhost
+    if (window.location.hostname !== 'localhost') {
+        console.error('Attempted to use webhook tool from non-localhost environment:', window.location.hostname);
+        Sentry.captureMessage(`Attempted webhook use from invalid host: ${window.location.hostname}`, 'warning');
+        showNotification('This feature is only available on localhost.', 'error');
+        setShowWebhookModal(false);
+        return null; // Indicate failure
+    }
+
+    // Trim inputs
+    const title = webhookTitle.trim();
+    const message = webhookMessage.trim();
+
+    // Validate inputs
+    if (!title && !message) {
+         showNotification('Please enter at least a title or a message.', 'warning');
+         return null;
+    }
+    if (title.length > 256) {
+        showNotification('Embed title cannot exceed 256 characters.', 'warning');
+        return null;
+    }
+     if (message.length > 4096) {
+        showNotification('Embed body cannot exceed 4096 characters.', 'warning');
+        return null;
+    }
+
+    // Construct the Embed
+    const embed = {
+        title: title || undefined,
+        description: `${message || ''}\n\n[PHMC Form Generator](https://gtaw-phmc.github.io/forms/) - v${commitInfo.sha || 'N/A'}`,
+        color: 0x7289DA,
+        timestamp: new Date().toISOString(),
+
+    };
+
+    // Construct the Full Payload
+    const payload = {
+        username: "PHMC",
+        avatar_url: phmcLogoUrl,
+        embeds: [embed],
+    };
+
+    return payload; // Return the prepared payload
+};
+const handlePhmcWebhookSubmit = async () => {
+    const payload = prepareWebhookData();
+    if (!payload) return; // Exit if validation/hostname check failed
+
+    const webhookURL = process.env.REACT_APP_PHMC_DISCORD; 
+    await sendWebhookPayload(webhookURL, payload, 'PHMC webhook embed sent successfully!', 'PHMC');
+};
+
+const handleWebhookSubmit = async () => {
+    const payload = prepareWebhookData();
+    if (!payload) return; // Exit if validation/hostname check failed
+
+    const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL; // Dev URL
+    await sendWebhookPayload(webhookURL, payload, 'Dev webhook embed sent successfully!', 'Dev');
+};
 
     const handleFeatureRequestSubmit = async () => {
         const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
@@ -706,7 +821,6 @@ const handleMissingEmployeeSubmit = async () => {
             showNotification('Please enter your Discord name.', 'warning');
             return;
         }
-
 
         // Collect debug information
         const debugInfo = {
@@ -13916,6 +14030,18 @@ const [imgurLink, setImgurLink] = useState(null);
                                 <i className="fas fa-trash-alt"></i>
                                 Clear Form
                             </button>
+                            {window.location.hostname === 'localhost' && (
+                            <button
+                                type="button"
+                                className="changelog-button" // You might want a specific class/style
+                                onClick={openWebhookModalWithTemplate}
+                                title="Send a test message to the dev webhook"
+                                style={{ backgroundColor: '#ffc107', color: '#212529' }} // Example styling
+                            >
+                                <i className="fas fa-paper-plane"></i> Send Dev Webhook
+                            </button>
+                        )}
+
                         </div>
                     </form>
                 </div>
@@ -14493,6 +14619,16 @@ const [imgurLink, setImgurLink] = useState(null);
                 getBBCodeContent={getBBCodeContent} 
                 showNotification={showNotification}
             />
+                    <WebhookModal
+                        show={showWebhookModal}
+                        onClose={() => setShowWebhookModal(false)}
+                        webhookTitle={webhookTitle}         
+                        setWebhookTitle={setWebhookTitle}   
+                        webhookMessage={webhookMessage}
+                        setWebhookMessage={setWebhookMessage}
+                        onSubmit={handleWebhookSubmit}
+                        onSubmitPhmc={handlePhmcWebhookSubmit} 
+                    />
 
                             {(formData.scenePhotos || formData.additionalImages) && (
                                 <Button
