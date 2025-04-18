@@ -13,8 +13,10 @@ import HeaderInfo from './components/HeaderInfo';
 import Snowfall from 'react-snowfall'; 
 import EasterEggImages from './EasterEggParticles'; 
 import * as Sentry from "@sentry/react";
-import WebhookModal from './components/WebhookModal'; // <-- Import the new modal component
-import CoronerRankModal from './components/CoronerRankModal'; // <-- Import the new modal component
+import WebhookModal from './components/WebhookModal'; 
+import CoronerRankModal from './components/CoronerRankModal'; 
+import CoronerTipsModal from './components/CoronerTipsModal'; 
+
 // logos
 import maternity from './assets/maternity.png'
 import obstetrical from './assets/obstetrical.png'
@@ -529,6 +531,28 @@ function App() {
     useEffect(() => {
         localStorage.setItem('bbCodeVersion', bbCodeVersion.toString());
     }, [bbCodeVersion]);
+    // Coroner Tips Handling
+    const [showCoronerTips, setShowCoronerTips] = useState(false);
+
+    // --- Updated useEffect for CoronerTipsModal ---
+    useEffect(() => {
+        const isCoronerForm = [1, 2, 18].includes(bbCodeVersion);
+        // Check localStorage *here* to prevent automatic showing
+        const shouldHidePermanently = localStorage.getItem('hideCoronerTipsModal') === 'true';
+
+        // Only set state to show automatically if it's a coroner form AND not permanently hidden
+        if (isCoronerForm && !shouldHidePermanently) {
+            setShowCoronerTips(true);
+        } else {
+            // Ensure it's hidden if not a coroner form or if permanently hidden
+            // This prevents it from staying open if the user switches away from a coroner form
+            // while the modal is open AND they haven't clicked "Don't show again".
+            setShowCoronerTips(false);
+        }
+
+    }, [bbCodeVersion]); // Re-run only when bbCodeVersion changes
+    
+// Feature Request Handling
     const [showFeatureRequestModal, setShowFeatureRequestModal] = useState(false);
     const [featureRequest, setFeatureRequest] = useState('');
     const [discordName, setDiscordName] = useState('');
@@ -691,12 +715,12 @@ const [showWebhookModal, setShowWebhookModal] = useState(false);
 const [webhookMessage, setWebhookMessage] = useState('');
 const [webhookTitle, setWebhookTitle] = useState(''); // <-- New state for title
 const phmcLogoUrl = 'https://i.imgur.com/QMaz0OC.png'; // Publicly accessible URL for the logo
-const sendWebhookPayload = async (webhookURL, payload, successMessage, context) => {
+const sendWebhookPayload = async (webhookURL, payload, successMessage, context, notifyFunc) => {
     if (!webhookURL) {
         console.error(`Discord webhook URL not configured for ${context}.`);
         Sentry.captureMessage(`Discord webhook URL is missing for ${context} submission.`, 'error');
-        showNotification('Configuration error: Unable to send message.', 'exclamation-triangle');
-        return false; // Indicate failure
+        notifyFunc('Configuration error: Unable to send message.', 'exclamation-triangle'); // Use passed notifyFunc
+        return false;
     }
 
     try {
@@ -713,20 +737,21 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context) 
                 level: 'error',
                 extra: { statusText: response.statusText, responseBody: errorText }
             });
-            showNotification(`Failed to send embed to ${context}. Status: ${response.status}`, 'exclamation-triangle');
-            return false; // Indicate failure
+            notifyFunc(`Failed to send embed to ${context}. Status: ${response.status}`, 'exclamation-triangle'); // Use passed notifyFunc
+            return false;
         } else {
-            showNotification(successMessage, 'check-circle');
-            setShowWebhookModal(false); // Close modal on success
-            setWebhookMessage(''); // Clear the message input
-            setWebhookTitle('');   // Clear the title input
-            return true; // Indicate success
+            notifyFunc(successMessage, 'check-circle'); // Use passed notifyFunc
+            setShowWebhookModal(false);
+            setWebhookMessage('');
+            setWebhookTitle('');
+            // No need to clear imageUrl here, modal handles its own state
+            return true;
         }
     } catch (error) {
         console.error(`Error sending ${context} webhook embed:`, error);
         Sentry.captureException(error, { extra: { context: `${context} Webhook Embed Submission Fetch` } });
-        showNotification(`A network error occurred sending to ${context}. Please try again.`, 'exclamation-triangle');
-        return false; // Indicate failure
+        notifyFunc(`A network error occurred sending to ${context}. Please try again.`, 'exclamation-triangle'); // Use passed notifyFunc
+        return false;
     }
 };
 const webhookBodyTemplate = `A new update detected... parsing details
@@ -740,52 +765,6 @@ Name(s) removed: `;
         setShowWebhookModal(true);
     };
 
-const prepareWebhookData = () => {
-    // Hardening: Check if running on localhost
-    if (window.location.hostname !== 'localhost') {
-        console.error('Attempted to use webhook tool from non-localhost environment:', window.location.hostname);
-        Sentry.captureMessage(`Attempted webhook use from invalid host: ${window.location.hostname}`, 'warning');
-        showNotification('This feature is only available on localhost.', 'error');
-        setShowWebhookModal(false);
-        return null; // Indicate failure
-    }
-
-    // Trim inputs
-    const title = webhookTitle.trim();
-    const message = webhookMessage.trim();
-
-    // Validate inputs
-    if (!title && !message) {
-         showNotification('Please enter at least a title or a message.', 'warning');
-         return null;
-    }
-    if (title.length > 256) {
-        showNotification('Embed title cannot exceed 256 characters.', 'warning');
-        return null;
-    }
-     if (message.length > 4096) {
-        showNotification('Embed body cannot exceed 4096 characters.', 'warning');
-        return null;
-    }
-
-    // Construct the Embed
-    const embed = {
-        title: title || undefined,
-        description: `${message || ''}\n\n[PHMC Form Generator](https://gtaw-phmc.github.io/forms/) - v${commitInfo.sha || 'N/A'}`,
-        color: 0x7289DA,
-        timestamp: new Date().toISOString(),
-
-    };
-
-    // Construct the Full Payload
-    const payload = {
-        username: "PHMC",
-        avatar_url: phmcLogoUrl,
-        embeds: [embed],
-    };
-
-    return payload; // Return the prepared payload
-};
 const [showCoronerRankModal, setShowCoronerRankModal] = useState(false);
 const uniqueCoronerRanks = [...new Set(coronerList.map(c => c.rank))].sort();
 const handleCoronerRankSubmit = async ({ selectedEmployee, newRank }) => { // Accept the object
@@ -866,20 +845,18 @@ const handleCoronerRankSubmit = async ({ selectedEmployee, newRank }) => { // Ac
     }
 };
 
-const handlePhmcWebhookSubmit = async () => {
-    const payload = prepareWebhookData();
-    if (!payload) return; // Exit if validation/hostname check failed
-
-    const webhookURL = process.env.REACT_APP_PHMC_DISCORD; 
-    await sendWebhookPayload(webhookURL, payload, 'PHMC webhook embed sent successfully!', 'PHMC');
+const handlePhmcWebhookSubmit = async (payload) => { // Receive payload from modal
+    if (!payload) return; // Should not happen if modal validates, but good check
+    const webhookURL = process.env.REACT_APP_PHMC_DISCORD;
+    // Pass showNotification directly to sendWebhookPayload
+    await sendWebhookPayload(webhookURL, payload, 'PHMC webhook embed sent successfully!', 'PHMC', showNotification);
 };
 
-const handleWebhookSubmit = async () => {
-    const payload = prepareWebhookData();
-    if (!payload) return; // Exit if validation/hostname check failed
-
+const handleWebhookSubmit = async (payload) => { // Receive payload from modal
+    if (!payload) return;
     const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL; // Dev URL
-    await sendWebhookPayload(webhookURL, payload, 'Dev webhook embed sent successfully!', 'Dev');
+    // Pass showNotification directly to sendWebhookPayload
+    await sendWebhookPayload(webhookURL, payload, 'Dev webhook embed sent successfully!', 'Dev', showNotification);
 };
 
     const handleFeatureRequestSubmit = async () => {
@@ -4841,6 +4818,10 @@ const [imgurLink, setImgurLink] = useState(null);
                         coronerList={coronerList} // <-- Pass the full coronerList from data.js
 
                     />
+        <CoronerTipsModal
+            show={showCoronerTips}
+            onClose={() => setShowCoronerTips(false)}
+        />
 
 {showAgencySelector && (
     <AgencySelector
@@ -4913,13 +4894,22 @@ const [imgurLink, setImgurLink] = useState(null);
                     >
                         Business Card Tool
                     </button>
+                    {(bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 18) && (
 
+                    <button
+                type="button"
+                className="changelog-button"
+                onClick={() => setShowCoronerTips(true)} // This button click ALWAYS sets show to true
+            >
+                Coroner Tips
+            </button>
+                    )}
 </div>
                     {showChangelog && (
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 2.0.2 -  </h3>
+                                    <h3>Changelog - Version 2.0.3 -  </h3>
                                     <button
                                         className="close-button"
                                         onClick={() => setShowChangelog(false)}
@@ -4930,13 +4920,10 @@ const [imgurLink, setImgurLink] = useState(null);
                                 </div>
                                 <div className="modal-content">
                                     <ul>
-                                        <li> Coroner Email has been re-wrote for... whatever time it is now.  </li>
-                                        <li> Now dynamically can load multiple reports. </li>
-                                        <li> Coroner Phone Numbers now actually has a use for Coroner Email. </li>
-                                        <li> Misc</li>
-                                        <li> Added options to remove retired employees </li> 
-                                        <li> Fixed incorrect links for Patient Files </li>
-                                        <li> Update Coroner Rank Button & Modal </li> 
+                                        <li> Added a Quick Reference Guide for Coroner Forms.  </li>
+                                        <li> Contains three pages, Introduction, Useful Commands, Scene Handling Summary. </li>
+                                        <li> The Quick Reference Guide can be marked 'Don't show this again' to hide it permanently. </li>
+                                        <li> Button has been added to restore the modal</li>
                                     </ul>
                                     - frosty
                                 </div>
@@ -14149,7 +14136,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                 <i className="fas fa-trash-alt"></i>
                                 Clear Form
                             </button>
-                            {window.location.hostname === 'localhost' && (
+                    {window.location.hostname === 'localhost' || '192.168.0.17:3000' && (
                             <button
                                 type="button"
                                 className="changelog-button" // You might want a specific class/style
@@ -14738,16 +14725,18 @@ const [imgurLink, setImgurLink] = useState(null);
                 getBBCodeContent={getBBCodeContent} 
                 showNotification={showNotification}
             />
-                    <WebhookModal
-                        show={showWebhookModal}
-                        onClose={() => setShowWebhookModal(false)}
-                        webhookTitle={webhookTitle}         
-                        setWebhookTitle={setWebhookTitle}   
-                        webhookMessage={webhookMessage}
-                        setWebhookMessage={setWebhookMessage}
-                        onSubmit={handleWebhookSubmit}
-                        onSubmitPhmc={handlePhmcWebhookSubmit} 
-                    />
+            <WebhookModal
+                show={showWebhookModal}
+                onClose={() => setShowWebhookModal(false)}
+                webhookTitle={webhookTitle}
+                setWebhookTitle={setWebhookTitle}
+                webhookMessage={webhookMessage}
+                setWebhookMessage={setWebhookMessage}
+                onSubmit={handleWebhookSubmit} // Pass updated handler
+                onSubmitPhmc={handlePhmcWebhookSubmit} // Pass updated handler
+                showNotification={showNotification} // Pass notification function
+                commitInfo={commitInfo} // Pass commit info
+            />
 
                             {(formData.scenePhotos || formData.additionalImages) && (
                                 <Button
