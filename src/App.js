@@ -14136,7 +14136,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                 <i className="fas fa-trash-alt"></i>
                                 Clear Form
                             </button>
-                    {window.location.hostname === 'localhost' || '192.168.0.17:3000' && (
+                    {window.location.hostname === 'localhost' && (
                             <button
                                 type="button"
                                 className="changelog-button" // You might want a specific class/style
