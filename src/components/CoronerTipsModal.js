@@ -115,7 +115,7 @@ More tips coming soon!`;
 const commandsContent = `**Duty Commands:**
 /cduty | /duty - Go on/off duty as Coroner.
 /trunk - Opens the trunk
-/ctrunk | cremove - Stores a body into the trunk, removes a body from the trunk.
+/ctrunk | /cremove - Stores a body into the trunk, removes a body from the trunk.
 /cdrag - Drag a body to the Coroner Van - NOTE: You must right click to stop dragging otherwise you become a space ship
 /cdamages | /cexamine | /cdna - Examine the decedent for damages, DNA, and body attributes.
 /cloot - Check the decedent's for items on the body.
