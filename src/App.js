@@ -15131,7 +15131,7 @@ const [imgurLink, setImgurLink] = useState(null);
                 height={350}
                 width={350}
                 className="Center"
-                alt="PHMC Civilian Paperwork"
+                alt="Staff Area - Medical Records"
             />
         </a>
     </div>
