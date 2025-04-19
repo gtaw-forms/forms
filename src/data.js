@@ -411,7 +411,7 @@ export const coronerList = [
     { name: 'James McKinney', badge: 'ID_MISSING_ERROR', rank: 'Forensic Attendant', discord: 'boots7163', category: 'Forensic Attendant' },
     { name: 'Luca Raymond', badge: '181726', rank: 'Forensic Attendant', discord: 'itscharlie3529', category: 'Forensic Attendant' },
     { name: 'Roger Rose', badge: '1552', phNumber: '45100', rank: 'Coroner Investigator Supervisor', discord: 'nazmaldun', category: 'Coroner Investigator Supervisor' },
-    { name: `Valeria Zaldívar`, badge: '183550 ', rank: 'Coroner Investigator', discord: 'hrndzz', category: 'Coroner Investigator' },
+    { name: 'Valeria Zaldívar', badge: '183550', phNumber: '23516250', rank: 'Coroner Investigator', discord: 'm3aqq', category: 'Coroner Investigator' },
     { name: 'Elias Harper', badge: '184060', phNumber: '03720028', rank: 'Coroner Investigator', discord: 'psychofr__', category: 'Coroner Investigator' },
     { name: 'Brynn Cappelli', badge: '117468', phNumber: '22000258', rank: 'Coroner Investigator', discord: 'Coroner Investigator', category: 'Coroner Investigator' },
     { name: 'William Gao', badge: '165529', phNumber: '75725652', rank: 'Coroner Investigator', discord: '.slump.', category: 'Coroner Investigator' },
