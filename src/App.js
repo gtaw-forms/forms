@@ -4666,8 +4666,20 @@ const [imgurLink, setImgurLink] = useState(null);
                     ) : bbCodeVersion === 2 ? (
                         <CoronerEmail
                         formData={formData}
-                    />
-                    
+                        handleChange={handleChange}
+                        handleSelectChange={handleSelectChange} 
+                        setShowMissingEmployeeModal={setShowMissingEmployeeModal}
+                        setShowCoronerRankModal={setShowCoronerRankModal}
+                        coronerGroupedOptions={coronerGroupedOptions}
+                        fillPhoneChecked={fillPhoneChecked} 
+                        setFillPhoneChecked={setFillPhoneChecked} 
+                        handleFillCoronerPhone={handleFillCoronerPhone}
+                        addReport={addReport} 
+                        removeReport={removeReport} 
+                        handleReportChange={handleReportChange}
+                        isUploading={isUploading}
+                        parseBBCode={parseBBCode} 
+                    />                    
                         ) : bbCodeVersion === 3 ? ( 
                             <PatientAdvanced
                             formData={formData}
