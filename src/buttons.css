@@ -528,4 +528,198 @@ input[type="radio"] {
   .notification-message {
       flex-grow: 1; /* Allow message to take available space */
   }
+
+  .floating-buttons-dropdown .dropdown-toggle {
+    background-color: #212529; /* Dark background to match theme */
+    border-color: #495057;     /* Slightly lighter border */
+    color: #adb5bd;           /* Lighter text color */
+    padding: 0.5rem 1rem;      /* Adjust padding */
+    font-size: 0.9rem;         /* Adjust font size */
+    border-radius: 5px;        /* Rounded corners */
+    transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out; /* Smooth transition */
+  }
+  .tools-dropdown-wrapper {
+    position: fixed; /* Position relative to the viewport */
+    top: 15px;       /* Distance from the top */
+    right: 15px;      /* Distance from the right */
+    z-index: 1050;   /* Ensure it's above most other elements (Bootstrap modals are often around 1040-1050) */
+  }
   
+  /* Style the toggle button on hover/focus */
+  .floating-buttons-dropdown .dropdown-toggle:hover,
+  .floating-buttons-dropdown .dropdown-toggle:focus {
+    background-color: #343a40; /* Slightly lighter on hover */
+    border-color: #6c757d;
+    color: #f8f9fa;           /* Brighter text on hover */
+  }
+  
+  /* Ensure the icon has some space */
+  .floating-buttons-dropdown .dropdown-toggle i {
+    margin-right: 8px;
+  }
+  
+  /* Style the dropdown menu (using variant="dark" helps, but we can refine) */
+  .floating-buttons-dropdown .dropdown-menu {
+    background-color: #212529; /* Ensure dark background */
+    border: 1px solid #495057;     /* Match border */
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.3); /* Add a subtle shadow */
+    margin-top: 5px; /* Add a small gap between button and menu */
+  }
+  
+  /* Style individual dropdown items */
+  .floating-buttons-dropdown .dropdown-item {
+    color: #adb5bd;           /* Lighter text color for items */
+    padding: 0.5rem 1.2rem;    /* Adjust padding */
+    font-size: 0.9rem;
+    display: flex !important;/* Use flexbox for icon alignment */
+    align-items: center; /* Vertically align icon and text */
+  }
+  
+  /* Style dropdown items on hover/focus */
+  .floating-buttons-dropdown .dropdown-item:hover,
+  .floating-buttons-dropdown .dropdown-item:focus {
+    background-color: #343a40; /* Slightly lighter background on hover */
+    color: #f8f9fa;           /* Brighter text on hover */
+  }
+  
+  /* Style the icons within dropdown items */
+  .floating-buttons-dropdown .dropdown-item i {
+    margin-right: 10px; /* Space between icon and text */
+    width: 16px; /* Give icon a fixed width for alignment */
+    text-align: center; /* Center the icon */
+    color: #6c757d; /* Slightly muted icon color */
+  }
+  
+  .floating-buttons-dropdown .dropdown-item:hover i,
+  .floating-buttons-dropdown .dropdown-item:focus i {
+    color: #adb5bd; /* Slightly brighter icon on hover */
+  }
+  
+  /* Optional: Add a divider if needed in the future */
+  .floating-buttons-dropdown .dropdown-divider {
+    border-top: 1px solid #495057;
+  }
+  
+
+  .btn {
+    /* Adjusted padding: Approx 7.5px vertical, 12px horizontal */
+    padding: 0.5rem 0.75rem; 
+    /* Reduced font-size */
+    font-size: 0.8rem;   
+    /* Slightly smaller radius */
+    border-radius: 4px;  
+    transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out, color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    display: inline-flex; 
+    align-items: center;
+    justify-content: center;
+    /* Reduced gap */
+    gap: 6px; 
+    border: 1px solid transparent; 
+    line-height: 1.5; 
+    margin: 4px; /* Slightly reduced margin */
+    flex-shrink: 0; 
+    /* Recalculated min-height based on new font-size and padding */
+    min-height: calc(1.5em + 1rem + 2px); 
+  }
+  
+  /* Primary Button Style (e.g., main actions) */
+  .btn-primary {
+    border-color: #010002;
+    color: #ffffff;
+  }
+  
+  .btn-primary:hover,
+  .btn-primary:focus,
+  .btn-primary:active {
+    background-color: #2ea043;
+    border-color: #3fb950;
+    color: #f8f9fa;
+  }
+  
+  .btn-phmc {
+    background-color: #740491; /* Default green */
+    border-color: #2c033615;
+    color: #f8f9fa;
+  }
+  .btn-phmc:hover,
+  .btn-phmc:focus,
+  .btn-phmc:active {
+    background-color: #740491; /* Slightly lighter on hover */
+    border-color: #00070c;
+    color: #f8f9fa;           /* Brighter text on hover */
+    box-shadow: 0 0 0 0.2rem rgba(49, 54, 58, 0.5); /* Focus shadow */
+  }
+  /* Secondary Button Style (e.g., less important actions, cancel) */
+  .btn-secondary {
+    background-color: #212529; /* Dark background */
+    border-color: #495057;     /* Slightly lighter border */
+    color: #adb5bd;           /* Lighter text color */
+  }
+  
+  .btn-secondary:hover,
+  .btn-secondary:focus,
+  .btn-secondary:active {
+    background-color: #343a40; /* Slightly lighter on hover */
+    border-color: #6c757d;
+    color: #f8f9fa;           /* Brighter text on hover */
+    box-shadow: 0 0 0 0.2rem rgba(108, 117, 125, 0.5); /* Focus shadow */
+  }
+  
+  /* Danger Button Style (e.g., delete, remove) */
+  .btn-danger {
+    background-color: #da3633; /* GitHub-like red */
+    border-color: #f85149;
+    color: #ffffff;
+  }
+  
+  .btn-danger:hover,
+  .btn-danger:focus,
+  .btn-danger:active {
+    background-color: #f85149;
+    border-color: #ff7b72;
+    color: #ffffff;
+    box-shadow: 0 0 0 0.2rem rgba(248, 81, 73, 0.5); /* Focus shadow */
+  }
+  
+  /* Success Button Style (Keep your green if preferred) */
+  .btn-success {
+      background-color: #4CAF50;
+      border-color: #4CAF50;
+      color: white;
+  }
+  
+  .btn-success:hover,
+  .btn-success:focus,
+  .btn-success:active {
+      background-color: #45a049;
+      border-color: #45a049;
+      color: white;
+      box-shadow: 0 0 0 0.2rem rgba(76, 175, 80, 0.5);
+  }
+  .btn-info {
+    background-color: #0dcaf0; /* Default Bootstrap cyan - adjust as needed */
+    border-color: #0dcaf0;
+    color: #000; /* Black text often looks better on cyan */
+  }
+  
+  .btn-info:hover,
+  .btn-info:focus,
+  .btn-info:active {
+    background-color: #17a2b8; /* Lighter cyan on hover/focus */
+    border-color: hwb(190 15% 5%);
+    color: #000;
+    box-shadow: 0 0 0 0.2rem rgba(13, 202, 240, 0.5); /* Focus shadow */
+  }
+  
+  /* Style for icons inside buttons */
+  .btn i {
+    font-size: 1em; /* Make icon size relative to button font size */
+    /* No extra margin needed if using gap */
+  }
+  
+  /* Disabled state */
+  .btn:disabled,
+  .btn.disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+  }

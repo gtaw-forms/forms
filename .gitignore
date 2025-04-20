@@ -34,3 +34,4 @@ build/*
 
 # Sentry Config File
 .sentryclirc
+src/OLD-GYNE-OBY.js

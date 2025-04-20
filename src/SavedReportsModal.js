@@ -1,7 +1,7 @@
 // filepath: src/SavedReportsModal.js
 import React, { useState, useEffect } from 'react';
-import Notification from './components/Notification'; // Assuming Notification component exists
-import * as Sentry from "@sentry/react";
+import { Button } from 'react-bootstrap';
+
 // --- Styles (keep as they are) ---
 const modalStyle = {
     position: 'fixed',
@@ -40,14 +40,14 @@ const modalHeaderStyle = {
 
 const closeButtonStyle = {
     position: 'absolute',
-    top: '15px', // Adjusted position
+    top: '1px', // Adjusted position
     right: '15px', // Adjusted position
     background: 'none',
     border: 'none',
     color: '#f85149', // Brighter red for visibility
     fontSize: '24px', // Slightly larger icon
     cursor: 'pointer',
-    lineHeight: '1', // Ensure button doesn't affect layout height
+    lineHeight: '1', // Ensure Button doesn't affect layout height
 };
 
 const tableStyle = {
@@ -71,7 +71,7 @@ const tdStyle = {
 };
 
 const actionButtonStyle = {
-    backgroundColor: '#238636', // Green button
+    backgroundColor: '#238636', // Green Button
     color: 'white',
     border: 'none',
     padding: '5px 10px',
@@ -83,12 +83,12 @@ const actionButtonStyle = {
 
 const deleteButtonStyle = {
     ...actionButtonStyle,
-    backgroundColor: '#da3633', // Red button
+    backgroundColor: '#da3633', // Red Button
 };
 
 const copyButtonStyle = {
     ...actionButtonStyle,
-    backgroundColor: '#2f81f7', // Blue button
+    backgroundColor: '#2f81f7', // Blue Button
 };
 
 const paginationStyle = {
@@ -107,7 +107,7 @@ const searchInputStyle = {
     backgroundColor: '#0d1117', // Match background
     color: '#c9d1d9', // Light text
     width: '60%', // Adjust width as needed
-    marginRight: '10px', // Space between search and close button
+    marginRight: '10px', // Space between search and close Button
 };
 // --- End Styles ---
 
@@ -247,6 +247,10 @@ const SavedReportsModal = ({ show, onClose, savedReports, loadReport, deleteRepo
     return (
         <div style={modalStyle}>
             <div style={modalContentStyle}>
+            <Button onClick={onClose} style={closeButtonStyle} aria-label="Close modal">
+                        Close
+                    </Button>
+
                 <div style={modalHeaderStyle}>
                     Manage Saved Reports ({savedReportCount} total)
                 </div>
@@ -258,9 +262,6 @@ const SavedReportsModal = ({ show, onClose, savedReports, loadReport, deleteRepo
                         onChange={e => setSearchQuery(e.target.value)}
                         style={searchInputStyle}
                     />
-                    <button onClick={onClose} style={closeButtonStyle} aria-label="Close modal">
-                        &times;
-                    </button>
                 </div>
 
                 {filteredReports.length > 0 ? (
@@ -282,9 +283,9 @@ const SavedReportsModal = ({ show, onClose, savedReports, loadReport, deleteRepo
                                         <td style={tdStyle}>{dateTime}</td>
                                         <td style={tdStyle}>{version}</td>
                                         <td style={tdStyle}>
-                                            <button onClick={() => loadReport(key)} style={actionButtonStyle}>Load</button>
-                                            <button onClick={() => deleteReport(key)} style={deleteButtonStyle}>Delete</button>
-                                            <button onClick={() => handleCopyBBCode(key)} style={copyButtonStyle}>Copy BBCode</button>
+                                            <Button onClick={() => loadReport(key)} style={actionButtonStyle}>Load</Button>
+                                            <Button onClick={() => deleteReport(key)} style={deleteButtonStyle}>Delete</Button>
+                                            <Button onClick={() => handleCopyBBCode(key)} style={copyButtonStyle}>Copy BBCode</Button>
                                         </td>
                                     </tr>
                                 );
@@ -299,13 +300,13 @@ const SavedReportsModal = ({ show, onClose, savedReports, loadReport, deleteRepo
 
                 {totalPages > 1 && (
                      <div style={paginationStyle}>
-                        <button onClick={goToPreviousPage} disabled={currentPage === 1} style={actionButtonStyle}>
+                        <Button onClick={goToPreviousPage} disabled={currentPage === 1} style={actionButtonStyle}>
                             Previous
-                        </button>
+                        </Button>
                         <span>Page {currentPage} of {totalPages}</span>
-                        <button onClick={goToNextPage} disabled={currentPage === totalPages} style={actionButtonStyle}>
+                        <Button onClick={goToNextPage} disabled={currentPage === totalPages} style={actionButtonStyle}>
                             Next
-                        </button>
+                        </Button>
                     </div>
                 )}
             </div>

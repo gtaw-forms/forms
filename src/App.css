@@ -738,10 +738,6 @@ input[type="checkbox"] {
     }
 }
 
-.business-card-modal {
-    width: 500px; /* Adjust as needed */
-}
-
 .business-card-content {
     display: flex;
     flex-direction: column;
