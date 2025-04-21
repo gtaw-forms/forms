@@ -76,7 +76,6 @@ import {
     admission,
     phmcList,
     coronerList,
-    formatSignature,
     BodyMassIndex,
     patientConsent,
     procedureGood,
@@ -646,7 +645,8 @@ const handleMissingEmployeeSubmit = async () => {
         if (missingEmployeeData.coronerPHNumber?.trim()) {
             embedData.fields.push({ name: "Phone Number", value: missingEmployeeData.coronerPHNumber, inline: true });
         }
-        const dataJsEntry = `{ name: '${missingEmployeeData.coronerName || 'MISSING_NAME'}', ${isCoronerRequest ? `badge: '${missingEmployeeData.coronerBadge || 'MISSING_BADGE'}', ` : ''}phNumber: '${missingEmployeeData.coronerPHNumber || ''}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', discord: '${missingEmployeeData.coronerDiscord || 'MISSING_DISCORD'}', category: '${missingEmployeeData.coronerRank || 'MISSING_CATEGORY'}' },`;
+        const dataJsEntry = `{ name: '${missingEmployeeData.coronerName || 'MISSING_NAME'}', ${isCoronerRequest ? `badge: '${missingEmployeeData.coronerBadge || 'MISSING_BADGE'}', ` : ''}${isCoronerRequest ? `phNumber: '${missingEmployeeData.coronerPHNumber || ''}', ` : ''}rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', discord: '${missingEmployeeData.coronerDiscord || 'MISSING_DISCORD'}', category: '${missingEmployeeData.coronerRank || 'MISSING_CATEGORY'}' },`;
+
         embedData.fields.push({ name: "Suggested data.js Entry", value: `\`\`\`javascript\n${dataJsEntry}\n\`\`\``, inline: false });
         // --- End ADD Embed ---
 
@@ -4822,8 +4822,6 @@ const [imgurLink, setImgurLink] = useState(null);
                             sono={sono} 
                             lab={lab} 
                             admission={admission} 
-                            followup={followup} 
-                            assignedDepartment={assignedDepartment} 
                             />
                            ) : bbCodeVersion === 21 ? ( // GENERAL CONSULTATION (PBC)
                             <GeneralConsult
@@ -4924,6 +4922,7 @@ const [imgurLink, setImgurLink] = useState(null);
                             Cognition={Cognition} 
                             admission={admission} 
                             followup={followup} 
+                            Risk={Risk}
                             />
 
                         ) : bbCodeVersion === 29 ? ( //PBC? Shrink Internal
@@ -4945,6 +4944,7 @@ const [imgurLink, setImgurLink] = useState(null);
                             Cognition={Cognition} 
                             admission={admission} 
                             followup={followup} 
+                            Risk={Risk}
                             />
 
                         ) : null}
@@ -5174,10 +5174,6 @@ const [imgurLink, setImgurLink] = useState(null);
                                     <Form.Control type="text" name="coronerName" value={missingEmployeeData.coronerName} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerName')} placeholder='Employee Name' required />
                                     <Form.Control type="text" name="coronerDiscord" value={missingEmployeeData.coronerDiscord} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerDiscord')} placeholder='Employee Department/Discord' required />
                                     <Form.Control type="text" name="coronerRank" value={missingEmployeeData.coronerRank} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerRank')} placeholder='Employee Rank / Position' required />
-                                </div>
-                                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                                    <Form.Control type="text" name="coronerPHNumber" value={missingEmployeeData.coronerPHNumber} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerPHNumber')} placeholder='Employee PH number (Optional)' />
-                                    {/* Badge might not be needed for PHMC */}
                                 </div>
                                 <Select
                                     name="phmcEmployee" // This is the REQUESTER

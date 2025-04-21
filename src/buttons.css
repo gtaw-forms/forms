@@ -462,10 +462,6 @@ input[type="radio"] {
         font-size: 1.2rem;
     }
 
-    .surgery-button:hover {
-        background-color: #45a049;
-    }
-
 .ob-form-select-button {
     display: grid;
     grid-template-rows: repeat(2, auto);
@@ -631,8 +627,7 @@ input[type="radio"] {
   .btn-primary:hover,
   .btn-primary:focus,
   .btn-primary:active {
-    background-color: #2ea043;
-    border-color: #3fb950;
+    border-color: #000301;
     color: #f8f9fa;
   }
   

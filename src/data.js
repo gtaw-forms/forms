@@ -390,6 +390,7 @@ export const Risk = [
     { name: 'Tamina Dellavedova	', lastName: 'Dellavedova', signature: '', category: 'Nursing' },
     { name: 'Winter Calderone', lastName: 'Calderone', signature: '', category: 'Nursing' },
     { name: `Evelyn Myers`, lastName: 'Myers', signature: '', category: 'Nursing' },
+    { name: 'Aika Irabon', lastName: 'Irabon', signature: '', category: 'Resident Physician' },
 
     // ems
     { name: 'Will Flanary', lastName: 'Flanary', signature: '', category: 'Emergency Medical Services' },
@@ -418,10 +419,6 @@ export const coronerList = [
     { name: 'Oscar Castro', badge: '184273', phNumber: '43464144', rank: 'Coroner Investigator', discord: 't3_tris', category: 'Coroner Investigator' },
 ];
 
-export const formatSignature = (signature) => {
-    if (!signature) return '';
-    return signature.startsWith('http') ? `[img]${signature}[/img]` : signature;
-};
 
 export const departmentFullName = (abbreviation) => {
     switch (abbreviation) {
