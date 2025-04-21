@@ -4821,6 +4821,8 @@ const [imgurLink, setImgurLink] = useState(null);
                             ecg={ecg} 
                             sono={sono} 
                             lab={lab} 
+                            followup={followup} 
+                            assignedDepartment={assignedDepartment}
                             admission={admission} 
                             />
                            ) : bbCodeVersion === 21 ? ( // GENERAL CONSULTATION (PBC)
