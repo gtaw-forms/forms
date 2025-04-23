@@ -18,6 +18,7 @@ import CoronerRankModal from './components/CoronerRankModal';
 import CoronerTipsModal from './components/CoronerTipsModal'; 
 // Form Data Import - Change to Index.js for easier imports in future
 import ToolsDropdown from './ToolsDropdown'; // Adjust the path if needed
+import EasterEggModal from './components/EasterEggModal'; // Adjust path if needed
 
 import {
     CommNotePHMC,
@@ -38,11 +39,7 @@ import {
 } from './field-data';
 
 // logos
-import maternity from './assets/maternity.png'
-import obstetrical from './assets/obstetrical.png'
-import gyne from './assets/gyne.png'
 import email from './assets/email.png'
-import gynecology from './assets/gynecology.png'
 import Civilian from './assets/Civilian.png'
 import nurse from './assets/nurse.png'
 import PHMCLogo from './assets/phmc.png'
@@ -872,6 +869,73 @@ const handlePhmcWebhookSubmit = async (payload) => { // Receive payload from mod
     // Pass showNotification directly to sendWebhookPayload
     await sendWebhookPayload(webhookURL, payload, 'PHMC webhook embed sent successfully!', 'PHMC', showNotification);
 };
+const easterEggModalOverlayStyle = {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)', // Semi-transparent background
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1051, // Ensure it's higher than other potential modals (like WebhookModal's 1050)
+};
+
+const easterEggModalContentStyle = {
+    backgroundColor: '#0d1117', // Dark background to match theme
+    color: '#c9d1d9',           // Light text
+    padding: '20px',
+    borderRadius: '8px',        // Slightly rounded corners
+    width: '90%',               // Responsive width
+    maxWidth: '500px',          // Max width for larger screens
+    maxHeight: '80vh',          // Limit height
+    overflowY: 'auto',          // Allow scrolling if content is tall
+    position: 'relative',       // Needed for absolute positioning of close button if added later
+    border: '1px solid #30363d', // Subtle border
+    boxShadow: '0 5px 15px rgba(0,0,0,0.3)', // Add a shadow for depth
+    textAlign: 'center'         // Center content inside the modal body
+};
+
+const easterEggModalHeaderStyle = {
+    fontSize: '1.3em',
+    fontWeight: 'bold',
+    marginBottom: '15px',
+    borderBottom: '1px solid #30363d',
+    paddingBottom: '10px',
+    color: '#c9d1d9',
+    display: 'flex',            // Use flexbox for alignment
+    justifyContent: 'space-between', // Space out title and close button
+    alignItems: 'center'        // Vertically align items
+};
+
+const easterEggModalTitleStyle = {
+    margin: 0, // Remove default margin
+};
+
+const easterEggCloseButtonStyle = { // Style for a potential close button inside the header
+    background: 'none',
+    border: 'none',
+    color: '#c9d1d9',
+    fontSize: '24px',
+    cursor: 'pointer',
+    lineHeight: '1',
+    padding: '0 5px',
+};
+
+const easterEggModalBodyStyle = {
+    paddingTop: '10px',
+    // textAlign is now handled by easterEggModalContentStyle
+};
+
+const easterEggModalFooterStyle = {
+    borderTop: '1px solid #30363d',
+    paddingTop: '15px',
+    marginTop: '20px',
+    display: 'flex',
+    justifyContent: 'flex-end', // Align button to the right
+    gap: '10px',
+};
 
 const handleWebhookSubmit = async (payload) => { // Receive payload from modal
     if (!payload) return;
@@ -1142,6 +1206,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
             options: phmcList.map(p => ({ value: p.name, label: `${p.name} (${p.category || 'PHMC'})` }))
         }
     ].filter(group => group.options.length > 0); // Filter out empty groups if any list is empty
+    const [showEasterEggModal, setShowEasterEggModal] = useState(false);
 
     // Function to load saved reports from local storage
     const saveReport = async () => {
@@ -1182,56 +1247,64 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
         // --- End Validation ---
 
         // Proceed only if validation passed and a key was generated
-        if (!key) {
-             // This should ideally not be reached if validation is correct, but acts as a safeguard
-             console.error("SaveReport: Key generation failed despite passing validation.");
-             showNotification(`An unexpected error occurred during saving.`, 'error');
-             return;
+    // --- Easter Egg Logic ---
+    const currentSavedCount = savedReports.length; // Get count *before* saving
+    let showEasterEgg = false;
+
+    if (currentSavedCount === 4) { // User's *fifth* report (index 4)
+        showEasterEgg = true;
+    } else if (currentSavedCount > 4) { // Only apply 5% chance *after* the 5th report
+        // 5% chance on subsequent saves
+        showEasterEgg = Math.random() < 0.05;
+    }
+
+    const easterEggAlreadyShown = localStorage.getItem('easterEggShown') === 'true';
+
+    if (showEasterEgg && !easterEggAlreadyShown) {
+        setShowEasterEggModal(true); // Show the modal
+        localStorage.setItem('easterEggShown', 'true'); // Set flag so it doesn't show again *this session*
+    }
+// --- End Easter Egg Logic ---
+
+
+    const bbCodeContent = getBBCodeContent();
+    if (bbCodeContent == null) {
+        console.error("SaveReport: getBBCodeContent() returned null or undefined for version", bbCodeVersion);
+        showNotification(`Failed to generate BBCode content for saving.`, 'error');
+        return;
+    }
+
+    const reportData = JSON.stringify({
+        bbCodeVersion: bbCodeVersion,
+        data: filterFormData(formData, bbCodeVersion),
+        bbCode: bbCodeContent,
+        timestamp: Date.now()
+    });
+
+    try {
+        localStorage.setItem(key, reportData);
+
+        let currentCount = parseInt(localStorage.getItem('SavedReportCount') || '0', 10);
+        if (isNaN(currentCount)) {
+            currentCount = 0;
         }
+        const newCount = currentCount + 1; // Calculate new count *before* setting it
+        localStorage.setItem('SavedReportCount', newCount.toString()); // Use newCount
 
+        showNotification(`Report saved! Copied to clipboard`, 'save'); // Use newCount
+        loadSavedReports();
 
-        const bbCodeContent = getBBCodeContent(); // Generate BBCode here
-        if (bbCodeContent == null) {
-            console.error("SaveReport: getBBCodeContent() returned null or undefined for version", bbCodeVersion);
-            showNotification(`Failed to generate BBCode content for saving.`, 'error');
-            return; // Don't save if BBCode generation fails
+    } catch (error) {
+        console.error("Error saving report to localStorage:", error);
+        Sentry.captureException(error, { extra: { context: 'localStorage.setItem', key: key } });
+
+        if (error.name === 'QuotaExceededError') {
+            showNotification('Storage limit reached! Cannot save report. Please delete older reports.', 'error');
+        } else {
+            showNotification('Failed to save report due to a storage error.', 'error');
         }
-
-        const reportData = JSON.stringify({
-            bbCodeVersion: bbCodeVersion,
-            data: filterFormData(formData, bbCodeVersion),
-            bbCode: bbCodeContent, // Save the BBCode
-            timestamp: Date.now()
-        });
-
-        try {
-            // Save the report data
-            localStorage.setItem(key, reportData);
-
-            // --- Add this section to update the count ---
-            let currentCount = parseInt(localStorage.getItem('SavedReportCount') || '0', 10);
-            if (isNaN(currentCount)) { // Handle potential non-numeric values stored previously
-                currentCount = 0;
-            }
-            localStorage.setItem('SavedReportCount', (currentCount + 1).toString());
-            // --- End of section to update count ---
-
-            showNotification(`Report saved as ${key}. Total saved: ${currentCount + 1}`, 'save');
-            loadSavedReports(); // Refresh the list in the UI
-
-        } catch (error) {
-            console.error("Error saving report to localStorage:", error);
-            Sentry.captureException(error, { extra: { context: 'localStorage.setItem', key: key } });
-
-            // Check for QuotaExceededError specifically
-            if (error.name === 'QuotaExceededError') {
-                showNotification('Storage limit reached! Cannot save report. Please delete older reports.', 'error');
-            } else {
-                showNotification('Failed to save report due to a storage error.', 'error');
-            }
-            // Do not call loadSavedReports() on error, as the save didn't complete
-        }
-    };
+    }
+};
     const loadReport = (key) => {
         const reportData = localStorage.getItem(key);
         if (reportData) {
@@ -4116,7 +4189,9 @@ const [imgurLink, setImgurLink] = useState(null);
                                 
         return (
         <div className="App">
+<EasterEggModal show={showEasterEggModal} onHide={() => setShowEasterEggModal(false)} />
 {season === "Christmas" && <Snowfall images={EasterEggImages} snowflakeCount={75} />}
+
 {showUpdateNotification && (
                 <Notification
                     message={
@@ -4201,7 +4276,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 2.0.5 -  </h3>
+                                    <h3>Changelog - Version 2.0.6 -  </h3>
                                     <Button
                                         className="close"
                                         variant='secondary'
@@ -4214,10 +4289,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                 <div className="modal-content">
                                 Gave the place a spring clean, a lot of stuff under the hood has changed, if anything appears broken, cannot submit forms, please do let me know! 
                                     <ul>
-                                        <li> Added: Coroners & Hospital Forms (27) have been cleaned up, removed old forms                                        </li>
-                                        <li> Business Card: Image Handling has been improved, should upload faster</li>
-                                        <li> Improvements: Buttons have been changed </li>
-                                        <li> Hot fix: Issues with Error Log Dispatching</li>
+                                        <li>Clean up</li>
                                     </ul>
                                     - frosty
                                 </div>
@@ -5758,8 +5830,8 @@ const [imgurLink, setImgurLink] = useState(null);
                         // Check if clipboard API is available before using it
                         if (navigator.clipboard && navigator.clipboard.writeText) {
                             navigator.clipboard.writeText(bbCode).then(() => {
-                                saveReport(); // Save report on successful copy
                                 showNotification(`${version} copied!`, 'check-circle');
+                                saveReport();
 
                                 const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
