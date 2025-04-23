@@ -16,6 +16,7 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
     removeReport,
     handleReportChange,
     parseBBCode,
+    toggleSavedReports 
 }) => {
     return (
         <>
@@ -262,6 +263,14 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
                                             >
                                                 <i className="fas fa-copy"></i> Parse BBCode
                                             </Button>
+                                            <Button
+                                            variant="info"
+                                            onClick={toggleSavedReports} 
+                                            className="email-button"
+                                        >
+                                            <i className="fas fa-save"></i> Show Saved Reports 
+                                        </Button>
+
                                         </div>
 
                                     </div>

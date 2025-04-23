@@ -570,6 +570,8 @@ function App() {
     }, [bbCodeVersion]); // Re-run only when bbCodeVersion changes
     
 // Feature Request Handling
+const [showRequestingOfficerInput, setShowRequestingOfficerInput] = useState(false);
+
     const [showFeatureRequestModal, setShowFeatureRequestModal] = useState(false);
     const [featureRequest, setFeatureRequest] = useState('');
     const [discordName, setDiscordName] = useState('');
@@ -868,73 +870,6 @@ const handlePhmcWebhookSubmit = async (payload) => { // Receive payload from mod
     const webhookURL = process.env.REACT_APP_PHMC_DISCORD;
     // Pass showNotification directly to sendWebhookPayload
     await sendWebhookPayload(webhookURL, payload, 'PHMC webhook embed sent successfully!', 'PHMC', showNotification);
-};
-const easterEggModalOverlayStyle = {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: '100%',
-    backgroundColor: 'rgba(0, 0, 0, 0.7)', // Semi-transparent background
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1051, // Ensure it's higher than other potential modals (like WebhookModal's 1050)
-};
-
-const easterEggModalContentStyle = {
-    backgroundColor: '#0d1117', // Dark background to match theme
-    color: '#c9d1d9',           // Light text
-    padding: '20px',
-    borderRadius: '8px',        // Slightly rounded corners
-    width: '90%',               // Responsive width
-    maxWidth: '500px',          // Max width for larger screens
-    maxHeight: '80vh',          // Limit height
-    overflowY: 'auto',          // Allow scrolling if content is tall
-    position: 'relative',       // Needed for absolute positioning of close button if added later
-    border: '1px solid #30363d', // Subtle border
-    boxShadow: '0 5px 15px rgba(0,0,0,0.3)', // Add a shadow for depth
-    textAlign: 'center'         // Center content inside the modal body
-};
-
-const easterEggModalHeaderStyle = {
-    fontSize: '1.3em',
-    fontWeight: 'bold',
-    marginBottom: '15px',
-    borderBottom: '1px solid #30363d',
-    paddingBottom: '10px',
-    color: '#c9d1d9',
-    display: 'flex',            // Use flexbox for alignment
-    justifyContent: 'space-between', // Space out title and close button
-    alignItems: 'center'        // Vertically align items
-};
-
-const easterEggModalTitleStyle = {
-    margin: 0, // Remove default margin
-};
-
-const easterEggCloseButtonStyle = { // Style for a potential close button inside the header
-    background: 'none',
-    border: 'none',
-    color: '#c9d1d9',
-    fontSize: '24px',
-    cursor: 'pointer',
-    lineHeight: '1',
-    padding: '0 5px',
-};
-
-const easterEggModalBodyStyle = {
-    paddingTop: '10px',
-    // textAlign is now handled by easterEggModalContentStyle
-};
-
-const easterEggModalFooterStyle = {
-    borderTop: '1px solid #30363d',
-    paddingTop: '15px',
-    marginTop: '20px',
-    display: 'flex',
-    justifyContent: 'flex-end', // Align button to the right
-    gap: '10px',
 };
 
 const handleWebhookSubmit = async (payload) => { // Receive payload from modal
@@ -1241,7 +1176,8 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
         // Ensure each block has appropriate validation and key generation
         else {
             // If the form type isn't explicitly handled for saving
-            showNotification(`This form type (v${bbCodeVersion}) cannot be saved currently.`, 'exclamation-circle');
+            console.warn(`Form type (v${bbCodeVersion}) is not saveable.`, formData);
+            showNotification(`I cannot save this report, BBCode has been copied!`, 'exclamation-circle');
             return; // Exit if not a saveable type
         }
         // --- End Validation ---
@@ -4734,6 +4670,9 @@ const [imgurLink, setImgurLink] = useState(null);
                             currentUtcTime={currentUtcTime}
                             isUploading={isUploading}
                             handleImageUpload={handleImageUpload}
+                            showRequestingOfficerInput={showRequestingOfficerInput}
+                            setShowRequestingOfficerInput={setShowRequestingOfficerInput}
+                    
                         />
                     ) : bbCodeVersion === 2 ? (
                         <CoronerEmail
@@ -4751,6 +4690,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         handleReportChange={handleReportChange}
                         isUploading={isUploading}
                         parseBBCode={parseBBCode} 
+                        toggleSavedReports={toggleSavedReports} 
                     />                    
                         ) : bbCodeVersion === 3 ? ( 
                             <PatientAdvanced

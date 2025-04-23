@@ -15,7 +15,10 @@ const DeathReport = ({ // Renamed component to follow PascalCase convention
     isJaneDoe, // Added this prop
     currentUtcTime, // Added this prop
     isUploading, // Added this prop
-    handleImageUpload // Added this prop
+    handleImageUpload, // Added this prop
+    showRequestingOfficerInput,
+    setShowRequestingOfficerInput
+
 }) => {
     return (
         <>
@@ -134,6 +137,17 @@ const DeathReport = ({ // Renamed component to follow PascalCase convention
                     className={`form-control ${!formData.pronouncedTimeOfDeath ? 'is-invalid' : ''}`}
                 />
             </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                <Form.Check
+                    type="checkbox"
+                    id="showRequestingOfficerCheck"
+                    label="   Report Requested?" // Changed label
+                    checked={showRequestingOfficerInput}
+                    onChange={(e) => setShowRequestingOfficerInput(e.target.checked)}
+                />
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+
             <Form.Select
                 name="department"
                 value={formData.department}
@@ -152,6 +166,18 @@ const DeathReport = ({ // Renamed component to follow PascalCase convention
                 <option value="911 Call">Emergency 911 Dispatch</option>
                 <option value="Protech">Protech Security Solutions</option>
             </Form.Select>
+            {showRequestingOfficerInput && (
+                    <Form.Control
+                        type="text"
+                        name="requestingOfficer"
+                        value={formData.requestingOfficer || ''} // Ensure value is controlled
+                        onChange={handleChange}
+                        placeholder=" Requesting Officer's Name / Badge NR"
+                        className={`form-control ${!formData.requestingOfficer && showRequestingOfficerInput ? 'is-invalid' : ''}`} // Optional validation style
+                    />
+            )}
+            </div>
+
 
             <div className="radio-inline-container">
                 <span className="radio-text">Decedent Name:</span>
