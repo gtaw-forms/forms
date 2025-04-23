@@ -1,69 +1,26 @@
-// filepath: c:\Users\cross\Documents\GitHub\phmc-forms\src\field-data\deathReport.js
 import React from 'react';
-import { Form, Button, InputGroup } from 'react-bootstrap';
+import { Form, Button, InputGroup } from 'react-bootstrap'; // Added Button and InputGroup
 import Select from 'react-select';
-import DatePicker from 'react-datepicker';
-// *** Import toZonedTime instead of utcToZonedTime ***
-import { toZonedTime, fromZonedTime } from 'date-fns-tz';
-import { isValid, parseISO } from 'date-fns'; // Import date-fns for date validation
 
-// Import react-datepicker styles AFTER date-fns imports
-import "react-datepicker/dist/react-datepicker.css";
-// Optional: Add custom styles for dark mode if needed in your App.css or here
-
-const DeathReport = ({
+const DeathReport = ({ // Renamed component to follow PascalCase convention
     formData,
     handleChange,
-    handleSelectChange,
+    handleSelectChange, // Added this prop
     setShowMissingEmployeeModal,
-    setShowCoronerRankModal,
+    setShowCoronerRankModal, // Added this prop
     coronerGroupedOptions,
     handleDoeChange,
     setFormData,
-    isJohnDoe,
-    isJaneDoe,
-    currentUtcTime,
-    isUploading,
-    handleImageUpload
+    isJohnDoe, // Added this prop
+    isJaneDoe, // Added this prop
+    currentUtcTime, // Added this prop
+    isUploading, // Added this prop
+    handleImageUpload // Added this prop
 }) => {
-
-    const targetTimeZone = 'Etc/GMT-1';
-
-    // --- Helper function to handle DatePicker changes (handleDateChange remains the same) ---
-    const handleDateChange = (name, date) => {
-        if (date && isValid(date)) {
-            const utcDate = fromZonedTime(date, targetTimeZone);
-            setFormData(prev => ({
-                ...prev,
-                [name]: utcDate.toISOString()
-            }));
-        } else {
-            setFormData(prev => ({
-                ...prev,
-                [name]: ''
-            }));
-        }
-    };
-
-    // --- Helper function to get Date object for DatePicker value ---
-    const getDateForPicker = (isoString) => {
-        if (!isoString) return null;
-        try {
-            const utcDate = parseISO(isoString);
-            if (!isValid(utcDate)) return null;
-            // *** Use toZonedTime instead of utcToZonedTime ***
-            return toZonedTime(utcDate, targetTimeZone);
-        } catch (error) {
-            console.error("Error parsing date for picker:", error);
-            return null;
-        }
-    };
-
     return (
         <>
             <p>The Coroner Report Generated needs to be filled out fully, you can upload images locally or link pictures. </p>
-            {/* ... (Keep Employee Credentials section) ... */}
-             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
                 <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
                 <button
                     type="button"
@@ -104,7 +61,7 @@ const DeathReport = ({
                 isClearable
                 placeholder="Search or select coroner..."
                 className={`form-control ${!formData.coronerEmployee ? 'is-invalid' : ''}`}
-                styles={{ /* Keep styles */
+                styles={{ // Keep react-select styles
                     control: (base) => ({
                         ...base,
                         backgroundColor: '#16202c',
@@ -149,48 +106,34 @@ const DeathReport = ({
                         fontSize: '0.75rem',
                         marginBottom: 4
                     })
-                 }}
+                }}
             />
-            <Form.Label></Form.Label>
-
-            {/* --- Replacement using react-datepicker --- */}
+            {/* Removed unused FormHelperText */}
+            <Form.Label></Form.Label> {/* Consider removing empty labels if not needed for spacing */}
             <Form.Label>
-                Dispatch Time (UTC+1) | Decedent Time of Death (UTC+1)
+                Dispatch Time | Decedent Time of Death
                 <span style={{ fontSize: '0.8em', color: '#6c757d', marginLeft: '10px' }}>
                     (Current Server Time: {currentUtcTime})
                 </span>
             </Form.Label>
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '1rem' }}> {/* Added margin bottom */}
-                <DatePicker
-                    selected={getDateForPicker(formData.dateTime)}
-                    onChange={(date) => handleDateChange('dateTime', date)}
-                    showTimeSelect
-                    timeFormat="HH:mm"
-                    timeIntervals={15}
-                    dateFormat="MMMM d, yyyy h:mm aa"
-                    className={`form-control ${!formData.dateTime ? 'is-invalid' : ''}`} // Apply Bootstrap classes
-                    wrapperClassName="date-picker-wrapper" // Add wrapper class if needed for styling width
-                    placeholderText="Select Dispatch Time (UTC+1)"
-                    isClearable // Allow clearing the date
+            <div style={{ display: 'flex', gap: '10px' }}>
+                <Form.Control
+                    type="datetime-local"
+                    name="dateTime"
+                    value={formData.dateTime}
+                    onChange={handleChange}
                     required
+                    className={`form-control ${!formData.dateTime ? 'is-invalid' : ''}`}
                 />
-                <DatePicker
-                    selected={getDateForPicker(formData.pronouncedTimeOfDeath)}
-                    onChange={(date) => handleDateChange('pronouncedTimeOfDeath', date)}
-                    showTimeSelect
-                    timeFormat="HH:mm"
-                    timeIntervals={15}
-                    dateFormat="MMMM d, yyyy h:mm aa"
-                    className={`form-control ${!formData.pronouncedTimeOfDeath ? 'is-invalid' : ''}`} // Apply Bootstrap classes
-                    wrapperClassName="date-picker-wrapper" // Add wrapper class if needed for styling width
-                    placeholderText="Select Time of Death (UTC+1)"
-                    isClearable // Allow clearing the date
+                <Form.Control
+                    type="datetime-local"
+                    name="pronouncedTimeOfDeath"
+                    value={formData.pronouncedTimeOfDeath}
+                    onChange={handleChange}
                     required
+                    className={`form-control ${!formData.pronouncedTimeOfDeath ? 'is-invalid' : ''}`}
                 />
             </div>
-            {/* --- End of Replacement --- */}
-
-            {/* ... (Keep Department Select) ... */}
             <Form.Select
                 name="department"
                 value={formData.department}
@@ -210,7 +153,6 @@ const DeathReport = ({
                 <option value="Protech">Protech Security Solutions</option>
             </Form.Select>
 
-            {/* ... (Keep Decedent Name section) ... */}
             <div className="radio-inline-container">
                 <span className="radio-text">Decedent Name:</span>
                 <div className="radio-button-group">
@@ -253,8 +195,7 @@ const DeathReport = ({
                 />
             </div>
 
-            {/* ... (Keep Type of Death, Place of Death, Manner of Death) ... */}
-             <Form.Select
+            <Form.Select
                 name="typeOfDeath"
                 value={formData.typeOfDeath}
                 onChange={handleChange}
@@ -289,7 +230,6 @@ const DeathReport = ({
                 <option value="Undetermined">Undetermined - the evidence is insufficient to determine the manner of death</option>
             </Form.Select>
 
-            {/* ... (Keep Synopsis, Evidence Locker, Probable Cause, Image Uploads) ... */}
             <Form.Control
                 as="textarea"
                 name="synopsis"
@@ -349,7 +289,7 @@ const DeathReport = ({
                         required
                         className={`form-control ${!formData.scenePhotos ? 'is-invalid' : ''}`}
                         placeholder="Upload Scene Photos (comma-separated)"
-                        onPaste={(e) => { /* Keep paste logic */
+                        onPaste={(e) => { // Keep the paste logic
                             const clipboardData = e.clipboardData || window.clipboardData;
                             const pastedData = clipboardData.getData('text');
                             const items = clipboardData.items;
@@ -379,7 +319,7 @@ const DeathReport = ({
                             } else {
                                 console.log('No URL detected or image item present');
                             }
-                         }}
+                        }}
                     />
                     <Button
                         variant="success"
@@ -412,7 +352,7 @@ const DeathReport = ({
                         required
                         className={`form-control ${!formData.additionalImages ? 'is-invalid' : ''}`}
                         placeholder="Morgue Screen, Cinjuries, CDNA Links (comma-separated)"
-                        onPaste={(e) => { /* Keep paste logic */
+                        onPaste={(e) => { // Keep the paste logic
                             const clipboardData = e.clipboardData || window.clipboardData;
                             const pastedData = clipboardData.getData('text');
                             const items = clipboardData.items;
@@ -442,7 +382,7 @@ const DeathReport = ({
                             } else {
                                 console.log('No URL detected or image item present');
                             }
-                         }}
+                        }}
                     />
                     <Button
                         variant="success"
@@ -475,8 +415,9 @@ const DeathReport = ({
                     }))}
                 />
             </Form.Group>
+            {/* --- End of JSX block --- */}
         </>
     );
 };
 
-export default DeathReport;
+export default DeathReport; // Export with PascalCase name
