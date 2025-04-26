@@ -420,7 +420,9 @@ export const coronerList = [
 
 ];
 
-
+export const skyCare = [
+    {name: 'Placeholder Name'} 
+]; // Placeholder for SkyCare list, to be filled with actual data later
 export const departmentFullName = (abbreviation) => {
     switch (abbreviation) {
         case 'LSPD':
