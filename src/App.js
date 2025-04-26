@@ -19,6 +19,7 @@ import CoronerTipsModal from './components/CoronerTipsModal';
 // Form Data Import - Change to Index.js for easier imports in future
 import ToolsDropdown from './ToolsDropdown'; // Adjust the path if needed
 import EasterEggModal from './components/EasterEggModal'; // Adjust path if needed
+import generateDeathReport from './bbcode-generators/generateDeathReport'; 
 
 import {
     CommNotePHMC,
@@ -1184,21 +1185,30 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
 
         // Proceed only if validation passed and a key was generated
     // --- Easter Egg Logic ---
-    const currentSavedCount = savedReports.length; // Get count *before* saving
-    let showEasterEgg = false;
+    
+    const currentSavedCount = savedReports.length;
+    const easterEggAlreadyShown = localStorage.getItem('easterEggShown') === 'true';
+    let showNormalEasterEgg = false;
+    let showRareEasterEgg = false;
 
-    if (currentSavedCount === 4) { // User's *fifth* report (index 4)
-        showEasterEgg = true;
-    } else if (currentSavedCount > 4) { // Only apply 5% chance *after* the 5th report
-        // 5% chance on subsequent saves
-        showEasterEgg = Math.random() < 0.05;
+    // Condition for the *first* time (normal easter egg)
+    if (currentSavedCount === 4 && !easterEggAlreadyShown) { // 5th report save
+        showNormalEasterEgg = true;
+    } else if (currentSavedCount > 4 && !easterEggAlreadyShown) { // Subsequent saves *before* first showing
+        showNormalEasterEgg = Math.random() < 0.05; // 5% chance
+    } else if (easterEggAlreadyShown) { // Condition for the *rare* easter egg (only if normal was shown before)
+        showRareEasterEgg = Math.random() < 0.01; // 1% chance
     }
 
-    const easterEggAlreadyShown = localStorage.getItem('easterEggShown') === 'true';
-
-    if (showEasterEgg && !easterEggAlreadyShown) {
-        setShowEasterEggModal(true); // Show the modal
-        localStorage.setItem('easterEggShown', 'true'); // Set flag so it doesn't show again *this session*
+    // Set state based on which egg (if any) should show
+    if (showNormalEasterEgg) {
+        setShowEasterEggModal(true);
+        setEasterEggType('normal');
+        localStorage.setItem('easterEggShown', 'true'); // Set flag *only* when normal egg is shown
+    } else if (showRareEasterEgg) {
+        setShowEasterEggModal(true);
+        setEasterEggType('rare');
+        // Do NOT set the localStorage flag again here
     }
 // --- End Easter Egg Logic ---
 
@@ -1241,6 +1251,12 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
         }
     }
 };
+const [easterEggType, setEasterEggType] = useState(null); // 'normal', 'rare', or null
+const showRareEasterEggDirectly = () => {
+    setShowEasterEggModal(true);
+    setEasterEggType('rare');
+};
+
     const loadReport = (key) => {
         const reportData = localStorage.getItem(key);
         if (reportData) {
@@ -1401,100 +1417,6 @@ const filterFormData = (formData, bbCodeVersion) => {
 
     return filteredData;
 };
-const generateDeath = () => {
-    const {
-        coronerRank,
-        placeOfDeath,
-        department,
-        dateTime,
-        coronerEmployee,
-        coronerBadge,
-        decedentName,
-        decedentOOC,
-        pronouncedTimeOfDeath,
-        synopsis,
-        probableCauseOfDeath,
-        mannerOfDeath,
-        typeOfDeath,
-        scenePhotos,
-        additionalImages,
-        evidenceLocker, // Keep this variable
-        evidenceLockerID
-    } = formData;
-
-    const scenePhotosBBCode = scenePhotos.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
-    const additionalImagesBBCode = additionalImages.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
-
-    // Determine if evidence was added based on the checkbox state
-    const evidenceAdded = formData.evidenceLocker === 'true';
-
-    let evidenceLockerListItems = '[*] N/A'; // Default if no ID is provided or checkbox is off
-    if (evidenceAdded && evidenceLockerID && evidenceLockerID.trim() !== '') {
-         evidenceLockerListItems = evidenceLockerID
-            .split(',') // Split the string by commas
-            .map(item => `[*] ${item.trim()}`) // Add '[*] ' prefix to each item
-            .join('\n'); // Join items with newlines
-    }
-
-    // Base BBCode for ID 1
-    const bbCode = `[divbox=transparent][center][img]https://i.imgur.com/Hxjt4M2.png[/img][/center][/divbox]
-
-[divbox=transparent][br][/br][center]DEATH INVESTIGATION REPORT[/center]
-[hr][/hr]
-
-[center][b]A. WRITTEN REPORT[/b][/center]
-
-The County Coroner's Office has been called regarding the decease that occurred at the location of [b]${placeOfDeath}[/b]. Upon receiving the call from[b] ${departmentFullName(department)}[/b], Coroner's Office dispatched a ${coronerRank} to the crime scene to conduct an investigation on the [b]${dateTime}[/b].
-
-The ${coronerRank}, [b]${coronerEmployee}[/b], Serial Number [b]${coronerBadge}[/b], arrived at the scene and identified the individual as [b]${decedentName}[/b], who is estimated to have died at [b]${pronouncedTimeOfDeath}[/b]. Following an initial investigation, The ${coronerRank} came up with the following [b]synopsis[/b]: ${synopsis}
-
-Based on the information gathered from the scene investigation and the decedent's medical history (if available), the probable cause of death was determined to be [b]${probableCauseOfDeath}[/b]. The manner of death was classified as [b]${mannerOfDeath}[/b].
-[/divbox]
-[divbox=transparent][center][b]B. PHOTOGRAPHIC DOCUMENTARY RECORD[/b][/center]
-[hr][/hr]
-[center][size=85][b][u]SCENE PHOTOGRAPHY[/u][/b][/size][/center]
-${scenePhotosBBCode}
-[/divbox]
-
-[divbox=transparent]
-[center][b]C. STATEMENT[/b][/center]
-[hr][/hr]
-[size=85]As a ${coronerRank}, I have made detailed notes of my findings and conclusions, and these notes are available for review if necessary. However, I must note that these notes do not contain any personal opinions and are solely based on the evidence and facts available to me.
-
-In conclusion, I hope that this report provides the necessary information required for the agency to move forward with any necessary actions. Please let me know if you require any additional information or if I can be of further assistance.
-
-I certify that the information contained in this report is true and accurate to the best of my knowledge and belief. I have reviewed the report and ensured that all information included is complete and accurate. [/size][/divbox]
-
-[divbox=transparent]
-[center][b]D. PRIVACY AND CONFIDENTIALITY[/b][/center]
-[hr][/hr]
-[center][size=85]This document from the Forensic Medicine and Pathology Department of Pillbox Hill Medical Center certifies the authenticity of the information contained within. Any unauthorized distribution or use of this information is in violation of the Health Insurance Portability and Accountability Act (HIPAA), as well as state and federal privacy laws, including but not limited to the San Andreas Confidentiality of Medical Information Act (CMIA) and the San Andreas Information Practices Act (IPA).
-
-It is imperative that all parties handling this document respect the privacy and confidentiality of the decedent and their family. Any violation of these laws may result in legal action being taken against the responsible parties.
-
-This document is provided for official purposes only and is not to be construed as legal advice or medical diagnosis. If additional information or clarification is needed, please contact the Forensic Medicine and Pathology Department of Pillbox Hill Medical Center.[/size][/divbox]
-
-[divbox=transparent][center][b][u](( OUT OF CHARACTER IMAGES ))[/u][/b][/center][hr][/hr]
-
-This section clarifies whether or not if the player was character killed or player killed.
-In this case the player was; ${typeOfDeath}
-Player OOC Name: ${decedentOOC}
-${formData.morgueStatus === 'true' ? '[b][color=red](( The Morgue Screen is currently bugged and we unfortunately cannot pull Morgue Screen images )) [/color][/b]' : ''}
- Morgue screen, cinjuries, cdna links: 
- [size=85][u] THESE IMAGES ARE [B]OUT OF CHARACTER[/B] FOR INTERNAL RECORDS, DO NOT USE THESE AS EVIDENCE. [/u][/size]
-${additionalImagesBBCode}
-
-${coronerRank} ${coronerEmployee} has added something to the evidence locker: ${evidenceAdded ? 'Yes' : 'No'}
-[list]
-${evidenceLockerListItems}
-[/list]
-
-[/divbox]
-`;
-
-
-        return bbCode;
-    };
 
     const generateEmail = () => {
         const {
@@ -3102,8 +3024,8 @@ ${patientSafety}
     };
 
     // Update BBCode generation logic
-    const bbCode = bbCodeVersion === 1 ? generateDeath() :
-        bbCodeVersion === 2 ? generateEmail() :
+    const bbCode = bbCodeVersion === 1 ? generateDeathReport(formData) :
+    bbCodeVersion === 2 ? generateEmail() :
         bbCodeVersion === 3 ? generateAdvancedPatientFile() :  
                 bbCodeVersion === 4 ? generateDental() :
                     bbCodeVersion === 5 ? generateSurgicalOps() :
@@ -3122,7 +3044,7 @@ ${patientSafety}
                                                                                             bbCodeVersion === 27 ? generateEmailPHMCEmail() : 
                                                                                             bbCodeVersion === 28 ? generatePsychEvalPHMC() :
                                                                                             bbCodeVersion === 29 ? generatePsychEvalPBC() :
-                                                                                generateDeath();
+                                                                                            generateDeathReport(formData);
                                                                                 // generateError();
 
    
@@ -3495,7 +3417,7 @@ if (bbCodeVersion === 1) {
     const getBBCodeContent = () => {
         switch (bbCodeVersion) {
             case 1:
-                return generateDeath();
+                return generateDeathReport(formData);
             case 2:
                 return generateEmail();
             case 3: 
@@ -3538,7 +3460,7 @@ if (bbCodeVersion === 1) {
        }
     };
     const parseBBCode = () => {
-        const bbCode = generateDeath();
+        const bbCode = generateDeathReport(formData);
         setParsedBBCode(bbCode);
         setFormData(prev => ({
             ...prev,
@@ -4125,7 +4047,14 @@ const [imgurLink, setImgurLink] = useState(null);
                                 
         return (
         <div className="App">
-<EasterEggModal show={showEasterEggModal} onHide={() => setShowEasterEggModal(false)} />
+            <EasterEggModal
+                show={showEasterEggModal}
+                type={easterEggType} // Pass the type ('normal' or 'rare')
+                onHide={() => {
+                    setShowEasterEggModal(false);
+                    setEasterEggType(null); // Reset type on hide
+                }}
+            />
 {season === "Christmas" && <Snowfall images={EasterEggImages} snowflakeCount={75} />}
 
 {showUpdateNotification && (
@@ -4982,7 +4911,18 @@ const [imgurLink, setImgurLink] = useState(null);
                                 <i className="fas fa-paper-plane"></i> Send Dev Webhook
                             </Button>
                         )}
-
+                        {window.location.hostname === 'localhost' && ( // Example: Only show on localhost
+                            <Button
+                                variant="warning" // Use a different color maybe?
+                                type="button"
+                                className="changelog-button" // Or a different class
+                                onClick={showRareEasterEggDirectly} // Call the new function
+                                title="Show the rare easter egg"
+                            >
+                                <i className="fas fa-star"></i> {/* Example icon */}
+                                Show Rare Egg
+                            </Button>
+                        )}
                         </div>
                     </form>
                 </div>
@@ -5583,7 +5523,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                 <h2>Generated BBCode</h2>
                                 <div className="bbcode-output">
                                     <pre>
-                                                        {bbCodeVersion === 1 ? generateDeath() :
+                                                        {bbCodeVersion === 1 ? generateDeathReport(formData) : 
                                                         bbCodeVersion === 2 ? generateEmail() :
                                                         bbCodeVersion === 3 ? generateAdvancedPatientFile() :
                                                         bbCodeVersion === 5 ? generateSurgicalOps() :
@@ -5602,7 +5542,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                                         bbCodeVersion === 27 ? generateEmailPHMCEmail() :  
                                                         bbCodeVersion === 28 ? generatePsychEvalPHMC() :
                                                         bbCodeVersion === 29 ? generatePsychEvalPBC() :
-                                                        generateDeath()}
+                                                        generateDeathReport(formData)}
                                     </pre>
                                 </div>
                             </>
@@ -5718,7 +5658,7 @@ const [imgurLink, setImgurLink] = useState(null);
                             type="button"
                             className="changelog-button"
                             onClick={() => {
-                                const bbCode = bbCodeVersion === 1 ? generateDeath() :
+                                    const bbCode = bbCodeVersion === 1 ? generateDeathReport(formData) : 
                                     bbCodeVersion === 2 ? generateEmail() :
                                     bbCodeVersion === 3 ? generateAdvancedPatientFile() : 
                                                 bbCodeVersion === 5 ? generateSurgicalOps() :
@@ -5738,7 +5678,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                                                                                          bbCodeVersion === 28 ? generatePsychEvalPHMC() :
                                                                                                         bbCodeVersion === 29 ? generatePsychEvalPBC() :
 
-                                                                                                            generateDeath();
+                                                                                                        generateDeathReport(formData);
                                 const currentDateTime = new Date().toLocaleString();
                                 const { decedentName, coronerEmployee, coronerRank, patientName, decedentOOC, phmcEmployee, requestingOfficer, patientID, patientFirstName, patientLastName} = formData;
                                 const version = bbCodeVersion === 1 ? "Decedent Report" :
@@ -5787,7 +5727,19 @@ const [imgurLink, setImgurLink] = useState(null);
                                         description: "Here's the debug output.",
                                         color: 0x00FF00, // Green
                                         fields: [
-                                            { name: "User", value: `${coronerRank || ''} ${coronerEmployee || phmcEmployee || `${patientFirstName || ''} ${patientLastName || ''}` || 'Unknown User'}`, inline: true },
+                                            {
+                                                name: "User",
+                                                // Updated logic: Check for phmcEmployee first
+                                                value: phmcEmployee
+                                                    ? `Hospital Staff ${phmcEmployee}` // If PHMC staff exists
+                                                    : coronerEmployee
+                                                        ? `${coronerRank || 'Coroner'} ${coronerEmployee}` // Else if Coroner exists
+                                                        : (patientFirstName || patientLastName)
+                                                            ? `${patientFirstName || ''} ${patientLastName || ''}`.trim() // Else if Patient name exists
+                                                            : 'Unknown User', // Fallback
+                                                inline: true
+                                            },
+                                                { name: "User", value: `${coronerRank || ''} ${coronerEmployee || phmcEmployee || `${patientFirstName || ''} ${patientLastName || ''}` || 'Unknown User'}`, inline: true },
                                             { name: "Form Type", value: version || "Unknown Form", inline: true },
                                             { name: "Patient/Decedent", value: `${patientName || decedentName || patientID || 'N/A'}`, inline: true },
                                             { name: "OOC Name", value: decedentOOC || "N/A", inline: true },
