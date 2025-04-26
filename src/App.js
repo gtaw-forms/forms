@@ -1143,6 +1143,66 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
         }
     ].filter(group => group.options.length > 0); // Filter out empty groups if any list is empty
     const [showEasterEggModal, setShowEasterEggModal] = useState(false);
+    const sendEasterEggNotification = async (type = 'normal') => { // Default to 'normal'
+        const webhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+        if (!webhookUrl) {
+            console.error("Discord webhook URL is not configured.");
+            return; // Don't proceed if the URL isn't set
+        }
+
+        // Try to get user identifier
+        const userIdentifier = formData.coronerEmployee || formData.phmcEmployee || formData.patientName || formData.decedentName || 'Someone';
+
+        // --- Customize embed based on type ---
+        let embedTitle = "🎉 Easter Egg Found! 🎉";
+        let embedDescription = `Hey! **${userIdentifier}** just found the normal easter egg! 🥚`;
+        let embedColor = 0x7289DA; // Discord Blurple for normal
+        let triggerSource = "Triggered during report save";
+
+        if (type === 'rare') {
+            embedTitle = "✨ Rare Easter Egg Found! ✨";
+            embedDescription = `Wow! **${userIdentifier}** just triggered the 1% rare easter egg! 🥚🎉`;
+            embedColor = 0xFFD700; // Gold color for rare
+        }
+
+        // Check if triggered manually (only for rare currently, but could be expanded)
+        const isManualTrigger = window.location.hostname === 'localhost' && type === 'rare'; // Check if manual trigger conditions are met
+        if (isManualTrigger) {
+            embedTitle += " (Manual Trigger)";
+            embedDescription = `Debug: **${userIdentifier}** just triggered the rare easter egg manually! 🥚🎉`;
+            triggerSource = "Triggered via Debug Button";
+        }
+        // --- End Customization ---
+
+        const embed = {
+            title: embedTitle,
+            description: embedDescription,
+            color: embedColor,
+            timestamp: new Date().toISOString(),
+            footer: {
+                text: `PHMC Forms Tool | ${triggerSource}` // Use dynamic trigger source
+            }
+        };
+
+        try {
+            const response = await fetch(webhookUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ embeds: [embed] }),
+            });
+
+            if (!response.ok) {
+                console.error(`Error sending ${type} easter egg webhook: ${response.status} ${response.statusText}`);
+            } else {
+                console.log(`${type} easter egg notification sent successfully.`);
+            }
+        } catch (error) {
+            console.error(`Failed to send ${type} easter egg webhook:`, error);
+            Sentry.captureException(error, { extra: { context: `sendEasterEggNotification (${type})` } });
+        }
+    };
 
     // Function to load saved reports from local storage
     const saveReport = async () => {
@@ -1185,30 +1245,30 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
 
         // Proceed only if validation passed and a key was generated
     // --- Easter Egg Logic ---
-    
     const currentSavedCount = savedReports.length;
     const easterEggAlreadyShown = localStorage.getItem('easterEggShown') === 'true';
     let showNormalEasterEgg = false;
     let showRareEasterEgg = false;
 
-    // Condition for the *first* time (normal easter egg)
-    if (currentSavedCount === 4 && !easterEggAlreadyShown) { // 5th report save
+    // Conditions remain the same
+    if (currentSavedCount === 4 && !easterEggAlreadyShown) {
         showNormalEasterEgg = true;
-    } else if (currentSavedCount > 4 && !easterEggAlreadyShown) { // Subsequent saves *before* first showing
-        showNormalEasterEgg = Math.random() < 0.05; // 5% chance
-    } else if (easterEggAlreadyShown) { // Condition for the *rare* easter egg (only if normal was shown before)
-        showRareEasterEgg = Math.random() < 0.01; // 1% chance
+    } else if (currentSavedCount > 4 && !easterEggAlreadyShown) {
+        showNormalEasterEgg = Math.random() < 0.05;
+    } else if (easterEggAlreadyShown) {
+        showRareEasterEgg = Math.random() < 0.01;
     }
 
     // Set state based on which egg (if any) should show
     if (showNormalEasterEgg) {
         setShowEasterEggModal(true);
         setEasterEggType('normal');
-        localStorage.setItem('easterEggShown', 'true'); // Set flag *only* when normal egg is shown
+        localStorage.setItem('easterEggShown', 'true');
+        sendEasterEggNotification('normal'); // <-- Call with 'normal' type
     } else if (showRareEasterEgg) {
         setShowEasterEggModal(true);
         setEasterEggType('rare');
-        // Do NOT set the localStorage flag again here
+        sendEasterEggNotification('rare'); // <-- Call with 'rare' type
     }
 // --- End Easter Egg Logic ---
 
@@ -1255,6 +1315,20 @@ const [easterEggType, setEasterEggType] = useState(null); // 'normal', 'rare', o
 const showRareEasterEggDirectly = () => {
     setShowEasterEggModal(true);
     setEasterEggType('rare');
+    // Send webhook only if on localhost for the manual trigger
+    if (window.location.hostname === 'localhost') {
+        sendEasterEggNotification('rare'); // Pass 'rare' type
+    }
+};
+
+// --- Function to show the normal easter egg ---
+const showNormalEasterEggDirectly = () => {
+    setShowEasterEggModal(true);
+    setEasterEggType('normal');
+    // Optionally send a webhook for the normal manual trigger if desired
+    // if (window.location.hostname === 'localhost') {
+    //     sendEasterEggNotification('normal'); // Pass 'normal' type
+    // }
 };
 
     const loadReport = (key) => {
