@@ -1,5 +1,6 @@
+// src/field-data/MedicalRelease.js
 import React from 'react';
-import { Form } from 'react-bootstrap';
+import { Form, Button, InputGroup } from 'react-bootstrap';
 import Select from 'react-select';
 
 const MedicalRelease = ({
@@ -12,7 +13,21 @@ const MedicalRelease = ({
     PurposeMedicalInformationReleaseFormat,
     MedicalRecordsRelease,
     phmcGroupedOptions,
+    handleImageUpload,
+    isUploading,
+
 }) => {
+
+    const calculateCost = () => {
+        const selectedCount = formData.MedicalRecordsRelease?.length || 0;
+        if (selectedCount === 0) {
+            return 0;
+        }
+        const costPerItem = 5000;
+        return selectedCount * costPerItem;
+    };
+    const approximateCost = calculateCost();
+
     return (
         <>        <Form.Group className="mb-3">
 
@@ -139,8 +154,8 @@ const MedicalRelease = ({
             {patientPhone.map((option) => (
                 <option key={option.value} value={option.value}>{option.value}</option>
             ))}
-        </Form.Select>        
-                                       
+        </Form.Select>
+
          <Form.Control
                     type="text"
                     name="patientPH"
@@ -220,7 +235,7 @@ const MedicalRelease = ({
             {PurposeMedicalInformationReleaseFormat.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
             ))}
-        </Form.Select>                               
+        </Form.Select>
          {formData.PurposeMedicalInformationReleaseFormat === 'Other' && (
             <Form.Control
                 type="text"
@@ -270,63 +285,164 @@ const MedicalRelease = ({
                         }));
                     }}
                     options={MedicalRecordsRelease}
-                    className={`form-control ${!formData.MedicalRecordsRelease ? 'is-invalid' : ''}`}
+                    className={`form-control ${!formData.MedicalRecordsRelease || formData.MedicalRecordsRelease.length === 0 ? 'is-invalid' : ''}`} // Added validation
                     placeholder="Select Release Options (Multiple Choice)"
-                    styles={{                                        
-                        control: (base) => ({
-                    ...base,
-                    minHeight: '38px',
-                    backgroundColor: '#16202c',
-                    color: '#eeeeeeb0',
-                    borderColor: '#6c757d',
-                    '&:hover': {
-                        borderColor: '#eeeeeeb0'
-                    }
-                }),
-                menu: (base) => ({
-                    ...base,
-                    backgroundColor: '#16202c',
-                    zIndex: 1000,
-                    border: '1px solid #6c757d',
-                    borderRadius: '0.375rem'
-                }),
-                option: (base, state) => ({
-                    ...base,
-                    backgroundColor: state.isFocused ? '#30363d' : '#16202c',
-                    color: '#eeeeeeb0',
-                    padding: '0.5rem 1rem',
-                    '&:hover': {
-                        backgroundColor: '#30363d'
-                    }
-                }),
-                multiValue: (base) => ({
-                    ...base,
-                    backgroundColor: '#30363d',
-                    color: '#eeeeeeb0'
-                }),
-                multiValueLabel: (base) => ({
-                    ...base,
-                    color: '#eeeeeeb0'
-                }),
-                multiValueRemove: (base) => ({
-                    ...base,
-                    color: '#6c757d',
-                    '&:hover': {
-                        backgroundColor: '#dc3545',
-                        color: '#fff'
-                    }
-                }),
-                input: (base) => ({
-                    ...base,
-                    color: '#eeeeeeb0'
-                }),
-                placeholder: (base) => ({
-                    ...base,
-                    color: '#6c757d'
-                })
-            }}
+                    styles={{
+                        control: (base, state) => ({ // Added state parameter
+                            ...base,
+                            minHeight: '38px',
+                            backgroundColor: '#16202c',
+                            color: '#eeeeeeb0',
+                            // Apply red border if invalid (nothing selected)
+                            borderColor: !formData.MedicalRecordsRelease || formData.MedicalRecordsRelease.length === 0 ? '#dc3545' : '#6c757d',
+                            '&:hover': {
+                                borderColor: !formData.MedicalRecordsRelease || formData.MedicalRecordsRelease.length === 0 ? '#dc3545' : '#eeeeeeb0'
+                            }
+                        }),
+                        menu: (base) => ({
+                            ...base,
+                            backgroundColor: '#16202c',
+                            zIndex: 1000,
+                            border: '1px solid #6c757d',
+                            borderRadius: '0.375rem'
+                        }),
+                        option: (base, state) => ({
+                            ...base,
+                            backgroundColor: state.isFocused ? '#30363d' : '#16202c',
+                            color: '#eeeeeeb0',
+                            padding: '0.5rem 1rem',
+                            '&:hover': {
+                                backgroundColor: '#30363d'
+                            }
+                        }),
+                        multiValue: (base) => ({
+                            ...base,
+                            backgroundColor: '#30363d',
+                            color: '#eeeeeeb0'
+                        }),
+                        multiValueLabel: (base) => ({
+                            ...base,
+                            color: '#eeeeeeb0'
+                        }),
+                        multiValueRemove: (base) => ({
+                            ...base,
+                            color: '#6c757d',
+                            '&:hover': {
+                                backgroundColor: '#dc3545',
+                                color: '#fff'
+                            }
+                        }),
+                        input: (base) => ({
+                            ...base,
+                            color: '#eeeeeeb0'
+                        }),
+                        placeholder: (base) => ({
+                            ...base,
+                            color: '#6c757d'
+                        })
+                    }}
             />
-                                                <Form.Label></Form.Label>                                                               
+                        {approximateCost > 0 && (
+                <Form.Label style={{ marginTop: '5px', color: '#28a745', fontWeight: 'bold' }}>
+                    This service will cost approximately ${approximateCost.toLocaleString()}
+                </Form.Label>
+            )}
+            {approximateCost > 0 && ( // Only show payment option if there's a cost
+                <Form.Group className="mb-3" style={{ marginTop: '15px' }}>
+                    <Form.Check
+                        type="checkbox"
+                        id="payNowCheckbox"
+                        label=" Pay Now?"
+                        checked={formData.payNow === true || formData.payNow === 'true'} // Handle boolean or string 'true'
+                        onChange={(e) => {
+                            setFormData(prev => ({
+                                ...prev,
+                                payNow: e.target.checked, // Store as boolean
+                                // Optionally clear paymentProofPhotos if unchecked
+                                // paymentProofPhotos: e.target.checked ? prev.paymentProofPhotos : ''
+                            }));
+                        }}
+                    />
+                    <span className="helper-text">
+                        Tick this box if you wish to provide proof of payment now. Routing: <a href="https://banking.gta.world/transfer" target="_blank" rel="noopener noreferrer">020000062</a>
+                    </span>
+                </Form.Group>
+            )}
+            {/* --- End Pay Now Checkbox --- */}
+
+            {/* --- NEW: Conditional Payment Proof Upload --- */}
+            {(formData.payNow === true || formData.payNow === 'true') && approximateCost > 0 && (
+                <Form.Group className="mb-3 upload-container">
+                    <Form.Label>Proof of Payment Image Upload</Form.Label>
+                    <InputGroup>
+                        <Form.Control
+                            as="textarea" // Use textarea to potentially show multiple URLs if needed
+                            rows={2}
+                            name="paymentProofPhotos"
+                            value={formData.paymentProofPhotos || ''}
+                            onChange={handleChange} // Allow manual URL entry/editing
+                            placeholder="Paste image URL or Upload"
+                            required // Make required if payNow is checked
+                            className={`form-control ${!formData.paymentProofPhotos ? 'is-invalid' : ''}`}
+                            onPaste={(e) => { // Keep paste logic if desired
+                                const clipboardData = e.clipboardData || window.clipboardData;
+                                const pastedData = clipboardData.getData('text');
+                                const items = clipboardData.items;
+                                let hasImageItem = false;
+                                const urlRegex = /(https?:\/\/[^\s]+)/g;
+                                const containsUrl = urlRegex.test(pastedData);
+
+                                for (let i = 0; i < items.length; i++) {
+                                    if (items[i].type.indexOf('image') !== -1) {
+                                        hasImageItem = true;
+                                        const file = items[i].getAsFile();
+                                        // Use the correct field name here
+                                        handleImageUpload({ target: { files: [file] } }, 'paymentProofPhotos');
+                                        e.preventDefault();
+                                        break;
+                                    }
+                                }
+                                if (containsUrl && !hasImageItem) {
+                                    const currentValue = formData.paymentProofPhotos || '';
+                                    const cursorPos = e.target.selectionStart;
+                                    const separator = currentValue && currentValue.trim().length > 0 ? ', ' : '';
+                                    const newValue = currentValue.slice(0, cursorPos) +
+                                        (cursorPos > 0 ? separator : '') +
+                                        pastedData +
+                                        currentValue.slice(cursorPos);
+                                    // Use the correct field name here
+                                    setFormData(prev => ({ ...prev, paymentProofPhotos: newValue }));
+                                    e.preventDefault();
+                                }
+                            }}
+                        />
+                        <Button
+                            variant="success"
+                            disabled={isUploading}
+                            onClick={() => {
+                                const input = document.createElement('input');
+                                input.type = 'file';
+                                input.accept = 'image/*';
+                                input.multiple = true; // Allow multiple if needed
+                                // Use the correct field name here
+                                input.onchange = (e) => handleImageUpload(e, 'paymentProofPhotos');
+                                input.click();
+                            }}
+                        >
+                            <i className={`fas ${isUploading ? 'fa-spinner fa-spin' : 'fa-upload'}`}></i>
+                            {isUploading ? ' Uploading...' : ' Upload Image(s)'}
+                        </Button>
+                    </InputGroup>
+                    <span className="helper-text">
+                        Upload proof of payment. Supports clipboard pasting (Ctrl+V). Hosted by Imgur.
+                    </span>
+                    {/* Optional: Display uploaded image preview */}
+                    {formData.paymentProofPhotos && formData.paymentProofPhotos.split(',').map((url, index) => (
+                         url.trim() && <img key={index} src={url.trim()} alt={`Payment Proof ${index + 1}`} style={{ maxWidth: '100px', maxHeight: '100px', marginTop: '5px', marginRight: '5px', border: '1px solid #30363d' }} />
+                    ))}
+                </Form.Group>
+            )}
+                                                <Form.Label></Form.Label>
 
             {formData.MedicalRecordsRelease && formData.MedicalRecordsRelease.includes('Other') && (
             <Form.Control
@@ -336,10 +452,11 @@ const MedicalRelease = ({
                 onChange={handleChange}
                 placeholder="Please specify other records to be released"
                 required
+                className={`form-control ${!formData.MedicalRecordsReleaseOther ? 'is-invalid' : ''}`} // Added validation
             />
         )}
-            <Form.Label></Form.Label>                                                               
             <Form.Label></Form.Label>
+            <Form.Label>Practitioner Seen By:</Form.Label> {/* Added label for clarity */}
     <Select
             name="phmcEmployee"
             value={phmcGroupedOptions
@@ -367,8 +484,8 @@ const MedicalRelease = ({
             options={phmcGroupedOptions}
             isClearable
             placeholder="Which Doctor Treated You? (You can type to search!)"
-            className="form-control"
-            styles={{
+            className="form-control" // Removed validation class, add if needed
+            styles={{ // Copied styles from the multi-select for consistency
                 control: (base) => ({
                     ...base,
                     backgroundColor: '#16202c',
@@ -423,11 +540,12 @@ type="date"
 name="SubmitDate"
 value={formData.SubmitDate || new Date().toISOString().split('T')[0]}
 onChange={handleChange}
-readOnly
+readOnly // Keep readOnly if it should default to today
+className="form-control" // Added class
 />
 
 </>
     );
 };
-          
+
 export default MedicalRelease;

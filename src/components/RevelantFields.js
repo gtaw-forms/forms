@@ -171,6 +171,9 @@ const getRelevantFields = (bbCodeVersion) => {
                 'MedicalRecordsRelease',
                 'CarePurposeMedicalInformationRelease',
                 'PurposeMedicalInformationReleaseFormat',
+                'payNow', 
+                'paymentProofPhotos' 
+        
             ];
         case 25: // Patient File - Basic
             return [

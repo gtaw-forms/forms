@@ -1,8 +1,6 @@
-import { departmentFullName } from '../data'; // Import the helper function
+import { departmentFullName } from '../data'; 
 
-// Accept formData as an argument
 const generateDeathReport = (formData) => {
-    // Destructure necessary fields directly from the passed formData
     const {
         coronerRank,
         placeOfDeath,

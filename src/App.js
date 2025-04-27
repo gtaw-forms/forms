@@ -132,12 +132,13 @@ function App() {
         mannerOfDeath: '',
         typeOfDeath: '',
         coronerEmployee: '',
-        MedicalRecordsRelease: [], // Keep as array for multi-select (react-select)
-        PurposeMedicalInformationReleaseFormat: '', // *** FIX: Change from [] to '' ***
+        MedicalRecordsRelease: [],
+        payNow: false,
+        paymentProofPhotos: '',
+        PurposeMedicalInformationReleaseFormat: '', 
         PurposeMedicalInformationRelease: '',
-        // ... other fields ...
-        lab: [''], // Keep as array for multi-select (react-select)
-        extraStaff: [], // Keep as array for multi-select (react-select)    
+        lab: [''], 
+        extraStaff: [],   
         decedentOOC: '',
         scenePhotos: '',
         patientMedInfoFormatOther: '',
@@ -1226,7 +1227,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 return; // Exit if validation fails
             }
             key = `${formData.patientID} - ${formData.lastName} - ${formData.date}`;
-        } else if (bbCodeVersion === 24 || bbCodeVersion === 25 || bbCodeVersion === 26) { // Added patient file versions
+        } else if (bbCodeVersion === 25 || bbCodeVersion === 26) { // Added patient file versions
              if (!formData.patientName || !formData.date) { // Simplified check for these forms
                 showNotification(`Please fill in Patient Name and Date fields.`, 'exclamation-circle');
                 return; // Exit if validation fails
@@ -2367,7 +2368,23 @@ ${patientNotes}
                             StupidDateFrom,
                             StupidDateTo,
                             SubmitDate,
+                            paymentProofPhotos,
+                            MedicalRecordsRelease,
+                            payNow,
                         } = formData;
+
+                        const calculateCost = () => {
+                            const selectedCount = MedicalRecordsRelease?.length || 0;
+                            if (selectedCount === 0) {
+                                return 0;
+                            }
+                            const costPerItem = 5000;
+                            return selectedCount * costPerItem;
+                        };
+                        const approximateCost = calculateCost();
+                        const firstPaymentProofUrl = (paymentProofPhotos || '').split(',')[0].trim();
+                        const patientFullName = `${patientFirstName || ''} ${patientMiddleName || ''} ${patientLastName || ''}`.replace(/\s+/g, ' ').trim(); // Combine and clean up spaces
+                    
                         let bbCode = `[divbox=white] [center] [img]https://i.imgur.com/Hxjt4M2.png[/img] [/center] [/divbox]
 [divbox=white]
 [br][/br][color=#800000][size=150][b]I. PATIENT INFORMATION[/b][/size][/color][hr][/hr]
@@ -2447,8 +2464,12 @@ By typing my name below, I, ${patientFirstName} ${patientMiddleName} ${patientLa
 [list=none][b]Signature:[/b] 
 [i]${patientFirstName} ${patientMiddleName} ${patientLastName}[/i][br][/br]
 [b]Date:[/b]
-[i]${SubmitDate}[/i][/list][/divbox]`
-return bbCode;
+[i]${SubmitDate}[/i]
+${(payNow === true || payNow === 'true') && approximateCost > 0 ? `
+    I, ${patientFullName || 'the undersigned'}, enclose this payment of $${approximateCost.toLocaleString()} for the Medical Records Release Fees. ${firstPaymentProofUrl ? `[url=${firstPaymentProofUrl}]Enclosed Image[/url]` : 'i[/i]'}` : ''}
+[/list]
+    [/divbox]`; // <-- Moved the closing divbox tag here
+    return bbCode;
 };
 const generateBasicPatientFile = () => {
     const {
@@ -4897,7 +4918,10 @@ const [imgurLink, setImgurLink] = useState(null);
                             phmcGroupedOptions={phmcGroupedOptions} 
                             patientTitle={patientTitle} 
                             patientPhone={patientPhone} 
-                            PurposeMedicalInformationReleaseFormat={PurposeMedicalInformationReleaseFormat} 
+                            PurposeMedicalInformationReleaseFormat={PurposeMedicalInformationReleaseFormat}
+                            handleImageUpload={handleImageUpload}
+                            isUploading={isUploading}
+ 
 
                             />
                     ) : bbCodeVersion === 25 ? ( // Basic Patient File
