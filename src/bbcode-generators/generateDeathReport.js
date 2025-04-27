@@ -107,7 +107,7 @@ It is imperative that all parties handling this document respect the privacy and
 
 This document is provided for official purposes only and is not to be construed as legal advice or medical diagnosis. If additional information or clarification is needed, please contact the Forensic Medicine and Pathology Department of Pillbox Hill Medical Center.[/size][/divbox]
 
-[divbox=transparent][center][bold]u)[/u][/bold][/center][hr][/hr]
+[divbox=transparent][center][bold][u](( OUT OF CHARACTER IMAGES ))[/u][/bold][/center][hr][/hr]
 
 This section clarifies whether or not if the player was character killed or player killed.
 In this case the player was; ${typeOfDeath || 'Unknown'}
