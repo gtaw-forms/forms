@@ -391,7 +391,7 @@ export const Risk = [
     { name: 'Winter Calderone', lastName: 'Calderone', signature: '', category: 'Nursing' },
     { name: `Evelyn Myers`, lastName: 'Myers', signature: '', category: 'Nursing' },
     { name: 'Aika Irabon', lastName: 'Irabon', signature: '', category: 'Resident Physician' },
-
+    { name: 'Erik Schaefer', lastName: 'Schaefer', signature: '', category: 'Resident Physician' },
     // ems
     { name: 'Will Flanary', lastName: 'Flanary', signature: '', category: 'Emergency Medical Services' },
 ];
