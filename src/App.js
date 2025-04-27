@@ -4247,9 +4247,8 @@ const [imgurLink, setImgurLink] = useState(null);
                                     </Button>
                                 </div>
                                 <div className="modal-content">
-                                Gave the place a spring clean, a lot of stuff under the hood has changed, if anything appears broken, cannot submit forms, please do let me know! 
                                     <ul>
-                                        <li>Clean up</li>
+                                        <li>Enhance Medical Release functionality with payment options and validation; update relevant fields in multiple components</li>
                                     </ul>
                                     - frosty
                                 </div>
