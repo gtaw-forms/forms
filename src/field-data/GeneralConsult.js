@@ -1,5 +1,5 @@
 import React from 'react';
-import { Form } from 'react-bootstrap';
+import { Form, InputGroup, Button} from 'react-bootstrap';
 import Select from 'react-select';
 
 const GeneralConsult = ({
@@ -25,6 +25,8 @@ const GeneralConsult = ({
     assignedDepartment,
     followup,
     admission,
+    isUploading,
+    handleImageUpload,
 }) => {
     return (
                             <> 
@@ -393,6 +395,7 @@ const GeneralConsult = ({
                                     <option key={option.value} value={option.value}>{option.label}</option>
                                 ))}
                             </Form.Select>
+                                <Form.Label>Treatment Plan</Form.Label>
                                 <div style={{ display: 'flex', gap: '10px' }}>
                                 <Form.Control
                                     as="textarea"
@@ -400,20 +403,73 @@ const GeneralConsult = ({
                                     value={formData.patientProcedure}
                                     onChange={handleChange}
                                     rows="4"
-                                    placeholder="Procedure's conducted on Patient"
+                                    placeholder="Treatment Plan Notes (verbal advice/further recommendations/additional notes)"
                                     required
                                     className={`form-control ${!formData.patientProcedure ? 'is-invalid' : ''}`}
                                 />
-                                <Form.Control
-                                    as="textarea"
-                                    name="patientMedicine"
-                                    value={formData.patientMedicine}
-                                    onChange={handleChange}
-                                    rows="4"
-                                    placeholder="Medication provided to Patient"
-                                    required
-                                    className={`form-control ${!formData.patientProcedure ? 'is-invalid' : ''}`}
-                                />
+                                </div> 
+
+                                <Form.Group className="mb-3 upload-container">
+                <InputGroup>
+                    <Form.Control
+                        as="textarea"
+                        name="scenePhotos"
+                        value={formData.scenePhotos}
+                        onChange={handleChange}
+                        rows="2"
+                        required
+                        className={`form-control ${!formData.scenePhotos ? 'is-invalid' : ''}`}
+                        placeholder="You MUST upload an image of the prescription slip in this section for recordkeeping purposes. (If Applicable)"
+                        onPaste={(e) => { // Keep the paste logic
+                            const clipboardData = e.clipboardData || window.clipboardData;
+                            const pastedData = clipboardData.getData('text');
+                            const items = clipboardData.items;
+                            let hasImageItem = false;
+                            const urlRegex = /(https?:\/\/[^\s]+)/g;
+                            const containsUrl = urlRegex.test(pastedData);
+
+                            for (let i = 0; i < items.length; i++) {
+                                if (items[i].type.indexOf('image') !== -1) {
+                                    hasImageItem = true;
+                                    const file = items[i].getAsFile();
+                                    handleImageUpload({ target: { files: [file] } }, 'scenePhotos');
+                                    e.preventDefault();
+                                    break;
+                                }
+                            }
+                            if (containsUrl && !hasImageItem) {
+                                const currentValue = formData.scenePhotos || '';
+                                const cursorPos = e.target.selectionStart;
+                                const separator = currentValue && currentValue.trim().length > 0 ? ', ' : '';
+                                const newValue = currentValue.slice(0, cursorPos) +
+                                    (cursorPos > 0 ? separator : '') +
+                                    pastedData +
+                                    currentValue.slice(cursorPos);
+                                setFormData(prev => ({ ...prev, scenePhotos: newValue }));
+                                e.preventDefault();
+                            } else {
+                                console.log('No URL detected or image item present');
+                            }
+                        }}
+                    />
+                    <Button
+                        variant="success"
+                        disabled={isUploading}
+                        onClick={() => {
+                            const input = document.createElement('input');
+                            input.type = 'file';
+                            input.accept = 'image/*';
+                            input.multiple = true;
+                            input.onchange = (e) => handleImageUpload(e, 'scenePhotos');
+                            input.click();
+                        }}
+                    >
+                        <i className={`fas ${isUploading ? 'fa-spinner fa-spin' : 'fa-upload'}`}></i>
+                        {isUploading ? 'Uploading...' : 'Upload Images'}
+                    </Button>
+                </InputGroup>
+            </Form.Group>
+
                                 <Form.Select
                                 name="followup"
                                 value={formData.followup}
@@ -426,7 +482,7 @@ const GeneralConsult = ({
                                     <option key={option.value} value={option.value}>{option.label}</option>
                                 ))}
                             </Form.Select>
-                                </div> 
+
                             </>
     );
 };

@@ -16,11 +16,29 @@ import * as Sentry from "@sentry/react";
 import WebhookModal from './components/WebhookModal'; 
 import CoronerRankModal from './components/CoronerRankModal'; 
 import CoronerTipsModal from './components/CoronerTipsModal'; 
-// Form Data Import - Change to Index.js for easier imports in future
 import ToolsDropdown from './ToolsDropdown'; // Adjust the path if needed
 import EasterEggModal from './components/EasterEggModal'; // Adjust path if needed
-import generateDeathReport from './bbcode-generators/generateDeathReport'; 
-
+import {
+    generateDeathReport,
+    generateEmail,
+    generateSurgicalOps,
+    generateAdvancedPatientFile,
+    generatePhysEvalInternalMed,
+    generatePhysEvalInternalMedPBC,
+    generateMentalHealthPHMC,
+    generateMentalHealthPBC,
+    generateConsultationNotesPHMC,
+    generateAgencyFeedback,
+    generateEmergencyProtocol,
+    generateCommentaryNotePHMC,
+    generateCommentaryNotePBC,
+    generateMedicalRecordRelease,
+    generateBasicPatientFile,
+    generateEmailPHMCEmail,
+    generateConsultationNotesPBC,
+    generatePsychEvalPHMC,
+    generatePsychEvalPBC
+} from './bbcode-generators'; 
 import {
     CommNotePHMC,
     CommNotePBC,
@@ -102,7 +120,8 @@ import {
     Insight,
     Cognition,
     phmcRank,
-    agencyData
+    agencyData,
+    drugList
 } from './data';
 
 // css fun
@@ -337,6 +356,9 @@ function App() {
         PurposeMedicalInformationReleaseFormat: '',
         PurposeAttorney: '',
         PurposePersonal: '',
+        patientAdvise: '',
+        
+        drugList: '',
         PurposeFurtherCare  : '',
         PurposeOther: '',
         CarePurposeMedicalInformationRelease: '',
@@ -1238,7 +1260,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
         // Ensure each block has appropriate validation and key generation
         else {
             // If the form type isn't explicitly handled for saving
-            console.warn(`Form type (v${bbCodeVersion}) is not saveable.`, formData);
+            console.warn(`Form type (version${bbCodeVersion}) is not saveable.`, formData);
             showNotification(`I cannot save this report, BBCode has been copied!`, 'exclamation-circle');
             return; // Exit if not a saveable type
         }
@@ -1331,119 +1353,134 @@ const showNormalEasterEggDirectly = () => {
     //     sendEasterEggNotification('normal'); // Pass 'normal' type
     // }
 };
+const [lastWebhookIdentifier, setLastWebhookIdentifier] = useState(null);
 
-    const loadReport = (key) => {
-        const reportData = localStorage.getItem(key);
-        if (reportData) {
-            try {
-                const parsedData = JSON.parse(reportData);
-                const loadedVersion = parsedData.bbCodeVersion;
-                const loadedBbCode = parsedData.bbCode || '';
-                const loadedFormData = parsedData.data || {};
+const loadReport = (key) => {
+    const reportData = localStorage.getItem(key);
+    if (reportData) {
+        try {
+            const parsedData = JSON.parse(reportData);
+            const loadedVersion = parsedData.bbCodeVersion;
+            let loadedBbCode = parsedData.bbCode || ''; // Use let so it can be modified
+            const loadedFormData = parsedData.data || {};
 
-                // --- Special Case: Loading a Death Report (v1) while already on Coroner Email (v2) ---
-                if (bbCodeVersion === 2 && loadedVersion === 1) {
+            // --- Special Case: Loading a Death Report (v1) while already on Coroner Email (v2) ---
+            if (bbCodeVersion === 2 && loadedVersion === 1) {
 
-                    // --- Determine notification message BEFORE setFormData ---
-                    let notificationMessage = '';
-                    // Check the current state directly before the update is scheduled
-                    const currentDeathReportIsEmpty = !formData.deathReport || formData.deathReport.trim() === '';
-
-                    if (currentDeathReportIsEmpty) {
-                        notificationMessage = `Loaded report for ${loadedFormData.decedentName || key} into main Death Report field.`;
-                    } else {
-                        notificationMessage = `Added report for ${loadedFormData.decedentName || key} as an additional report.`;
-                    }
-                    // --- End determination ---
-
-                    setFormData(prevFormData => {
-                        let updatedName = prevFormData.decedentName || '';
-                        let updatedOoc = prevFormData.decedentOOC || '';
-                        let updatedDeathReport = prevFormData.deathReport || '';
-                        let updatedAdditionalReports = prevFormData.additionalReports || [];
-
-                        // Append decedentName
-                        if (prevFormData.decedentName && loadedFormData.decedentName) {
-                            updatedName = `${prevFormData.decedentName}, ${loadedFormData.decedentName}`;
-                        } else {
-                            updatedName = loadedFormData.decedentName || prevFormData.decedentName || '';
-                        }
-
-                        // Append decedentOOC
-                        if (prevFormData.decedentOOC && loadedFormData.decedentOOC) {
-                            updatedOoc = `${prevFormData.decedentOOC}, ${loadedFormData.decedentOOC}`;
-                        } else {
-                            updatedOoc = loadedFormData.decedentOOC || prevFormData.decedentOOC || '';
-                        }
-
-                        // Check if main deathReport field is empty (using prevFormData inside callback)
-                        if (!prevFormData.deathReport || prevFormData.deathReport.trim() === '') {
-                            updatedDeathReport = loadedBbCode;
-                        } else {
-                            updatedAdditionalReports = [...updatedAdditionalReports, loadedBbCode];
-                        }
-
-                        console.log('Updating Coroner Email Form:', {
-                            updatedName,
-                            updatedOoc,
-                            updatedDeathReport,
-                            updatedAdditionalReports
-                        });
-
-                        // Return the updated state
-                        return {
-                            ...prevFormData,
-                            decedentName: updatedName,
-                            decedentOOC: updatedOoc,
-                            deathReport: updatedDeathReport,
-                            additionalReports: updatedAdditionalReports,
-                        };
-                    });
-
-                    // Stay on Coroner Email form (v2)
-                    setParsedBBCode(''); // Clear the main BBCode display area
-                    // Use the message determined *before* setFormData
-                    showNotification(notificationMessage, 'plus-circle'); // <-- Now uses the correctly determined message
-                    setShowSavedReports(false); // Close the modal
-
-                } else {
-                    // --- Default Loading Logic (for all other cases - unchanged) ---
-                    setFormData(prevFormData => {
-                        let updatedData = { ...prevFormData, ...loadedFormData };
-                        // Append logic for loading *into* v2 (if loadedVersion is 2)
-                        if (loadedVersion === 2) {
-                            if (prevFormData.decedentName && loadedFormData.decedentName) {
-                                updatedData.decedentName = `${prevFormData.decedentName}, ${loadedFormData.decedentName}`;
-                            } else {
-                                updatedData.decedentName = loadedFormData.decedentName || prevFormData.decedentName || '';
-                            }
-                            if (prevFormData.decedentOOC && loadedFormData.decedentOOC) {
-                                updatedData.decedentOOC = `${prevFormData.decedentOOC}, ${loadedFormData.decedentOOC}`;
-                            } else {
-                                updatedData.decedentOOC = loadedFormData.decedentOOC || prevFormData.decedentOOC || '';
-                            }
-                        }
-                        return updatedData;
-                    });
-                    setBbCodeVersion(loadedVersion); // Switch to the loaded report's version
-                    setParsedBBCode(loadedBbCode); // Set the parsed BBCode display
-                    showNotification(`Report loaded from ${key}`, 'upload');
-                    setShowSavedReports(false); // Close the modal
+                // --- Apply the [bold] -> [b] replacement ---
+                if (loadedBbCode) {
+                    loadedBbCode = loadedBbCode.replace(/\[bold\]/g, '[b]').replace(/\[\/bold\]/g, '[/b]');
+                    console.log("Applied [bold] -> [b] replacement for loaded BBCode.");
                 }
+                // --- End replacement ---
 
-            } catch (error) {
-                console.error("Error parsing report data:", error);
-                Sentry.captureException(error, { extra: { context: 'loadReport Parse Error', key: key } });
-                localStorage.removeItem(key);
-                showNotification(`Invalid report data deleted: ${key}`, 'trash');
-                loadSavedReports(); // Refresh the list
+                // --- Determine notification message BEFORE setFormData ---
+                let notificationMessage = '';
+                // Check the current state directly before the update is scheduled
+                const currentDeathReportIsEmpty = !formData.deathReport || formData.deathReport.trim() === '';
+
+                if (currentDeathReportIsEmpty) {
+                    notificationMessage = `Loaded report for ${loadedFormData.decedentName || key} into main Death Report field.`;
+                } else {
+                    notificationMessage = `Added report for ${loadedFormData.decedentName || key} as an additional report.`;
+                }
+                // --- End determination ---
+
+                setFormData(prevFormData => {
+                    let updatedName = prevFormData.decedentName || '';
+                    let updatedOoc = prevFormData.decedentOOC || '';
+                    let updatedDeathReport = prevFormData.deathReport || '';
+                    let updatedAdditionalReports = prevFormData.additionalReports || [];
+
+                    // Append decedentName
+                    if (prevFormData.decedentName && loadedFormData.decedentName) {
+                        updatedName = `${prevFormData.decedentName}, ${loadedFormData.decedentName}`;
+                    } else {
+                        updatedName = loadedFormData.decedentName || prevFormData.decedentName || '';
+                    }
+
+                    // Append decedentOOC
+                    if (prevFormData.decedentOOC && loadedFormData.decedentOOC) {
+                        updatedOoc = `${prevFormData.decedentOOC}, ${loadedFormData.decedentOOC}`;
+                    } else {
+                        updatedOoc = loadedFormData.decedentOOC || prevFormData.decedentOOC || '';
+                    }
+
+                    // Check if main deathReport field is empty (using prevFormData inside callback)
+                    // Use the modified loadedBbCode here
+                    if (!prevFormData.deathReport || prevFormData.deathReport.trim() === '') {
+                        updatedDeathReport = loadedBbCode; // Use modified BBCode
+                    } else {
+                        updatedAdditionalReports = [...updatedAdditionalReports, loadedBbCode]; // Use modified BBCode
+                    }
+
+                    console.log('Updating Coroner Email Form:', {
+                        updatedName,
+                        updatedOoc,
+                        updatedDeathReport,
+                        updatedAdditionalReports
+                    });
+
+                    // Return the updated state
+                    return {
+                        ...prevFormData,
+                        decedentName: updatedName,
+                        decedentOOC: updatedOoc,
+                        deathReport: updatedDeathReport,
+                        additionalReports: updatedAdditionalReports,
+                    };
+                });
+
+                // Stay on Coroner Email form (v2)
+                setParsedBBCode(''); // Clear the main BBCode display area
+                // Use the message determined *before* setFormData
+                showNotification(notificationMessage, 'plus-circle'); // <-- Now uses the correctly determined message
+                setShowSavedReports(false); // Close the modal
+
+            } else {
+                 // --- Default Loading Logic (for all other cases) ---
+
+                 // Apply the replacement here too if desired for all loaded reports
+                 // if (loadedBbCode) {
+                 //    loadedBbCode = loadedBbCode.replace(/\[bold\]/g, '[b]').replace(/\[\/bold\]/g, '[/b]');
+                 // }
+
+                setFormData(prevFormData => {
+                    let updatedData = { ...prevFormData, ...loadedFormData };
+                    // Append logic for loading *into* v2 (if loadedVersion is 2)
+                    if (loadedVersion === 2) {
+                        if (prevFormData.decedentName && loadedFormData.decedentName) {
+                            updatedData.decedentName = `${prevFormData.decedentName}, ${loadedFormData.decedentName}`;
+                        } else {
+                            updatedData.decedentName = loadedFormData.decedentName || prevFormData.decedentName || '';
+                        }
+                        if (prevFormData.decedentOOC && loadedFormData.decedentOOC) {
+                            updatedData.decedentOOC = `${prevFormData.decedentOOC}, ${loadedFormData.decedentOOC}`;
+                        } else {
+                            updatedData.decedentOOC = loadedFormData.decedentOOC || prevFormData.decedentOOC || '';
+                        }
+                    }
+                    return updatedData;
+                });
+                setBbCodeVersion(loadedVersion); // Switch to the loaded report's version
+                setParsedBBCode(loadedBbCode); // Set the parsed BBCode display (with replacements if applied above)
+                showNotification(`Report loaded from ${key}`, 'upload');
+                setShowSavedReports(false); // Close the modal
             }
-        } else {
-            console.warn(`Attempted to load non-existent report with key: ${key}`);
-            showNotification(`Report not found: ${key}`, 'warning');
+
+        } catch (error) {
+            console.error("Error parsing report data:", error);
+            Sentry.captureException(error, { extra: { context: 'loadReport Parse Error', key: key } });
+            localStorage.removeItem(key);
+            showNotification(`Invalid report data deleted: ${key}`, 'trash');
+            loadSavedReports(); // Refresh the list
         }
-    };
-        const toggleSavedReports = () => {
+    } else {
+        console.warn(`Attempted to load non-existent report with key: ${key}`);
+        showNotification(`Report not found: ${key}`, 'warning');
+    }
+};
+    const toggleSavedReports = () => {
         setShowSavedReports(prev => !prev);
     };
 
@@ -1492,1653 +1529,28 @@ const filterFormData = (formData, bbCodeVersion) => {
 
     return filteredData;
 };
-
-    const generateEmail = () => {
-        const {
-            requestingOfficer,
-            department,
-            coronerEmployee,
-            coronerRank,
-            coronerDiscord,
-            coronerPHNumber,
-            deathReport,
-            additionalReports,
-        } = formData;
-
-        // Base BBCode for ID 2
-        let bbCode = `[center][img]https://i.imgur.com/ItaoQkO.png[/img][/center]
-[hr][/hr]
     
-TO: ${requestingOfficer} - ${department}
-FROM: ${coronerEmployee} @ phmc.health
-SUBJECT: Death Report Paperwork
 
-For the attention of: [b]${department}[/b] - [b]${requestingOfficer}[/b]
-
-This Coroner Report has been written by ${coronerRank} ${coronerEmployee} you can find the enclosed documents attached to this email. 
-
-[b]AUTOPSY INFORMATION / REQUEST(S)[/B] 
-If you require an autopsy, please follow this link and follow the instructions: [url=https://phmc.gta.world/viewforum.php?f=265]Autopsy Portal[/url].
-
-
-[altspoiler=Request a Autopsy FAQ]
-1) How do I request an autopsy report and/or a death certificate?
-Autopsies and death certificates can aid in various situations, especially whenever the cause of death plays a vital role in. Our professionals attempt to handle each and every request in a timely manner. However, given the fact that the effort of documentation is immense, a request fee is associated along with it. Upon its payment, the report or certificate will be sent to you directly.
-
-
-2) Is there a fee associated with the request process?
-Yes, there is a $2,000 fee associated with the request. This fee covers administrative costs related to processing and maintaining your requested report/certificate securely within our systems. It ensures the continued improvement of our services, maintaining the highest standards in healthcare data management.
-
-
-3) How do I pay the $2,000 request fee?
-To pay your $2,000 request fee, please log into the banking website and navigate to the "Payment" section. Select your preferred payment method (e.g., credit card, debit card), insert our routing number (020000062), enter the required payment details, review the transaction, and confirm your payment. (( Type /transfer 2000 020000062 ))
-
-(( Autopsies for Player Kills (PK) and Character Kills (CK) will only be accepted if they are deemed strictly necessary and relevant to an important case or investigation. Prior to making a request for such an autopsy, a member of the Medical-Examiners must be notified and consulted with. Furthermore, it is mandatory to provide information about /cdamages and /cexamine. In the event that this information is not available, please do not hesitate to contact an administrator in-game, who can provide it. If these steps are not followed, an automatic denial will cause your request to be archived.
-
-Also if it is a PK, please be sure to use John/Jane Doe with their character name in OOC brackets . Ex: John Doe (( James Smith ))
-
-[url=https://phmc.gta.world/ucp.php?i=pm&mode=compose&g=50]Click here to contact a Medical-Examiner to get the green light![/url] ))
-[/altspoiler]
-If you have further enquiries, feel free to reach out to the following individual:
-[list] ${coronerEmployee}
-[*] Phone Number: ${coronerPHNumber}
-[*] (( Discord: ${coronerDiscord} ))[/list]
-
-[altspoiler=Coroner Report]
-${deathReport}
-[code]
-${deathReport}
-
-[/code]
-[/altspoiler]
-${additionalReports && additionalReports.length > 0
-                ? additionalReports
-                    .filter(report => report.trim())
-                    .map((report, index) => `
-[altspoiler=Coroner Report - Additional ${index + 1}]
-${report}
-[code]
-${report}
-[/code]
-[/altspoiler]`).join('\n\n')
-                : ''
-            }
-
-Kind regards
-${coronerRank} ${coronerEmployee}
-Pillbox Hill Medical Center - Pathology  and Forensic Medicine
-
-[size=75]The content of this email is intended for the person or entity to which it is addressed only. This email may contain confidential information. If you are not the person to whom this message is addressed, be aware that any use, reproduction, or distribution of this message is strictly prohibited. If you received this in error, please contact the sender and immediately delete this email and any attachments.[/size]`;
-
-        return bbCode;
-    };
-
-    // Base BBCode for ID 4
-    const generateDental = () => {
-        const {
-            PatientMedicalRecord,
-            PatientName,
-            patientWeight,
-            patientChewing,
-            patientDateofBirth,
-            patientMedicine,
-            patientNewMedicine,
-            patientTreatment,
-            patientDiagnosis,
-            patientPrescription,
-            patientSummary,
-            phmcEmployee,
-            date,
-        } = formData;
-
-        let bbCode = `[divbox=lightgrey][size=150]
-
-[center][b]DEPARTMENT OF DENTAL MEDICINE[/b]
-[color=#800000][b]DENTAL CONSULTATION[/b][/color][/center][/size]
-
-[/divbox]
-
-[divbox=lightgrey][b]SECTION 0: PERSONAL INFORMATION[/b][/divbox]
-[divbox=transparent][table][tr][td][b]0.1[/b] Identifying
-[/td][td]
-[b]Medical Record Number:[/b] ${PatientMedicalRecord}
-[b]Full Name:[/b] ${PatientName}
-[b]Date Of Birth:[/b] ${patientDateofBirth}
-
-[/table][/divbox]
-
-[divbox=lightgrey][b]SECTION 1: PATIENT MEASUREMENTS[/b][/divbox]
-[divbox=transparent][table][tr][td][b]1.1[/b] Weight[/td][td]
-${patientWeight}
-
-[tr][td][b]1.2[/b] Problems With Chewing & Swallowing[/td][td]
-${patientChewing}
-
-[/table][/divbox]
-
-[divbox=lightgrey][b]SECTION 2: PRIORITY CLASSIFICATION[/b][/divbox]
-[divbox=transparent][table][tr][td][b]2.1[/b] Priority Criteria [/td][td]
-[cb${formData.patientFormYes ? 'c' : ''}][/cb${formData.patientFormYes ? 'c' : ''}] Priority 1: Immediate care
-[cb${formData.patientFormNo ? 'c' : ''}][/cb${formData.patientFormNo ? 'c' : ''}] Priority 2: Extensive amount of decay
-[cb${formData.patientMale ? 'c' : ''}][/cb${formData.patientMale ? 'c' : ''}] Priority 3: Obvious cavities
-[cb${formData.patientFormYes2 ? 'c' : ''}][/cb${formData.patientFormYes2 ? 'c' : ''}] Priority 0: No obvious cavities
-
-[/table][/divbox]
-
-[divbox=lightgrey][b]SECTION 3: MEDICATIONS[/b][/divbox]
-[divbox=transparent][table][tr][td][b]3.1[/b] Current Medications[/td][td]
-${patientMedicine}
-
-[tr][td][b]3.2[/b] New Medications[/td][td]
-${patientNewMedicine}
-
-[/table][/divbox]
-
-[divbox=lightgrey][b]SECTION 4: DIAGNOSIS[/divbox]
-[divbox=transparent][table]
-
-[tr][td][b]4.1[/b] Mark Tooth Decay Area[/td][td]
-[img]https://i.imgur.com/31wOMlD.jpeg[/img]
-
-[tr][td][b]4.2[/b] Diagnosed With[/td][td]
-${patientDiagnosis}
-
-[tr][td][b]4.3[/b] Treatment[/td][td]
-${patientTreatment}
-
-[tr][td][b]4.4[/b] Prescription[/td][td]
-${patientPrescription}
-
-[/table][/divbox]
-
-[divbox=lightgrey][b]SECTION 5: SUMMARY OF CONSULTATION[/b][/divbox]
-[divbox=transparent][list=none]
-
-${patientSummary}
-
-[/divbox][divbox=lightgrey][b]SECTION 6: PERSON IN CHARGE OF THE CONSULTATION[/b][/divbox]
-
-[divbox=transparent][table][tr][td][b]6.1[/b] Full Name (Signature)[/td][td] ${phmcEmployee}
-[tr][td][b]6.2[/b] Full Name (Print)[/td][td]${phmcEmployee}
-[tr][td][b]6.3[/b] Date[/td][td]${date}[/table][/divbox]`;
-
-        return bbCode;
-    };
-
-    // Add new generation Surgical Ops function 5 generateSurgicalOps
-    const generateSurgicalOps = () => {
-        const {
-            phmcEmployee,
-            extraStaff,
-            patientID,
-            patientSummaryConsultation,
-            patientAddress,
-            phmcRank,
-            date,
-            patientSummary,
-            lastName,
-            surgeryProcedures
-        } = formData;
-        const extraStaffNames = Array.isArray(extraStaff) ? extraStaff.join(', ') : extraStaff;
-
-        let bbCode = `[divbox=white][table][tr][td][center][br][/br][br][/br][b]SURGICAL REPORT[/b]
-
-PATIENT ${patientID}
-
-Date: ${date}
-Signed: ${phmcRank} ${lastName}
-
-[/center][td][center][img]https://i.imgur.com/QMaz0OC.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PILLBOX HILL MEDICAL CENTER[/b]
-ELGIN AVE. / STRAWBERRY AVE.
-PO BOX 742
-LOS SANTOS, SAN ANDREAS
-P: 50056[/size][/center][/table][/divbox]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Personnel[/b][/color][/center][/divboxcolor]
-[table][tr][td]Lead Surgeon[/td][td]
-${phmcEmployee}
-[/td][/tr]
-[tr][td]Additional Staff [i](leave empty if none)[/i][/td][td]
-${extraStaff}
-[/td][/tr][/table]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Surgical Inquiry[/b][/color][/center][/divboxcolor]
-[table]
-
-[tr][td]Name of the procedure[/td][td]
-${surgeryProcedures}
-
-[tr][td]Did the patient or their family consent, or did they have a life threatening or severe injury that requires immediate surgical intervention?[/td][td]
-[cb${formData.patientConsentOption === 'Yes' ? 'c' : ''}] Yes
-[cb${formData.patientConsentOption === 'No' ? 'c' : ''}] No
-
-
-[/td][/tr]
-
-[tr][td]Did any medical complications occur during the surgery?[/td][td]
-[cb${formData.patientComplicationOptions === 'Yes' ? 'c' : ''}] Yes
-[cb${formData.patientComplicationOptions === 'No' ? 'c' : ''}] No
-[/td][/tr]
-
-[tr][td]Was the procedure completed successfully, and did it result in the desired clinical outcome?[/td][td]
-[cb${formData.procedureGoodOptions === 'Yes' ? 'c' : ''}] Yes
-[cb${formData.procedureGoodOptions === 'No' ? 'c' : ''}] No
-[/td][/tr]
-[/table]
-
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Post-Anesthesia Report[/b][/color][/center][/divboxcolor]
-[table]
-
-[tr][td]Type & Dosage of Anesthesia Administered[/td][td] ${patientSummaryConsultation}
-[/td][/tr]
-
-[tr][td]Post-Operative Anesthesia Details[/td][td]${patientAddress}
-[/td][/tr]
-
-[/table]
-
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Summary of Surgical Procedure[/b][/color][/center][/divboxcolor]
-[table]
-
-[tr][td]
-${patientSummary}
-
-[/table]`;
-
-        return bbCode;
-    };
-
-    // Base BBCode for ID 6 Physical Evaluation (Internal Medicine generatePhysEvalInternalMed)
-
-    const generatePhysEvalInternalMed = () => {
-        const {
-            patientID,
-            date,
-            lastName,
-            patientHeight,
-            patientWeight,
-            phmcRank,
-            careerRisks,
-            patientAllergies,
-            patientMedicine,
-            patientcareerNo,
-            patientSummary,
-            patientCareer,
-            patientImpairments,
-        } = formData;
-
-        let bbCode = `[divbox=white][table][tr][td][center][br][/br][br][/br][b]PHYSICAL EXAMINATION[/b]
-
-PATIENT ${patientID}
-
-Date: ${date}
-Signed: ${phmcRank} ${lastName}
-[/center][td][center][img]https://i.imgur.com/QMaz0OC.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PILLBOX HILL MEDICAL CENTER[/b]
-ELGIN AVE. / STRAWBERRY AVE.
-PO BOX 742
-LOS SANTOS, SAN ANDREAS
-P: 50056[/size][/center][/table][/divbox]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Patient Measurements[/b][/color][/center][/divboxcolor]
-[table][tr][td][list=none][br][/br]Height: ${patientHeight}
-[br][/br]
-Weight: ${patientWeight}
-[/list][td]
-[list=none][u]Body Mass Index: [/u][br][/br]
-[cb${formData.BodyMassIndex === 'Underweight' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Underweight' ? 'c' : ''}] Underweight
-[cb${formData.BodyMassIndex === 'Normal' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Normal' ? 'c' : ''}] Normal
-[cb${formData.BodyMassIndex === 'Overweight' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Overweight' ? 'c' : ''}] Overweight
-[cb${formData.BodyMassIndex === 'Obese' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Obese' ? 'c' : ''}] Obese
-[cb${formData.BodyMassIndex === 'ExtremeObese' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'ExtremeObese' ? 'c' : ''}] Extremely Obese
-[/table]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Vitals[/b][/color][/center][/divboxcolor]
-[table][tr][td][center]Temperature: [cb${formData.vitals === 'patientTempNormal' ? 'c' : ''}] Normal [cb${formData.vitals === 'patientHypothermic' ? 'c' : ''}] Hypothermic [cb${formData.vitals === 'patientHyperthermic' ? 'c' : ''}] Hyperthermic[/center]
-[td][center]Heart Rate: [cb${formData.heartRate === 'patientHeartRateNormal' ? 'c' : ''}] Normal [cb${formData.heartRate === 'patientHeartRateBradycardia' ? 'c' : ''}] Bradycardia [cb${formData.heartRate === 'patientHeartRateTachycardia' ? 'c' : ''}] Tachycardia[/center][/table]
-[table][tr][td][center]Breathing: [cb${formData.breathing === 'patientBreathingNormal' ? 'c' : ''}] Normal [cb${formData.breathing === 'patientBreathingSlow' ? 'c' : ''}] Slow [cb${formData.breathing === 'patientBreathingFast' ? 'c' : ''}] Fast [cb${formData.breathing === 'patientBreathingObstructed' ? 'c' : ''}] Obstructed[/center]
-[td][center]Blood Pressure: [cb${formData.bloodPressure === 'patientBloodPressureNormal' ? 'c' : ''}] Normal [cb${formData.bloodPressure === 'patientBloodPressureHypotension' ? 'c' : ''}] Hypotension [cb${formData.bloodPressure === 'patientBloodPressureHypertension' ? 'c' : ''}] Hypertension [/center][/table]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Anamnesis[/b][/color][/center][/divboxcolor]
-[table][tr][td][list=none][u]Does the patient have a job? [/u][br][/br]
-[cb${formData.patientJob === 'Yes' ? 'c' : ''}][/cb${formData.patientJob === 'Yes' ? 'c' : ''}] Yes: ${patientCareer}
-[cb${formData.patientJob === 'No' ? 'c' : ''}][/cb${formData.patientJob === 'No' ? 'c' : ''}] No: ${patientcareerNo} [/list]
-[td][list=none][u]If yes, are harmful risk factors present? [/u][br][/br]
-[cb${formData.patientJobRisks === 'Yes' ? 'c' : ''}][/cb${formData.patientJobRisks === 'Yes' ? 'c' : ''}] Yes: ${careerRisks}
-[cb${formData.patientJobRisks === 'No' ? 'c' : ''}][/cb${formData.patientJobRisks === 'No' ? 'c' : ''}] No [/list]
-[/td][/tr]
-[tr][td][list=none][u]Are allergies or risks (implants, case of incompatibility, pacemaker, etc.) present?[/u][br][/br]
-[cb${formData.patientAllergiesRisk === 'Yes' ? 'c' : ''}][/cb${formData.patientAllergiesRisk === 'Yes' ? 'c' : ''}] Yes: ${patientAllergies}
-[cb${formData.patientAllergiesRisk === 'No' ? 'c' : ''}][/cb${formData.patientAllergiesRisk === 'No' ? 'c' : ''}] No [/list]
-[td][list=none][u]Does the patient take medications on a regular basis? [/u][br][/br]
-[cb${formData.patientMedicineRegular === 'Yes' ? 'c' : ''}][/cb${formData.patientMedicineRegular === 'Yes' ? 'c' : ''}] Yes: ${patientMedicine}
-[cb${formData.patientMedicineRegular === 'No' ? 'c' : ''}][/cb${formData.patientMedicineRegular === 'No' ? 'c' : ''}] No[/list]
-[/td][/tr]
-[tr][td][list=none][u]Does the patient have other medical condition(s) or physical impairments?[/u][br][/br]
-[cb${formData.patientOther === 'Yes' ? 'c' : ''}][/cb${formData.patientOther === 'Yes' ? 'c' : ''}] Yes: ${patientImpairments}
-[cb${formData.patientOther === 'No' ? 'c' : ''}][/cb${formData.patientOther === 'No' ? 'c' : ''}] No [/list]
-[td][list=none][u]Genetic Predisposition[/u][br][/br]
-[cb${formData.predisposition === 'Existing' ? 'c' : ''}][/cb${formData.predisposition === 'Existing' ? 'c' : ''}] Existing
-[cb${formData.predisposition === 'NonExisting' ? 'c' : ''}][/cb${formData.predisposition === 'NonExisting' ? 'c' : ''}] Non-existing [/list]
-[/td][/tr][/table]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Evaluation Summary[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Assessment Statement: [/u][br][/br]
-${patientSummary}
-[br][/br][/left][/list][/table]
-
-`;
-
-        return bbCode;
-    };
-        // Base BBCode for ID 28 Physical Evaluation (Internal Medicine generatePhysEvalInternalMedPBC)
-
-    const generatePhysEvalInternalMedPBC = () => {
-        const {
-            patientID,
-            date,
-            lastName,
-            patientHeight,
-            patientWeight,
-            phmcRank,
-            careerRisks,
-            patientAllergies,
-            patientMedicine,
-            patientcareerNo,
-            patientSummary,
-            patientCareer,
-            patientImpairments,
-        } = formData;
-
-        let bbCode = `[divbox=white][table][tr][td][center][br][/br][br][/br][b]PHYSICAL EXAMINATION[/b]
-
-PATIENT ${patientID}
-
-Date: ${date}
-Signed: ${phmcRank} ${lastName}
-[/center][td][center][img]https://i.imgur.com/LkRKav2.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PALETO BAY CLINIC[/b]
-PALETO BAY BLVD.
-PO BOX 685
-PALETO BAY, SAN ANDREAS
-P: 50056[/size][/center][/table][/divbox]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Patient Measurements[/b][/color][/center][/divboxcolor]
-[table][tr][td][list=none][br][/br]Height: ${patientHeight}
-[br][/br]
-Weight: ${patientWeight}
-[/list][td]
-[list=none][u]Body Mass Index: [/u][br][/br]
-[cb${formData.BodyMassIndex === 'Underweight' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Underweight' ? 'c' : ''}] Underweight
-[cb${formData.BodyMassIndex === 'Normal' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Normal' ? 'c' : ''}] Normal
-[cb${formData.BodyMassIndex === 'Overweight' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Overweight' ? 'c' : ''}] Overweight
-[cb${formData.BodyMassIndex === 'Obese' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'Obese' ? 'c' : ''}] Obese
-[cb${formData.BodyMassIndex === 'ExtremeObese' ? 'c' : ''}][/cb${formData.BodyMassIndex === 'ExtremeObese' ? 'c' : ''}] Extremely Obese
-[/table]
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Vitals[/b][/color][/center][/divboxcolor]
-[table][tr][td][center]Temperature: [cb${formData.vitals === 'patientTempNormal' ? 'c' : ''}] Normal [cb${formData.vitals === 'patientHypothermic' ? 'c' : ''}] Hypothermic [cb${formData.vitals === 'patientHyperthermic' ? 'c' : ''}] Hyperthermic[/center]
-[td][center]Heart Rate: [cb${formData.heartRate === 'patientHeartRateNormal' ? 'c' : ''}] Normal [cb${formData.heartRate === 'patientHeartRateBradycardia' ? 'c' : ''}] Bradycardia [cb${formData.heartRate === 'patientHeartRateTachycardia' ? 'c' : ''}] Tachycardia[/center][/table]
-[table][tr][td][center]Breathing: [cb${formData.breathing === 'patientBreathingNormal' ? 'c' : ''}] Normal [cb${formData.breathing === 'patientBreathingSlow' ? 'c' : ''}] Slow [cb${formData.breathing === 'patientBreathingFast' ? 'c' : ''}] Fast [cb${formData.breathing === 'patientBreathingObstructed' ? 'c' : ''}] Obstructed[/center]
-[td][center]Blood Pressure: [cb${formData.bloodPressure === 'patientBloodPressureNormal' ? 'c' : ''}] Normal [cb${formData.bloodPressure === 'patientBloodPressureHypotension' ? 'c' : ''}] Hypotension [cb${formData.bloodPressure === 'patientBloodPressureHypertension' ? 'c' : ''}] Hypertension [/center][/table]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Anamnesis[/b][/color][/center][/divboxcolor]
-[table][tr][td][list=none][u]Does the patient have a job? [/u][br][/br]
-[cb${formData.patientJob === 'Yes' ? 'c' : ''}][/cb${formData.patientJob === 'Yes' ? 'c' : ''}] Yes: ${patientCareer}
-[cb${formData.patientJob === 'No' ? 'c' : ''}][/cb${formData.patientJob === 'No' ? 'c' : ''}] No: ${patientcareerNo} [/list]
-[td][list=none][u]If yes, are harmful risk factors present? [/u][br][/br]
-[cb${formData.patientJobRisks === 'Yes' ? 'c' : ''}][/cb${formData.patientJobRisks === 'Yes' ? 'c' : ''}] Yes: ${careerRisks}
-[cb${formData.patientJobRisks === 'No' ? 'c' : ''}][/cb${formData.patientJobRisks === 'No' ? 'c' : ''}] No [/list]
-[/td][/tr]
-[tr][td][list=none][u]Are allergies or risks (implants, case of incompatibility, pacemaker, etc.) present?[/u][br][/br]
-[cb${formData.patientAllergiesRisk === 'Yes' ? 'c' : ''}][/cb${formData.patientAllergiesRisk === 'Yes' ? 'c' : ''}] Yes: ${patientAllergies}
-[cb${formData.patientAllergiesRisk === 'No' ? 'c' : ''}][/cb${formData.patientAllergiesRisk === 'No' ? 'c' : ''}] No [/list]
-[td][list=none][u]Does the patient take medications on a regular basis? [/u][br][/br]
-[cb${formData.patientMedicineRegular === 'Yes' ? 'c' : ''}][/cb${formData.patientMedicineRegular === 'Yes' ? 'c' : ''}] Yes: ${patientMedicine}
-[cb${formData.patientMedicineRegular === 'No' ? 'c' : ''}][/cb${formData.patientMedicineRegular === 'No' ? 'c' : ''}] No[/list]
-[/td][/tr]
-[tr][td][list=none][u]Does the patient have other medical condition(s) or physical impairments?[/u][br][/br]
-[cb${formData.patientOther === 'Yes' ? 'c' : ''}][/cb${formData.patientOther === 'Yes' ? 'c' : ''}] Yes: ${patientImpairments}
-[cb${formData.patientOther === 'No' ? 'c' : ''}][/cb${formData.patientOther === 'No' ? 'c' : ''}] No [/list]
-[td][list=none][u]Genetic Predisposition[/u][br][/br]
-[cb${formData.predisposition === 'Existing' ? 'c' : ''}][/cb${formData.predisposition === 'Existing' ? 'c' : ''}] Existing
-[cb${formData.predisposition === 'NonExisting' ? 'c' : ''}][/cb${formData.predisposition === 'NonExisting' ? 'c' : ''}] Non-existing [/list]
-[/td][/tr][/table]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Evaluation Summary[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Assessment Statement: [/u][br][/br]
-${patientSummary}
-[br][/br][/left][/list][/table]
-
-`;
-
-        return bbCode;
-    };
-
-    const generateMentalHealthPHMC = () => {
-        const {
-            lastName,
-            patientID,
-            date,
-            patientChiefComplaint,
-            phmcRank,
-            patientNotes, 
-            patientDiagnosis,
-            patientMedicine,
-            patientProcedure,
-        } = formData;
-
-        let bbCode = `[divbox=white][table][tr][td][center][br][/br][br][/br][b]Session Notes[/b]
-
-PATIENT ${patientID}
-
-Date: ${date}
-Signed: ${phmcRank} ${lastName}
-[/center][td][center][img]https://i.imgur.com/QMaz0OC.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PILLBOX HILL MEDICAL CENTER[/b]
-ELGIN AVE. / STRAWBERRY AVE.
-PO BOX 742
-LOS SANTOS, SAN ANDREAS
-P: 50056[/size][/center][/table][/divbox]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Anamnesis[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Chief Complaint: [/u][br][/br]
-${patientChiefComplaint}
-[br][/br]
-[u]Assigned Department: [/u][br][/br]
-[cbc] Mental Health
-[br][/br][/left]
-[/table]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Findings[/b][/color][/center][/divboxcolor]
-[table][tr][td][list=none]Notes: ${patientNotes}[/list][/table]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Discharge Diagnosis[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Primary Diagnosis: [/u][br][/br]
-${patientDiagnosis}[/list][/table]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Therapy[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Admission: [/u][br][/br]
-[cb${formData.admission === 'Yes' ? 'c' : ''}] Yes
-[cb${formData.admission === 'No' ? 'c' : ''}] No
-[br][/br]
-[u]Procedure: [/u][br][/br]
-${patientProcedure}
-[br][/br]
-[u]Medication: [/u][br][/br]
-${patientMedicine}
-[br][/br]
-[u]Follow-Up: [/u][br][/br]
-[cb${formData.followup === 'AsNeeded' ? 'c' : ''}] As needed
-[cb${formData.followup === 'Recommended' ? 'c' : ''}] Recommended
-[cb${formData.followup === 'ElectiveProcedure' ? 'c' : ''}] Elective procedure 
-[/left][/list][/table]
-`;
-
-        return bbCode;
-    };
-
-
-    const generateMentalHealthPBC = () => {
-        const {
-            lastName,
-            patientID,
-            phmcRank,
-            date,
-            patientChiefComplaint,
-            patientNotes, 
-            patientDiagnosis,
-            patientMedicine,
-            patientProcedure,
-        } = formData;
-
-        let bbCode = `[divbox=white][table][tr][td][center][br][/br][br][/br][b]Session Notes[/b]
-
-PATIENT ${patientID}
-
-Date: ${date}
-Signed: ${phmcRank} ${lastName}
-[/center][td][center][img]https://i.imgur.com/LkRKav2.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PALETO BAY CLINIC[/b]
-PALETO BAY BLVD.
-PO BOX 685
-PALETO BAY, SAN ANDREAS
-P: 50056[/size][/center][/table][/divbox]
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Anamnesis[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Chief Complaint: [/u][br][/br]
-${patientChiefComplaint}
-[br][/br]
-[u]Assigned Department: [/u][br][/br]
-[cbc] Mental Health
-[br][/br][/left]
-[/table]
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Findings[/b][/color][/center][/divboxcolor]
-[table][tr][td][list=none]Notes: ${patientNotes}[/list][/table]
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Discharge Diagnosis[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Primary Diagnosis: [/u][br][/br]
-${patientDiagnosis}[/list][/table]
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Therapy[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Admission: [/u][br][/br]
-[cb${formData.admission === 'Yes' ? 'c' : ''}] Yes
-[cb${formData.admission === 'No' ? 'c' : ''}] No
-[br][/br]
-[u]Procedure: [/u][br][/br]
-${patientProcedure}
-[br][/br]
-[u]Medication: [/u][br][/br]
-${patientMedicine}
-[br][/br]
-[u]Follow-Up: [/u][br][/br]
-[cb${formData.followup === 'AsNeeded' ? 'c' : ''}] As needed
-[cb${formData.followup === 'Recommended' ? 'c' : ''}] Recommended
-[cb${formData.followup === 'ElectiveProcedure' ? 'c' : ''}] Elective procedure 
-[/left][/list][/table]
-`;
-
-        return bbCode;
-    };
-    const generateAgencyFeedback = () => {
-        const {
-            coronerRank,
-            coronerEmployee,
-            placeOfDeath,
-            department,
-            dateTime,
-            decedentName,
-            synopsis,
-            scenePhotos,
-        } = formData;
-
-        const scenePhotosBBCode = scenePhotos.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
-
-        let bbCode = `[divbox=transparent][center][img]https://i.imgur.com/Hxjt4M2.png[/img] [/center]
-[hr][/hr][color=#5597D0][right]
-[U][SIZE=80][/SIZE][/U][/RIGHT][/COLOR]
-[CENTER][B]DEPARTMENT OF PATHOLOGY AND FORENSIC MEDICINE 
-AGENCY INCIDENT REPORT[/B][/CENTER]
-[HR][/HR]
-[b]EMPLOYEE DETAILS[/b]
-[divbox=transparent][b]Name:[/b] ${coronerEmployee}
-[HR][/HR]
-[b]RANK:[/b] ${coronerRank}
-[/DIVBOX]
-[b]DESCRIPTION OF INCIDENT[/b]
-[divbox=transparent][b]DATE OF INCIDENT:[/b] ${dateTime}
-[HR][/HR]
-[b]LOCATION OF INCIDENT:[/b] ${placeOfDeath}
-[HR][/HR]
-[b]INCIDENT DETAILS[/b]
-[i][color=#0080FF](How the incident happened, factors leading to the event, and what took place. Be as specific as possible.)[/color][/i][DIVBOX=transparent] ${synopsis}[/DIVBOX]
-[HR][/HR]
-[b]DEPARTMENT INVOLVED[/B]
-${department}
-[b]NAME / ROLE / CONTACT OF PARTIES INVOLVED[/b]
-${decedentName}
-[HR][/HR]
-[/DIVBOX]
-[b]PHOTO OF INCIDENT (IF POSSIBLE)[/b]
-[divbox=transparent] ${scenePhotosBBCode}`
-
-        return bbCode;
-    };
-    const generateEmergencyProtocol = () => {
-        const {
-            lastName,
-            phmcRank,
-            patientID,
-            date,
-            patientDiagnosis,
-            patientSecondaryDiagnosis,
-            patientMedicine,
-            patientProcedure,
-            patientChiefComplaint,
-        } = formData;
-
-        let bbCode = `[divbox=white][table][tr][td][center][br][/br][br][/br][b]EMERGENCY PROTOCOL[/b]
-
-PATIENT ID: ${patientID}
-
-Date: ${date}
-
-Signed: ${phmcRank} ${lastName}
-[/center][td][center][img]https://i.imgur.com/QMaz0OC.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PILLBOX HILL MEDICAL CENTER[/b]
-ELGIN AVE. / STRAWBERRY AVE.
-PO BOX 742
-LOS SANTOS, SAN ANDREAS
-P: 50056[/size][/center][/table][/divbox]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Anamnesis[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Chief Complaint: [/u][br][/br]
-${patientChiefComplaint}
-[br][/br]
-[u]Pain Level/Emergency Severity Index (ESI): [/u][br][/br]
-[cb${formData.painLevel === 'patientNoPain' ? 'c' : ''}] [color=#0040FF]Level 5: no pain/non-urgent[/color] [cb${formData.painLevel === 'patientNormalPain' ? 'c' : ''}] [color=#00BF00]Level 4: normal pain/less urgent[/color] [cb${formData.painLevel === 'patientMildPain' ? 'c' : ''}] [color=#FFFF00]Level 3: mild pain/urgent[/color] [cb${formData.painLevel === 'patientSeverePain' ? 'c' : ''}] [color=#FF8040]Level 2: Severe pain/very urgent [/color][cb${formData.painLevel === 'patientCritical' ? 'c' : ''}] [color=#FF0000]Level 1: Critical/Emergent [/color][/left]
-[/table]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Vitals[/b][/color][/center][/divboxcolor]
-[table][tr][td][center]Temperature: [cb${formData.vitals === 'patientTempNormal' ? 'c' : ''}] Normal [cb${formData.vitals === 'patientHypothermic' ? 'c' : ''}] Hypothermic [cb${formData.vitals === 'patientHyperthermic' ? 'c' : ''}] Hyperthermic[/center]
-[td][center]Heart Rate: [cb${formData.heartRate === 'patientHeartRateNormal' ? 'c' : ''}] Normal [cb${formData.heartRate === 'patientHeartRateBradycardia' ? 'c' : ''}] Bradycardia [cb${formData.heartRate === 'patientHeartRateTachycardia' ? 'c' : ''}] Tachycardia[/center][/table]
-[table][tr][td][center]Breathing: [cb${formData.breathing === 'patientBreathingNormal' ? 'c' : ''}] Normal [cb${formData.breathing === 'patientBreathingSlow' ? 'c' : ''}] Slow [cb${formData.breathing === 'patientBreathingFast' ? 'c' : ''}] Fast [cb${formData.breathing === 'patientBreathingObstructed' ? 'c' : ''}] Obstructed[/center]
-[td][center]Blood Pressure: [cb${formData.bloodPressure === 'patientBloodPressureNormal' ? 'c' : ''}] Normal [cb${formData.bloodPressure === 'patientBloodPressureHypotension' ? 'c' : ''}] Hypotension [cb${formData.bloodPressure === 'patientBloodPressureHypertension' ? 'c' : ''}] Hypertension [/center][/table]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Findings[/b][/color][/center][/divboxcolor]
-[table][tr][td][center]General Health Condition (GHC): [cb${formData.findings === 'patientNormal' ? 'c' : ''}] Normal [cb${formData.findings === 'patientImpared' ? 'c' : ''}] Impaired[/center]
-[td][center]Lungs (Auscultation): [cb${formData.lungs === 'patientNormal' ? 'c' : ''}] Normal [cb${formData.findings === 'patientRhonchi' ? 'c' : ''}] Rhonchi [cb${formData.findings === 'patientCrack' ? 'c' : ''}] Crackles [/center][/table]
-[table][tr][td][center]Pupils: [cb${formData.pupils === 'patientPupilsNormal' ? 'c' : ''}] Normal [cb${formData.pupils === 'patientPupilsAbnormal' ? 'c' : ''}] Abnormal [/center]
-[td][center]Wounds: [cb${formData.wounds === 'patientFractures' ? 'c' : ''}] Fracture(s) [cb${formData.wounds === 'patientBleeding' ? 'c' : ''}] Bleeding [cb${formData.wounds === 'patientHematoma' ? 'c' : ''}] Hematoma [cb${formData.wounds === 'patientNoWounds' ? 'c' : ''}] None [/center][/table]
-[table][tr][td][center]ECG: [cb${formData.ecg === 'patientSinusRhythm' ? 'c' : ''}] Sinus rhythm [cb${formData.ecg === 'patientArrhythmia' ? 'c' : ''}] Arrhythmia [cb${formData.ecg === 'patientInfaction' ? 'c' : ''}] Infarct [/center]
-[td][center]Sono: [cb${formData.sono === 'patientNormal' ? 'c' : ''}] Normal [cb${formData.sono === 'patientFluids' ? 'c' : ''}] Fluids [cb${formData.sono === 'patientTissue' ? 'c' : ''}] Tissue Change[/center][/table]
-[table][tr][td][center]Lab: [cb${formData.lab.includes('WNL') ? 'c' : ''}] WNL  [cb${formData.lab.includes('Anemia') ? 'c' : ''}] Anemia [cb${formData.lab.includes('Inflammation/Infection') ? 'c' : ''}] Inflammation/Infection [cb${formData.lab.includes('Dysfunction') ? 'c' : ''}] Dysfunction/Disorder [cb${formData.lab.includes('ElectrolyteImbalance') ? 'c' : ''}] Electrolyte Imbalance [cb${formData.lab.includes('Infarct') ? 'c' : ''}] Infarct/Embolism [cb${formData.lab.includes('Tumor') ? 'c' : ''}] Tumor [/center][/table]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Preliminary Diagnosis[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Primary Diagnosis: [/u][br][/br]
-${patientDiagnosis}
-[br][/br][u]Secondary Diagnosis: [/u][br][/br]
-${patientSecondaryDiagnosis}[/left][/list][/table]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Therapy[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Admission: [/u][br][/br]
-[cb${formData.admission === 'Yes' ? 'c' : ''}] Yes
-[cb${formData.admission === 'No' ? 'c' : ''}] No
-[br][/br]
-[u]Procedure/Free Text: [/u][br][/br]
-${patientProcedure}
-[br][/br]
-[u]Medication: [/u][br][/br]
-${patientMedicine}
-[/left][/list][/table]`
-        return bbCode;
-    };
-    const generateConsultationNotesPHMC = () => {
-        const {
-            lastName,
-            phmcRank,
-            patientID,
-            date,
-            patientDiagnosis,
-            patientSecondaryDiagnosis,
-            patientMedicine,
-            patientProcedure,
-            patientChiefComplaint,
-        } = formData;
-
-        let bbCode = `[divbox=white][table][tr][td][center][br][/br][br][/br][b]Consultation Notes[/b]
-
-PATIENT ID: ${patientID}
-
-Date: ${date}
-
-Signed: ${phmcRank} ${lastName}
-[/center][td][center][img]https://i.imgur.com/QMaz0OC.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PILLBOX HILL MEDICAL CENTER[/b]
-ELGIN AVE. / STRAWBERRY AVE.
-PO BOX 742
-LOS SANTOS, SAN ANDREAS
-P: 50056[/size][/center][/table][/divbox]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Anamnesis[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Reason for Visit: [/u][br][/br]
-${patientChiefComplaint}
-[br][/br]
-[u]Assigned Department: [/u][br][/br]
-[cb${formData.assignedDepartment === 'InternalMedicine' ? 'c' : ''}] Internal Medicine 
-[cb${formData.assignedDepartment === 'SurgicalDepartment' ? 'c' : ''}] Surgical Department
-[cb${formData.assignedDepartment === 'Widwifery' ? 'c' : ''}] Midwifery
-[cb${formData.assignedDepartment === 'Dialysis' ? 'c' : ''}] Dialysis
-[/table]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Vitals[/b][/color][/center][/divboxcolor]
-[table][tr][td][center]Temperature: [cb${formData.vitals === 'patientTempNormal' ? 'c' : ''}] Normal [cb${formData.vitals === 'patientHypothermic' ? 'c' : ''}] Hypothermic [cb${formData.vitals === 'patientHyperthermic' ? 'c' : ''}] Hyperthermic[/center]
-[td][center]Heart Rate: [cb${formData.heartRate === 'patientHeartRateNormal' ? 'c' : ''}] Normal [cb${formData.heartRate === 'patientHeartRateBradycardia' ? 'c' : ''}] Bradycardia [cb${formData.heartRate === 'patientHeartRateTachycardia' ? 'c' : ''}] Tachycardia[/center][/table]
-[table][tr][td][center]Breathing: [cb${formData.breathing === 'patientBreathingNormal' ? 'c' : ''}] Normal [cb${formData.breathing === 'patientBreathingSlow' ? 'c' : ''}] Slow [cb${formData.breathing === 'patientBreathingFast' ? 'c' : ''}] Fast [cb${formData.breathing === 'patientBreathingObstructed' ? 'c' : ''}] Obstructed[/center]
-[td][center]Blood Pressure: [cb${formData.bloodPressure === 'patientBloodPressureNormal' ? 'c' : ''}] Normal [cb${formData.bloodPressure === 'patientBloodPressureHypotension' ? 'c' : ''}] Hypotension [cb${formData.bloodPressure === 'patientBloodPressureHypertension' ? 'c' : ''}] Hypertension [/center][/table]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Findings[/b][/color][/center][/divboxcolor]
-[table][tr][td][center]General Health Condition (GHC): [cb${formData.findings === 'patientNormal' ? 'c' : ''}] Normal [cb${formData.findings === 'patientImpared' ? 'c' : ''}] Impaired[/center]
-[td][center]Lungs (Auscultation): [cb${formData.lungs === 'patientNormal' ? 'c' : ''}] Normal [cb${formData.findings === 'patientRhonchi' ? 'c' : ''}] Rhonchi [cb${formData.findings === 'patientCrack' ? 'c' : ''}] Crackles [/center][/table]
-[table][tr][td][center]Pupils: [cb${formData.pupils === 'patientPupilsNormal' ? 'c' : ''}] Normal [cb${formData.pupils === 'patientPupilsAbnormal' ? 'c' : ''}] Abnormal [/center]
-[td][center]Wounds: [cb${formData.wounds === 'patientFractures' ? 'c' : ''}] Fracture(s) [cb${formData.wounds === 'patientBleeding' ? 'c' : ''}] Bleeding [cb${formData.wounds === 'patientHematoma' ? 'c' : ''}] Hematoma [cb${formData.wounds === 'patientNoWounds' ? 'c' : ''}] None [/center][/table]
-[table][tr][td][center]ECG: [cb${formData.ecg === 'patientSinusRhythm' ? 'c' : ''}] Sinus rhythm [cb${formData.ecg === 'patientArrhythmia' ? 'c' : ''}] Arrhythmia [cb${formData.ecg === 'patientInfaction' ? 'c' : ''}] Infarct [/center]
-[td][center]Sono: [cb${formData.sono === 'patientNormal' ? 'c' : ''}] Normal [cb${formData.sono === 'patientFluids' ? 'c' : ''}] Fluids [cb${formData.sono === 'patientTissue' ? 'c' : ''}] Tissue Change[/center][/table]
-[table][tr][td][center]Lab: [cb${formData.lab.includes('WNL') ? 'c' : ''}] WNL  [cb${formData.lab.includes('Anemia') ? 'c' : ''}] Anemia [cb${formData.lab.includes('Inflammation/Infection') ? 'c' : ''}] Inflammation/Infection [cb${formData.lab.includes('Dysfunction') ? 'c' : ''}] Dysfunction/Disorder [cb${formData.lab.includes('ElectrolyteImbalance') ? 'c' : ''}] Electrolyte Imbalance [cb${formData.lab.includes('Infarct') ? 'c' : ''}] Infarct/Embolism [cb${formData.lab.includes('Tumor') ? 'c' : ''}] Tumor [/center][/table]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Preliminary Diagnosis[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Primary Diagnosis: [/u][br][/br]
-${patientDiagnosis}
-[br][/br][u]Secondary Diagnosis: [/u][br][/br]
-${patientSecondaryDiagnosis}[/left][/list][/table]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Therapy[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Admission: [/u][br][/br]
-[cb${formData.admission === 'Yes' ? 'c' : ''}] Yes
-[cb${formData.admission === 'No' ? 'c' : ''}] No
-[br][/br]
-[u]Treatment plan/Free Text: [/u][br][/br]
-${patientProcedure}
-[br][/br]
-[u]Medication: [/u][br][/br]
-${patientMedicine}
-[br][/br]
-[u]Follow-Up: [/u][br][/br]
-[cb${formData.followup === 'AsNeeded' ? 'c' : ''}] As needed
-[cb${formData.followup === 'Recommended' ? 'c' : ''}] Recommended
-[cb${formData.followup === 'ElectiveProcedure' ? 'c' : ''}] Elective procedure 
-[/left][/list][/table]`
-        return bbCode;
-        };
-        const generateConsultationNotesPBC = () => {
-            const {
-                lastName,
-                phmcRank,
-                patientID,
-                date,
-                patientDiagnosis,
-                patientSecondaryDiagnosis,
-                patientMedicine,
-                patientProcedure,
-                patientChiefComplaint,
-                patientNotes,
-            } = formData;
-    
-            let bbCode = `[divbox=white][table][tr][td][center][br][/br][br][/br][b]Consultation Notes[/b]
-    
-PATIENT ID: ${patientID}
-
-Date: ${date}
-
-Signed: ${phmcRank} ${lastName}
-[/center][td][center][img]https://i.imgur.com/LkRKav2.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PALETO BAY CLINIC[/b]
-PALETO BAY BLVD.
-PO BOX 685
-PALETO BAY, SAN ANDREAS
-P: 50056[/size][/center][/table][/divbox]
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Anamnesis[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Reason for Visit: [/u][br][/br]
-${patientChiefComplaint}
-[br][/br]
-[u]Assigned Department: [/u][br][/br]
-[cb${formData.paletoClinicDepartment === 'InternalMedicine' ? 'c' : ''}] Internal Medicine 
-[cb${formData.paletoClinicDepartment === 'SurgicalDepartment' ? 'c' : ''}] Surgical Department
-[/table]
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Vitals[/b][/color][/center][/divboxcolor]
-[table][tr][td][center]Temperature: [cb${formData.vitals === 'patientTempNormal' ? 'c' : ''}] Normal [cb${formData.vitals === 'patientHypothermic' ? 'c' : ''}] Hypothermic [cb${formData.vitals === 'patientHyperthermic' ? 'c' : ''}] Hyperthermic[/center]
-[td][center]Heart Rate: [cb${formData.heartRate === 'patientHeartRateNormal' ? 'c' : ''}] Normal [cb${formData.heartRate === 'patientHeartRateBradycardia' ? 'c' : ''}] Bradycardia [cb${formData.heartRate === 'patientHeartRateTachycardia' ? 'c' : ''}] Tachycardia[/center][/table]
-[table][tr][td][center]Breathing: [cb${formData.breathing === 'patientBreathingNormal' ? 'c' : ''}] Normal [cb${formData.breathing === 'patientBreathingSlow' ? 'c' : ''}] Slow [cb${formData.breathing === 'patientBreathingFast' ? 'c' : ''}] Fast [cb${formData.breathing === 'patientBreathingObstructed' ? 'c' : ''}] Obstructed[/center]
-[td][center]Blood Pressure: [cb${formData.bloodPressure === 'patientBloodPressureNormal' ? 'c' : ''}] Normal [cb${formData.bloodPressure === 'patientBloodPressureHypotension' ? 'c' : ''}] Hypotension [cb${formData.bloodPressure === 'patientBloodPressureHypertension' ? 'c' : ''}] Hypertension [/center][/table]
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Findings[/b][/color][/center][/divboxcolor]
-[table][tr][td][center]General Health Condition (GHC): [cb${formData.findings === 'patientNormal' ? 'c' : ''}] Normal [cb${formData.findings === 'patientImpared' ? 'c' : ''}] Impaired[/center]
-[td][center]Lungs (Auscultation): [cb${formData.lungs === 'patientNormal' ? 'c' : ''}] Normal [cb${formData.findings === 'patientRhonchi' ? 'c' : ''}] Rhonchi [cb${formData.findings === 'patientCrack' ? 'c' : ''}] Crackles [/center][/table]
-[table][tr][td][center]Pupils: [cb${formData.pupils === 'patientPupilsNormal' ? 'c' : ''}] Normal [cb${formData.pupils === 'patientPupilsAbnormal' ? 'c' : ''}] Abnormal [/center]
-[td][center]Wounds: [cb${formData.wounds === 'patientFractures' ? 'c' : ''}] Fracture(s) [cb${formData.wounds === 'patientBleeding' ? 'c' : ''}] Bleeding [cb${formData.wounds === 'patientHematoma' ? 'c' : ''}] Hematoma [cb${formData.wounds === 'patientNoWounds' ? 'c' : ''}] None [/center][/table]
-[table][tr][td][center]ECG: [cb${formData.ecg === 'patientSinusRhythm' ? 'c' : ''}] Sinus rhythm [cb${formData.ecg === 'patientArrhythmia' ? 'c' : ''}] Arrhythmia [cb${formData.ecg === 'patientInfaction' ? 'c' : ''}] Infarct [/center]
-[td][center]Sono: [cb${formData.sono === 'patientNormal' ? 'c' : ''}] Normal [cb${formData.sono === 'patientFluids' ? 'c' : ''}] Fluids [cb${formData.sono === 'patientTissue' ? 'c' : ''}] Tissue Change[/center][/table]
-[table][tr][td][center]Lab: [cb${formData.lab.includes('WNL') ? 'c' : ''}] WNL  [cb${formData.lab.includes('Anemia') ? 'c' : ''}] Anemia [cb${formData.lab.includes('Inflammation/Infection') ? 'c' : ''}] Inflammation/Infection [cb${formData.lab.includes('Dysfunction') ? 'c' : ''}] Dysfunction/Disorder [cb${formData.lab.includes('ElectrolyteImbalance') ? 'c' : ''}] Electrolyte Imbalance [cb${formData.lab.includes('Infarct') ? 'c' : ''}] Infarct/Embolism [cb${formData.lab.includes('Tumor') ? 'c' : ''}] Tumor [/center][/table]
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Discharge Diagnosis[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Primary Diagnosis: [/u][br][/br]
-${patientDiagnosis}
-[br][/br][u]Secondary Diagnosis: [/u][br][/br]
-${patientSecondaryDiagnosis}[/left][/list][/table]
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Therapy[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Admission: [/u][br][/br]
-[cb${formData.admission === 'Yes' ? 'c' : ''}] Yes
-[cb${formData.admission === 'No' ? 'c' : ''}] No
-[br][/br]
-[u]Treatment plan/Free Text: [/u][br][/br]
-${patientProcedure}
-[br][/br]
-[u]Additional Notes: [/u][br][/br]
-${patientNotes}
-[br][/br]
-[u]Medication: [/u][br][/br]
-${patientMedicine}
-[br][/br]
-[u]Follow-Up: [/u][br][/br]
-[cb${formData.followup === 'AsNeeded' ? 'c' : ''}] As needed
-[cb${formData.followup === 'Recommended' ? 'c' : ''}] Recommended
-[cb${formData.followup === 'ElectiveProcedure' ? 'c' : ''}] Elective procedure 
-[/left][/list][/table]`
-            return bbCode;
-            };
-            const generateCommentaryNotePHMC = () => {
-                const {
-                    phmcEmployee,
-                    date,
-                    patientNotes,
-                    patientID,
-                } = formData;
-        
-                let bbCode = `[divbox=white][table][tr][td][center][br][/br][br][/br][b]Session Notes[/b]
-
-PATIENT ID: ${patientID}
-
-Date: ${date}
-
-[/center][td][center][img]https://i.imgur.com/QMaz0OC.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PILLBOX HILL MEDICAL CENTER[/b]
-ELGIN AVE. / STRAWBERRY AVE.
-PO BOX 742
-LOS SANTOS, SAN ANDREAS
-P: 50056[/size][/center][/table][/divbox]
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Commentary Note[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Firstname Lastname: [/u][br][/br]
-${phmcEmployee}
-[br][/br]
-[u]Patient Notes: [/u]
-${patientNotes}
-[br][/br]
-[u]Department: [/u][br][/br]
-[cb${formData.departmentLarge === 'EmergencyMedicine' ? 'c' : ''}] Emergency Medicine
-[cb${formData.departmentLarge === 'InternalMedicine' ? 'c' : ''}] Internal Medicine
-[cb${formData.departmentLarge === 'Surgical' ? 'c' : ''}] Surgical Department
-[cb${formData.departmentLarge === 'Midwifery' ? 'c' : ''}] Midwifery
-[cb${formData.departmentLarge === 'PhysicalTherapy' ? 'c' : ''}] Physical Therapy
-[cb${formData.departmentLarge === 'Dentistry' ? 'c' : ''}] Dentistry
-[cb${formData.departmentLarge === 'MentalHealth' ? 'c' : ''}] Mental Health
-[cb${formData.departmentLarge === 'Administration' ? 'c' : ''}] Administration
-[br][/br][/left]
-[/table]
-`
-                return bbCode;
-                };
-                const generateCommentaryNotePBC = () => {
-                    const {
-                        phmcEmployee,
-                        date,
-                        patientID,
-                        patientNotes
-                    } = formData;
-            
-                    let bbCode = `[divbox=white][table][tr][td][center][br][/br][br][/br][b]Session Notes[/b]
-    
-PATIENT ID: ${patientID}
-
-Date: ${date}
-
-[/center][td][center][img]https://i.imgur.com/LkRKav2.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PALETO BAY CLINIC[/b]
-PALETO BAY BLVD.
-PO BOX 685
-PALETO BAY, SAN ANDREAS
-P: 50056[/size][/center][/table][/divbox]
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Commentary Note[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Firstname Lastname: [/u][br][/br]
-${phmcEmployee}
-[br][/br]
-[u]Patient Notes: [/u]
-${patientNotes}
-[br][/br]
-[u]Department: [/u][br][/br]
-[cb${formData.departmentLarge === 'EmergencyMedicine' ? 'c' : ''}] Emergency Medicine
-[cb${formData.departmentLarge === 'InternalMedicine' ? 'c' : ''}] Internal Medicine
-[cb${formData.departmentLarge === 'Surgical' ? 'c' : ''}] Surgical Department
-[cb${formData.departmentLarge === 'Midwifery' ? 'c' : ''}] Midwifery
-[cb${formData.departmentLarge === 'PhysicalTherapy' ? 'c' : ''}] Physical Therapy
-[cb${formData.departmentLarge === 'Dentistry' ? 'c' : ''}] Dentistry
-[cb${formData.departmentLarge === 'MentalHealth' ? 'c' : ''}] Mental Health
-[cb${formData.departmentLarge === 'Administration' ? 'c' : ''}] Administration
-[br][/br][/left]
-[/table]
-    `
-                    return bbCode;
-                    };
-
-                    const generateMedicalRecordRelease = () => {
-                        const {
-                            patientFirstName,
-                            patientMiddleName,
-                            patientLastName,
-                            patientPH,
-                            patientDateOfBirth,
-                            patientAddress,
-                            patientZIP,
-                            patientEmail,
-                            patientMedInfoReleaseOther,
-                            phmcEmployee,
-                            MedicalRecordsReleaseOther,
-                            patientMedInfoFormatOther,
-                            StupidDateFrom,
-                            StupidDateTo,
-                            SubmitDate,
-                            paymentProofPhotos,
-                            MedicalRecordsRelease,
-                            payNow,
-                        } = formData;
-
-                        const calculateCost = () => {
-                            const selectedCount = MedicalRecordsRelease?.length || 0;
-                            if (selectedCount === 0) {
-                                return 0;
-                            }
-                            const costPerItem = 5000;
-                            return selectedCount * costPerItem;
-                        };
-                        const approximateCost = calculateCost();
-                        const firstPaymentProofUrl = (paymentProofPhotos || '').split(',')[0].trim();
-                        const patientFullName = `${patientFirstName || ''} ${patientMiddleName || ''} ${patientLastName || ''}`.replace(/\s+/g, ' ').trim(); // Combine and clean up spaces
-                    
-                        let bbCode = `[divbox=white] [center] [img]https://i.imgur.com/Hxjt4M2.png[/img] [/center] [/divbox]
-[divbox=white]
-[br][/br][color=#800000][size=150][b]I. PATIENT INFORMATION[/b][/size][/color][hr][/hr]
-[list=none][b]Title:[/b] [i](select one)[/i]
-[list=none][${formData.patientTitle === 'Mr' ? 'x' : ''}] Mr.
-[*][${formData.patientTitle === 'Mrs' ? 'x' : ''}] Mrs.
-[*][${formData.patientTitle === 'Ms' ? 'x' : ''}] Ms.
-[*][${formData.patientTitle === 'Other' ? 'x' : ''}] Other[/list]
-[b]First Name:[/b]
-[i]${patientFirstName}[/i][br][/br]
-[b]Middle Name:[/b] [i](optional)[/i]
-[i]${patientMiddleName}[/i][br][/br]
-[b]Last Name:[/b]
-[i]${patientLastName}[/i][br][/br]
-[b]Gender:[/b] [i](select one)[/i]
-[list=none]
-[*][${formData.patientGender === 'Male' ? 'X' : ''}] Male
-[*][${formData.patientGender === 'Female' ? 'X' : ''}] Female[/list]
-[b]Date of Birth:[/b]
-[i]${patientDateOfBirth}[/i][br][/br]
-[b]Address:[/b]
-[i]${patientAddress}[/i][br][/br]
-[b]ZIP / Postal Code:[/b]
-[i]${patientZIP}[/i][br][/br][/list]
-[br][/br][color=#800000][size=150][b]II. CONTACT INFORMATION[/b][/size][/color][hr][/hr]
-[list=none]
-[b]Phone Type:[/b] [i](select one)[/i]
-[list=none]
-[*][${formData.patientPhoneType === 'Mobile' ? 'X' : ''}] Mobile
-[*][${formData.patientPhoneType === 'Home' ? 'X' : ''}] Home
-[*][${formData.patientPhoneType === 'Work' ? 'X' : ''}] Work
-[*][${formData.patientPhoneType === 'Other' ? 'X' : ''}] Other[/list][b]Phone Number:[/b]
-[i]${patientPH}[/i][br][/br]
-[b]Email:[/b]
-[i]${patientEmail}[/i][br][/br][/list]
-[br][/br][color=#800000][size=150][b]III. RELEASE INFORMATION[/b][/size][/color][hr][/hr]
-[list=none][b]Purpose of Medical Information Release:[/b]
-[list=none]
-[*][${formData.CarePurposeMedicalInformationRelease === 'Further Treatment' ? 'X' : ''}] Further Treatment / Continued 
-[*][${formData.CarePurposeMedicalInformationRelease === 'Personal' ? 'X' : ''}] Personal Use
-[*][${formData.CarePurposeMedicalInformationRelease === 'Attorney' ? 'X' : ''}] Attorney / Client
-[*][${formData.CarePurposeMedicalInformationRelease === 'Other' ? 'X' : ''}] Other: ${patientMedInfoReleaseOther}[/list][/list]
-[list=none][b]Format of Medical Information Release:[/b]
-[list=none]
-[*][${formData.PurposeMedicalInformationReleaseFormat === 'CopyofRecords' ? 'X' : ''}] Copy of Record to be picked up
-[*][${formData.PurposeMedicalInformationReleaseFormat === 'VerbalRelease' ? 'X' : ''}] Verbal Release (e.g. phone conversation)
-[*][${formData.PurposeMedicalInformationReleaseFormat === 'ElectronicRelease' ? 'X' : ''}] Electronical Release (sent via email)
-[*][${formData.PurposeMedicalInformationReleaseFormat === 'Other' ? 'X' : ''}] Other: ${patientMedInfoFormatOther}[/list][/list]
-[list=none][b]Date Range:[/b]
-[i]I authorize the release of information covering the period(s) of treatment:[/i]
-[list=none]
-[*][b]From:[/b] [i]${StupidDateFrom}[/i]    
-[*][b]To:[/b] [i]${StupidDateTo}[/i][/list][/list]
-[list=none][b]Medical Records to be Released:[/b] [i](check all that apply)[/i]
-[list=none]
-[*][${formData.MedicalRecordsRelease?.includes('ERVisit') ? 'X' : ''}] [b]Emergency Room Visit[/b] (ER notes, progress notes, consultations, procedure notes, test results)
-[*][${formData.MedicalRecordsRelease?.includes('HospitalStay') ? 'X' : ''}] [b]Hospital Stay[/b] (History and physical, progress notes, consultations, operative reports, discharge summary, test results)
-[*][${formData.MedicalRecordsRelease?.includes('Outpatient') ? 'X' : ''}] [b]Outpatient Surgery/Procedure[/b] (History and physical, progress notes, consultations, procedure notes, test results)
-[*][${formData.MedicalRecordsRelease?.includes('OfficeClinic') ? 'X' : ''}] [b]Clinic, Office Visit or Immediate Care[/b] (Office notes, progress notes, procedure notes, test results)
-[*][${formData.MedicalRecordsRelease?.includes('PsychologyVisits') ? 'X' : ''}] [b]Psychology Visits[/b] (Office notes, progress notes, procedure notes, evaluation results)
-[*][${formData.MedicalRecordsRelease?.includes('Other') ? 'X' : ''}] [b]Other Records:[/b] ${MedicalRecordsReleaseOther}[/list][/list]
-[list=none][b]Practitioner's name seen by:[/b]
-[i]${phmcEmployee}[/i]
-[br][/br][/list]
-[color=#800000][size=150][b]IV. AUTHORIZATION FOR RELEASE INFORMATION[/b][/size][/color][hr][/hr][br][/br]
-[list=none]I, ${patientFirstName} ${patientMiddleName} ${patientLastName}, hereby authorize Pillbox Hill Medical Center to disclose my individually identifiable health information. I understand that this authorization is voluntary and I may refuse to sign this authorization. I further understand that my health care will not be affected if I do not sign this form.
-
-I, ${patientFirstName} ${patientMiddleName} ${patientLastName}, understand that if the recipient authorized to receive the information is not a covered entity, the released information may no longer be protected by federal and state privacy regulations.
-
-I, ${patientFirstName} ${patientMiddleName} ${patientLastName}, further understand that I may revoke this authorization at any time by notifying, in writing, the Pillbox Hill Medical Center facility where this authorization is being signed. I also understand the revocation must be signed and dated with a date that is later than the date on this authorization. The revocation will not affect any releases made prior to the receipt of the written revocation.
-
-I, ${patientFirstName} ${patientMiddleName} ${patientLastName}, understand the record might not be complete, if it is a recent visit, and additional documentation could be added after submitting this request. 
-
-By typing my name below, I, ${patientFirstName} ${patientMiddleName} ${patientLastName}, certify that this information can be used for the purpose of processing my Authorization for Medical Records Release request. I consider this as my electronic signature for this request.
-[br][/br]
-[/list]
-[list=none][b]Signature:[/b] 
-[i]${patientFirstName} ${patientMiddleName} ${patientLastName}[/i][br][/br]
-[b]Date:[/b]
-[i]${SubmitDate}[/i]
-${(payNow === true || payNow === 'true') && approximateCost > 0 ? `
-    I, ${patientFullName || 'the undersigned'}, enclose this payment of $${approximateCost.toLocaleString()} for the Medical Records Release Fees. ${firstPaymentProofUrl ? `[url=${firstPaymentProofUrl}]Enclosed Image[/url]` : 'i[/i]'}` : ''}
-[/list]
-    [/divbox]`; // <-- Moved the closing divbox tag here
-    return bbCode;
-};
-const generateBasicPatientFile = () => {
-    const {
-        patientName,
-        patientAddress,
-        patientRace,
-        patientGender,
-        patientPH,
-        patientDiscord,
-        patientEmergencyContact,
-        patientEmergencyContactNumber,
-        patientEmergencyContactRelation,
-        patientEmergencyContactDiscord,
-        patientTitle,
-        patientAllergies,
-        patientCurrentMedicine,
-        patientChronicDiseases,
-        patientNotes,
-        scenePhotos,
-        date,
-        patientID,
-    } = formData;
-    const scenePhotosBBCode = scenePhotos.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
-
-    let bbCode = `[table][tr][td][center][br][/br][br][/br][b]Patient Information[/b]
-
-[size=110]PATIENT ${patientID}
-
-${patientName}
-[/size]
-
-[/center][td][center][img]https://i.imgur.com/QMaz0OC.png[/img][img]https://i.imgur.com/LkRKav2.png[/img]
-[b][size=150]BASIC PATIENT INFORMATION[/size][/center][/table]
-[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]General Information[/b][/color][/size][/center][/divboxcolor]
-[table][tr][td] Title: ${patientTitle}[/td][td] Full Name: ${patientName}
-[tr][td] Date of Birth: ${date} [/td][td] Home Address: ${patientAddress}
-[tr][td] Gender Identity: ${patientGender} [/td][td] Ethnicity: ${patientRace}
-[tr][td] Phone Number: ${patientPH} [/td][td] (( Discord ID: ${patientDiscord}))
-[/table]
-[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Emergency Contact[/b][/color][/size][/center][/divboxcolor]
-[table][tr][td] Full Name: ${patientEmergencyContact} [/td][td] Relationship: ${patientEmergencyContactRelation}
-[tr][td] Phone Number: ${patientEmergencyContactNumber} [/td][td] (( Discord ID: ${patientEmergencyContactDiscord}))
-[/table]
-[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Medical History[/b][/color][/size][/center][/divboxcolor]
-[table][tr][td][b][size=105]Past History[/size][/b][color=transparent]youarecool[/color][/td][td][color=transparent]ifyoureadthisyouareawesomebutdontdeletemeplease![/color]
-[tr][td] Blood Type: [/td][td] [cb${formData.patientBloodType === 'A+' ? 'c' : ''}] A+ [cb${formData.patientBloodType === 'A-' ? 'c' : ''}] A- [cb${formData.patientBloodType === 'B+' ? 'c' : ''}] B+ [cb${formData.patientBloodType === 'B-' ? 'c' : ''}] B- [cb${formData.patientBloodType === 'O+' ? 'c' : ''}] O+ [cb${formData.patientBloodType === 'O-' ? 'c' : ''}] O- [cb${formData.patientBloodType === 'AB+' ? 'c' : ''}] AB+ [cb${formData.patientBloodType === 'AB-' ? 'c' : ''}] AB-
-[tr][td] Known Allergies: [/td][td] ${patientAllergies}
-[tr][td] Current Medications: [/td][td] ${patientCurrentMedicine}
-[tr][td] Chronic Conditions: [/td][td] ${patientChronicDiseases}
-[tr][td] Traumas & Injuries: [/td][td] ${patientNotes}
-[/table] 
-
-[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Payment[/b][/color][/size][/center][/divboxcolor]
-[table][tr][td] Please attach an unedited confirmation of your payment, unless you are exempt. [size=70](see question 14 in the FAQ thread on how to pay)[/size][/td][td]
-[url=${scenePhotos}]Proof Of Payment [/url]
-[/table]
-
-`
-    return bbCode;
-    };
-    
-    const generateEmailPHMCEmail = () => {
-        const {
-            scenePhotos,
-            decedentName,
-            patientNotes,
-            synopsis,
-            phmcEmployee,
-            decedentOOC,
-            patientCareer,
-        } = formData;
-        const scenePhotosBBCode = scenePhotos.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
-
-        let bbCode = `[divbox=na][br][/br][imageleft]https://i.imgur.com/dkdFQtg.png[/imageleft] [b][size=110]Pillbox Hill Medical Center[/size][/b] 
-[center][/center][br][/br]
-[center][size=130][/center][/size]
-[center][size=150][b]RE: ${patientNotes} [/b][/size][/center]
-
-[hr][/hr][br][/br][list=none]
-Dear ${decedentName},
-
-${synopsis}
-
-
-Respectfully submitted,
-${scenePhotosBBCode} 
-[/list][hr][/hr][list=none]
-[b][size=105]${phmcEmployee}[/size][/b]
-[size=85]${decedentOOC}
-${patientCareer}
-[/size]
-
-[b]Pillbox Hill Medical Center[/b]
-[size=85]Elgin Avenue/Strawberry Avenue, Pillbox Hill, Los Santos, SA
-Phone: 50056
-Mail: [url=https://phmc.gta.world/ucp.php?i=pm&mode=compose&g=40]info@phmc.health[/url]
-Website: [url=https://phmc.gta.world/index.php]www.phmc.health[/url]
-
-Follow us on Facebrowser: [url=https://face.gta.world/pages/PHMC?ref=qs]Pillbox Hill Medical Center[/url][/size]
-
-[size=70][i]The contents of this message and any attachments are confidential. They are intended for the named recipient(s) only.  If you have received this email by mistake, please notify the sender immediately and do not disclose the contents to anyone or make copies thereof.[/i][/size][/divbox] 
-`
-        return bbCode;
-        };
-        const generateAdvancedPatientFile = () => {
-            const {
-                patientName,
-                patientAddress,
-                patientRace,
-                patientGender,
-                patientPH,
-                patientDiscord,
-                patientEmergencyContact,
-                patientEmergencyContactNumber,
-                patientEmergencyContactRelation,
-                patientEmergencyContactDiscord,
-                patientTitle,
-                patientAllergies,
-                patientCurrentMedicine,
-                patientChronicDiseases,
-                patientNotes,
-                date,
-                patientID,
-                patientTherapy, 
-                patientTriggers,
-                patientSupport,
-                patientHarm,
-                patientFam,
-                patientGenetic,
-                patientMental,
-                patientFamSocial,
-                patientReligion,
-                attorneyName,
-                attorneyRelation,
-                attorneyPH,
-                patientDateOfBirth,
-                patientSmoker, 
-                patientAlcohol,
-                patientDrugs,
-                patientExercise,
-                patientDiet,
-                patientSleep,
-                patientSexLife, 
-                patientJobRisks,
-                patientHazards, 
-                patientOther, 
-                dnrOther,
-                scenePhotos
-                    } = formData;
-                    const scenePhotosBBCode = scenePhotos.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
-
-            let bbCode = `[table][tr][td][center][br][/br][br][/br][b]Patient Information[/b]
-
-[size=110]PATIENT ${patientID}
-
-${patientName}
-[/size]
-
-[/center][td][center][img]https://i.imgur.com/QMaz0OC.png[/img][img]https://i.imgur.com/LkRKav2.png[/img]
-[b][size=150]ADVANCED PATIENT INFORMATION[/size][/center][/table]
-[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]General Information[/b][/color][/size][/center][/divboxcolor]
-[table][tr][td] Title: ${patientTitle}[/td][td] Full Name: ${patientName}
-[tr][td] Date of Birth: ${patientDateOfBirth} [/td][td] Home Address: ${patientAddress}
-[tr][td] Gender Identity: ${patientGender} [/td][td] Ethnicity: ${patientRace}
-[tr][td] Phone Number: ${patientPH} [/td][td] (( Discord ID: ${patientDiscord}))
-[/table]
-    [divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Emergency Contact[/b][/color][/size][/center][/divboxcolor]
-    [table][tr][td] Full Name: ${patientEmergencyContact} [/td][td] Relationship: ${patientEmergencyContactRelation}
-    [tr][td] Phone Number: ${patientEmergencyContactNumber} [/td][td] (( Discord ID: ${patientEmergencyContactDiscord}))
-[/table]
-[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Medical History[/b][/color][/size][/center][/divboxcolor]
-[table][tr][td][b][size=105]Past History[/size][/b][color=transparent]youarecool[/color][/td][td][color=transparent]ifyoureadthisyouareawesomebutdontdeletemeplease![/color]
-[tr][td] Blood Type: [/td][td] [cb${formData.patientBloodType === 'A+' ? 'c' : ''}] A+ [cb${formData.patientBloodType === 'A-' ? 'c' : ''}] A- [cb${formData.patientBloodType === 'B+' ? 'c' : ''}] B+ [cb${formData.patientBloodType === 'B-' ? 'c' : ''}] B- [cb${formData.patientBloodType === 'O+' ? 'c' : ''}] O+ [cb${formData.patientBloodType === 'O-' ? 'c' : ''}] O- [cb${formData.patientBloodType === 'AB+' ? 'c' : ''}] AB+ [cb${formData.patientBloodType === 'AB-' ? 'c' : ''}] AB-
-[tr][td] Known Allergies: [/td][td] ${patientAllergies}
-[tr][td] Current Medications: [/td][td] ${patientCurrentMedicine}
-[tr][td] Chronic Conditions: [/td][td] ${patientChronicDiseases}
-[tr][td] Traumas & Injuries: [/td][td] ${patientNotes}
-[/table]
-[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Mental Health History[/b][/color][/size][/center][/divboxcolor]
-[table][tr][td][b][size=105]Past History[/size][/b][color=transparent]youarecool[/color][/td][td][color=transparent]ifyoureadthisyouareawesomebutdontdeletemeplease![/color]
-[tr][td] Diagnosed Mental Health Conditions: [/td][td] ${patientMental}
-[tr][td] Therapies & Counseling: [/td][td] ${patientTherapy}
-[tr][td] Triggers or Sensors: [/td][td] ${patientTriggers}
-[tr][td] Support & Coping Systems: [/td][td] ${patientSupport}
-[tr][td] Self-Harm History or Tendencies: [/td][td] ${patientHarm}
-[/table]
-[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Family Medical History[/b][/color][/size][/center][/divboxcolor]
-[table][tr][td][b][size=105]Past History[/size][/b][color=transparent]youarecool[/color][/td][td][color=transparent]ifyoureadthisyouareawesomebutdontdeletemeplease![/color]
-[tr][td] Immediate Family Members: [/td][td] ${patientFam}
-[tr][td] Known Genetic Conditions: [/td][td] ${patientGenetic}
-[tr][td] Family Social History: [/td][td] ${patientFamSocial}
-[/table]
-[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Social Information[/b][/color][/size][/center][/divboxcolor]
-[table][tr][td] Marital Status: [cb${formData.maritalStatus === 'Single' ? 'c' : ''}] Single [cb${formData.maritalStatus === 'Married' ? 'c' : ''}] Married [cb${formData.maritalStatus === 'Divorced' ? 'c' : ''}] Divorced/Widowed [/td][td] Number of Children: [cb${formData.numberChildren === '0' ? 'c' : ''}] 0 [cb${formData.numberChildren === '1' ? 'c' : ''}] 1 or more
-[tr][td] Cultural and/or Religious Considerations: ${patientReligion} [/td][td] Financial Status: [cb${formData.financialStatus === 'LowIncome' ? 'c' : ''}] Low Income [cb${formData.financialStatus === 'MiddleIncome' ? 'c' : ''}] Average Income [cb${formData.financialStatus === 'HighIncome' ? 'c' : ''}] High Income
-[/table]
-[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Lifestyle Information[/b][/color][/size][/center][/divboxcolor]
-[table][tr][td] Smoking Status: ${patientSmoker} [/td][td] Alcohol Use: ${patientAlcohol}[/td][td] Other Substances: ${patientDrugs}
-[tr][td] Exercise Habits: ${patientExercise}[/td][td] Dietary Information: ${patientDiet}[/td][td] Sleep Patterns: ${patientSleep}
-[tr][td] Sexual Health: ${patientSexLife}[/td][td] Occupational Hazards: ${patientJobRisks}[/td][td] Environmental Hazards: ${patientHazards}[/table]
-[table][tr][td] Other Information & Preferences: ${patientOther}
-[/table]
-[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Advanced Directives[/b][/color][/size][/center][/divboxcolor]
-[divbox=transparent][list=none]I, ${patientName}, hereby provide the following advance directives regarding my healthcare, to be followed in the event that I become unable to make decisions about my medical treatment:
-
-[list=1][*] [size=110]Living Will[/size]: In the event I am unable to communicate, I direct the following regarding life-sustaining treatments:
-[cb${formData.dnr === 'ProlongLife' ? 'c' : ''}][/cb${formData.dnr === 'ProlongLife' ? 'c' : ''}]I want all available measures taken to prolong my life.
-[cb${formData.dnr === 'ComfortOfLife' ? 'c' : ''}][/cb${formData.dnr === 'ComfortOfLife' ? 'c' : ''}]I want only treatments focused on comfort and quality of life, even if it means not prolonging life.
-[cb${formData.dnr === 'other' ? 'c' : ''}][/cb${formData.dnr === 'other' ? 'c' : ''}]Other instructions: ${dnrOther}
-
-[*][size=110]Healthcare Power of Attorney[/size]:
-[cb${formData.attorney === 'Yes' ? 'c' : ''}][/cb${formData.attorney === 'Yes' ? 'c' : ''}]have appointed the following person as my Healthcare Proxy/Agent to make medical decisions on my behalf:
-[list=none]Full Name: ${attorneyName}
-Relationship to Patient: ${attorneyRelation}
-Phone Number: ${attorneyPH}[/list]
-
-[cb${formData.attorney === 'No' ? 'c' : ''}][/cb${formData.attorney === 'No' ? 'c' : ''}]I have not appointed a Healthcare Proxy/Agent at this time.
-[*] [size=110]Do Not Resuscitate (DNR) Order[/size]:
-[cb${formData.dnrOrder === 'Yes' ? 'c' : ''}][/cb${formData.dnrOrder === 'Yes' ? 'c' : ''}]I have a DNR order in place, instructing medical staff not to perform CPR or other life-saving measures if my heart stops.
-[cb${formData.dnrOrder === 'No' ? 'c' : ''}][/cb${formData.dnrOrder === 'No' ? 'c' : ''}]I do not have a DNR order in place at this time.
-
-[*] [size=110]Consent to Share Advance Directives[/size]:
-I authorize Pillbox Hill Medical Center to keep a copy of my advance directives in my medical record and to share this information with medical staff and emergency personnel as needed to ensure my healthcare wishes are respected.[/list]
-I understand that I may revise or revoke these directives at any time by providing written notice.
-
-Signature: [i][u]${patientName}[/u][/i]
-Date: ${date}[/divbox]
-[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Disclaimer[/b][/color][/size][/center][/divboxcolor]
-[divbox=transparent][list=none]I, ${patientName}, hereby declare that the information provided in this medical history form is true, accurate, and complete to the best of my knowledge. I understand that this information will be stored securely within the systems of Pillbox Hill Medical Center and may be accessed by authorized healthcare professionals involved in my care.
-
-I, ${patientName}, upon submitting this form, consent to the sharing of my medical information among healthcare professionals within Pillbox Hill Medical Center for the purpose of providing comprehensive and coordinated healthcare services. I acknowledge that this information may be used for diagnosis, treatment, and other healthcare-related activities in accordance with applicable laws and regulations, including the Health Insurance Portability and Accountability Act (HIPAA).
-
-I, ${patientName}, retain the right to revoke this consent at any time by notifying Pillbox Hill Medical Center in writing. However, I also understand that revoking consent may limit the ability of healthcare professionals to provide me with optimal and coordinated care.[/list][/divbox]
-[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Payment[/b][/color][/size][/center][/divboxcolor]
-[table][tr][td] Please attach an unedited confirmation of your payment, unless you are exempt. [size=70](see question 14 in the FAQ thread on how to pay)[/size][/td][td]
-[url=${scenePhotos}]Proof Of Payment [/url]
-[/table]`
-            return bbCode;
-            };
-    
-// generatePsychEvalPHMC
-const generatePsychEvalPHMC = () => {
-    const {
-        patientID,
-        date,
-        phmcRank,
-        lastName,
-        patientChiefComplaint,
-        patientTriggers,
-        patientStress,
-        patientTreatment,
-        patientFamily,
-        patientJobRisks,
-        patientMedicalRecord,
-        patientAllergies,
-        patientChronicDiseases,
-        patientVisitReason,
-        patientSymptoms,
-        patientCondition,
-        patientDrugs,
-        patientDrugsUsage,
-        patientMental,
-        patientJob,
-        patientFam,
-        patientLegal,
-        patientRelationship,
-        patientFindings,
-        patientTreatmentPlan,
-        patientSafety,
-        patientFollowUp,
-        patientTreatmentMedicine,
-        patientDiagnosis,
-        patientTherapy,
-        patientRiskAssessment,
-        patientTherapyMedicine,
-    } = formData;
-
-    let bbCode = `[divbox=white][table][tr][td][center][br][/br][br][/br][b]Session Notes[/b]
-PATIENT ${patientID}
-Date: ${date}
-Signed: ${phmcRank} ${lastName}
-[/center][td][center][img]https://i.imgur.com/QMaz0OC.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PILLBOX HILL MEDICAL CENTER[/b]
-ELGIN AVE. / STRAWBERRY AVE.
-PO BOX 742
-LOS SANTOS, SAN ANDREAS
-P: 50056[/size][/center][/table][/divbox]
-
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Anamnesis[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Chief Complaint: [/u][br][/br]
-${patientChiefComplaint}
-[br][/br]
-[u]Assigned Department: [/u][br][/br]
-[cbc] Mental Health
-[br][/br][/list][/td][/tr][/table]
-
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Presenting Problem[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Description of the issue (e.g., anxiety, depression, psychosis): [/u][br][/br]
-${patientVisitReason}
-[br][/br]
-[u]Onset and duration of symptoms: [/u][br][/br]
-${patientSymptoms}
-[br][/br]
-[u]Triggers or stressors: [/u][br][/br]
-${patientTriggers}
-[br][/br]
-[u]Impact on daily life: [/u][br][/br]
-${patientStress}
-[/list][/td][/tr][/table]
-
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Mental Status Examination (MSE)[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none]
-[u]Appearance: [/u][br][/br]
-[cb${formData.Appearance === 'Good' ? 'c' : ''}] Well-groomed [cb${formData.Appearance === 'Disheveled' ? 'c' : ''}] Disheveled [cb${formData.Appearance === 'Inappropriate' ? 'c' : ''}] Inappropriate
-[br][/br]
-[u]Behavior: [/u][br][/br]
-[cb${formData.Behavior === 'Cooperative' ? 'c' : ''}] Cooperative [cb${formData.Behavior === 'Agitated' ? 'c' : ''}] Agitated [cb${formData.Behavior === 'Withdrawn' ? 'c' : ''}] Withdrawn
-[br][/br]
-[u]Speech: [/u][br][/br]
-[cb${formData.Speech === 'Normal' ? 'c' : ''}] Normal [cb${formData.Speech === 'Pressured' ? 'c' : ''}] Pressured [cb${formData.Speech === 'Slurred' ? 'c' : ''}] Slurred [cbcb${formData.Speech === 'Slow' ? 'c' : ''}] Slow
-[br][/br]
-[u]Mood: [/u][br][/br]
-[cb${formData.Mood === 'Euthymic' ? 'c' : ''}] Euthymic [cb${formData.Mood === 'Depressed' ? 'c' : ''}] Depressed [cb${formData.Mood === 'Anxious' ? 'c' : ''}] Anxious [cb${formData.Mood === 'Angry' ? 'c' : ''}] Angry
-[br][/br]
-[u]Affect: [/u][br][/br]
-[cb${formData.Affect === 'Congruent' ? 'c' : ''}] Congruent [cb${formData.Affect === 'Flat' ? 'c' : ''}] Flat [cb${formData.Affect === 'Inappropriate' ? 'c' : ''}] Inappropriate
-[br][/br]
-[u]Thought Process: [/u][br][/br]
-[cb${formData.ThoughtProcess === 'Logical' ? 'c' : ''}] Logical [cb${formData.ThoughtProcess === 'Organized' ? 'c' : ''}] Organized [cb${formData.ThoughtProcess === 'Tangential' ? 'c' : ''}] Tangential [cb${formData.ThoughtProcess === 'Disorganized' ? 'c' : ''}] Disorganized
-[br][/br]
-[u]Thought Content: [/u][br][/br]
-[cb${formData.ThoughtContent === 'Nodelusions' ? 'c' : ''}] No delusions [cb${formData.ThoughtContent === 'Delusions' ? 'c' : ''}] Delusions [cb${formData.ThoughtContent === 'Hallucinations' ? 'c' : ''}] Hallucinations [cb${formData.ThoughtContent === 'Suicidal' ? 'c' : ''}] Suicidal thoughts [cb${formData.ThoughtContent === 'Homicidal' ? 'c' : ''}] Homicidal thoughts
-[br][/br]
-[u]Insight and Judgment: [/u][br][/br]
-[cb${formData.Insight === 'Intact' ? 'c' : ''}] Intact [cb${formData.Insight === 'Limited' ? 'c' : ''}] Limited [cb${formData.Insight === 'Poor' ? 'c' : ''}] Poor
-[br][/br]
-[u]Cognition: [/u][br][/br]
-[cb${formData.Cognition === 'Oriented' ? 'c' : ''}] Oriented to time, place, person [cb${formData.Cognition === 'Memory' ? 'c' : ''}] Memory intact [cb${formData.Cognition === 'Attention' ? 'c' : ''}] Attention intact
-[/list][/td][/tr][/table]
-
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Psychiatric History[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none]
-[u]Past psychiatric diagnoses and treatments: [/u][br][/br]
-${patientTreatment}
-[br][/br]
-[u]Hospitalizations: [/u][br][/br]
-${patientMedicalRecord}
-[br][/br]
-[u]Family psychiatric history: [/u][br][/br]
-${patientFamily}
-[br][/br]
-[u]History of self-harm or suicide attempts: [/u][br][/br]
-${patientJobRisks}
-[/list][/td][/tr][/table]
-
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Medical History[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none]
-[u]Current and past medical conditions: [/u][br][/br]
-${patientCondition}
-[br][/br]
-[u]Medications (including psychiatric and non-psychiatric): [/u][br][/br]
-${patientChronicDiseases}
-[br][/br]
-[u]Allergies: [/u][br][/br]
-${patientAllergies}
-[/list][/td][/tr][/table]
-
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Substance Use History[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none]
-[u]Use of alcohol, drugs, nicotine, and other substances: [/u][br][/br]
-${patientDrugs}
-[br][/br]
-[u]Frequency and duration of use: [/u][br][/br]
-${patientDrugsUsage}
-[br][/br]
-[u]Impact on mental health: [/u][br][/br]
-${patientMental}
-[/list][/td][/tr][/table]
-
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Psychosocial History[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none]
-[u]Childhood and family background: [/u][br][/br]
-${patientFam}
-[br][/br]
-[u]Education and employment history: [/u][br][/br]
-${patientJob}
-[br][/br]
-[u]Relationships and support system: [/u][br][/br]
-${patientRelationship}
-[br][/br]
-[u]Legal issues: [/u][br][/br]
-${patientLegal}
-[/list][/td][/tr][/table]
-
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Risk Assessment[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none]
-[cb${formData.Risk === 'Suicidal' ? 'c' : ''}] Suicidal ideation or attempts [cb${formData.Risk === 'Homicidal' ? 'c' : ''}] Homicidal thoughts or violent behavior [cb${formData.Risk === 'Self' ? 'c' : ''}] Self-injury or harm to others
-[br][/br]
-[u]Details: [/u][br][/br]
-${patientRiskAssessment}
-[/list][/td][/tr][/table]
-
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Findings[/b][/color][/center][/divboxcolor]
-[table][tr][td][list=none]
-Notes: ${patientFindings}
-[/list][/td][/tr][/table]
-
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Discharge Diagnosis[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none]
-[u]Primary Diagnosis: [/u][br][/br]
-${patientDiagnosis}
-[/list][/td][/tr][/table]
-
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Therapy[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Admission: [/u][br][/br]
-[cb${formData.admission === 'Yes' ? 'c' : ''}] Yes [cb${formData.admission === 'No' ? 'c' : ''}] No
-[br][/br]
-[u]Treatment Plan: [/u][br][/br]
-${patientTreatmentPlan}
-[br][/br]
-[u]Medication: [/u][br][/br]
-${patientTherapyMedicine}
-[br][/br]
-[u]Follow-Up: [/u][br][/br]
-[cb${formData.followup === 'AsNeeded' ? 'c' : ''}] As needed [cb${formData.followup === 'Recommended' ? 'c' : ''}] Recommended
-
-[/list][/td][/tr][/table]
-
-[divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Treatment Plan/Recommendations[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none]
-[u]Medications: [/u][br][/br]
-${patientTreatmentMedicine}
-[br][/br]
-[u]Therapy (e.g., CBT, DBT): [/u][br][/br]
-${patientTherapy}
-[br][/br]
-[u]Follow-up appointments: [/u][br][/br]
-${patientFollowUp}
-[br][/br]
-[u]Safety planning (if at risk): [/u][br][/br]
-${patientSafety}
-[/list][/td][/tr][/table]`
-    return bbCode;
-    };
-// generatePsychEvalPBC
-const generatePsychEvalPBC = () => {
-    const {
-        patientID,
-        date,
-        Affect,
-        phmcRank,
-        lastName,
-        patientChiefComplaint,
-        patientTriggers,
-        patientStress,
-        patientTreatment,
-        patientFamily,
-        patientJobRisks,
-        patientMedicalRecord,
-        patientAllergies,
-        patientChronicDiseases,
-        patientVisitReason,
-        patientSymptoms,
-        patientCondition,
-        patientDrugs,
-        patientDrugsUsage,
-        patientMental,
-        patientJob,
-        patientFam,
-        patientLegal,
-        patientRelationship,
-        patientFindings,
-        patientTreatmentPlan,
-        patientSafety,
-        patientFollowUp,
-        patientTreatmentMedicine,
-        patientDiagnosis,
-        patientTherapy,
-        patientRiskAssessment,
-        patientTherapyMedicine,
-    } = formData;
-
-    let bbCode = `[divbox=white][table][tr][td][center][br][/br][br][/br][b]Session Notes[/b]
-PATIENT ${patientID}
-Date: ${date}
-Signed: ${phmcRank} ${lastName}
-[/center][td][center][img]https://i.imgur.com/LkRKav2.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PALETO BAY CLINIC[/b]
-PALETO BAY BLVD.
-PO BOX 685
-PALETO BAY, SAN ANDREAS
-P: 50056[/size][/center][/table][/divbox]
-
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Anamnesis[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Chief Complaint: [/u][br][/br]
-${patientChiefComplaint}
-[br][/br]
-[u]Assigned Department: [/u][br][/br]
-[cbc] Mental Health
-[br][/br][/list][/td][/tr][/table]
-
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Presenting Problem[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Description of the issue (e.g., anxiety, depression, psychosis): [/u][br][/br]
-${patientVisitReason}
-[br][/br]
-[u]Onset and duration of symptoms: [/u][br][/br]
-${patientSymptoms}
-[br][/br]
-[u]Triggers or stressors: [/u][br][/br]
-${patientTriggers}
-[br][/br]
-[u]Impact on daily life: [/u][br][/br]
-${patientStress}
-[/list][/td][/tr][/table]
-
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Mental Status Examination (MSE)[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none]
-[u]Appearance: [/u][br][/br]
-[cb${formData.Appearance === 'Good' ? 'c' : ''}] Well-groomed [cb${formData.Appearance === 'Disheveled' ? 'c' : ''}] Disheveled [cb${formData.Appearance === 'Inappropriate' ? 'c' : ''}] Inappropriate
-[br][/br]
-[u]Behavior: [/u][br][/br]
-[cb${formData.Behavior === 'Cooperative' ? 'c' : ''}] Cooperative [cb${formData.Behavior === 'Agitated' ? 'c' : ''}] Agitated [cb${formData.Behavior === 'Withdrawn' ? 'c' : ''}] Withdrawn
-[br][/br]
-[u]Speech: [/u][br][/br]
-[cb${formData.Speech === 'Normal' ? 'c' : ''}] Normal [cb${formData.Speech === 'Pressured' ? 'c' : ''}] Pressured [cb${formData.Speech === 'Slurred' ? 'c' : ''}] Slurred [cbcb${formData.Speech === 'Slow' ? 'c' : ''}] Slow
-[br][/br]
-[u]Mood: [/u][br][/br]
-[cb${formData.Mood === 'Euthymic' ? 'c' : ''}] Euthymic [cb${formData.Mood === 'Depressed' ? 'c' : ''}] Depressed [cb${formData.Mood === 'Anxious' ? 'c' : ''}] Anxious [cb${formData.Mood === 'Angry' ? 'c' : ''}] Angry
-[br][/br]
-[u]Affect: [/u][br][/br]
-[cb${formData.Affect === 'Congruent' ? 'c' : ''}] Congruent [cb${formData.Affect === 'Flat' ? 'c' : ''}] Flat [cb${formData.Affect === 'Inappropriate' ? 'c' : ''}] Inappropriate
-[br][/br]
-[u]Thought Process: [/u][br][/br]
-[cb${formData.ThoughtProcess === 'Logical' ? 'c' : ''}] Logical [cb${formData.ThoughtProcess === 'Organized' ? 'c' : ''}] Organized [cb${formData.ThoughtProcess === 'Tangential' ? 'c' : ''}] Tangential [cb${formData.ThoughtProcess === 'Disorganized' ? 'c' : ''}] Disorganized
-[br][/br]
-[u]Thought Content: [/u][br][/br]
-[cb${formData.ThoughtContent === 'Nodelusions' ? 'c' : ''}] No delusions [cb${formData.ThoughtContent === 'Delusions' ? 'c' : ''}] Delusions [cb${formData.ThoughtContent === 'Hallucinations' ? 'c' : ''}] Hallucinations [cb${formData.ThoughtContent === 'Suicidal' ? 'c' : ''}] Suicidal thoughts [cb${formData.ThoughtContent === 'Homicidal' ? 'c' : ''}] Homicidal thoughts
-[br][/br]
-[u]Insight and Judgment: [/u][br][/br]
-[cb${formData.Insight === 'Intact' ? 'c' : ''}] Intact [cb${formData.Insight === 'Limited' ? 'c' : ''}] Limited [cb${formData.Insight === 'Poor' ? 'c' : ''}] Poor
-[br][/br]
-[u]Cognition: [/u][br][/br]
-[cb${formData.Cognition === 'Oriented' ? 'c' : ''}] Oriented to time, place, person [cb${formData.Cognition === 'Memory' ? 'c' : ''}] Memory intact [cb${formData.Cognition === 'Attention' ? 'c' : ''}] Attention intact
-[/list][/td][/tr][/table]
-
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Psychiatric History[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none]
-[u]Past psychiatric diagnoses and treatments: [/u][br][/br]
-${patientTreatment}
-[br][/br]
-[u]Hospitalizations: [/u][br][/br]
-${patientMedicalRecord}
-[br][/br]
-[u]Family psychiatric history: [/u][br][/br]
-${patientFamily}
-[br][/br]
-[u]History of self-harm or suicide attempts: [/u][br][/br]
-${patientJobRisks}
-[/list][/td][/tr][/table]
-
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Medical History[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none]
-[u]Current and past medical conditions: [/u][br][/br]
-${patientCondition}
-[br][/br]
-[u]Medications (including psychiatric and non-psychiatric): [/u][br][/br]
-${patientChronicDiseases}
-[br][/br]
-[u]Allergies: [/u][br][/br]
-${patientAllergies}
-[/list][/td][/tr][/table]
-
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Substance Use History[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none]
-[u]Use of alcohol, drugs, nicotine, and other substances: [/u][br][/br]
-${patientDrugs}
-[br][/br]
-[u]Frequency and duration of use: [/u][br][/br]
-${patientDrugsUsage}
-[br][/br]
-[u]Impact on mental health: [/u][br][/br]
-${patientMental}
-[/list][/td][/tr][/table]
-
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Psychosocial History[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none]
-[u]Childhood and family background: [/u][br][/br]
-${patientFam}
-[br][/br]
-[u]Education and employment history: [/u][br][/br]
-${patientJob}
-[br][/br]
-[u]Relationships and support system: [/u][br][/br]
-${patientRelationship}
-[br][/br]
-[u]Legal issues: [/u][br][/br]
-${patientLegal}
-[/list][/td][/tr][/table]
-
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Risk Assessment[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none]
-[cb${formData.Risk === 'Suicidal' ? 'c' : ''}] Suicidal ideation or attempts [cb${formData.Risk === 'Homicidal' ? 'c' : ''}] Homicidal thoughts or violent behavior [cb${formData.Risk === 'Self' ? 'c' : ''}] Self-injury or harm to others
-[br][/br]
-[u]Details: [/u][br][/br]
-${patientRiskAssessment}
-[/list][/td][/tr][/table]
-
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Findings[/b][/color][/center][/divboxcolor]
-[table][tr][td][list=none]
-Notes: ${patientFindings}
-[/list][/td][/tr][/table]
-
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Discharge Diagnosis[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none]
-[u]Primary Diagnosis: [/u][br][/br]
-${patientDiagnosis}
-[/list][/td][/tr][/table]
-
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Therapy[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none][u]Admission: [/u][br][/br]
-[cb${formData.admission === 'Yes' ? 'c' : ''}] Yes [cb${formData.admission === 'No' ? 'c' : ''}] No
-[br][/br]
-[u]Treatment Plan: [/u][br][/br]
-${patientTreatmentPlan}
-[br][/br]
-[u]Medication: [/u][br][/br]
-${patientTherapyMedicine}
-[br][/br]
-[u]Follow-Up: [/u][br][/br]
-[cb${formData.followup === 'AsNeeded' ? 'c' : ''}] As needed [cb${formData.followup === 'Recommended' ? 'c' : ''}] Recommended
-
-[/list][/td][/tr][/table]
-
-[divboxcolor=black][center][color=#0080FF]>[/color] [color=#FFFFFF][b]Treatment Plan/Recommendations[/b][/color][/center][/divboxcolor]
-[table][tr][td][left][list=none]
-[u]Medications: [/u][br][/br]
-${patientTreatmentMedicine}
-[br][/br]
-[u]Therapy (e.g., CBT, DBT): [/u][br][/br]
-${patientTherapy}
-[br][/br]
-[u]Follow-up appointments: [/u][br][/br]
-${patientFollowUp}
-[br][/br]
-[u]Safety planning (if at risk): [/u][br][/br]
-${patientSafety}
-[/list][/td][/tr][/table]`
-    return bbCode;
-    };
-
-    // Update BBCode generation logic
+    //  BBCode generation logic
     const bbCode = bbCodeVersion === 1 ? generateDeathReport(formData) :
-    bbCodeVersion === 2 ? generateEmail() :
-        bbCodeVersion === 3 ? generateAdvancedPatientFile() :  
-                bbCodeVersion === 4 ? generateDental() :
-                    bbCodeVersion === 5 ? generateSurgicalOps() :
-                        bbCodeVersion === 6 ? generatePhysEvalInternalMed() :
-                            bbCodeVersion === 7 ? generatePhysEvalInternalMedPBC() :
-                                                        bbCodeVersion === 14 ? generateMentalHealthPHMC() :
-                                                                bbCodeVersion === 16 ? generateMentalHealthPBC() :
-                                                                        bbCodeVersion === 18 ? generateAgencyFeedback() :
-                                                                            bbCodeVersion === 19 ? generateEmergencyProtocol() :
-                                                                                bbCodeVersion === 20 ? generateConsultationNotesPHMC() :
-                                                                                    bbCodeVersion === 21 ? generateConsultationNotesPBC() :
-                                                                                    bbCodeVersion === 22 ? generateCommentaryNotePHMC() :
-                                                                                    bbCodeVersion === 23 ? generateCommentaryNotePBC() :
-                                                                                    bbCodeVersion === 24 ? generateMedicalRecordRelease() :
-                                                                                        bbCodeVersion === 25 ? generateBasicPatientFile() :
-                                                                                            bbCodeVersion === 27 ? generateEmailPHMCEmail() : 
-                                                                                            bbCodeVersion === 28 ? generatePsychEvalPHMC() :
-                                                                                            bbCodeVersion === 29 ? generatePsychEvalPBC() :
+    bbCodeVersion === 2 ? generateEmail(formData) :
+        bbCodeVersion === 3 ? generateAdvancedPatientFile(formData) :  
+                    bbCodeVersion === 5 ? generateSurgicalOps(formData) :
+                        bbCodeVersion === 6 ? generatePhysEvalInternalMed(formData) :
+                            bbCodeVersion === 7 ? generatePhysEvalInternalMedPBC(formData) :
+                                                        bbCodeVersion === 14 ? generateMentalHealthPHMC(formData) :
+                                                                bbCodeVersion === 16 ? generateMentalHealthPBC(formData) :
+                                                                        bbCodeVersion === 18 ? generateAgencyFeedback(formData) :
+                                                                            bbCodeVersion === 19 ? generateEmergencyProtocol(formData) :
+                                                                                bbCodeVersion === 20 ? generateConsultationNotesPHMC(formData) :
+                                                                                    bbCodeVersion === 21 ? generateConsultationNotesPBC(formData) :
+                                                                                    bbCodeVersion === 22 ? generateCommentaryNotePHMC(formData) :
+                                                                                    bbCodeVersion === 23 ? generateCommentaryNotePBC(formData) :
+                                                                                    bbCodeVersion === 24 ? generateMedicalRecordRelease(formData) :
+                                                                                        bbCodeVersion === 25 ? generateCommentaryNotePBC(formData) :
+                                                                                            bbCodeVersion === 27 ? generateEmailPHMCEmail(formData) : 
+                                                                                            bbCodeVersion === 28 ? generatePsychEvalPHMC(formData) :
+                                                                                            bbCodeVersion === 29 ? generatePsychEvalPBC(formData) :
                                                                                             generateDeathReport(formData);
                                                                                 // generateError();
 
@@ -3474,6 +1886,7 @@ if (bbCodeVersion === 1) {
         });
 
         setParsedBBCode('');
+        setLastWebhookIdentifier(null); 
         showNotification('Form cleared!', 'check-circle');
     };
 
@@ -3514,43 +1927,41 @@ if (bbCodeVersion === 1) {
             case 1:
                 return generateDeathReport(formData);
             case 2:
-                return generateEmail();
+                return generateEmail(formData);
             case 3: 
-                return generateAdvancedPatientFile();
-            case 4:
-                return generateDental();
+                return generateAdvancedPatientFile(formData);
             case 5:
-                return generateSurgicalOps();
+                return generateSurgicalOps(formData);
             case 6:
-                return generatePhysEvalInternalMed();
+                return generatePhysEvalInternalMed(formData);
             case 7: 
-                return generatePhysEvalInternalMedPBC();
+                return generatePhysEvalInternalMedPBC(formData);
             case 14:
-                return generateMentalHealthPHMC();
+                return generateMentalHealthPHMC(formData);
             case 16:
-                return generateMentalHealthPBC();
+                return generateMentalHealthPBC(formData);
             case 18:
-                return generateAgencyFeedback();
+                return generateAgencyFeedback(formData);
             case 19:
-                return generateEmergencyProtocol();
+                return generateEmergencyProtocol(formData);
             case 20:
-                return generateConsultationNotesPHMC();
+                return generateConsultationNotesPHMC(formData);
             case 21:
-                return generateConsultationNotesPBC();
+                return generateConsultationNotesPBC(formData);
             case 22:
-                return generateCommentaryNotePHMC();
+                return generateCommentaryNotePHMC(formData);
             case 23:
-                return generateCommentaryNotePBC();
+                return generateCommentaryNotePBC(formData);
             case 24:
-                return generateMedicalRecordRelease();
+                return generateMedicalRecordRelease(formData);
             case 25:
-                return generateBasicPatientFile();
+                return generateBasicPatientFile(formData);
             case 27:
-                return generateEmailPHMCEmail();
+                return generateEmailPHMCEmail(formData);
              case 28: 
-                return generatePsychEvalPHMC();
+                return generatePsychEvalPHMC(formData);
             case 29:
-              return generatePsychEvalPBC();
+              return generatePsychEvalPBC(formData);
             default:
        }
     };
@@ -3761,6 +2172,7 @@ if (bbCodeVersion === 1) {
         setBbCodeVersion(version);
         setShowPHMCModal(false);
         setShowAgencySelector(false);
+        setLastWebhookIdentifier(null); 
         showNotification(`Switched to ${versionNames[version]}`, 'exchange-alt');
     };
     
@@ -4217,7 +2629,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         className="changelog-button"
                         onClick={toggleBusinessCard}
                     >
-                        <i class="fa-solid fa-address-card"></i>
+                        <i className="fa-solid fa-address-card"></i>
                         Business Card Tool
                     </Button>
                     {(bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 18) && (
@@ -4728,7 +3140,11 @@ const [imgurLink, setImgurLink] = useState(null);
                         formData={formData}
                         handleChange={handleChange}
                         phmcGroupedOptions={phmcGroupedOptions}
+                        phmcRank={phmcRank}
                         setFormData={setFormData}
+                        patientConsent={patientConsent}
+                        complications={complications}
+                        procedureGood={procedureGood}
                     />
 
                     ) : bbCodeVersion === 6 ? (
@@ -4859,6 +3275,9 @@ const [imgurLink, setImgurLink] = useState(null);
                             followup={followup} 
                             assignedDepartment={assignedDepartment}
                             admission={admission} 
+                            drugList={drugList}
+                            handleImageUpload={handleImageUpload}
+                            isUploading={isUploading}
                             />
                            ) : bbCodeVersion === 21 ? ( // GENERAL CONSULTATION (PBC)
                             <GeneralConsult
@@ -5621,24 +4040,24 @@ const [imgurLink, setImgurLink] = useState(null);
                                 <div className="bbcode-output">
                                     <pre>
                                                         {bbCodeVersion === 1 ? generateDeathReport(formData) : 
-                                                        bbCodeVersion === 2 ? generateEmail() :
-                                                        bbCodeVersion === 3 ? generateAdvancedPatientFile() :
-                                                        bbCodeVersion === 5 ? generateSurgicalOps() :
-                                                        bbCodeVersion === 6 ? generatePhysEvalInternalMed() :
-                                                        bbCodeVersion === 7 ? generatePhysEvalInternalMedPBC() :
-                                                        bbCodeVersion === 14 ? generateMentalHealthPHMC() :
-                                                        bbCodeVersion === 16 ? generateMentalHealthPBC() :
-                                                        bbCodeVersion === 18 ? generateAgencyFeedback() :
-                                                        bbCodeVersion === 19 ? generateEmergencyProtocol() :
-                                                        bbCodeVersion === 20 ? generateConsultationNotesPHMC() :
-                                                        bbCodeVersion === 21 ? generateConsultationNotesPBC() :
-                                                        bbCodeVersion === 22 ? generateCommentaryNotePHMC() :
-                                                        bbCodeVersion === 23 ? generateCommentaryNotePBC() :
-                                                        bbCodeVersion === 24 ? generateMedicalRecordRelease() :
-                                                        bbCodeVersion === 25 ? generateBasicPatientFile() :
-                                                        bbCodeVersion === 27 ? generateEmailPHMCEmail() :  
-                                                        bbCodeVersion === 28 ? generatePsychEvalPHMC() :
-                                                        bbCodeVersion === 29 ? generatePsychEvalPBC() :
+                                                        bbCodeVersion === 2 ? generateEmail(formData) :
+                                                        bbCodeVersion === 3 ? generateAdvancedPatientFile(formData) :
+                                                        bbCodeVersion === 5 ? generateSurgicalOps(formData) :
+                                                        bbCodeVersion === 6 ? generatePhysEvalInternalMed(formData) :
+                                                        bbCodeVersion === 7 ? generatePhysEvalInternalMedPBC(formData) :
+                                                        bbCodeVersion === 14 ? generateMentalHealthPHMC(formData) :
+                                                        bbCodeVersion === 16 ? generateMentalHealthPBC(formData) :
+                                                        bbCodeVersion === 18 ? generateAgencyFeedback(formData) :
+                                                        bbCodeVersion === 19 ? generateEmergencyProtocol(formData) :
+                                                        bbCodeVersion === 20 ? generateConsultationNotesPHMC(formData) :
+                                                        bbCodeVersion === 21 ? generateConsultationNotesPBC(formData) :
+                                                        bbCodeVersion === 22 ? generateCommentaryNotePHMC(formData) :
+                                                        bbCodeVersion === 23 ? generateCommentaryNotePBC(formData) :
+                                                        bbCodeVersion === 24 ? generateMedicalRecordRelease(formData) :
+                                                        bbCodeVersion === 25 ? generateBasicPatientFile(formData) :
+                                                        bbCodeVersion === 27 ? generateEmailPHMCEmail(formData) :  
+                                                        bbCodeVersion === 28 ? generatePsychEvalPHMC(formData) :
+                                                        bbCodeVersion === 29 ? generatePsychEvalPBC(formData) :
                                                         generateDeathReport(formData)}
                                     </pre>
                                 </div>
@@ -5756,24 +4175,24 @@ const [imgurLink, setImgurLink] = useState(null);
                             className="changelog-button"
                             onClick={() => {
                                     const bbCode = bbCodeVersion === 1 ? generateDeathReport(formData) : 
-                                    bbCodeVersion === 2 ? generateEmail() :
-                                    bbCodeVersion === 3 ? generateAdvancedPatientFile() : 
-                                                bbCodeVersion === 5 ? generateSurgicalOps() :
-                                                    bbCodeVersion === 6 ? generatePhysEvalInternalMed() :
-                                                    bbCodeVersion === 7 ? generatePhysEvalInternalMedPBC() : 
-                                                                                    bbCodeVersion === 14 ? generateMentalHealthPHMC() :
-                                                                                            bbCodeVersion === 16 ? generateMentalHealthPBC() :
-                                                                                                    bbCodeVersion === 18 ? generateAgencyFeedback() :
-                                                                                                        bbCodeVersion === 19 ? generateEmergencyProtocol() :
-                                                                                                        bbCodeVersion === 20 ? generateConsultationNotesPHMC() :
-                                                                                                        bbCodeVersion === 21 ? generateConsultationNotesPBC() :
-                                                                                                        bbCodeVersion === 22 ? generateCommentaryNotePHMC() :
-                                                                                                        bbCodeVersion === 23 ? generateCommentaryNotePBC() :
-                                                                                                        bbCodeVersion === 24 ? generateMedicalRecordRelease() :
-                                                                                                        bbCodeVersion === 25 ? generateBasicPatientFile() :
-                                                                                                        bbCodeVersion === 27 ? generateEmailPHMCEmail() : 
-                                                                                                         bbCodeVersion === 28 ? generatePsychEvalPHMC() :
-                                                                                                        bbCodeVersion === 29 ? generatePsychEvalPBC() :
+                                    bbCodeVersion === 2 ? generateEmail(formData) :
+                                    bbCodeVersion === 3 ? generateAdvancedPatientFile(formData) : 
+                                                bbCodeVersion === 5 ? generateSurgicalOps(formData) :
+                                                    bbCodeVersion === 6 ? generatePhysEvalInternalMed(formData) :
+                                                    bbCodeVersion === 7 ? generatePhysEvalInternalMedPBC(formData) : 
+                                                                                    bbCodeVersion === 14 ? generateMentalHealthPHMC(formData) :
+                                                                                            bbCodeVersion === 16 ? generateMentalHealthPBC(formData) :
+                                                                                                    bbCodeVersion === 18 ? generateAgencyFeedback(formData) :
+                                                                                                        bbCodeVersion === 19 ? generateEmergencyProtocol(formData) :
+                                                                                                        bbCodeVersion === 20 ? generateConsultationNotesPHMC(formData) :
+                                                                                                        bbCodeVersion === 21 ? generateConsultationNotesPBC(formData) :
+                                                                                                        bbCodeVersion === 22 ? generateCommentaryNotePHMC(formData) :
+                                                                                                        bbCodeVersion === 23 ? generateCommentaryNotePBC(formData) :
+                                                                                                        bbCodeVersion === 24 ? generateMedicalRecordRelease(formData) :
+                                                                                                        bbCodeVersion === 25 ? generateBasicPatientFile(formData) :
+                                                                                                        bbCodeVersion === 27 ? generateEmailPHMCEmail(formData) : 
+                                                                                                         bbCodeVersion === 28 ? generatePsychEvalPHMC(formData) :
+                                                                                                        bbCodeVersion === 29 ? generatePsychEvalPBC(formData) :
 
                                                                                                         generateDeathReport(formData);
                                 const currentDateTime = new Date().toLocaleString();
@@ -5808,65 +4227,91 @@ const [imgurLink, setImgurLink] = useState(null);
                         if (navigator.clipboard && navigator.clipboard.writeText) {
                             navigator.clipboard.writeText(bbCode).then(() => {
                                 showNotification(`${version} copied!`, 'check-circle');
-                                saveReport();
-
+                                saveReport(); // Keep saveReport call
+                        
                                 const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-
+                        
                                 // Send POST request to Discord Webhook only after successful copy
                                 if (discordWebhookUrl) {
                                     let savedCount = parseInt(localStorage.getItem('SavedReportCount') || '0', 10);
                                     if (isNaN(savedCount)) {
                                         savedCount = 0; // Default to 0 if the stored value is invalid
                                     }
-
+                        
+                                    // --- Duplicate Check Logic ---
+                                    const { decedentName, decedentOOC, phmcEmployee, coronerEmployee, coronerRank, patientFirstName, patientLastName, patientName, patientID, requestingOfficer } = formData;
+                                    const currentDateTime = new Date().toLocaleString(); // Keep this for the embed
+                        
+                                    // Create a unique identifier for the current report content
+                                    const currentIdentifier = `${decedentName || ''}|${decedentOOC || ''}`; // Use a separator
+                        
+                                    // Check if the current identifier matches the last sent one
+                                    if (currentIdentifier && currentIdentifier === lastWebhookIdentifier) {
+                                        console.log('Duplicate report copy detected, skipping webhook.');
+                                        // Optionally show a different notification if desired
+                                        // showNotification('Already copied!', 'info-circle');
+                                        return; // Stop execution here, don't send webhook
+                                    }
+                                    // --- End Duplicate Check Logic ---
+                        
+                                    // Determine user value (simplified and corrected)
+                                    const userValue = phmcEmployee
+                                        ? `Hospital Staff ${phmcEmployee}`
+                                        : coronerEmployee
+                                            ? `${coronerRank || 'Coroner'} ${coronerEmployee}`
+                                            : (patientFirstName || patientLastName)
+                                                ? `${patientFirstName || ''} ${patientLastName || ''}`.trim()
+                                                : 'Unknown User';
+                        
                                     const successEmbed = {
                                         title: "Someone has used your generator!",
                                         description: "Here's the debug output.",
                                         color: 0x00FF00, // Green
                                         fields: [
-                                            {
-                                                name: "User",
-                                                // Updated logic: Check for phmcEmployee first
-                                                value: phmcEmployee
-                                                    ? `Hospital Staff ${phmcEmployee}` // If PHMC staff exists
-                                                    : coronerEmployee
-                                                        ? `${coronerRank || 'Coroner'} ${coronerEmployee}` // Else if Coroner exists
-                                                        : (patientFirstName || patientLastName)
-                                                            ? `${patientFirstName || ''} ${patientLastName || ''}`.trim() // Else if Patient name exists
-                                                            : 'Unknown User', // Fallback
-                                                inline: true
-                                            },
-                                                { name: "User", value: `${coronerRank || ''} ${coronerEmployee || phmcEmployee || `${patientFirstName || ''} ${patientLastName || ''}` || 'Unknown User'}`, inline: true },
+                                            { name: "User", value: userValue, inline: true }, // Corrected: Only one User field
                                             { name: "Form Type", value: version || "Unknown Form", inline: true },
                                             { name: "Patient/Decedent", value: `${patientName || decedentName || patientID || 'N/A'}`, inline: true },
                                             { name: "OOC Name", value: decedentOOC || "N/A", inline: true },
                                             { name: "Requesting Officer", value: requestingOfficer || "N/A", inline: true },
                                             { name: "Timestamp", value: currentDateTime || "N/A", inline: false },
                                             { name: "Action", value: "BBCode Copied & Report Saved to Local Storage", inline: false },
-                                            // --- New field for SavedReportCount ---
                                             { name: "Total Saved Reports", value: savedCount.toString(), inline: false }
-                                            // --- End New Field ---
                                         ],
                                         footer: {
                                             text: `PHMC Forms Tool | gh-pages ${commitInfo.sha || 'N/A'}`
                                         },
                                         timestamp: new Date().toISOString()
                                     };
-
+                        
                                     fetch(discordWebhookUrl, {
                                         method: 'POST',
                                         headers: {
                                             'Content-Type': 'application/json'
                                         },
-                                        body: JSON.stringify({ embeds: [successEmbed] }) // Send the updated embed
-                                    }).catch(error => {
+                                        body: JSON.stringify({ embeds: [successEmbed] })
+                                    })
+                                    .then(response => { // Add .then() to handle the fetch response
+                                        if (response.ok) {
+                                            // Update the last identifier ONLY if the webhook was sent successfully
+                                            setLastWebhookIdentifier(currentIdentifier);
+                                        } else {
+                                            // Handle fetch error if needed
+                                            console.error('Failed to send Discord webhook after copy:', response.status, response.statusText);
+                                            Sentry.captureMessage(`Discord webhook failed after copy: ${response.status}`, {
+                                                level: 'error',
+                                                extra: { statusText: response.statusText }
+                                            });
+                                        }
+                                    })
+                                    .catch(error => {
                                         console.error('Failed to send Discord webhook after copy:', error);
                                         Sentry.captureException(error, { extra: { context: 'Discord Webhook Success Send' } });
                                     });
+                        
                                 } else {
                                      console.warn('Discord webhook URL not set, skipping notification.');
                                 }
-
+                        
                             }).catch(err => {
                                 console.error('Failed to copy BBCode: ', err);
                                 Sentry.captureException(err, { extra: { message: 'BBCode copy failed' } });
@@ -5874,7 +4319,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                 // Optionally, send a failure webhook here too if needed
                             });
                         } else {
-                            // Handle cases where clipboard API is not available
+                        // Handle cases where clipboard API is not available
                             console.warn("Clipboard API not available");
                             Sentry.captureMessage('Clipboard API not available for BBCode copy', 'warning');
                             showNotification('Clipboard API not available! BBCode not copied.', 'exclamation-triangle');

@@ -332,6 +332,12 @@ export const Risk = [
     { value: 'Homicidal', label: 'Homicidal'},
     { value: 'Self', label: 'Self'},
 ]
+export const drugList = [
+    { value: 'cooldrugs', label: 'cooldrugs' },
+    { value: 'Ketamine', label: 'Ketamine'},
+    { value: 'Cocaine', label: 'Cocaine'},
+    { value: 'Other', label: 'Other'},
+]
     export const phmcList = [
     // NPC Leadership and Supervisor
     { name: 'Doctor Smith', lastName: 'Smith', signature: 'Doctor Smith ', category: '(( NPC DOCTOR ))' },
