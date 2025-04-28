@@ -14,8 +14,8 @@ const DeathReport = ({ // Renamed component to follow PascalCase convention
     isJohnDoe, // Added this prop
     isJaneDoe, // Added this prop
     currentUtcTime, // Added this prop
-    isUploading, // Added this prop
-    handleImageUpload, // Added this prop
+    isUploading,
+    handleImageUpload, 
     showRequestingOfficerInput,
     setShowRequestingOfficerInput
 
