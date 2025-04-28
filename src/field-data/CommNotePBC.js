@@ -33,11 +33,12 @@ const CommNotePBC = ({
                 className="form-control"
             />
             <Form.Control
-                type="text" // Changed from 'textarea' as it was likely a typo in original
+                as="textarea" 
                 name="patientNotes"
                 value={formData.patientNotes}
                 onChange={handleChange}
                 placeholder="Patient's Notes"
+                rows="4"
                 required
                 className={`form-control ${!formData.patientNotes ? 'is-invalid' : ''}`}
             />
