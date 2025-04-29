@@ -461,52 +461,38 @@ input[type="checkbox"] {
 }
 
 /* ===== Notification Components ===== */
-.notification-content {
+/* Container for all notifications */
+.notification-container {
+    position: fixed; /* Position relative to the viewport */
+    top: 20px;       /* Distance from the top */
+    right: 20px;      /* Distance from the right */
+    z-index: 1050;   /* Ensure it's above most other content (like modals) */
     display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.notification-icon {
-    font-size: 1.2em;
-    color: #fff;
-}
-
-.notification-text {
-    font-size: 1em;
-    font-weight: 500;
-}
-
-.notification {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 20px;
-    background-color: #4CAF50;
-    color: white;
-    border-radius: 4px;
-    margin: 10px 0;
-}
-
-    .notification i {
-        font-size: 1.2em;
-    }
-
-    .notification span {
-        font-size: 1em;
-    }
-
-.notification-wrapper {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    z-index: 9999;
-    min-width: 300px;
-    animation: slideIn 0.3s ease-out;
-}
-
-.notification-content {
-    background-color: #4CAF50;
+    flex-direction: column; /* Stack notifications vertically */
+    align-items: flex-end; /* Align notifications to the right edge of the container */
+    gap: 10px; /* Add space BETWEEN notifications */
+    max-width: 400px; /* Optional: Limit the width of notifications */
+    pointer-events: none; /* Allow clicks to pass through the container itself */
+  }
+  
+  /* Individual notification wrapper/content */
+  /* Remove fixed positioning from the element that holds the notification content */
+  .notification-wrapper {
+    /* Remove position: fixed, top, right, z-index if they were here */
+    width: 100%; /* Make individual notifications take container width */
+    pointer-events: auto; /* Re-enable pointer events for the actual notification */
+    animation: slideIn 0.3s ease-out; /* Keep the animation if desired */
+    /* min-width: 300px; /* This can likely be removed or adjusted */
+  }
+  
+  /* Ensure the exit animation still works */
+  .notification-exit {
+      animation: slideOut 0.3s ease-in forwards;
+  }
+  
+  /* Keep your existing styles for the content inside */
+  .notification-content {
+    background-color: #4CAF50; /* Or use specific colors like .error */
     color: white;
     padding: 12px 20px;
     border-radius: 4px;
@@ -514,54 +500,63 @@ input[type="checkbox"] {
     align-items: center;
     gap: 10px;
     box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-}
-
-    .notification-content.error {
-        background-color: #f44336;
-    }
-
-.notification-dismiss {
-    background: none;
-    border: none;
-    color: white;
-    margin-left: auto;
-    cursor: pointer;
-    padding: 5px;
-    opacity: 0.8;
-}
-
-    .notification-dismiss:hover {
-        opacity: 1;
-    }
-    .notification-exit {
-        animation: slideOut 0.3s ease-in forwards;
-    }
-    
-/* ===== Keyframes for Animations ===== */    
-@keyframes slideIn {
-    from {
-        transform: translateX(100%);
-        opacity: 0;
-    }
-
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
-}
-
-@keyframes slideOut {
-    from {
-        transform: translateX(0);
-        opacity: 1;
-    }
-
-    to {
-        transform: translateX(100%);
-        opacity: 0;
-    }
-}
-
+    min-width: 300px; /* Apply min-width here if needed */
+  }
+  
+  .notification-content.error {
+      background-color: #f44336;
+  }
+  
+  /* Keep dismiss button styles */
+  .notification-dismiss {
+      background: none;
+      border: none;
+      color: white;
+      margin-left: auto;
+      cursor: pointer;
+      padding: 5px;
+      opacity: 0.8;
+  }
+  
+  .notification-dismiss:hover {
+      opacity: 1;
+  }
+  
+  /* Keep keyframes */
+  @keyframes slideIn {
+      from {
+          transform: translateX(100%);
+          opacity: 0;
+      }
+      to {
+          transform: translateX(0);
+          opacity: 1;
+      }
+  }
+  
+  @keyframes slideOut {
+      from {
+          transform: translateX(0);
+          opacity: 1;
+      }
+      to {
+          transform: translateX(100%);
+          opacity: 0;
+      }
+  }
+  
+  /* Other notification styles (icon, text) should remain as they are */
+  .notification-icon {
+      font-size: 1.2em;
+      /* color: #fff; */ /* Color might be set by specific classes */
+  }
+  
+  .notification-text {
+      font-size: 1em;
+      font-weight: 500;
+      flex-grow: 1; /* Allow text to take space */
+  }
+  
 
 .label-container {
     display: flex;
