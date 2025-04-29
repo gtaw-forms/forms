@@ -111,6 +111,7 @@ import {
     departmentFullName,
     Appearance,
     Behavior,
+    bloodOxy,
     Speech,
     Mood,
     Affect,
@@ -162,6 +163,7 @@ function App() {
         patientMedInfoFormatOther: '',
         patientZIP: '',
         lastName: '',
+        bloodOxy: '',
         coronerBadge: '',
         // email stuff
         additionalImages: '',
@@ -450,6 +452,7 @@ function App() {
         findings: '',
         patientFindings:'',
         paletoClinicDepartment: '',
+        ecg: '',
     });
     useEffect(() => {
         const handleResize = () => {
@@ -3285,6 +3288,7 @@ const [imgurLink, setImgurLink] = useState(null);
                             lab={lab} 
                             admission={admission} 
                             followup={followup} 
+                            bloodOxy={bloodOxy}
                             
                             />
                         ) : bbCodeVersion === 20 ? ( // General Consultation (PHMC)
@@ -3314,6 +3318,7 @@ const [imgurLink, setImgurLink] = useState(null);
                             drugList={drugList}
                             handleImageUpload={handleImageUpload}
                             isUploading={isUploading}
+                            bloodOxy={bloodOxy}
                             />
                            ) : bbCodeVersion === 21 ? ( // GENERAL CONSULTATION (PBC)
                             <GeneralConsult
@@ -3336,9 +3341,14 @@ const [imgurLink, setImgurLink] = useState(null);
                             ecg={ecg} 
                             sono={sono} 
                             lab={lab} 
-                            admission={admission} 
                             followup={followup} 
-                            assignedDepartment={assignedDepartment} 
+                            assignedDepartment={assignedDepartment}
+                            admission={admission} 
+                            drugList={drugList}
+                            handleImageUpload={handleImageUpload}
+                            isUploading={isUploading}
+                            bloodOxy={bloodOxy}
+
                             />
                     ) : bbCodeVersion === 22 ? ( // COMMENTARY NOTE (phmc)
                         <CommNotePHMC

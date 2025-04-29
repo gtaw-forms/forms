@@ -37,7 +37,7 @@ const CommNotePBC = ({
                 name="patientNotes"
                 value={formData.patientNotes}
                 onChange={handleChange}
-                placeholder="Patient's Notes"
+                placeholder="Patient Notes"
                 rows="4"
                 required
                 className={`form-control ${!formData.patientNotes ? 'is-invalid' : ''}`}
