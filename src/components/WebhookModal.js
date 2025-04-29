@@ -117,6 +117,26 @@ const imagePreviewContainerStyle = {
     gap: '10px',      // Space between previews
     marginTop: '10px',
 };
+const urlPreviewStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '5px 8px',
+    border: '1px solid #30363d',
+    borderRadius: '4px',
+    backgroundColor: '#161b22', // Slightly different background
+    fontSize: '0.9em',
+    maxWidth: '250px', // Limit width
+};
+const urlIconStyle = {
+    color: '#8b949e', // Icon color
+};
+const urlTextStyle = {
+    color: '#c9d1d9',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+};
 
 // --- End Styles ---
 
@@ -133,9 +153,10 @@ const WebhookModal = ({
     showNotification,
     commitInfo
 }) => {
-    const [imageUrls, setImageUrls] = useState([]); // Now an array
+    const [mediaUrls, setMediaUrls] = useState([]); // Renamed from imageUrls
     const [isUploading, setIsUploading] = useState(false);
-    const phmcLogoUrl = 'https://i.imgur.com/QMaz0OC.png'; // Keep this for avatar
+    const [urlInput, setUrlInput] = useState(''); // State for the URL input field
+    const phmcLogoUrl = 'https://i.imgur.com/QMaz0OC.png';
 
 
     const handleImageUpload = async (event) => {
@@ -143,20 +164,13 @@ const WebhookModal = ({
         if (!files || files.length === 0) return;
 
         setIsUploading(true);
-        // Don't clear previous URLs immediately if you want additive uploads
-        // setImageUrls([]); // Optional: Clear existing images on new selection
-
         const uploadPromises = [];
         for (let i = 0; i < files.length; i++) {
-            // Add a delay between uploads if needed (e.g., 1 second)
-            // await new Promise(resolve => setTimeout(resolve, 1000 * i));
             uploadPromises.push(uploadSingleImageToImgur(files[i]));
         }
 
         try {
-            // Use Promise.allSettled to handle individual upload successes/failures
             const results = await Promise.allSettled(uploadPromises);
-
             const successfulUrls = [];
             let failedCount = 0;
             let firstErrorMessage = '';
@@ -166,18 +180,15 @@ const WebhookModal = ({
                     successfulUrls.push(result.value);
                 } else {
                     failedCount++;
-                    if (!firstErrorMessage) {
-                        firstErrorMessage = result.reason.message;
-                    }
+                    if (!firstErrorMessage) firstErrorMessage = result.reason.message;
                     console.error('Imgur upload failed:', result.reason.message);
                     Sentry.captureMessage(`Imgur upload failed in WebhookModal: ${result.reason.message}`, "error");
                 }
             });
 
-            // Add newly uploaded URLs to the existing list
-            setImageUrls(prevUrls => [...prevUrls, ...successfulUrls]);
+            // *** FIX: Use setMediaUrls ***
+            setMediaUrls(prevUrls => [...prevUrls, ...successfulUrls]);
 
-            // Provide feedback
             if (successfulUrls.length > 0) {
                 showNotification(`${successfulUrls.length} image(s) uploaded successfully!`, 'check-circle');
             }
@@ -186,14 +197,11 @@ const WebhookModal = ({
             }
 
         } catch (error) {
-            // This catch block might be less likely to be hit with Promise.allSettled,
-            // but keep it for unexpected issues.
             console.error('General upload process error:', error);
             Sentry.captureException(error, { extra: { context: 'WebhookModal Multi-Image Upload Process' } });
             showNotification('An unexpected error occurred during upload.', 'exclamation-circle');
         } finally {
             setIsUploading(false);
-            // Clear the file input value so the same file(s) can be selected again if needed
             event.target.value = null;
         }
     };
@@ -221,23 +229,48 @@ const WebhookModal = ({
             throw new Error(data.data.error || 'Unknown Imgur error');
         }
 
-        return data.data.link; // Return the URL on success
+        return data.data.link;
+    };
+    const handleAddUrl = () => {
+        const urlToAdd = urlInput.trim();
+        if (!urlToAdd) {
+            showNotification('Please enter a URL.', 'warning');
+            return;
+        }
+        if (!urlToAdd.startsWith('http://') && !urlToAdd.startsWith('https://')) {
+            showNotification('Invalid URL format. Must start with http:// or https://', 'warning');
+            return;
+        }
+        if (mediaUrls.includes(urlToAdd)) {
+            showNotification('This URL has already been added.', 'info-circle');
+            return;
+        }
+        setMediaUrls(prevUrls => [...prevUrls, urlToAdd]);
+        setUrlInput('');
+        showNotification('URL added successfully!', 'check-circle');
     };
 
     // --- Updated clear function ---
-    const clearImages = () => {
-        setImageUrls([]);
+    const clearMedia = () => {
+        setMediaUrls([]); // Use the correct state setter
     };
     // --- End Updated ---
+    const isImageUrl = (url) => {
+        // Simple check for common image extensions or Imgur links
+        return /\.(jpg|jpeg|png|gif)$/i.test(url) || url.includes('imgur.com');
+    };
+
+    const isStreamableUrl = (url) => {
+        return url.includes('streamable.com');
+    };
 
     // --- Updated Data Preparation Logic ---
     const prepareWebhookDataInternal = () => {
         const title = webhookTitle.trim();
         const message = webhookMessage.trim();
 
-        // Check if there's any content (title, message, or images)
-        if (!title && !message && imageUrls.length === 0) {
-            showNotification('Please enter a title, message, or upload at least one image.', 'warning');
+        if (!title && !message && mediaUrls.length === 0) {
+            showNotification('Please enter a title, message, or add media (image/URL).', 'warning');
             return null;
         }
         if (title.length > 256) {
@@ -245,46 +278,43 @@ const WebhookModal = ({
             return null;
         }
 
-        // Prepare description with potential additional image links
         let description = message || '';
-        if (imageUrls.length > 1) {
-            description += '\n\n**Additional Images:**\n';
-            imageUrls.slice(1).forEach((url, index) => {
-                description += `- Image ${index + 2}\n`;
-            });
+        let firstImageUrl = null;
+
+        // Find the first *image* URL for the embed.image field
+        for (const url of mediaUrls) {
+            if (isImageUrl(url)) {
+                firstImageUrl = url;
+                break; // Stop after finding the first image
+            }
         }
 
-        // Add footer regardless of other content
+        // Add footer
         description += `\n\nPHMC Form Generator - v${commitInfo?.sha || 'N/A'}`;
 
-
         if (description.length > 4096) {
-            showNotification('Embed body (including image links) cannot exceed 4096 characters.', 'warning');
+            showNotification('Embed body (including media links) cannot exceed 4096 characters.', 'warning');
             return null;
         }
 
         const embed = {
             title: title || undefined,
-            description: description.trim() || undefined, // Omit if completely empty after trimming
+            description: description.trim() || undefined,
             color: 0x7289DA,
             timestamp: new Date().toISOString(),
-            // Use the first image URL for the main embed image, if available
-            image: imageUrls.length > 0 ? { url: imageUrls[0] } : undefined,
+            // Use the first *image* URL found for the main embed image
+            image: firstImageUrl ? { url: firstImageUrl } : undefined,
         };
 
-        // Further cleanup if only image(s) were provided
-        if (!message && !title && imageUrls.length > 0) {
-             embed.description = `Image(s) submitted via PHMC Form Generator - v${commitInfo?.sha || 'N/A'}`;
-             if (imageUrls.length > 1) {
-                 embed.description += '\n\n**Additional Images:**\n';
-                 imageUrls.slice(1).forEach((url, index) => {
-                     embed.description += `- Image ${index + 2}\n`;
-                 });
-             }
-        } else if (!message && title && imageUrls.length > 0) {
-            // If title and image(s) but no message, keep the generated description with links
+        // Cleanup if only media was provided
+        if (!message && !title && mediaUrls.length > 0) {
+             embed.description = `Media submitted via PHMC Form Generator - v${commitInfo?.sha || 'N/A'}`;
+             embed.description += '\n\n**Media:**\n';
+             mediaUrls.forEach((url, index) => {
+                 const type = isStreamableUrl(url) ? 'Video' : isImageUrl(url) ? 'Image' : 'Link';
+                 embed.description += `- ${type} ${index + 1}\n`;
+             });
         }
-
 
         const payload = {
             username: "PHMC",
@@ -329,6 +359,7 @@ const WebhookModal = ({
 
                 <div style={modalBodyStyle}>
                     <Form>
+                        {/* Title and Body Textarea (Keep as is) */}
                         <Form.Group controlId="webhookEmbedTitle" className="mb-3">
                             <Form.Label style={formLabelStyle}>Embed Title</Form.Label>
                             <Form.Control
@@ -339,25 +370,43 @@ const WebhookModal = ({
                                 style={formControlStyle}
                             />
                         </Form.Group>
-
-                        <Form.Group controlId="webhookMessageTextarea" className="mb-3"> {/* Added mb-3 */}
+                        <Form.Group controlId="webhookMessageTextarea" className="mb-3">
                             <Form.Label style={formLabelStyle}>Embed Body</Form.Label>
                             <Form.Control
                                 as="textarea"
-                                rows={6} // Adjusted rows
+                                rows={4} // Reduced rows slightly
                                 placeholder="Enter the embed body content..."
                                 value={webhookMessage}
                                 onChange={(e) => setWebhookMessage(e.target.value)}
                                 style={formControlStyle}
                             />
                             <Form.Text style={{ color: '#6c757d', fontSize: '0.85em' }}>
-                                Supports basic Markdown. Additional image links will be appended here.
+                                Supports basic Markdown. Media links will be appended automatically.
                             </Form.Text>
                         </Form.Group>
 
-                        {/* --- Updated Image Upload Section --- */}
+                        {/* --- NEW: URL Input Field --- */}
+                        <Form.Group controlId="webhookUrlInput" className="mb-3">
+                            <Form.Label style={formLabelStyle}>Add Media URL (Image or Streamable)</Form.Label>
+                            <InputGroup>
+                                <Form.Control
+                                    type="url" // Use type="url" for better semantics/validation
+                                    placeholder="Paste Image or Streamable URL..."
+                                    value={urlInput}
+                                    onChange={(e) => setUrlInput(e.target.value)}
+                                    style={formControlStyle}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddUrl(); } }} // Add on Enter key
+                                />
+                                <Button variant="info" onClick={handleAddUrl}>
+                                    <i className="fas fa-plus"></i> Add URL
+                                </Button>
+                            </InputGroup>
+                        </Form.Group>
+                        {/* --- End URL Input Field --- */}
+
+                        {/* Image Upload Section (Keep as is) */}
                         <Form.Group controlId="webhookImageUpload" className="mb-3">
-                            <Form.Label style={formLabelStyle}>Embed Image(s)</Form.Label>
+                            <Form.Label style={formLabelStyle}>Upload Image(s)</Form.Label>
                             <InputGroup>
                                 <Button
                                     variant="success"
@@ -367,41 +416,55 @@ const WebhookModal = ({
                                     <i className={`fas ${isUploading ? 'fa-spinner fa-spin' : 'fa-upload'}`}></i>
                                     {isUploading ? ' Uploading...' : ' Upload Image(s)'}
                                 </Button>
-                                {/* Hidden file input - ADDED multiple attribute */}
                                 <input
                                     id="webhook-image-input"
                                     type="file"
                                     accept="image/*"
-                                    multiple // <-- Allow multiple file selection
+                                    multiple
                                     style={{ display: 'none' }}
                                     onChange={handleImageUpload}
                                 />
                             </InputGroup>
-                            {/* Display multiple previews */}
-                            {imageUrls.length > 0 && (
+                            <Form.Text style={{ color: '#6c757d', fontSize: '0.85em' }}>
+                                Upload one or more images. Hosted by Imgur.
+                            </Form.Text>
+                        </Form.Group>
+
+                        {/* --- Updated Preview Section --- */}
+                        {mediaUrls.length > 0 && (
+                            <Form.Group className="mb-3">
+                                <Form.Label style={formLabelStyle}>Added Media ({mediaUrls.length})</Form.Label>
                                 <div style={imagePreviewContainerStyle}>
-                                    {imageUrls.map((url, index) => (
+                                    {mediaUrls.map((url, index) => (
                                         <div key={index} style={{ position: 'relative' }}>
-                                            <img src={url} alt={`Preview ${index + 1}`} style={imagePreviewStyle} />
-                                            {/* Optional: Add individual clear buttons if needed */}
+                                            {isImageUrl(url) ? (
+                                                <img src={url} alt={`Preview ${index + 1}`} style={imagePreviewStyle} title={url} />
+                                            ) : isStreamableUrl(url) ? (
+                                                <div style={urlPreviewStyle} title={url}>
+                                                    <i className="fas fa-video" style={urlIconStyle}></i>
+                                                    <span style={urlTextStyle}>Streamable Link</span>
+                                                </div>
+                                            ) : (
+                                                // Fallback for other URLs
+                                                <div style={urlPreviewStyle} title={url}>
+                                                    <i className="fas fa-link" style={urlIconStyle}></i>
+                                                    <span style={urlTextStyle}>External Link</span>
+                                                </div>
+                                            )}
+                                            {/* Optional: Add individual clear buttons here if needed */}
                                         </div>
                                     ))}
                                 </div>
-                            )}
-                            {/* Clear All button */}
-                            {imageUrls.length > 0 && (
-                                <button onClick={clearImages} style={{...clearImageButtonStyle, marginTop: '10px'}} title="Clear All Images">
-                                    Clear All Images ({imageUrls.length})
+                                <button onClick={clearMedia} style={{...clearImageButtonStyle, marginTop: '10px'}} title="Clear All Media">
+                                    Clear All Media ({mediaUrls.length})
                                 </button>
-                            )}
-                            <Form.Text style={{ color: '#6c757d', fontSize: '0.85em' }}>
-                                Upload one or more images. The first image will be featured. Hosted by Imgur.
-                            </Form.Text>
-                        </Form.Group>
-                        {/* --- End Updated --- */}
+                            </Form.Group>
+                        )}
+                        {/* --- End Updated Preview Section --- */}
                     </Form>
                 </div>
 
+                {/* Footer (Keep as is) */}
                 <div style={modalFooterStyle}>
                     <Button variant="secondary" onClick={onClose}>
                         Cancel

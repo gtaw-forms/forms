@@ -4,7 +4,7 @@ import '@fortawesome/fontawesome-free/css/all.min.css';
 import Notification from './components/Notification';
 import { Modal, Form, Button, Dropdown } from 'react-bootstrap';
 import domtoimage from 'dom-to-image';
-import SavedReportsModal from './SavedReportsModal'; 
+import SavedReportsModal from './components/SavedReportsModal'; 
 import getRelevantFields from './components/RevelantFields';
 import AgencySelector from './components/AgencySelector';
 import Footer from './components/Footer';
@@ -130,7 +130,6 @@ import './App.css';
 import './buttons.css'
 
 import 'react-bootstrap-typeahead/css/Typeahead.css';
-import { FormHelperText } from '@mui/material';
 // Automated Imports from field-data
 function App() {
     const [isMobile, setIsMobile] = useState(false);
@@ -470,7 +469,7 @@ function App() {
     const [isUploading, setIsUploading] = useState(false);
     const [isJohnDoe, setIsJohnDoe] = useState(false);
     const [isJaneDoe, setIsJaneDoe] = useState(false);
-    const [notification, setNotification] = useState(null);
+    const [notifications, setNotifications] = useState([]);
     const [showUpdateNotification, setShowUpdateNotification] = useState(false); // New state for notification visibility
     const [commitInfo, setCommitInfo] = useState({ sha: '', date: null });
     const [showPHMCModal, setShowPHMCModal] = useState(false);
@@ -1889,18 +1888,21 @@ if (bbCodeVersion === 1) {
         setLastWebhookIdentifier(null); 
         showNotification('Form cleared!', 'check-circle');
     };
+    const DEFAULT_NOTIFICATION_DURATION = 3000; // default 3 seconds
 
-    const showNotification = (message, icon = 'check-circle') => {
-        setNotification({
+    const showNotification = (message, icon = 'check-circle', duration = DEFAULT_NOTIFICATION_DURATION) => { // Add duration parameter with default
+        const newNotification = {
+            id: Date.now() + Math.random(), 
             message: message,
-            icon: getIconClass(icon), // Use a function to get the icon class
-        });
+            icon: getIconClass(icon),
+        };
+        setNotifications(prevNotifications => [...prevNotifications, newNotification]);
     
         setTimeout(() => {
-            setNotification(null);
-        }, 3000);
+            removeNotification(newNotification.id);
+        }, duration); 
     };
-    
+        
     const getIconClass = (iconType) => {
         switch (iconType) {
             case 'check-circle':
@@ -1919,6 +1921,15 @@ if (bbCodeVersion === 1) {
                 return 'fas fa-info-circle';
         }
     };
+
+
+    // *** IMPLEMENT removeNotification to REMOVE from the array ***
+    const removeNotification = (idToRemove) => {
+        setNotifications(prevNotifications =>
+            prevNotifications.filter(notif => notif.id !== idToRemove)
+        );
+    };
+
     // Add new state
     const [parsedBBCode, setParsedBBCode] = useState('');
     // update Switch logic
@@ -1966,13 +1977,24 @@ if (bbCodeVersion === 1) {
        }
     };
     const parseBBCode = () => {
-        const bbCode = generateDeathReport(formData);
-        setParsedBBCode(bbCode);
+        let deathReportBbCode = generateDeathReport(formData);
+
+        if (!deathReportBbCode) { // Check for null, undefined, or empty string
+            console.error("parseBBCode: generateDeathReport(formData) returned invalid content.");
+            showNotification(`Failed to generate Death Report BBCode for parsing.`, 'error');
+            return;
+        }
+
+        deathReportBbCode = deathReportBbCode.replace(/\[bold\]/g, '[b]').replace(/\[\/bold\]/g, '[/b]');
+
+        setParsedBBCode(deathReportBbCode);
+
         setFormData(prev => ({
             ...prev,
-            deathReport: bbCode
+            deathReport: deathReportBbCode // Use the specifically generated and modified death report BBCode
         }));
-        showNotification('BBCode parsed and copied to Death Report field!', 'check-circle');
+
+        showNotification('Death Report BBCode parsed and copied to Death Report field!', 'check-circle');
     };
 
 
@@ -3082,13 +3104,27 @@ const [imgurLink, setImgurLink] = useState(null);
                         )}
 
                     </div>
-                    {notification && (
-                        <Notification
-                            message={notification.message}
-                            icon={notification.icon}
-                            onDismiss={() => setNotification(null)}
-                        />
-                    )}
+                    <div className="notification-container">
+            {notifications.map((notif) => (
+                <Notification
+                    key={notif.id}
+                    message={notif.message}
+                    icon={notif.icon}
+                    onDismiss={() => removeNotification(notif.id)}
+                    // Pass other necessary props
+                />
+            ))}
+            {/* If you were rendering a single notification before, it would look like:
+            {notification && (
+                <Notification
+                    message={notification.message}
+                    icon={notification.icon}
+                    onDismiss={() => setNotification(null)}
+                />
+            )}
+            You'll need to switch to the array mapping approach above for stacking.
+            */}
+        </div>
                     <form>
                         {bbCodeVersion === 1 ? (
                             <DeathReport
@@ -3416,7 +3452,6 @@ const [imgurLink, setImgurLink] = useState(null);
                                 <i className="fas fa-trash-alt"></i>
                                 Clear Form
                             </Button>
-                    {window.location.hostname === 'localhost' && (
                             <Button
                                 type="button"
                                 variant='danger'
@@ -3426,7 +3461,6 @@ const [imgurLink, setImgurLink] = useState(null);
                             >
                                 <i className="fas fa-paper-plane"></i> Send Dev Webhook
                             </Button>
-                        )}
                         {window.location.hostname === 'localhost' && ( // Example: Only show on localhost
                             <Button
                                 variant="warning" // Use a different color maybe?
