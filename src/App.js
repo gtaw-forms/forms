@@ -3452,6 +3452,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                 <i className="fas fa-trash-alt"></i>
                                 Clear Form
                             </Button>
+                    {window.location.hostname === 'localhost' && (
                             <Button
                                 type="button"
                                 variant='danger'
@@ -3461,6 +3462,7 @@ const [imgurLink, setImgurLink] = useState(null);
                             >
                                 <i className="fas fa-paper-plane"></i> Send Dev Webhook
                             </Button>
+                        )}
                         {window.location.hostname === 'localhost' && ( // Example: Only show on localhost
                             <Button
                                 variant="warning" // Use a different color maybe?
