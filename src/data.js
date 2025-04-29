@@ -132,6 +132,7 @@ export const vitals = [
     { value: 'patientHyperthermic', label: 'Hyperthermic' }
 ];
 export const patientTitle = [
+    { value: 'Mstr', label: 'Master (Child <18 Y/O)' },
     { value: 'Mr', label: 'Mr' },
     { value: 'Mrs', label: 'Mrs' },
     { value: 'Ms', label: 'Ms' },
@@ -177,9 +178,15 @@ export const pupils = [
 export const wounds = [
     { value: 'patientNoWounds', label: 'No wounds' },
     { value: 'patientFractures', label: 'Fractures' },
+    { value: 'Contusions', label: 'Contusions' },
     { value: 'patientBleeding', label: 'Bleeding' },
     { value: 'patientHematoma', label: 'Hematoma' }
 ];
+export const bloodOxy =[ 
+    { value: 'patientBloodOxyNormal', label: 'Hypoxic (Below 90%)' },
+    { value: 'patientBloodOxyLow', label: 'Borderline (90-94%)' },
+    { value: 'patientBloodOxyHigh', label: 'Normal (95%+)' }
+]
 export const ecg = [
     { value: 'patientSinusRhythm', label: 'Sinus Rhythm' },
     { value: 'patientArrhythmia', label: 'Arrhythmia' },
@@ -253,6 +260,8 @@ export const maritalStatus = [
 export const numberChildren = [
     { value: '0', label: '0' },
     { value: '1', label: '1' },
+    { value: '1', label : '2' },
+    { value: '1', label : '3+' },
 
 ]
 //financial status
@@ -408,7 +417,6 @@ export const coronerList = [
     { name: 'Anne Carter', badge: '4892', rank: 'Chief Medical Examiner', discord: 'ralof.from.riverwood', category: 'Chief Boss' },
     { name: 'Elena Hill', badge: '108273', rank: 'Deputy Chief Medical Examiner', discord: 'unity0034', category: 'Chief Boss' },
     { name: 'Laurent Hall', badge: '91338854', rank: 'Supervisor Forensic Attendant', discord: 'faethewtich', category: 'Supervisor' },
-    { name: 'Wesley Kramer', badge: '16511', rank: 'Coroner Investigator', discord: 'lucasin16', category: 'Coroner Investigator' },
     { name: 'Alyson Frost', badge: '5573', rank: 'Senior Coroner Investigator', discord: 'fr0sty.js', category: 'Senior Coroner Investigator' },
     { name: 'Arthur Blackwood', badge: '153528', rank: 'Senior Medical Examiner', discord: 'deputysmall', category: 'Senior Medical Examiner' },
     { name: 'Ellie Paisley', badge: '151785', rank: 'Coroner Investigator', discord: 'hoperunsthin', category: 'Coroner Investigator' },
@@ -419,7 +427,6 @@ export const coronerList = [
     { name: 'Luca Raymond', badge: '181726', rank: 'Forensic Attendant', discord: 'itscharlie3529', category: 'Forensic Attendant' },
     { name: 'Roger Rose', badge: '1552', phNumber: '45100', rank: 'Coroner Investigator Supervisor', discord: 'nazmaldun', category: 'Supervisor' },
     { name: 'Valeria Zaldívar', badge: '183550', phNumber: '23516250', rank: 'Coroner Investigator', discord: 'm3aqq', category: 'Coroner Investigator' },
-    { name: 'Elias Harper', badge: '184060', phNumber: '03720028', rank: 'Coroner Investigator', discord: 'psychofr__', category: 'Coroner Investigator' },
     { name: 'Brynn Cappelli', badge: '117468', phNumber: '22000258', rank: 'Coroner Investigator', discord: 'Coroner Investigator', category: 'Coroner Investigator' },
     { name: 'William Gao', badge: '165529', phNumber: '75725652', rank: 'Coroner Investigator', discord: '.slump.', category: 'Coroner Investigator' },
     { name: 'Oscar Castro', badge: '184273', phNumber: '43464144', rank: 'Coroner Investigator', discord: 't3_tris', category: 'Coroner Investigator' },

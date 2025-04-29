@@ -327,7 +327,7 @@ const PhysEval = ({
                                     name="patientAllergies"
                                     value={formData.patientAllergies}
                                     onChange={handleChange}
-                                    placeholder="Patient Job Risks"
+                                    placeholder="Patient Allergies Risks"
                                     required
                                     className="form-control"
                                     />
@@ -348,7 +348,7 @@ const PhysEval = ({
                                         }}
                                         className="form-control"
                                     >
-                                        <option value="" disabled>Patient Medicine Regular?</option>
+                                        <option value="" disabled>Patient Current Medications</option>
                                         {patientMedicineRegular.map((option) => (
                                             <option key={option.value} value={option.value}>{option.label}</option>
                                         ))}
@@ -393,7 +393,7 @@ const PhysEval = ({
                                     name="patientMedicine"
                                     value={formData.patientMedicine}
                                     onChange={handleChange}
-                                    placeholder="patientMedicine"
+                                    placeholder="What medication(s) is the patient currently taking?"
                                     required
                                     className="form-control"
                                     />
@@ -404,7 +404,7 @@ const PhysEval = ({
                                     name="patientImpairments"
                                     value={formData.patientImpairments}
                                     onChange={handleChange}
-                                    placeholder="patientImpairments"
+                                    placeholder="Patient Imparements"
                                     required
                                     className="form-control"
                                     />
@@ -424,4 +424,4 @@ const PhysEval = ({
     );
 };
 
-export default PhysEval; // Export with PascalCase name
+export default PhysEval; 

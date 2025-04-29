@@ -327,7 +327,7 @@ const PatientAdvanced = ({
                     name="patientReligion"
                     value={formData.patientReligion}
                     onChange={handleChange}
-                    placeholder="Patient's Religion"
+                    placeholder="Patient Religion"
                     required
                     className={`form-control ${!formData.patientReligion ? 'is-invalid' : ''}`}
                 />

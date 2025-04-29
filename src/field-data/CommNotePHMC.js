@@ -38,7 +38,7 @@ const PHMCCommentaryNoteQuestions = ({
                 name="patientNotes"
                 value={formData.patientNotes}
                 onChange={handleChange}
-                placeholder="Patient's Notes"
+                placeholder="Patient Notes"
                 rows="6"
                 required
                 className={`form-control ${!formData.patientNotes ? 'is-invalid' : ''}`}

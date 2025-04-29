@@ -11,7 +11,7 @@ const GeneralConsult = ({
     setShowMissingEmployeeModal,
     phmcEmployee,
     lab,
-    painLevel,
+    bloodOxy,
     vitals,
     heartRate,
     breathing,
@@ -210,6 +210,19 @@ const GeneralConsult = ({
                                                     <option key={option.value} value={option.value}>{option.label}</option>
                                                 ))}
                                             </Form.Select>
+                                        <Form.Select
+                                            name="bloodOxy"
+                                            value={formData.bloodOxy}
+                                            onChange={handleChange}
+                                            required
+                                            className={`form-control ${!formData.bloodOxy ? 'is-invalid' : ''}`}
+                                        >
+                                            <option value="" disabled>Blood Oxygen</option>
+                                            {bloodOxy.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </Form.Select>
+                                            
                                             </div>
                                             <Form.Label>Findings </Form.Label>
                                 <div style={{ display: 'flex', gap: '10px' }}>
@@ -378,7 +391,7 @@ const GeneralConsult = ({
                                     value={formData.patientSecondaryDiagnosis}
                                     onChange={handleChange}
                                     rows="4"
-                                    placeholder="Patient's Secondary Diagnosis"
+                                    placeholder="Patient Secondary Diagnosis"
                                     required
                                     className={`form-control ${!formData.patientSecondaryDiagnosis ? 'is-invalid' : ''}`}
                                 />

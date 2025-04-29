@@ -22,6 +22,7 @@ const EmergencyForm = ({
     ecg,
     sono,
     admission,
+    bloodOxy
     
 }) => {
     return (
@@ -203,7 +204,20 @@ const EmergencyForm = ({
                                           <option key={option.value} value={option.value}>{option.label}</option>
                                       ))}
                                   </Form.Select>
+                                  <Form.Select
+                                      name="bloodOxy"
+                                      value={formData.bloodOxy}
+                                      onChange={handleChange}
+                                      required
+                                      className={`form-control ${!formData.bloodOxy ? 'is-invalid' : ''}`}
+                                  >
+                                      <option value="" disabled>Blood Oxygen</option>
+                                      {bloodOxy.map((option) => (
+                                          <option key={option.value} value={option.value}>{option.label}</option>
+                                      ))}
+                                  </Form.Select>
                                   </div>
+
                                   <Form.Label>Findings </Form.Label>
                       <div style={{ display: 'flex', gap: '10px' }}>
                               <Form.Select
@@ -354,6 +368,16 @@ const EmergencyForm = ({
                       <Form.Label></Form.Label>
                       <Form.Label>Preliminary Diagnosis </Form.Label>
                       <div style={{ display: 'flex', gap: '10px' }}>
+                      <Form.Control
+                          as="textarea"
+                          name="patientProcedure"
+                          value={formData.patientProcedure}
+                          onChange={handleChange}
+                          rows="4"
+                          placeholder="Procedures conducted on Patient"
+                          required
+                          className={`form-control ${!formData.patientProcedure ? 'is-invalid' : ''}`}
+                      />
 
                       <Form.Control
                           as="textarea"
@@ -371,7 +395,7 @@ const EmergencyForm = ({
                           value={formData.patientSecondaryDiagnosis}
                           onChange={handleChange}
                           rows="4"
-                          placeholder="Patient's Secondary Diagnosis"
+                          placeholder="Patient Secondary Diagnosis"
                           required
                           className={`form-control ${!formData.patientSecondaryDiagnosis ? 'is-invalid' : ''}`}
                       />
@@ -392,16 +416,6 @@ const EmergencyForm = ({
                       </Form.Select>
 
                       <div style={{ display: 'flex', gap: '10px' }}>
-                      <Form.Control
-                          as="textarea"
-                          name="patientProcedure"
-                          value={formData.patientProcedure}
-                          onChange={handleChange}
-                          rows="4"
-                          placeholder="Procedure's conducted on Patient"
-                          required
-                          className={`form-control ${!formData.patientProcedure ? 'is-invalid' : ''}`}
-                      />
                       <Form.Control
                           as="textarea"
                           name="patientMedicine"
