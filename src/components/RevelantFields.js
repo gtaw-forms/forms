@@ -44,7 +44,7 @@ const getRelevantFields = (bbCodeVersion) => {
                 'patientID', 'date', 'lastName', 'patientHeight', 'patientWeight',
                 'phmcRank', 'careerRisks', 'patientAllergies', 'patientMedicine',
                 'patientcareerNo', 'patientSummary', 'patientCareer', 'patientImpairments',
-                'BodyMassIndex', 'vitals', 'heartRate', 'breathing', 'bloodPressure',
+                'BodyMassIndex', 'temperature', 'heartRate', 'breathing', 'bloodPressure',
                 'patientJob', 'patientJobRisks', 'patientOther', 'predisposition'
             ];
         case 7: // Physical Evaluation (PBC)
@@ -52,7 +52,7 @@ const getRelevantFields = (bbCodeVersion) => {
                 'patientID', 'date', 'lastName', 'patientHeight', 'patientWeight',
                 'phmcRank', 'careerRisks', 'patientAllergies', 'patientMedicine',
                 'patientcareerNo', 'patientSummary', 'patientCareer', 'patientImpairments',
-                'BodyMassIndex', 'vitals', 'heartRate', 'breathing', 'bloodPressure',
+                'BodyMassIndex', 'temperature', 'heartRate', 'breathing', 'bloodPressure',
                 'patientJob', 'patientJobRisks', 'patientOther', 'predisposition'
             ];
         case 9: // Obs Main File
@@ -118,14 +118,14 @@ const getRelevantFields = (bbCodeVersion) => {
             return [
                 'lastName', 'phmcRank', 'patientID', 'date', 'patientDiagnosis',
                 'patientSecondaryDiagnosis', 'patientMedicine', 'patientProcedure',
-                'patientChiefComplaint', 'painLevel', 'vitals', 'heartRate', 'breathing',
+                'patientChiefComplaint', 'painLevel', 'temperature', 'heartRate', 'breathing',
                 'bloodPressure', 'findings', 'lungs', 'pupils', 'wounds', 'ecg', 'sono', 'lab', 'admission'
             ];
         case 20: // Consultation Notes (PHMC)
             return [
                 'lastName', 'phmcRank', 'patientID', 'date', 'patientDiagnosis',
                 'patientSecondaryDiagnosis', 'patientMedicine', 'patientProcedure',
-                'patientChiefComplaint', 'vitals', 'heartRate', 'breathing', 'bloodPressure',
+                'patientChiefComplaint', 'temperature', 'heartRate', 'breathing', 'bloodPressure',
                 'findings', 'lungs', 'pupils', 'wounds', 'ecg', 'sono', 'lab', 'admission',
                 'assignedDepartment'
             ];
@@ -133,7 +133,7 @@ const getRelevantFields = (bbCodeVersion) => {
             return [
                 'lastName', 'phmcRank', 'patientID', 'date', 'patientDiagnosis',
                 'patientSecondaryDiagnosis', 'patientMedicine', 'patientProcedure',
-                'patientChiefComplaint', 'vitals', 'heartRate', 'breathing', 'bloodPressure',
+                'patientChiefComplaint', 'temperature', 'heartRate', 'breathing', 'bloodPressure',
                 'findings', 'lungs', 'pupils', 'wounds', 'ecg', 'sono', 'lab', 'admission',
                 'paletoClinicDepartment', 'patientNotes'
             ];
