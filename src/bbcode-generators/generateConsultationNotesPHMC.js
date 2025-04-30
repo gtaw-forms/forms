@@ -56,7 +56,7 @@ ${patientChiefComplaint || 'N/A'}
 [cb${formData.assignedDepartment === 'SurgicalDepartment' ? 'c' : ''}] Surgical Department
 [cb${formData.assignedDepartment === 'Midwifery' ? 'c' : ''}] Midwifery
 [cb${formData.assignedDepartment === 'Dialysis' ? 'c' : ''}] Dialysis
-[/list][/td][/tr][/table] {/* Corrected closing tag placement */}
+[/list][/td][/tr][/table]
 [divboxcolor=black][center][color=#FF0000]>[/color] [color=#FFFFFF][b]Vitals[/b][/color][/center][/divboxcolor]
 [table][tr][td][center]Temperature: [cb${formData.vitals === 'patientTempNormal' ? 'c' : ''}] Normal [cb${formData.vitals === 'patientHypothermic' ? 'c' : ''}] Hypothermic [cb${formData.vitals === 'patientHyperthermic' ? 'c' : ''}] Hyperthermic[/center]
 [td][center]Heart Rate: [cb${formData.heartRate === 'patientHeartRateNormal' ? 'c' : ''}] Normal [cb${formData.heartRate === 'patientHeartRateBradycardia' ? 'c' : ''}] Bradycardia [cb${formData.heartRate === 'patientHeartRateTachycardia' ? 'c' : ''}] Tachycardia[/center][/table]

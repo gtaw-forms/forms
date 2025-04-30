@@ -126,7 +126,7 @@ export const painLevel = [
     { value: 'patientCritical', label: 'Critical/Emergent' }
 ];
 // Vitals for ER Protocol
-export const vitals = [
+export const temperature = [
     { value: 'patientTempNormal', label: 'Normal' },
     { value: 'patientHypothermic', label: 'Hypothermic' },
     { value: 'patientHyperthermic', label: 'Hyperthermic' }
