@@ -74,9 +74,8 @@ import {
     followup,
     departmentLarge,
     assignedDepartment,
-    paletoClinicDepartment,
     painLevel,
-    vitals,
+    temperature,
     patientTitle,
     patientPhone,
     heartRate,
@@ -323,7 +322,7 @@ function App() {
         triageMildPain: false,
         triageSeverePain: false,
         triageCriticalPain: false,
-        // surgical ops v2 vitals
+        // surgical ops v2 temperature
         patientTempNormal: false,
         patientTempHigh: false,
         patientTempLow: false,
@@ -378,7 +377,7 @@ function App() {
         procedureGoodNo: '',
         BodyMassIndex: '',
         phmcRank: '',
-        vitals: '',
+        temperature: '',
         heartRate: '',
         bloodPressure: '',
         careerRisks: '',
@@ -1800,7 +1799,7 @@ if (bbCodeVersion === 1) {
             procedureGoodOptions: '',
             procedureGoodYes: '',
             procedureGoodNo: '',
-            vitals: '',
+            temperature: '',
             heartRate: '',
             bloodPressure: '',
             careerRisks: '',
@@ -3195,7 +3194,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         phmcRank={phmcRank} // <-- PASS THE PROP HERE
                         setShowMissingEmployeeModal={setShowMissingEmployeeModal}
                         BodyMassIndex={BodyMassIndex} 
-                        vitals={vitals} 
+                        temperature={temperature} 
                         heartRate={heartRate} 
                         breathing={breathing} 
                         bloodPressure={bloodPressure} 
@@ -3216,7 +3215,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         phmcRank={phmcRank} // <-- PASS THE PROP HERE
                         setShowMissingEmployeeModal={setShowMissingEmployeeModal}
                         BodyMassIndex={BodyMassIndex} 
-                        vitals={vitals} 
+                        temperature={temperature} 
                         heartRate={heartRate} 
                         breathing={breathing} 
                         bloodPressure={bloodPressure} 
@@ -3274,7 +3273,7 @@ const [imgurLink, setImgurLink] = useState(null);
                             phmcRank={phmcRank} // <-- PASS THE PROP HERE
                             setShowMissingEmployeeModal={setShowMissingEmployeeModal}
                             BodyMassIndex={BodyMassIndex} 
-                            vitals={vitals} 
+                            temperature={temperature} 
                             heartRate={heartRate} 
                             breathing={breathing} 
                             bloodPressure={bloodPressure} 
@@ -3300,7 +3299,7 @@ const [imgurLink, setImgurLink] = useState(null);
                             phmcRank={phmcRank} // <-- PASS THE PROP HERE
                             setShowMissingEmployeeModal={setShowMissingEmployeeModal}
                             BodyMassIndex={BodyMassIndex} 
-                            vitals={vitals} 
+                            temperature={temperature} 
                             heartRate={heartRate} 
                             breathing={breathing} 
                             bloodPressure={bloodPressure} 
@@ -3329,7 +3328,7 @@ const [imgurLink, setImgurLink] = useState(null);
                             phmcRank={phmcRank} // <-- PASS THE PROP HERE
                             setShowMissingEmployeeModal={setShowMissingEmployeeModal}
                             BodyMassIndex={BodyMassIndex} 
-                            vitals={vitals} 
+                            temperature={temperature} 
                             heartRate={heartRate} 
                             breathing={breathing} 
                             bloodPressure={bloodPressure} 
