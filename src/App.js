@@ -1081,18 +1081,16 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
             if (e.target.checked) {
                 setFormData(prev => ({ ...prev, decedentName: 'Jane Doe' })); // This seems unrelated to the modal
             } else if (formData.decedentName === 'Jane Doe') {
-                setFormData(prev => ({ ...prev, decedentName: '' })); // This seems unrelated to the modal
+                setFormData(prev => ({ ...prev, decedentName: '' }));
             }
         }
     };
 
-    // --- NEW Handler for Remove Staff Radio ---
     const handleRemoveStaffChange = (e) => {
         if (e.target.checked) {
             setIsRemoveStaff(true);
             setIsJohnDoe(false); // Turn off other modes
             setIsJaneDoe(false); // Turn off other modes
-            // Clear add-specific fields when switching to remove
             setMissingEmployeeData(prev => ({
                 ...prev,
                 coronerName: '',
@@ -1104,7 +1102,6 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
         }
     };
 
-    // Keep handleMissingEmployeeChange as is
     const handleMissingEmployeeChange = (value, type) => {
         setMissingEmployeeData(prevData => ({
             ...prevData,
@@ -1362,22 +1359,44 @@ const loadReport = (key) => {
         try {
             const parsedData = JSON.parse(reportData);
             const loadedVersion = parsedData.bbCodeVersion;
-            let loadedBbCode = parsedData.bbCode || ''; // Use let so it can be modified
+            let loadedBbCode = parsedData.bbCode || '';
             const loadedFormData = parsedData.data || {};
 
-            // --- Special Case: Loading a Death Report (v1) while already on Coroner Email (v2) ---
+            // --- Fields managed by localStorage with expiry ---
+            const localStorageManagedFields = [
+                'placeOfDeath',
+                'pronouncedTimeOfDeath',
+                'dateTime',
+                'department',
+                'mannerOfDeath', 
+                'coronerEmployee',
+                'coronerBadge',
+                'coronerRank',
+                'coronerDiscord',
+                'phmcEmployee',
+                'phmcSignature'
+            ];
+
+            // --- Update localStorage for managed fields when loading ---
+            const timestamp = Date.now().toString(); // Get current timestamp for loaded data
+            localStorageManagedFields.forEach(field => {
+                if (loadedFormData.hasOwnProperty(field) && loadedFormData[field]) {
+                    localStorage.setItem(field, loadedFormData[field]);
+                    localStorage.setItem(`${field}_timestamp`, timestamp);
+                    console.log(`Updated localStorage for ${field} from loaded report.`);
+                } else {
+                }
+            });
+
+
+            // --- Fancy spaghetti whatever the fuck for deathReport and coronerEmail idk (v2) ---
             if (bbCodeVersion === 2 && loadedVersion === 1) {
 
-                // --- Apply the [bold] -> [b] replacement ---
                 if (loadedBbCode) {
                     loadedBbCode = loadedBbCode.replace(/\[bold\]/g, '[b]').replace(/\[\/bold\]/g, '[/b]');
-                    console.log("Applied [bold] -> [b] replacement for loaded BBCode.");
                 }
-                // --- End replacement ---
 
-                // --- Determine notification message BEFORE setFormData ---
                 let notificationMessage = '';
-                // Check the current state directly before the update is scheduled
                 const currentDeathReportIsEmpty = !formData.deathReport || formData.deathReport.trim() === '';
 
                 if (currentDeathReportIsEmpty) {
@@ -1385,7 +1404,6 @@ const loadReport = (key) => {
                 } else {
                     notificationMessage = `Added report for ${loadedFormData.decedentName || key} as an additional report.`;
                 }
-                // --- End determination ---
 
                 setFormData(prevFormData => {
                     let updatedName = prevFormData.decedentName || '';
@@ -1393,38 +1411,27 @@ const loadReport = (key) => {
                     let updatedDeathReport = prevFormData.deathReport || '';
                     let updatedAdditionalReports = prevFormData.additionalReports || [];
 
-                    // Append decedentName
                     if (prevFormData.decedentName && loadedFormData.decedentName) {
                         updatedName = `${prevFormData.decedentName}, ${loadedFormData.decedentName}`;
                     } else {
                         updatedName = loadedFormData.decedentName || prevFormData.decedentName || '';
                     }
 
-                    // Append decedentOOC
                     if (prevFormData.decedentOOC && loadedFormData.decedentOOC) {
                         updatedOoc = `${prevFormData.decedentOOC}, ${loadedFormData.decedentOOC}`;
                     } else {
                         updatedOoc = loadedFormData.decedentOOC || prevFormData.decedentOOC || '';
                     }
 
-                    // Check if main deathReport field is empty (using prevFormData inside callback)
-                    // Use the modified loadedBbCode here
                     if (!prevFormData.deathReport || prevFormData.deathReport.trim() === '') {
-                        updatedDeathReport = loadedBbCode; // Use modified BBCode
+                        updatedDeathReport = loadedBbCode;
                     } else {
-                        updatedAdditionalReports = [...updatedAdditionalReports, loadedBbCode]; // Use modified BBCode
+                        updatedAdditionalReports = [...updatedAdditionalReports, loadedBbCode];
                     }
 
-                    console.log('Updating Coroner Email Form:', {
-                        updatedName,
-                        updatedOoc,
-                        updatedDeathReport,
-                        updatedAdditionalReports
-                    });
-
-                    // Return the updated state
                     return {
                         ...prevFormData,
+                        ...loadedFormData, // Apply loaded data first
                         decedentName: updatedName,
                         decedentOOC: updatedOoc,
                         deathReport: updatedDeathReport,
@@ -1432,41 +1439,39 @@ const loadReport = (key) => {
                     };
                 });
 
-                // Stay on Coroner Email form (v2)
-                setParsedBBCode(''); // Clear the main BBCode display area
-                // Use the message determined *before* setFormData
-                showNotification(notificationMessage, 'plus-circle'); // <-- Now uses the correctly determined message
-                setShowSavedReports(false); // Close the modal
+                setParsedBBCode('');
+                showNotification(notificationMessage, 'plus-circle');
+                setShowSavedReports(false);
 
             } else {
                  // --- Default Loading Logic (for all other cases) ---
-
-                 // Apply the replacement here too if desired for all loaded reports
-                 // if (loadedBbCode) {
-                 //    loadedBbCode = loadedBbCode.replace(/\[bold\]/g, '[b]').replace(/\[\/bold\]/g, '[/b]');
-                 // }
-
                 setFormData(prevFormData => {
-                    let updatedData = { ...prevFormData, ...loadedFormData };
-                    // Append logic for loading *into* v2 (if loadedVersion is 2)
-                    if (loadedVersion === 2) {
-                        if (prevFormData.decedentName && loadedFormData.decedentName) {
-                            updatedData.decedentName = `${prevFormData.decedentName}, ${loadedFormData.decedentName}`;
-                        } else {
-                            updatedData.decedentName = loadedFormData.decedentName || prevFormData.decedentName || '';
+                    // Create a new state object based on the loaded data
+                    let newState = { ...loadedFormData };
+
+                    // If loading *into* v2 (Coroner Email), handle potential merging
+                    if (bbCodeVersion === 2 && loadedVersion === 2) {
+                         if (prevFormData.decedentName && loadedFormData.decedentName) {
+                            newState.decedentName = `${prevFormData.decedentName}, ${loadedFormData.decedentName}`;
                         }
                         if (prevFormData.decedentOOC && loadedFormData.decedentOOC) {
-                            updatedData.decedentOOC = `${prevFormData.decedentOOC}, ${loadedFormData.decedentOOC}`;
-                        } else {
-                            updatedData.decedentOOC = loadedFormData.decedentOOC || prevFormData.decedentOOC || '';
+                            newState.decedentOOC = `${prevFormData.decedentOOC}, ${loadedFormData.decedentOOC}`;
                         }
                     }
-                    return updatedData;
+
+                    for (const key in prevFormData) {
+                        if (!newState.hasOwnProperty(key)) {
+                            newState[key] = prevFormData[key];
+                        }
+                    }
+
+                    return newState;
                 });
-                setBbCodeVersion(loadedVersion); // Switch to the loaded report's version
-                setParsedBBCode(loadedBbCode); // Set the parsed BBCode display (with replacements if applied above)
+
+                setBbCodeVersion(loadedVersion);
+                setParsedBBCode(loadedBbCode);
                 showNotification(`Report loaded from ${key}`, 'upload');
-                setShowSavedReports(false); // Close the modal
+                setShowSavedReports(false);
             }
 
         } catch (error) {
@@ -1474,7 +1479,7 @@ const loadReport = (key) => {
             Sentry.captureException(error, { extra: { context: 'loadReport Parse Error', key: key } });
             localStorage.removeItem(key);
             showNotification(`Invalid report data deleted: ${key}`, 'trash');
-            loadSavedReports(); // Refresh the list
+            loadSavedReports();
         }
     } else {
         console.warn(`Attempted to load non-existent report with key: ${key}`);
@@ -1585,312 +1590,321 @@ if (bbCodeVersion === 1) {
     };
 // Everything else
 
-   const clearForm = () => {
-        setFormData({
-            placeOfDeath: '',
-            evidenceLockerID: '',
-            evidenceLocker: '',    
-            department: '',
-            dateTime: '',
-            phmcRank: '',
-            BodyMassIndex: '',
-            serialNumber: '',
-            decedentName: '',
-            phmcSignature: '',
-            pronouncedTimeOfDeath: '',
-            synopsis: '',
-            probableCauseOfDeath: '',
-            mannerOfDeath: '',
-            typeOfDeath: '',
-            decedentOOC: '',
-            scenePhotos: '',
-            lastName: '',
-            coronerBadge: '',
-            additionalImages: '',
-            requestingOfficer: '',
-            coronerDiscord: '',
-            coronerPHNumber: '50056',
-            deathReport: '',
-            SubmitDate: '',
-            additionalReports: [],
-            showAdditionalReports: false,
-            internalReport: '',
-            internalAdditionalReports: '',
-            policeNotification: '',
-            treatmentLocation: '',
-            moreDeathReports: [''],
-            extraStaff: '',
-            patientName: '',
-            patientAllergies: '',
-            surgeryComplications: '',
-            surgeryProcedures: '',
-            drugType: '',
-            postDrugtype: '',
-            surgicalSummery: '',
-            surgeryTime: '',
-            medicalComplications: '',
-            treatmentProcedures: '',
-            medType: '',
-            postTreatment: '',
-            medicalSummary: '',
-            evalTime: '',
-            patientPH: '',
-            patientBPM: '',
-            patientBMI: '',
-            patientTemperature: '',
-            patientCareer: '',
-            patientHeight: '',
-            patientWeight: '',
-            patientpulse: '',
-            patientOxi: '',
-            patientImpairments: '',
-            patientPastDiseases: '',
-            patientAssessment: '',
-            appointmentDate: '',
-            PatientMedicalRecord: '',
-            PatientName: '',
-            patientChewing: '',
-            patientPriority: '',
-            patientMedicine: '',
-            patientNewMedicine: '',
-            patientTreatment: '',
-            patientDiagnosis: '',
-            patientPrescription: '',
-            patientSummary: '',
-            date: '',
-            patientRace: '',
-            patientDiscord: '',
-            race: '',
-            patientMedicalRecord: '',
-            patientGender: '',
-            patientDateofBirth: '',
-            patientMedicalHistory: '',
-            patientEmail: '',
-            patientAddress: '',
-            patientEmergencyContact: '',
-            patientEmergencyContactNumber: '',
-            patientEmergencyContactRelation: '',
-            patientBloodType: '',
-            patientChronicDiseases: '',
-            patientBP: '',
-            patientResperation: '',
-            patientConsultation: '',
-            patientPerscription: '',
-            patientSummaryConsultation: '',
-            patientCondition: '',
-            patientNotes: '',
-            patientBaggageofParents: '',
-            oneFetus: false,
-            twoFetuses: false,
-            threeFetuses: false,
-            fourFetuses: false,
-            patientContractions: '',
-            patientBleeding: '',
-            patientDiscomfort: '',
-            patientFatter: '',
-            patientBabyGender: '',
-            patientKnowBabyGender: '',
-            patientUltraSummary: '',
-            patientWellWomanExam: '',
-            patientLastWellWomanExam: '',
-            patientPapResults: '',
-            patientSTI: '',
-            patientSTIResults: '',
-            patientBloodAnalysis: '',
-            patientBloodAnalysisResults: '',
-            patientUrine: '',
-            patientUrineResults: '',
-            patientPap: '',
-            patientDateofPregnancy: '',
-            patientFetalMeasurements: '',
-            patientCurrentMedicine: '',
-            patientAdditionalPregnancy: '',
-            patientJobTasks: '',
-            patientLivingHabits: '',
-            patientPreHealth: '',
-            patientPregProblems: '',
-            patientPartnerName: '',
-            patientPartnerPH: '',
-            patientPartnerDiscord: '',
-            caseOpen: false,
-            caseClosed: false,
-            violenceToSelf: false,
-            violenceToOthers: false,
-            LowRisk: false,
-            noRisk: true,
-            HighRisk: false,
-            MediumRisk: false,
-            patientFileCreation: '',
-            patientVisitReason: '',
-            patientSurgicalHistory: '',
-            patientMedHistory: '',
-            patientPsychDiagnoses: '',
-            patientEvalFile: '',
-            patientMedicalFile: '',
-            patientSubstance: '',
-            patientTrauma: ``,
-            patientEdu: ``,
-            patientDev: ``,
-            patientLegal: ``,
-            patientSpiritual: ``,
-            patientMale: false,
-            patientFemale: false,
-            patientFormYes: false,
-            patientFormNo: false,
-            patientFormYes2: false,
-            patientFormNo2: false,
-            patientConsent: '',
-            patientConsentOption: '',
-            patientConsentNo: '',
-            patientConsentYes: '',
-            patientComplicationOptions: '',
-            complications: '',
-            patientComplaint: '',
-            triageNoPain: false,
-            triageNormalPain: false,
-            triageMildPain: false,
-            triageSeverePain: false,
-            triageCriticalPain: false,
-            patientTempNormal: false,
-            patientTempHigh: false,
-            patientTempLow: false,
-            patientHeartRateNormal: false,
-            patientHeartRateBradycardia: false,
-            patientHeartRateTachycardia: false,
-            patientBreathingNormal: false,
-            patientBreathingSlow: false,
-            patientBreathingFast: false,
-            patientBreathingObstructed: false,
-            patientBloodPressureNormal: false,
-            patientBloodPressureHypotension: false,
-            patientBloodPressureHypertension: false,
-            assignedDepartment: '',
-            lab: [],
-            departmentLarge: '',
-            patientChiefComplaint: '',
-            patientID: '',
-            rank: '',
-            patientProcedure: '',
-            patientPhoneType: '',
-            patientPhoneMobile: '',
-            patientPhoneHome: '',
-            patientPhoneWork: '',
-            patientPhoneOther: '',
-            patientGenderMale: '',
-            patientGenderFemale: '',
-            MedicalRecordsRelease: [],
-            PurposeMedicalInformationReleaseFormat: [],
-            PurposeMedicalInformationRelease: '',
-            PurposeAttorney: '',
-            PurposePersonal: '',
-            PurposeFurtherCare: '',
-            PurposeOther: '',
-            CarePurposeMedicalInformationRelease: '',
-            patientMedInfoReleaseOther: '',
-            MedicalRecordsReleaseOther: '',
-            StupidDateFrom: '',
-            StupidDateTo: '',
-            patientFirstName: '',
-            patientMiddleName: '',
-            patientLastName: '',
-            patientTitle: '',
-            patientComplicationsYes: '',
-            patientComplicationsNo: '',
-            procedureGoodOptions: '',
-            procedureGoodYes: '',
-            procedureGoodNo: '',
-            temperature: '',
-            heartRate: '',
-            bloodPressure: '',
-            careerRisks: '',
-            patientJob: '',
-            patientcareerNo: '',
-            patientAllergiesRisk: '',
-            patientMedicineRegular: '',
-            patientOther: '',
-            predisposition: '',
-            breathing: '',
-            patientTherapy: '',
-            patientFamily: '',
-            patientGentic: '',
-            patientFamSocial: '',
-            patientMental: '',
-            maritalStatus: '',
-            numberChildren: '',
-            financialStatus: '',
-            dnr: '',
-            dnrOrder: '',
-            attorney: '',
-            patientSupport: '',
-            patientHarm: '',
-            patientFam: '',
-            patientGenetic: '',
-            patientReligion: '',
-            patientSmoker: '',
-            patientAlcohol: '',
-            patientDrugs: '',
-            patientExercise: '',
-            patientDiet: '',
-            patientSleep: '',
-            patientSexLife: '',
-            patientJobRisks: '',
-            patientHazards: '',
-            attorneyName: '',
-            attorneyPH: '',
-            attorneyRelation: '',
-            dnrOther: '',
-            patientEmergencyContactDiscord: '',
-            patientSecondaryDiagnosis: '',
-            patientTriggers: '',
-            patientStress: '',
-            patientSymptoms: '',
-            patientDrugsUsage: '',
-            patientTreatmentMedicine: '',
-            patientSafety: '',
-            patientFollowUp: '',
-            patientTreatmentPlan: '',
-            patientRelationship: '',
-            patientRiskAssessment: '',
-            patientTherapyMedicine: '',
-            Speech: '',
-            Behavior: '',
-            Appearance: '',
-            Mood: '',
-            Affect: '',
-            Risk: '',
-            ThoughtProcess: '',
-            ThoughtContent: '',
-            Insight: '',
-            Cognition: '',
-            admission: '',
-            followup: '',
-            sono: '',
-            pupils: '',
-            lungs: '',
-            painLevel: '',
-            wounds: '',
-            findings: '',
-            patientFindings: '',
-            paletoClinicDepartment: '',
-        });
+const clearForm = () => {
+    setFormData(prevFormData => ({ // Use the previous state to access current values
+        // Keep coronerEmployee and phmcEmployee from the previous state
+        coronerEmployee: prevFormData.coronerEmployee,
+        phmcEmployee: prevFormData.phmcEmployee,
 
-            const fieldsToRemove = [
-            'dateTime',
-            'department',
-            'pronouncedTimeOfDeath',
-            'placeOfDeath'
-        ];
+        // Reset all other fields to their initial/default values
+        placeOfDeath: '',
+        evidenceLockerID: '',
+        evidenceLocker: '',
+        department: '',
+        dateTime: '',
+        phmcRank: '', // Reset rank if needed, or keep like employee fields
+        BodyMassIndex: '',
+        serialNumber: '',
+        decedentName: '',
+        phmcSignature: '', // Reset signature if tied to employee, or keep
+        pronouncedTimeOfDeath: '',
+        synopsis: '',
+        probableCauseOfDeath: '',
+        mannerOfDeath: '',
+        typeOfDeath: '',
+        decedentOOC: '',
+        scenePhotos: '',
+        lastName: '', // Reset lastName if tied to employee, or keep
+        coronerBadge: prevFormData.coronerBadge, // Keep badge if tied to coronerEmployee
+        additionalImages: '',
+        requestingOfficer: '',
+        coronerDiscord: prevFormData.coronerDiscord, // Keep discord if tied to coronerEmployee
+        coronerPHNumber: '50056', // Reset to default or keep? Decide based on logic
+        deathReport: '',
+        SubmitDate: new Date().toISOString().split('T')[0], // Reset to today or keep?
+        additionalReports: [],
+        showAdditionalReports: false,
+        internalReport: '',
+        internalAdditionalReports: '',
+        policeNotification: '',
+        treatmentLocation: '',
+        moreDeathReports: [''],
+        extraStaff: [], // Reset or keep?
+        patientName: '',
+        patientAllergies: '',
+        surgeryComplications: '',
+        surgeryProcedures: '',
+        drugType: '',
+        postDrugtype: '',
+        surgicalSummery: '',
+        surgeryTime: '',
+        medicalComplications: '',
+        treatmentProcedures: '',
+        medType: '',
+        postTreatment: '',
+        medicalSummary: '',
+        evalTime: '',
+        patientPH: '',
+        patientBPM: '',
+        patientBMI: '',
+        patientTemperature: '',
+        patientCareer: '',
+        patientHeight: '',
+        patientWeight: '',
+        patientpulse: '',
+        patientOxi: '',
+        patientImpairments: '',
+        patientPastDiseases: '',
+        patientAssessment: '',
+        appointmentDate: '',
+        PatientMedicalRecord: '',
+        PatientName: '',
+        patientChewing: '',
+        patientPriority: '',
+        patientMedicine: '',
+        patientNewMedicine: '',
+        patientTreatment: '',
+        patientDiagnosis: '',
+        patientPrescription: '',
+        patientSummary: '',
+        date: '',
+        patientRace: '',
+        patientDiscord: '',
+        race: '',
+        patientMedicalRecord: '',
+        patientGender: '',
+        patientDateofBirth: '',
+        patientDateOfBirth: '', // Duplicate? Keep one
+        patientMedicalHistory: '',
+        patientEmail: '',
+        patientAddress: '',
+        patientEmergencyContact: '',
+        patientEmergencyContactNumber: '',
+        patientEmergencyContactRelation: '',
+        patientBloodType: '',
+        patientChronicDiseases: '',
+        patientBP: '',
+        patientResperation: '',
+        patientConsultation: '',
+        patientPerscription: '',
+        patientSummaryConsultation: '',
+        patientCondition: '',
+        patientNotes: '',
+        patientBaggageofParents: '',
+        oneFetus: false,
+        twoFetuses: false,
+        threeFetuses: false,
+        fourFetuses: false,
+        patientContractions: '',
+        patientBleeding: '',
+        patientDiscomfort: '',
+        patientFatter: '',
+        patientBabyGender: '',
+        patientKnowBabyGender: '',
+        patientUltraSummary: '',
+        patientWellWomanExam: '',
+        patientLastWellWomanExam: '',
+        patientPapResults: '',
+        patientSTI: '',
+        patientSTIResults: '',
+        patientBloodAnalysis: '',
+        patientBloodAnalysisResults: '',
+        patientUrine: '',
+        patientUrineResults: '',
+        patientPap: '',
+        patientDateofPregnancy: '',
+        patientFetalMeasurements: '',
+        patientCurrentMedicine: '',
+        patientAdditionalPregnancy: '',
+        patientJobTasks: '',
+        patientLivingHabits: '',
+        patientPreHealth: '',
+        patientPregProblems: '',
+        patientPartnerName: '',
+        patientPartnerPH: '',
+        patientPartnerDiscord: '',
+        caseOpen: false,
+        caseClosed: false,
+        violenceToSelf: false,
+        violenceToOthers: false,
+        LowRisk: false,
+        noRisk: true,
+        HighRisk: false,
+        MediumRisk: false,
+        patientFileCreation: '',
+        patientVisitReason: '',
+        patientSurgicalHistory: '',
+        patientMedHistory: '',
+        patientPsychDiagnoses: '',
+        patientEvalFile: '',
+        patientMedicalFile: '',
+        patientSubstance: '',
+        patientTrauma: ``,
+        patientEdu: ``,
+        patientDev: ``,
+        patientLegal: ``,
+        patientSpiritual: ``,
+        patientMale: false,
+        patientFemale: false,
+        patientFormYes: false,
+        patientFormNo: false,
+        patientFormYes2: false,
+        patientFormNo2: false,
+        patientConsent: '',
+        patientConsentOption: '',
+        patientConsentNo: '',
+        patientConsentYes: '',
+        patientComplicationOptions: '',
+        complications: '',
+        patientComplaint: '',
+        triageNoPain: false,
+        triageNormalPain: false,
+        triageMildPain: false,
+        triageSeverePain: false,
+        triageCriticalPain: false,
+        patientTempNormal: false,
+        patientTempHigh: false,
+        patientTempLow: false,
+        patientHeartRateNormal: false,
+        patientHeartRateBradycardia: false,
+        patientHeartRateTachycardia: false,
+        patientBreathingNormal: false,
+        patientBreathingSlow: false,
+        patientBreathingFast: false,
+        patientBreathingObstructed: false,
+        patientBloodPressureNormal: false,
+        patientBloodPressureHypotension: false,
+        patientBloodPressureHypertension: false,
+        assignedDepartment: '',
+        lab: [],
+        departmentLarge: '',
+        patientChiefComplaint: '',
+        patientID: '',
+        rank: '', // Reset rank or keep?
+        patientProcedure: '',
+        patientPhoneType: '',
+        patientPhoneMobile: '',
+        patientPhoneHome: '',
+        patientPhoneWork: '',
+        patientPhoneOther: '',
+        patientGenderMale: '',
+        patientGenderFemale: '',
+        MedicalRecordsRelease: [],
+        PurposeMedicalInformationReleaseFormat: '', // Reset or keep?
+        PurposeMedicalInformationRelease: '', // Reset or keep?
+        PurposeAttorney: '',
+        PurposePersonal: '',
+        PurposeFurtherCare: '',
+        PurposeOther: '',
+        CarePurposeMedicalInformationRelease: '',
+        patientMedInfoReleaseOther: '',
+        MedicalRecordsReleaseOther: '',
+        StupidDateFrom: '',
+        StupidDateTo: '',
+        patientFirstName: '',
+        patientMiddleName: '',
+        patientLastName: '', // Reset or keep?
+        patientTitle: '',
+        patientComplicationsYes: '',
+        patientComplicationsNo: '',
+        procedureGoodOptions: '',
+        procedureGoodYes: '',
+        procedureGoodNo: '',
+        temperature: '',
+        heartRate: '',
+        bloodPressure: '',
+        careerRisks: '',
+        patientJob: '',
+        patientcareerNo: '',
+        patientAllergiesRisk: '',
+        patientMedicineRegular: '',
+        patientOther: '',
+        predisposition: '',
+        breathing: '',
+        patientTherapy: '',
+        patientFamily: '',
+        patientGentic: '',
+        patientFamSocial: '',
+        patientMental: '',
+        maritalStatus: '',
+        numberChildren: '',
+        financialStatus: '',
+        dnr: '',
+        dnrOrder: '',
+        attorney: '',
+        patientSupport: '',
+        patientHarm: '',
+        patientFam: '',
+        patientGenetic: '',
+        patientReligion: '',
+        patientSmoker: '',
+        patientAlcohol: '',
+        patientDrugs: '',
+        patientExercise: '',
+        patientDiet: '',
+        patientSleep: '',
+        patientSexLife: '',
+        patientJobRisks: '',
+        patientHazards: '',
+        attorneyName: '',
+        attorneyPH: '',
+        attorneyRelation: '',
+        dnrOther: '',
+        patientEmergencyContactDiscord: '',
+        patientSecondaryDiagnosis: '',
+        patientTriggers: '',
+        patientStress: '',
+        patientSymptoms: '',
+        patientDrugsUsage: '',
+        patientTreatmentMedicine: '',
+        patientSafety: '',
+        patientFollowUp: '',
+        patientTreatmentPlan: '',
+        patientRelationship: '',
+        patientRiskAssessment: '',
+        patientTherapyMedicine: '',
+        Speech: '',
+        Behavior: '',
+        Appearance: '',
+        Mood: '',
+        Affect: '',
+        Risk: '',
+        ThoughtProcess: '',
+        ThoughtContent: '',
+        Insight: '',
+        Cognition: '',
+        admission: '',
+        followup: '',
+        sono: '',
+        pupils: '',
+        lungs: '',
+        painLevel: '',
+        wounds: '',
+        findings: '',
+        patientFindings: '',
+        paletoClinicDepartment: '',
+        coronerRank: prevFormData.coronerRank, // Keep rank if tied to coronerEmployee
+        // Add any other fields that should be preserved here
+    }));
 
-        fieldsToRemove.forEach(field => {
-            localStorage.removeItem(field);
-            localStorage.removeItem(`${field}_timestamp`);
-        });
+        const fieldsToRemove = [
+        'dateTime',
+        'department',
+        'pronouncedTimeOfDeath',
+        'placeOfDeath'
+        // Keep coronerEmployee and phmcEmployee out of this list
+    ];
 
-        setParsedBBCode('');
-        setLastWebhookIdentifier(null); 
-        showNotification('Form cleared!', 'check-circle');
-    };
-    const DEFAULT_NOTIFICATION_DURATION = 3000; // default 3 seconds
+    fieldsToRemove.forEach(field => {
+        localStorage.removeItem(field);
+        localStorage.removeItem(`${field}_timestamp`);
+    });
+
+    setParsedBBCode('');
+    setLastWebhookIdentifier(null);
+    showNotification('Form cleared! Employee selections preserved.', 'check-circle');
+};
+const DEFAULT_NOTIFICATION_DURATION = 3000; // default 3 seconds
 
     const showNotification = (message, icon = 'check-circle', duration = DEFAULT_NOTIFICATION_DURATION) => { // Add duration parameter with default
         const newNotification = {
@@ -2212,9 +2226,6 @@ if (bbCodeVersion === 1) {
 const { season } = SeasonalEvents({ imageType: 'deathReport' }); // Get the season
   
 // business card stuff
-const namePosition = { top: 105.5, left: 22 };
-const rankPosition = { top: 143.65, left: 26.5 };
-const phoneNumberPosition = { top: 229.65, left: 88.5 };
 const businessCardRef = useRef(null);
 const nameRef = useRef(null); 
 const rankRef = useRef(null);
@@ -2460,10 +2471,7 @@ const [imgurLink, setImgurLink] = useState(null);
     
     
         const toggleBusinessCard = () => {
-            if (/Mobi|Android/i.test(navigator.userAgent)) {
-                showNotification("Sorry, this feature is not supported on mobile devices. Please use a desktop browser.", 'warning');
-                return;
-            }
+            // Toggle the business card modal  }
         
             setShowBusinessCard(!showBusinessCard);
             setShowAgencySelector(false); // Close Agency Selector
@@ -3957,54 +3965,61 @@ const [imgurLink, setImgurLink] = useState(null);
             2) /note [id of the new note item in your inventory] [amount] [content] [URL from Imgur] 
                 </div>
             )}
-            <div className="business-card-image-container" ref={businessCardRef}  style={{ position: 'relative' }}>
-                <img src={BusinessCardImage} alt="Business Card" />
-                <div
-                    className="name-overlay"
-                    ref={nameRef}
-                    style={{
-                        position: 'absolute',
-                        top: namePosition.top,
-                        left: namePosition.left,
-                        color: 'black',
-                        fontSize: '35px',
-                        pointerEvents: 'none',
-                        cursor: 'default',
-                    }}
-                >
-                    {name}
+                <div className="business-card-image-container" ref={businessCardRef} style={{ position: 'relative', width: '100%', maxWidth: '800px' /* Optional: Set max-width */ }}>
+                    <img
+                        src={BusinessCardImage}
+                        alt="Business Card"
+                        style={{ display: 'block', width: '100%', height: 'auto' }} // Make image responsive
+                    />
+                    <div
+                        className="name-overlay"
+                        ref={nameRef}
+                        style={{
+                            position: 'absolute',
+                            top: '23.44%',    // <-- Percentage value
+                            left: '2.75%',   // <-- Percentage value
+                            color: 'black',
+                            fontSize: '35px', // Consider using relative units like 'vw' or 'em' if scaling needed
+                            pointerEvents: 'none',
+                            cursor: 'default',
+                            whiteSpace: 'nowrap' // Prevent text wrapping
+                        }}
+                    >
+                        {name}
+                    </div>
+                    <div
+                        className="rank-overlay"
+                        ref={rankRef}
+                        style={{
+                            position: 'absolute',
+                            top: '31.92%',    // <-- Percentage value
+                            left: '3.31%',   // <-- Percentage value
+                            color: '#cb1212',
+                            fontSize: '15px', // Consider relative units
+                            cursor: 'default',
+                            pointerEvents: 'none',
+                            whiteSpace: 'nowrap' // Prevent text wrapping
+                        }}
+                    >
+                        {rank}
+                    </div>
+                    <div
+                        className="phone-number-overlay"
+                        ref={departmentRef} // Assuming this ref is correct, might be phoneNumberRef?
+                        style={{
+                            position: 'absolute',
+                            top: '51.03%',    // <-- Percentage value
+                            left: '11.06%',  // <-- Percentage value
+                            color: 'black',
+                            fontSize: '15px', // Consider relative units
+                            cursor: 'default',
+                            pointerEvents: 'none',
+                            whiteSpace: 'nowrap' // Prevent text wrapping
+                        }}
+                    >
+                        {phoneNumber}
+                    </div>
                 </div>
-                <div
-                    className="rank-overlay"
-                    ref={rankRef}
-                    style={{
-                        position: 'absolute',
-                        top: rankPosition.top,
-                        left: rankPosition.left,
-                        color: '#cb1212',
-                        fontSize: '15px',
-                        cursor: 'default',
-                        pointerEvents: 'none',
-                    }}
-                >
-                    {rank}
-                </div>
-                <div
-                    className="phone-number-overlay"
-                    ref={departmentRef}
-                    style={{
-                        position: 'absolute',
-                        top: phoneNumberPosition.top,
-                        left: phoneNumberPosition.left,
-                        color: 'black',
-                        fontSize: '15px',
-                        cursor: 'default',
-                        pointerEvents: 'none',
-                    }}
-                >
-                    {phoneNumber}
-                </div>
-            </div>
             <div className="business-card-input-fields">
                 <Form.Control
                     type="text"
