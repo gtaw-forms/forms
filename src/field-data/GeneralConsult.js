@@ -12,7 +12,7 @@ const GeneralConsult = ({
     phmcEmployee,
     lab,
     bloodOxy,
-    vitals,
+    temperature,
     heartRate,
     breathing,
     bloodPressure,
@@ -163,14 +163,14 @@ const GeneralConsult = ({
                                 <Form.Label>Vitals Section </Form.Label>
                                 <div style={{ display: 'flex', gap: '10px' }}>
                                         <Form.Select
-                                                name="vitals"
-                                                value={formData.vitals}
+                                                name="temperature"
+                                                value={formData.temperature}
                                                 onChange={handleChange}
                                                 required
-                                                className={`form-control ${!formData.vitals ? 'is-invalid' : ''}`}
+                                                className={`form-control ${!formData.temperature ? 'is-invalid' : ''}`}
                                             >
                                                 <option value="" disabled>Vitals</option>
-                                                {vitals.map((option) => (
+                                                {temperature.map((option) => (
                                                     <option key={option.value} value={option.value}>{option.label}</option>
                                                 ))}
                                             </Form.Select>

@@ -10,7 +10,7 @@ const PhysEval = ({
             phmcRank,
             setShowMissingEmployeeModal,
             BodyMassIndex,
-            vitals,
+            temperature,
             heartRate,
             breathing,
             bloodPressure,
@@ -171,18 +171,18 @@ const PhysEval = ({
                                     <Form.Label>Vitals</Form.Label>
                                     <div style={{ display: 'flex', gap: '10px' }}>
                                     <Form.Select
-                                        name="vitals"
-                                        value={formData.vitals}
+                                        name="temperature"
+                                        value={formData.temperature}
                                         onChange={(e) => {
                                             setFormData(prev => ({
                                                 ...prev,
-                                                vitals: e.target.value
+                                                temperature: e.target.value
                                             }));
                                         }}
                                         className="form-control"
                                     >
                                         <option value="" disabled>Select Temperature</option>
-                                        {vitals.map((option) => (
+                                        {temperature.map((option) => (
                                             <option key={option.value} value={option.value}>{option.label}</option>
                                         ))}
                                     </Form.Select>
