@@ -2097,52 +2097,76 @@ const DEFAULT_NOTIFICATION_DURATION = 3000; // default 3 seconds
         }
     };
 
-        const handleChange = (e) => {
-        const { name, value, type, checked } = e.target;
+    const handleChange = (e) => {
+        const { name, value: originalValue, type, checked } = e.target;
+
+        // Determine the value to set based on input type
+        let valueToSet = type === 'checkbox'
+            ? checked
+            : type === 'select-multiple'
+                ? Array.from(e.target.selectedOptions, option => option.value)
+                : originalValue;
+
+        // --- Specific processing for deathReport ---
+        // Check if the changed field is 'deathReport' and the value is a string
+        if (name === 'deathReport' && typeof valueToSet === 'string') { 
+            // Replace [bold] with [b] and [/bold] with [/b] globally
+            valueToSet = valueToSet.replace(/\[bold\]/g, '[b]').replace(/\[\/bold\]/g, '[/b]');
+        }
+        // --- End specific processing ---
+
+        // Update the main form data state
         setFormData(prevFormData => ({
             ...prevFormData,
-            [name]: type === 'checkbox' ? checked : (type === 'select-multiple' ? Array.from(e.target.selectedOptions, option => option.value) : value)
+            [name]: valueToSet
         }));
 
-        if (name === 'rank') {
-            setRank(value);
-        }
-        const timestamp = Date.now();
+        // --- LocalStorage Logic ---
+        const timestamp = Date.now().toString();
 
-        // Save selected employee data
-        if (name === 'phmcEmployee' || name === 'coronerEmployee') {
-            const fields = name === 'phmcEmployee' ?
-                ['phmcEmployee', 'phmcSignature'] :
-                ['coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord'];
+        // Fields with 5-day expiry (only save if this specific field changed)
+        const fiveDayExpiryFields = ['phmcEmployee', 'phmcSignature', 'coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord'];
+        if (fiveDayExpiryFields.includes(name)) {
+            // Special handling for employee selects to save related data
+            if (name === 'phmcEmployee') {
+                // Find the selected employee to get the signature
+                const selectedEmployee = phmcList.find(emp => emp.name === valueToSet);
+                const signatureToSave = selectedEmployee?.signature || '';
+                localStorage.setItem('phmcEmployee', valueToSet);
+                localStorage.setItem('phmcSignature', signatureToSave);
+                localStorage.setItem('phmcEmployee_timestamp', timestamp);
+                localStorage.setItem('phmcSignature_timestamp', timestamp);
+                setFormData(prev => ({ ...prev, phmcSignature: signatureToSave }));
+            } else if (name === 'coronerEmployee') {
+                const selectedCoroner = coronerList.find(cor => cor.name === valueToSet);
+                const badgeToSave = selectedCoroner?.badge || '';
+                const rankToSave = selectedCoroner?.rank || '';
+                const discordToSave = selectedCoroner?.discord || '';
+                localStorage.setItem('coronerEmployee', valueToSet);
+                localStorage.setItem('coronerBadge', badgeToSave);
+                localStorage.setItem('coronerRank', rankToSave);
+                localStorage.setItem('coronerDiscord', discordToSave);
+                localStorage.setItem('coronerEmployee_timestamp', timestamp);
+                localStorage.setItem('coronerBadge_timestamp', timestamp);
+                localStorage.setItem('coronerRank_timestamp', timestamp);
+                localStorage.setItem('coronerDiscord_timestamp', timestamp);
+                setFormData(prev => ({
+                    ...prev,
+                    coronerBadge: badgeToSave,
+                    coronerRank: rankToSave,
+                    coronerDiscord: discordToSave
+                }));
+            } else {
+                localStorage.setItem(name, valueToSet);
+                localStorage.setItem(`${name}_timestamp`, timestamp);
+            }
+        }
 
-            fields.forEach(field => {
-                localStorage.setItem(field, formData[field]);
-                localStorage.setItem(`${field}_timestamp`, timestamp);
-            });
-        }
-        // Gender processing
-        if (name === 'patientGender') {
-            setFormData(prevFormData => ({
-                ...prevFormData,
-                patientGender: value,
-            }));
-        } else {
-            setFormData(prevFormData => ({
-                ...prevFormData,
-                [name]: type === 'checkbox' ? checked : value
-            }));
-        }
-    
-        // Handle 3-hour expiry fields
-        if (['pronouncedTimeOfDeath', 'department', 'dateTime', 'placeOfDeath', 'mannerOfDeath'].includes(name)) {
-            localStorage.setItem(name, value);
+        const threeHourExpiryFields = ['pronouncedTimeOfDeath', 'department', 'dateTime', 'placeOfDeath', 'mannerOfDeath'];
+        if (threeHourExpiryFields.includes(name)) {
+            localStorage.setItem(name, valueToSet);
             localStorage.setItem(`${name}_timestamp`, timestamp);
         }
-
-        setFormData(prev => ({
-            ...prev,
-            [name]: value
-        }));
     };
 
 
