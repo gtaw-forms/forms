@@ -409,6 +409,7 @@ export const drugList = [
     { name: 'Erik Schaefer', lastName: 'Schaefer', signature: '', category: 'Resident Physician' },
     { name: 'Mia Robinson' , lastName: 'Robinson', signature: '', category: 'Nursing' },
     { name: 'Emile Sarkis', lastName: 'Sarkis', signature: '', category: 'Resident Physician' },
+    { name: 'Jayden Woo', lastName: 'Woo', signature: '', category: 'Nursing' },
     // ems
     { name: 'Will Flanary', lastName: 'Flanary', signature: '', category: 'Emergency Medical Services' },
 ];
