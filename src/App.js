@@ -143,7 +143,6 @@ function App() {
         serialNumber: '',
         decedentName: '',
         phmcEmployee: '',
-        phmcSignature: '',
         pronouncedTimeOfDeath: '',
         synopsis: '',
         probableCauseOfDeath: '',
@@ -605,16 +604,17 @@ const [showRequestingOfficerInput, setShowRequestingOfficerInput] = useState(fal
     const [isRemoveStaff, setIsRemoveStaff] = useState(false); 
     const [missingEmployeeData, setMissingEmployeeData] = useState({
         coronerName: '',
-        coronerDiscord: '',
+        coronerDiscord: '', // This will still be used for 'Add Coroner'
+        employeeLastName: '', // <-- Add this for hospital staff last name
         coronerRank: '',
         coronerPHNumber: '',
-        coronerEmployee: '', // Requesting coroner
+        coronerEmployee: '',
         coronerBadge: '',
-        phmcEmployee: '',    // Requesting PHMC staff
-        staffToRemove: [],   // Keep for multi-select removal
-        authorizedBy: '',    // Keep for removal authorization
+        phmcEmployee: '',
+        staffToRemove: [],
+        authorizedBy: '',
     });
-
+    
 const handleMissingEmployeeSubmit = async () => {
     const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
@@ -639,9 +639,9 @@ const handleMissingEmployeeSubmit = async () => {
         if (isCoronerRequest) {
             requiredFields = ['coronerName', 'coronerDiscord', 'coronerRank', 'coronerBadge', 'coronerEmployee'];
         } else { // isJaneDoe (addPhmc)
-            requiredFields = ['coronerName', 'coronerDiscord', 'coronerRank', 'phmcEmployee'];
+            requiredFields = ['coronerName', 'employeeLastName', 'coronerRank', 'phmcEmployee']; // <-- Use employeeLastName
         }
-
+        
         const emptyFields = requiredFields.filter(key => !missingEmployeeData[key]?.trim());
         if (emptyFields.length > 0) {
             showNotification(`Please fill in all required fields for adding staff. Missing: ${emptyFields.join(', ')}`, 'exclamation-circle');
@@ -659,6 +659,8 @@ const handleMissingEmployeeSubmit = async () => {
                 { name: "Name to Add", value: missingEmployeeData.coronerName || "N/A", inline: true },
                 { name: isCoronerRequest ? "Discord Tag" : "Department/Discord", value: missingEmployeeData.coronerDiscord || "N/A", inline: true },
                 { name: "Rank/Position", value: missingEmployeeData.coronerRank || "N/A", inline: true },
+                { name: "Last Name", value: missingEmployeeData.employeeLastName || "N/A", inline: true },
+
             ],
             timestamp: new Date().toISOString(),
             footer: { text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}` }
@@ -669,13 +671,18 @@ const handleMissingEmployeeSubmit = async () => {
         if (missingEmployeeData.coronerPHNumber?.trim()) {
             embedData.fields.push({ name: "Phone Number", value: missingEmployeeData.coronerPHNumber, inline: true });
         }
-        const dataJsEntry = `{ name: '${missingEmployeeData.coronerName || 'MISSING_NAME'}', ${isCoronerRequest ? `badge: '${missingEmployeeData.coronerBadge || 'MISSING_BADGE'}', ` : ''}${isCoronerRequest ? `phNumber: '${missingEmployeeData.coronerPHNumber || ''}', ` : ''}rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', discord: '${missingEmployeeData.coronerDiscord || 'MISSING_DISCORD'}', category: '${missingEmployeeData.coronerRank || 'MISSING_CATEGORY'}' },`;
-
+        let dataJsEntry = '';
+        if (isCoronerRequest) {
+            dataJsEntry = `{ name: '${missingEmployeeData.coronerName || 'MISSING_NAME'}', badge: '${missingEmployeeData.coronerBadge || 'MISSING_BADGE'}', phNumber: '${missingEmployeeData.coronerPHNumber || ''}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', discord: '${missingEmployeeData.coronerDiscord || 'MISSING_DISCORD'}', category: '${missingEmployeeData.coronerRank || 'MISSING_CATEGORY'}' },`;
+        } else { // isJaneDoe (add hospital staff)
+            dataJsEntry = `{ name: '${missingEmployeeData.coronerName || 'MISSING_FULL_NAME'}', lastName: '${missingEmployeeData.employeeLastName || 'MISSING_LAST_NAME'}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', category: '${missingEmployeeData.coronerRank || 'MISSING_CATEGORY'}' },`; // <-- Updated for lastName
+        }
+        // This part remains the same:
         embedData.fields.push({ name: "Suggested data.js Entry", value: `\`\`\`javascript\n${dataJsEntry}\n\`\`\``, inline: false });
-        // --- End ADD Embed ---
+                // --- End ADD Embed ---
 
         submissionValid = true;
-        successMessage = 'Addition request submitted! This will be reviewed soon.';
+        successMessage = 'Done! Please ping Alyson on Discord to approve.';
 
     } else if (isRemoveStaff) { // Handle REMOVE request
         requestActionTitle = "➖ Staff Removal Request";
@@ -742,7 +749,7 @@ const handleMissingEmployeeSubmit = async () => {
                 setMissingEmployeeData({
                     coronerName: '', coronerDiscord: '', coronerRank: '', coronerPHNumber: '',
                     coronerEmployee: '', coronerBadge: '', phmcEmployee: '',
-                    staffToRemove: [], authorizedBy: '' // Ensure reset
+                    staffToRemove: [], authorizedBy: '', employeeLastName: '', 
                 });
                 // Reset radio button states
                 setIsJohnDoe(false);
@@ -1064,6 +1071,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
             setMissingEmployeeData(prev => ({
                 ...prev,
                 staffToRemove: [],
+                employeeLastName: '',
                 authorizedBy: '',
             }));
         }
@@ -1606,7 +1614,6 @@ const clearForm = () => {
         BodyMassIndex: '',
         serialNumber: '',
         decedentName: '',
-        phmcSignature: '', // Reset signature if tied to employee, or keep
         pronouncedTimeOfDeath: '',
         synopsis: '',
         probableCauseOfDeath: '',
@@ -2041,7 +2048,7 @@ const DEFAULT_NOTIFICATION_DURATION = 3000; // default 3 seconds
 
     useEffect(() => {
         clearOldLocalStorage();
-    
+
         const fields = [
             'phmcEmployee', 'phmcSignature',
             'coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord',
@@ -2049,7 +2056,13 @@ const DEFAULT_NOTIFICATION_DURATION = 3000; // default 3 seconds
         ];
         const newFormData = { ...formData };
     
-        fields.forEach(field => {
+        // Load phmcEmployee separately as phmcSignature is removed
+        const phmcEmployeeValue = localStorage.getItem('phmcEmployee');
+        if (phmcEmployeeValue) {
+            newFormData.phmcEmployee = phmcEmployeeValue;
+        }
+
+        ['coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord', 'pronouncedTimeOfDeath', 'department', 'dateTime', 'placeOfDeath', 'mannerOfDeath'].forEach(field => {
             const value = localStorage.getItem(field);
             if (value) {
                 newFormData[field] = value;
@@ -2057,7 +2070,7 @@ const DEFAULT_NOTIFICATION_DURATION = 3000; // default 3 seconds
         });
     
         setFormData(newFormData);
-    }, []); //  The empty dependency array [] ensures this effect runs only once after the initial render.
+    }, []); // The empty dependency array [] ensures this effect runs only once after the initial render.
     const handleSelectChange = (selectedOption, type) => {
         const timestamp = Date.now();
     
@@ -2125,18 +2138,13 @@ const DEFAULT_NOTIFICATION_DURATION = 3000; // default 3 seconds
         const timestamp = Date.now().toString();
 
         // Fields with 5-day expiry (only save if this specific field changed)
-        const fiveDayExpiryFields = ['phmcEmployee', 'phmcSignature', 'coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord'];
+        const fiveDayExpiryFields = ['phmcEmployee', 'coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord'];
         if (fiveDayExpiryFields.includes(name)) {
             // Special handling for employee selects to save related data
             if (name === 'phmcEmployee') {
                 // Find the selected employee to get the signature
-                const selectedEmployee = phmcList.find(emp => emp.name === valueToSet);
-                const signatureToSave = selectedEmployee?.signature || '';
                 localStorage.setItem('phmcEmployee', valueToSet);
-                localStorage.setItem('phmcSignature', signatureToSave);
                 localStorage.setItem('phmcEmployee_timestamp', timestamp);
-                localStorage.setItem('phmcSignature_timestamp', timestamp);
-                setFormData(prev => ({ ...prev, phmcSignature: signatureToSave }));
             } else if (name === 'coronerEmployee') {
                 const selectedCoroner = coronerList.find(cor => cor.name === valueToSet);
                 const badgeToSave = selectedCoroner?.badge || '';
@@ -2509,7 +2517,7 @@ const [imgurLink, setImgurLink] = useState(null);
     const [showBBCode, setShowBBCode] = useState(false);
     const [showImages, setShowImages] = useState(false);
     const [showBusinessCard, setShowBusinessCard] = useState(false);
-    
+
     const handleNameChange = (e) => {
         setName(e.target.value);
     };
@@ -2610,6 +2618,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                 
         return (
         <div className="App">
+
             <EasterEggModal
                 show={showEasterEggModal}
                 type={easterEggType} // Pass the type ('normal' or 'rare')
@@ -3716,56 +3725,56 @@ const [imgurLink, setImgurLink] = useState(null);
 
                         {/* == ADD PHMC STAFF FIELDS (using isJaneDoe) == */}
                         {isJaneDoe && ( // <--- Changed back to isJaneDoe
-                            <>
-                                <div style={{ display: 'flex', gap: '10px' }}>
-                                    <Form.Control type="text" name="coronerName" value={missingEmployeeData.coronerName} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerName')} placeholder='Employee Name' required />
-                                    <Form.Control type="text" name="coronerDiscord" value={missingEmployeeData.coronerDiscord} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerDiscord')} placeholder='Employee Department/Discord' required />
-                                    <Form.Control type="text" name="coronerRank" value={missingEmployeeData.coronerRank} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerRank')} placeholder='Employee Rank / Position' required />
-                                </div>
-                                <Select
-                                    name="phmcEmployee" // This is the REQUESTER
-                                    value={missingEmployeeData.phmcEmployee ? phmcGroupedOptions.flatMap(group => group.options).find(option => option.value === missingEmployeeData.phmcEmployee) || null : null}
-                                    onChange={(selectedOption) => handleMissingEmployeeChange(selectedOption?.value || '', 'phmcEmployee')}
-                                    options={phmcGroupedOptions}
-                                    isClearable
-                                    placeholder="Who is requesting this addition..."
-                                    className="form-control mt-2" // Added margin top
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                            </>
-                        )}
+    <>
+        <div style={{ display: 'flex', gap: '10px' }}>
+            <Form.Control type="text" name="coronerName" value={missingEmployeeData.coronerName} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerName')} placeholder='Employee First Name and Last Name' required />
+            <Form.Control type="text" name="employeeLastName" value={missingEmployeeData.employeeLastName} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'employeeLastName')} placeholder='Employee Last Name' required />
+            <Form.Control type="text" name="coronerRank" value={missingEmployeeData.coronerRank} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerRank')} placeholder='Employee Rank / Position' required />
+        </div>
+        <Select
+            name="phmcEmployee" // This is the REQUESTER
+            value={missingEmployeeData.phmcEmployee ? phmcGroupedOptions.flatMap(group => group.options).find(option => option.value === missingEmployeeData.phmcEmployee) || null : null}
+            onChange={(selectedOption) => handleMissingEmployeeChange(selectedOption?.value || '', 'phmcEmployee')}
+            options={phmcGroupedOptions}
+            isClearable
+            placeholder="Who is requesting this addition..."
+            className="form-control mt-2" // Added margin top
+            styles={{
+                control: (base) => ({
+                    ...base,
+                    backgroundColor: '#16202c',
+                    color: '#eeeeeeb0',
+                    borderColor: '#30363d',
+                    '&:hover': {
+                        borderColor: '#30363d'
+                    }
+                }),
+                menu: (base) => ({
+                    ...base,
+                    backgroundColor: '#16202c',
+                    zIndex: 1000
+                }),
+                option: (base, state) => ({
+                    ...base,
+                    backgroundColor: state.isFocused ? 'Grey' : '#16202c',
+                    color: '#eeeeeeb0'
+                }),
+                singleValue: (base) => ({
+                    ...base,
+                    color: '#eeeeeeb0'
+                }),
+                input: (base) => ({
+                    ...base,
+                    color: '#eeeeeeb0'
+                }),
+                placeholder: (base) => ({
+                    ...base,
+                    color: '#eeeeeeb0'
+                })
+            }}
+        />
+    </>
+)}
                         {isRemoveStaff && (
                             <>
                                 <Form.Label>Staff to Remove:</Form.Label>

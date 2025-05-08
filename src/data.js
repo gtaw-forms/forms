@@ -183,9 +183,9 @@ export const wounds = [
     { value: 'patientHematoma', label: 'Hematoma' }
 ];
 export const bloodOxy =[ 
+    { value: 'patientBloodOxyHigh', label: 'Normal (95%+)' },
     { value: 'patientBloodOxyNormal', label: 'Hypoxic (Below 90%)' },
     { value: 'patientBloodOxyLow', label: 'Borderline (90-94%)' },
-    { value: 'patientBloodOxyHigh', label: 'Normal (95%+)' }
 ]
 export const ecg = [
     { value: 'patientSinusRhythm', label: 'Sinus Rhythm' },
@@ -410,6 +410,7 @@ export const drugList = [
     { name: 'Mia Robinson' , lastName: 'Robinson', signature: '', category: 'Nursing' },
     { name: 'Emile Sarkis', lastName: 'Sarkis', signature: '', category: 'Resident Physician' },
     { name: 'Jayden Woo', lastName: 'Woo', signature: '', category: 'Nursing' },
+    { name: 'Harper Cassidy', lastName: 'Cassidy',  category: 'Attending Physician' },
     // ems
     { name: 'Will Flanary', lastName: 'Flanary', signature: '', category: 'Emergency Medical Services' },
 ];
