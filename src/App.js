@@ -1012,8 +1012,9 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
         options: options.sort((a, b) => a.label.localeCompare(b.label))
     })).sort((a, b) => {
         const order = {
-            'Leadership': 1,
-            'Hospital Supervisor': 2
+            'Missing Category': 1,
+            'Leadership': 2,
+            'Hospital Supervisor': 3
         };
         const orderA = order[a.label] || 99;
         const orderB = order[b.label] || 99;
@@ -1048,9 +1049,9 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
         };
     }).sort((a, b) => {
         const priorityOrder = {
-            'Chief Boss': 1,
-            'Supervisor': 2,
-            'Missing_Category': 3,
+            'Chief Boss': 2,
+            'Supervisor': 3,
+            'Missing_Category': 1,
         };
         const orderA = priorityOrder[a.label] || 99;
         const orderB = priorityOrder[b.label] || 99;
