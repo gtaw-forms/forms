@@ -349,6 +349,7 @@ export const drugList = [
 ]
     export const phmcList = [
     // NPC Leadership and Supervisor
+    { name: 'Missing Name', lastName: 'Missing Last Name', signature: '', category: 'Missing Category' },
     { name: 'Doctor Smith', lastName: 'Smith', signature: 'Doctor Smith ', category: '(( NPC DOCTOR ))' },
     { name: 'Evelyn Bleichroder', lastName: 'Bleichroder', signature: 'https://i.imgur.com/knYKimz.png', category: 'Leadership' },
     { name: 'Amaya Kim', lastName: 'Kim', signature: 'https://i.imgur.com/ZSy7QZs.png', category: 'Leadership' },
@@ -434,7 +435,7 @@ export const coronerList = [
     { name: 'William Gao', badge: '165529', phNumber: '75725652', rank: 'Coroner Investigator', discord: '.slump.', category: 'Coroner Investigator' },
     { name: 'Oscar Castro', badge: '184273', phNumber: '43464144', rank: 'Coroner Investigator', discord: 't3_tris', category: 'Coroner Investigator' },
     { name: 'Nikita Medina', badge: '150723', phNumber: '10032024', rank: 'Trainee Forensic-Attendant', discord: 'nikitamonroe', category: 'Trainee Forensic-Attendant' },
-
+    { name: 'Rosalie Brown', badge: '161606 ', phNumber: '03810764', rank: 'Medical Examiner', discord: 'kayp99', category: 'Medical Examiner' },
 ];
 
 export const skyCare = [
