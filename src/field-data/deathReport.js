@@ -138,13 +138,13 @@ const DeathReport = ({ // Renamed component to follow PascalCase convention
                 />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
-                <Form.Check
-                    type="checkbox"
-                    id="showRequestingOfficerCheck"
-                    label="   Report Requested?" // Changed label
-                    checked={showRequestingOfficerInput}
-                    onChange={(e) => setShowRequestingOfficerInput(e.target.checked)}
-                />
+            <Form.Check
+                type="checkbox"
+                label="Report Requested?"
+                name="showRequestingOfficerInput" // CRITICAL: This name must match the key in formData
+                checked={formData.showRequestingOfficerInput || false} // Use value from formData, default to false
+                onChange={handleChange} // Pass the event directly to App.js's handleChange
+            />
             </div>
             <div style={{ display: 'flex', gap: '10px' }}>
 
@@ -166,14 +166,13 @@ const DeathReport = ({ // Renamed component to follow PascalCase convention
                 <option value="911 Call">Emergency 911 Dispatch</option>
                 <option value="Protech">Protech Security Solutions</option>
             </Form.Select>
-            {showRequestingOfficerInput && (
+            {formData.showRequestingOfficerInput && (
                     <Form.Control
                         type="text"
-                        name="requestingOfficer"
-                        value={formData.requestingOfficer || ''} // Ensure value is controlled
+                        name="requestingOfficer" // This field is separate
+                        value={formData.requestingOfficer || ''}
                         onChange={handleChange}
-                        placeholder=" Requesting Officer's Name / Badge NR"
-                        className={`form-control ${!formData.requestingOfficer && showRequestingOfficerInput ? 'is-invalid' : ''}`} // Optional validation style
+                        placeholder="e.g: Officer John Doe, LSPD"
                     />
             )}
             </div>
