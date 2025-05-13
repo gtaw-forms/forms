@@ -297,6 +297,7 @@ function App() {
         patientMedicalFile: '',
         patientSubstance: '',
         patientTrauma: ``,
+        showRequestingOfficerInput: false,        
         patientEdu: ``,
         patientDev: ``,
         patientLegal: ``,
@@ -594,7 +595,11 @@ function App() {
     }, [bbCodeVersion]); // Re-run only when bbCodeVersion changes
     
 // Feature Request Handling
-const [showRequestingOfficerInput, setShowRequestingOfficerInput] = useState(false);
+    useEffect(() => {
+        if (bbCodeVersion === 1) { // Only log for Death Report form for relevance
+            console.log("formData.showRequestingOfficerInput in App.js updated to:", formData.showRequestingOfficerInput);
+        }
+    }, [formData.showRequestingOfficerInput, bbCodeVersion]);
 
     const [showFeatureRequestModal, setShowFeatureRequestModal] = useState(false);
     const [featureRequest, setFeatureRequest] = useState('');
@@ -1235,52 +1240,57 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
     };
 
     // Function to load saved reports from local storage
-    const saveReport = async () => {
-        let key = '';
-        // --- Validation logic to determine the key ---
-        if (bbCodeVersion === 1) {
-            if (!formData.decedentOOC || !formData.dateTime) {
-                showNotification(`Please fill in Decedent OOC and Date/Time fields.`, 'exclamation-circle');
-                return; // Exit if validation fails
-            }
-            key = `${formData.decedentOOC} - ${formData.dateTime}`;
-        } else if (bbCodeVersion >= 3 && bbCodeVersion <= 7) { // Adjusted range based on your code
-            if (!formData.patientID || !formData.patientName || !formData.date) {
-                showNotification(`Please fill in Patient ID, Patient Name, and Date fields.`, 'exclamation-circle');
-                return; // Exit if validation fails
-            }
-             key = `${formData.patientID} - ${formData.patientName} - ${formData.date}`;
-        } else if (bbCodeVersion === 19) { // Added other relevant bbCodeVersions based on your code
-             if (!formData.patientID || !formData.lastName || !formData.date) {
-                showNotification(`Please fill in Patient ID, Last Name, and Date fields.`, 'exclamation-circle');
-                return; // Exit if validation fails
-            }
-            key = `${formData.patientID} - ${formData.lastName} - ${formData.date}`;
-        } else if (bbCodeVersion === 25 || bbCodeVersion === 26) { // Added patient file versions
-             if (!formData.patientName || !formData.date) { // Simplified check for these forms
-                showNotification(`Please fill in Patient Name and Date fields.`, 'exclamation-circle');
-                return; // Exit if validation fails
-            }
-            key = `${formData.patientName} - ${formData.date}`; // Key based on name and date
-        }
-        // Add more 'else if' blocks here for other bbCodeVersions that should be saveable
-        // Ensure each block has appropriate validation and key generation
-        else {
-            // If the form type isn't explicitly handled for saving
-            console.warn(`Form type (version${bbCodeVersion}) is not saveable.`, formData);
-            showNotification(`I cannot save this report, BBCode has been copied!`, 'exclamation-circle');
-            return; // Exit if not a saveable type
-        }
-        // --- End Validation ---
+const saveReport = async () => {
+    let key = '';
+    let isSaveableForm = false; // Flag to track if the form type is configured for saving
 
-        // Proceed only if validation passed and a key was generated
+    // --- Validation logic to determine the key ---
+    // Check if the current bbCodeVersion is one that should be saveable
+    if (bbCodeVersion === 1) {
+        isSaveableForm = true;
+        if (!formData.decedentOOC || !formData.dateTime) {
+            showNotification(`Please fill in Decedent OOC and Date/Time fields.`, 'exclamation-circle');
+            return false; // Validation failed, do not proceed with save or allow copy
+        }
+        key = `${formData.decedentOOC} - ${formData.dateTime}`;
+    } else if (bbCodeVersion >= 3 && bbCodeVersion <= 7) { // Covers PatientAdvanced, SurgicalOps, PhysEval PHMC/PBC
+        isSaveableForm = true;
+        if (!formData.patientID || !formData.patientName || !formData.date) {
+            showNotification(`Please fill in Patient ID, Patient Name, and Date fields.`, 'exclamation-circle');
+            return false;
+        }
+        key = `${formData.patientID} - ${formData.patientName} - ${formData.date}`;
+    } else if (bbCodeVersion === 19) { // EmergencyProtocol
+        isSaveableForm = true;
+        if (!formData.patientID || !formData.lastName || !formData.date) {
+            showNotification(`Please fill in Patient ID, Last Name, and Date fields.`, 'exclamation-circle');
+            return false;
+        }
+        key = `${formData.patientID} - ${formData.lastName} - ${formData.date}`;
+    } else if (bbCodeVersion === 25 || bbCodeVersion === 26) { // BasicPatientFile (assuming 26 was a typo or similar to 25)
+        isSaveableForm = true;
+        if (!formData.patientName || !formData.date) {
+            showNotification(`Please fill in Patient Name and Date fields.`, 'exclamation-circle');
+            return false;
+        }
+        key = `${formData.patientName} - ${formData.date}`;
+    }
+    // Add other 'else if' conditions for other saveable bbCodeVersions here, setting isSaveableForm = true;
+
+    if (!isSaveableForm) {
+        // If the form type isn't explicitly handled for saving, allow copying to proceed.
+        console.warn(`Form type (version ${bbCodeVersion}) is not configured for saving. Copying will proceed if BBCode is valid.`);
+        // You might want an informational notification here, but not an error/warning that stops copying.
+        // e.g., showNotification(`This form (v${bbCodeVersion}) isn't saved locally, but BBCode can be copied.`, 'info-circle');
+        return true; // Indicate that copying can proceed
+    }
+
     // --- Easter Egg Logic ---
     const currentSavedCount = savedReports.length;
     const easterEggAlreadyShown = localStorage.getItem('easterEggShown') === 'true';
     let showNormalEasterEgg = false;
     let showRareEasterEgg = false;
 
-    // Conditions remain the same
     if (currentSavedCount === 4 && !easterEggAlreadyShown) {
         showNormalEasterEgg = true;
     } else if (currentSavedCount > 4 && !easterEggAlreadyShown) {
@@ -1289,25 +1299,23 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
         showRareEasterEgg = Math.random() < 0.01;
     }
 
-    // Set state based on which egg (if any) should show
     if (showNormalEasterEgg) {
         setShowEasterEggModal(true);
         setEasterEggType('normal');
         localStorage.setItem('easterEggShown', 'true');
-        sendEasterEggNotification('normal'); // <-- Call with 'normal' type
+        sendEasterEggNotification('normal');
     } else if (showRareEasterEgg) {
         setShowEasterEggModal(true);
         setEasterEggType('rare');
-        sendEasterEggNotification('rare'); // <-- Call with 'rare' type
+        sendEasterEggNotification('rare');
     }
-// --- End Easter Egg Logic ---
-
+    // --- End Easter Egg Logic ---
 
     const bbCodeContent = getBBCodeContent();
     if (bbCodeContent == null) {
         console.error("SaveReport: getBBCodeContent() returned null or undefined for version", bbCodeVersion);
-        showNotification(`Failed to generate BBCode content for saving.`, 'error');
-        return;
+        showNotification(`Failed to generate BBCode content. Cannot save or copy.`, 'error');
+        return false; // Cannot save or copy if BBCode generation failed
     }
 
     const reportData = JSON.stringify({
@@ -1324,21 +1332,23 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
         if (isNaN(currentCount)) {
             currentCount = 0;
         }
-        const newCount = currentCount + 1; // Calculate new count *before* setting it
-        localStorage.setItem('SavedReportCount', newCount.toString()); // Use newCount
+        const newCount = currentCount + 1;
+        localStorage.setItem('SavedReportCount', newCount.toString());
 
-        showNotification(`Report saved! Copied to clipboard`, 'save'); // Use newCount
+        showNotification(`Report saved successfully!`, 'save'); // Notify that save was successful
         loadSavedReports();
+        return true; // Indicate success
 
     } catch (error) {
         console.error("Error saving report to localStorage:", error);
         Sentry.captureException(error, { extra: { context: 'localStorage.setItem', key: key } });
 
         if (error.name === 'QuotaExceededError') {
-            showNotification('Storage limit reached! Cannot save report. Please delete older reports.', 'error');
+            showNotification('Storage limit reached! Cannot save report. Copying will be skipped.', 'error');
         } else {
-            showNotification('Failed to save report due to a storage error.', 'error');
+            showNotification('Failed to save report due to a storage error. Copying will be skipped.', 'error');
         }
+        return false; // Indicate failure
     }
 };
 const [easterEggType, setEasterEggType] = useState(null); // 'normal', 'rare', or null
@@ -1914,17 +1924,21 @@ const clearForm = () => {
 };
 const DEFAULT_NOTIFICATION_DURATION = 3000; // default 3 seconds
 
-    const showNotification = (message, icon = 'check-circle', duration = DEFAULT_NOTIFICATION_DURATION) => { // Add duration parameter with default
+    const showNotification = (message, icon = 'check-circle', duration = DEFAULT_NOTIFICATION_DURATION) => {
         const newNotification = {
-            id: Date.now() + Math.random(), 
+            id: Date.now() + Math.random(), // Unique ID for the notification
             message: message,
             icon: getIconClass(icon),
         };
         setNotifications(prevNotifications => [...prevNotifications, newNotification]);
-    
-        setTimeout(() => {
-            removeNotification(newNotification.id);
-        }, duration); 
+
+        // Only set a timeout if a positive duration is provided
+        if (duration > 0) {
+            setTimeout(() => {
+                removeNotification(newNotification.id);
+            }, duration);
+        }
+        return newNotification.id; // Return the ID of the created notification
     };
         
     const getIconClass = (iconType) => {
@@ -2257,7 +2271,203 @@ const DEFAULT_NOTIFICATION_DURATION = 3000; // default 3 seconds
 
 // easter egg stuff
 const { season } = SeasonalEvents({ imageType: 'deathReport' }); // Get the season
-  
+
+// Define this function within your App component
+const getCopyButtonText = () => {
+    const baseText = "Copy ";
+    // Use the existing versionNames map
+    const formName = versionNames[bbCodeVersion] || "DEBUG - update title logic";
+    return `${baseText}${formName}`;
+};
+
+// New main handler function
+// New main handler function
+const handleCopyAndNotify = async () => {
+    const bbCodeToCopy = getBBCodeContent(); // Use your existing function
+    const versionName = versionNames[bbCodeVersion] || "Unknown Form"; // Use existing map
+
+    if (!bbCodeToCopy) {
+        showNotification(`Failed to generate BBCode for ${versionName}. Please check form data. Copying and saving skipped.`, 'error');
+        Sentry.captureMessage(`getBBCodeContent returned null/undefined for bbCodeVersion: ${bbCodeVersion} in handleCopyAndNotify`, 'error');
+        return;
+    }
+
+    const canProceedAfterSaveAttempt = await saveReport();
+
+    if (!canProceedAfterSaveAttempt) {
+        console.log("Report saving failed, or validation error occurred for saveable form, or BBCode generation failed. Copying to clipboard is skipped.");
+        return; // Exit without copying
+    }
+
+    const currentDateTime = new Date().toLocaleString();
+    const {
+        decedentName, coronerEmployee, coronerRank, patientName, decedentOOC,
+        phmcEmployee, requestingOfficer, patientID, patientFirstName, patientLastName,
+        showRequestingOfficerInput // Ensure this is destructured if not already
+    } = formData;
+
+    try {
+        if (!navigator.clipboard || !navigator.clipboard.writeText) {
+            throw new Error("Clipboard API not available");
+        }
+
+        await navigator.clipboard.writeText(bbCodeToCopy);
+        showNotification(`${versionName} copied to clipboard!`, 'check-circle'); // Main copy notification
+        console.log(`Notification 1: ${versionName} copied to clipboard!`);
+
+
+        // --- Debugging for Coroner Email Switch Notification ---
+        console.log("Attempting to show Coroner Email switch notification. Current state:", {
+            bbCodeVersion: bbCodeVersion,
+            isDeathReportForm: bbCodeVersion === 1,
+            showRequestingOfficerInput: formData.showRequestingOfficerInput,
+            isReportRequested: formData.showRequestingOfficerInput === true
+        });
+
+        if (bbCodeVersion === 1 && formData.showRequestingOfficerInput === true) {
+            console.log("CONDITIONS MET: Showing Coroner Email switch notification.");
+            // Capture the ID of this specific notification
+            const coronerEmailNotificationId = showNotification(
+                <>
+                    A Coroner Email was requested for this report.
+                    <Button
+                        variant="info"
+                        size="sm"
+                        className="ms-2 notification-action-button"
+                        onClick={() => {
+                            console.log("Coroner Email switch button CLICKED in notification.");
+                            handleAgencySelect(2); // Switch to Coroner Email (bbCodeVersion 2)
+                            removeNotification(coronerEmailNotificationId); // Dismiss this notification
+                        }}
+                    >
+                        Switch to Coroner Email Form
+                    </Button>
+                </>,
+                'info-circle', // Icon for the notification
+                15000          // Duration in milliseconds (15 seconds)
+            );
+        } else {
+            console.log("CONDITIONS NOT MET for Coroner Email switch notification. formData.showRequestingOfficerInput is:", formData.showRequestingOfficerInput);
+        }
+        // --- END ADDED NOTIFICATION LOGIC ---
+
+        // Proceed to send webhook
+        const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+        if (discordWebhookUrl) {
+            const currentIdentifier = `${decedentName || ''}|${decedentOOC || ''}`;
+
+            if (currentIdentifier && currentIdentifier === lastWebhookIdentifier) {
+                console.log('Duplicate report copy detected, skipping webhook.');
+            } else {
+                let savedCount = parseInt(localStorage.getItem('SavedReportCount') || '0', 10);
+                if (isNaN(savedCount)) savedCount = 0;
+
+                const userValue = phmcEmployee
+                    ? `Hospital Staff ${phmcEmployee}`
+                    : coronerEmployee
+                        ? `${coronerRank || 'Coroner'} ${coronerEmployee}`
+                        : (patientFirstName || patientLastName)
+                            ? `${patientFirstName || ''} ${patientLastName || ''}`.trim()
+                            : 'Unknown User';
+                
+                let actionMessage = "BBCode Copied";
+                const knownSaveableVersions = [1, 3, 4, 5, 6, 7, 19, 25];
+                if (knownSaveableVersions.includes(bbCodeVersion) && canProceedAfterSaveAttempt) {
+                    let validationForSavePassed = false;
+                    if (bbCodeVersion === 1 && formData.decedentOOC && formData.dateTime) validationForSavePassed = true;
+                    else if ((bbCodeVersion >= 3 && bbCodeVersion <= 7) && formData.patientID && formData.patientName && formData.date) validationForSavePassed = true;
+                    else if (bbCodeVersion === 19 && formData.patientID && formData.lastName && formData.date) validationForSavePassed = true;
+                    else if (bbCodeVersion === 25 && formData.patientName && formData.date) validationForSavePassed = true;
+                    
+                    if(validationForSavePassed) actionMessage = "BBCode Copied & Report Saved to Local Storage";
+                }
+
+                const successEmbed = {
+                    title: "Someone has used your generator!",
+                    description: "Here's the debug output.",
+                    color: 0x00FF00,
+                    fields: [
+                        { name: "User", value: userValue, inline: true },
+                        { name: "Form Type", value: versionName, inline: true },
+                        { name: "Patient/Decedent", value: `${patientName || decedentName || patientID || 'N/A'}`, inline: true },
+                        { name: "OOC Name", value: decedentOOC || "N/A", inline: true },
+                        { name: "Requesting Officer", value: requestingOfficer || "N/A", inline: true },
+                        { name: "Timestamp", value: currentDateTime, inline: false },
+                        { name: "Action", value: actionMessage, inline: false },
+                        { name: "Total Saved Reports", value: savedCount.toString(), inline: false }
+                    ],
+                    footer: { text: `PHMC Forms Tool | gh-pages ${commitInfo.sha || 'N/A'}` },
+                    timestamp: new Date().toISOString()
+                };
+
+                const response = await fetch(discordWebhookUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ embeds: [successEmbed] })
+                });
+
+                if (response.ok) {
+                    setLastWebhookIdentifier(currentIdentifier);
+                } else {
+                    console.error('Failed to send Discord webhook after copy:', response.status, response.statusText);
+                    Sentry.captureMessage(`Discord webhook failed after copy: ${response.status}`, {
+                        level: 'error',
+                        extra: { statusText: response.statusText }
+                    });
+                }
+            }
+        } else {
+            console.warn('Discord webhook URL not set, skipping notification.');
+        }
+
+    } catch (error) {
+        console.error('Error during copy/save or webhook: ', error);
+        Sentry.captureException(error, { extra: { context: 'handleCopyAndNotify', errorName: error.name, errorMessage: error.message } });
+
+        const saveStatusMessage = canProceedAfterSaveAttempt ? "Report saving process was run (saved if applicable)." : "Report saving failed or was skipped due to validation.";
+
+        if (error.message === "Clipboard API not available") {
+            showNotification(`Clipboard API not available! BBCode not copied. ${saveStatusMessage}`, 'exclamation-triangle');
+        } else {
+            showNotification(`Failed to copy BBCode! ${saveStatusMessage}`, 'exclamation-triangle');
+        }
+
+        const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+        if (discordWebhookUrl) {
+            const userValue = phmcEmployee
+                ? `Hospital Staff ${phmcEmployee}`
+                : coronerEmployee
+                    ? `${coronerRank || 'Coroner'} ${coronerEmployee}`
+                    : (patientFirstName || patientLastName)
+                        ? `${patientFirstName || ''} ${patientLastName || ''}`.trim()
+                        : 'Unknown User';
+            const failureEmbed = {
+                title: `BBCode Copy Failed (${error.message === "Clipboard API not available" ? "Clipboard API Unavailable" : "Error"})`,
+                color: 0xFF0000,
+                fields: [
+                    { name: "User", value: userValue, inline: true },
+                    { name: "Form Type", value: versionName, inline: true },
+                    { name: "Patient/Decedent", value: `${patientName || decedentName || patientID || 'N/A'}`, inline: true },
+                    { name: "OOC Name", value: decedentOOC || "N/A", inline: true },
+                    { name: "Requesting Officer", value: requestingOfficer || "N/A", inline: true },
+                    { name: "Timestamp", value: currentDateTime, inline: false },
+                    { name: "Action", value: `Report saving process was run (saved if applicable), but BBCode could not be copied. Error: ${error.message}`, inline: false },
+                ],
+                footer: { text: `PHMC Forms Tool | gh-pages ${commitInfo.sha || 'N/A'}` },
+                timestamp: new Date().toISOString()
+            };
+            fetch(discordWebhookUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ embeds: [failureEmbed] })
+            }).catch(fetchError => {
+                console.error('Failed to send Discord failure webhook:', fetchError);
+                Sentry.captureException(fetchError, { extra: { context: 'Discord Webhook Clipboard Fail Send' } });
+            });
+        }
+    }
+};
+
 // business card stuff
 const businessCardRef = useRef(null);
 const nameRef = useRef(null); 
@@ -2714,7 +2924,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 2.0.6 -  </h3>
+                                    <h3>Changelog - Version 2.0.8 -  </h3>
                                     <Button
                                         className="close"
                                         variant='secondary'
@@ -2726,7 +2936,7 @@ const [imgurLink, setImgurLink] = useState(null);
                                 </div>
                                 <div className="modal-content">
                                     <ul>
-                                        <li>Enhance Medical Release functionality with payment options and validation; update relevant fields in multiple components</li>
+                                        Version bump
                                     </ul>
                                     - frosty
                                 </div>
@@ -3184,10 +3394,7 @@ const [imgurLink, setImgurLink] = useState(null);
                             isJaneDoe={isJaneDoe}
                             currentUtcTime={currentUtcTime}
                             isUploading={isUploading}
-                            handleImageUpload={handleImageUpload}
-                            showRequestingOfficerInput={showRequestingOfficerInput}
-                            setShowRequestingOfficerInput={setShowRequestingOfficerInput}
-                    
+                            handleImageUpload={handleImageUpload}                    
                         />
                     ) : bbCodeVersion === 2 ? (
                         <CoronerEmail
@@ -3503,7 +3710,6 @@ const [imgurLink, setImgurLink] = useState(null);
                                 <i className="fas fa-trash-alt"></i>
                                 Clear Form
                             </Button>
-                    {window.location.hostname === 'localhost' && (
                             <Button
                                 type="button"
                                 variant='danger'
@@ -3513,7 +3719,6 @@ const [imgurLink, setImgurLink] = useState(null);
                             >
                                 <i className="fas fa-paper-plane"></i> Send Dev Webhook
                             </Button>
-                        )}
                         {window.location.hostname === 'localhost' && ( // Example: Only show on localhost
                             <Button
                                 variant="warning" // Use a different color maybe?
@@ -4267,215 +4472,10 @@ const [imgurLink, setImgurLink] = useState(null);
                        <Button
                             type="button"
                             className="changelog-button"
-                            onClick={() => {
-                                    const bbCode = bbCodeVersion === 1 ? generateDeathReport(formData) : 
-                                    bbCodeVersion === 2 ? generateEmail(formData) :
-                                    bbCodeVersion === 3 ? generateAdvancedPatientFile(formData) : 
-                                                bbCodeVersion === 5 ? generateSurgicalOps(formData) :
-                                                    bbCodeVersion === 6 ? generatePhysEvalInternalMed(formData) :
-                                                    bbCodeVersion === 7 ? generatePhysEvalInternalMedPBC(formData) : 
-                                                                                    bbCodeVersion === 14 ? generateMentalHealthPHMC(formData) :
-                                                                                            bbCodeVersion === 16 ? generateMentalHealthPBC(formData) :
-                                                                                                    bbCodeVersion === 18 ? generateAgencyFeedback(formData) :
-                                                                                                        bbCodeVersion === 19 ? generateEmergencyProtocol(formData) :
-                                                                                                        bbCodeVersion === 20 ? generateConsultationNotesPHMC(formData) :
-                                                                                                        bbCodeVersion === 21 ? generateConsultationNotesPBC(formData) :
-                                                                                                        bbCodeVersion === 22 ? generateCommentaryNotePHMC(formData) :
-                                                                                                        bbCodeVersion === 23 ? generateCommentaryNotePBC(formData) :
-                                                                                                        bbCodeVersion === 24 ? generateMedicalRecordRelease(formData) :
-                                                                                                        bbCodeVersion === 25 ? generateBasicPatientFile(formData) :
-                                                                                                        bbCodeVersion === 27 ? generateEmailPHMCEmail(formData) : 
-                                                                                                         bbCodeVersion === 28 ? generatePsychEvalPHMC(formData) :
-                                                                                                        bbCodeVersion === 29 ? generatePsychEvalPBC(formData) :
-
-                                                                                                        generateDeathReport(formData);
-                                const currentDateTime = new Date().toLocaleString();
-                                const { decedentName, coronerEmployee, coronerRank, patientName, decedentOOC, phmcEmployee, requestingOfficer, patientID, patientFirstName, patientLastName} = formData;
-                                const version = bbCodeVersion === 1 ? "Decedent Report" :
-                                    bbCodeVersion === 2 ? "Coroner Email" :
-                                        bbCodeVersion === 3 ? "Patient File - Advanced" :
-                                                bbCodeVersion === 5 ? "Surgical Report " :
-                                                    bbCodeVersion === 6 ? "Physical Evaluation (PHMC)" :
-                                                        bbCodeVersion === 7 ? "Physical Evaluation (IM) - PBC" :
-                                                                bbCodeVersion === 9 ? "Obstetrics - Main File" :
-                                                                    bbCodeVersion === 10 ? "Obstetrics - Follow Up" :
-                                                                        bbCodeVersion === 11 ? "Medical Consultation (EM) - Add File" :
-                                                                            bbCodeVersion === 12 ? "Gynecology - Main File" :
-                                                                                bbCodeVersion === 13 ? "Gynecology - Follow Up" :
-                                                                                    bbCodeVersion === 14 ? "Mental Health - PHMC" :
-                                                                                            bbCodeVersion === 16 ? "Mental Health - Updating Risk Status" :
-                                                                                                    bbCodeVersion === 18 ? "Coroners Agency Incidents" :
-                                                                                                        bbCodeVersion === 19 ? "Emergency Protocol Form" :
-                                                                                                            bbCodeVersion === 20 ? "General Consultation PHMC" :
-                                                                                                                bbCodeVersion === 21 ? "General Consultation PBC" :
-                                                                                                                    bbCodeVersion === 22 ? "PHMC Commentary Note" :
-                                                                                                                        bbCodeVersion === 23 ? "PBC Commentary Note" :
-                                                                                                                        bbCodeVersion === 24 ? "Medical Record Release" :
-                                                                                                                        bbCodeVersion === 25 ? 'Basic Patient File' :
-                                                                                                                        bbCodeVersion === 27 ? 'PHMC Internal Email' : 
-                                                                                                                        bbCodeVersion === 28 ? 'Psychological Evaluation PHMC' : 
-                                                                                                                        bbCodeVersion === 29 ? 'Psychological Evaluation PBC' :
-                                                                                                            "Something has gone wrong, sorry about that! Please inform the website maintainer!";
-
-                        // Check if clipboard API is available before using it
-                        if (navigator.clipboard && navigator.clipboard.writeText) {
-                            navigator.clipboard.writeText(bbCode).then(() => {
-                                showNotification(`${version} copied!`, 'check-circle');
-                                saveReport(); // Keep saveReport call
-                        
-                                const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-                        
-                                // Send POST request to Discord Webhook only after successful copy
-                                if (discordWebhookUrl) {
-                                    let savedCount = parseInt(localStorage.getItem('SavedReportCount') || '0', 10);
-                                    if (isNaN(savedCount)) {
-                                        savedCount = 0; // Default to 0 if the stored value is invalid
-                                    }
-                        
-                                    // --- Duplicate Check Logic ---
-                                    const { decedentName, decedentOOC, phmcEmployee, coronerEmployee, coronerRank, patientFirstName, patientLastName, patientName, patientID, requestingOfficer } = formData;
-                                    const currentDateTime = new Date().toLocaleString(); // Keep this for the embed
-                        
-                                    // Create a unique identifier for the current report content
-                                    const currentIdentifier = `${decedentName || ''}|${decedentOOC || ''}`; // Use a separator
-                        
-                                    // Check if the current identifier matches the last sent one
-                                    if (currentIdentifier && currentIdentifier === lastWebhookIdentifier) {
-                                        console.log('Duplicate report copy detected, skipping webhook.');
-                                        // Optionally show a different notification if desired
-                                        // showNotification('Already copied!', 'info-circle');
-                                        return; // Stop execution here, don't send webhook
-                                    }
-                                    // --- End Duplicate Check Logic ---
-                        
-                                    // Determine user value (simplified and corrected)
-                                    const userValue = phmcEmployee
-                                        ? `Hospital Staff ${phmcEmployee}`
-                                        : coronerEmployee
-                                            ? `${coronerRank || 'Coroner'} ${coronerEmployee}`
-                                            : (patientFirstName || patientLastName)
-                                                ? `${patientFirstName || ''} ${patientLastName || ''}`.trim()
-                                                : 'Unknown User';
-                        
-                                    const successEmbed = {
-                                        title: "Someone has used your generator!",
-                                        description: "Here's the debug output.",
-                                        color: 0x00FF00, // Green
-                                        fields: [
-                                            { name: "User", value: userValue, inline: true }, // Corrected: Only one User field
-                                            { name: "Form Type", value: version || "Unknown Form", inline: true },
-                                            { name: "Patient/Decedent", value: `${patientName || decedentName || patientID || 'N/A'}`, inline: true },
-                                            { name: "OOC Name", value: decedentOOC || "N/A", inline: true },
-                                            { name: "Requesting Officer", value: requestingOfficer || "N/A", inline: true },
-                                            { name: "Timestamp", value: currentDateTime || "N/A", inline: false },
-                                            { name: "Action", value: "BBCode Copied & Report Saved to Local Storage", inline: false },
-                                            { name: "Total Saved Reports", value: savedCount.toString(), inline: false }
-                                        ],
-                                        footer: {
-                                            text: `PHMC Forms Tool | gh-pages ${commitInfo.sha || 'N/A'}`
-                                        },
-                                        timestamp: new Date().toISOString()
-                                    };
-                        
-                                    fetch(discordWebhookUrl, {
-                                        method: 'POST',
-                                        headers: {
-                                            'Content-Type': 'application/json'
-                                        },
-                                        body: JSON.stringify({ embeds: [successEmbed] })
-                                    })
-                                    .then(response => { // Add .then() to handle the fetch response
-                                        if (response.ok) {
-                                            // Update the last identifier ONLY if the webhook was sent successfully
-                                            setLastWebhookIdentifier(currentIdentifier);
-                                        } else {
-                                            // Handle fetch error if needed
-                                            console.error('Failed to send Discord webhook after copy:', response.status, response.statusText);
-                                            Sentry.captureMessage(`Discord webhook failed after copy: ${response.status}`, {
-                                                level: 'error',
-                                                extra: { statusText: response.statusText }
-                                            });
-                                        }
-                                    })
-                                    .catch(error => {
-                                        console.error('Failed to send Discord webhook after copy:', error);
-                                        Sentry.captureException(error, { extra: { context: 'Discord Webhook Success Send' } });
-                                    });
-                        
-                                } else {
-                                     console.warn('Discord webhook URL not set, skipping notification.');
-                                }
-                        
-                            }).catch(err => {
-                                console.error('Failed to copy BBCode: ', err);
-                                Sentry.captureException(err, { extra: { message: 'BBCode copy failed' } });
-                                showNotification('Failed to copy BBCode to clipboard!', 'exclamation-triangle');
-                                // Optionally, send a failure webhook here too if needed
-                            });
-                        } else {
-                        // Handle cases where clipboard API is not available
-                            console.warn("Clipboard API not available");
-                            Sentry.captureMessage('Clipboard API not available for BBCode copy', 'warning');
-                            showNotification('Clipboard API not available! BBCode not copied.', 'exclamation-triangle');
-
-                            // Still save the report
-                            saveReport();
-
-                            const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-                             if (discordWebhookUrl) {
-                                const failureEmbed = {
-                                    title: "BBCode Copy Failed (Clipboard API Unavailable)",
-                                    color: 0xFF0000, // Red
-                                    fields: [
-                                        { name: "User", value: `${coronerRank || ''} ${coronerEmployee || phmcEmployee || `${patientFirstName || ''} ${patientLastName || ''}` || 'Unknown User'}`, inline: true },
-                                        { name: "Form Type", value: version || "Unknown Form", inline: true },
-                                        { name: "Patient/Decedent", value: `${patientName || decedentName || patientID || 'N/A'}`, inline: true },
-                                        { name: "OOC Name", value: decedentOOC || "N/A", inline: true },
-                                        { name: "Requesting Officer", value: requestingOfficer || "N/A", inline: true },
-                                        { name: "Timestamp", value: currentDateTime || "N/A", inline: false },
-                                        { name: "Action", value: "Report was saved, but BBCode could not be copied automatically.", inline: false },
-                                    ],
-                                    footer: {
-                                        text: `PHMC Forms Tool | gh-pages ${commitInfo.sha || 'N/A'}`
-                                    },
-                                    timestamp: new Date().toISOString()
-                                };
-
-                                fetch(discordWebhookUrl, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ embeds: [failureEmbed] }) // Send the failure embed
-                                }).catch(error => {
-                                    console.error('Failed to send Discord webhook after failed copy:', error);
-                                    Sentry.captureException(error, { extra: { context: 'Discord Webhook Clipboard Fail Send' } });
-                                });
-                             }
-                        }
-                    }}
+                            onClick={handleCopyAndNotify}
                         >
                             <i className="fas fa-clipboard"></i>
-    Copy {bbCodeVersion === 1 ? "Death Report" :
-        bbCodeVersion === 2 ? "Coroner Report" :
-        bbCodeVersion === 3 ? "Detailed Patient File" :
-        bbCodeVersion === 5 ? "Surgical Operations Report" :
-        bbCodeVersion === 6 ? "Physical Evaluation Report PHMC" :
-        bbCodeVersion === 7 ? "Physical Evaluation Report PBC" :
-        bbCodeVersion === 11 ? "Emergency Medicine - Add File" :
-        bbCodeVersion === 14 ? "Mental Health - PHMC" :
-        bbCodeVersion === 16 ? `Mental Health - Update Risk Status` :
-        bbCodeVersion === 17 ? `Mental Health - Update Patient File` :
-        bbCodeVersion === 18 ? 'Coroner Agency Incidents' :
-        bbCodeVersion === 19 ? 'Emergency Protocol Form NEW' :
-        bbCodeVersion === 20 ? 'General Consultation PHMC' :
-        bbCodeVersion === 21 ? 'General Consultation PBC' :
-        bbCodeVersion === 22 ? 'PHMC Commentary Note' :
-        bbCodeVersion === 23 ? 'PBC Commentary Note' :
-        bbCodeVersion === 24 ? 'Medical Record Release' :
-        bbCodeVersion === 25 ? 'Basic Patient File' :
-        bbCodeVersion === 27 ? 'PHMC Email' :
-        bbCodeVersion === 28 ? 'Psychological Evaluation PHMC' :
-        bbCodeVersion === 29 ? 'Psychological Evaluation PBC' :
-        "DEBUG - update title logic"}
+                            {getCopyButtonText()}
 </Button>                        
                     </div>
 

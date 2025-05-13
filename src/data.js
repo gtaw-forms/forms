@@ -357,7 +357,7 @@ export const drugList = [
     { name: 'Lyla Epps', lastName: 'Epps', signature: 'https://i.imgur.com/jvttdmC.png', category: 'Leadership' },
     { name: 'Roan Roybal', lastName: 'Roybal', signature: 'https://i.imgur.com/vtbmbuT.png', category: 'Leadership' },
     { name: 'Sydney Lear', lastName: 'Lear', signature: 'https://i.imgur.com/lASeSxM.png', category: 'Hospital Supervisor' },
-    { name: 'Danielle Shaw', lastName: 'Shaw', signature: '', category: 'Hospital Supervisor' },
+    { name: 'Danielle Bordeaux ', lastName: 'Bordeaux', signature: '', category: 'Hospital Supervisor' },
 
     // Physician
     { name: 'Gavin Reed	', lastName: 'Reed', signature: '', category: 'Resident Physician' },
@@ -426,11 +426,10 @@ export const coronerList = [
     { name: 'Ellie Paisley', badge: '151785', rank: 'Coroner Investigator', discord: 'hoperunsthin', category: 'Coroner Investigator' },
     { name: 'Avery Purcell', badge: '181311', rank: 'Coroner Investigator', discord: 'urkaaa_', category: 'Coroner Investigator' },
     { name: 'Luna Rosario', badge: '157235', rank: 'Coroner Investigator', discord: 'assszzz', category: 'Coroner Investigator' },
-    { name: 'Norah Reed', badge: '93014', rank: 'Coroner Investigator', discord: 'amnesia5290', category: 'Coroner Investigator' },
-    { name: 'James McKinney', badge: 'ID_MISSING_ERROR', rank: 'Forensic Attendant', discord: 'boots7163', category: 'Forensic Attendant' },
+{ name: 'Norah Reed', badge: '93014', phNumber: '58855328', rank: 'Medical Examiner', discord: 'amnesia5290', category: 'Medical Examiner' },    { name: 'James McKinney', badge: 'ID_MISSING_ERROR', rank: 'Forensic Attendant', discord: 'boots7163', category: 'Forensic Attendant' },
     { name: 'Luca Raymond', badge: '181726', rank: 'Forensic Attendant', discord: 'itscharlie3529', category: 'Forensic Attendant' },
     { name: 'Roger Rose', badge: '1552', phNumber: '45100', rank: 'Coroner Investigator Supervisor', discord: 'nazmaldun', category: 'Supervisor' },
-    { name: 'Valeria Zaldívar', badge: '183550', phNumber: '23516250', rank: 'Coroner Investigator', discord: 'm3aqq', category: 'Coroner Investigator' },
+    { name: 'Valeria Zaldívar', badge: '183550', phNumber: '23516250', rank: 'Medical Examiner', discord: 'm3aqq', category: 'Medical Examiner' },
     { name: 'Brynn Cappelli', badge: '117468', phNumber: '22000258', rank: 'Coroner Investigator', discord: 'Coroner Investigator', category: 'Coroner Investigator' },
     { name: 'William Gao', badge: '165529', phNumber: '75725652', rank: 'Coroner Investigator', discord: '.slump.', category: 'Coroner Investigator' },
     { name: 'Oscar Castro', badge: '184273', phNumber: '43464144', rank: 'Coroner Investigator', discord: 't3_tris', category: 'Coroner Investigator' },
