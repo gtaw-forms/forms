@@ -1253,12 +1253,33 @@ const saveReport = async () => {
             return false; // Validation failed, do not proceed with save or allow copy
         }
         key = `${formData.decedentOOC} - ${formData.dateTime}`;
-    } else if (bbCodeVersion >= 3 && bbCodeVersion <= 7) { // Covers PatientAdvanced, SurgicalOps, PhysEval PHMC/PBC
+    } else if (bbCodeVersion >= 3 && bbCodeVersion <= 7) { // Covers PatientAdvanced, SurgicalOps (5), PhysEval PHMC/PBC
         isSaveableForm = true;
-        if (!formData.patientID || !formData.patientName || !formData.date) {
-            showNotification(`Please fill in Patient ID, Patient Name, and Date fields.`, 'exclamation-circle');
-            return false;
+        let patientIdMissing = !formData.patientID;
+        let dateMissing = !formData.date;
+        let patientNameMissing = false;
+
+        // For Surgical Report (bbCodeVersion 5), patientName is not strictly required for this validation step.
+        // For other forms in this range (3, 4, 6, 7), patientName is required for the save validation.
+        if (bbCodeVersion !== 5) {
+            patientNameMissing = !formData.patientName;
         }
+
+        if (patientIdMissing || dateMissing || patientNameMissing) {
+            let missingFieldLabels = [];
+            if (patientIdMissing) missingFieldLabels.push('Patient ID');
+            // patientNameMissing will only be true if bbCodeVersion is not 5 AND patientName is missing
+            if (patientNameMissing) missingFieldLabels.push('Patient Name');
+            if (dateMissing) missingFieldLabels.push('Date');
+
+            // If only patientName is missing for bbCodeVersion 5, this condition won't be met by patientNameMissing,
+            // so the message will correctly list only Patient ID and/or Date if they are missing.
+            if (missingFieldLabels.length > 0) {
+                 showNotification(`Please fill in ${missingFieldLabels.join(', ')} fields.`, 'exclamation-circle');
+                 return false;
+            }
+        }
+        // The key will use formData.patientName, which might be an empty string if not provided for bbCodeVersion 5.
         key = `${formData.patientID} - ${formData.patientName} - ${formData.date}`;
     } else if (bbCodeVersion === 19) { // EmergencyProtocol
         isSaveableForm = true;
@@ -1267,7 +1288,7 @@ const saveReport = async () => {
             return false;
         }
         key = `${formData.patientID} - ${formData.lastName} - ${formData.date}`;
-    } else if (bbCodeVersion === 25 || bbCodeVersion === 26) { // BasicPatientFile (assuming 26 was a typo or similar to 25)
+    } else if (bbCodeVersion === 25 || bbCodeVersion === 26) { // BasicPatientFile
         isSaveableForm = true;
         if (!formData.patientName || !formData.date) {
             showNotification(`Please fill in Patient Name and Date fields.`, 'exclamation-circle');
@@ -1278,10 +1299,7 @@ const saveReport = async () => {
     // Add other 'else if' conditions for other saveable bbCodeVersions here, setting isSaveableForm = true;
 
     if (!isSaveableForm) {
-        // If the form type isn't explicitly handled for saving, allow copying to proceed.
         console.warn(`Form type (version ${bbCodeVersion}) is not configured for saving. Copying will proceed if BBCode is valid.`);
-        // You might want an informational notification here, but not an error/warning that stops copying.
-        // e.g., showNotification(`This form (v${bbCodeVersion}) isn't saved locally, but BBCode can be copied.`, 'info-circle');
         return true; // Indicate that copying can proceed
     }
 
@@ -1335,7 +1353,6 @@ const saveReport = async () => {
         const newCount = currentCount + 1;
         localStorage.setItem('SavedReportCount', newCount.toString());
 
-        showNotification(`Report saved successfully!`, 'save'); // Notify that save was successful
         loadSavedReports();
         return true; // Indicate success
 
@@ -1351,6 +1368,7 @@ const saveReport = async () => {
         return false; // Indicate failure
     }
 };
+
 const [easterEggType, setEasterEggType] = useState(null); // 'normal', 'rare', or null
 const showRareEasterEggDirectly = () => {
     setShowEasterEggModal(true);
@@ -2280,7 +2298,6 @@ const getCopyButtonText = () => {
     return `${baseText}${formName}`;
 };
 
-// New main handler function
 // New main handler function
 const handleCopyAndNotify = async () => {
     const bbCodeToCopy = getBBCodeContent(); // Use your existing function
