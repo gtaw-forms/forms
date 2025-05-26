@@ -718,3 +718,77 @@ input[type="radio"] {
       opacity: 0.65;
       cursor: not-allowed;
   }
+
+  /* In App.css or buttons.css */
+
+.floating-tools-container {
+  position: fixed;
+  bottom: 20px; /* Position from the bottom */
+  right: 20px; /* Position from the right */
+  z-index: 1040; 
+  display: flex;
+  flex-direction: row; 
+  gap: 15px; /* Adjusted gap for horizontal layout, can be 25px if preferred */
+  align-items: center; 
+}
+
+.floating-tool-button {
+  /* Inherit general button structure and feel */
+  display: inline-flex; 
+  align-items: center;
+  justify-content: center;
+  
+  /* Consistent sizing and spacing with .btn */
+  padding: 0.5rem 0.75rem; /* Approx 8px 12px */
+  font-size: 0.8rem;   
+  border-radius: 4px;  
+  gap: 6px; /* Space between icon and text, consistent with .btn */
+  line-height: 1.5; 
+  flex-shrink: 0; 
+  min-height: calc(1.5em + 1rem + 2px); /* Consistent minimum height */
+  margin: 0; /* Remove individual margins, container 'gap' handles spacing */
+
+  /* Theme similar to .btn-secondary for a clean look */
+  background-color: #212529; 
+  border: 1px solid #495057;     
+  color: #adb5bd;           
+  
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15); /* Keep a subtle shadow */
+  transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out, color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.floating-tool-button:hover,
+.floating-tool-button:focus,
+.floating-tool-button:active {
+  background-color: #343a40; 
+  border-color: #6c757d;
+  color: #f8f9fa;           
+  box-shadow: 0 0 0 0.2rem rgba(108, 117, 125, 0.5), 0 4px 8px rgba(0, 0, 0, 0.2); /* Combine focus and hover shadow */
+  outline: none; /* Remove default browser outline on focus if using box-shadow for focus */
+}
+
+.floating-tool-button i {
+  /* Icon size relative to button font size, consistent with .btn i */
+  font-size: 1em; 
+  /* margin-right is no longer needed due to 'gap' on the button itself */
+}
+
+/* Text visibility based on screen size (from your existing CSS) */
+@media (min-width: 768px) {
+  .floating-button-text {
+    display: inline; 
+  }
+}
+
+@media (max-width: 576px) {
+  .floating-button-text {
+    display: none; 
+  }
+  /* .floating-tool-button i {
+    margin-right: 0; 
+  } */ /* Not needed with gap */
+  .floating-tool-button {
+    /* Adjust padding if text is hidden, to keep it more square-ish */
+    padding: 0.5rem; 
+  }
+}

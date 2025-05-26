@@ -13,7 +13,7 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
     const [paramedicSignature, setParamedicSignature] = useState('');
     const [imgurLink, setImgurLink] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
-    const [isPreviewVisible, setIsPreviewVisible] = useState(false); // State for image preview
+    const [isPreviewVisible, setIsPreviewVisible] = useState(false);
 
     const amaCardRef = useRef(null);
     const patientSignatureRef = useRef(null);
@@ -28,7 +28,7 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
             setGuardianSignature(localStorage.getItem('emsAmaGuardianSignature') || '');
             setParamedicSignature(localStorage.getItem('emsAmaParamedicSignature') || '');
             setImgurLink(null);
-            setIsPreviewVisible(false); // Reset preview visibility when modal opens
+            setIsPreviewVisible(false);
         }
     }, [show]);
 
@@ -90,7 +90,6 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
 
         if (timeSinceLastCall < webhookRateLimitDelay) {
             const delay = webhookRateLimitDelay - timeSinceLastCall;
-            // console.log(`Rate limiting Discord webhook. Delaying for ${delay}ms.`); // Optional: for debugging
             setTimeout(() => {
                 isWebhookProcessing.current = false;
                 processWebhookQueue();
@@ -122,7 +121,7 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
         } finally {
             isWebhookProcessing.current = false;
             if (webhookQueue.current.length > 0) {
-                setTimeout(processWebhookQueue, 0); // Process next item immediately if queue is not empty
+                setTimeout(processWebhookQueue, 0);
             }
         }
     }, []);
@@ -144,10 +143,10 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
                 { name: "Date", value: formDate || "N/A", inline: true },
                 { name: "Guardian Signature", value: guardianSig || "N/A", inline: true },
                 { name: "Paramedic Signature", value: paramedicSig || "N/A", inline: true },
-                errorMessage ? { name: "Error", value: `\`\`\`${errorMessage.substring(0, 1000)}\`\`\``, inline: false } : null // Limit error message length
+                errorMessage ? { name: "Error", value: `\`\`\`${errorMessage.substring(0, 1000)}\`\`\``, inline: false } : null
             ].filter(field => field !== null),
             footer: {
-                text: `PHMC Forms Tool | gh-pages ${commitInfo?.sha?.substring(0, 7) || 'N/A'}` // Shorten SHA
+                text: `PHMC Forms Tool | gh-pages ${commitInfo?.sha?.substring(0, 7) || 'N/A'}`
             },
             timestamp: new Date().toISOString()
         };
@@ -168,8 +167,30 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
     }, [commitInfo, processWebhookQueue]);
 
     const handleSave = useCallback(async () => {
-        setIsSaving(true);
-        showNotification('Processing AMA form...', 'upload'); // Changed message slightly
+        setIsSaving(true); // Set saving state immediately
+
+        let currentAmaCardRef = amaCardRef.current;
+
+        // If preview is not visible, show it and wait for DOM update
+        if (!isPreviewVisible) {
+            setIsPreviewVisible(true);
+            // Wait for the next render cycle for amaCardRef to be available
+            // This ensures the DOM element is present for domtoimage
+            await new Promise(resolve => setTimeout(resolve, 50)); // Adjust delay if necessary
+            currentAmaCardRef = amaCardRef.current; // Re-fetch the ref after state update and delay
+        }
+
+        if (!currentAmaCardRef) {
+            showNotification("Form preview could not be loaded. Please try again.", 'error');
+            Sentry.captureMessage("amaCardRef.current is null in handleSave even after attempting to show preview.", {
+                extra: { isPreviewVisibleState: isPreviewVisible }, // Log the state at this point
+                level: "error"
+            });
+            setIsSaving(false); // Reset saving state on early exit
+            return;
+        }
+        
+        showNotification('Processing AMA form...', 'upload');
 
         localStorage.setItem('emsAmaPatientSignature', patientSignature);
         localStorage.setItem('emsAmaDate', date);
@@ -177,16 +198,9 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
         localStorage.setItem('emsAmaParamedicSignature', paramedicSignature);
 
         try {
-            if (!amaCardRef.current) {
-                // This error will be shown if the preview is not visible when save is clicked
-                showNotification("Please show the form preview before saving.", 'warning');
-                setIsSaving(false);
-                return; // Prevent further execution
-            }
-            const dataUrl = await domtoimage.toPng(amaCardRef.current, {
-                // You can add options here if needed, e.g., quality, bgcolor
+            const dataUrl = await domtoimage.toPng(currentAmaCardRef, {
                 // quality: 0.95,
-                // bgcolor: '#ffffff' // If transparent parts need a background
+                // bgcolor: '#ffffff'
             });
             showNotification('Uploading to Imgur...', 'upload');
             const link = await uploadToImgur(dataUrl);
@@ -226,17 +240,20 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
             let detailedMessage = error.message || String(error);
 
             if (detailedMessage.includes('Imgur upload failed')) errorContext = 'Imgur Upload Failed';
-            else if (error.name === 'Error' && domtoimage && !domtoimage.toPng) errorContext = 'Image Conversion Library Error'; // More specific check
+            else if (error.name === 'Error' && domtoimage && !domtoimage.toPng) errorContext = 'Image Conversion Library Error';
             else if (error.name === 'Error') errorContext = 'Image Conversion Failed';
 
-
-            showNotification(`${errorContext}: ${detailedMessage.substring(0,100)}...`, 'error'); // Show a snippet of the error
+            showNotification(`${errorContext}: ${detailedMessage.substring(0,100)}...`, 'error');
             Sentry.captureException(error, { extra: { context: 'EMS AMA Save', patientSignature, date } });
             sendDiscordWebhook(patientSignature, date, guardianSignature, paramedicSignature, null, `${errorContext}: ${detailedMessage}`);
         } finally {
             setIsSaving(false);
         }
-    }, [patientSignature, date, guardianSignature, paramedicSignature, showNotification, uploadToImgur, sendDiscordWebhook, commitInfo]);
+    }, [
+        patientSignature, date, guardianSignature, paramedicSignature, 
+        showNotification, uploadToImgur, sendDiscordWebhook, commitInfo,
+        isPreviewVisible, setIsPreviewVisible // Added dependencies
+    ]);
 
 
     if (!show) {
@@ -266,25 +283,28 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
                                     {imgurLink}
                                 </a>
                             </p>
+                            Instructions!
+                            <br />
+                            1) /note [id of the blank note item in your inventory] [amount] [name for the cards]
+                            <br />
+                            2) /note [id of the new note item in your inventory] [amount] [content] [URL from Imgur]
                         </div>
                     )}
 
-                    {/* Button to toggle image preview visibility */}
                     <Button
                         variant="outline-info"
                         onClick={() => setIsPreviewVisible(!isPreviewVisible)}
-                        className="mb-3 w-100" // Margin bottom and full width
+                        className="mb-3 w-100"
                     >
                         {isPreviewVisible ? 'Hide Form Preview' : 'Show Form Preview'}
                     </Button>
 
-                    {/* Conditionally render the image and its overlays */}
                     {isPreviewVisible && (
                         <div className="business-card-image-container" ref={amaCardRef} style={{ position: 'relative', width: '100%', maxWidth: '800px', margin: '0 auto 1rem auto' }}>
                             <img
                                 src={EMSAMAImage}
                                 alt="EMS AMA Form Preview"
-                                style={{ display: 'block', width: '100%', height: 'auto', border: '1px solid #ccc' }} // Added a light border for better visibility
+                                style={{ display: 'block', width: '100%', height: 'auto', border: '1px solid #ccc' }}
                             />
                             <div
                                 className="patient-signature-overlay"
@@ -348,7 +368,8 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
                         </Form.Group>
                     </div>
                 </div>
-                <Button className="ems-ama-save-button" onClick={handleSave} disabled={isSaving || !isPreviewVisible}>
+                {/* Hint text removed */}
+                <Button className="ems-ama-save-button" onClick={handleSave} disabled={isSaving}>
                     {isSaving ? 'Saving...' : 'Save & Upload AMA Form'}
                 </Button>
             </div>
