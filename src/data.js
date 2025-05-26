@@ -380,15 +380,14 @@ export const drugList = [
 
     // Internal Medicine
     { name: 'Lillian Chandler	', lastName: 'Chandler', signature: '', category: 'Psychiatrist' },
-    { name: 'Ulrica Vacker', lastName: 'Vacker', signature: '', category: 'Psychiatrist' },
+    { name: 'Sabrina Schaefer    ', lastName: 'Schaefer', signature: '', category: 'Psychiatrist' },
+    { name: 'Joe Whiteman', lastName: 'Whiteman', signature: '', category: 'Psychiatrist' },
 
     // Psychologist
     { name: 'Julian Leander	', lastName: 'Leander', signature: '', category: 'Psychologist' },
-    { name: 'Nicole Robinson		', lastName: 'Robinson', signature: '', category: 'Psychologist' },
     { name: 'Paolina Russo	', lastName: 'Russo', signature: '', category: 'Psychologist' },
     { name: 'Rahi Badman', lastName: 'Badman', signature: '', category: 'Psychologist' },
-    { name: 'Sarah Hyun		', lastName: 'Hyun', signature: '', category: 'Psychologist' },
-    { name: 'Nicole Robinson', lastName: 'Robinson', signature: '', category: 'Psychologist' },
+    { name: 'Sia Rousseau', lastName: 'Rousseau', signature: '', category: 'Psychologist' },
 
     // Nurses
     { name: 'Ash Edelweiss		', lastName: 'Edelweiss', signature: '', category: 'Nursing' },
