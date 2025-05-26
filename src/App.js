@@ -2,8 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Select from 'react-select';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import Notification from './components/Notification';
-import { Modal, Form, Button, Dropdown } from 'react-bootstrap';
-import domtoimage from 'dom-to-image';
+import { Modal, Form, Button } from 'react-bootstrap';
 import SavedReportsModal from './components/SavedReportsModal'; 
 import getRelevantFields from './components/RevelantFields';
 import AgencySelector from './components/AgencySelector';
@@ -17,7 +16,9 @@ import WebhookModal from './components/WebhookModal';
 import CoronerRankModal from './components/CoronerRankModal'; 
 import CoronerTipsModal from './components/CoronerTipsModal'; 
 import ToolsDropdown from './ToolsDropdown'; // Adjust the path if needed
-import EasterEggModal from './components/EasterEggModal'; // Adjust path if needed
+import BusinessCardModal from './components/BusinessCardModal'; 
+import EasterEggModal from './components/EasterEggModal'; 
+import EmsAmaModal from './components/EmsAmaModal'; // +++ Import the new modal
 import {
     generateDeathReport,
     generateEmail,
@@ -1985,7 +1986,36 @@ const DEFAULT_NOTIFICATION_DURATION = 3000; // default 3 seconds
             prevNotifications.filter(notif => notif.id !== idToRemove)
         );
     };
+        const [showBusinessCard, setShowBusinessCard] = useState(false); // Add this line
+    const [showBBCode, setShowBBCode] = useState(false);
+    const [showImages, setShowImages] = useState(false);
+    const [showEmsAmaModal, setShowEmsAmaModal] = useState(false); // +++ State for the new modal
 
+const toggleBusinessCard = () => {
+    setShowBusinessCard(prevShow => {
+        const newShowState = !prevShow;
+        if (newShowState) { // If we are about to show the business card modal
+            setShowAgencySelector(false);
+            setShowBBCode(false);
+            setShowImages(false);
+            setShowEmsAmaModal(false); // +++ Hide AMA modal
+
+        }
+        return newShowState;
+    });
+};
+const toggleEmsAmaModal = () => {
+    setShowEmsAmaModal(prevShow => {
+        const newShowState = !prevShow;
+        if (newShowState) {
+            setShowAgencySelector(false);
+            setShowBusinessCard(false);
+            setShowBBCode(false);
+            setShowImages(false);
+        }
+        return newShowState;
+    });
+};
     // Add new state
     const [parsedBBCode, setParsedBBCode] = useState('');
     // update Switch logic
@@ -2485,278 +2515,6 @@ const handleCopyAndNotify = async () => {
     }
 };
 
-// business card stuff
-const businessCardRef = useRef(null);
-const nameRef = useRef(null); 
-const rankRef = useRef(null);
-const departmentRef = useRef(null); 
-const [imgurLink, setImgurLink] = useState(null);
-
-    const [isSaving, setIsSaving] = useState(false);
-
-    const handleSave = () => {
-        setIsSaving(true);
-        showNotification('Uploading, Just a moment....', 'upload');
-    
-        localStorage.setItem('name', name);
-        localStorage.setItem('rank', rank);
-        localStorage.setItem('phoneNumber', phoneNumber);
-    
-        domtoimage.toPng(businessCardRef.current)
-            .then(function (dataUrl) {
-                uploadToImgur(dataUrl)
-                    .then(imgurLink => {
-                        setImgurLink(imgurLink);
-                        showNotification(`Business Card Saved & Uploaded to Imgur: ${imgurLink}`, 'save');
-                        // Send webhook AFTER successful Imgur upload
-                        sendDiscordWebhook(name, rank, phoneNumber, imgurLink);
-
-                        if (navigator.clipboard && navigator.clipboard.writeText) {
-                            navigator.clipboard.writeText(imgurLink)
-                                .then(() => {
-                                    showNotification('Imgur link copied to clipboard!', 'clipboard');
-                                })
-                                .catch(err => {
-                                    console.error('Failed to copy Imgur link to clipboard:', err);
-                                    // Send more detailed error info to Sentry
-                                    Sentry.captureException(err, {
-                                        extra: {
-                                            message: 'Clipboard writeText failed.',
-                                            imgurLink: imgurLink, // Include the link that failed to copy
-                                            userAgent: navigator.userAgent,
-                                        }
-                                    });
-                        
-                                    // Provide more helpful feedback to the user
-                                    let userMessage = 'Failed to copy Imgur link automatically.';
-                                    if (err.name === 'NotAllowedError') {
-                                        userMessage += ' Please grant clipboard permission when prompted by your browser.';
-                                    } else if (err.message.includes('focused')) { // Check for focus-related errors
-                                        userMessage += ' Please ensure this window is focused and try copying manually.';
-                                    } else {
-                                        userMessage += ' Please copy the link manually.';
-                                    }
-                                    showNotification(userMessage, 'error');
-                                });
-                        } else {
-                            const clipboardWarning = 'Clipboard API not available in this browser/context.';
-                            console.warn(clipboardWarning);
-                            Sentry.captureMessage(clipboardWarning, 'warning'); // Send warning to Sentry
-                            showNotification('Clipboard API not available. Please copy the link manually.', 'warning');
-                        }
-                            
-                        setTimeout(() => {
-                        }, 10000);
-                    })
-                    .catch(error => {
-                        console.error('Error uploading to Imgur:', error);
-                        Sentry.captureException(error); // Send Imgur upload error to Sentry
-                        showNotification('Error uploading to Imgur', 'error');
-                        // Send Discord webhook even on Imgur error, but indicate the failure
-                        sendDiscordWebhook(name, rank, phoneNumber, null, `Imgur Upload Failed: ${error.message}`);
-                    })
-                    .finally(() => {
-                        setIsSaving(false);
-                        let cssLoaded = true;
-                        setTimeout(() => {
-                            const inputFields = document.querySelectorAll('.business-card-input-fields input');
-                            inputFields.forEach(input => {
-                                if (window.getComputedStyle(input).color === 'rgb(0, 0, 0)') {
-                                    console.error("CSS not properly loaded on input fields after save.");
-                                    showNotification("CSS may not have loaded correctly. Refresh the page if styles are missing.", 'warning');
-                                    cssLoaded = false;
-                                }
-                            });
-                       }, 500); // Delay to allow CSS to load
-                    });
-            })
-            .catch(function (error) {
-                console.error('Error converting to image:', error);
-                showNotification('Error converting business card to image', 'error');
-                // Send Discord webhook indicating image conversion error
-                sendDiscordWebhook(name, rank, phoneNumber, null, `Image Conversion Failed: ${error.message || error}`);
-                setIsSaving(false);
-            });
-            let lastWebhookCallTimestamp = 0;
-            const webhookRateLimitDelay = 1100; // Delay in milliseconds (e.g., 1.1 seconds, slightly above Discord's limit per request)
-            let webhookQueue = []; // Queue for pending webhook calls
-            let isWebhookProcessing = false; // Flag to check if a webhook call is currently being processed
-            
-            const processWebhookQueue = async () => {
-                if (webhookQueue.length === 0 || isWebhookProcessing) {
-                    return; // Nothing to process or already processing
-                }
-        
-                isWebhookProcessing = true;
-                const now = Date.now();
-                const timeSinceLastCall = now - lastWebhookCallTimestamp;
-        
-                if (timeSinceLastCall < webhookRateLimitDelay) {
-                    // Calculate the necessary delay
-                    const delay = webhookRateLimitDelay - timeSinceLastCall;
-                    console.log(`Rate limiting Discord webhook. Delaying for ${delay}ms.`);
-                    setTimeout(() => {
-                        isWebhookProcessing = false; // Reset flag after delay
-                        processWebhookQueue(); // Try processing again after delay
-                    }, delay);
-                    return; // Exit function to wait for the delay
-                }
-        
-                // Dequeue the next message
-                const { webhookURL, message } = webhookQueue.shift();
-        
-                try {
-                    const response = await fetch(webhookURL, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(message)
-                    });
-        
-                    if (!response.ok) {
-                        console.error('Failed to send Discord webhook:', response.status, response.statusText);
-                        // Optional: Add the message back to the queue for retry?
-                        // webhookQueue.unshift({ webhookURL, message });
-                    } else {
-                        lastWebhookCallTimestamp = Date.now(); // Update timestamp on success
-                    }
-                } catch (error) {
-                    console.error('Error sending Discord webhook:', error);
-                    // Optional: Add the message back to the queue for retry?
-                    // webhookQueue.unshift({ webhookURL, message });
-                } finally {
-                    isWebhookProcessing = false; // Reset flag
-                    // Process the next item in the queue immediately if any
-                    if (webhookQueue.length > 0) {
-                        // Use setTimeout to avoid potential stack overflow with rapid calls
-                        setTimeout(processWebhookQueue, 0);
-                    }
-                }
-            };
-        
-            const sendDiscordWebhook = async (name, rank, phoneNumber, imgurLink, errorMessage = null) => {
-                const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-        
-                if (!webhookURL) {
-                    console.warn('Discord webhook URL is not set in environment variables.');
-                    return;
-                }
-        
-                // --- Start Embed Construction ---
-                const embed = {
-                    title: "Business Card Creation Alert!", 
-                    description: "A new business card was generated.", 
-                    color: errorMessage ? 0xFF0000 : 0x00FF00, 
-                    fields: [
-                        { name: "Employee Name", value: name || "N/A", inline: true },
-                        { name: "Employee Rank", value: rank || "N/A", inline: true },
-                        { name: "Phone Number", value: phoneNumber || "N/A", inline: true },
-                        errorMessage ? { name: "Error", value: errorMessage, inline: false } : null
-                    ].filter(field => field !== null), // Filter out null fields (like the error field if no error)
-                    footer: {
-                        text: `PHMC Forms Tool | gh-pages ${commitInfo.sha || 'N/A'}`
-                    },
-                    timestamp: new Date().toISOString()
-                };
-        
-                if (imgurLink) {
-                    embed.image = {
-                        url: imgurLink
-                    };
-                } else if (!errorMessage) { // Add a note if upload succeeded but link is missing (shouldn't happen often)
-                     embed.fields.push({ name: "Image Status", value: "Image uploaded, but link is missing.", inline: false });
-                } else { // Add a note if upload failed
-                     embed.fields.push({ name: "Image Status", value: "Image upload failed.", inline: false });
-                }
-        
-        
-                const message = {
-                    embeds: [embed] 
-                };
-        
-        
-                webhookQueue.push({ webhookURL, message });
-        
-                if (!isWebhookProcessing) {
-                    processWebhookQueue();
-                }
-            };
-        
-    };
-    const uploadToImgur = async (base64Image) => {
-        const imgurClientId = process.env.REACT_APP_IMGUR_CLIENT_ID;
-        const accessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
-        const albumId = process.env.REACT_APP_IMGUR_ALBUM_ID; // Retrieve album ID from environment variables
-        const apiUrl = 'https://api.imgur.com/3/image';
-    
-        const formData = new FormData();
-        formData.append('image', base64Image.split(',')[1]); // Remove the data:image/png;base64, prefix
-        formData.append('album', albumId); // Add the album ID to the form data
-    
-        const headers = {
-            'Authorization': `Client-ID ${imgurClientId}`
-        };
-    
-        if (accessToken) {
-            headers['Authorization'] = `Bearer ${accessToken}`;
-        }
-    
-        try {
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: headers,
-                body: formData,
-            });
-    
-            const data = await response.json();
-    
-            if (data.success) {
-                return data.data.link;
-            } else {
-                console.error('Imgur upload failed:', data); // Log the full response for debugging
-                throw new Error(`Imgur upload failed: ${data.data.error}`);
-            }
-        } catch (error) {
-            console.error('Imgur upload failed:', error);
-            throw error; // Re-throw the error for the calling function to handle
-        }
-    };
-    
-    useEffect(() => {
-        setName(localStorage.getItem('name') || '');
-        setRank(localStorage.getItem('rank') || '');
-        setPhoneNumber(localStorage.getItem('phoneNumber') || '');
-        }, []);
-    
-    
-        const toggleBusinessCard = () => {
-            // Toggle the business card modal  }
-        
-            setShowBusinessCard(!showBusinessCard);
-            setShowAgencySelector(false); // Close Agency Selector
-            setShowBBCode(false); // Close BBCode modal
-            setShowImages(false); // Close Images modal
-            // Log positions when the business card is opened
-        };    // Add state near other useState declarations
-    const [name, setName] = useState('');
-    const [rank, setRank] = useState('');
-    const [phoneNumber, setPhoneNumber] = useState('');
-    const [showBBCode, setShowBBCode] = useState(false);
-    const [showImages, setShowImages] = useState(false);
-    const [showBusinessCard, setShowBusinessCard] = useState(false);
-
-    const handleNameChange = (e) => {
-        setName(e.target.value);
-    };
-    
-    const handleRankChange = (e) => {
-        setRank(e.target.value);
-    };
-    const handlephoneNumberChange = (e) => {
-        setPhoneNumber(e.target.value);
-    };
-
     // handling updates and refresh 
     const initialCommitSha = useRef(null); // Ref to store the initial commit SHA
     
@@ -2925,6 +2683,16 @@ const [imgurLink, setImgurLink] = useState(null);
                         <i className="fa-solid fa-address-card"></i>
                         Business Card Tool
                     </Button>
+                                     <Button
+                        variant="info" // Example: Different color for distinction
+                        type="button"
+                        className="changelog-button"
+                        onClick={toggleEmsAmaModal} // +++ Use the new toggle function
+                    >
+                        <i className="fa-solid fa-address-card"></i>
+                        EMS Against Medical Advice
+                    </Button>
+
                     {(bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 18) && (
 
                     <Button
@@ -4190,119 +3958,19 @@ const [imgurLink, setImgurLink] = useState(null);
         </div>
     ) : null}
 </div>
-{showBusinessCard && (
-    <div className="modal-overlay">
-        <div className="agency-selector-modal business-card-modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-                <h4>Business Card - Public Testing</h4>
-                <Button
-                    variant="secondary"
-                    className="close"
-                    onClick={() => setShowBusinessCard(false)}
-                    aria-label="Close selector"
-                >
-                    <i className="fas fa-times"></i>
-                </Button>
-            </div>
-            <div className="business-card-content">
-                If you get any errors, please let me on Discord.
-            {imgurLink && (
-                <div className="imgur-link-container">
-                    <p>
-                        <strong>Imgur Link: </strong>
-                        <a href={imgurLink} target="_blank" rel="noopener noreferrer">
-                            {imgurLink}
-                        </a>
-                    </p>
-                    Instructions! 
-                    <br></br>
-            1) /note [id of the blank note item in your inventory] [amount] [name for the cards] 
-            <br></br>
+<BusinessCardModal
+    show={showBusinessCard}
+    onHide={() => setShowBusinessCard(false)} // Or onHide={toggleBusinessCard} if you prefer
+    showNotification={showNotification}
+    commitInfo={commitInfo}
+/>
+<EmsAmaModal
+    show={showEmsAmaModal}
+    onHide={() => setShowEmsAmaModal(false)}
+    showNotification={showNotification}
+    commitInfo={commitInfo}
+/>
 
-            2) /note [id of the new note item in your inventory] [amount] [content] [URL from Imgur] 
-                </div>
-            )}
-                <div className="business-card-image-container" ref={businessCardRef} style={{ position: 'relative', width: '100%', maxWidth: '800px' /* Optional: Set max-width */ }}>
-                    <img
-                        src={BusinessCardImage}
-                        alt="Business Card"
-                        style={{ display: 'block', width: '100%', height: 'auto' }} // Make image responsive
-                    />
-                    <div
-                        className="name-overlay"
-                        ref={nameRef}
-                        style={{
-                            position: 'absolute',
-                            top: '23.44%',    // <-- Percentage value
-                            left: '2.75%',   // <-- Percentage value
-                            color: 'black',
-                            fontSize: '35px', // Consider using relative units like 'vw' or 'em' if scaling needed
-                            pointerEvents: 'none',
-                            cursor: 'default',
-                            whiteSpace: 'nowrap' // Prevent text wrapping
-                        }}
-                    >
-                        {name}
-                    </div>
-                    <div
-                        className="rank-overlay"
-                        ref={rankRef}
-                        style={{
-                            position: 'absolute',
-                            top: '31.92%',    // <-- Percentage value
-                            left: '3.31%',   // <-- Percentage value
-                            color: '#cb1212',
-                            fontSize: '15px', // Consider relative units
-                            cursor: 'default',
-                            pointerEvents: 'none',
-                            whiteSpace: 'nowrap' // Prevent text wrapping
-                        }}
-                    >
-                        {rank}
-                    </div>
-                    <div
-                        className="phone-number-overlay"
-                        ref={departmentRef} // Assuming this ref is correct, might be phoneNumberRef?
-                        style={{
-                            position: 'absolute',
-                            top: '51.03%',    // <-- Percentage value
-                            left: '11.06%',  // <-- Percentage value
-                            color: 'black',
-                            fontSize: '15px', // Consider relative units
-                            cursor: 'default',
-                            pointerEvents: 'none',
-                            whiteSpace: 'nowrap' // Prevent text wrapping
-                        }}
-                    >
-                        {phoneNumber}
-                    </div>
-                </div>
-            <div className="business-card-input-fields">
-                <Form.Control
-                    type="text"
-                    placeholder="Name"
-                    value={name}
-                    onChange={handleNameChange}
-                />
-                <Form.Control
-                    type="text"
-                    placeholder="Rank"
-                    value={rank}
-                    onChange={handleRankChange}
-                />
-                <Form.Control
-                    type="text"
-                    placeholder="Phone Number"
-                    value={phoneNumber}
-                    onChange={handlephoneNumberChange}
-                />
-
-            </div>
-        </div>
-        <Button onClick={handleSave}>Save</Button>
-    </div>
-</div>
-)}
 <div className="button-group">
                             <Button
                                 variant="primary"
