@@ -1,0 +1,63 @@
+/* src/components/EmsAmaModal.css */
+
+/* Styles for the main container of the EMS AMA Modal */
+.ems-ama-modal.agency-selector-modal {
+    display: flex;
+    flex-direction: column; /* Stack header, body, and footer (button) vertically */
+    max-height: 85vh;      /* Limit overall modal height to 85% of viewport height. Adjust as needed. */
+    /* You might want to set a specific width if not already handled by .agency-selector-modal */
+    /* e.g., width: 700px; or width: 60vw; */
+}
+
+/* Styles for the scrollable body/content area of the modal */
+.ems-ama-modal-body {
+    flex-grow: 1;          /* Allows this area to expand and fill available vertical space */
+    overflow-y: auto;      /* Enables vertical scrolling when content overflows */
+    padding: 1rem;         /* Inner spacing for the content within the scrollable area */
+    /* If the scrollbar causes layout shift, you might add a small padding-right,
+       or style the scrollbar itself (which is more advanced and browser-specific).
+       e.g., padding-right: 5px; */
+}
+
+/* Ensure the image container within the scrollable body behaves well */
+.ems-ama-modal-body .business-card-image-container {
+    /* The inline style already sets maxWidth: '800px', which is good.
+       This ensures it doesn't overflow its parent if the parent is narrower. */
+    max-width: 100%;
+    margin-bottom: 1rem;   /* Space below the image before input fields */
+}
+
+.business-card-input-fields {
+  display: flex;
+  flex-direction: column; /* Stack input groups vertically */
+  align-items: center;   /* Center input groups horizontally */
+  width: 100%;           /* Ensure the container uses available width */
+  padding: 0 1rem;       /* Add some horizontal padding if needed */
+  box-sizing: border-box;
+}
+
+/* Styles for each individual input group (label + control) */
+.ems-ama-input-group {
+  width: 100%;           /* Make the group take full width of its flex container item */
+  max-width: 450px;      /* This makes the input groups "shortened". Adjust this value as needed. */
+  /* mb-2 class from Bootstrap already provides margin-bottom: 0.5rem */
+}
+
+/* Optional: Ensure labels and controls within the group behave as expected */
+.ems-ama-input-group .form-label {
+  display: block;        /* Make label take full width */
+  margin-bottom: 0.25rem; /* Small space between label and control */
+  text-align: left;      /* Align label text to the left within its centered group */
+}
+
+.ems-ama-input-group .form-control {
+  width: 100%;           /* Make control take full width of its parent Form.Group */
+}
+
+
+/* Style for the save button at the bottom of the modal */
+.ems-ama-modal .ems-ama-save-button {
+    margin: 1rem; /* Adds spacing around the button */
+    align-self: flex-start; /* Aligns button to the start if modal is flex container. Adjust as needed (e.g., center) */
+    /* If you want the button to be full width or styled differently, add here */
+}
