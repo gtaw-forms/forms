@@ -2941,7 +2941,7 @@ const [imgurLink, setImgurLink] = useState(null);
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 2.0.8 -  </h3>
+                                    <h3>Changelog - Version 2.0.9 -  </h3>
                                     <Button
                                         className="close"
                                         variant='secondary'
@@ -2953,7 +2953,8 @@ const [imgurLink, setImgurLink] = useState(null);
                                 </div>
                                 <div className="modal-content">
                                     <ul>
-                                        Version bump
+                                        New Employees have been added to PHMC List.
+                                        
                                     </ul>
                                     - frosty
                                 </div>
