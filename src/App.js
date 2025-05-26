@@ -2668,11 +2668,45 @@ const handleCopyAndNotify = async () => {
                         <i className="fas fa-history"></i>
                         View Changelog
                     </Button>
-                    <ToolsDropdown
-         onShowMissingEmployee={() => setShowMissingEmployeeModal(true)}
-         onShowFeatureRequest={() => setShowFeatureRequestModal(true)}
-         onShowSavedReports={toggleSavedReports} // Use your existing toggle function
-     />
+        <div className="floating-tools-container">
+            <Button
+                variant="light" // Or your preferred style
+                className="floating-tool-button"
+                onClick={() => setShowMissingEmployeeModal(true)}
+                title="Missing Employee Data"
+            >
+                <i className="fas fa-user-plus"></i>
+                <span className="floating-button-text">Missing Employee</span>
+            </Button>
+            <Button
+                variant="light"
+                className="floating-tool-button"
+                onClick={() => setShowFeatureRequestModal(true)}
+                title="Report a Bug / Feature"
+            >
+                <i className="fas fa-bug"></i>
+                <span className="floating-button-text">Report Bug - Feature</span>
+            </Button>
+            <Button
+                variant="light"
+                className="floating-tool-button"
+                onClick={toggleSavedReports}
+                title="Saved Reports"
+            >
+                <i className="fas fa-save"></i>
+                <span className="floating-button-text">Saved Reports</span>
+            </Button>
+            <Button
+                variant="light"
+                className="floating-tool-button"
+                onClick={toggleEmsAmaModal} // +++ Use the new toggle function
+                title="Saved Reports"
+            >
+<i class="fa-solid fa-truck-medical"></i>
+                <span className="floating-button-text">EMS Against Medical Advise</span>
+            </Button>
+
+        </div>
 
                  <Button
                         variant="secondary"
@@ -2682,15 +2716,6 @@ const handleCopyAndNotify = async () => {
                     >
                         <i className="fa-solid fa-address-card"></i>
                         Business Card Tool
-                    </Button>
-                                     <Button
-                        variant="info" // Example: Different color for distinction
-                        type="button"
-                        className="changelog-button"
-                        onClick={toggleEmsAmaModal} // +++ Use the new toggle function
-                    >
-                        <i className="fa-solid fa-address-card"></i>
-                        EMS Against Medical Advice
                     </Button>
 
                     {(bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 18) && (
