@@ -357,7 +357,6 @@ export const drugList = [
     { name: 'Lyla Epps', lastName: 'Epps', signature: 'https://i.imgur.com/jvttdmC.png', category: 'Leadership' },
     { name: 'Roan Roybal', lastName: 'Roybal', signature: 'https://i.imgur.com/vtbmbuT.png', category: 'Leadership' },
     { name: 'Sydney Lear', lastName: 'Lear', signature: 'https://i.imgur.com/lASeSxM.png', category: 'Hospital Supervisor' },
-    { name: 'Danielle Bordeaux ', lastName: 'Bordeaux', signature: '', category: 'Hospital Supervisor' },
 
     // Physician
     { name: 'Gavin Reed	', lastName: 'Reed', signature: '', category: 'Resident Physician' },
@@ -382,7 +381,7 @@ export const drugList = [
     { name: 'Lillian Chandler	', lastName: 'Chandler', signature: '', category: 'Psychiatrist' },
     { name: 'Sabrina Schaefer    ', lastName: 'Schaefer', signature: '', category: 'Psychiatrist' },
     { name: 'Joe Whiteman', lastName: 'Whiteman', signature: '', category: 'Psychiatrist' },
-
+    { name: 'Anna Li', lastName: 'Li', rank: 'Resident Physician', category: 'Resident Physician' },
     // Psychologist
     { name: 'Julian Leander	', lastName: 'Leander', signature: '', category: 'Psychologist' },
     { name: 'Paolina Russo	', lastName: 'Russo', signature: '', category: 'Psychologist' },
