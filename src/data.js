@@ -426,7 +426,7 @@ export const coronerList = [
     { name: 'Luna Rosario', badge: '157235', rank: 'Coroner Investigator', discord: 'assszzz', category: 'Coroner Investigator' },
 { name: 'Norah Reed', badge: '93014', phNumber: '58855328', rank: 'Medical Examiner', discord: 'amnesia5290', category: 'Medical Examiner' },    { name: 'James McKinney', badge: 'ID_MISSING_ERROR', rank: 'Forensic Attendant', discord: 'boots7163', category: 'Forensic Attendant' },
     { name: 'Luca Raymond', badge: '181726', rank: 'Forensic Attendant', discord: 'itscharlie3529', category: 'Forensic Attendant' },
-    { name: 'Roger Rose', badge: '1552', phNumber: '45100', rank: 'Coroner Investigator Supervisor', discord: 'nazmaldun', category: 'Supervisor' },
+    { name: 'Roger Rose', badge: '1552', phNumber: '45100', rank: 'Medical Examiner', discord: 'nazmaldun', category: 'Medical Examiner' },
     { name: 'Valeria Zaldívar', badge: '183550', phNumber: '23516250', rank: 'Medical Examiner', discord: 'm3aqq', category: 'Medical Examiner' },
     { name: 'Brynn Cappelli', badge: '117468', phNumber: '22000258', rank: 'Coroner Investigator', discord: 'Coroner Investigator', category: 'Coroner Investigator' },
     { name: 'William Gao', badge: '165529', phNumber: '75725652', rank: 'Coroner Investigator', discord: '.slump.', category: 'Coroner Investigator' },

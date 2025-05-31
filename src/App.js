@@ -921,7 +921,7 @@ const handleCoronerRankSubmit = async ({ selectedEmployee, newRank }) => { // Ac
         } else {
             // Use submittedValue for notification consistency if needed, or customize
             const notificationValue = newRank ? `${selectedEmployee} -> ${newRank}` : selectedEmployee;
-            showNotification(`Coroner info "${notificationValue}" submitted successfully!`, 'check-circle');
+            showNotification(`Coroner info "${notificationValue}" submitted successfully! Please contact Alyson Frost in the PHMC Discord for approval.`, 'check-circle');
             setShowCoronerRankModal(false); // Close modal on success
         }
     } catch (error) {
