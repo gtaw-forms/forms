@@ -682,41 +682,66 @@ const handleMissingEmployeeSubmit = async () => {
             dataJsEntry = `{ name: '${missingEmployeeData.coronerName || 'MISSING_NAME'}', badge: '${missingEmployeeData.coronerBadge || 'MISSING_BADGE'}', phNumber: '${missingEmployeeData.coronerPHNumber || ''}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', discord: '${missingEmployeeData.coronerDiscord || 'MISSING_DISCORD'}', category: '${missingEmployeeData.coronerRank || 'MISSING_CATEGORY'}' },`;
         } else { // isJaneDoe (add hospital staff)
             const rawFirstNameInput = missingEmployeeData.coronerName || "";
-            const rawLastNameInput = missingEmployeeData.employeeLastName || "";
+            const rawLastNameInput = missingEmployeeData.employeeLastName || ""; // Full input for last name
             let calculatedFullName;
 
             const trimmedFirstName = rawFirstNameInput.trim();
-            const trimmedLastName = rawLastNameInput.trim();
+            const trimmedRawLastName = rawLastNameInput.trim(); // Full trimmed input for last name
 
-            if (trimmedFirstName && trimmedLastName) {
-                const firstNameWords = trimmedFirstName.split(' ');
-                // Check if the first name input is multi-word and its last word matches the last name input
-                if (firstNameWords.length > 1 && firstNameWords[firstNameWords.length - 1].toLowerCase() === trimmedLastName.toLowerCase()) {
-                    calculatedFullName = trimmedFirstName; // Assume coronerName field already contains the full name
-                } else {
-                    calculatedFullName = `${trimmedFirstName} ${trimmedLastName}`; // Combine them
+            // 1. Determine the actual last name to be used (last word of the rawLastNameInput)
+            let parsedLastName = "";
+            if (trimmedRawLastName) {
+                const lastNameWords = trimmedRawLastName.split(' ');
+                parsedLastName = lastNameWords[lastNameWords.length - 1]; // Get the last word
+            }
+
+            // 2. Construct calculatedFullName using trimmedFirstName and the parsedLastName
+            if (trimmedFirstName && parsedLastName) {
+                // Case 1: FN="John Doe", LN input="Doe" (parsedLastName="Doe") -> FullName="John Doe"
+                if (trimmedFirstName.toLowerCase().endsWith(parsedLastName.toLowerCase()) && trimmedFirstName.includes(' ')) {
+                    calculatedFullName = trimmedFirstName;
                 }
-            } else if (trimmedFirstName) {
+                // Case 2: FN="Doe", LN input="Doe" (parsedLastName="Doe") -> FullName="Doe"
+                else if (trimmedFirstName.toLowerCase() === parsedLastName.toLowerCase()) {
+                    calculatedFullName = parsedLastName; // or trimmedFirstName, they are the same
+                }
+                // Case 3: FN="John", LN input="Doe" (parsedLastName="Doe") -> FullName="John Doe"
+                // Also handles FN="John Van", LN input="Der Beek" (parsedLastName="Beek") -> FullName="John Van Beek"
+                else {
+                    calculatedFullName = `${trimmedFirstName} ${parsedLastName}`;
+                }
+            } else if (trimmedFirstName) { // Only First Name input was provided
                 calculatedFullName = trimmedFirstName;
-            } else if (trimmedLastName) {
-                calculatedFullName = trimmedLastName; // If only last name, use it as full name (consistent with previous logic)
-            } else {
+            } else if (parsedLastName) {   // Only Last Name input was provided
+                calculatedFullName = parsedLastName;
+            } else { // Neither was provided
                 calculatedFullName = 'MISSING_FULL_NAME';
             }
 
-            // Final check to ensure if all inputs were spaces, it defaults to MISSING_FULL_NAME
+            // Final check for calculatedFullName to ensure it's not just spaces
             if (calculatedFullName.trim() === '' && calculatedFullName !== 'MISSING_FULL_NAME') {
                  calculatedFullName = 'MISSING_FULL_NAME';
             }
 
-            dataJsEntry = `{ name: '${calculatedFullName}', lastName: '${rawLastNameInput || 'MISSING_LAST_NAME'}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', category: '${missingEmployeeData.coronerRank || 'MISSING_CATEGORY'}' },`;
+            // 3. Determine finalLastNameForEntry for the data.js `lastName` field
+            const finalLastNameForEntry = parsedLastName || 'MISSING_LAST_NAME';
+
+            // Update the "Last Name" field in the embedData that was initialized earlier
+            // It's important that embedData is initialized before this `if/else` block
+            const lastNameFieldIndex = embedData.fields.findIndex(field => field.name === "Last Name");
+            if (lastNameFieldIndex !== -1) {
+                embedData.fields[lastNameFieldIndex].value = parsedLastName || "N/A"; // Use the parsed last name for the embed
+            }
+            // Note: The "Name to Add" embed field correctly uses missingEmployeeData.coronerName (rawFirstNameInput)
+
+            dataJsEntry = `{ name: '${calculatedFullName}', lastName: '${finalLastNameForEntry}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', category: '${missingEmployeeData.coronerRank || 'MISSING_CATEGORY'}' },`;
         }
         // This part remains the same:
         embedData.fields.push({ name: "Suggested data.js Entry", value: `\`\`\`javascript\n${dataJsEntry}\n\`\`\``, inline: false });
-                // --- End ADD Embed ---
+        // --- End ADD Embed ---
 
         submissionValid = true;
-        successMessage = 'Done! Please ping Alyson on Discord to approve.';
+        successMessage = 'Done! Please ping Alyson Frost in the PHMC Discord for approval.'; // Updated success message
 
     } else if (isRemoveStaff) { // Handle REMOVE request
         requestActionTitle = "➖ Staff Removal Request";

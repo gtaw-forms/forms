@@ -373,7 +373,7 @@ export const drugList = [
 
     { name: 'Julie Kang	', lastName: 'Kang', signature: '', category: 'Physician Assistant' },
 
-
+{ name: 'Thiago Larranaga', lastName: 'Larranaga', rank: 'Registered Nurse', category: 'Registered Nurse' },
     // Misc roles
     { name: 'Sanad Qaqish	', lastName: 'Qaqish', signature: '', category: 'Dentist' },
 
