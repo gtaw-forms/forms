@@ -414,12 +414,12 @@ export const drugList = [
     { name: 'Will Flanary', lastName: 'Flanary', signature: '', category: 'Emergency Medical Services' },
 ];
 export const coronerList = [
-    { name: 'Developer Testing', badge: 'Developer_Testing', phNumber: '123123', rank: 'Developer Testing', discord: 'developer.testing', category: 'Developer Testing' },
-    { name: 'Missing Name', badge: 'Missing_Badge', rank: 'Missing_Rank', discord: 'missing.discord', category: 'Missing_Category' },
+    { name: 'Developer Testing', badge: 'random badge', phNumber: '123123', rank: 'GOOD STRING', discord: 'developer.testing', category: 'Developer Testing' },
+    { name: 'Missing Name', badge: 'Badge Field Variable', rank: 'Rank String Checker', discord: 'missing.discord', category: 'Missing_Category' },
     { name: 'Anne Carter', badge: '4892', rank: 'Chief Medical Examiner', discord: 'ralof.from.riverwood', category: 'Chief Boss' },
     { name: 'Elena Hill', badge: '108273', rank: 'Deputy Chief Medical Examiner', discord: 'unity0034', category: 'Chief Boss' },
     { name: 'Laurent Hall', badge: '91338854', rank: 'Supervisor Forensic Attendant', discord: 'faethewtich', category: 'Supervisor' },
-    { name: 'Alyson Frost', badge: '5573', rank: 'Senior Coroner Investigator', discord: 'fr0sty.js', category: 'Senior Coroner Investigator' },
+    { name: 'Alyson Frost', badge: '5573', rank: 'Developer', discord: 'fr0sty.js', category: 'Senior Coroner Investigator' },
     { name: 'Arthur Blackwood', badge: '153528', rank: 'Senior Medical Examiner', discord: 'deputysmall', category: 'Senior Medical Examiner' },
     { name: 'Ellie Paisley', badge: '151785', rank: 'Coroner Investigator', discord: 'hoperunsthin', category: 'Coroner Investigator' },
     { name: 'Avery Purcell', badge: '181311', rank: 'Coroner Investigator', discord: 'urkaaa_', category: 'Coroner Investigator' },

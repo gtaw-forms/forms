@@ -38,7 +38,7 @@ import {
     generateEmailPHMCEmail,
     generateConsultationNotesPBC,
     generatePsychEvalPHMC,
-    generatePsychEvalPBC
+    generatePsychEvalPBC,
 } from './bbcode-generators'; 
 import {
     CommNotePHMC,
@@ -55,7 +55,8 @@ import {
     GeneralConsult,
     MedicalRelease,
     BasicPatientFile,
-    Shrink
+    Shrink,
+    Autopsy,
 } from './field-data';
 
 // logos
@@ -131,6 +132,7 @@ import './App.css';
 import './buttons.css'
 
 import 'react-bootstrap-typeahead/css/Typeahead.css';
+import generateAutopsy from './bbcode-generators/generateAutopsy';
 // Automated Imports from field-data
 function App() {
     const [isMobile, setIsMobile] = useState(false);
@@ -1632,6 +1634,7 @@ const filterFormData = (formData, bbCodeVersion) => {
     const bbCode = bbCodeVersion === 1 ? generateDeathReport(formData) :
     bbCodeVersion === 2 ? generateEmail(formData) :
         bbCodeVersion === 3 ? generateAdvancedPatientFile(formData) :  
+        bbCodeVersion === 4 ? generateAutopsy(formData) :
                     bbCodeVersion === 5 ? generateSurgicalOps(formData) :
                         bbCodeVersion === 6 ? generatePhysEvalInternalMed(formData) :
                             bbCodeVersion === 7 ? generatePhysEvalInternalMedPBC(formData) :
@@ -2080,6 +2083,8 @@ const toggleEmsAmaModal = () => {
                 return generateEmail(formData);
             case 3: 
                 return generateAdvancedPatientFile(formData);
+            case 4:
+                return generateAutopsy(formData);
             case 5:
                 return generateSurgicalOps(formData);
             case 6:
@@ -2187,41 +2192,211 @@ const toggleEmsAmaModal = () => {
     
         setFormData(newFormData);
     }, []); // The empty dependency array [] ensures this effect runs only once after the initial render.
+useEffect(() => {
+    const welcomeUserAndSyncData = () => {
+        let userWelcomed = false;
+        const currentTimestamp = Date.now().toString();
+        let madeChanges = false; // To track if any data was actually updated
+        let updatedUserName = null;
+
+        // --- Coroner Data Sync ---
+        if (formData.coronerEmployee) {
+            const selectedCoronerNameInForm = formData.coronerEmployee;
+            showNotification(`Welcome back ${selectedCoronerNameInForm}, getting your information...`, 'info-circle', 3000);
+            userWelcomed = true;
+            updatedUserName = selectedCoronerNameInForm;
+
+            const coronerDetailsFromDataJs = coronerList.find(c => c.name === selectedCoronerNameInForm);
+
+            if (coronerDetailsFromDataJs) {
+                const updatesToForm = {};
+                let needsFormUpdate = false;
+
+                if (formData.coronerRank !== coronerDetailsFromDataJs.rank) {
+                    updatesToForm.coronerRank = coronerDetailsFromDataJs.rank;
+                    localStorage.setItem('coronerRank', coronerDetailsFromDataJs.rank);
+                    localStorage.setItem('coronerRank_timestamp', currentTimestamp);
+                    needsFormUpdate = true;
+                }
+                if (formData.coronerBadge !== coronerDetailsFromDataJs.badge) {
+                    updatesToForm.coronerBadge = coronerDetailsFromDataJs.badge;
+                    localStorage.setItem('coronerBadge', coronerDetailsFromDataJs.badge);
+                    localStorage.setItem('coronerBadge_timestamp', currentTimestamp);
+                    needsFormUpdate = true;
+                }
+                if (formData.coronerDiscord !== coronerDetailsFromDataJs.discord) {
+                    updatesToForm.coronerDiscord = coronerDetailsFromDataJs.discord;
+                    localStorage.setItem('coronerDiscord', coronerDetailsFromDataJs.discord);
+                    localStorage.setItem('coronerDiscord_timestamp', currentTimestamp);
+                    needsFormUpdate = true;
+                }
+                const expectedPhNumber = coronerDetailsFromDataJs.phNumber || '50056';
+                if (formData.coronerPHNumber !== expectedPhNumber) {
+                    updatesToForm.coronerPHNumber = expectedPhNumber;
+                    localStorage.setItem('coronerPHNumber', expectedPhNumber);
+                    localStorage.setItem('coronerPHNumber_timestamp', currentTimestamp);
+                    needsFormUpdate = true;
+                }
+
+                if (needsFormUpdate) {
+                    setFormData(prev => ({ ...prev, ...updatesToForm }));
+                    localStorage.setItem('coronerEmployee_timestamp', currentTimestamp);
+                    madeChanges = true;
+                } else {
+                    // Refresh timestamp if data is still valid
+                    localStorage.setItem('coronerEmployee_timestamp', currentTimestamp);
+                    localStorage.setItem('coronerRank_timestamp', currentTimestamp);
+                    localStorage.setItem('coronerBadge_timestamp', currentTimestamp);
+                    localStorage.setItem('coronerDiscord_timestamp', currentTimestamp);
+                    localStorage.setItem('coronerPHNumber_timestamp', currentTimestamp);
+                }
+            } else {
+                showNotification(`The previously selected coroner "${selectedCoronerNameInForm}" is no longer valid and has been cleared.`, 'warning', 7000);
+                const fieldsToClear = ['coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord', 'coronerPHNumber'];
+                fieldsToClear.forEach(field => {
+                    localStorage.removeItem(field);
+                    localStorage.removeItem(`${field}_timestamp`);
+                });
+                setFormData(prev => ({
+                    ...prev,
+                    coronerEmployee: '',
+                    coronerBadge: '',
+                    coronerRank: '',
+                    coronerDiscord: '',
+                    coronerPHNumber: '50056',
+                }));
+                // No specific "update" notification needed here as the "cleared" message is sufficient.
+            }
+        }
+
+        // --- PHMC Employee Data Sync ---
+        if (formData.phmcEmployee) {
+            const selectedPhmcEmployeeName = formData.phmcEmployee;
+            if (!userWelcomed) {
+                showNotification(`Welcome back ${selectedPhmcEmployeeName}, getting your information...`, 'info-circle', 3000);
+                userWelcomed = true; // Mark as welcomed
+            }
+            if (!updatedUserName) updatedUserName = selectedPhmcEmployeeName;
+
+
+            const phmcEmployeeDetailsFromDataJs = phmcList.find(p => p.name === selectedPhmcEmployeeName);
+
+            if (phmcEmployeeDetailsFromDataJs) {
+                localStorage.setItem('phmcEmployee_timestamp', currentTimestamp);
+                // If PHMC staff had other fields in formData to sync (e.g., a 'phmcRank' from 'category'),
+                // add comparison and update logic here, setting madeChanges = true if updates occur.
+                // For example:
+                // if (formData.phmcRank !== phmcEmployeeDetailsFromDataJs.category) {
+                //     setFormData(prev => ({ ...prev, phmcRank: phmcEmployeeDetailsFromDataJs.category }));
+                //     localStorage.setItem('phmcRank', phmcEmployeeDetailsFromDataJs.category);
+                //     localStorage.setItem('phmcRank_timestamp', currentTimestamp);
+                //     madeChanges = true;
+                // }
+            } else {
+                showNotification(`The previously selected PHMC staff "${selectedPhmcEmployeeName}" is no longer valid and has been cleared.`, 'warning', 7000);
+                localStorage.removeItem('phmcEmployee');
+                localStorage.removeItem('phmcEmployee_timestamp');
+                // if (localStorage.getItem('phmcRank')) { // Example if phmcRank was stored
+                //     localStorage.removeItem('phmcRank');
+                //     localStorage.removeItem('phmcRank_timestamp');
+                // }
+                setFormData(prev => ({
+                    ...prev,
+                    phmcEmployee: '',
+                    // phmcRank: '', // if applicable
+                }));
+                // No specific "update" notification needed here.
+            }
+        }
+
+        if (madeChanges && updatedUserName) {
+            showNotification(`Data for ${updatedUserName} has been synchronized with the latest records.`, 'check-circle', 5000);
+        }
+    };
+
+    // This effect runs once after the initial render.
+    // The formData at this point will include values loaded from localStorage by the other useEffect.
+    welcomeUserAndSyncData();
+
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, []); // Empty dependency array ensures this runs only once on mount.
+
     const handleSelectChange = (selectedOption, type) => {
         const timestamp = Date.now();
     
         if (selectedOption) {
-            if (type === 'coroner') {
-                // Update formData and localStorage for coroner
-                setFormData(prev => ({
-                    ...prev,
-                    coronerEmployee: selectedOption.value,
-                    coronerBadge: selectedOption.badge,
-                    coronerRank: selectedOption.rank,
-                    coronerDiscord: selectedOption.discord
-                }));
-    
-                // Save to localStorage with timestamp
-                localStorage.setItem('coronerEmployee', selectedOption.value);
-                localStorage.setItem('coronerBadge', selectedOption.badge);
-                localStorage.setItem('coronerRank', selectedOption.rank);
-                localStorage.setItem('coronerDiscord', selectedOption.discord);
-                localStorage.setItem('coronerEmployee_timestamp', timestamp.toString());
+            const isCoronerOption = 'badge' in selectedOption && 'rank' in selectedOption; // Heuristic
+
+            if (isCoronerOption) {
+                const fullCoronerDetails = coronerList.find(c => c.name === selectedOption.value);
+                if (fullCoronerDetails) {
+                    const phNumberToSet = fullCoronerDetails.phNumber || '50056';
+                    
+                    setFormData(prev => ({
+                        ...prev,
+                        coronerEmployee: selectedOption.value,
+                        coronerBadge: selectedOption.badge,
+                        coronerRank: selectedOption.rank,
+                        coronerDiscord: selectedOption.discord,
+                        coronerPHNumber: phNumberToSet
+                    }));
+
+                    const timestampString = timestamp.toString();
+                    localStorage.setItem('coronerEmployee', selectedOption.value);
+                    localStorage.setItem('coronerBadge', selectedOption.badge);
+                    localStorage.setItem('coronerRank', selectedOption.rank);
+                    localStorage.setItem('coronerDiscord', selectedOption.discord);
+                    localStorage.setItem('coronerPHNumber', phNumberToSet);
+
+                    localStorage.setItem('coronerEmployee_timestamp', timestampString);
+                    localStorage.setItem('coronerBadge_timestamp', timestampString);
+                    localStorage.setItem('coronerRank_timestamp', timestampString);
+                    localStorage.setItem('coronerDiscord_timestamp', timestampString);
+                    localStorage.setItem('coronerPHNumber_timestamp', timestampString);
+                }
+            } else {
+                // Potentially for PHMC staff if a similar Select component uses this handler
+                // and `selectedOption` contains `value` for the name.
+                // This part depends on how PHMC staff selection is implemented.
+                // If PHMC staff selection uses `handleChange` with a name attribute, this `else` might not be hit.
+                // For now, let's assume it could be a PHMC employee if not a coroner.
+                const phmcDetails = phmcList.find(p => p.name === selectedOption.value);
+                if (phmcDetails) {
+                     setFormData(prev => ({
+                        ...prev,
+                        phmcEmployee: selectedOption.value,
+                        // phmcSignature: selectedOption.signature, // If you intend to use/store signature from select
+                        // phmcRank: selectedOption.category, // If you map category to a rank field in formData
+                    }));
+                    const timestampString = timestamp.toString();
+                    localStorage.setItem('phmcEmployee', selectedOption.value);
+                    localStorage.setItem('phmcEmployee_timestamp', timestampString);
+                    // if (selectedOption.signature) {
+                    //     localStorage.setItem('phmcSignature', selectedOption.signature);
+                    //     localStorage.setItem('phmcSignature_timestamp', timestampString);
+                    // }
+                }
             }
         } else {
-            // Clear coroner data
-            const fields = ['coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord'];
-            fields.forEach(field => {
+            // Selection was cleared
+            // This part needs to know WHICH select was cleared if it's a generic handler.
+            // For now, assuming it's primarily the coroner select being cleared.
+            const fieldsToClear = ['coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord', 'coronerPHNumber'];
+            fieldsToClear.forEach(field => {
                 localStorage.removeItem(field);
                 localStorage.removeItem(`${field}_timestamp`);
             });
-    
             setFormData(prev => ({
                 ...prev,
                 coronerEmployee: '',
                 coronerBadge: '',
                 coronerRank: '',
-                coronerDiscord: ''
+                coronerDiscord: '',
+                coronerPHNumber: '50056'
+                // If it could be a PHMC employee select, also clear:
+                // phmcEmployee: '',
+                // phmcSignature: '',
+                // phmcRank: '',
             }));
         }
     };
@@ -2322,7 +2497,7 @@ const toggleEmsAmaModal = () => {
         1: "Death Report",
         2: "Coroner Email",
         3: "Patient File - Advanced",
-        4: "Dental Report",
+        4: "Autopsy Report",
         5: "Surgery Report",
         6: "Physical Evaluation (PHMC)",
         7: "Physical Evaluation (PBC)",
@@ -2755,7 +2930,7 @@ const handleCopyAndNotify = async () => {
                 onClick={toggleEmsAmaModal} // +++ Use the new toggle function
                 title="Saved Reports"
             >
-<i class="fa-solid fa-truck-medical"></i>
+<i className="fa-solid fa-truck-medical"></i>
                 <span className="floating-button-text">EMS Against Medical Advise</span>
             </Button>
 
@@ -2828,7 +3003,7 @@ const handleCopyAndNotify = async () => {
                             Select Form
                         </Button>
 
-                        {(bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 18) && (
+                        {(bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 4||  bbCodeVersion === 18) && (
                             <>
                                 <Button
                                     className="changelog-button"
@@ -2884,6 +3059,17 @@ const handleCopyAndNotify = async () => {
                                                         />
                                                         <span>Agency Incidents </span>
                                                     </Button>
+                                                    <Button
+                                                        className="agency-select-button"
+                                                        onClick={() => handleAgencySelect(4)}
+                                                    >
+                                                        <img src={PHMCLogo}
+                                                            className="Center"
+                                                            alt="Feedback"
+                                                        />
+                                                        <span>!!! TESTING!!! Autopisy Report TESTING </span>
+                                                    </Button>
+
                                                 </div>
                                             </div>
                                         </div>
@@ -3285,6 +3471,19 @@ const handleCopyAndNotify = async () => {
                             handleImageUpload={handleImageUpload}
                             isUploading={isUploading}
                             setFormData={setFormData} 
+                        />
+                        ) : bbCodeVersion === 4 ? (
+                        <Autopsy
+                        formData={formData}
+                        handleChange={handleChange}
+                        handleSelectChange={handleSelectChange}
+                        coronerGroupedOptions={coronerGroupedOptions}
+                        setShowMissingEmployeeModal={setShowMissingEmployeeModal}
+                        setShowCoronerRankModal={setShowCoronerRankModal}
+                        setFormData={setFormData}
+                        isUploading={isUploading}
+                        handleImageUpload={handleImageUpload}
+                        phmcGroupedOptions={phmcGroupedOptions}
                         />
                         ) : bbCodeVersion === 5 ? (
                         <Surgical
@@ -4105,6 +4304,7 @@ const handleCopyAndNotify = async () => {
                                                         {bbCodeVersion === 1 ? generateDeathReport(formData) : 
                                                         bbCodeVersion === 2 ? generateEmail(formData) :
                                                         bbCodeVersion === 3 ? generateAdvancedPatientFile(formData) :
+                                                        bbCodeVersion === 4 ? generateAutopsy(formData) :
                                                         bbCodeVersion === 5 ? generateSurgicalOps(formData) :
                                                         bbCodeVersion === 6 ? generatePhysEvalInternalMed(formData) :
                                                         bbCodeVersion === 7 ? generatePhysEvalInternalMedPBC(formData) :
