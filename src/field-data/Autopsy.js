@@ -1,8 +1,6 @@
-// src/field-data/Autopsy.js
 import React from 'react';
 import { Form, Button, InputGroup } from 'react-bootstrap'; // Added InputGroup
-// Import Select if you use it for coronerEmployee, etc.
-// import Select from 'react-select';
+import Select from 'react-select';
 
 const Autopsy = ({
     formData,
@@ -11,7 +9,10 @@ const Autopsy = ({
     coronerGroupedOptions, // Assuming this is passed for coronerEmployee selection
     handleSelectChange, // If you have a specific handler for Select components
     isUploading, // Assuming this is a state for upload status
-    handleAutopsyImageUploadAndCreateAlbum, // Function to handle image upload and album creation    
+    handleAutopsyImageUploadAndCreateAlbum, // Function to handle image upload and album creation 
+    setShowMissingEmployeeModal, // Function to show modal for missing employee
+    setShowCoronerRankModal, // Function to show modal for updating coroner rank
+
     // ... other props
 }) => {
 
@@ -74,6 +75,7 @@ const Autopsy = ({
 
     return (
         <>
+        
             {/* ... Decedent Name inputs ... */}
              <div style={{ display: 'flex', gap: '10px', marginBottom: '1rem' }}>
                 <Form.Control
@@ -95,6 +97,28 @@ const Autopsy = ({
                     className={`form-control ${!formData.decedentOOC ? 'is-invalid' : ''}`}
                 />
             </div>
+                            <Form.Label style={{ marginBottom: 0 }}>Date & Time of Autopsy </Form.Label>
+
+             <div style={{ display: 'flex', gap: '10px', marginBottom: '1rem' }}>
+                <Form.Control
+                    type="date"
+                    name="autopsyDate"
+                    value={formData.autopsyDate || ''}
+                    onChange={handleChange}
+                    placeholder="autopsyDate"
+                    required
+                    className={`form-control ${!formData.autopsyDate ? 'is-invalid' : ''}`}
+                />
+                <Form.Control
+                    type="time"
+                    name="autopsyTime"
+                    value={formData.autopsyTime || ''}
+                    onChange={handleChange}
+                    placeholder="autopsyTime"
+                    required
+                    className={`form-control ${!formData.autopsyTime ? 'is-invalid' : ''}`}
+                />
+            </div>
 
             {/* ... Cause(s) of Death section ... */}
             <Form.Label>Cause(s) of Death:</Form.Label>
@@ -106,7 +130,7 @@ const Autopsy = ({
                         rows={2}
                         onChange={(e) => handleDeathCauseChange(index, e.target.value)}
                         placeholder={`Cause of Death ${index + 1}`}
-                        required={index === 0 && !cause.trim()}
+                        required={index === 0 && !cause.trim()} // First cause is required if list is not empty
                         className={`form-control ${index === 0 && !cause.trim() && (formData.autopsyDeathCauses?.length > 0) ? 'is-invalid' : ''}`}
                     />
                     {formData.autopsyDeathCauses && formData.autopsyDeathCauses.length > 0 && (
@@ -125,7 +149,37 @@ const Autopsy = ({
             <Button variant="secondary" onClick={handleAddDeathCause} size="sm" style={{ marginTop: '0.5rem', marginBottom: '1rem' }}>
                 <i className="fas fa-plus"></i> Add New Death Cause
             </Button>
+            <Form.Label>Manner of Death:</Form.Label>
+            <Form.Control
+                type="text"
+                name="deathType"
+                value={formData.deathType || ''}
+                onChange={handleChange}
+                placeholder="e.g., Homicide, Accident, Natural"
+                // Assuming this is required for a complete report, though BBCode has a fallback
+                className={`form-control mb-2 ${!formData.deathType ? 'is-invalid' : ''}`}
+            />
 
+            <Form.Label>How Injury Occurred:</Form.Label>
+            <Form.Control
+                type="text"
+                name="causeOfDeath"
+                value={formData.causeOfDeath || ''}
+                onChange={handleChange}
+                placeholder="e.g., Multiple gunshot wounds"
+                 // Assuming this is required for a complete report, though BBCode has a fallback
+                className={`form-control mb-2 ${!formData.causeOfDeath ? 'is-invalid' : ''}`}
+            />
+                        <Form.Label>External Examination:</Form.Label>
+            <Form.Control
+                type="text" // Changed to text as it's a description
+                name="externalExamination"
+                value={formData.externalExamination || ''}
+                onChange={handleChange}
+                placeholder="External examination findings (e.g., bruises, lacerations)"
+                // Assuming this is required for a complete report
+                className={`form-control mb-2 ${!formData.externalExamination ? 'is-invalid' : ''}`}
+            />
 
             {/* ... Anatomic Summary Items Section ... */}
             <Form.Label>Anatomic Summary Items:</Form.Label>
@@ -137,6 +191,8 @@ const Autopsy = ({
                         value={item}
                         onChange={(e) => handleAnatomicSummaryItemChange(index, e.target.value)}
                         placeholder={`Anatomic Summary Item ${index + 1}`}
+                        // First anatomic summary item is required if the list is not empty
+                        className={`form-control ${index === 0 && !item.trim() && (formData.autopsyAnatomicSummaryItems?.length > 0) ? 'is-invalid' : ''}`}
                     />
                     {formData.autopsyAnatomicSummaryItems && formData.autopsyAnatomicSummaryItems.length > 0 && (
                         <Button
@@ -155,25 +211,15 @@ const Autopsy = ({
                 <i className="fas fa-plus"></i> Add Anatomic Summary Item
             </Button>
 
-            {/* ... Manner of Death, How Injury Occurred ... */}
-            <Form.Label>Manner of Death:</Form.Label>
+            <Form.Label>Radiology Result:</Form.Label>
             <Form.Control
                 type="text"
-                name="deathType"
-                value={formData.deathType || ''}
+                name="RadiologyResult"
+                value={formData.RadiologyResult || ''}
                 onChange={handleChange}
-                placeholder="e.g., Homicide, Accident, Natural"
-                className="form-control mb-2"
-            />
-
-            <Form.Label>How Injury Occurred:</Form.Label>
-            <Form.Control
-                type="text"
-                name="causeOfDeath"
-                value={formData.causeOfDeath || ''}
-                onChange={handleChange}
-                placeholder="e.g., Multiple gunshot wounds"
-                className="form-control mb-2"
+                placeholder="e.g., No foreign objects detected (Bullets, Shrapnel, etc.)"
+                // Assuming this is required for a complete report, though BBCode has a fallback
+                className={`form-control mb-2 ${!formData.RadiologyResult ? 'is-invalid' : ''}`}
             />
 
             {/* --- NEW: Photography Section --- */}
@@ -185,7 +231,7 @@ const Autopsy = ({
                     value={formData.autopsyAlbumUrl || ''}
                     onChange={handleChange}
                     placeholder="Imgur Album URL (e.g., https://imgur.com/a/XXXXXX)"
-                    className="form-control"
+                    className={`form-control ${!formData.autopsyPhotosUnavailable && !formData.autopsyAlbumUrl.trim() ? 'is-invalid' : ''}`}
                     disabled={formData.autopsyPhotosUnavailable}
                 />
                 <Button
@@ -204,14 +250,17 @@ const Autopsy = ({
                     {isUploading ? ' Processing...' : ' Upload & Create Album'}
                 </Button>
             </InputGroup>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+
             <Form.Check
                 type="checkbox"
-                label="Photographs are unavailable for this case"
+                label="  Photographs are unavailable for this case"
                 name="autopsyPhotosUnavailable"
                 checked={formData.autopsyPhotosUnavailable || false}
                 onChange={handleChange} // Standard handleChange from App.js will handle this
-                className="mb-3"
+                className="mb-3" // No is-invalid needed for a checkbox typically
             />
+            </div>
             {/* --- End Photography Section --- */}
 
 
@@ -223,8 +272,105 @@ const Autopsy = ({
                 onChange={handleChange}
                 rows="5"
                 placeholder="Medical Examiner's opinion on the decedent's condition and cause of death"
-                className="form-control mb-2"
+                // Assuming this is required for a complete report, though BBCode has a fallback
+                className={`form-control mb-2 ${!formData.synopsis ? 'is-invalid' : ''}`}
             />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                <Form.Label style={{ marginBottom: 0 }}>Medical Examiner Performing Autopsy</Form.Label>
+                <button
+                    type="button"
+                    onClick={() => setShowMissingEmployeeModal(true)}
+                    className="close-button" 
+                    style={{
+                        padding: '0.25rem 0.5rem',
+                        fontSize: '0.8rem',
+                        lineHeight: '1.2'
+                    }}
+                >
+                    <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i>
+                    Missing Name?
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setShowCoronerRankModal(true)}
+                    className="close-button" 
+                    style={{
+                        padding: '0.25rem 0.5rem',
+                        fontSize: '0.8rem',
+                        lineHeight: '1.2'
+                    }}
+                    title="Update Coroner Rank"
+                >
+                    <i className="fas fa-user-md" style={{ marginRight: '5px' }}></i>
+                    Update Coroner Rank
+                </button>
+            </div>
+                    <Select
+                        name="coronerEmployee"
+                        value={coronerGroupedOptions
+                            .flatMap(group => group.options)
+                            .find(option => option.value === formData.coronerEmployee) || null}
+                        onChange={(selectedOption) => handleSelectChange(selectedOption, 'coroner')}
+                        options={coronerGroupedOptions}
+                        isClearable
+                        placeholder="Search or select coroner..."
+                        className={`form-control ${!formData.coronerEmployee ? 'is-invalid' : ''}`} // react-select uses className for the wrapper
+                        // For react-select, actual input validation styling is usually done via the `styles` prop
+                        // or by targeting specific inner classes if `is-invalid` is meant for the input itself.
+                        // The `form-control` class helps with Bootstrap's general layout.
+                        styles={{ 
+                            control: (base, state) => ({
+                                ...base,
+                                backgroundColor: '#16202c',
+                                color: '#eeeeeeb0',
+                                borderColor: !formData.coronerEmployee && state.isFocused ? '#dc3545' : // Example: red border on focus if invalid
+                                             !formData.coronerEmployee ? '#dc3545' : // Example: red border if invalid
+                                             state.isFocused ? '#86b7fe' : '#6c757d', // Default focus and normal border
+                                '&:hover': {
+                                    borderColor: !formData.coronerEmployee ? '#dc3545' : '#86b7fe'
+                                },
+                                boxShadow: !formData.coronerEmployee && state.isFocused ? '0 0 0 0.25rem rgba(220, 53, 69, 0.25)' : // Red focus shadow if invalid
+                                           state.isFocused ? '0 0 0 0.25rem rgba(13, 110, 253, 0.25)' : null, // Default focus shadow
+                            }),
+                            menu: (base) => ({
+                                ...base,
+                                backgroundColor: '#16202c',
+                                zIndex: 1000
+                            }),
+                            option: (base, state) => ({
+                                ...base,
+                                backgroundColor: state.isFocused ? 'Grey' : '#16202c',
+                                color: '#eeeeeeb0'
+                            }),
+                            singleValue: (base) => ({
+                                ...base,
+                                color: '#eeeeeeb0'
+                            }),
+                            input: (base) => ({
+                                ...base,
+                                color: '#eeeeeeb0'
+                            }),
+                            placeholder: (base) => ({
+                                ...base,
+                                color: '#eeeeeeb0'
+                            }),
+                            group: (base) => ({
+                                ...base,
+                                paddingTop: 8,
+                                paddingBottom: 8
+                            }),
+                            groupHeading: (base) => ({
+                                ...base,
+                                color: '#6c757d',
+                                fontWeight: 600,
+                                textTransform: 'uppercase',
+                                fontSize: '0.75rem',
+                                marginBottom: 4
+                            })
+                        }}
+                    />
+                    <Form.Label></Form.Label> 
+
         </>
     );
 };

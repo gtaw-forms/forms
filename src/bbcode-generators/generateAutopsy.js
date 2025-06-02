@@ -4,15 +4,17 @@ const generateAutopsy = (formData) => {
         coronerEmployee,
         synopsis,       // Used for Opinion
         decedentName,
+        externalExamination,
         decedentOOC,
-        // scenePhotos, // This specific field might not be directly used for the album link anymore
         autopsyDeathCauses,
         deathType,
         causeOfDeath,
         autopsyAnatomicSummaryItems,
-        autopsyAlbumUrl,             // NEW
-        autopsyPhotosUnavailable,    // NEW
-        dateTime,                    // Assuming you have a dateTime field for the autopsy date
+        autopsyAlbumUrl,
+        autopsyPhotosUnavailable,
+        RadiologyResult,
+        autopsyDate: formAutopsyDate, // Destructure as formAutopsyDate to avoid conflict
+        autopsyTime: formAutopsyTime  // Destructure as formAutopsyTime
     } = formData;
 
     // --- Dynamic Death Causes List ---
@@ -48,20 +50,28 @@ const generateAutopsy = (formData) => {
     // --- Photography Link Logic ---
     let photographySectionBBCode = '';
     if (autopsyPhotosUnavailable) {
-        photographySectionBBCode = 'Photographs are unavailable for this field.';
+        photographySectionBBCode = 'Photographs are unavailable for this autopsy.';
     } else if (autopsyAlbumUrl && autopsyAlbumUrl.trim() !== '') {
         photographySectionBBCode = `At scene photos are [url=${autopsyAlbumUrl.trim()}]available[/url]. Photographs have been taken prior to and during course of the autopsy.`;
     } else {
         photographySectionBBCode = 'At scene photos are [url=LINK-NOT-PROVIDED]available[/url]. Photographs have been taken prior to and during course of the autopsy.';
     }
 
-    // Format date and time for the report
-    const autopsyDate = formData.dateTime ? new Date(formData.dateTime).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'DD/MMM/YYYY';
-    const autopsyTime = formData.dateTime ? new Date(formData.dateTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) : 'HH:MM';
+    // --- Format date and time for the report ---
+    let finalAutopsyDate = 'DD/MMM/YYYY';
+    if (formAutopsyDate) {
+        const dateParts = formAutopsyDate.split('-'); // YYYY-MM-DD
+        if (dateParts.length === 3) {
+            const dateObj = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]); // Month is 0-indexed
+            finalAutopsyDate = dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        }
+    }
+
+    const finalAutopsyTime = formAutopsyTime || 'HH:MM';
 
 
     let bbCode = `[divbox=white][b][size=150][br][/br][center]DEPARTMENT OF PATHOLOGY AND FORENSIC MEDICINE[/size][/b][/center]
-[center][size=120]Autopsy Report by Medical Examiner[/size][/center][hr][/hr][justify][br][/br]I performed an autopsy on the body of [b]${decedentName || 'John Doe'} ((${decedentOOC || 'OOC Name'}))[/b] at PHMC's Department of Pathology and Forensic Medicine on ${autopsyDate}, ${autopsyTime}.
+[center][size=120]Autopsy Report by Medical Examiner[/size][/center][hr][/hr][justify][br][/br]I performed an autopsy on the body of [b]${decedentName || 'John Doe'} ((${decedentOOC || 'OOC Name'}))[/b] at PHMC's Department of Pathology and Forensic Medicine on ${finalAutopsyDate}, ${finalAutopsyTime}.
 From the anatomic findings and pertinent history, I ascribe the death to:
 ${deathCausesListItems}
 [b]MANNER OF DEATH:[/b] ${deathType || 'Undetermined'}
@@ -69,7 +79,7 @@ ${deathCausesListItems}
 [b]Anatomic Summary:[/b]
 ${anatomicSummaryListItems}
 [b]External Examination:[/b]
-The body is identified by toe tags and is that of an unembalmed refrigerated adult African-American male, who appears about the reported age of 25 years. The body weighs normal, measures normal, and is well built. The skin is free of abrasions, bruises and lacerations. There are lesions on the skin consistent with postmortem insect activity. Tattoos are present. Please see autopsy photographs.[br][/br]
+${externalExamination}[br][/br]
 [b]Clothing:[/b]
 The body was not clothed and the clothing was not available at the time of autopsy.[br][/br]
 [b]Initial Incision:[/b]
@@ -83,11 +93,11 @@ Chest blood, femoral blood, EDTA blood, urine, stomach contents and vitreous hav
 [b]Photography:[/b]
 ${photographySectionBBCode}[br][/br]
 [b]Radiology:[/b]
-The body is fluoroscoped and two x-rays were taken. RadiologyResult.[br][/br]
+The body is fluoroscoped and two x-rays were taken; ${RadiologyResult || ''}[br][/br]
 [b]Opinion:[/b]
 ${synopsis || 'No opinion provided.'}[br][/br]
 [b]Performed by:[/b]
- ${coronerRank || 'Medical Examiner'} ${coronerEmployee || 'Unknown Coroner'} [br][/br]
+${coronerRank || 'Medical Examiner'} ${coronerEmployee || 'Unknown Coroner'} [br][/br]
 [b]Approved by:[/b]
 Chief Medical Examiner-Coroner Anne Carter[/justify][/divbox]`
 
