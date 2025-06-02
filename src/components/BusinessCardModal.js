@@ -224,7 +224,7 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
         <div className="modal-overlay">
             <div className="agency-selector-modal business-card-modal" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
-                    <h4>Business Card - Public Testing</h4>
+                    <h4>Business Card</h4>
                     <Button
                         variant="secondary"
                         className="close"
