@@ -459,6 +459,9 @@ function App() {
         autopsyAnatomicSummaryItems: [''], 
             autopsyAlbumUrl: '', // Add this
     autopsyPhotosUnavailable: false, // Add this
+    autopsyDate: '',
+    autopsyTime: '',
+    externalExamination: '',
 
     });
     useEffect(() => {
@@ -627,100 +630,127 @@ function App() {
         staffToRemove: [],
         authorizedBy: '',
     });
-    const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
+// Inside src/App.js
+
+const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
+    console.log('[Autopsy Album] Starting image upload and album creation process...');
     const files = event.target.files;
     if (!files || files.length === 0) {
+        console.log('[Autopsy Album] No files selected.');
         showNotification('No files selected for autopsy album.', 'warning');
         return;
     }
 
-    setIsUploading(true);
-    showNotification('Uploading images for autopsy album...', 'info-circle', 0); // Indefinite notification
+    let indefiniteNotificationId = null;
 
-    const uploadedImageIds = [];
+    setIsUploading(true);
+    indefiniteNotificationId = showNotification('Processing autopsy album images...', 'info-circle', 0);
+    console.log('[Autopsy Album] UI notification shown, isUploading set to true.');
+
     const imgurAccessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
 
     if (!imgurAccessToken) {
-        console.error('Imgur access token not configured.');
+        console.error('[Autopsy Album] Imgur access token not configured.');
         Sentry.captureMessage('Imgur access token not configured for album creation.', 'error');
         showNotification('Configuration error: Imgur token missing.', 'exclamation-triangle');
         setIsUploading(false);
-        removeNotification(notifications[notifications.length -1]?.id); // Remove indefinite notification
+        if (indefiniteNotificationId) removeNotification(indefiniteNotificationId);
         return;
     }
 
+    const delayBetweenUploads = 1000; // 1 second delay, adjustable
+
     try {
-        // Step 1: Upload images individually
-        for (const file of files) {
+        // Step 1: Create an empty album first
+        const albumCreateFormData = new FormData();
+        const albumTitle = `Autopsy Report Photos - ${new Date().toISOString().slice(0, 10)} ${new Date().toLocaleTimeString()}`;
+        albumCreateFormData.append('title', albumTitle);
+        albumCreateFormData.append('description', `Photographic documentation for an autopsy report generated on ${new Date().toLocaleDateString()}.`);
+        
+        console.log(`[Autopsy Album] Attempting to create empty album with title: "${albumTitle}"`);
+        const emptyAlbumResponse = await fetch('https://api.imgur.com/3/album', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${imgurAccessToken}` },
+            body: albumCreateFormData,
+        });
+        const emptyAlbumData = await emptyAlbumResponse.json();
+
+        if (!emptyAlbumData.success || !emptyAlbumData.data.id) {
+            console.error('[Autopsy Album] Imgur empty album creation API call failed or did not return ID.', emptyAlbumData);
+            throw new Error(`Imgur album creation failed: ${emptyAlbumData.data.error?.message || emptyAlbumData.data.error || JSON.stringify(emptyAlbumData.data) || 'Unknown error during album creation'}`);
+        }
+        const newAlbumId = emptyAlbumData.data.id;
+        const newAlbumUrl = `https://imgur.com/a/${newAlbumId}`;
+        console.log(`[Autopsy Album] Successfully created empty album. ID: ${newAlbumId}, URL: ${newAlbumUrl}`);
+
+        // Step 2: Upload images individually TO THE CREATED ALBUM
+        let imagesSuccessfullyAddedToAlbum = 0;
+        console.log(`[Autopsy Album] Starting to upload ${files.length} image(s) to album ID: ${newAlbumId}`);
+        
+        for (const file of files) { // Iterate through the FileList
+            console.log(`[Autopsy Album] Preparing to upload image: "${file.name}" to album ID: ${newAlbumId}`);
+
+            // Introduce a delay before each image upload attempt
+            console.log(`[Autopsy Album] Waiting ${delayBetweenUploads}ms before uploading "${file.name}"...`);
+            await new Promise(resolve => setTimeout(resolve, delayBetweenUploads));
+            
             const imageFormData = new FormData();
             imageFormData.append('image', file);
-            // Optionally, you can add to a temporary or general album first,
-            // or upload without an album if your token permissions allow.
-            // For simplicity here, we upload without specifying an album initially.
+            imageFormData.append('album', newAlbumId); // Specify the album ID for each image upload
 
-            const response = await fetch('https://api.imgur.com/3/image', {
+            const imageUploadResponse = await fetch('https://api.imgur.com/3/image', {
                 method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${imgurAccessToken}`,
-                },
+                headers: { 'Authorization': `Bearer ${imgurAccessToken}` },
                 body: imageFormData,
             });
-            const data = await response.json();
-            if (data.success) {
-                uploadedImageIds.push(data.data.id); // Collect image IDs
+            const imageData = await imageUploadResponse.json();
+
+            if (imageData.success) {
+                imagesSuccessfullyAddedToAlbum++;
+                console.log(`[Autopsy Album] Successfully uploaded image: "${file.name}" (Imgur ID: ${imageData.data.id}) to album ID: ${newAlbumId}. Total added: ${imagesSuccessfullyAddedToAlbum}`);
             } else {
-                throw new Error(`Imgur image upload failed: ${data.data.error?.message || data.data.error || 'Unknown error'}`);
+                console.warn(`[Autopsy Album] Failed to upload image "${file.name}" to album ${newAlbumId}. Imgur response:`, imageData);
             }
         }
+        console.log(`[Autopsy Album] Finished attempting to upload all images. ${imagesSuccessfullyAddedToAlbum}/${files.length} successfully added to album.`);
 
-        if (uploadedImageIds.length === 0) {
-            showNotification('No images were successfully uploaded to create an album.', 'warning');
-            setIsUploading(false);
-            removeNotification(notifications[notifications.length -1]?.id);
-            return;
-        }
-
-        // Step 2: Create a new album with the uploaded image IDs
-        const albumFormData = new FormData();
-        uploadedImageIds.forEach(id => albumFormData.append('ids[]', id));
-        albumFormData.append('title', `Autopsy Report Photos - ${new Date().toISOString()}`);
-        albumFormData.append('description', `Photographic documentation for an autopsy report generated on ${new Date().toLocaleDateString()}.`);
-        // albumFormData.append('privacy', 'hidden'); // or 'public', 'secret'
-
-        const albumResponse = await fetch('https://api.imgur.com/3/album', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${imgurAccessToken}`,
-            },
-            body: albumFormData,
-        });
-
-        const albumData = await albumResponse.json();
-
-        if (albumData.success) {
-            const newAlbumId = albumData.data.id;
-            const newAlbumUrl = `https://imgur.com/a/${newAlbumId}`;
+        // Step 3: Update UI based on outcome
+        if (imagesSuccessfullyAddedToAlbum > 0) {
             setFormData(prev => ({
                 ...prev,
                 autopsyAlbumUrl: newAlbumUrl,
-                autopsyPhotosUnavailable: false // Uncheck if photos are now available
+                autopsyPhotosUnavailable: false
             }));
-            showNotification(`Successfully created Imgur album: ${newAlbumUrl}`, 'check-circle', 5000);
-        } else {
-            throw new Error(`Imgur album creation failed: ${albumData.data.error?.message || albumData.data.error || 'Unknown error'}`);
+            showNotification(`Successfully created Imgur album and added ${imagesSuccessfullyAddedToAlbum}/${files.length} image(s): ${newAlbumUrl}`, 'check-circle', 7000);
+            console.log(`[Autopsy Album] UI updated with new album URL: ${newAlbumUrl}. Photos available.`);
+        } else if (files.length > 0) { // Album created, but all image uploads failed
+            setFormData(prev => ({ 
+                ...prev,
+                autopsyAlbumUrl: newAlbumUrl, // Still set the album URL as it was created
+                autopsyPhotosUnavailable: false 
+            }));
+            showNotification(`Created Imgur album: ${newAlbumUrl}. However, failed to add images to it. Please check console for errors.`, 'warning', 10000);
+            console.warn(`[Autopsy Album] Album created (${newAlbumUrl}), but no images were successfully added.`);
+        } else { // Album created, but no files were selected to upload (this case should ideally be caught by the initial check)
+             setFormData(prev => ({
+                ...prev,
+                autopsyAlbumUrl: newAlbumUrl,
+                autopsyPhotosUnavailable: false
+            }));
+            showNotification(`Successfully created empty Imgur album: ${newAlbumUrl}`, 'check-circle', 5000);
+            console.log(`[Autopsy Album] Empty album created (${newAlbumUrl}) as no files were selected for upload (this state might be unusual).`);
         }
 
     } catch (error) {
-        console.error('Autopsy album creation/upload failed:', error);
+        console.error('[Autopsy Album] An error occurred during album creation/upload:', error);
         Sentry.captureException(error, { extra: { context: 'handleAutopsyImageUploadAndCreateAlbum' } });
-        showNotification(`Error: ${error.message}`, 'exclamation-triangle', 7000);
+        showNotification(`Error creating autopsy album: ${error.message}`, 'exclamation-triangle', 7000);
     } finally {
         setIsUploading(false);
-        // Find and remove the "Uploading images..." notification if it's still there
-        const uploadingNotification = notifications.find(n => n.message.startsWith('Uploading images for autopsy album...'));
-        if (uploadingNotification) {
-            removeNotification(uploadingNotification.id);
+        if (indefiniteNotificationId) {
+            removeNotification(indefiniteNotificationId);
         }
+        console.log('[Autopsy Album] Process finished. isUploading set to false, indefinite notification removed.');
     }
 };
 
@@ -1410,15 +1440,15 @@ const saveReport = async () => {
             return false; // Validation failed, do not proceed with save or allow copy
         }
         key = `${formData.decedentOOC} - ${formData.dateTime}`;
-    } else if (bbCodeVersion >= 3 && bbCodeVersion <= 7) { // Covers PatientAdvanced, SurgicalOps (5), PhysEval PHMC/PBC
+    } else if (((bbCodeVersion >= 3 && bbCodeVersion <= 7) && bbCodeVersion !== 4)) { // Covers PatientAdvanced (3), SurgicalOps (5), PhysEval PHMC/PBC (6,7)
         isSaveableForm = true;
         let patientIdMissing = !formData.patientID;
         let dateMissing = !formData.date;
         let patientNameMissing = false;
 
         // For Surgical Report (bbCodeVersion 5), patientName is not strictly required for this validation step.
-        // For other forms in this range (3, 4, 6, 7), patientName is required for the save validation.
-        if (bbCodeVersion !== 5) {
+        // For other forms in this range (3, 6, 7), patientName is required for the save validation.
+        if (bbCodeVersion !== 5) { // This condition now correctly applies to 3, 6, 7
             patientNameMissing = !formData.patientName;
         }
 
@@ -1766,6 +1796,10 @@ if (bbCodeVersion === 1) {
         } else if (bbCodeVersion === 2) {
             const { decedentName, decedentOOC } = formData;
             return `Coroner Report - ${decedentName} | ((${decedentOOC}))`;
+    // Autopsy Form
+        } else if (bbCodeVersion === 4) {
+            const { decedentName, decedentOOC } = formData;
+            return `CASE ## ${decedentName} ((${decedentOOC})) | SENT/COMPLETED/PENDING`;
 
 // Civilian Forms
         } else if (bbCodeVersion === 3) {
@@ -3063,7 +3097,7 @@ const handleCopyAndNotify = async () => {
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 2.0.9 -  </h3>
+                                    <h3>Changelog - Version 2.1.0 -  </h3>
                                     <Button
                                         className="close"
                                         variant='secondary'
@@ -3075,8 +3109,8 @@ const handleCopyAndNotify = async () => {
                                 </div>
                                 <div className="modal-content">
                                     <ul>
-                                        New Employees have been added to PHMC List.
-                                        
+                                        Added Autopsy Forms.
+                                        Fixed bugs
                                     </ul>
                                     - frosty
                                 </div>
@@ -3876,6 +3910,8 @@ const handleCopyAndNotify = async () => {
                                 <i className="fas fa-trash-alt"></i>
                                 Clear Form
                             </Button>
+                    { (window.location.hostname === 'localhost' || window.location.hostname === '192.168.1.202') && ( // Updated condition
+
                             <Button
                                 type="button"
                                 variant='danger'
@@ -3885,6 +3921,7 @@ const handleCopyAndNotify = async () => {
                             >
                                 <i className="fas fa-paper-plane"></i> Send Dev Webhook
                             </Button>
+                        )}
                         {window.location.hostname === 'localhost' && ( // Example: Only show on localhost
                             <Button
                                 variant="warning" // Use a different color maybe?
@@ -4476,7 +4513,7 @@ const handleCopyAndNotify = async () => {
                         )}
                     </div>
                     {
-    (bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 3 || bbCodeVersion === 24 || bbCodeVersion === 25) && (
+    (bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 3 || bbCodeVersion === 4 ||  bbCodeVersion === 24 || bbCodeVersion === 25) && (
         <>
             <h1>Generated Title</h1>
             <div className="title-output">
@@ -4513,7 +4550,7 @@ const handleCopyAndNotify = async () => {
                     <div className="button-container">
 
                     {
-    (bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 3 || bbCodeVersion === 24 || bbCodeVersion === 25) && (
+    (bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 3 || bbCodeVersion === 4 ||  bbCodeVersion === 24 || bbCodeVersion === 25) && (
                      <Button
                             type="button"
                             className="changelog-button"
