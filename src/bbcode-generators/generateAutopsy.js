@@ -1,4 +1,3 @@
-// src/bbcode-generators/generateAutopsy.js
 const generateAutopsy = (formData) => {
     const {
         coronerRank,

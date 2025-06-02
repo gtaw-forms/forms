@@ -15,7 +15,6 @@ import * as Sentry from "@sentry/react";
 import WebhookModal from './components/WebhookModal'; 
 import CoronerRankModal from './components/CoronerRankModal'; 
 import CoronerTipsModal from './components/CoronerTipsModal'; 
-import ToolsDropdown from './ToolsDropdown'; // Adjust the path if needed
 import BusinessCardModal from './components/BusinessCardModal'; 
 import EasterEggModal from './components/EasterEggModal'; 
 import EmsAmaModal from './components/EmsAmaModal'; // +++ Import the new modal
@@ -65,7 +64,6 @@ import Civilian from './assets/Civilian.png'
 import nurse from './assets/nurse.png'
 import PHMCLogo from './assets/phmc.png'
 import corpse from './assets/corpse.png'
-import BusinessCardImage from './assets/business-card.png';
 import phmcpaletobay from './assets/phmcpaletobaylogo.png'
 import './assets/fonts/Poppins-Medium.ttf';
 import {
@@ -3178,7 +3176,7 @@ const handleCopyAndNotify = async () => {
                                                             className="Center"
                                                             alt="Feedback"
                                                         />
-                                                        <span>!!! TESTING!!! Autopisy Report TESTING </span>
+                                                        <span>Autopsy Report  </span>
                                                     </Button>
 
                                                 </div>
