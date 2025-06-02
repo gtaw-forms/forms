@@ -1,19 +1,17 @@
 import React from 'react';
-import { Form, Button, InputGroup } from 'react-bootstrap'; // Added InputGroup
-import Select from 'react-select';
+import { Form, Button, InputGroup } from 'react-bootstrap';
+import Select from 'react-select'; // Keep if used for coroner selection
 
 const Autopsy = ({
     formData,
-    handleChange, // General handleChange for simple inputs
-    setFormData, 
-    coronerGroupedOptions, // Assuming this is passed for coronerEmployee selection
-    handleSelectChange, // If you have a specific handler for Select components
-    isUploading, // Assuming this is a state for upload status
-    handleAutopsyImageUploadAndCreateAlbum, // Function to handle image upload and album creation 
-    setShowMissingEmployeeModal, // Function to show modal for missing employee
-    setShowCoronerRankModal, // Function to show modal for updating coroner rank
-
-    // ... other props
+    handleChange,
+    setFormData,
+    coronerGroupedOptions,
+    handleSelectChange,
+    isUploading,
+    handleAutopsyImageUploadAndCreateAlbum, // Name remains, but functionality changed
+    setShowMissingEmployeeModal,
+    setShowCoronerRankModal,
 }) => {
 
     const handleAddDeathCause = () => {
@@ -37,14 +35,12 @@ const Autopsy = ({
             if (newCauses.length > 1) {
                 newCauses.splice(index, 1);
             } else if (newCauses.length === 1 && index === 0) {
-                // If it's the last one, clear its content but keep the field
                 newCauses[0] = '';
             }
             return { ...prev, autopsyDeathCauses: newCauses };
         });
     };
 
-    // --- Handler for Anatomic Summary Item Change ---
     const handleAnatomicSummaryItemChange = (index, value) => {
         setFormData(prev => {
             const currentItems = Array.isArray(prev.autopsyAnatomicSummaryItems) ? prev.autopsyAnatomicSummaryItems : [''];
@@ -75,8 +71,6 @@ const Autopsy = ({
 
     return (
         <>
-        
-            {/* ... Decedent Name inputs ... */}
              <div style={{ display: 'flex', gap: '10px', marginBottom: '1rem' }}>
                 <Form.Control
                     type="text"
@@ -97,15 +91,14 @@ const Autopsy = ({
                     className={`form-control ${!formData.decedentOOC ? 'is-invalid' : ''}`}
                 />
             </div>
-                            <Form.Label style={{ marginBottom: 0 }}>Date & Time of Autopsy </Form.Label>
-
+            <Form.Label style={{ marginBottom: 0 }}>Date & Time of Autopsy </Form.Label>
              <div style={{ display: 'flex', gap: '10px', marginBottom: '1rem' }}>
                 <Form.Control
                     type="date"
                     name="autopsyDate"
                     value={formData.autopsyDate || ''}
                     onChange={handleChange}
-                    placeholder="autopsyDate"
+                    placeholder="Autopsy Date"
                     required
                     className={`form-control ${!formData.autopsyDate ? 'is-invalid' : ''}`}
                 />
@@ -114,13 +107,12 @@ const Autopsy = ({
                     name="autopsyTime"
                     value={formData.autopsyTime || ''}
                     onChange={handleChange}
-                    placeholder="autopsyTime"
+                    placeholder="Autopsy Time"
                     required
                     className={`form-control ${!formData.autopsyTime ? 'is-invalid' : ''}`}
                 />
             </div>
 
-            {/* ... Cause(s) of Death section ... */}
             <Form.Label>Cause(s) of Death:</Form.Label>
             {(formData.autopsyDeathCauses || ['']).map((cause, index) => (
                 <div key={`deathcause-${index}`} style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
@@ -130,7 +122,7 @@ const Autopsy = ({
                         rows={2}
                         onChange={(e) => handleDeathCauseChange(index, e.target.value)}
                         placeholder={`Cause of Death ${index + 1}`}
-                        required={index === 0 && !cause.trim()} // First cause is required if list is not empty
+                        required={index === 0 && !cause.trim()}
                         className={`form-control ${index === 0 && !cause.trim() && (formData.autopsyDeathCauses?.length > 0) ? 'is-invalid' : ''}`}
                     />
                     {formData.autopsyDeathCauses && formData.autopsyDeathCauses.length > 0 && (
@@ -149,6 +141,7 @@ const Autopsy = ({
             <Button variant="secondary" onClick={handleAddDeathCause} size="sm" style={{ marginTop: '0.5rem', marginBottom: '1rem' }}>
                 <i className="fas fa-plus"></i> Add New Death Cause
             </Button>
+
             <Form.Label>Manner of Death:</Form.Label>
             <Form.Control
                 type="text"
@@ -156,7 +149,6 @@ const Autopsy = ({
                 value={formData.deathType || ''}
                 onChange={handleChange}
                 placeholder="e.g., Homicide, Accident, Natural"
-                // Assuming this is required for a complete report, though BBCode has a fallback
                 className={`form-control mb-2 ${!formData.deathType ? 'is-invalid' : ''}`}
             />
 
@@ -167,21 +159,19 @@ const Autopsy = ({
                 value={formData.causeOfDeath || ''}
                 onChange={handleChange}
                 placeholder="e.g., Multiple gunshot wounds"
-                 // Assuming this is required for a complete report, though BBCode has a fallback
                 className={`form-control mb-2 ${!formData.causeOfDeath ? 'is-invalid' : ''}`}
             />
-                        <Form.Label>External Examination:</Form.Label>
+            <Form.Label>External Examination:</Form.Label>
             <Form.Control
-                type="text" // Changed to text as it's a description
+                as="textarea" // Changed to textarea for potentially longer descriptions
+                rows={3}
                 name="externalExamination"
                 value={formData.externalExamination || ''}
                 onChange={handleChange}
-                placeholder="External examination findings (e.g., bruises, lacerations)"
-                // Assuming this is required for a complete report
+                placeholder="Detailed external examination findings (e.g., identifying marks, condition of the body, specific injuries observed externally)"
                 className={`form-control mb-2 ${!formData.externalExamination ? 'is-invalid' : ''}`}
             />
 
-            {/* ... Anatomic Summary Items Section ... */}
             <Form.Label>Anatomic Summary Items:</Form.Label>
             {(formData.autopsyAnatomicSummaryItems || ['']).map((item, index) => (
                 <div key={`anatomic-${index}`} style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
@@ -191,7 +181,6 @@ const Autopsy = ({
                         value={item}
                         onChange={(e) => handleAnatomicSummaryItemChange(index, e.target.value)}
                         placeholder={`Anatomic Summary Item ${index + 1}`}
-                        // First anatomic summary item is required if the list is not empty
                         className={`form-control ${index === 0 && !item.trim() && (formData.autopsyAnatomicSummaryItems?.length > 0) ? 'is-invalid' : ''}`}
                     />
                     {formData.autopsyAnatomicSummaryItems && formData.autopsyAnatomicSummaryItems.length > 0 && (
@@ -213,24 +202,24 @@ const Autopsy = ({
 
             <Form.Label>Radiology Result:</Form.Label>
             <Form.Control
-                type="text"
+                as="textarea" // Changed to textarea for potentially longer descriptions
+                rows={2}
                 name="RadiologyResult"
                 value={formData.RadiologyResult || ''}
                 onChange={handleChange}
-                placeholder="e.g., No foreign objects detected (Bullets, Shrapnel, etc.)"
-                // Assuming this is required for a complete report, though BBCode has a fallback
+                placeholder="e.g., No foreign objects detected. X-rays show three projectiles in the body."
                 className={`form-control mb-2 ${!formData.RadiologyResult ? 'is-invalid' : ''}`}
             />
 
-            {/* --- NEW: Photography Section --- */}
-            <Form.Label>Photography Album URL:</Form.Label>
+            <Form.Label>Photography (Comma-separated URLs):</Form.Label>
             <InputGroup className="mb-1">
                 <Form.Control
-                    type="text"
-                    name="autopsyAlbumUrl"
+                    as="textarea" // Changed to textarea for better visibility of multiple URLs
+                    rows={3}
+                    name="autopsyAlbumUrl" // Keeping name for consistency, though it's not an album URL anymore
                     value={formData.autopsyAlbumUrl || ''}
                     onChange={handleChange}
-                    placeholder="Imgur Album URL (e.g., https://imgur.com/a/XXXXXX)"
+                    placeholder="Paste Imgur URLs here, separated by commas, or use upload button."
                     className={`form-control ${!formData.autopsyPhotosUnavailable && !formData.autopsyAlbumUrl.trim() ? 'is-invalid' : ''}`}
                     disabled={formData.autopsyPhotosUnavailable}
                 />
@@ -242,50 +231,42 @@ const Autopsy = ({
                         fileInput.type = 'file';
                         fileInput.accept = 'image/*';
                         fileInput.multiple = true;
-                        fileInput.onchange = handleAutopsyImageUploadAndCreateAlbum; // Use the new handler
+                        fileInput.onchange = handleAutopsyImageUploadAndCreateAlbum;
                         fileInput.click();
                     }}
                 >
                     <i className={`fas ${isUploading ? 'fa-spinner fa-spin' : 'fa-upload'}`}></i>
-                    {isUploading ? ' Processing...' : ' Upload & Create Album'}
+                    {isUploading ? ' Processing...' : ' Upload Photo(s)'}
                 </Button>
             </InputGroup>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
-
-            <Form.Check
-                type="checkbox"
-                label="  Photographs are unavailable for this case"
-                name="autopsyPhotosUnavailable"
-                checked={formData.autopsyPhotosUnavailable || false}
-                onChange={handleChange} // Standard handleChange from App.js will handle this
-                className="mb-3" // No is-invalid needed for a checkbox typically
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                <Form.Check
+                    type="checkbox"
+                    label="Photographs are unavailable for this case"
+                    name="autopsyPhotosUnavailable"
+                    checked={formData.autopsyPhotosUnavailable || false}
+                    onChange={handleChange}
+                    className="mb-3"
+                />
             </div>
-            {/* --- End Photography Section --- */}
-
 
             <Form.Label>Opinion (Medical Examiner's Synopsis):</Form.Label>
             <Form.Control
                 as="textarea"
-                name="synopsis" // This is used for the "Opinion" section in BBCode
+                name="synopsis"
                 value={formData.synopsis || ''}
                 onChange={handleChange}
                 rows="5"
                 placeholder="Medical Examiner's opinion on the decedent's condition and cause of death"
-                // Assuming this is required for a complete report, though BBCode has a fallback
                 className={`form-control mb-2 ${!formData.synopsis ? 'is-invalid' : ''}`}
             />
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
                 <Form.Label style={{ marginBottom: 0 }}>Medical Examiner Performing Autopsy</Form.Label>
                 <button
                     type="button"
                     onClick={() => setShowMissingEmployeeModal(true)}
                     className="close-button" 
-                    style={{
-                        padding: '0.25rem 0.5rem',
-                        fontSize: '0.8rem',
-                        lineHeight: '1.2'
-                    }}
+                    style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', lineHeight: '1.2' }}
                 >
                     <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i>
                     Missing Name?
@@ -294,83 +275,47 @@ const Autopsy = ({
                     type="button"
                     onClick={() => setShowCoronerRankModal(true)}
                     className="close-button" 
-                    style={{
-                        padding: '0.25rem 0.5rem',
-                        fontSize: '0.8rem',
-                        lineHeight: '1.2'
-                    }}
+                    style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', lineHeight: '1.2' }}
                     title="Update Coroner Rank"
                 >
                     <i className="fas fa-user-md" style={{ marginRight: '5px' }}></i>
                     Update Coroner Rank
                 </button>
             </div>
-                    <Select
-                        name="coronerEmployee"
-                        value={coronerGroupedOptions
-                            .flatMap(group => group.options)
-                            .find(option => option.value === formData.coronerEmployee) || null}
-                        onChange={(selectedOption) => handleSelectChange(selectedOption, 'coroner')}
-                        options={coronerGroupedOptions}
-                        isClearable
-                        placeholder="Search or select coroner..."
-                        className={`form-control ${!formData.coronerEmployee ? 'is-invalid' : ''}`} // react-select uses className for the wrapper
-                        // For react-select, actual input validation styling is usually done via the `styles` prop
-                        // or by targeting specific inner classes if `is-invalid` is meant for the input itself.
-                        // The `form-control` class helps with Bootstrap's general layout.
-                        styles={{ 
-                            control: (base, state) => ({
-                                ...base,
-                                backgroundColor: '#16202c',
-                                color: '#eeeeeeb0',
-                                borderColor: !formData.coronerEmployee && state.isFocused ? '#dc3545' : // Example: red border on focus if invalid
-                                             !formData.coronerEmployee ? '#dc3545' : // Example: red border if invalid
-                                             state.isFocused ? '#86b7fe' : '#6c757d', // Default focus and normal border
-                                '&:hover': {
-                                    borderColor: !formData.coronerEmployee ? '#dc3545' : '#86b7fe'
-                                },
-                                boxShadow: !formData.coronerEmployee && state.isFocused ? '0 0 0 0.25rem rgba(220, 53, 69, 0.25)' : // Red focus shadow if invalid
-                                           state.isFocused ? '0 0 0 0.25rem rgba(13, 110, 253, 0.25)' : null, // Default focus shadow
-                            }),
-                            menu: (base) => ({
-                                ...base,
-                                backgroundColor: '#16202c',
-                                zIndex: 1000
-                            }),
-                            option: (base, state) => ({
-                                ...base,
-                                backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                color: '#eeeeeeb0'
-                            }),
-                            singleValue: (base) => ({
-                                ...base,
-                                color: '#eeeeeeb0'
-                            }),
-                            input: (base) => ({
-                                ...base,
-                                color: '#eeeeeeb0'
-                            }),
-                            placeholder: (base) => ({
-                                ...base,
-                                color: '#eeeeeeb0'
-                            }),
-                            group: (base) => ({
-                                ...base,
-                                paddingTop: 8,
-                                paddingBottom: 8
-                            }),
-                            groupHeading: (base) => ({
-                                ...base,
-                                color: '#6c757d',
-                                fontWeight: 600,
-                                textTransform: 'uppercase',
-                                fontSize: '0.75rem',
-                                marginBottom: 4
-                            })
-                        }}
-                    />
-                    <Form.Label></Form.Label> 
-
+            <Select
+                name="coronerEmployee"
+                value={coronerGroupedOptions
+                    .flatMap(group => group.options)
+                    .find(option => option.value === formData.coronerEmployee) || null}
+                onChange={(selectedOption) => handleSelectChange(selectedOption, 'coroner')}
+                options={coronerGroupedOptions}
+                isClearable
+                placeholder="Search or select coroner..."
+                className={`form-control ${!formData.coronerEmployee ? 'is-invalid' : ''}`}
+                styles={{ 
+                    control: (base, state) => ({
+                        ...base,
+                        backgroundColor: '#16202c',
+                        color: '#eeeeeeb0',
+                        borderColor: !formData.coronerEmployee && state.isFocused ? '#dc3545' :
+                                     !formData.coronerEmployee ? '#dc3545' :
+                                     state.isFocused ? '#86b7fe' : '#6c757d',
+                        '&:hover': {
+                            borderColor: !formData.coronerEmployee ? '#dc3545' : '#86b7fe'
+                        },
+                        boxShadow: !formData.coronerEmployee && state.isFocused ? '0 0 0 0.25rem rgba(220, 53, 69, 0.25)' :
+                                   state.isFocused ? '0 0 0 0.25rem rgba(13, 110, 253, 0.25)' : null,
+                    }),
+                    menu: (base) => ({ ...base, backgroundColor: '#16202c', zIndex: 1000 }),
+                    option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? 'Grey' : '#16202c', color: '#eeeeeeb0' }),
+                    singleValue: (base) => ({ ...base, color: '#eeeeeeb0' }),
+                    input: (base) => ({ ...base, color: '#eeeeeeb0' }),
+                    placeholder: (base) => ({ ...base, color: '#eeeeeeb0' }),
+                    group: (base) => ({ ...base, paddingTop: 8, paddingBottom: 8 }),
+                    groupHeading: (base) => ({ ...base, color: '#6c757d', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.75rem', marginBottom: 4 })
+                }}
+            />
+            <Form.Label></Form.Label> 
         </>
     );
 };
