@@ -630,73 +630,48 @@ function App() {
         staffToRemove: [],
         authorizedBy: '',
     });
+
 // Inside src/App.js
 
 const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
-    console.log('[Autopsy Album] Starting image upload and album creation process...');
+    console.log('[Autopsy Photos] Starting individual image upload process...');
     const files = event.target.files;
     if (!files || files.length === 0) {
-        console.log('[Autopsy Album] No files selected.');
-        showNotification('No files selected for autopsy album.', 'warning');
+        console.log('[Autopsy Photos] No files selected.');
+        showNotification('No files selected for autopsy photos.', 'warning');
         return;
     }
 
     let indefiniteNotificationId = null;
 
     setIsUploading(true);
-    indefiniteNotificationId = showNotification('Processing autopsy album images...', 'info-circle', 0);
-    console.log('[Autopsy Album] UI notification shown, isUploading set to true.');
+    indefiniteNotificationId = showNotification('Processing autopsy photos, please wait...', 'info-circle', 0);
+    console.log('[Autopsy Photos] UI notification shown, isUploading set to true.');
 
     const imgurAccessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
 
     if (!imgurAccessToken) {
-        console.error('[Autopsy Album] Imgur access token not configured.');
-        Sentry.captureMessage('Imgur access token not configured for album creation.', 'error');
+        console.error('[Autopsy Photos] Imgur access token not configured.');
+        Sentry.captureMessage('Imgur access token not configured for image upload.', 'error');
         showNotification('Configuration error: Imgur token missing.', 'exclamation-triangle');
         setIsUploading(false);
         if (indefiniteNotificationId) removeNotification(indefiniteNotificationId);
         return;
     }
 
-    const delayBetweenUploads = 1000; // 1 second delay, adjustable
+    const delayBetweenIndividualImageUploads = 1000; // 1 second delay
+    const uploadedImageLinks = [];
 
     try {
-        // Step 1: Create an empty album first
-        const albumCreateFormData = new FormData();
-        const albumTitle = `Autopsy Report Photos - ${new Date().toISOString().slice(0, 10)} ${new Date().toLocaleTimeString()}`;
-        albumCreateFormData.append('title', albumTitle);
-        albumCreateFormData.append('description', `Photographic documentation for an autopsy report generated on ${new Date().toLocaleDateString()}.`);
+        console.log(`[Autopsy Photos] Starting to upload ${files.length} image(s) individually.`);
         
-        console.log(`[Autopsy Album] Attempting to create empty album with title: "${albumTitle}"`);
-        const emptyAlbumResponse = await fetch('https://api.imgur.com/3/album', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${imgurAccessToken}` },
-            body: albumCreateFormData,
-        });
-        const emptyAlbumData = await emptyAlbumResponse.json();
-
-        if (!emptyAlbumData.success || !emptyAlbumData.data.id) {
-            console.error('[Autopsy Album] Imgur empty album creation API call failed or did not return ID.', emptyAlbumData);
-            throw new Error(`Imgur album creation failed: ${emptyAlbumData.data.error?.message || emptyAlbumData.data.error || JSON.stringify(emptyAlbumData.data) || 'Unknown error during album creation'}`);
-        }
-        const newAlbumId = emptyAlbumData.data.id;
-        const newAlbumUrl = `https://imgur.com/a/${newAlbumId}`;
-        console.log(`[Autopsy Album] Successfully created empty album. ID: ${newAlbumId}, URL: ${newAlbumUrl}`);
-
-        // Step 2: Upload images individually TO THE CREATED ALBUM
-        let imagesSuccessfullyAddedToAlbum = 0;
-        console.log(`[Autopsy Album] Starting to upload ${files.length} image(s) to album ID: ${newAlbumId}`);
-        
-        for (const file of files) { // Iterate through the FileList
-            console.log(`[Autopsy Album] Preparing to upload image: "${file.name}" to album ID: ${newAlbumId}`);
-
-            // Introduce a delay before each image upload attempt
-            console.log(`[Autopsy Album] Waiting ${delayBetweenUploads}ms before uploading "${file.name}"...`);
-            await new Promise(resolve => setTimeout(resolve, delayBetweenUploads));
+        for (const file of files) {
+            console.log(`[Autopsy Photos] Preparing to upload image: "${file.name}"`);
+            await new Promise(resolve => setTimeout(resolve, delayBetweenIndividualImageUploads));
             
             const imageFormData = new FormData();
             imageFormData.append('image', file);
-            imageFormData.append('album', newAlbumId); // Specify the album ID for each image upload
+            // No album ID needed for individual uploads if not grouping them
 
             const imageUploadResponse = await fetch('https://api.imgur.com/3/image', {
                 method: 'POST',
@@ -704,53 +679,47 @@ const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
                 body: imageFormData,
             });
             const imageData = await imageUploadResponse.json();
+            console.log(`[Autopsy Photos] Raw image upload response for "${file.name}":`, imageData);
 
-            if (imageData.success) {
-                imagesSuccessfullyAddedToAlbum++;
-                console.log(`[Autopsy Album] Successfully uploaded image: "${file.name}" (Imgur ID: ${imageData.data.id}) to album ID: ${newAlbumId}. Total added: ${imagesSuccessfullyAddedToAlbum}`);
+            if (imageData.success && imageData.data.link) {
+                uploadedImageLinks.push(imageData.data.link); // Collect direct image links
+                console.log(`[Autopsy Photos] Successfully uploaded image: "${file.name}" (Link: ${imageData.data.link}). Collected ${uploadedImageLinks.length} image links.`);
             } else {
-                console.warn(`[Autopsy Album] Failed to upload image "${file.name}" to album ${newAlbumId}. Imgur response:`, imageData);
+                console.warn(`[Autopsy Photos] Failed to upload image "${file.name}". Imgur response:`, imageData);
+                // Optionally, notify about individual failures
+                showNotification(`Failed to upload ${file.name}. Error: ${imageData.data?.error?.message || 'Unknown'}`, 'warning', 4000);
             }
         }
-        console.log(`[Autopsy Album] Finished attempting to upload all images. ${imagesSuccessfullyAddedToAlbum}/${files.length} successfully added to album.`);
+        console.log(`[Autopsy Photos] Finished individual image uploads. ${uploadedImageLinks.length}/${files.length} images successfully uploaded.`);
 
-        // Step 3: Update UI based on outcome
-        if (imagesSuccessfullyAddedToAlbum > 0) {
-            setFormData(prev => ({
-                ...prev,
-                autopsyAlbumUrl: newAlbumUrl,
-                autopsyPhotosUnavailable: false
-            }));
-            showNotification(`Successfully created Imgur album and added ${imagesSuccessfullyAddedToAlbum}/${files.length} image(s): ${newAlbumUrl}`, 'check-circle', 7000);
-            console.log(`[Autopsy Album] UI updated with new album URL: ${newAlbumUrl}. Photos available.`);
-        } else if (files.length > 0) { // Album created, but all image uploads failed
-            setFormData(prev => ({ 
-                ...prev,
-                autopsyAlbumUrl: newAlbumUrl, // Still set the album URL as it was created
-                autopsyPhotosUnavailable: false 
-            }));
-            showNotification(`Created Imgur album: ${newAlbumUrl}. However, failed to add images to it. Please check console for errors.`, 'warning', 10000);
-            console.warn(`[Autopsy Album] Album created (${newAlbumUrl}), but no images were successfully added.`);
-        } else { // Album created, but no files were selected to upload (this case should ideally be caught by the initial check)
-             setFormData(prev => ({
-                ...prev,
-                autopsyAlbumUrl: newAlbumUrl,
-                autopsyPhotosUnavailable: false
-            }));
-            showNotification(`Successfully created empty Imgur album: ${newAlbumUrl}`, 'check-circle', 5000);
-            console.log(`[Autopsy Album] Empty album created (${newAlbumUrl}) as no files were selected for upload (this state might be unusual).`);
+        if (uploadedImageLinks.length > 0) {
+            // Append new links to existing ones, if any
+            setFormData(prev => {
+                const existingLinks = prev.autopsyAlbumUrl ? prev.autopsyAlbumUrl.split(',').map(s => s.trim()).filter(s => s) : [];
+                const allLinks = [...existingLinks, ...uploadedImageLinks];
+                // Remove duplicates just in case, though unlikely with new uploads
+                const uniqueLinks = [...new Set(allLinks)]; 
+                return {
+                    ...prev,
+                    autopsyAlbumUrl: uniqueLinks.join(', '), // Store as comma-separated string
+                    autopsyPhotosUnavailable: false
+                };
+            });
+            showNotification(`Successfully uploaded ${uploadedImageLinks.length}/${files.length} image(s). Links added to the photography field.`, 'check-circle', 7000);
+        } else if (files.length > 0) {
+            showNotification(`No images were successfully uploaded.`, 'warning', 5000);
         }
 
     } catch (error) {
-        console.error('[Autopsy Album] An error occurred during album creation/upload:', error);
+        console.error('[Autopsy Photos] An error occurred during image upload:', error);
         Sentry.captureException(error, { extra: { context: 'handleAutopsyImageUploadAndCreateAlbum' } });
-        showNotification(`Error creating autopsy album: ${error.message}`, 'exclamation-triangle', 7000);
+        showNotification(`Error uploading images: ${error.message}`, 'exclamation-triangle', 7000);
     } finally {
         setIsUploading(false);
         if (indefiniteNotificationId) {
             removeNotification(indefiniteNotificationId);
         }
-        console.log('[Autopsy Album] Process finished. isUploading set to false, indefinite notification removed.');
+        console.log('[Autopsy Photos] Process finished. isUploading set to false, indefinite notification removed.');
     }
 };
 
@@ -1440,6 +1409,13 @@ const saveReport = async () => {
             return false; // Validation failed, do not proceed with save or allow copy
         }
         key = `${formData.decedentOOC} - ${formData.dateTime}`;
+    } else if (bbCodeVersion === 4) { // Autopsy Report
+        isSaveableForm = true;
+        if (!formData.decedentName || !formData.decedentOOC || !formData.autopsyDate) {
+            showNotification(`Please fill in Decedent IC Name, OOC Name, and Autopsy Date fields.`, 'exclamation-circle');
+            return false; // Validation failed
+        }
+        key = `[Autopsy] ${formData.decedentName} (${formData.decedentOOC}) - ${formData.autopsyDate}`;
     } else if (((bbCodeVersion >= 3 && bbCodeVersion <= 7) && bbCodeVersion !== 4)) { // Covers PatientAdvanced (3), SurgicalOps (5), PhysEval PHMC/PBC (6,7)
         isSaveableForm = true;
         let patientIdMissing = !formData.patientID;
