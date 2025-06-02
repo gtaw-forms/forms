@@ -4596,6 +4596,20 @@ const handleCopyAndNotify = async () => {
         </a>
     </div>
 )}
+{bbCodeVersion === 4 && (
+    <div className="image-container">
+        <a href="https://phmc.gta.world/posting.php?mode=post&f=266" target="_blank" rel="noopener noreferrer" className={deathReportClass} title="Easter Bunny goes bounce bounce">
+            <img
+                src={deathReportImage}
+                height={350}
+                width={350}
+                className="Center"
+                alt="Death Reports Link"
+            />
+        </a>
+    </div>
+)}
+
  {bbCodeVersion === 24 && (
     <div className="image-container">
         <a href="https://phmc.gta.world/posting.php?mode=post&f=109" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="Easter Bunny goes bounce bounce">
@@ -4622,7 +4636,7 @@ const handleCopyAndNotify = async () => {
         </a>
     </div>
 )}
-{bbCodeVersion !== 1 && bbCodeVersion !== 2  && bbCodeVersion !== 3 && bbCodeVersion !== 24 && bbCodeVersion !== 25 && bbCodeVersion !== 26 && (
+{bbCodeVersion !== 1 && bbCodeVersion !== 2  && bbCodeVersion !== 3 && bbCodeVersion !== 4 && bbCodeVersion !== 24 && bbCodeVersion !== 25 && bbCodeVersion !== 26 && (
     <div className="image-container">
         <a href="https://phmc.gta.world/viewforum.php?f=97" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="Easter Bunny goes bounce bounce">
             <img
