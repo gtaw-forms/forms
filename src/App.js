@@ -1012,6 +1012,7 @@ const handleCoronerRankSubmit = async ({ selectedEmployee, newRank }) => { // Ac
     const embed = {
         title: "Coroner Rank Update Request", // More specific title
         description: description,
+        content: `<@228306972204597248>`,
         color: 0x8B0000, // Dark Red (Coroner theme)
         fields: fields, // Use the dynamically created fields array
         timestamp: new Date().toISOString(),
@@ -1123,7 +1124,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 },
                 // Send the embed structure
                 body: JSON.stringify({
-                    content: `<@228306972204597248>`, // Optional: Ping a specific user/role
+                    content: `<@228306972204597248>`, 
                     embeds: [embedData] // Send the embed data as an array
                 }),
             });
