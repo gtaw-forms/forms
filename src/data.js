@@ -411,6 +411,7 @@ export const drugList = [
     { name: 'Jayden Woo', lastName: 'Woo', signature: '', category: 'Nursing' },
     { name: 'Harper Cassidy', lastName: 'Cassidy',  category: 'Attending Physician' },
     // ems
+    { name: 'Sabrina Santiago', lastName: 'Santiago', rank: 'Resident Physician', category: 'Resident Physician' },
     { name: 'Will Flanary', lastName: 'Flanary', signature: '', category: 'Emergency Medical Services' },
 ];
 export const coronerList = [
