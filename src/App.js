@@ -2087,7 +2087,12 @@ const clearForm = () => {
         patientFindings: '',
         paletoClinicDepartment: '',
         coronerRank: prevFormData.coronerRank, // Keep rank if tied to coronerEmployee
-        // Add any other fields that should be preserved here
+        autopsyPhotosUnavailable: false,
+        autopsyPhotos: '',
+        autopsyDate: '',
+        autopsyTime: '',
+        autopsyAlbumUrl:'',
+        
     }));
 
         const fieldsToRemove = [
