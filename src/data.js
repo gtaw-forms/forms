@@ -435,6 +435,7 @@ export const coronerList = [
     { name: 'Nikita Medina', badge: '150723', phNumber: '10032024', rank: 'Forensic Attendant', discord: 'nikitamonroe', category: 'Trainee Forensic-Attendant' },
     { name: 'Rosalie Brown', badge: '161606 ', phNumber: '03810764', rank: 'Medical Examiner', discord: 'kayp99', category: 'Medical Examiner' },
 { name: 'Isaac Bailey', badge: '185929', phNumber: '', rank: 'Coroner Investigator', discord: 'psychoticlmao', category: 'Coroner Investigator' },
+{ name: 'Matthias Morse', badge: '169662', phNumber: '5951335 ', rank: 'Medical Examiner', discord: 'zez6nho', category: 'Medical Examiner' },
 ];
 
 export const skyCare = [
