@@ -27,6 +27,7 @@ const EmergencyForm = ({
 }) => {
     return (
         <>
+        
         <p>If you require assistance with this form <a href="https://phmc.gta.world/viewforum.php?f=66" target="_blank" rel="noopener noreferrer">use this link! It should contain the information you require.  </a> If you still need help, use the PHMC Discord. </p>
                       <Form.Control
                           type="text"

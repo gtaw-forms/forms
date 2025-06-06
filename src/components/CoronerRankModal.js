@@ -1,9 +1,12 @@
 // filepath: src/components/CoronerRankModal.js
 import React, { useState, useEffect } from 'react';
 import { Button, Form } from 'react-bootstrap';
-import Select from 'react-select'; // <-- Import react-select
+import Select from 'react-select';
+import { database } from '../firebase'; // Corrected path
+import { ref, get, set } from 'firebase/database';
+import * as Sentry from "@sentry/react";
 
-// --- Styles ---
+// --- Styles (Keep existing styles) ---
 const modalOverlayStyle = {
     position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
     backgroundColor: 'rgba(0, 0, 0, 0.7)', display: 'flex',
@@ -12,7 +15,7 @@ const modalOverlayStyle = {
 const modalContentStyle = {
     backgroundColor: '#0d1117', color: '#c9d1d9', padding: '20px',
     borderRadius: '5px', width: '90%',
-    maxWidth: '750px', // <-- Increased from 450px
+    maxWidth: '750px', 
     maxHeight: '1500px', position: 'relative',
     border: '1px solid #30363d',
 };
@@ -36,48 +39,46 @@ const formControlStyle = {
     backgroundColor: '#0d1117', color: '#c9d1d9',
     borderColor: '#30363d', width: '100%',
 };
-// Removed formSelectStyle as it's not used with react-select directly here
 const formLabelStyle = {
     color: '#c9d1d9',
-    marginBottom: '8px', // Keep or adjust bottom margin as needed
-    marginTop: '10px',   // <-- Added top margin for spacing above
+    marginBottom: '8px', 
+    marginTop: '10px',   
     display: 'block',
 };
-// --- Styles for react-select ---
 const reactSelectStyles = {
     control: (base) => ({
         ...base,
-        backgroundColor: '#0d1117', // Dark background
-        color: '#c9d1d9',           // Light text
-        borderColor: '#30363d',     // Subtle border
+        backgroundColor: '#0d1117', 
+        color: '#c9d1d9',           
+        borderColor: '#30363d',     
         '&:hover': {
-            borderColor: '#c9d1d9' // Lighter border on hover
+            borderColor: '#c9d1d9' 
         }
     }),
     menu: (base) => ({
         ...base,
-        backgroundColor: '#0d1117', // Dark menu background
-        zIndex: 1051 // Ensure menu is above modal content
+        backgroundColor: '#0d1117', 
+        zIndex: 1051 
     }),
     option: (base, state) => ({
         ...base,
-        backgroundColor: state.isFocused ? '#1f2937' : '#0d1117', // Darker/lighter on focus
+        backgroundColor: state.isFocused ? '#1f2937' : '#0d1117', 
         color: '#c9d1d9',
         '&:hover': {
-            backgroundColor: '#1f2937' // Background on hover
+            backgroundColor: '#1f2937' 
         }
     }),
     singleValue: (base) => ({
         ...base,
-        color: '#c9d1d9' // Light text for selected value
+        color: '#c9d1d9' 
     }),
     input: (base) => ({
         ...base,
-        color: '#c9d1d9' // Light text for input/search
+        color: '#c9d1d9' 
     }),
     placeholder: (base) => ({
         ...base,
-        color: '#6c757d' // Dimmer placeholder text
+        color: '#6c757d' 
     }),
 };
 // --- End Styles ---
@@ -85,37 +86,95 @@ const reactSelectStyles = {
 const CoronerRankModal = ({
     show,
     onClose,
-    onSubmit,
-    coronerList = []
+    onSubmit, // This will be used for the webhook notification from App.js
+    coronerList = [],
+    setCoronerListData, // New prop to update App.js state
+    showNotification   // New prop for showing notifications
 }) => {
     const [selectedEmployeeName, setSelectedEmployeeName] = useState('');
     const [newRank, setNewRank] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
         if (show) {
-            setSelectedEmployeeName(coronerList.length > 0 ? coronerList[0].name : '');
+            // Reset state when modal becomes visible
+            if (coronerList.length > 0 && !selectedEmployeeName) {
+                 // Optionally pre-select if desired, or leave empty
+                // setSelectedEmployeeName(coronerList[0].name);
+            } else if (coronerList.length === 0) {
+                setSelectedEmployeeName('');
+            }
             setNewRank('');
+            setIsSubmitting(false);
         }
-    }, [show, coronerList]);
+    }, [show, coronerList, selectedEmployeeName]);
 
-    const handleSubmit = () => {
-        // Prepare the data to send back
-        const submissionData = {
-            selectedEmployee: selectedEmployeeName, // Always send the selected employee
-            newRank: newRank.trim() // Send the new rank (will be empty if not entered)
-        };
+    const handleSubmit = async () => {
+        const trimmedNewRank = newRank.trim();
 
-        // Check if either an employee was selected OR a new rank was entered
-        if (submissionData.selectedEmployee || submissionData.newRank) {
-            onSubmit(submissionData); // Pass the object back
-        } else {
-            console.warn("No employee selected or new rank entered.");
-            // Optionally show a notification here if needed
+        if (!selectedEmployeeName) {
+            showNotification('Please select a coroner employee.', 'warning');
+            return;
+        }
+
+        // If newRank is empty, just trigger the onSubmit for potential webhook (e.g., "employee selected")
+        // and close. No DB update.
+        if (!trimmedNewRank) {
+            if (onSubmit) {
+                onSubmit({ selectedEmployee: selectedEmployeeName, newRank: '' });
+            }
+            onClose();
+            return;
+        }
+
+        setIsSubmitting(true);
+        const coronerListRef = ref(database, 'staff/coroner');
+
+        try {
+            const snapshot = await get(coronerListRef);
+            if (snapshot.exists()) {
+                let currentCoroners = snapshot.val();
+                let coronerFound = false;
+
+                const updatedCoroners = currentCoroners.map(coroner => {
+                    if (coroner.name === selectedEmployeeName) {
+                        coronerFound = true;
+                        return { ...coroner, rank: trimmedNewRank, category: trimmedNewRank }; // Update rank and category
+                    }
+                    return coroner;
+                });
+
+                if (!coronerFound) {
+                    showNotification(`Coroner "${selectedEmployeeName}" not found in the database.`, 'error');
+                    Sentry.captureMessage(`CoronerRankModal: Attempted to update non-existent coroner "${selectedEmployeeName}"`);
+                    setIsSubmitting(false);
+                    return;
+                }
+
+                await set(coronerListRef, updatedCoroners);
+                setCoronerListData(updatedCoroners); // Update state in App.js
+                showNotification(`Rank for ${selectedEmployeeName} updated to "${trimmedNewRank}" in the database.`, 'check-circle');
+
+                if (onSubmit) { // Trigger webhook via App.js's handler
+                    onSubmit({ selectedEmployee: selectedEmployeeName, newRank: trimmedNewRank });
+                }
+                onClose();
+
+            } else {
+                showNotification('No coroner data found in the database.', 'error');
+                Sentry.captureMessage("CoronerRankModal: staff/coroner path does not exist in Firebase.");
+            }
+        } catch (error) {
+            console.error("Error updating coroner rank in Firebase:", error);
+            Sentry.captureException(error, { extra: { context: 'CoronerRankModal Firebase Update', selectedEmployeeName, newRank } });
+            showNotification('Failed to update coroner rank in database. Please try again.', 'error');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
     const handleSelectChange = (selectedOption) => {
-        const employeeName = selectedOption ? selectedOption.value : ''; // Extract name
+        const employeeName = selectedOption ? selectedOption.value : '';
         setSelectedEmployeeName(employeeName);
     };
 
@@ -153,7 +212,7 @@ const CoronerRankModal = ({
                                 value={employeeOptions.find(option => option.value === selectedEmployeeName)}
                                 onChange={handleSelectChange}
                                 styles={reactSelectStyles}
-                                isDisabled={employeeOptions.length === 0}
+                                isDisabled={employeeOptions.length === 0 || isSubmitting}
                                 isClearable
                                 placeholder="Search or select coroner employee..."
                                 classNamePrefix="react-select"
@@ -166,22 +225,31 @@ const CoronerRankModal = ({
                         <Form.Label style={formLabelStyle}>Enter Updated Rank for Selected Coroner</Form.Label>
                         <Form.Control
                             type="text"
-                            placeholder="Enter updated rank name..." // Updated placeholder
+                            placeholder="Enter updated rank name..."
                             value={newRank}
                             onChange={handleNewRankChange}
                             style={formControlStyle}
-                            disabled={!selectedEmployeeName} // Disable if no employee is selected
+                            disabled={!selectedEmployeeName || isSubmitting}
                         />
                         </Form.Group>
                     </Form>
                 </div>
 
                 <div style={modalFooterStyle}>
-                    <Button variant="secondary" onClick={onClose}>
+                    <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
                         Cancel
                     </Button>
-                    <Button variant="primary" onClick={handleSubmit}>
-                        <i className="fas fa-paper-plane"></i> Submit Info
+                    <Button variant="primary" onClick={handleSubmit} disabled={isSubmitting || !selectedEmployeeName}>
+                        {isSubmitting ? (
+                            <>
+                                <i className="fas fa-spinner fa-spin" style={{ marginRight: '5px' }}></i>
+                                Submitting...
+                            </>
+                        ) : (
+                            <>
+                                <i className="fas fa-paper-plane"></i> Submit Info
+                            </>
+                        )}
                     </Button>
                 </div>
             </div>

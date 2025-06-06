@@ -1,4 +1,3 @@
-// src/field-data/MedicalRelease.js
 import React from 'react';
 import { Form, Button, InputGroup } from 'react-bootstrap';
 import Select from 'react-select';
@@ -7,11 +6,11 @@ const MedicalRelease = ({
     formData,
     handleChange,
     setFormData,
-    patientTitle,
-    patientPhone,
-    PurposeMedicalInformationRelease,
-    PurposeMedicalInformationReleaseFormat,
-    MedicalRecordsRelease,
+    patientTitleOptions, // Updated: Was patientTitle
+    patientPhoneOptions, // Updated: Was patientPhone
+    purposeOptions,
+    formatOptions, // Updated: Was PurposeMedicalInformationReleaseFormat
+    medicalRecordOptions, // Updated: Was MedicalRecordsRelease
     phmcGroupedOptions,
     handleImageUpload,
     isUploading,
@@ -41,7 +40,8 @@ const MedicalRelease = ({
                     className={`form-control ${!formData.patientTitle ? 'is-invalid' : ''}`}
                 >
                     <option value="" disabled>Title</option>
-                    {patientTitle.map((option) => (
+                    {/* Updated to use patientTitleOptions prop */}
+                    {(patientTitleOptions || []).map((option) => (
                         <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                 </Form.Select>
@@ -151,8 +151,9 @@ const MedicalRelease = ({
             className={`form-control ${!formData.patientPhoneType ? 'is-invalid' : ''}`}
         >
             <option value="" disabled>Phone Type</option>
-            {patientPhone.map((option) => (
-                <option key={option.value} value={option.value}>{option.value}</option>
+            {/* Updated to use patientPhoneOptions prop */}
+            {(patientPhoneOptions || []).map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option> 
             ))}
         </Form.Select>
 
@@ -179,27 +180,27 @@ const MedicalRelease = ({
             </div>
             <Form.Label>Purpose of Medical Information Release</Form.Label>
             <Form.Select
-            name="CarePurposeMedicalInformationRelease"
-            value={formData.CarePurposeMedicalInformationRelease}
-            onChange={(e) => {
-                const selectedType = e.target.value;
-                setFormData(prev => ({
-                    ...prev,
-                    CarePurposeMedicalInformationRelease: selectedType,
-                    PurposeFurtherCare: selectedType === 'Further Treatment' ? prev.PurposeFurtherCare : '',
-                    PurposePersonal: selectedType === 'Personal' ? prev.PurposePersonal : '',
-                    PurposeAttorney: selectedType === 'Attorney' ? prev.PurposeAttorney : '',
-                    PurposeOther: selectedType === 'Other' ? prev.PurposeOther : '',
-                }));
-            }}
-            required
-            className={`form-control ${!formData.CarePurposeMedicalInformationRelease ? 'is-invalid' : ''}`}
-        >
-            <option value="" disabled>Release Information</option>
-            {PurposeMedicalInformationRelease.map((option) => (
-                <option key={option.value} value={option.value}>{option.value}</option>
-            ))}
-        </Form.Select>
+                name="CarePurposeMedicalInformationRelease"
+                value={formData.CarePurposeMedicalInformationRelease}
+                onChange={(e) => {
+                    const selectedType = e.target.value;
+                    setFormData(prev => ({
+                        ...prev,
+                        CarePurposeMedicalInformationRelease: selectedType,
+                        PurposeFurtherCare: selectedType === 'Further Treatment' ? prev.PurposeFurtherCare : '',
+                        PurposePersonal: selectedType === 'Personal' ? prev.PurposePersonal : '',
+                        PurposeAttorney: selectedType === 'Attorney' ? prev.PurposeAttorney : '',
+                        PurposeOther: selectedType === 'Other' ? prev.PurposeOther : '',
+                    }));
+                }}
+                required
+                className={`form-control ${!formData.CarePurposeMedicalInformationRelease ? 'is-invalid' : ''}`}
+            >
+                <option value="" disabled>Release Information</option>
+                {(purposeOptions || []).map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+            </Form.Select>
         {formData.CarePurposeMedicalInformationRelease === 'Other' && (
             <Form.Control
                 type="text"
@@ -232,7 +233,8 @@ const MedicalRelease = ({
             className={`form-control ${!formData.PurposeMedicalInformationReleaseFormat ? 'is-invalid' : ''}`}
         >
             <option value="" disabled>Release Information</option>
-            {PurposeMedicalInformationReleaseFormat.map((option) => (
+            {/* Updated to use formatOptions prop */}
+            {(formatOptions || []).map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
             ))}
         </Form.Select>
@@ -275,25 +277,26 @@ const MedicalRelease = ({
             <Select
                     isMulti
                     name="MedicalRecordsRelease"
-                    value={formData.MedicalRecordsRelease ? MedicalRecordsRelease.filter(option =>
-                        formData.MedicalRecordsRelease.includes(option.value)
-                    ) : []}
+                    // Updated to use medicalRecordOptions prop for options
+                    // The value logic remains the same, checking against formData
+                    value={(medicalRecordOptions || []).filter(option =>
+                        formData.MedicalRecordsRelease?.includes(option.value)
+                    )}
                         onChange={(selectedOptions) => {
                         setFormData(prev => ({
                             ...prev,
                             MedicalRecordsRelease: selectedOptions ? selectedOptions.map(option => option.value) : []
                         }));
                     }}
-                    options={MedicalRecordsRelease}
-                    className={`form-control ${!formData.MedicalRecordsRelease || formData.MedicalRecordsRelease.length === 0 ? 'is-invalid' : ''}`} // Added validation
+                    options={medicalRecordOptions || []} // Updated to use medicalRecordOptions prop
+                    className={`form-control ${!formData.MedicalRecordsRelease || formData.MedicalRecordsRelease.length === 0 ? 'is-invalid' : ''}`}
                     placeholder="Select Release Options (Multiple Choice)"
                     styles={{
-                        control: (base, state) => ({ // Added state parameter
+                        control: (base, state) => ({ 
                             ...base,
                             minHeight: '38px',
                             backgroundColor: '#16202c',
                             color: '#eeeeeeb0',
-                            // Apply red border if invalid (nothing selected)
                             borderColor: !formData.MedicalRecordsRelease || formData.MedicalRecordsRelease.length === 0 ? '#dc3545' : '#6c757d',
                             '&:hover': {
                                 borderColor: !formData.MedicalRecordsRelease || formData.MedicalRecordsRelease.length === 0 ? '#dc3545' : '#eeeeeeb0'
@@ -347,19 +350,17 @@ const MedicalRelease = ({
                     This service will cost approximately ${approximateCost.toLocaleString()}
                 </Form.Label>
             )}
-            {approximateCost > 0 && ( // Only show payment option if there's a cost
+            {approximateCost > 0 && ( 
                 <Form.Group className="mb-3" style={{ marginTop: '15px' }}>
                     <Form.Check
                         type="checkbox"
                         id="payNowCheckbox"
                         label=" Pay Now?"
-                        checked={formData.payNow === true || formData.payNow === 'true'} // Handle boolean or string 'true'
+                        checked={formData.payNow === true || formData.payNow === 'true'} 
                         onChange={(e) => {
                             setFormData(prev => ({
                                 ...prev,
-                                payNow: e.target.checked, // Store as boolean
-                                // Optionally clear paymentProofPhotos if unchecked
-                                // paymentProofPhotos: e.target.checked ? prev.paymentProofPhotos : ''
+                                payNow: e.target.checked, 
                             }));
                         }}
                     />
@@ -368,23 +369,21 @@ const MedicalRelease = ({
                     </span>
                 </Form.Group>
             )}
-            {/* --- End Pay Now Checkbox --- */}
 
-            {/* --- NEW: Conditional Payment Proof Upload --- */}
             {(formData.payNow === true || formData.payNow === 'true') && approximateCost > 0 && (
                 <Form.Group className="mb-3 upload-container">
                     <Form.Label>Proof of Payment Image Upload</Form.Label>
                     <InputGroup>
                         <Form.Control
-                            as="textarea" // Use textarea to potentially show multiple URLs if needed
+                            as="textarea" 
                             rows={2}
                             name="paymentProofPhotos"
                             value={formData.paymentProofPhotos || ''}
-                            onChange={handleChange} // Allow manual URL entry/editing
+                            onChange={handleChange} 
                             placeholder="Paste image URL or Upload"
-                            required // Make required if payNow is checked
+                            required 
                             className={`form-control ${!formData.paymentProofPhotos ? 'is-invalid' : ''}`}
-                            onPaste={(e) => { // Keep paste logic if desired
+                            onPaste={(e) => { 
                                 const clipboardData = e.clipboardData || window.clipboardData;
                                 const pastedData = clipboardData.getData('text');
                                 const items = clipboardData.items;
@@ -396,7 +395,6 @@ const MedicalRelease = ({
                                     if (items[i].type.indexOf('image') !== -1) {
                                         hasImageItem = true;
                                         const file = items[i].getAsFile();
-                                        // Use the correct field name here
                                         handleImageUpload({ target: { files: [file] } }, 'paymentProofPhotos');
                                         e.preventDefault();
                                         break;
@@ -410,7 +408,6 @@ const MedicalRelease = ({
                                         (cursorPos > 0 ? separator : '') +
                                         pastedData +
                                         currentValue.slice(cursorPos);
-                                    // Use the correct field name here
                                     setFormData(prev => ({ ...prev, paymentProofPhotos: newValue }));
                                     e.preventDefault();
                                 }
@@ -423,8 +420,7 @@ const MedicalRelease = ({
                                 const input = document.createElement('input');
                                 input.type = 'file';
                                 input.accept = 'image/*';
-                                input.multiple = true; // Allow multiple if needed
-                                // Use the correct field name here
+                                input.multiple = true; 
                                 input.onchange = (e) => handleImageUpload(e, 'paymentProofPhotos');
                                 input.click();
                             }}
@@ -436,7 +432,6 @@ const MedicalRelease = ({
                     <span className="helper-text">
                         Upload proof of payment. Supports clipboard pasting (Ctrl+V). Hosted by Imgur.
                     </span>
-                    {/* Optional: Display uploaded image preview */}
                     {formData.paymentProofPhotos && formData.paymentProofPhotos.split(',').map((url, index) => (
                          url.trim() && <img key={index} src={url.trim()} alt={`Payment Proof ${index + 1}`} style={{ maxWidth: '100px', maxHeight: '100px', marginTop: '5px', marginRight: '5px', border: '1px solid #30363d' }} />
                     ))}
@@ -452,11 +447,11 @@ const MedicalRelease = ({
                 onChange={handleChange}
                 placeholder="Please specify other records to be released"
                 required
-                className={`form-control ${!formData.MedicalRecordsReleaseOther ? 'is-invalid' : ''}`} // Added validation
+                className={`form-control ${!formData.MedicalRecordsReleaseOther ? 'is-invalid' : ''}`} 
             />
         )}
             <Form.Label></Form.Label>
-            <Form.Label>Practitioner Seen By:</Form.Label> {/* Added label for clarity */}
+            <Form.Label>Practitioner Seen By:</Form.Label> 
     <Select
             name="phmcEmployee"
             value={phmcGroupedOptions
@@ -484,8 +479,8 @@ const MedicalRelease = ({
             options={phmcGroupedOptions}
             isClearable
             placeholder="Which Doctor Treated You? (You can type to search!)"
-            className="form-control" // Removed validation class, add if needed
-            styles={{ // Copied styles from the multi-select for consistency
+            className="form-control" 
+            styles={{ 
                 control: (base) => ({
                     ...base,
                     backgroundColor: '#16202c',
@@ -540,8 +535,8 @@ type="date"
 name="SubmitDate"
 value={formData.SubmitDate || new Date().toISOString().split('T')[0]}
 onChange={handleChange}
-readOnly // Keep readOnly if it should default to today
-className="form-control" // Added class
+readOnly 
+className="form-control" 
 />
 
 </>

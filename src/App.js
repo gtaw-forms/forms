@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback} from 'react'; 
 import Select from 'react-select';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import Notification from './components/Notification';
@@ -66,402 +66,441 @@ import PHMCLogo from './assets/phmc.png'
 import corpse from './assets/corpse.png'
 import phmcpaletobay from './assets/phmcpaletobaylogo.png'
 import './assets/fonts/Poppins-Medium.ttf';
-import {
-    PurposeMedicalInformationRelease,
-    PurposeMedicalInformationReleaseFormat,
-    patientBloodType,
-    MedicalRecordsRelease,
-    followup,
-    departmentLarge,
-    assignedDepartment,
-    painLevel,
-    temperature,
-    patientTitle,
-    patientPhone,
-    heartRate,
-    breathing,
-    bloodPressure,
-    findings,
-    lungs,
-    pupils,
-    wounds,
-    ecg,
-    sono,
-    lab,
-    admission,
-    phmcList,
-    coronerList,
-    BodyMassIndex,
-    patientConsent,
-    procedureGood,
-    complications,
-    patientJob,
-    patientJobRisks,
-    patientAllergiesRisk,
-    patientOther,
-    patientMedicineRegular,
-    predisposition,
-    maritalStatus,
-    numberChildren,
-    financialStatus,
-    dnr,
-    dnrOrder,
-    attorney,
-    departmentFullName,
-    Appearance,
-    Behavior,
-    bloodOxy,
-    Speech,
-    Mood,
-    Affect,
-    Risk,
-    ThoughtProcess,
-    ThoughtContent,
-    Insight,
-    Cognition,
-    phmcRank,
-    agencyData,
-    drugList
-} from './data';
 
 // css fun
-
 import './App.css';
 import './buttons.css'
 
 import 'react-bootstrap-typeahead/css/Typeahead.css';
 import generateAutopsy from './bbcode-generators/generateAutopsy';
+
+// database
+import { database } from './firebase'; // Your Firebase config
+import { ref, get, set } from 'firebase/database'; // Added set
+
 // Automated Imports from field-data
 function App() {
     const [isMobile, setIsMobile] = useState(false);
-    const [formData, setFormData] = useState({
-        coronerRank: 'Forensic Attendant',
-        placeOfDeath: '',
-        evidenceLockerID: '',
-        evidenceLocker: '',
-        department: '',
-        dateTime: '',
-        serialNumber: '',
-        decedentName: '',
-        phmcEmployee: '',
-        pronouncedTimeOfDeath: '',
-        synopsis: '',
-        probableCauseOfDeath: '',
-        mannerOfDeath: '',
-        typeOfDeath: '',
-        coronerEmployee: '',
-        MedicalRecordsRelease: [],
-        payNow: false,
-        paymentProofPhotos: '',
-        PurposeMedicalInformationReleaseFormat: '', 
-        PurposeMedicalInformationRelease: '',
-        lab: [''], 
-        extraStaff: [],   
-        decedentOOC: '',
-        scenePhotos: '',
-        patientMedInfoFormatOther: '',
-        patientZIP: '',
-        lastName: '',
-        bloodOxy: '',
-        coronerBadge: '',
-        // email stuff
-        additionalImages: '',
-        requestingOfficer: '',
-        coronerDiscord: '',
-        coronerPHNumber: '50056',
-        deathReport: '',
-        additionalReports: [],
-        showAdditionalReports: false,
-        internalReport: '',
-        internalAdditionalReports: '',
-        policeNotification: '',
-        treatmentLocation: '',
-        moreDeathReports: [''],
-        // surgical operations fields
-        extraStaff: [],
-        patientName: '',
-        patientAllergies: '',
-        surgeryComplications: '',
-        surgeryProcedures: '',
-        drugType: '',
-        
-        postDrugtype: '',
-        surgicalSummery: '',
-        surgeryTime: '',
-        // physical evaluation fields
-        medicalComplications: '',
-        treatmentProcedures: '',
-        medType: '',
-        postTreatment: '',
-        medicalSummary: '',
-        evalTime: '',
-        patientPH: '',
-        patientBPM: '',
-        patientBMI: '',
-        patientTemperature: '',
-        patientCareer: '',
-        patientHeight: '',
-        patientWeight: '',
-        patientpulse: '',
-        patientOxi: '',
-        patientImpairments: '',
-        patientPastDiseases: '',
-        patientAssessment: '',
-        appointmentDate: '',
-        // dental fields
-        PatientMedicalRecord: '',
-        PatientName: '',
-        patientChewing: '',
-        patientPriority: '',
-        patientMedicine: '',
-        patientNewMedicine: '',
-        patientTreatment: '',
-        patientDiagnosis: '',
-        patientPrescription: '',
-        patientSummary: '',
-        date: '',
-        // Medical Consultation - Internal Medicine 
-        patientRace: '',
-        patientDiscord: '',
-        race: '',
-        patientMedicalRecord: '',
-        patientGender: '',
-        patientDateofBirth: '',
-        patientDateOfBirth: '',
-        patientMedicalHistory: '',
-        patientEmail: '',
-        patientAddress: '',
-        patientEmergencyContact: '',
-        patientEmergencyContactNumber: '',
-        patientEmergencyContactRelation: '',
-        patientBloodType: '',
-        patientChronicDiseases: '',
-        patientBP: '',
-        SubmitDate: new Date().toISOString().split('T')[0], 
-        // New fields for Medical Consultation Internal Medicine 2
-        patientResperation: '',
-        patientConsultation: '',
-        patientPerscription: '',
-        patientSummaryConsultation: '',
-        patientCondition: '',
-        patientNotes: '',
-        //gyne stuff
-        patientBaggageofParents: '',
-        oneFetus: false,
-        twoFetuses: false,
-        threeFetuses: false,
-        fourFetuses: false,
-        // New fields for Obstetrics & Gynecology
-        patientContractions: '', // Added
-        patientBleeding: '', // Added
-        patientDiscomfort: '', // Added
-        patientFatter: '', // Added
-        patientBabyGender: '', // Added
-        patientKnowBabyGender: '', // Added
-        patientUltraSummary: '', // Added
-        patientWellWomanExam: '', // Added
-        patientLastWellWomanExam: '', // Added
-        patientPapResults: '', // Added
-        patientSTI: '', // Added
-        patientSTIResults: '', // Added
-        patientBloodAnalysis: '', // Added
-        patientBloodAnalysisResults: '', // Added
-        patientUrine: '', // Added
-        patientUrineResults: '', // Added
-        patientPap: '', // Added
-        patientDateofPregnancy: '', // Added
-        patientFetalMeasurements: '', // Added
-        patientCurrentMedicine: '', // Missing field for current medications
-        patientAdditionalPregnancy: '', // Missing field for previous pregnancies status
-        patientJobTasks: '', // Missing field for job duties
-        patientLivingHabits: '', // Missing field for living habits
-        patientPreHealth: '', // Missing field for pre-pregnancy health
-        patientPregProblems: '', // Missing field for pregnancy problems
-        patientPartnerName: '', // Missing field for partner name
-        patientPartnerPH: '', // Missing field for partner phone
-        patientPartnerDiscord: '', // Missing field for partner discord
-        // mental health stuff
-        caseOpen: false,
-        caseClosed: false,
-        violenceToSelf: false,
-        violenceToOthers: false,
-        LowRisk: false,
-        noRisk: true,
-        HighRisk: false,
-        MediumRisk: false,
-        patientFileCreation: '',
-        patientVisitReason: '',
-        patientSurgicalHistory: '',
-        patientMedHistory: '',
-        patientPsychDiagnoses: '',
-        patientEvalFile: '',
-        patientMedicalFile: '',
-        patientSubstance: '',
-        patientTrauma: ``,
-        showRequestingOfficerInput: false,        
-        patientEdu: ``,
-        patientDev: ``,
-        patientLegal: ``,
-        patientSpiritual: ``,
-        // Yes / No Values - im really lazy to code something better here
-        patientMale: false,
-        patientFemale: false,
-        patientFormYes: false,
-        patientFormNo: false,
-        patientFormYes2: false,
-        patientFormNo2: false,
-        patientConsent: '',
-        patientConsentOption: '',
-        patientConsentNo: '',
-        patientConsentYes: '',
-        patientComplicationOptions: '',
-        complications: '',
-        //surgical ops v2 overhaul
-        patientComplaint: '',
-        triageNoPain: false,
-        triageNormalPain: false,
-        triageMildPain: false,
-        triageSeverePain: false,
-        triageCriticalPain: false,
-        // surgical ops v2 temperature
-        patientTempNormal: false,
-        patientTempHigh: false,
-        patientTempLow: false,
-        patientHeartRateNormal: false,
-        patientHeartRateBradycardia: false,
-        patientHeartRateTachycardia: false,
-        patientBreathingNormal: false,
-        patientBreathingSlow: false,
-        patientBreathingFast: false,
-        patientBreathingObstructed: false,
-        patientBloodPressureNormal: false,
-        patientBloodPressureHypotension: false,
-        patientBloodPressureHypertension: false,
-        assignedDepartment: '',
-        lab: [''],
-        departmentLarge: '',
-        patientChiefComplaint: '',
-        patientID: '',
-        rank: '',
-        patientProcedure: '',
-        patientPhoneType: '',
-        patientPhoneMobile: '',
-        patientPhoneHome: '',
-        patientPhoneWork: '',
-        patientPhoneOther: '',
-        patientGenderMale: '',
-        patientGenderFemale: '',
-        MedicalRecordsRelease: [],
-        PurposeMedicalInformationReleaseFormat: [],
-        PurposeMedicalInformationRelease: '',
-        PurposeMedicalInformationReleaseFormat: '',
-        PurposeAttorney: '',
-        PurposePersonal: '',
-        patientAdvise: '',
-        
-        drugList: '',
-        PurposeFurtherCare  : '',
-        PurposeOther: '',
-        CarePurposeMedicalInformationRelease: '',
-        patientMedInfoReleaseOther: '',
-        MedicalRecordsReleaseOther: '',
-        StupidDateFrom: '',
-        StupidDateTo: '',
-        patientFirstName: '',
-        patientMiddleName: '',
-        patientLastName: '',
-        patientTitle: '',
-        patientComplicationsYes: '',
-        patientComplicationsNo: '',
-        procedureGoodOptions: '',
-        procedureGoodYes: '',
-        procedureGoodNo: '',
-        BodyMassIndex: '',
-        phmcRank: '',
-        temperature: '',
-        heartRate: '',
-        bloodPressure: '',
-        careerRisks: '',
-        patientJob: '',
-        patientcareerNo: '',
-        patientAllergiesRisk: '',
-        patientMedicineRegular: '',
-        patientOther: '',
-        predisposition: '',
-        breathing: '',
-        patientTherapy: '',
-        patientFamily: '',
-        patientGentic: '',
-        patientFamSocial: '',
-        patientMental: '', 
-        maritalStatus: '', 
-        numberChildren: '', 
-        financialStatus: '', 
-        dnr: '', 
-        dnrOrder: '',
-        attorney: '', 
-        patientSupport: '', 
-        patientHarm: '',
-        patientFam: '',
-        patientGenetic: '',
-        patientReligion: '',
-        patientSmoker: '', 
-        patientAlcohol: '',
-        patientDrugs: '',
-        patientExercise: '',
-        patientDiet: '',
-        patientSleep: '',
-        patientSexLife: '', 
-        patientJobRisks: '',
-        patientHazards: '', 
-        attorneyName: '',
-        attorneyPH: '',
-        attorneyRelation: '',
-        dnrOther: '',
-        patientEmergencyContactDiscord: '',
-        patientSecondaryDiagnosis: '', 
-        // new values
-        patientTriggers: '',
-        patientStress: '',
-        patientSymptoms: '',
-        patientDrugsUsage: '',
-        patientTreatmentMedicine: '',
-        patientSafety: '',
-        patientFollowUp: '',
-        patientTreatmentPlan: '',
-        patientRelationship: '',
-        patientRiskAssessment: '',
-        patientTherapyMedicine: '',
-        Speech: '',
-        Behavior: '',
-        Appearance: '',
-        Mood: '',
-        Affect: '',
-        Risk: '',
-        ThoughtProcess: '',
-        ThoughtContent: '',
-        Insight: '',
-        Cognition: '',
-        admission: '',
-        followup: '',
-        sono: '',
-        pupils: '',
-        lungs: '',
-        painLevel: '',
-        wounds: '',
-        findings: '',
-        patientFindings:'',
-        paletoClinicDepartment: '',
-        ecg: '',
-        autopsyDeathCauses: [''],
-        autopsyAnatomicSummaryItems: [''], 
-            autopsyAlbumUrl: '', // Add this
-    autopsyPhotosUnavailable: false, // Add this
+
+const initialFormData = {
+    coronerRank: 'Forensic Attendant',
+    placeOfDeath: '',
+    evidenceLockerID: '',
+    evidenceLocker: '',
+    department: '',
+    dateTime: '',
+    serialNumber: '',
+    decedentName: '',
+    phmcEmployee: '', // This will be preserved in clearForm
+    pronouncedTimeOfDeath: '',
+    synopsis: '',
+    probableCauseOfDeath: '',
+    mannerOfDeath: '',
+    typeOfDeath: '',
+    coronerEmployee: '', // This will be preserved in clearForm
+    MedicalRecordsRelease: [],
+    payNow: false,
+    paymentProofPhotos: '',
+    PurposeMedicalInformationReleaseFormat: '',
+    PurposeMedicalInformationRelease: '',
+    lab: [''],
+    extraStaff: [],
+    decedentOOC: '',
+    scenePhotos: '',
+    patientMedInfoFormatOther: '',
+    patientZIP: '',
+    lastName: '', // This will be preserved in clearForm (related to phmcEmployee)
+    bloodOxy: '',
+    coronerBadge: '', // This will be preserved in clearForm
+    additionalImages: '',
+    requestingOfficer: '',
+    coronerDiscord: '', // This will be preserved in clearForm
+    coronerPHNumber: '50056',
+    deathReport: '',
+    additionalReports: [],
+    showAdditionalReports: false,
+    internalReport: '',
+    internalAdditionalReports: '',
+    policeNotification: '',
+    treatmentLocation: '',
+    moreDeathReports: [''],
+    // patientName: '', // This is duplicated below, ensure one source of truth
+    patientAllergies: '',
+    surgeryComplications: '',
+    surgeryProcedures: '',
+    drugType: '',
+    postDrugtype: '',
+    surgicalSummery: '',
+    surgeryTime: '',
+    medicalComplications: '',
+    treatmentProcedures: '',
+    medType: '',
+    postTreatment: '',
+    medicalSummary: '',
+    evalTime: '',
+    patientPH: '',
+    patientBPM: '',
+    patientBMI: '',
+    patientTemperature: '',
+    patientCareer: '',
+    patientHeight: '',
+    patientWeight: '',
+    patientpulse: '',
+    patientOxi: '',
+    patientImpairments: '',
+    patientPastDiseases: '',
+    patientAssessment: '',
+    appointmentDate: '',
+    PatientMedicalRecord: '',
+    PatientName: '', // This is the one to keep if it's the primary patient name field
+    patientChewing: '',
+    patientPriority: '',
+    patientMedicine: '',
+    patientNewMedicine: '',
+    patientTreatment: '',
+    patientDiagnosis: '',
+    patientPrescription: '',
+    // patientSummary: '', // Duplicated, ensure one source of truth
+    date: '',
+    patientRace: '',
+    // patientDiscord: '', // Duplicated, ensure one source of truth
+    race: '',
+    patientMedicalRecord: '',
+    patientGender: '',
+    patientDateOfBirth: '',
+    patientDateOfBirth: '', // Duplicated, choose one
+    patientMedicalHistory: '',
+    patientEmail: '',
+    patientAddress: '',
+    patientEmergencyContact: '',
+    patientEmergencyContactNumber: '',
+    patientEmergencyContactRelation: '',
+    patientBloodType: '',
+    patientChronicDiseases: '',
+    patientBP: '',
+    SubmitDate: new Date().toISOString().split('T')[0],
+    patientResperation: '',
+    patientConsultation: '',
+    patientPerscription: '',
+    patientCondition: '',
+    patientNotes: '',
+    patientBaggageofParents: '',
+    oneFetus: false,
+    twoFetuses: false,
+    threeFetuses: false,
+    fourFetuses: false,
+    patientContractions: '',
+    patientBleeding: '',
+    patientDiscomfort: '',
+    patientFatter: '',
+    patientBabyGender: '',
+    patientKnowBabyGender: '',
+    patientUltraSummary: '',
+    patientWellWomanExam: '',
+    patientLastWellWomanExam: '',
+    patientPapResults: '',
+    patientSTI: '',
+    patientSTIResults: '',
+    patientBloodAnalysis: '',
+    patientBloodAnalysisResults: '',
+    patientUrine: '',
+    patientUrineResults: '',
+    patientPap: '',
+    patientDateofPregnancy: '',
+    patientFetalMeasurements: '',
+    patientCurrentMedicine: '',
+    patientAdditionalPregnancy: '',
+    patientJobTasks: '',
+    patientLivingHabits: '',
+    patientPreHealth: '',
+    patientPregProblems: '',
+    patientPartnerName: '',
+    patientPartnerPH: '',
+    patientPartnerDiscord: '',
+    caseOpen: false,
+    caseClosed: false,
+    violenceToSelf: false,
+    violenceToOthers: false,
+    LowRisk: false,
+    noRisk: true,
+    HighRisk: false,
+    MediumRisk: false,
+    patientFileCreation: '',
+    patientVisitReason: '',
+    patientSurgicalHistory: '',
+    patientMedHistory: '',
+    patientPsychDiagnoses: '',
+    patientEvalFile: '',
+    patientMedicalFile: '',
+    patientSubstance: '',
+    patientTrauma: ``,
+    showRequestingOfficerInput: false,
+    patientEdu: ``,
+    patientDev: ``,
+    patientLegal: ``,
+    patientSpiritual: ``,
+    patientMale: false,
+    patientFemale: false,
+    patientFormYes: false,
+    patientFormNo: false,
+    patientFormYes2: false,
+    patientFormNo2: false,
+    patientConsent: '',
+    patientConsentOption: '',
+    patientConsentNo: '',
+    patientConsentYes: '',
+    patientComplicationOptions: '',
+    complications: '',
+    patientComplaint: '',
+    triageNoPain: false,
+    triageNormalPain: false,
+    triageMildPain: false,
+    triageSeverePain: false,
+    triageCriticalPain: false,
+    patientTempNormal: false,
+    patientTempHigh: false,
+    patientTempLow: false,
+    patientHeartRateNormal: false,
+    patientHeartRateBradycardia: false,
+    patientHeartRateTachycardia: false,
+    patientBreathingNormal: false,
+    patientBreathingSlow: false,
+    patientBreathingFast: false,
+    patientBreathingObstructed: false,
+    patientBloodPressureNormal: false,
+    patientBloodPressureHypotension: false,
+    patientBloodPressureHypertension: false,
+    assignedDepartment: '',
+    departmentLarge: '',
+    patientChiefComplaint: '',
+    patientID: '',
+    rank: '', 
+    patientProcedure: '',
+    patientPhoneType: '',
+    patientPhoneMobile: '',
+    patientPhoneHome: '',
+    patientPhoneWork: '',
+    patientPhoneOther: '',
+    patientGenderMale: '',
+    patientGenderFemale: '',
+    PurposeAttorney: '',
+    PurposePersonal: '',
+    patientAdvise: '',
+    drugList: '',
+    PurposeFurtherCare  : '',
+    PurposeOther: '',
+    CarePurposeMedicalInformationRelease: '',
+    patientMedInfoReleaseOther: '',
+    MedicalRecordsReleaseOther: '',
+    StupidDateFrom: '',
+    StupidDateTo: '',
+    patientFirstName: '',
+    patientMiddleName: '',
+    patientTitle: '',
+    patientComplicationsYes: '',
+    patientComplicationsNo: '',
+    procedureGoodOptions: '',
+    procedureGoodYes: '',
+    procedureGoodNo: '',
+    BodyMassIndex: '',
+    phmcRank: '', 
+    temperature: '',
+    heartRate: '',
+    bloodPressure: '',
+    careerRisks: '',
+    patientJob: '',
+    patientcareerNo: '',
+    patientAllergiesRisk: '',
+    patientMedicineRegular: '',
+    patientOther: '',
+    predisposition: '',
+    breathing: '',
+    patientTherapy: '',
+    patientFamily: '',
+    patientGentic: '',
+    patientFamSocial: '',
+    patientMental: '',
+    maritalStatus: '',
+    numberChildren: '',
+    financialStatus: '',
+    dnr: '',
+    dnrOrder: '',
+    attorney: '',
+    patientSupport: '',
+    patientHarm: '',
+    patientFam: '',
+    patientGenetic: '',
+    patientReligion: '',
+    patientSmoker: '',
+    patientAlcohol: '',
+    patientDrugs: '',
+    patientExercise: '',
+    patientDiet: '',
+    patientSleep: '',
+    patientSexLife: '',
+    patientJobRisks: '',
+    patientHazards: '',
+    attorneyName: '',
+    attorneyPH: '',
+    attorneyRelation: '',
+    dnrOther: '',
+    patientEmergencyContactDiscord: '',
+    patientSecondaryDiagnosis: '',
+    patientTriggers: '',
+    patientStress: '',
+    patientSymptoms: '',
+    patientDrugsUsage: '',
+    patientTreatmentMedicine: '',
+    patientSafety: '',
+    patientFollowUp: '',
+    patientTreatmentPlan: '',
+    patientRelationship: '',
+    patientRiskAssessment: '',
+    Speech: '',
+    Behavior: '',
+    Appearance: '',
+    Mood: '',
+    Affect: '',
+    Risk: '',
+    ThoughtProcess: '',
+    ThoughtContent: '',
+    Insight: '',
+    Cognition: '',
+    admission: '',
+    followup: '',
+    sono: '',
+    pupils: '',
+    lungs: '',
+    painLevel: '',
+    wounds: '',
+    findings: '',
+    patientFindings:'',
+    paletoClinicDepartment: '',
+    ecg: '',
+    autopsyDeathCauses: [''],
+    autopsyAnatomicSummaryItems: [''],
+    autopsyAlbumUrl: '',
+    autopsyPhotosUnavailable: false,
     autopsyDate: '',
     autopsyTime: '',
     externalExamination: '',
+};
+    // *** IMPLEMENT removeNotification to REMOVE from the array ***
+    const removeNotification = useCallback((idToRemove) => {
+        setNotifications(prevNotifications =>
+            prevNotifications.filter(notif => notif.id !== idToRemove)
+        );
+    }, []); // setNotifications is stable
 
-    });
+    const clearForm = () => {
+        setFormData(prevFormData => ({
+            ...initialFormData,
+            coronerEmployee: prevFormData.coronerEmployee,
+            phmcEmployee: prevFormData.phmcEmployee,
+            coronerBadge: prevFormData.coronerBadge,
+            coronerRank: prevFormData.coronerRank,
+            coronerDiscord: prevFormData.coronerDiscord,
+            SubmitDate: new Date().toISOString().split('T')[0],
+        }));
+        const fieldsToRemove = [
+            'dateTime', 'department', 'pronouncedTimeOfDeath', 'placeOfDeath', 'mannerOfDeath'
+        ];
+        fieldsToRemove.forEach(field => {
+            localStorage.removeItem(field);
+            localStorage.removeItem(`${field}_timestamp`);
+        });
+        setParsedBBCode('');
+        setLastWebhookIdentifier(null);
+        showNotification('Form cleared! Employee selections preserved.', 'check-circle');
+    };
+
+        const showNotification = useCallback((message, icon = 'check-circle', duration = DEFAULT_NOTIFICATION_DURATION) => {
+        const newNotification = {
+            id: Date.now() + Math.random(),
+            message: message,
+            icon: getIconClass(icon), // getIconClass is stable (defined outside)
+        };
+        setNotifications(prevNotifications => [...prevNotifications, newNotification]);
+        if (duration > 0) {
+            setTimeout(() => {
+                removeNotification(newNotification.id); // removeNotification is stable
+            }, duration);
+        }
+        return newNotification.id;
+    }, [removeNotification]);
+
+    useEffect(() => {
+        let isMounted = true; // Flag to prevent state updates if component unmounts
+        let loadingNotificationId = null;
+
+        const fetchData = async () => {
+            if (!isMounted) return;
+            setIsLoadingData(true);
+            loadingNotificationId = showNotification(
+                "Loading data, please wait!",
+                'spinner fa-spin',
+                0 // Indefinite
+            );
+
+            try {
+                const dbRootRef = ref(database);
+                const snapshot = await get(dbRootRef);
+
+                // Attempt to remove loading notification as soon as fetch completes
+                if (loadingNotificationId && isMounted) {
+                    removeNotification(loadingNotificationId);
+                    loadingNotificationId = null; // Clear it so cleanup doesn't try again
+                }
+
+                if (!isMounted) return; // Check again before setting state
+
+                if (snapshot.exists()) {
+                    const allData = snapshot.val();
+                    setPhmcListData(allData.staff?.phmc || []);
+                    setCoronerListData(allData.staff?.coroner || []);
+                    setAgencyDataStore(allData.agencies || {});
+                    setSelectOptions(allData.selectOptions || {});
+                    showNotification('Data loaded successfully!', 'check-circle');
+                } else {
+                    showNotification('Initial application data not found on server.', 'error');
+                    setPhmcListData([]);
+                    setCoronerListData([]);
+                    setAgencyDataStore({});
+                    setSelectOptions({});
+                }
+            } catch (error) {
+                if (isMounted) {
+                    if (loadingNotificationId) { // Ensure it's removed on error too
+                        removeNotification(loadingNotificationId);
+                        loadingNotificationId = null;
+                    }
+                    console.error("Error fetching data from Realtime Database:", error);
+                    Sentry.captureException(error, { extra: { context: 'Firebase Data Fetch' } });
+                    showNotification('Failed to load initial application data. Please try again later.', 'error');
+                }
+            } finally {
+                if (isMounted) {
+                    setIsLoadingData(false);
+                    // Final check to remove loading notification if it's somehow still there
+                    if (loadingNotificationId) {
+                        removeNotification(loadingNotificationId);
+                        loadingNotificationId = null;
+                    }
+                }
+            }
+        };
+
+        fetchData();
+
+        return () => {
+            isMounted = false;
+            // Cleanup: If the component unmounts while the loading notification is still visible, remove it.
+            if (loadingNotificationId) {
+                removeNotification(loadingNotificationId);
+            }
+        };
+    }, [showNotification, removeNotification]); // Add stable dependencies
+
     useEffect(() => {
         const handleResize = () => {
             setIsMobile(window.innerWidth <= 768); // Adjust breakpoint as needed
@@ -476,7 +515,75 @@ function App() {
         // Clean up the event listener on unmount
         return () => window.removeEventListener('resize', handleResize);
     }, []);
-    
+        const [phmcListData, setPhmcListData] = useState([]);
+    const [coronerListData, setCoronerListData] = useState([]);
+    const [agencyDataStore, setAgencyDataStore] = useState({});
+        const [selectOptions, setSelectOptions] = useState({});
+    const [isLoadingData, setIsLoadingData] = useState(true); 
+    const loadingNotificationIdRef = useRef(null); 
+    useEffect(() => {
+        const fetchData = async () => {
+            setIsLoadingData(true);
+            // Show indefinite loading notification
+            loadingNotificationIdRef.current = showNotification(
+                "Loading data, please wait!",
+                'spinner fa-spin', // Font Awesome spinner icon with spin animation
+                0 // Indefinite duration
+            );
+
+            try {
+                const dbRootRef = ref(database);
+                const snapshot = await get(dbRootRef);
+
+                // Remove loading notification once data attempt is complete (before specific success/error)
+                if (loadingNotificationIdRef.current) {
+                    removeNotification(loadingNotificationIdRef.current);
+                    loadingNotificationIdRef.current = null;
+                }
+
+                if (snapshot.exists()) {
+                    const allData = snapshot.val();
+                    console.log("Data fetched from Realtime DB:", allData);
+
+                    setPhmcListData(allData.staff?.phmc || []);
+                    setCoronerListData(allData.staff?.coroner || []);
+                    setAgencyDataStore(allData.agencies || {});
+                    setSelectOptions(allData.selectOptions || {});
+                    showNotification('Data loaded successfully!', 'check-circle'); // Success notification
+                } else {
+                    console.warn("No data available in Realtime Database.");
+                    showNotification('Initial application data not found on server.', 'error');
+                    setPhmcListData([]);
+                    setCoronerListData([]);
+                    setAgencyDataStore({});
+                    setSelectOptions({});
+                }
+            } catch (error) {
+                console.error("Error fetching data from Realtime Database:", error);
+                Sentry.captureException(error, { extra: { context: 'Firebase Data Fetch' }});
+                // Ensure loading notification is removed even if an error occurs before it's naturally removed
+                if (loadingNotificationIdRef.current) {
+                    removeNotification(loadingNotificationIdRef.current);
+                    loadingNotificationIdRef.current = null;
+                }
+                showNotification('Failed to load initial application data. Please try again later.', 'error');
+            } finally {
+                setIsLoadingData(false);
+                // Ensure the loading notification is cleared if it hasn't been already
+                // (e.g., if an error happened very early or if snapshot.exists() was false)
+                if (loadingNotificationIdRef.current) {
+                    removeNotification(loadingNotificationIdRef.current);
+                    loadingNotificationIdRef.current = null;
+                }
+            }
+        };
+
+        fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Keep dependencies as they were if showNotification/removeNotification are stable
+
+    const [formData, setFormData] = useState(initialFormData);
+
     const [isUploading, setIsUploading] = useState(false);
     const [isJohnDoe, setIsJohnDoe] = useState(false);
     const [isJaneDoe, setIsJaneDoe] = useState(false);
@@ -721,207 +828,321 @@ const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
     }
 };
 
-const handleMissingEmployeeSubmit = async () => {
-    const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+    const handleMissingEmployeeSubmit = async () => {
+        const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
-    if (!webhookURL) {
-        console.error('Discord webhook URL not configured for employee management.');
-        Sentry.captureMessage('Discord webhook URL is missing for employee management submission.', 'error');
-        showNotification('Configuration error: Unable to submit request. Please contact the administrator.', 'exclamation-triangle');
-        return;
-    }
-
-    let embedData = {};
-    let submissionValid = false;
-    let successMessage = '';
-    let requestActionTitle = ''; // For the embed title
-
-    // --- Logic based on isJohnDoe, isJaneDoe, isRemoveStaff ---
-    if (isJohnDoe || isJaneDoe) { // Handle ADD requests
-        const isCoronerRequest = isJohnDoe;
-        requestActionTitle = `➕ Missing ${isCoronerRequest ? 'Coroner' : 'Hospital Staff'} Addition Request`;
-        let requiredFields = [];
-
-        if (isCoronerRequest) {
-            requiredFields = ['coronerName', 'coronerDiscord', 'coronerRank', 'coronerBadge', 'coronerEmployee'];
-        } else { // isJaneDoe (addPhmc)
-            requiredFields = ['coronerName', 'employeeLastName', 'coronerRank', 'phmcEmployee']; // <-- Use employeeLastName
-        }
-        
-        const emptyFields = requiredFields.filter(key => !missingEmployeeData[key]?.trim());
-        if (emptyFields.length > 0) {
-            showNotification(`Please fill in all required fields for adding staff. Missing: ${emptyFields.join(', ')}`, 'exclamation-circle');
+        if (!webhookURL) {
+            console.error('Discord webhook URL not configured for employee management.');
+            Sentry.captureMessage('Discord webhook URL is missing for employee management submission.', 'error');
+            showNotification('Configuration error: Unable to submit request. Please contact the administrator.', 'exclamation-triangle');
             return;
         }
 
-        const requester = isCoronerRequest ? missingEmployeeData.coronerEmployee : missingEmployeeData.phmcEmployee;
+        let embedData = {};
+        let submissionValid = false;
+        let successMessage = '';
+        let requestActionTitle = '';
 
-        // --- Construct ADD Embed ---
-        embedData = {
-            title: requestActionTitle,
-            color: isCoronerRequest ? 0x8B0000 : 0x00008B, // Dark Red for Coroner, Dark Blue for PHMC
-            fields: [
-                { name: "Requested By", value: requester || "Unknown", inline: false },
-                { name: "Name to Add", value: missingEmployeeData.coronerName || "N/A", inline: true },
-                { name: isCoronerRequest ? "Discord Tag" : "Department/Discord", value: missingEmployeeData.coronerDiscord || "N/A", inline: true },
-                { name: "Rank/Position", value: missingEmployeeData.coronerRank || "N/A", inline: true },
-                { name: "Last Name", value: missingEmployeeData.employeeLastName || "N/A", inline: true },
+        if (isJohnDoe || isJaneDoe) {
+            const isCoronerRequest = isJohnDoe;
+            requestActionTitle = `➕ Missing ${isCoronerRequest ? 'Coroner' : 'Hospital Staff'} Addition Request`;
+            let requiredFields = [];
 
-            ],
-            timestamp: new Date().toISOString(),
-            footer: { text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}` }
-        };
-        if (isCoronerRequest && missingEmployeeData.coronerBadge?.trim()) {
-            embedData.fields.push({ name: "Badge", value: missingEmployeeData.coronerBadge, inline: true });
-        }
-        if (missingEmployeeData.coronerPHNumber?.trim()) {
-            embedData.fields.push({ name: "Phone Number", value: missingEmployeeData.coronerPHNumber, inline: true });
-        }
-        let dataJsEntry = '';
-        if (isCoronerRequest) {
-            dataJsEntry = `{ name: '${missingEmployeeData.coronerName || 'MISSING_NAME'}', badge: '${missingEmployeeData.coronerBadge || 'MISSING_BADGE'}', phNumber: '${missingEmployeeData.coronerPHNumber || ''}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', discord: '${missingEmployeeData.coronerDiscord || 'MISSING_DISCORD'}', category: '${missingEmployeeData.coronerRank || 'MISSING_CATEGORY'}' },`;
-        } else { // isJaneDoe (add hospital staff)
-            const rawFirstNameInput = missingEmployeeData.coronerName || "";
-            const rawLastNameInput = missingEmployeeData.employeeLastName || ""; // Full input for last name
-            let calculatedFullName;
-
-            const trimmedFirstName = rawFirstNameInput.trim();
-            const trimmedRawLastName = rawLastNameInput.trim(); // Full trimmed input for last name
-
-            // 1. Determine the actual last name to be used (last word of the rawLastNameInput)
-            let parsedLastName = "";
-            if (trimmedRawLastName) {
-                const lastNameWords = trimmedRawLastName.split(' ');
-                parsedLastName = lastNameWords[lastNameWords.length - 1]; // Get the last word
+            if (isCoronerRequest) {
+                requiredFields = ['coronerName', 'coronerDiscord', 'coronerRank', 'coronerBadge', 'coronerEmployee'];
+            } else { // isJaneDoe (addPhmc)
+                requiredFields = ['coronerName', 'employeeLastName', 'coronerRank', 'phmcEmployee'];
             }
 
-            // 2. Construct calculatedFullName using trimmedFirstName and the parsedLastName
-            if (trimmedFirstName && parsedLastName) {
-                // Case 1: FN="John Doe", LN input="Doe" (parsedLastName="Doe") -> FullName="John Doe"
-                if (trimmedFirstName.toLowerCase().endsWith(parsedLastName.toLowerCase()) && trimmedFirstName.includes(' ')) {
+            const emptyFields = requiredFields.filter(key => !missingEmployeeData[key]?.trim());
+            if (emptyFields.length > 0) {
+                showNotification(`Please fill in all required fields for adding staff. Missing: ${emptyFields.join(', ')}`, 'exclamation-circle');
+                return;
+            }
+
+            const requester = isCoronerRequest ? missingEmployeeData.coronerEmployee : missingEmployeeData.phmcEmployee;
+
+            embedData = {
+                title: requestActionTitle,
+                color: isCoronerRequest ? 0x8B0000 : 0x00008B,
+                fields: [
+                    { name: "Requested By", value: requester || "Unknown", inline: false },
+                    { name: "Name to Add", value: missingEmployeeData.coronerName || "N/A", inline: true },
+                    { name: isCoronerRequest ? "Discord Tag" : "Department/Discord", value: missingEmployeeData.coronerDiscord || "N/A", inline: true },
+                    { name: "Rank/Position", value: missingEmployeeData.coronerRank || "N/A", inline: true },
+                ],
+                timestamp: new Date().toISOString(),
+                footer: { text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}` }
+            };
+
+            let dataJsEntry = '';
+            let parsedLastNameForEmbed = "N/A";
+
+            if (isCoronerRequest) {
+                if (missingEmployeeData.coronerBadge?.trim()) {
+                    embedData.fields.push({ name: "Badge", value: missingEmployeeData.coronerBadge, inline: true });
+                }
+                dataJsEntry = `{ name: '${missingEmployeeData.coronerName || 'MISSING_NAME'}', badge: '${missingEmployeeData.coronerBadge || 'MISSING_BADGE'}', phNumber: '${missingEmployeeData.coronerPHNumber || ''}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', discord: '${missingEmployeeData.coronerDiscord || 'MISSING_DISCORD'}', category: '${missingEmployeeData.coronerRank || 'MISSING_CATEGORY'}' },`;
+            } else { // isJaneDoe (add hospital staff)
+                const rawFirstNameInput = missingEmployeeData.coronerName || "";
+                const rawLastNameInput = missingEmployeeData.employeeLastName || "";
+                let calculatedFullName;
+                let parsedLastName = "";
+                const trimmedFirstName = rawFirstNameInput.trim();
+                const trimmedRawLastName = rawLastNameInput.trim();
+                if (trimmedRawLastName) {
+                    const lastNameWords = trimmedRawLastName.split(' ');
+                    parsedLastName = lastNameWords[lastNameWords.length - 1];
+                }
+                if (trimmedFirstName && parsedLastName) {
+                    if (trimmedFirstName.toLowerCase().endsWith(parsedLastName.toLowerCase()) && trimmedFirstName.includes(' ')) {
+                        calculatedFullName = trimmedFirstName;
+                    } else if (trimmedFirstName.toLowerCase() === parsedLastName.toLowerCase()) {
+                        calculatedFullName = parsedLastName;
+                    } else {
+                        calculatedFullName = `${trimmedFirstName} ${parsedLastName}`;
+                    }
+                } else if (trimmedFirstName) {
                     calculatedFullName = trimmedFirstName;
+                } else if (parsedLastName) {
+                    calculatedFullName = parsedLastName;
+                } else {
+                    calculatedFullName = 'MISSING_FULL_NAME';
                 }
-                // Case 2: FN="Doe", LN input="Doe" (parsedLastName="Doe") -> FullName="Doe"
-                else if (trimmedFirstName.toLowerCase() === parsedLastName.toLowerCase()) {
-                    calculatedFullName = parsedLastName; // or trimmedFirstName, they are the same
+                if (calculatedFullName.trim() === '' && calculatedFullName !== 'MISSING_FULL_NAME') {
+                     calculatedFullName = 'MISSING_FULL_NAME';
                 }
-                // Case 3: FN="John", LN input="Doe" (parsedLastName="Doe") -> FullName="John Doe"
-                // Also handles FN="John Van", LN input="Der Beek" (parsedLastName="Beek") -> FullName="John Van Beek"
-                else {
-                    calculatedFullName = `${trimmedFirstName} ${parsedLastName}`;
+                const finalLastNameForEntry = parsedLastName || 'MISSING_LAST_NAME';
+                parsedLastNameForEmbed = parsedLastName || "N/A";
+                dataJsEntry = `{ name: '${calculatedFullName}', lastName: '${finalLastNameForEntry}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', category: '${missingEmployeeData.coronerRank || 'MISSING_CATEGORY'}', signature: '' },`;
+            }
+            embedData.fields.push({ name: "Last Name", value: parsedLastNameForEmbed, inline: true });
+            if (missingEmployeeData.coronerPHNumber?.trim()) {
+                embedData.fields.push({ name: "Phone Number", value: missingEmployeeData.coronerPHNumber, inline: true });
+            }
+            embedData.fields.push({ name: "Suggested data.js Entry", value: `\`\`\`javascript\n${dataJsEntry}\n\`\`\``, inline: false });
+
+            submissionValid = true;
+            successMessage = 'Done! Please ping Alyson Frost in the PHMC Discord for approval.';
+
+        } else if (isRemoveStaff) {
+            requestActionTitle = "➖ Staff Removal Request";
+            if (!missingEmployeeData.staffToRemove || missingEmployeeData.staffToRemove.length === 0) {
+                showNotification('Please select at least one staff member to remove.', 'warning');
+                return;
+            }
+            if (!missingEmployeeData.authorizedBy?.trim()) {
+                showNotification('Please enter your name in the "Authorized By" field.', 'warning');
+                return;
+            }
+            const removedStaffDataStrings = [];
+            for (const staffNameToRemove of missingEmployeeData.staffToRemove) {
+                const coronerData = coronerListData.find(c => c.name === staffNameToRemove);
+                if (coronerData) {
+                    removedStaffDataStrings.push(
+                        `Coroner: { name: '${coronerData.name}', badge: '${coronerData.badge}', phNumber: '${coronerData.phNumber || ''}', rank: '${coronerData.rank}', discord: '${coronerData.discord}', category: '${coronerData.category}' }`
+                    );
+                    continue; // Move to next staff member if found in coroners
                 }
-            } else if (trimmedFirstName) { // Only First Name input was provided
-                calculatedFullName = trimmedFirstName;
-            } else if (parsedLastName) {   // Only Last Name input was provided
-                calculatedFullName = parsedLastName;
-            } else { // Neither was provided
-                calculatedFullName = 'MISSING_FULL_NAME';
+
+                const phmcData = phmcListData.find(p => p.name === staffNameToRemove);
+                if (phmcData) {
+                    removedStaffDataStrings.push(
+                        `PHMC: { name: '${phmcData.name}', lastName: '${phmcData.lastName}', rank: '${phmcData.rank || phmcData.category}', category: '${phmcData.category}', signature: '${phmcData.signature || ''}' }`
+                    );
+                }
             }
 
-            // Final check for calculatedFullName to ensure it's not just spaces
-            if (calculatedFullName.trim() === '' && calculatedFullName !== 'MISSING_FULL_NAME') {
-                 calculatedFullName = 'MISSING_FULL_NAME';
-            }
+            embedData = {
+                title: requestActionTitle,
+                color: 0xFFA500,
+                fields: [
+                    { name: "Authorized By", value: missingEmployeeData.authorizedBy, inline: false },
+                    {
+                        name: `Staff to Remove (${missingEmployeeData.staffToRemove.length})`,
+                        value: missingEmployeeData.staffToRemove.join('\n') || "None selected",
+                        inline: false
+                    },
+                    ...(removedStaffDataStrings.length > 0 ? [{
+                        name: "Data of Removed Staff (for restoration)",
+                        value: `\`\`\`javascript\n${removedStaffDataStrings.join('\n')}\n\`\`\``,
+                        inline: false
+                    }] : [])
 
-            // 3. Determine finalLastNameForEntry for the data.js `lastName` field
-            const finalLastNameForEntry = parsedLastName || 'MISSING_LAST_NAME';
-
-            // Update the "Last Name" field in the embedData that was initialized earlier
-            // It's important that embedData is initialized before this `if/else` block
-            const lastNameFieldIndex = embedData.fields.findIndex(field => field.name === "Last Name");
-            if (lastNameFieldIndex !== -1) {
-                embedData.fields[lastNameFieldIndex].value = parsedLastName || "N/A"; // Use the parsed last name for the embed
-            }
-            // Note: The "Name to Add" embed field correctly uses missingEmployeeData.coronerName (rawFirstNameInput)
-
-            dataJsEntry = `{ name: '${calculatedFullName}', lastName: '${finalLastNameForEntry}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', category: '${missingEmployeeData.coronerRank || 'MISSING_CATEGORY'}' },`;
-        }
-        // This part remains the same:
-        embedData.fields.push({ name: "Suggested data.js Entry", value: `\`\`\`javascript\n${dataJsEntry}\n\`\`\``, inline: false });
-        // --- End ADD Embed ---
-
-        submissionValid = true;
-        successMessage = 'Done! Please ping Alyson Frost in the PHMC Discord for approval.'; // Updated success message
-
-    } else if (isRemoveStaff) { // Handle REMOVE request
-        requestActionTitle = "➖ Staff Removal Request";
-        // --- Validation for REMOVE ---
-        if (!missingEmployeeData.staffToRemove || missingEmployeeData.staffToRemove.length === 0) {
-            showNotification('Please select at least one staff member to remove.', 'warning');
+                ],
+                timestamp: new Date().toISOString(),
+                footer: { text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}` }
+            };
+            submissionValid = true;
+            successMessage = 'Processed! Any abuse of the forms will be reported to PHMC Leadership';
+        } else {
+            showNotification('Please select an action (Add Coroner, Add Staff, or Remove Staff).', 'warning');
             return;
         }
-        if (!missingEmployeeData.authorizedBy?.trim()) {
-            showNotification('Please enter your name in the "Authorized By" field.', 'warning');
-            return;
-        }
-        // --- End Validation ---
 
-        // --- Construct REMOVE Embed ---
-        embedData = {
-            title: requestActionTitle,
-            color: 0xFFA500, // Orange color for removal/warning
-            fields: [
-                { name: "Authorized By", value: missingEmployeeData.authorizedBy, inline: false },
-                {
-                    name: `Staff to Remove (${missingEmployeeData.staffToRemove.length})`,
-                    value: missingEmployeeData.staffToRemove.join('\n') || "None selected", // List names on new lines
-                    inline: false
-                },
-            ],
-            timestamp: new Date().toISOString(),
-            footer: { text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}` }
-        };
-        // --- End REMOVE Embed ---
-
-        submissionValid = true;
-        successMessage = 'Removal request submitted! This will be reviewed soon.';
-
-    } else {
-        showNotification('Please select an action (Add Coroner, Add Staff, or Remove Staff).', 'warning');
-        return;
-    }
-
-    // --- Common Submission Logic ---
-    if (submissionValid) {
-        try {
-            const response = await fetch(webhookURL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    content: `<@228306972204597248>`, // Ping user
-                    embeds: [embedData] // Send the constructed embed
-                }),
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`Failed to send message to Discord webhook. Status: ${response.status} ${response.statusText}`, errorText);
-                Sentry.captureMessage(`Discord webhook failed for employee management: ${response.status}`, {
-                    level: 'error',
-                    extra: { statusText: response.statusText, responseBody: errorText, requestType: requestActionTitle }
+        if (submissionValid) {
+            try {
+                const response = await fetch(webhookURL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        content: `Employee has been removed from the Database`,
+                        embeds: [embedData]
+                    }),
                 });
-                showNotification(`Failed to submit request. Status: ${response.status}`, 'exclamation-triangle');
-            } else {
-                showNotification(successMessage, 'check-circle');
-                setShowMissingEmployeeModal(false);
-                // Reset form data including removal fields
-                setMissingEmployeeData({
-                    coronerName: '', coronerDiscord: '', coronerRank: '', coronerPHNumber: '',
-                    coronerEmployee: '', coronerBadge: '', phmcEmployee: '',
-                    staffToRemove: [], authorizedBy: '', employeeLastName: '', 
-                });
-                // Reset radio button states
-                setIsJohnDoe(false);
-                setIsJaneDoe(false);
-                setIsRemoveStaff(false);
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error(`Failed to send message to Discord webhook. Status: ${response.status} ${response.statusText}`, errorText);
+                    Sentry.captureMessage(`Discord webhook failed for employee management: ${response.status}`, {
+                        level: 'error',
+                        extra: { statusText: response.statusText, responseBody: errorText, requestType: requestActionTitle }
+                    });
+                    showNotification(`Failed to submit request. Status: ${response.status}`, 'exclamation-triangle');
+                } else {
+                    showNotification(successMessage, 'check-circle');
+                    setShowMissingEmployeeModal(false);
+
+                    // --- START Firebase Database Update ---
+                    if (isJohnDoe) { // Add Coroner
+                        const newCoroner = {
+                            name: missingEmployeeData.coronerName,
+                            badge: missingEmployeeData.coronerBadge,
+                            phNumber: missingEmployeeData.coronerPHNumber || '',
+                            rank: missingEmployeeData.coronerRank,
+                            discord: missingEmployeeData.coronerDiscord,
+                            category: missingEmployeeData.coronerRank // Or a more specific category if available
+                        };
+                        try {
+                            const coronerListRef = ref(database, 'staff/coroner');
+                            const snapshot = await get(coronerListRef);
+                            const currentCoroners = snapshot.exists() ? snapshot.val() : [];
+                            if (!currentCoroners.find(c => c.name === newCoroner.name)) {
+                                const updatedCoroners = [...currentCoroners, newCoroner];
+                                await set(coronerListRef, updatedCoroners);
+                                showNotification(`Coroner ${newCoroner.name} added to database.`, 'check-circle');
+                                setCoronerListData(updatedCoroners); // Update local state
+                            } else {
+                                showNotification(`Coroner ${newCoroner.name} already exists in database.`, 'warning');
+                            }
+                        } catch (dbError) {
+                            console.error("Error adding coroner to Firebase:", dbError);
+                            Sentry.captureException(dbError, { extra: { context: 'Firebase Add Coroner' } });
+                            showNotification('Failed to update database for coroner.', 'error');
+                        }
+                    } else if (isJaneDoe) { // Add PHMC Staff
+                        const rawFirstNameInput = missingEmployeeData.coronerName || "";
+                        const rawLastNameInput = missingEmployeeData.employeeLastName || "";
+                        let calculatedFullName;
+                        let parsedLastName = "";
+                        const trimmedFirstName = rawFirstNameInput.trim();
+                        const trimmedRawLastName = rawLastNameInput.trim();
+                        if (trimmedRawLastName) {
+                            const lastNameWords = trimmedRawLastName.split(' ');
+                            parsedLastName = lastNameWords[lastNameWords.length - 1];
+                        }
+                        if (trimmedFirstName && parsedLastName) {
+                            if (trimmedFirstName.toLowerCase().endsWith(parsedLastName.toLowerCase()) && trimmedFirstName.includes(' ')) {
+                                calculatedFullName = trimmedFirstName;
+                            } else if (trimmedFirstName.toLowerCase() === parsedLastName.toLowerCase()) {
+                                calculatedFullName = parsedLastName;
+                            } else {
+                                calculatedFullName = `${trimmedFirstName} ${parsedLastName}`;
+                            }
+                        } else if (trimmedFirstName) {
+                            calculatedFullName = trimmedFirstName;
+                        } else if (parsedLastName) {
+                            calculatedFullName = parsedLastName;
+                        } else {
+                            calculatedFullName = 'MISSING_FULL_NAME';
+                        }
+                        if (calculatedFullName.trim() === '' && calculatedFullName !== 'MISSING_FULL_NAME') {
+                             calculatedFullName = 'MISSING_FULL_NAME';
+                        }
+                        const finalLastNameForEntry = parsedLastName || 'MISSING_LAST_NAME';
+
+                        const newPhmcStaff = {
+                            name: calculatedFullName,
+                            lastName: finalLastNameForEntry,
+                            rank: missingEmployeeData.coronerRank,
+                            category: missingEmployeeData.coronerRank,
+                            signature: ''
+                        };
+                        try {
+                            const phmcListRef = ref(database, 'staff/phmc');
+                            const snapshot = await get(phmcListRef);
+                            const currentPhmcStaff = snapshot.exists() ? snapshot.val() : [];
+                            if (!currentPhmcStaff.find(p => p.name === newPhmcStaff.name)) {
+                                const updatedPhmcStaff = [...currentPhmcStaff, newPhmcStaff];
+                                await set(phmcListRef, updatedPhmcStaff);
+                                showNotification(`PHMC Staff ${newPhmcStaff.name} added to database.`, 'check-circle');
+                                setPhmcListData(updatedPhmcStaff); // Update local state
+                            } else {
+                                showNotification(`PHMC Staff ${newPhmcStaff.name} already exists in database.`, 'warning');
+                            }
+                        } catch (dbError) {
+                            console.error("Error adding PHMC staff to Firebase:", dbError);
+                            Sentry.captureException(dbError, { extra: { context: 'Firebase Add PHMC Staff' } });
+                            showNotification('Failed to update database for PHMC staff.', 'error');
+                        }
+                    } else if (isRemoveStaff) {
+                        const staffNamesToRemove = missingEmployeeData.staffToRemove || [];
+                        if (staffNamesToRemove.length > 0) {
+                            let coronerListUpdated = false;
+                            let phmcListUpdated = false;
+                            try {
+                                const coronerListRef = ref(database, 'staff/coroner');
+                                const coronerSnapshot = await get(coronerListRef);
+                                let currentCoroners = coronerSnapshot.exists() ? coronerSnapshot.val() : [];
+                                const initialCoronerCount = currentCoroners.length;
+                                currentCoroners = currentCoroners.filter(c => !staffNamesToRemove.includes(c.name));
+                                if (currentCoroners.length < initialCoronerCount) {
+                                    await set(coronerListRef, currentCoroners);
+                                    setCoronerListData(currentCoroners);
+                                    coronerListUpdated = true;
+                                }
+
+                                const phmcListRef = ref(database, 'staff/phmc');
+                                const phmcSnapshot = await get(phmcListRef);
+                                let currentPhmcStaff = phmcSnapshot.exists() ? phmcSnapshot.val() : [];
+                                const initialPhmcCount = currentPhmcStaff.length;
+                                currentPhmcStaff = currentPhmcStaff.filter(p => !staffNamesToRemove.includes(p.name));
+                                if (currentPhmcStaff.length < initialPhmcCount) {
+                                    await set(phmcListRef, currentPhmcStaff);
+                                    setPhmcListData(currentPhmcStaff);
+                                    phmcListUpdated = true;
+                                }
+
+                                if (coronerListUpdated || phmcListUpdated) {
+                                    showNotification(`Selected staff removed from database.`, 'check-circle');
+                                } else {
+                                    showNotification(`No matching staff found in database to remove.`, 'warning');
+                                }
+                            } catch (dbError) {
+                                console.error("Error removing staff from Firebase:", dbError);
+                                Sentry.captureException(dbError, { extra: { context: 'Firebase Remove Staff' } });
+                                showNotification('Failed to update database for staff removal.', 'error');
+                            }
+                        }
+                    }
+                    // --- END Firebase Database Update ---
+
+                    setMissingEmployeeData({
+                        coronerName: '', coronerDiscord: '', coronerRank: '', coronerPHNumber: '',
+                        coronerEmployee: '', coronerBadge: '', phmcEmployee: '',
+                        staffToRemove: [], authorizedBy: '', employeeLastName: '',
+                    });
+                    setIsJohnDoe(false);
+                    setIsJaneDoe(false);
+                    setIsRemoveStaff(false);
+                }
+            } catch (error) {
+                console.error('Error submitting employee management request:', error);
+                Sentry.captureException(error, { extra: { context: 'Employee Management Submission Fetch', requestType: requestActionTitle } });
+                showNotification('A network error occurred. Please try again.', 'exclamation-triangle');
             }
-        } catch (error) {
-            console.error('Error submitting employee management request:', error);
-            Sentry.captureException(error, { extra: { context: 'Employee Management Submission Fetch', requestType: requestActionTitle } });
-            showNotification('A network error occurred. Please try again.', 'exclamation-triangle');
         }
-    }
-};
+    };
 const [showWebhookModal, setShowWebhookModal] = useState(false);
 const [webhookMessage, setWebhookMessage] = useState('');
 const [webhookTitle, setWebhookTitle] = useState(''); // <-- New state for title
@@ -977,7 +1198,7 @@ Name(s) removed: `;
     };
 
 const [showCoronerRankModal, setShowCoronerRankModal] = useState(false);
-const uniqueCoronerRanks = [...new Set(coronerList.map(c => c.rank))].sort();
+const uniqueCoronerRanks = [...new Set(coronerListData.map(c => c.rank))].sort();
 const handleCoronerRankSubmit = async ({ selectedEmployee, newRank }) => { // Accept the object
     const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
@@ -994,7 +1215,7 @@ const handleCoronerRankSubmit = async ({ selectedEmployee, newRank }) => { // Ac
 
     if (newRank && selectedEmployee) {
         // Case: Updating rank for a selected employee
-        description = `Rank update requested for **${selectedEmployee}**.`;
+        description = `**${selectedEmployee}** has updated their rank`;
         fields.push({ name: "Selected Coroner", value: selectedEmployee, inline: true });
         fields.push({ name: "New Rank Submitted", value: `**${newRank}**`, inline: true });
     } else if (selectedEmployee) {
@@ -1012,7 +1233,7 @@ const handleCoronerRankSubmit = async ({ selectedEmployee, newRank }) => { // Ac
     const embed = {
         title: "Coroner Rank Update Request", // More specific title
         description: description,
-        content: `<@228306972204597248>`,
+        content: `A Coroner has updated their rank! Details here`,
         color: 0x8B0000, // Dark Red (Coroner theme)
         fields: fields, // Use the dynamically created fields array
         timestamp: new Date().toISOString(),
@@ -1124,7 +1345,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 },
                 // Send the embed structure
                 body: JSON.stringify({
-                    content: `<@228306972204597248>`, 
+                    content: `Feedback / Bug Report`, 
                     embeds: [embedData] // Send the embed data as an array
                 }),
             });
@@ -1152,76 +1373,60 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
     };
     // --- Add state to explicitly control dropdown visibility ---
 // Separate PHMC options
-    const phmcGroupedOptions = Object.entries(
-        phmcList.reduce((groups, employee) => {
-            const categoryName = employee.category || 'Uncategorized';
-            if (!groups[categoryName]) {
-                groups[categoryName] = [];
-            }
-            groups[categoryName].push({
-                value: employee.name,
-                label: employee.name,
-                signature: employee.signature,
-                category: employee.category,
-                lastName: employee.lastName // Include lastName in the option object
-            });
-            return groups;
-        }, {})
-    ).map(([category, options]) => ({
-        label: category,
-        options: options.sort((a, b) => a.label.localeCompare(b.label))
-    })).sort((a, b) => {
-        const order = {
-            'Missing Category': 1,
-            'Leadership': 2,
-            'Hospital Supervisor': 3
-        };
-        const orderA = order[a.label] || 99;
-        const orderB = order[b.label] || 99;
-
-        if (orderA === orderB) {
-            return a.label.localeCompare(b.label);
-        }
-        return orderA - orderB;
-    });
-    // First, verify data structure
-
-    const coronerGroupedOptions = Object.entries(
-        coronerList.reduce((groups, coroner) => {
-            const categoryName = coroner.category || 'Uncategorized';
-            if (!groups[categoryName]) {
-                groups[categoryName] = [];
-            }
-            groups[categoryName].push({
-                value: coroner.name,
-                label: `${coroner.name} (${coroner.rank})`,
-                badge: coroner.badge,
-                rank: coroner.rank,
-                discord: coroner.discord,
-                category: categoryName
-            });
-            return groups;
-        }, {})
-    ).map(([category, options]) => {
-        return {
+    const phmcGroupedOptions = useMemo(() => {
+        if (!phmcListData || phmcListData.length === 0) return [];
+        return Object.entries(
+            phmcListData.reduce((groups, employee) => {
+                const categoryName = employee.category || 'Uncategorized';
+                if (!groups[categoryName]) {
+                    groups[categoryName] = [];
+                }
+                groups[categoryName].push({
+                    value: employee.name, // Or a unique ID if 'name' isn't unique
+                    label: employee.name,
+                    signature: employee.signature,
+                    category: employee.category,
+                    lastName: employee.lastName
+                    // Add any other fields needed by the Select component or your logic
+                });
+                return groups;
+            }, {})
+        ).map(([category, options]) => ({
             label: category,
             options: options.sort((a, b) => a.label.localeCompare(b.label))
-        };
-    }).sort((a, b) => {
-        const priorityOrder = {
-            'Chief Boss': 2,
-            'Supervisor': 3,
-            'Missing_Category': 1,
-        };
-        const orderA = priorityOrder[a.label] || 99;
-        const orderB = priorityOrder[b.label] || 99;
+        })).sort((a, b) => { // Your existing sorting logic for categories
+            const order = ['Leadership', 'Hospital Supervisor', 'Physician', 'Resident Physician', 'Physician Assistant', 'Psychiatrist', 'Psychologist', 'Dentist', 'Nursing', 'Emergency Medical Services', 'Attending Physician', 'Uncategorized'];
+            return order.indexOf(a.label) - order.indexOf(b.label);
+        });
+    }, [phmcListData]);
 
-        if (orderA !== orderB) {
-            return orderA - orderB;
-        } else {
-            return a.label.localeCompare(b.label);
-        }
-    });
+    const coronerGroupedOptions = useMemo(() => {
+        if (!coronerListData || coronerListData.length === 0) return [];
+        return Object.entries(
+            coronerListData.reduce((groups, coroner) => {
+                const categoryName = coroner.category || 'Uncategorized';
+                if (!groups[categoryName]) {
+                    groups[categoryName] = [];
+                }
+                groups[categoryName].push({
+                    value: coroner.name, // Or a unique ID
+                    label: `${coroner.name} (${coroner.rank || ''})`,
+                    badge: coroner.badge,
+                    rank: coroner.rank,
+                    discord: coroner.discord,
+                    category: categoryName
+                    // Add other fields
+                });
+                return groups;
+            }, {})
+        ).map(([category, options]) => ({
+            label: category,
+            options: options.sort((a, b) => a.label.localeCompare(b.label))
+        })).sort((a, b) => { // Your existing sorting logic for coroner categories
+            const order = ['Chief Boss', 'Supervisor', 'Senior Medical Examiner', 'Medical Examiner', 'Senior Coroner Investigator', 'Coroner Investigator', 'Forensic Attendant', 'Trainee Forensic-Attendant', 'Developer Testing', 'Missing_Category', 'Uncategorized'];
+            return order.indexOf(a.label) - order.indexOf(b.label);
+        });
+    }, [coronerListData]);
 
 
     // Keep this function as is
@@ -1325,11 +1530,11 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
     const combinedStaffOptions = [
         {
             label: 'Coroners',
-            options: coronerList.map(c => ({ value: c.name, label: `${c.name} (${c.rank || 'Coroner'})` }))
+            options: coronerListData.map(c => ({ value: c.name, label: `${c.name} (${c.rank || 'Coroner'})` }))
         },
         {
             label: 'PHMC Staff',
-            options: phmcList.map(p => ({ value: p.name, label: `${p.name} (${p.category || 'PHMC'})` }))
+            options: phmcListData.map(p => ({ value: p.name, label: `${p.name} (${p.category || 'PHMC'})` }))
         }
     ].filter(group => group.options.length > 0); // Filter out empty groups if any list is empty
     const [showEasterEggModal, setShowEasterEggModal] = useState(false);
@@ -1734,32 +1939,20 @@ const filterFormData = (formData, bbCodeVersion) => {
 
     return filteredData;
 };
-    
+        const [showBBCode, setShowBBCode] = useState(false);
+
 
     //  BBCode generation logic
-    const bbCode = bbCodeVersion === 1 ? generateDeathReport(formData) :
-    bbCodeVersion === 2 ? generateEmail(formData) :
-        bbCodeVersion === 3 ? generateAdvancedPatientFile(formData) :  
-        bbCodeVersion === 4 ? generateAutopsy(formData) :
-                    bbCodeVersion === 5 ? generateSurgicalOps(formData) :
-                        bbCodeVersion === 6 ? generatePhysEvalInternalMed(formData) :
-                            bbCodeVersion === 7 ? generatePhysEvalInternalMedPBC(formData) :
-                                                        bbCodeVersion === 14 ? generateMentalHealthPHMC(formData) :
-                                                                bbCodeVersion === 16 ? generateMentalHealthPBC(formData) :
-                                                                        bbCodeVersion === 18 ? generateAgencyFeedback(formData) :
-                                                                            bbCodeVersion === 19 ? generateEmergencyProtocol(formData) :
-                                                                                bbCodeVersion === 20 ? generateConsultationNotesPHMC(formData) :
-                                                                                    bbCodeVersion === 21 ? generateConsultationNotesPBC(formData) :
-                                                                                    bbCodeVersion === 22 ? generateCommentaryNotePHMC(formData) :
-                                                                                    bbCodeVersion === 23 ? generateCommentaryNotePBC(formData) :
-                                                                                    bbCodeVersion === 24 ? generateMedicalRecordRelease(formData) :
-                                                                                        bbCodeVersion === 25 ? generateCommentaryNotePBC(formData) :
-                                                                                            bbCodeVersion === 27 ? generateEmailPHMCEmail(formData) : 
-                                                                                            bbCodeVersion === 28 ? generatePsychEvalPHMC(formData) :
-                                                                                            bbCodeVersion === 29 ? generatePsychEvalPBC(formData) :
-                                                                                            generateDeathReport(formData);
-                                                                                // generateError();
-
+{showBBCode && (
+    <>
+        <h2>Generated BBCode</h2>
+        <div className="bbcode-output">
+            <pre>
+                {getBBCodeContent() || 'No BBCode generated for this form type.'}
+            </pre>
+        </div>
+    </>
+)}
    
 // Coroner Titles
 const generateTitle = () => {       
@@ -1794,371 +1987,24 @@ if (bbCodeVersion === 1) {
     };
 // Everything else
 
-const clearForm = () => {
-    setFormData(prevFormData => ({ // Use the previous state to access current values
-        // Keep coronerEmployee and phmcEmployee from the previous state
-        coronerEmployee: prevFormData.coronerEmployee,
-        phmcEmployee: prevFormData.phmcEmployee,
-
-        // Reset all other fields to their initial/default values
-        placeOfDeath: '',
-        evidenceLockerID: '',
-        evidenceLocker: '',
-        department: '',
-        dateTime: '',
-        phmcRank: '', // Reset rank if needed, or keep like employee fields
-        BodyMassIndex: '',
-        serialNumber: '',
-        decedentName: '',
-        pronouncedTimeOfDeath: '',
-        synopsis: '',
-        probableCauseOfDeath: '',
-        mannerOfDeath: '',
-        typeOfDeath: '',
-        decedentOOC: '',
-        scenePhotos: '',
-        lastName: '', // Reset lastName if tied to employee, or keep
-        coronerBadge: prevFormData.coronerBadge, // Keep badge if tied to coronerEmployee
-        additionalImages: '',
-        requestingOfficer: '',
-        coronerDiscord: prevFormData.coronerDiscord, // Keep discord if tied to coronerEmployee
-        coronerPHNumber: '50056', // Reset to default or keep? Decide based on logic
-        deathReport: '',
-        SubmitDate: new Date().toISOString().split('T')[0], // Reset to today or keep?
-        additionalReports: [],
-        showAdditionalReports: false,
-        internalReport: '',
-        internalAdditionalReports: '',
-        policeNotification: '',
-        treatmentLocation: '',
-        moreDeathReports: [''],
-        extraStaff: [], // Reset or keep?
-        patientName: '',
-        patientAllergies: '',
-        surgeryComplications: '',
-        surgeryProcedures: '',
-        drugType: '',
-        postDrugtype: '',
-        surgicalSummery: '',
-        surgeryTime: '',
-        medicalComplications: '',
-        treatmentProcedures: '',
-        medType: '',
-        postTreatment: '',
-        medicalSummary: '',
-        evalTime: '',
-        patientPH: '',
-        patientBPM: '',
-        patientBMI: '',
-        patientTemperature: '',
-        patientCareer: '',
-        patientHeight: '',
-        patientWeight: '',
-        patientpulse: '',
-        patientOxi: '',
-        patientImpairments: '',
-        patientPastDiseases: '',
-        patientAssessment: '',
-        appointmentDate: '',
-        PatientMedicalRecord: '',
-        PatientName: '',
-        patientChewing: '',
-        patientPriority: '',
-        patientMedicine: '',
-        patientNewMedicine: '',
-        patientTreatment: '',
-        patientDiagnosis: '',
-        patientPrescription: '',
-        patientSummary: '',
-        date: '',
-        patientRace: '',
-        patientDiscord: '',
-        race: '',
-        patientMedicalRecord: '',
-        patientGender: '',
-        patientDateofBirth: '',
-        patientDateOfBirth: '', // Duplicate? Keep one
-        patientMedicalHistory: '',
-        patientEmail: '',
-        patientAddress: '',
-        patientEmergencyContact: '',
-        patientEmergencyContactNumber: '',
-        patientEmergencyContactRelation: '',
-        patientBloodType: '',
-        patientChronicDiseases: '',
-        patientBP: '',
-        patientResperation: '',
-        patientConsultation: '',
-        patientPerscription: '',
-        patientSummaryConsultation: '',
-        patientCondition: '',
-        patientNotes: '',
-        patientBaggageofParents: '',
-        oneFetus: false,
-        twoFetuses: false,
-        threeFetuses: false,
-        fourFetuses: false,
-        patientContractions: '',
-        patientBleeding: '',
-        patientDiscomfort: '',
-        patientFatter: '',
-        patientBabyGender: '',
-        patientKnowBabyGender: '',
-        patientUltraSummary: '',
-        patientWellWomanExam: '',
-        patientLastWellWomanExam: '',
-        patientPapResults: '',
-        patientSTI: '',
-        patientSTIResults: '',
-        patientBloodAnalysis: '',
-        patientBloodAnalysisResults: '',
-        patientUrine: '',
-        patientUrineResults: '',
-        patientPap: '',
-        patientDateofPregnancy: '',
-        patientFetalMeasurements: '',
-        patientCurrentMedicine: '',
-        patientAdditionalPregnancy: '',
-        patientJobTasks: '',
-        patientLivingHabits: '',
-        patientPreHealth: '',
-        patientPregProblems: '',
-        patientPartnerName: '',
-        patientPartnerPH: '',
-        patientPartnerDiscord: '',
-        caseOpen: false,
-        caseClosed: false,
-        violenceToSelf: false,
-        violenceToOthers: false,
-        LowRisk: false,
-        noRisk: true,
-        HighRisk: false,
-        MediumRisk: false,
-        patientFileCreation: '',
-        patientVisitReason: '',
-        patientSurgicalHistory: '',
-        patientMedHistory: '',
-        patientPsychDiagnoses: '',
-        patientEvalFile: '',
-        patientMedicalFile: '',
-        patientSubstance: '',
-        patientTrauma: ``,
-        patientEdu: ``,
-        patientDev: ``,
-        patientLegal: ``,
-        patientSpiritual: ``,
-        patientMale: false,
-        patientFemale: false,
-        patientFormYes: false,
-        patientFormNo: false,
-        patientFormYes2: false,
-        patientFormNo2: false,
-        patientConsent: '',
-        patientConsentOption: '',
-        patientConsentNo: '',
-        patientConsentYes: '',
-        patientComplicationOptions: '',
-        complications: '',
-        patientComplaint: '',
-        triageNoPain: false,
-        triageNormalPain: false,
-        triageMildPain: false,
-        triageSeverePain: false,
-        triageCriticalPain: false,
-        patientTempNormal: false,
-        patientTempHigh: false,
-        patientTempLow: false,
-        patientHeartRateNormal: false,
-        patientHeartRateBradycardia: false,
-        patientHeartRateTachycardia: false,
-        patientBreathingNormal: false,
-        patientBreathingSlow: false,
-        patientBreathingFast: false,
-        patientBreathingObstructed: false,
-        patientBloodPressureNormal: false,
-        patientBloodPressureHypotension: false,
-        patientBloodPressureHypertension: false,
-        assignedDepartment: '',
-        lab: [],
-        departmentLarge: '',
-        patientChiefComplaint: '',
-        patientID: '',
-        rank: '', // Reset rank or keep?
-        patientProcedure: '',
-        patientPhoneType: '',
-        patientPhoneMobile: '',
-        patientPhoneHome: '',
-        patientPhoneWork: '',
-        patientPhoneOther: '',
-        patientGenderMale: '',
-        patientGenderFemale: '',
-        MedicalRecordsRelease: [],
-        PurposeMedicalInformationReleaseFormat: '', // Reset or keep?
-        PurposeMedicalInformationRelease: '', // Reset or keep?
-        PurposeAttorney: '',
-        PurposePersonal: '',
-        PurposeFurtherCare: '',
-        PurposeOther: '',
-        CarePurposeMedicalInformationRelease: '',
-        patientMedInfoReleaseOther: '',
-        MedicalRecordsReleaseOther: '',
-        StupidDateFrom: '',
-        StupidDateTo: '',
-        patientFirstName: '',
-        patientMiddleName: '',
-        patientLastName: '', // Reset or keep?
-        patientTitle: '',
-        patientComplicationsYes: '',
-        patientComplicationsNo: '',
-        procedureGoodOptions: '',
-        procedureGoodYes: '',
-        procedureGoodNo: '',
-        temperature: '',
-        heartRate: '',
-        bloodPressure: '',
-        careerRisks: '',
-        patientJob: '',
-        patientcareerNo: '',
-        patientAllergiesRisk: '',
-        patientMedicineRegular: '',
-        patientOther: '',
-        predisposition: '',
-        breathing: '',
-        patientTherapy: '',
-        patientFamily: '',
-        patientGentic: '',
-        patientFamSocial: '',
-        patientMental: '',
-        maritalStatus: '',
-        numberChildren: '',
-        financialStatus: '',
-        dnr: '',
-        dnrOrder: '',
-        attorney: '',
-        patientSupport: '',
-        patientHarm: '',
-        patientFam: '',
-        patientGenetic: '',
-        patientReligion: '',
-        patientSmoker: '',
-        patientAlcohol: '',
-        patientDrugs: '',
-        patientExercise: '',
-        patientDiet: '',
-        patientSleep: '',
-        patientSexLife: '',
-        patientJobRisks: '',
-        patientHazards: '',
-        attorneyName: '',
-        attorneyPH: '',
-        attorneyRelation: '',
-        dnrOther: '',
-        patientEmergencyContactDiscord: '',
-        patientSecondaryDiagnosis: '',
-        patientTriggers: '',
-        patientStress: '',
-        patientSymptoms: '',
-        patientDrugsUsage: '',
-        patientTreatmentMedicine: '',
-        patientSafety: '',
-        patientFollowUp: '',
-        patientTreatmentPlan: '',
-        patientRelationship: '',
-        patientRiskAssessment: '',
-        patientTherapyMedicine: '',
-        Speech: '',
-        Behavior: '',
-        Appearance: '',
-        Mood: '',
-        Affect: '',
-        Risk: '',
-        ThoughtProcess: '',
-        ThoughtContent: '',
-        Insight: '',
-        Cognition: '',
-        admission: '',
-        followup: '',
-        sono: '',
-        pupils: '',
-        lungs: '',
-        painLevel: '',
-        wounds: '',
-        findings: '',
-        patientFindings: '',
-        paletoClinicDepartment: '',
-        coronerRank: prevFormData.coronerRank, // Keep rank if tied to coronerEmployee
-        autopsyPhotosUnavailable: false,
-        autopsyPhotos: '',
-        autopsyDate: '',
-        autopsyTime: '',
-        autopsyAlbumUrl:'',
-        
-    }));
-
-        const fieldsToRemove = [
-        'dateTime',
-        'department',
-        'pronouncedTimeOfDeath',
-        'placeOfDeath'
-        // Keep coronerEmployee and phmcEmployee out of this list
-    ];
-
-    fieldsToRemove.forEach(field => {
-        localStorage.removeItem(field);
-        localStorage.removeItem(`${field}_timestamp`);
-    });
-
-    setParsedBBCode('');
-    setLastWebhookIdentifier(null);
-    showNotification('Form cleared! Employee selections preserved.', 'check-circle');
-};
 const DEFAULT_NOTIFICATION_DURATION = 3000; // default 3 seconds
 
-    const showNotification = (message, icon = 'check-circle', duration = DEFAULT_NOTIFICATION_DURATION) => {
-        const newNotification = {
-            id: Date.now() + Math.random(), // Unique ID for the notification
-            message: message,
-            icon: getIconClass(icon),
-        };
-        setNotifications(prevNotifications => [...prevNotifications, newNotification]);
-
-        // Only set a timeout if a positive duration is provided
-        if (duration > 0) {
-            setTimeout(() => {
-                removeNotification(newNotification.id);
-            }, duration);
-        }
-        return newNotification.id; // Return the ID of the created notification
-    };
-        
-    const getIconClass = (iconType) => {
-        switch (iconType) {
-            case 'check-circle':
-                return 'fas fa-check-circle';
-            case 'save':
-                return 'fas fa-save';
-            case 'clipboard':
-                return 'fas fa-clipboard-check';
-            case 'error':
-                return 'fas fa-exclamation-triangle';
-            case 'warning':
-                return 'fas fa-exclamation-circle';
-            case 'upload':
-                return 'fas fa-upload'; // Add the upload icon
-            default:
-                return 'fas fa-info-circle';
-        }
-    };
+const getIconClass = (iconType) => {
+    switch (iconType) {
+        case 'check-circle': return 'fas fa-check-circle';
+        case 'save': return 'fas fa-save';
+        case 'clipboard': return 'fas fa-clipboard-check';
+        case 'error': return 'fas fa-exclamation-triangle';
+        case 'warning': return 'fas fa-exclamation-circle';
+        case 'upload': return 'fas fa-upload';
+        case 'spinner fa-spin': return 'fas fa-spinner fa-spin';
+        default: return 'fas fa-info-circle';
+    }
+};
 
 
-    // *** IMPLEMENT removeNotification to REMOVE from the array ***
-    const removeNotification = (idToRemove) => {
-        setNotifications(prevNotifications =>
-            prevNotifications.filter(notif => notif.id !== idToRemove)
-        );
-    };
-        const [showBusinessCard, setShowBusinessCard] = useState(false); // Add this line
-    const [showBBCode, setShowBBCode] = useState(false);
+
+    const [showBusinessCard, setShowBusinessCard] = useState(false); // Add this line
     const [showImages, setShowImages] = useState(false);
     const [showEmsAmaModal, setShowEmsAmaModal] = useState(false); // +++ State for the new modal
 
@@ -2321,7 +2167,7 @@ useEffect(() => {
             userWelcomed = true;
             updatedUserName = selectedCoronerNameInForm;
 
-            const coronerDetailsFromDataJs = coronerList.find(c => c.name === selectedCoronerNameInForm);
+            const coronerDetailsFromDataJs = coronerListData.find(c => c.name === selectedCoronerNameInForm);
 
             if (coronerDetailsFromDataJs) {
                 const updatesToForm = {};
@@ -2394,7 +2240,7 @@ useEffect(() => {
             if (!updatedUserName) updatedUserName = selectedPhmcEmployeeName;
 
 
-            const phmcEmployeeDetailsFromDataJs = phmcList.find(p => p.name === selectedPhmcEmployeeName);
+            const phmcEmployeeDetailsFromDataJs = phmcListData.find(p => p.name === selectedPhmcEmployeeName);
 
             if (phmcEmployeeDetailsFromDataJs) {
                 localStorage.setItem('phmcEmployee_timestamp', currentTimestamp);
@@ -2436,150 +2282,89 @@ useEffect(() => {
 // eslint-disable-next-line react-hooks/exhaustive-deps
 }, []); // Empty dependency array ensures this runs only once on mount.
 
-    const handleSelectChange = (selectedOption, type) => {
-        const timestamp = Date.now();
-    
+    const handleSelectChange = (selectedOption, actionMeta) => {
+        const { name } = actionMeta; // 'name' prop from the Select component
+        const timestamp = Date.now().toString();
+
         if (selectedOption) {
-            const isCoronerOption = 'badge' in selectedOption && 'rank' in selectedOption; // Heuristic
+            setFormData(prevFormData => ({
+                ...prevFormData,
+                [name]: selectedOption.value
+            }));
 
-            if (isCoronerOption) {
-                const fullCoronerDetails = coronerList.find(c => c.name === selectedOption.value);
-                if (fullCoronerDetails) {
-                    const phNumberToSet = fullCoronerDetails.phNumber || '50056';
-                    
-                    setFormData(prev => ({
-                        ...prev,
-                        coronerEmployee: selectedOption.value,
-                        coronerBadge: selectedOption.badge,
-                        coronerRank: selectedOption.rank,
-                        coronerDiscord: selectedOption.discord,
-                        coronerPHNumber: phNumberToSet
+            // If it's phmcEmployee or coronerEmployee, find full details
+            if (name === 'phmcEmployee') {
+                const employeeDetails = phmcListData.find(emp => emp.name === selectedOption.value);
+                if (employeeDetails) {
+                    setFormData(prevFormData => ({
+                        ...prevFormData,
+                        phmcEmployeeSignature: employeeDetails.signature || '',
+                        phmcEmployeeLastName: employeeDetails.lastName || '',
+                        // any other fields you need from phmcListData
                     }));
-
-                    const timestampString = timestamp.toString();
-                    localStorage.setItem('coronerEmployee', selectedOption.value);
-                    localStorage.setItem('coronerBadge', selectedOption.badge);
-                    localStorage.setItem('coronerRank', selectedOption.rank);
-                    localStorage.setItem('coronerDiscord', selectedOption.discord);
-                    localStorage.setItem('coronerPHNumber', phNumberToSet);
-
-                    localStorage.setItem('coronerEmployee_timestamp', timestampString);
-                    localStorage.setItem('coronerBadge_timestamp', timestampString);
-                    localStorage.setItem('coronerRank_timestamp', timestampString);
-                    localStorage.setItem('coronerDiscord_timestamp', timestampString);
-                    localStorage.setItem('coronerPHNumber_timestamp', timestampString);
-                }
-            } else {
-                // Potentially for PHMC staff if a similar Select component uses this handler
-                // and `selectedOption` contains `value` for the name.
-                // This part depends on how PHMC staff selection is implemented.
-                // If PHMC staff selection uses `handleChange` with a name attribute, this `else` might not be hit.
-                // For now, let's assume it could be a PHMC employee if not a coroner.
-                const phmcDetails = phmcList.find(p => p.name === selectedOption.value);
-                if (phmcDetails) {
-                     setFormData(prev => ({
-                        ...prev,
-                        phmcEmployee: selectedOption.value,
-                        // phmcSignature: selectedOption.signature, // If you intend to use/store signature from select
-                        // phmcRank: selectedOption.category, // If you map category to a rank field in formData
-                    }));
-                    const timestampString = timestamp.toString();
                     localStorage.setItem('phmcEmployee', selectedOption.value);
-                    localStorage.setItem('phmcEmployee_timestamp', timestampString);
-                    // if (selectedOption.signature) {
-                    //     localStorage.setItem('phmcSignature', selectedOption.signature);
-                    //     localStorage.setItem('phmcSignature_timestamp', timestampString);
-                    // }
+                    localStorage.setItem('phmcEmployee_timestamp', timestamp);
+                    // Store other details if needed
+                }
+            } else if (name === 'coronerEmployee') {
+                const coronerDetails = coronerListData.find(cor => cor.name === selectedOption.value);
+                if (coronerDetails) {
+                    setFormData(prevFormData => ({
+                        ...prevFormData,
+                        coronerBadge: coronerDetails.badge || '',
+                        coronerRank: coronerDetails.rank || '',
+                        coronerDiscord: coronerDetails.discord || '',
+                        // any other fields
+                    }));
+                    localStorage.setItem('coronerEmployee', selectedOption.value);
+                    localStorage.setItem('coronerEmployee_timestamp', timestamp);
+                    // Store other details
                 }
             }
         } else {
-            // Selection was cleared
-            // This part needs to know WHICH select was cleared if it's a generic handler.
-            // For now, assuming it's primarily the coroner select being cleared.
-            const fieldsToClear = ['coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord', 'coronerPHNumber'];
-            fieldsToClear.forEach(field => {
-                localStorage.removeItem(field);
-                localStorage.removeItem(`${field}_timestamp`);
-            });
-            setFormData(prev => ({
-                ...prev,
-                coronerEmployee: '',
-                coronerBadge: '',
-                coronerRank: '',
-                coronerDiscord: '',
-                coronerPHNumber: '50056'
-                // If it could be a PHMC employee select, also clear:
-                // phmcEmployee: '',
-                // phmcSignature: '',
-                // phmcRank: '',
+            // Handle clear
+            setFormData(prevFormData => ({
+                ...prevFormData,
+                [name]: '',
+                ...(name === 'phmcEmployee' && { phmcEmployeeSignature: '', phmcEmployeeLastName: '' }),
+                ...(name === 'coronerEmployee' && { coronerBadge: '', coronerRank: '', coronerDiscord: '' }),
             }));
+            if (name === 'phmcEmployee') {
+                localStorage.removeItem('phmcEmployee');
+                localStorage.removeItem('phmcEmployee_timestamp');
+            } else if (name === 'coronerEmployee') {
+                localStorage.removeItem('coronerEmployee');
+                localStorage.removeItem('coronerEmployee_timestamp');
+            }
         }
     };
 
     const handleChange = (e) => {
-        const { name, value: originalValue, type, checked } = e.target;
-
-        // Determine the value to set based on input type
-        let valueToSet = type === 'checkbox'
-            ? checked
-            : type === 'select-multiple'
-                ? Array.from(e.target.selectedOptions, option => option.value)
-                : originalValue;
-
-        // --- Specific processing for deathReport ---
-        // Check if the changed field is 'deathReport' and the value is a string
-        if (name === 'deathReport' && typeof valueToSet === 'string') { 
-            // Replace [bold] with [b] and [/bold] with [/b] globally
-            valueToSet = valueToSet.replace(/\[bold\]/g, '[b]').replace(/\[\/bold\]/g, '[/b]');
-        }
-        // --- End specific processing ---
-
-        // Update the main form data state
-        setFormData(prevFormData => ({
-            ...prevFormData,
-            [name]: valueToSet
-        }));
-
-        // --- LocalStorage Logic ---
+        const { name, value, type, checked } = e.target;
+        const valToSet = type === 'checkbox' ? checked : value;
         const timestamp = Date.now().toString();
 
-        // Fields with 5-day expiry (only save if this specific field changed)
-        const fiveDayExpiryFields = ['phmcEmployee', 'coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord'];
+        setFormData(prevFormData => ({
+            ...prevFormData,
+            [name]: valToSet
+        }));
+
+        // Update localStorage for fields that need it
+        const fiveDayExpiryFields = ['phmcEmployee', 'coronerEmployee', 'department', /* other fields */];
         if (fiveDayExpiryFields.includes(name)) {
-            // Special handling for employee selects to save related data
-            if (name === 'phmcEmployee') {
-                // Find the selected employee to get the signature
-                localStorage.setItem('phmcEmployee', valueToSet);
-                localStorage.setItem('phmcEmployee_timestamp', timestamp);
-            } else if (name === 'coronerEmployee') {
-                const selectedCoroner = coronerList.find(cor => cor.name === valueToSet);
-                const badgeToSave = selectedCoroner?.badge || '';
-                const rankToSave = selectedCoroner?.rank || '';
-                const discordToSave = selectedCoroner?.discord || '';
-                localStorage.setItem('coronerEmployee', valueToSet);
-                localStorage.setItem('coronerBadge', badgeToSave);
-                localStorage.setItem('coronerRank', rankToSave);
-                localStorage.setItem('coronerDiscord', discordToSave);
-                localStorage.setItem('coronerEmployee_timestamp', timestamp);
-                localStorage.setItem('coronerBadge_timestamp', timestamp);
-                localStorage.setItem('coronerRank_timestamp', timestamp);
-                localStorage.setItem('coronerDiscord_timestamp', timestamp);
+             localStorage.setItem(name, valToSet);
+             localStorage.setItem(`${name}_timestamp`, timestamp);
+
+            // If department changes, clear related employee fields
+            if (name === 'department') {
                 setFormData(prev => ({
                     ...prev,
-                    coronerBadge: badgeToSave,
-                    coronerRank: rankToSave,
-                    coronerDiscord: discordToSave
+                    phmcEmployee: '', phmcEmployeeSignature: '', phmcEmployeeLastName: '',
+                    coronerEmployee: '', coronerBadge: '', coronerRank: '', coronerDiscord: ''
                 }));
-            } else {
-                localStorage.setItem(name, valueToSet);
-                localStorage.setItem(`${name}_timestamp`, timestamp);
+                localStorage.removeItem('phmcEmployee'); localStorage.removeItem('phmcEmployee_timestamp');
+                localStorage.removeItem('coronerEmployee'); localStorage.removeItem('coronerEmployee_timestamp');
             }
-        }
-
-        const threeHourExpiryFields = ['pronouncedTimeOfDeath', 'department', 'dateTime', 'placeOfDeath', 'mannerOfDeath'];
-        if (threeHourExpiryFields.includes(name)) {
-            localStorage.setItem(name, valueToSet);
-            localStorage.setItem(`${name}_timestamp`, timestamp);
         }
     };
 
@@ -2920,7 +2705,7 @@ const handleCopyAndNotify = async () => {
                 return;
             }
     
-            const coroner = coronerList.find(c => c.name === selectedCoronerName);
+            const coroner = coronerListData.find(c => c.name === selectedCoronerName);
     
             if (coroner) {
                 const phoneNumber = coroner.phNumber; // Get the phone number property from data.js
@@ -2973,12 +2758,12 @@ const handleCopyAndNotify = async () => {
                 />
             )}
                     <CoronerRankModal
-                        show={showCoronerRankModal}
-                        onClose={() => setShowCoronerRankModal(false)}
-                        onSubmit={handleCoronerRankSubmit} // Pass the new handler
-                        coronerRankList={uniqueCoronerRanks} // Pass the processed list of ranks
-                        coronerList={coronerList} // <-- Pass the full coronerList from data.js
-
+    show={showCoronerRankModal}
+    onClose={() => setShowCoronerRankModal(false)}
+    onSubmit={handleCoronerRankSubmit}
+    coronerList={coronerListData} 
+    setCoronerListData={setCoronerListData}
+    showNotification={showNotification}    
                     />
         <CoronerTipsModal
             show={showCoronerTips}
@@ -3077,7 +2862,7 @@ const handleCopyAndNotify = async () => {
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 2.1.0 -  </h3>
+                                    <h3>Changelog - Version 2.4.0 -  </h3>
                                     <Button
                                         className="close"
                                         variant='secondary'
@@ -3087,13 +2872,27 @@ const handleCopyAndNotify = async () => {
                                         <i className="fas fa-times"></i>
                                     </Button>
                                 </div>
-                                <div className="modal-content">
-                                    <ul>
-                                        Added Autopsy Forms.
-                                        Fixed bugs
-                                    </ul>
-                                    - frosty
-                                </div>
+<div className="modal-content">
+    <ul>
+        <li><strong>Firebase Deployment:</strong>
+            <ul>
+                <li>Migrated core application data (staff lists, agency details, form dropdown options) to Firebase Realtime Database.</li>
+            </ul>
+        </li>
+        <li><strong>Dynamic Data Management:</strong>
+            <ul>
+                <li>Coroner Rank Modal now directly updates coroner rank and category in Firebase.</li>
+                <li>Employee Management (Add/Remove Staff) now updates Firebase records for both Coroners and PHMC staff.</li>
+            </ul>
+        </li>
+        <li><strong>Bug Fixes & Minor Tweaks:</strong>
+            <ul>
+                <li>Cleaned up redundant code and unused variables.</li>
+            </ul>
+        </li>
+    </ul>
+    - frosty
+</div>
                             </div>
                         </div>
                     )}
@@ -3546,46 +3345,61 @@ const handleCopyAndNotify = async () => {
         </div>
                     <form>
                         {bbCodeVersion === 1 ? (
-                            <DeathReport
+                                             <DeathReport
                             formData={formData}
                             handleChange={handleChange}
-                            handleSelectChange={handleSelectChange} 
+                            handleSelectChange={handleSelectChange}
                             setShowMissingEmployeeModal={setShowMissingEmployeeModal}
                             setShowCoronerRankModal={setShowCoronerRankModal}
                             coronerGroupedOptions={coronerGroupedOptions}
                             handleDoeChange={handleDoeChange}
+                            agencyData={agencyDataStore} // This prop seems unused by DeathReport directly, but can remain
                             setFormData={setFormData}
-                            isJohnDoe={isJohnDoe} 
+                            isJohnDoe={isJohnDoe}
                             isJaneDoe={isJaneDoe}
                             currentUtcTime={currentUtcTime}
                             isUploading={isUploading}
-                            handleImageUpload={handleImageUpload}                    
+                            handleImageUpload={handleImageUpload}
+                            // --- Add these new props ---
+                            typeOfDeathOptions={selectOptions.typeOfDeathOptions || []}
+                            mannerOfDeathOptions={selectOptions.mannerOfDeathOptions || []}
+                            requestingAgencyOptions={selectOptions.requestingAgenciesOptions || []}
+                            isDisabled={isLoadingData}
                         />
                     ) : bbCodeVersion === 2 ? (
                         <CoronerEmail
                         formData={formData}
                         handleChange={handleChange}
-                        handleSelectChange={handleSelectChange} 
+                        handleSelectChange={handleSelectChange}
                         setShowMissingEmployeeModal={setShowMissingEmployeeModal}
                         setShowCoronerRankModal={setShowCoronerRankModal}
                         coronerGroupedOptions={coronerGroupedOptions}
-                        fillPhoneChecked={fillPhoneChecked} 
-                        setFillPhoneChecked={setFillPhoneChecked} 
+                        fillPhoneChecked={fillPhoneChecked}
+                        setFillPhoneChecked={setFillPhoneChecked}
                         handleFillCoronerPhone={handleFillCoronerPhone}
-                        addReport={addReport} 
-                        removeReport={removeReport} 
+                        addReport={addReport}
+                        removeReport={removeReport}
                         handleReportChange={handleReportChange}
                         isUploading={isUploading}
-                        parseBBCode={parseBBCode} 
-                        toggleSavedReports={toggleSavedReports} 
-                    />                    
-                        ) : bbCodeVersion === 3 ? ( 
+                        parseBBCode={parseBBCode}
+                        toggleSavedReports={toggleSavedReports}
+                    />
+                        ) : bbCodeVersion === 3 ? (
                             <PatientAdvanced
                             formData={formData}
                             handleChange={handleChange}
                             handleImageUpload={handleImageUpload}
                             isUploading={isUploading}
-                            setFormData={setFormData} 
+                            setFormData={setFormData}
+                            // Props from selectOptions
+                            patientTitle={selectOptions.patientTitle || []}
+                            patientBloodType={selectOptions.patientBloodType || []}
+                            maritalStatus={selectOptions.maritalStatus || []}
+                            numberChildren={selectOptions.numberChildren || []}
+                            financialStatus={selectOptions.financialStatus || []}
+                            dnr={selectOptions.dnr || []}
+                            attorney={selectOptions.attorney || []}
+                            dnrOrder={selectOptions.dnrOrder || []}
                         />
                         ) : bbCodeVersion === 4 ? (
                         <Autopsy
@@ -3599,7 +3413,7 @@ const handleCopyAndNotify = async () => {
                         isUploading={isUploading}
                         handleImageUpload={handleImageUpload}
                         phmcGroupedOptions={phmcGroupedOptions}
-                        handleAutopsyImageUploadAndCreateAlbum={handleAutopsyImageUploadAndCreateAlbum} // Pass the new handler
+                        handleAutopsyImageUploadAndCreateAlbum={handleAutopsyImageUploadAndCreateAlbum}
 
                         />
                         ) : bbCodeVersion === 5 ? (
@@ -3607,85 +3421,83 @@ const handleCopyAndNotify = async () => {
                         formData={formData}
                         handleChange={handleChange}
                         phmcGroupedOptions={phmcGroupedOptions}
-                        phmcRank={phmcRank}
+                        phmcRank={selectOptions.phmcRank || []}
                         setFormData={setFormData}
-                        patientConsent={patientConsent}
-                        complications={complications}
-                        procedureGood={procedureGood}
+                        patientConsent={selectOptions.patientConsent || []}
+                        complications={selectOptions.complications || []}
+                        procedureGood={selectOptions.procedureGood || []}
                     />
 
                     ) : bbCodeVersion === 6 ? (
                         <PhysEval
                         formData={formData}
                         handleChange={handleChange}
-                        phmcGroupedOptions={phmcGroupedOptions} 
-                        setFormData={setFormData} 
-                        phmcRank={phmcRank} // <-- PASS THE PROP HERE
+                        phmcGroupedOptions={phmcGroupedOptions}
+                        setFormData={setFormData}
+                        phmcRank={selectOptions.phmcRank || []}
                         setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                        BodyMassIndex={BodyMassIndex} 
-                        temperature={temperature} 
-                        heartRate={heartRate} 
-                        breathing={breathing} 
-                        bloodPressure={bloodPressure} 
-                        patientJob={patientJob} 
-                        patientJobRisks={patientJobRisks} 
-                        patientAllergiesRisk={patientAllergiesRisk} 
-                        patientMedicineRegular={patientMedicineRegular} 
-                        patientOther={patientOther} 
-                        predisposition={predisposition}                                 
+                        BodyMassIndex={selectOptions.BodyMassIndex || []}
+                        temperature={selectOptions.temperature || []}
+                        heartRate={selectOptions.heartRate || []}
+                        breathing={selectOptions.breathing || []}
+                        bloodPressure={selectOptions.bloodPressure || []}
+                        patientJob={selectOptions.patientJob || []}
+                        patientJobRisks={selectOptions.patientJobRisks || []}
+                        patientAllergiesRisk={selectOptions.patientAllergiesRisk || []}
+                        patientMedicineRegular={selectOptions.patientMedicineRegular || []}
+                        patientOther={selectOptions.patientOther || []}
+                        predisposition={selectOptions.predisposition || []}
                     />
 
                     ) : bbCodeVersion === 7 ? ( // generatePhysEvalInternalMed
                         <PhysEval
                         formData={formData}
                         handleChange={handleChange}
-                        phmcGroupedOptions={phmcGroupedOptions} 
-                        setFormData={setFormData} 
-                        phmcRank={phmcRank} // <-- PASS THE PROP HERE
+                        phmcGroupedOptions={phmcGroupedOptions}
+                        setFormData={setFormData}
+                        phmcRank={selectOptions.phmcRank || []}
                         setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                        BodyMassIndex={BodyMassIndex} 
-                        temperature={temperature} 
-                        heartRate={heartRate} 
-                        breathing={breathing} 
-                        bloodPressure={bloodPressure} 
-                        patientJob={patientJob} 
-                        patientJobRisks={patientJobRisks} 
-                        patientAllergiesRisk={patientAllergiesRisk} 
-                        patientMedicineRegular={patientMedicineRegular} 
-                        patientOther={patientOther} 
-                        predisposition={predisposition}                                 
-                    />                            
+                        BodyMassIndex={selectOptions.BodyMassIndex || []}
+                        temperature={selectOptions.temperature || []}
+                        heartRate={selectOptions.heartRate || []}
+                        breathing={selectOptions.breathing || []}
+                        bloodPressure={selectOptions.bloodPressure || []}
+                        patientJob={selectOptions.patientJob || []}
+                        patientJobRisks={selectOptions.patientJobRisks || []}
+                        patientAllergiesRisk={selectOptions.patientAllergiesRisk || []}
+                        patientMedicineRegular={selectOptions.patientMedicineRegular || []}
+                        patientOther={selectOptions.patientOther || []}
+                        predisposition={selectOptions.predisposition || []}
+                    />
                         ) : bbCodeVersion === 14 ? ( // generateMentalHealthPHMC
                             <MentalHealth
                             formData={formData}
                             handleChange={handleChange}
-                            phmcGroupedOptions={phmcGroupedOptions} 
-                            setFormData={setFormData} 
-                            phmcRank={phmcRank} // <-- PASS THE PROP HERE
+                            phmcGroupedOptions={phmcGroupedOptions}
+                            setFormData={setFormData}
+                            phmcRank={selectOptions.phmcRank || []}
                             setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                            BodyMassIndex={BodyMassIndex} 
-                            followup={followup} 
-                            admission={admission} 
-
-                        />                                                        
+                            // BodyMassIndex might not be used by MentalHealth, verify component
+                            followup={selectOptions.followup || []}
+                            admission={selectOptions.admission || []}
+                        />
                         ) : bbCodeVersion === 16 ? ( // generateMentalHealthPBC
                             <MentalHealth
                             formData={formData}
                             handleChange={handleChange}
-                            phmcGroupedOptions={phmcGroupedOptions} 
-                            setFormData={setFormData} 
-                            phmcRank={phmcRank} // <-- PASS THE PROP HERE
+                            phmcGroupedOptions={phmcGroupedOptions}
+                            setFormData={setFormData}
+                            phmcRank={selectOptions.phmcRank || []}
                             setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                            BodyMassIndex={BodyMassIndex} 
-                            followup={followup} 
-                            admission={admission} 
-
-                        />                                                        
-                        ) : bbCodeVersion === 18 ? ( // generateAgencyFeedbac
+                            // BodyMassIndex might not be used by MentalHealth, verify component
+                            followup={selectOptions.followup || []}
+                            admission={selectOptions.admission || []}
+                        />
+                        ) : bbCodeVersion === 18 ? ( // generateAgencyFeedback
                             <AgencyFeedback
                             formData={formData}
                             handleChange={handleChange}
-                            handleSelectChange={handleSelectChange} 
+                            handleSelectChange={handleSelectChange}
                             setShowMissingEmployeeModal={setShowMissingEmployeeModal}
                             setShowCoronerRankModal={setShowCoronerRankModal}
                             coronerGroupedOptions={coronerGroupedOptions}
@@ -3697,86 +3509,76 @@ const handleCopyAndNotify = async () => {
                             <EmergencyForm
                             formData={formData}
                             handleChange={handleChange}
-                            phmcGroupedOptions={phmcGroupedOptions} 
-                            setFormData={setFormData} 
-                            phmcRank={phmcRank} // <-- PASS THE PROP HERE
+                            phmcGroupedOptions={phmcGroupedOptions}
+                            setFormData={setFormData}
+                            phmcRank={selectOptions.phmcRank || []}
                             setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                            BodyMassIndex={BodyMassIndex} 
-                            temperature={temperature} 
-                            heartRate={heartRate} 
-                            breathing={breathing} 
-                            bloodPressure={bloodPressure} 
-                            painLevel={painLevel} 
-                            findings={findings} 
-                            lungs={lungs} 
-                            pupils={pupils} 
-                            wounds={wounds} 
-                            ecg={ecg} 
-                            sono={sono} 
-                            lab={lab} 
-                            admission={admission} 
-                            followup={followup} 
-                            bloodOxy={bloodOxy}
-                            
+                            temperature={selectOptions.temperature || []}
+                            heartRate={selectOptions.heartRate || []}
+                            breathing={selectOptions.breathing || []}
+                            bloodPressure={selectOptions.bloodPressure || []}
+                            painLevel={selectOptions.painLevel || []}
+                            findings={selectOptions.findings || []}
+                            lungs={selectOptions.lungs || []}
+                            pupils={selectOptions.pupils || []}
+                            wounds={selectOptions.wounds || []}
+                            ecg={selectOptions.ecg || []}
+                            sono={selectOptions.sono || []}
+                            lab={selectOptions.lab || []}
+                            admission={selectOptions.admission || []}
+                            bloodOxy={selectOptions.bloodOxy || []}
                             />
                         ) : bbCodeVersion === 20 ? ( // General Consultation (PHMC)
                             <GeneralConsult
                             formData={formData}
                             handleChange={handleChange}
-                            phmcGroupedOptions={phmcGroupedOptions} 
-                            setFormData={setFormData} 
-                            phmcRank={phmcRank} // <-- PASS THE PROP HERE
+                            phmcGroupedOptions={phmcGroupedOptions}
+                            setFormData={setFormData}
+                            phmcRank={selectOptions.phmcRank || []}
                             setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                            BodyMassIndex={BodyMassIndex} 
-                            temperature={temperature} 
-                            heartRate={heartRate} 
-                            breathing={breathing} 
-                            bloodPressure={bloodPressure} 
-                            painLevel={painLevel} 
-                            findings={findings} 
-                            lungs={lungs} 
-                            pupils={pupils} 
-                            wounds={wounds} 
-                            ecg={ecg} 
-                            sono={sono} 
-                            lab={lab} 
-                            followup={followup} 
-                            assignedDepartment={assignedDepartment}
-                            admission={admission} 
-                            drugList={drugList}
+                            temperature={selectOptions.temperature || []}
+                            heartRate={selectOptions.heartRate || []}
+                            breathing={selectOptions.breathing || []}
+                            bloodPressure={selectOptions.bloodPressure || []}
+                            findings={selectOptions.findings || []}
+                            lungs={selectOptions.lungs || []}
+                            pupils={selectOptions.pupils || []}
+                            wounds={selectOptions.wounds || []}
+                            ecg={selectOptions.ecg || []}
+                            sono={selectOptions.sono || []}
+                            lab={selectOptions.lab || []}
+                            followup={selectOptions.followup || []}
+                            assignedDepartment={selectOptions.assignedDepartment || []}
+                            admission={selectOptions.admission || []}
                             handleImageUpload={handleImageUpload}
                             isUploading={isUploading}
-                            bloodOxy={bloodOxy}
+                            bloodOxy={selectOptions.bloodOxy || []}
                             />
                            ) : bbCodeVersion === 21 ? ( // GENERAL CONSULTATION (PBC)
                             <GeneralConsult
                             formData={formData}
                             handleChange={handleChange}
-                            phmcGroupedOptions={phmcGroupedOptions} 
-                            setFormData={setFormData} 
-                            phmcRank={phmcRank} // <-- PASS THE PROP HERE
+                            phmcGroupedOptions={phmcGroupedOptions}
+                            setFormData={setFormData}
+                            phmcRank={selectOptions.phmcRank || []}
                             setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                            BodyMassIndex={BodyMassIndex} 
-                            temperature={temperature} 
-                            heartRate={heartRate} 
-                            breathing={breathing} 
-                            bloodPressure={bloodPressure} 
-                            painLevel={painLevel} 
-                            findings={findings} 
-                            lungs={lungs} 
-                            pupils={pupils} 
-                            wounds={wounds} 
-                            ecg={ecg} 
-                            sono={sono} 
-                            lab={lab} 
-                            followup={followup} 
-                            assignedDepartment={assignedDepartment}
-                            admission={admission} 
-                            drugList={drugList}
+                            temperature={selectOptions.temperature || []}
+                            heartRate={selectOptions.heartRate || []}
+                            breathing={selectOptions.breathing || []}
+                            bloodPressure={selectOptions.bloodPressure || []}
+                            findings={selectOptions.findings || []}
+                            lungs={selectOptions.lungs || []}
+                            pupils={selectOptions.pupils || []}
+                            wounds={selectOptions.wounds || []}
+                            ecg={selectOptions.ecg || []}
+                            sono={selectOptions.sono || []}
+                            lab={selectOptions.lab || []}
+                            followup={selectOptions.followup || []}
+                            assignedDepartment={selectOptions.paletoClinicDepartment || []} // PBC uses paletoClinicDepartment
+                            admission={selectOptions.admission || []}
                             handleImageUpload={handleImageUpload}
                             isUploading={isUploading}
-                            bloodOxy={bloodOxy}
-
+                            bloodOxy={selectOptions.bloodOxy || []}
                             />
                     ) : bbCodeVersion === 22 ? ( // COMMENTARY NOTE (phmc)
                         <CommNotePHMC
@@ -3784,38 +3586,33 @@ const handleCopyAndNotify = async () => {
                             handleChange={handleChange}
                             setShowMissingEmployeeModal={setShowMissingEmployeeModal}
                             phmcGroupedOptions={phmcGroupedOptions}
-                            departmentLarge={departmentLarge}
-                            setFormData={setFormData} // Pass setFormData down
+                            departmentLarge={selectOptions.departmentLarge || []}
+                            setFormData={setFormData}
                         />
                         ) : bbCodeVersion === 23 ? ( // COMMENTARY NOTE (PBC)
-                            <>
                         <CommNotePBC
                             formData={formData}
                             handleChange={handleChange}
                             setShowMissingEmployeeModal={setShowMissingEmployeeModal}
                             phmcGroupedOptions={phmcGroupedOptions}
-                            departmentLarge={departmentLarge}
-                            setFormData={setFormData} // Pass setFormData down
+                            departmentLarge={selectOptions.paletoClinicDepartment || []} // PBC uses paletoClinicDepartment
+                            setFormData={setFormData}
                         />
-                            </>
                      ) : bbCodeVersion === 24 ? ( // Medical Record Release
-                            <MedicalRelease
+                        <MedicalRelease
                             formData={formData}
                             handleChange={handleChange}
-                            handleSelectChange={handleSelectChange}
-                            setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                            PurposeMedicalInformationRelease={PurposeMedicalInformationRelease}
                             setFormData={setFormData}
-                            MedicalRecordsRelease={MedicalRecordsRelease}
-                            phmcGroupedOptions={phmcGroupedOptions} 
-                            patientTitle={patientTitle} 
-                            patientPhone={patientPhone} 
-                            PurposeMedicalInformationReleaseFormat={PurposeMedicalInformationReleaseFormat}
+                            patientTitleOptions={selectOptions.patientTitle || []}
+                            patientPhoneOptions={selectOptions.patientPhone || []}
+                            purposeOptions={selectOptions.PurposeMedicalInformationRelease || []}
+                            formatOptions={selectOptions.PurposeMedicalInformationReleaseFormat || []}
+                            medicalRecordOptions={selectOptions.MedicalRecordsRelease || []}
+                            phmcGroupedOptions={phmcGroupedOptions}
                             handleImageUpload={handleImageUpload}
                             isUploading={isUploading}
- 
-
-                            />
+                            handleSelectChange={handleSelectChange}
+                        />
                     ) : bbCodeVersion === 25 ? ( // Basic Patient File
                             <BasicPatientFile
                             formData={formData}
@@ -3824,8 +3621,8 @@ const handleCopyAndNotify = async () => {
                             setShowMissingEmployeeModal={setShowMissingEmployeeModal}
                             isUploading={isUploading}
                             handleImageUpload={handleImageUpload}
-                            patientTitle={patientTitle} 
-                            patientBloodType={patientBloodType} 
+                            patientTitle={selectOptions.patientTitle || []}
+                            patientBloodType={selectOptions.patientBloodType || []}
                             />
                         ) : bbCodeVersion === 27 ? ( //PHMC Email Internal
                             <EmailInternal
@@ -3834,52 +3631,51 @@ const handleCopyAndNotify = async () => {
                             setFormData={setFormData}
                             isUploading={isUploading}
                             handleImageUpload={handleImageUpload}
-                            phmcGroupedOptions={phmcGroupedOptions} 
+                            phmcGroupedOptions={phmcGroupedOptions}
                             />
                         ) : bbCodeVersion === 28 ? ( //PHMC Shrink Internal
                             <Shrink
                             formData={formData}
                             handleChange={handleChange}
-                            phmcGroupedOptions={phmcGroupedOptions} 
-                            setFormData={setFormData} 
-                            phmcRank={phmcRank} // <-- PASS THE PROP HERE
+                            phmcGroupedOptions={phmcGroupedOptions}
+                            setFormData={setFormData}
+                            phmcRank={selectOptions.phmcRank || []}
                             setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                            Appearance={Appearance} 
-                            Behavior={Behavior} 
-                            Speech={Speech} 
-                            Mood={Mood} 
-                            Affect={Affect} 
-                            ThoughtProcess={ThoughtProcess} 
-                            ThoughtContent={ThoughtContent} 
-                            Insight={Insight} 
-                            Cognition={Cognition} 
-                            admission={admission} 
-                            followup={followup} 
-                            Risk={Risk}
+                            Appearance={selectOptions.Appearance || []}
+                            Behavior={selectOptions.Behavior || []}
+                            Speech={selectOptions.Speech || []}
+                            Mood={selectOptions.Mood || []}
+                            Affect={selectOptions.Affect || []}
+                            ThoughtProcess={selectOptions.ThoughtProcess || []}
+                            ThoughtContent={selectOptions.ThoughtContent || []}
+                            Insight={selectOptions.Insight || []}
+                            Cognition={selectOptions.Cognition || []}
+                            admission={selectOptions.admission || []}
+                            followup={selectOptions.followup || []}
+                            Risk={selectOptions.Risk || []}
                             />
 
                         ) : bbCodeVersion === 29 ? ( //PBC? Shrink Internal
                             <Shrink
                             formData={formData}
                             handleChange={handleChange}
-                            phmcGroupedOptions={phmcGroupedOptions} 
-                            setFormData={setFormData} 
-                            phmcRank={phmcRank} // <-- PASS THE PROP HERE
+                            phmcGroupedOptions={phmcGroupedOptions}
+                            setFormData={setFormData}
+                            phmcRank={selectOptions.phmcRank || []}
                             setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                            Appearance={Appearance} 
-                            Behavior={Behavior} 
-                            Speech={Speech} 
-                            Mood={Mood} 
-                            Affect={Affect} 
-                            ThoughtProcess={ThoughtProcess} 
-                            ThoughtContent={ThoughtContent} 
-                            Insight={Insight} 
-                            Cognition={Cognition} 
-                            admission={admission} 
-                            followup={followup} 
-                            Risk={Risk}
+                            Appearance={selectOptions.Appearance || []}
+                            Behavior={selectOptions.Behavior || []}
+                            Speech={selectOptions.Speech || []}
+                            Mood={selectOptions.Mood || []}
+                            Affect={selectOptions.Affect || []}
+                            ThoughtProcess={selectOptions.ThoughtProcess || []}
+                            ThoughtContent={selectOptions.ThoughtContent || []}
+                            Insight={selectOptions.Insight || []}
+                            Cognition={selectOptions.Cognition || []}
+                            admission={selectOptions.admission || []}
+                            followup={selectOptions.followup || []}
+                            Risk={selectOptions.Risk || []}
                             />
-
                         ) : null}
                         <div className="button-group">
                             <Button
@@ -4416,36 +4212,16 @@ const handleCopyAndNotify = async () => {
                                 </Button>
                             )}
                         </div>
-                        {showBBCode && (
-                            <>
-                                <h2>Generated BBCode</h2>
-                                <div className="bbcode-output">
-                                    <pre>
-                                                        {bbCodeVersion === 1 ? generateDeathReport(formData) : 
-                                                        bbCodeVersion === 2 ? generateEmail(formData) :
-                                                        bbCodeVersion === 3 ? generateAdvancedPatientFile(formData) :
-                                                        bbCodeVersion === 4 ? generateAutopsy(formData) :
-                                                        bbCodeVersion === 5 ? generateSurgicalOps(formData) :
-                                                        bbCodeVersion === 6 ? generatePhysEvalInternalMed(formData) :
-                                                        bbCodeVersion === 7 ? generatePhysEvalInternalMedPBC(formData) :
-                                                        bbCodeVersion === 14 ? generateMentalHealthPHMC(formData) :
-                                                        bbCodeVersion === 16 ? generateMentalHealthPBC(formData) :
-                                                        bbCodeVersion === 18 ? generateAgencyFeedback(formData) :
-                                                        bbCodeVersion === 19 ? generateEmergencyProtocol(formData) :
-                                                        bbCodeVersion === 20 ? generateConsultationNotesPHMC(formData) :
-                                                        bbCodeVersion === 21 ? generateConsultationNotesPBC(formData) :
-                                                        bbCodeVersion === 22 ? generateCommentaryNotePHMC(formData) :
-                                                        bbCodeVersion === 23 ? generateCommentaryNotePBC(formData) :
-                                                        bbCodeVersion === 24 ? generateMedicalRecordRelease(formData) :
-                                                        bbCodeVersion === 25 ? generateBasicPatientFile(formData) :
-                                                        bbCodeVersion === 27 ? generateEmailPHMCEmail(formData) :  
-                                                        bbCodeVersion === 28 ? generatePsychEvalPHMC(formData) :
-                                                        bbCodeVersion === 29 ? generatePsychEvalPBC(formData) :
-                                                        generateDeathReport(formData)}
-                                    </pre>
-                                </div>
-                            </>
-                        )}
+{showBBCode && (
+    <>
+        <h2>Generated BBCode</h2>
+        <div className="bbcode-output">
+            <pre>
+                {getBBCodeContent() || 'No BBCode generated for this form type.'}
+            </pre>
+        </div>
+    </>
+)}
                         {showImages && (formData.scenePhotos || formData.additionalImages) && (
                             <>
                                 <h2>Uploaded Images</h2>
@@ -4504,15 +4280,15 @@ const handleCopyAndNotify = async () => {
 }                
 {bbCodeVersion === 2 && (
     <div className="agency-buttons">
-        {formData.department && agencyData[formData.department] && (
+        {formData.department && agencyDataStore[formData.department] && (
             <a
-                href={agencyData[formData.department].url}
+                href={agencyDataStore[formData.department].url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="agency-button"
             >
                 <img
-                    src={agencyData[formData.department].logo}
+                    src={agencyDataStore[formData.department].logo}
                     alt={formData.department}
                     style={{
                         width: '150px',

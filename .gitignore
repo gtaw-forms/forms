@@ -35,3 +35,6 @@ build/*
 # Sentry Config File
 .sentryclirc
 src/OLD-GYNE-OBY.js
+
+# firebase
+firebase-admin-key.json
