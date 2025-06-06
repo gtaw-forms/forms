@@ -22,7 +22,8 @@ const EmergencyForm = ({
     ecg,
     sono,
     admission,
-    bloodOxy
+    bloodOxy,
+    handleSelectChange
     
 }) => {
     return (
@@ -84,6 +85,8 @@ const EmergencyForm = ({
                               .flatMap(group => group.options)
                               .find(option => option.value === formData.phmcEmployee) || null}
                           onChange={(selectedOption) => {
+                            handleSelectChange(selectedOption, { name: 'phmcEmployee' });
+
                               // eslint-disable-next-line no-unused-vars
                               const lastName = selectedOption ? selectedOption.lastName : '';
                               setFormData(prev => ({
