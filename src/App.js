@@ -2891,7 +2891,7 @@ const handleCopyAndNotify = async () => {
             </ul>
         </li>
     </ul>
-    - frosty
+    - frosty :) 
 </div>
                             </div>
                         </div>
