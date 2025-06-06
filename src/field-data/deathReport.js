@@ -61,13 +61,26 @@ const DeathReport = ({
                 value={coronerGroupedOptions
                     .flatMap(group => group.options)
                     .find(option => option.value === formData.coronerEmployee) || null}
-                onChange={(selectedOption) => handleSelectChange(selectedOption, { name: 'coronerEmployee' })} // Pass actionMeta object
+                // Corrected onChange handler:
+                onChange={(selectedOption) => handleSelectChange(selectedOption, { name: 'coronerEmployee' })}
                 options={coronerGroupedOptions}
                 isClearable
                 placeholder="Search or select coroner..."
                 className={`form-control ${!formData.coronerEmployee ? 'is-invalid' : ''}`}
-                styles={{
-                    control: (base) => ({ ...base, backgroundColor: '#16202c', color: '#eeeeeeb0', borderColor: '#6c757d', '&:hover': { borderColor: '#eeeeeeb0' } }),
+                styles={{ 
+                    control: (base, state) => ({
+                        ...base,
+                        backgroundColor: '#16202c',
+                        color: '#eeeeeeb0',
+                        borderColor: !formData.coronerEmployee && state.isFocused ? '#dc3545' :
+                                     !formData.coronerEmployee ? '#dc3545' :
+                                     state.isFocused ? '#86b7fe' : '#6c757d',
+                        '&:hover': {
+                            borderColor: !formData.coronerEmployee ? '#dc3545' : '#86b7fe'
+                        },
+                        boxShadow: !formData.coronerEmployee && state.isFocused ? '0 0 0 0.25rem rgba(220, 53, 69, 0.25)' :
+                                   state.isFocused ? '0 0 0 0.25rem rgba(13, 110, 253, 0.25)' : null,
+                    }),
                     menu: (base) => ({ ...base, backgroundColor: '#16202c', zIndex: 1000 }),
                     option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? 'Grey' : '#16202c', color: '#eeeeeeb0' }),
                     singleValue: (base) => ({ ...base, color: '#eeeeeeb0' }),

@@ -287,7 +287,8 @@ const Autopsy = ({
                 value={coronerGroupedOptions
                     .flatMap(group => group.options)
                     .find(option => option.value === formData.coronerEmployee) || null}
-                onChange={(selectedOption) => handleSelectChange(selectedOption, 'coroner')}
+                // Corrected onChange handler:
+                onChange={(selectedOption) => handleSelectChange(selectedOption, { name: 'coronerEmployee' })}
                 options={coronerGroupedOptions}
                 isClearable
                 placeholder="Search or select coroner..."

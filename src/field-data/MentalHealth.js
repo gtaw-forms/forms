@@ -9,7 +9,8 @@ const MentalHealth = ({
     phmcGroupedOptions,
     admission,
     followup,
-    setFormData // We need this for the Select's onChange logic
+    setFormData,
+    handleSelectChange
 }) => {
     return (
                             <>
@@ -54,9 +55,9 @@ const MentalHealth = ({
                                     value={phmcGroupedOptions
                                         .flatMap(group => group.options)
                                         .find(option => option.value === formData.phmcEmployee) || null}
-                                    onChange={(selectedOption) => {
-                                        // eslint-disable-next-line no-unused-vars
-                                        const lastName = selectedOption ? selectedOption.lastName : '';
+                                        onChange={(selectedOption) => {
+                                            handleSelectChange(selectedOption, { name: 'phmcEmployee' });
+
                                         setFormData(prev => ({
                                             ...prev,
                                             phmcEmployee: selectedOption ? selectedOption.value : '',

@@ -20,6 +20,7 @@ const PhysEval = ({
             patientMedicineRegular,
             patientOther,
             predisposition,
+            handleSelectChange,
             
         }) => {
     return (
@@ -82,15 +83,18 @@ const PhysEval = ({
                                     value={phmcGroupedOptions
                                         .flatMap(group => group.options)
                                         .find(option => option.value === formData.phmcEmployee) || null}
-                                    onChange={(selectedOption) => {
-                                        // eslint-disable-next-line no-unused-vars
-                                        const lastName = selectedOption ? selectedOption.lastName : '';
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            phmcEmployee: selectedOption ? selectedOption.value : '',
-                                            lastName: selectedOption ? selectedOption.lastName : '' // Use lastName from the selected option
-                                        }));
-                                    }}
+onChange={(selectedOption) => {
+    handleSelectChange(selectedOption, { name: 'phmcEmployee' }); // Correct call to App.js handler
+
+    // eslint-disable-next-line no-unused-vars
+    const lastName = selectedOption ? selectedOption.lastName : '';
+    // This direct setFormData is redundant if handleSelectChange in App.js already updates these fields
+    setFormData(prev => ({
+        ...prev,
+        phmcEmployee: selectedOption ? selectedOption.value : '',
+        lastName: selectedOption ? selectedOption.lastName : '' 
+    }));
+}}
                                     options={phmcGroupedOptions}
                                     isClearable
                                     placeholder="Search or select doctor..."

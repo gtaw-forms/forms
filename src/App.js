@@ -76,7 +76,7 @@ import generateAutopsy from './bbcode-generators/generateAutopsy';
 
 // database
 import { database } from './firebase'; // Your Firebase config
-import { ref, get, set } from 'firebase/database'; // Added set
+import { ref, get, set, remove} from 'firebase/database'; // Added set
 
 // Automated Imports from field-data
 function App() {
@@ -89,6 +89,8 @@ const initialFormData = {
     evidenceLocker: '',
     department: '',
     dateTime: '',
+    phmcEmployeeSignature: '',
+    phmcEmployeeLastName: '',  
     serialNumber: '',
     decedentName: '',
     phmcEmployee: '', // This will be preserved in clearForm
@@ -549,7 +551,6 @@ const initialFormData = {
                     setCoronerListData(allData.staff?.coroner || []);
                     setAgencyDataStore(allData.agencies || {});
                     setSelectOptions(allData.selectOptions || {});
-                    showNotification('Data loaded successfully!', 'check-circle'); // Success notification
                 } else {
                     console.warn("No data available in Realtime Database.");
                     showNotification('Initial application data not found on server.', 'error');
@@ -1596,86 +1597,149 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
         }
     };
 
-    // Function to load saved reports from local storage
+const [selectedUserForSavedReports, setSelectedUserForSavedReports] = useState(null);
+
+const getCurrentReportAuthor = (formData) => {
+    // Define which bbCodeVersions are primarily Coroner forms
+    const coronerFormVersions = [1, 2, 4, 18];
+    // Define which bbCodeVersions are primarily PHMC forms
+    const phmcFormVersions = [
+        5, 6, 7, 9, 10, 12, 13, 14, 16, 19, 20, 21, 22, 23, 27, 28, 29
+    ];
+
+    if (coronerFormVersions.includes(bbCodeVersion)) {
+        if (formData.coronerEmployee) return formData.coronerEmployee;
+    } else if (phmcFormVersions.includes(bbCodeVersion)) {
+        if (formData.phmcEmployee) return formData.phmcEmployee;
+    }
+
+    // Fallback logic if the form isn't strictly one or the other,
+    // or if the primary employee field for that form type is empty.
+    // Prioritize coroner if both are somehow filled for a non-specific form.
+    if (formData.coronerEmployee) return formData.coronerEmployee;
+    if (formData.phmcEmployee) return formData.phmcEmployee;
+
+    // Fallback for forms where patient might be considered the "author"
+    if (bbCodeVersion === 25 || bbCodeVersion === 3 || bbCodeVersion === 24) { // BasicPatientFile, PatientAdvanced, MedicalRelease
+        // For these, if no employee is set, the patient name might be the best identifier for "author"
+        if (formData.patientName) return formData.patientName;
+        if (formData.patientFirstName && formData.patientLastName) return `${formData.patientFirstName} ${formData.patientLastName}`;
+        if (formData.patientFirstName) return formData.patientFirstName;
+        if (formData.patientLastName) return formData.patientLastName;
+    }
+    
+    return null; // If no author can be determined
+};
+
 const saveReport = async () => {
     let key = '';
-    let isSaveableForm = false; // Flag to track if the form type is configured for saving
+    const currentAuthor = getCurrentReportAuthor(formData); // Assumes getCurrentReportAuthor is defined elsewhere
 
     // --- Validation logic to determine the key ---
-    // Check if the current bbCodeVersion is one that should be saveable
-    if (bbCodeVersion === 1) {
-        isSaveableForm = true;
+    if (bbCodeVersion === 1) { // Death Report
         if (!formData.decedentOOC || !formData.dateTime) {
             showNotification(`Please fill in Decedent OOC and Date/Time fields.`, 'exclamation-circle');
-            return false; // Validation failed, do not proceed with save or allow copy
+            return false;
         }
         key = `${formData.decedentOOC} - ${formData.dateTime}`;
     } else if (bbCodeVersion === 4) { // Autopsy Report
-        isSaveableForm = true;
         if (!formData.decedentName || !formData.decedentOOC || !formData.autopsyDate) {
             showNotification(`Please fill in Decedent IC Name, OOC Name, and Autopsy Date fields.`, 'exclamation-circle');
-            return false; // Validation failed
+            return false;
         }
         key = `[Autopsy] ${formData.decedentName} (${formData.decedentOOC}) - ${formData.autopsyDate}`;
-    } else if (((bbCodeVersion >= 3 && bbCodeVersion <= 7) && bbCodeVersion !== 4)) { // Covers PatientAdvanced (3), SurgicalOps (5), PhysEval PHMC/PBC (6,7)
-        isSaveableForm = true;
+    } else if (((bbCodeVersion >= 3 && bbCodeVersion <= 7) && bbCodeVersion !== 4)) { // PatientAdvanced (3), SurgicalOps (5), PhysEval PHMC/PBC (6,7)
         let patientIdMissing = !formData.patientID;
         let dateMissing = !formData.date;
         let patientNameMissing = false;
-
-        // For Surgical Report (bbCodeVersion 5), patientName is not strictly required for this validation step.
-        // For other forms in this range (3, 6, 7), patientName is required for the save validation.
-        if (bbCodeVersion !== 5) { // This condition now correctly applies to 3, 6, 7
+        if (bbCodeVersion !== 5) { // Surgical doesn't strictly require patientName for this validation step.
             patientNameMissing = !formData.patientName;
         }
-
         if (patientIdMissing || dateMissing || patientNameMissing) {
             let missingFieldLabels = [];
             if (patientIdMissing) missingFieldLabels.push('Patient ID');
-            // patientNameMissing will only be true if bbCodeVersion is not 5 AND patientName is missing
             if (patientNameMissing) missingFieldLabels.push('Patient Name');
             if (dateMissing) missingFieldLabels.push('Date');
-
-            // If only patientName is missing for bbCodeVersion 5, this condition won't be met by patientNameMissing,
-            // so the message will correctly list only Patient ID and/or Date if they are missing.
             if (missingFieldLabels.length > 0) {
                  showNotification(`Please fill in ${missingFieldLabels.join(', ')} fields.`, 'exclamation-circle');
                  return false;
             }
         }
-        // The key will use formData.patientName, which might be an empty string if not provided for bbCodeVersion 5.
-        key = `${formData.patientID} - ${formData.patientName} - ${formData.date}`;
+        key = `${formData.patientID || 'NO_ID'} - ${formData.patientName || 'NO_NAME'} - ${formData.date || 'NO_DATE'}`;
     } else if (bbCodeVersion === 19) { // EmergencyProtocol
-        isSaveableForm = true;
         if (!formData.patientID || !formData.lastName || !formData.date) {
             showNotification(`Please fill in Patient ID, Last Name, and Date fields.`, 'exclamation-circle');
             return false;
         }
         key = `${formData.patientID} - ${formData.lastName} - ${formData.date}`;
-    } else if (bbCodeVersion === 25 || bbCodeVersion === 26) { // BasicPatientFile
-        isSaveableForm = true;
+    } else if (bbCodeVersion === 25) { // BasicPatientFile
         if (!formData.patientName || !formData.date) {
             showNotification(`Please fill in Patient Name and Date fields.`, 'exclamation-circle');
             return false;
         }
         key = `${formData.patientName} - ${formData.date}`;
     }
-    // Add other 'else if' conditions for other saveable bbCodeVersions here, setting isSaveableForm = true;
+    // --- Add more 'else if' blocks here for other specific bbCodeVersions ---
+    // Example for Coroner Email (bbCodeVersion 2)
+    else if (bbCodeVersion === 2) {
+        if (!formData.coronerEmployee || !formData.requestingOfficer || (!formData.decedentName && !formData.decedentOOC)) {
+            showNotification(`Please fill in Coroner, Requesting Officer, and Decedent Name/OOC for Coroner Email.`, 'exclamation-circle');
+            return false;
+        }
+        key = `[Email] ${formData.requestingOfficer} re: ${formData.decedentName || formData.decedentOOC} - ${new Date().toISOString().split('T')[0]}`;
+    }
+    // Example for Agency Feedback (bbCodeVersion 18)
+    else if (bbCodeVersion === 18) {
+        if (!formData.department || !formData.dateTime || !formData.synopsis) {
+            showNotification(`Please fill in Department, Date/Time, and Synopsis for Agency Feedback.`, 'exclamation-circle');
+            return false;
+        }
+        key = `[Feedback] ${formData.department} - ${formData.dateTime}`;
+    }
+    // Add other specific forms as needed...
+    else { // Default handler for any other bbCodeVersion
+        const formName = versionNames[bbCodeVersion] || `FormV${bbCodeVersion}`; // versionNames map should be in scope
+        
+        // Try to find the most common identifier fields
+        let identifier = formData.patientName || formData.decedentName || formData.patientID || formData.decedentOOC || formData.lastName;
+        if (Array.isArray(identifier)) identifier = identifier.join(', '); // Handle if it's an array
 
-    if (!isSaveableForm) {
-        console.warn(`Form type (version ${bbCodeVersion}) is not configured for saving. Copying will proceed if BBCode is valid.`);
-        return true; // Indicate that copying can proceed
+        const dateField = formData.date || formData.dateTime || formData.autopsyDate; // Add more common date fields if they exist
+
+        if (!identifier || !dateField) {
+            let missing = [];
+            if (!identifier) missing.push("an identifier (e.g., Patient/Decedent Name/ID)");
+            if (!dateField) missing.push("a date field");
+            showNotification(`To save this report (${formName}), please fill in at least ${missing.join(' and ')}.`, 'exclamation-circle');
+            return false; 
+        }
+        key = `[${formName}] ${identifier} - ${dateField}`;
+        console.log(`Using generic key for bbCodeVersion ${bbCodeVersion}: ${key}`);
     }
 
+    // If key is still empty, something went wrong (should be caught by validations)
+    if (!key) {
+        showNotification('Could not generate a report key. Save aborted.', 'error');
+        return false;
+    }
+
+    if (!currentAuthor) {
+        showNotification('Cannot determine report author. Please ensure an employee is selected or patient name is filled if applicable for this form type.', 'error');
+        return false; 
+    }
+    
+    const sanitizedAuthorId = currentAuthor.replace(/[.#$[\]/]/g, '_');
+    const sanitizedKey = key.replace(/[.#$[\]/]/g, '_');
+
     // --- Easter Egg Logic ---
-    const currentSavedCount = savedReports.length;
+    const currentSavedCountForAuthor = savedReports.filter(r => r.authorName === currentAuthor).length; // Ensure 'authorName' matches the property in your savedReports objects
     const easterEggAlreadyShown = localStorage.getItem('easterEggShown') === 'true';
     let showNormalEasterEgg = false;
     let showRareEasterEgg = false;
 
-    if (currentSavedCount === 4 && !easterEggAlreadyShown) {
+    if (currentSavedCountForAuthor === 4 && !easterEggAlreadyShown) {
         showNormalEasterEgg = true;
-    } else if (currentSavedCount > 4 && !easterEggAlreadyShown) {
+    } else if (currentSavedCountForAuthor > 4 && !easterEggAlreadyShown) {
         showNormalEasterEgg = Math.random() < 0.05;
     } else if (easterEggAlreadyShown) {
         showRareEasterEgg = Math.random() < 0.01;
@@ -1693,43 +1757,250 @@ const saveReport = async () => {
     }
     // --- End Easter Egg Logic ---
 
-    const bbCodeContent = getBBCodeContent();
+    const bbCodeContent = getBBCodeContent(); // Assumes getBBCodeContent is defined
     if (bbCodeContent == null) {
         console.error("SaveReport: getBBCodeContent() returned null or undefined for version", bbCodeVersion);
         showNotification(`Failed to generate BBCode content. Cannot save or copy.`, 'error');
-        return false; // Cannot save or copy if BBCode generation failed
+        return false; 
     }
 
-    const reportData = JSON.stringify({
+    const reportDataToSave = {
         bbCodeVersion: bbCodeVersion,
-        data: filterFormData(formData, bbCodeVersion),
+        data: filterFormData(formData, bbCodeVersion), // Assumes filterFormData is defined
         bbCode: bbCodeContent,
-        timestamp: Date.now()
-    });
+        timestamp: Date.now(),
+        originalKey: key, 
+        authorName: currentAuthor 
+    };
+
+    const reportPath = `savedReports/${sanitizedAuthorId}/${sanitizedKey}`;
 
     try {
-        localStorage.setItem(key, reportData);
+        const reportRef = ref(database, reportPath); // Assumes 'database' is your Firebase DB instance
+        await set(reportRef, reportDataToSave);
+        showNotification(`Report "${key}" saved for ${currentAuthor} to Firebase!`, 'save');
 
-        let currentCount = parseInt(localStorage.getItem('SavedReportCount') || '0', 10);
-        if (isNaN(currentCount)) {
-            currentCount = 0;
+        if (selectedUserForSavedReports === currentAuthor) { // Assumes selectedUserForSavedReports state exists
+             loadUserSavedReports(currentAuthor); // Assumes loadUserSavedReports is defined
         }
-        const newCount = currentCount + 1;
-        localStorage.setItem('SavedReportCount', newCount.toString());
-
-        loadSavedReports();
         return true; // Indicate success
 
     } catch (error) {
-        console.error("Error saving report to localStorage:", error);
-        Sentry.captureException(error, { extra: { context: 'localStorage.setItem', key: key } });
-
-        if (error.name === 'QuotaExceededError') {
-            showNotification('Storage limit reached! Cannot save report. Copying will be skipped.', 'error');
-        } else {
-            showNotification('Failed to save report due to a storage error. Copying will be skipped.', 'error');
-        }
+        console.error("Error saving report to Firebase:", error);
+        Sentry.captureException(error, { extra: { context: 'Firebase set report', path: reportPath } });
+        showNotification('Failed to save report to Firebase. Copying will be skipped.', 'error');
         return false; // Indicate failure
+    }
+};
+const [isLoadingUserReports, setIsLoadingUserReports] = useState(false);
+
+const loadUserSavedReports = async (userId) => {
+    if (!userId) {
+        setSavedReports([]); // Clear reports if no user is selected
+        setSelectedUserForSavedReports(null);
+        return;
+    }
+
+    setIsLoadingUserReports(true);
+    setSelectedUserForSavedReports(userId); // Store the currently selected user
+    showNotification(`Loading reports for ${userId}...`, 'info-circle', 0); // Indefinite notification
+
+    const sanitizedUserId = userId.replace(/[.#$[\]/]/g, '_');
+    const userReportsPath = `savedReports/${sanitizedUserId}`;
+    const reportsRef = ref(database, userReportsPath);
+
+    try {
+        const snapshot = await get(reportsRef);
+        if (snapshot.exists()) {
+            const reportsData = snapshot.val();
+            const validReports = [];
+            const now = Date.now();
+            const thirtyOneDays = 31 * 24 * 60 * 60 * 1000;
+            let expiredCount = 0;
+
+            const deletionPromises = [];
+
+            for (const reportKey in reportsData) {
+                const report = reportsData[reportKey];
+                if (report.timestamp && (now - report.timestamp < thirtyOneDays)) {
+                    validReports.push({
+                        key: reportKey, // This is the sanitized key used in Firebase
+                        originalKey: report.originalKey,
+                        bbCodeVersion: report.bbCodeVersion,
+                        timestamp: report.timestamp,
+                        authorName: report.authorName, // Assuming you store this
+                        bbCode: report.bbCode, // Needed for 'Copy BBCode' in modal
+                        // data: report.data // Only include if modal needs it for display, otherwise load on demand
+                    });
+                } else {
+                    // Report is expired, mark for deletion
+                    console.log(`Report "${report.originalKey || reportKey}" for user ${userId} is expired. Deleting.`);
+                    const reportToDeletePath = `${userReportsPath}/${reportKey}`;
+                    deletionPromises.push(remove(ref(database, reportToDeletePath)));
+                    expiredCount++;
+                }
+            }
+
+            // Wait for all deletions to complete
+            if (deletionPromises.length > 0) {
+                await Promise.all(deletionPromises);
+                if (expiredCount > 0) {
+                    showNotification(`${expiredCount} expired report(s) for ${userId} were automatically deleted.`, 'trash', 5000);
+                }
+            }
+
+            // Sort reports by timestamp, newest first
+            validReports.sort((a, b) => b.timestamp - a.timestamp);
+            setSavedReports(validReports);
+
+            if (validReports.length > 0) {
+                showNotification(`Loaded ${validReports.length} report(s) for ${userId}.`, 'check-circle');
+            } else {
+                showNotification(`No active reports found for ${userId}.`, 'info-circle');
+            }
+
+        } else {
+            setSavedReports([]);
+            showNotification(`No reports found for ${userId}.`, 'info-circle');
+        }
+    } catch (error) {
+        console.error(`Error loading reports for user ${userId}:`, error);
+        Sentry.captureException(error, { extra: { context: 'loadUserSavedReports', userId } });
+        showNotification(`Failed to load reports for ${userId}.`, 'error');
+        setSavedReports([]); // Clear reports on error
+    } finally {
+        setIsLoadingUserReports(false);
+        // Remove the indefinite loading notification
+        // This assumes your showNotification returns an ID that can be used with removeNotification
+        // If not, you might need a different way to manage indefinite notifications.
+        // For simplicity, we'll rely on the subsequent success/error notifications to override.
+    }
+};
+const loadReportForUser = async (reportFirebaseKey, userId) => {
+    if (!userId || !reportFirebaseKey) {
+        showNotification('Cannot load report: User ID or Report Key is missing.', 'error');
+        return;
+    }
+
+    const sanitizedUserId = userId.replace(/[.#$[\]/]/g, '_');
+    // reportFirebaseKey is already sanitized as it comes from Firebase keys
+    const reportPath = `savedReports/${sanitizedUserId}/${reportFirebaseKey}`;
+    const reportRef = ref(database, reportPath);
+
+    showNotification(`Loading report: ${reportFirebaseKey} for ${userId}...`, 'info-circle', 0);
+
+    try {
+        const snapshot = await get(reportRef);
+        if (snapshot.exists()) {
+            const reportData = snapshot.val();
+            const loadedVersion = reportData.bbCodeVersion;
+            const loadedBbCode = reportData.bbCode || '';
+            const loadedFormData = reportData.data || {};
+
+            // --- Fields managed by localStorage with expiry (similar to old loadReport) ---
+            // This part might need adjustment if you're moving away from localStorage for these fields too.
+            // For now, keeping it similar to your previous `loadReport` logic.
+            const localStorageManagedFields = [
+                'placeOfDeath', 'pronouncedTimeOfDeath', 'dateTime', 'department',
+                'mannerOfDeath', 'coronerEmployee', 'coronerBadge', 'coronerRank',
+                'coronerDiscord', 'phmcEmployee', 'phmcSignature'
+            ];
+            const currentTimestamp = Date.now().toString();
+            localStorageManagedFields.forEach(field => {
+                if (loadedFormData.hasOwnProperty(field) && loadedFormData[field]) {
+                    localStorage.setItem(field, loadedFormData[field]);
+                    localStorage.setItem(`${field}_timestamp`, currentTimestamp);
+                }
+            });
+            // --- End localStorage management ---
+
+            // Logic to handle loading into different form versions (like your old loadReport)
+            if (bbCodeVersion === 2 && loadedVersion === 1) { // Loading Death Report into Coroner Email
+                let modifiedBbCode = loadedBbCode.replace(/\[bold\]/g, '[b]').replace(/\[\/bold\]/g, '[/b]');
+                const currentDeathReportIsEmpty = !formData.deathReport || formData.deathReport.trim() === '';
+                let notificationMessage = '';
+
+                setFormData(prevFormData => {
+                    let updatedName = prevFormData.decedentName || '';
+                    let updatedOoc = prevFormData.decedentOOC || '';
+                    let updatedDeathReport = prevFormData.deathReport || '';
+                    let updatedAdditionalReports = prevFormData.additionalReports || [];
+
+                    if (prevFormData.decedentName && loadedFormData.decedentName) {
+                        updatedName = `${prevFormData.decedentName}, ${loadedFormData.decedentName}`;
+                    } else {
+                        updatedName = loadedFormData.decedentName || prevFormData.decedentName || '';
+                    }
+                    if (prevFormData.decedentOOC && loadedFormData.decedentOOC) {
+                        updatedOoc = `${prevFormData.decedentOOC}, ${loadedFormData.decedentOOC}`;
+                    } else {
+                        updatedOoc = loadedFormData.decedentOOC || prevFormData.decedentOOC || '';
+                    }
+
+                    if (currentDeathReportIsEmpty) {
+                        updatedDeathReport = modifiedBbCode;
+                        notificationMessage = `Loaded report for ${loadedFormData.decedentName || reportData.originalKey} into main Death Report field.`;
+                    } else {
+                        updatedAdditionalReports = [...updatedAdditionalReports, modifiedBbCode];
+                        notificationMessage = `Added report for ${loadedFormData.decedentName || reportData.originalKey} as an additional report.`;
+                    }
+                    return {
+                        ...prevFormData, // Keep existing form data
+                        ...loadedFormData, // Apply loaded data
+                        decedentName: updatedName,
+                        decedentOOC: updatedOoc,
+                        deathReport: updatedDeathReport,
+                        additionalReports: updatedAdditionalReports,
+                    };
+                });
+                setParsedBBCode(''); // Clear any previously parsed BBCode
+                showNotification(notificationMessage, 'plus-circle');
+
+            } else { // Default loading for other cases
+                setFormData(prev => ({ ...prev, ...loadedFormData })); // Merge, prioritizing loaded data for relevant fields
+                setBbCodeVersion(loadedVersion);
+                setParsedBBCode(loadedBbCode);
+                showNotification(`Report "${reportData.originalKey || reportFirebaseKey}" loaded.`, 'upload');
+            }
+            setShowSavedReports(false); // Close the modal
+        } else {
+            showNotification(`Report not found in Firebase: ${reportFirebaseKey}`, 'error');
+        }
+    } catch (error) {
+        console.error(`Error loading report ${reportFirebaseKey} for user ${userId}:`, error);
+        Sentry.captureException(error, { extra: { context: 'loadReportForUser', userId, reportFirebaseKey } });
+        showNotification(`Failed to load report: ${error.message}`, 'error');
+    } finally {
+        // Remove indefinite loading notification if one was set by showNotification
+    }
+};
+const deleteReportForUser = async (reportFirebaseKey, userId) => {
+    if (!userId || !reportFirebaseKey) {
+        showNotification('Cannot delete report: User ID or Report Key is missing.', 'error');
+        return;
+    }
+
+    const sanitizedUserId = userId.replace(/[.#$[\]/]/g, '_');
+    // reportFirebaseKey is already sanitized
+    const reportPath = `savedReports/${sanitizedUserId}/${reportFirebaseKey}`;
+    const reportRef = ref(database, reportPath);
+
+    // Optional: Ask for confirmation before deleting
+    // if (!window.confirm(`Are you sure you want to delete this report?`)) {
+    //     return;
+    // }
+
+    try {
+        await remove(reportRef);
+        showNotification(`Report deleted successfully from Firebase.`, 'trash');
+        // Refresh the list of saved reports for the current user
+        if (selectedUserForSavedReports === userId) {
+            loadUserSavedReports(userId);
+        }
+    } catch (error) {
+        console.error(`Error deleting report ${reportFirebaseKey} for user ${userId}:`, error);
+        Sentry.captureException(error, { extra: { context: 'deleteReportForUser', userId, reportFirebaseKey } });
+        showNotification(`Failed to delete report: ${error.message}`, 'error');
     }
 };
 
@@ -2100,12 +2371,12 @@ const toggleEmsAmaModal = () => {
     };
 
 
-    const clearOldLocalStorage = () => {
-        const fields = [
-            'phmcEmployee', 'phmcSignature',
-            'coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord',
-            'pronouncedTimeOfDeath', 'department', 'dateTime', 'placeOfDeath', 'mannerOfDeath'
-        ];
+const clearOldLocalStorage = () => {
+    const fields = [
+        'phmcEmployee', 'phmcEmployeeSignature', 'phmcEmployeeLastName', 'phmcRank', // Added PHMC fields
+        'coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord', 'coronerPHNumber', // coronerPHNumber added for consistency
+        'pronouncedTimeOfDeath', 'department', 'dateTime', 'placeOfDeath', 'mannerOfDeath'
+    ];
 
         const fiveDays = 5 * 24 * 60 * 60 * 1000;
         const threeHours = 3 * 60 * 60 * 1000;
@@ -2125,73 +2396,76 @@ const toggleEmsAmaModal = () => {
         });
     };
 
-    useEffect(() => {
-        clearOldLocalStorage();
+useEffect(() => {
+    clearOldLocalStorage();
 
-        const fields = [
-            'phmcEmployee', 'phmcSignature',
-            'coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord',
-            'pronouncedTimeOfDeath', 'department', 'dateTime', 'placeOfDeath', 'mannerOfDeath'
-        ];
-        const newFormData = { ...formData };
-    
-        // Load phmcEmployee separately as phmcSignature is removed
-        const phmcEmployeeValue = localStorage.getItem('phmcEmployee');
-        if (phmcEmployeeValue) {
-            newFormData.phmcEmployee = phmcEmployeeValue;
+    const newFormData = { ...formData }; // Start with current formData to preserve any defaults not in localStorage
+
+    const fieldsToLoadFromLS = [
+        'phmcEmployee', 'phmcEmployeeSignature', 'phmcEmployeeLastName', 'phmcRank',
+        'coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord', 'coronerPHNumber',
+        'pronouncedTimeOfDeath', 'department', 'dateTime', 'placeOfDeath', 'mannerOfDeath'
+        // Add any other fields you persist and want to load
+    ];
+
+    fieldsToLoadFromLS.forEach(field => {
+        const value = localStorage.getItem(field);
+        if (value !== null) { // Load even if it's an empty string, but not if item doesn't exist
+            newFormData[field] = value;
         }
+    });
 
-        ['coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord', 'pronouncedTimeOfDeath', 'department', 'dateTime', 'placeOfDeath', 'mannerOfDeath'].forEach(field => {
-            const value = localStorage.getItem(field);
-            if (value) {
-                newFormData[field] = value;
-            }
-        });
-    
-        setFormData(newFormData);
-    }, []); // The empty dependency array [] ensures this effect runs only once after the initial render.
+    setFormData(newFormData);
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, []); // Runs once on mount
+
 useEffect(() => {
     const welcomeUserAndSyncData = () => {
         let userWelcomed = false;
         const currentTimestamp = Date.now().toString();
-        let madeChanges = false; // To track if any data was actually updated
+        let madeChanges = false;
         let updatedUserName = null;
 
         // --- Coroner Data Sync ---
         if (formData.coronerEmployee) {
             const selectedCoronerNameInForm = formData.coronerEmployee;
-            showNotification(`Welcome back ${selectedCoronerNameInForm}, getting your information...`, 'info-circle', 3000);
-            userWelcomed = true;
+            if (!userWelcomed) { // Welcome only once if both are filled
+                showNotification(`Welcome back ${selectedCoronerNameInForm}, getting your information...`, 'info-circle', 3000);
+                userWelcomed = true;
+            }
             updatedUserName = selectedCoronerNameInForm;
 
             const coronerDetailsFromDataJs = coronerListData.find(c => c.name === selectedCoronerNameInForm);
-
             if (coronerDetailsFromDataJs) {
                 const updatesToForm = {};
                 let needsFormUpdate = false;
+                const coronerRankFromDb = coronerDetailsFromDataJs.rank || '';
+                const coronerBadgeFromDb = coronerDetailsFromDataJs.badge || '';
+                const coronerDiscordFromDb = coronerDetailsFromDataJs.discord || '';
+                const coronerPhNumberFromDb = coronerDetailsFromDataJs.phNumber || '50056';
 
-                if (formData.coronerRank !== coronerDetailsFromDataJs.rank) {
-                    updatesToForm.coronerRank = coronerDetailsFromDataJs.rank;
-                    localStorage.setItem('coronerRank', coronerDetailsFromDataJs.rank);
+
+                if (formData.coronerRank !== coronerRankFromDb) {
+                    updatesToForm.coronerRank = coronerRankFromDb;
+                    localStorage.setItem('coronerRank', coronerRankFromDb);
                     localStorage.setItem('coronerRank_timestamp', currentTimestamp);
                     needsFormUpdate = true;
                 }
-                if (formData.coronerBadge !== coronerDetailsFromDataJs.badge) {
-                    updatesToForm.coronerBadge = coronerDetailsFromDataJs.badge;
-                    localStorage.setItem('coronerBadge', coronerDetailsFromDataJs.badge);
+                if (formData.coronerBadge !== coronerBadgeFromDb) {
+                    updatesToForm.coronerBadge = coronerBadgeFromDb;
+                    localStorage.setItem('coronerBadge', coronerBadgeFromDb);
                     localStorage.setItem('coronerBadge_timestamp', currentTimestamp);
                     needsFormUpdate = true;
                 }
-                if (formData.coronerDiscord !== coronerDetailsFromDataJs.discord) {
-                    updatesToForm.coronerDiscord = coronerDetailsFromDataJs.discord;
-                    localStorage.setItem('coronerDiscord', coronerDetailsFromDataJs.discord);
+                if (formData.coronerDiscord !== coronerDiscordFromDb) {
+                    updatesToForm.coronerDiscord = coronerDiscordFromDb;
+                    localStorage.setItem('coronerDiscord', coronerDiscordFromDb);
                     localStorage.setItem('coronerDiscord_timestamp', currentTimestamp);
                     needsFormUpdate = true;
                 }
-                const expectedPhNumber = coronerDetailsFromDataJs.phNumber || '50056';
-                if (formData.coronerPHNumber !== expectedPhNumber) {
-                    updatesToForm.coronerPHNumber = expectedPhNumber;
-                    localStorage.setItem('coronerPHNumber', expectedPhNumber);
+                if (formData.coronerPHNumber !== coronerPhNumberFromDb) {
+                    updatesToForm.coronerPHNumber = coronerPhNumberFromDb;
+                    localStorage.setItem('coronerPHNumber', coronerPhNumberFromDb);
                     localStorage.setItem('coronerPHNumber_timestamp', currentTimestamp);
                     needsFormUpdate = true;
                 }
@@ -2201,7 +2475,6 @@ useEffect(() => {
                     localStorage.setItem('coronerEmployee_timestamp', currentTimestamp);
                     madeChanges = true;
                 } else {
-                    // Refresh timestamp if data is still valid
                     localStorage.setItem('coronerEmployee_timestamp', currentTimestamp);
                     localStorage.setItem('coronerRank_timestamp', currentTimestamp);
                     localStorage.setItem('coronerBadge_timestamp', currentTimestamp);
@@ -2217,13 +2490,8 @@ useEffect(() => {
                 });
                 setFormData(prev => ({
                     ...prev,
-                    coronerEmployee: '',
-                    coronerBadge: '',
-                    coronerRank: '',
-                    coronerDiscord: '',
-                    coronerPHNumber: '50056',
+                    coronerEmployee: '', coronerBadge: '', coronerRank: '', coronerDiscord: '', coronerPHNumber: '50056',
                 }));
-                // No specific "update" notification needed here as the "cleared" message is sufficient.
             }
         }
 
@@ -2232,38 +2500,59 @@ useEffect(() => {
             const selectedPhmcEmployeeName = formData.phmcEmployee;
             if (!userWelcomed) {
                 showNotification(`Welcome back ${selectedPhmcEmployeeName}, getting your information...`, 'info-circle', 3000);
-                userWelcomed = true; // Mark as welcomed
+                userWelcomed = true;
             }
             if (!updatedUserName) updatedUserName = selectedPhmcEmployeeName;
 
+            const phmcDetailsFromDataJs = phmcListData.find(p => p.name === selectedPhmcEmployeeName);
+            if (phmcDetailsFromDataJs) {
+                const updatesToForm = {};
+                let needsFormUpdate = false;
+                const phmcSignatureFromDb = phmcDetailsFromDataJs.signature || '';
+                const phmcLastNameFromDb = phmcDetailsFromDataJs.lastName || '';
+                const phmcRankFromDb = phmcDetailsFromDataJs.category || phmcDetailsFromDataJs.rank || '';
 
-            const phmcEmployeeDetailsFromDataJs = phmcListData.find(p => p.name === selectedPhmcEmployeeName);
 
-            if (phmcEmployeeDetailsFromDataJs) {
-                localStorage.setItem('phmcEmployee_timestamp', currentTimestamp);
-                // If PHMC staff had other fields in formData to sync (e.g., a 'phmcRank' from 'category'),
-                // add comparison and update logic here, setting madeChanges = true if updates occur.
-                // For example:
-                // if (formData.phmcRank !== phmcEmployeeDetailsFromDataJs.category) {
-                //     setFormData(prev => ({ ...prev, phmcRank: phmcEmployeeDetailsFromDataJs.category }));
-                //     localStorage.setItem('phmcRank', phmcEmployeeDetailsFromDataJs.category);
-                //     localStorage.setItem('phmcRank_timestamp', currentTimestamp);
-                //     madeChanges = true;
-                // }
+                if (formData.phmcEmployeeSignature !== phmcSignatureFromDb) {
+                    updatesToForm.phmcEmployeeSignature = phmcSignatureFromDb;
+                    localStorage.setItem('phmcEmployeeSignature', phmcSignatureFromDb);
+                    localStorage.setItem('phmcEmployeeSignature_timestamp', currentTimestamp);
+                    needsFormUpdate = true;
+                }
+                if (formData.phmcEmployeeLastName !== phmcLastNameFromDb) {
+                    updatesToForm.phmcEmployeeLastName = phmcLastNameFromDb;
+                    localStorage.setItem('phmcEmployeeLastName', phmcLastNameFromDb);
+                    localStorage.setItem('phmcEmployeeLastName_timestamp', currentTimestamp);
+                    needsFormUpdate = true;
+                }
+                if (formData.phmcRank !== phmcRankFromDb) {
+                    updatesToForm.phmcRank = phmcRankFromDb;
+                    localStorage.setItem('phmcRank', phmcRankFromDb);
+                    localStorage.setItem('phmcRank_timestamp', currentTimestamp);
+                    needsFormUpdate = true;
+                }
+
+                if (needsFormUpdate) {
+                    setFormData(prev => ({ ...prev, ...updatesToForm }));
+                    localStorage.setItem('phmcEmployee_timestamp', currentTimestamp);
+                    madeChanges = true;
+                } else {
+                    localStorage.setItem('phmcEmployee_timestamp', currentTimestamp);
+                    localStorage.setItem('phmcEmployeeSignature_timestamp', currentTimestamp);
+                    localStorage.setItem('phmcEmployeeLastName_timestamp', currentTimestamp);
+                    localStorage.setItem('phmcRank_timestamp', currentTimestamp);
+                }
             } else {
                 showNotification(`The previously selected PHMC staff "${selectedPhmcEmployeeName}" is no longer valid and has been cleared.`, 'warning', 7000);
-                localStorage.removeItem('phmcEmployee');
-                localStorage.removeItem('phmcEmployee_timestamp');
-                // if (localStorage.getItem('phmcRank')) { // Example if phmcRank was stored
-                //     localStorage.removeItem('phmcRank');
-                //     localStorage.removeItem('phmcRank_timestamp');
-                // }
+                const fieldsToClear = ['phmcEmployee', 'phmcEmployeeSignature', 'phmcEmployeeLastName', 'phmcRank'];
+                fieldsToClear.forEach(field => {
+                    localStorage.removeItem(field);
+                    localStorage.removeItem(`${field}_timestamp`);
+                });
                 setFormData(prev => ({
                     ...prev,
-                    phmcEmployee: '',
-                    // phmcRank: '', // if applicable
+                    phmcEmployee: '', phmcEmployeeSignature: '', phmcEmployeeLastName: '', phmcRank: '',
                 }));
-                // No specific "update" notification needed here.
             }
         }
 
@@ -2272,15 +2561,15 @@ useEffect(() => {
         }
     };
 
-    // This effect runs once after the initial render.
-    // The formData at this point will include values loaded from localStorage by the other useEffect.
-    welcomeUserAndSyncData();
-
+    // Only run if there's data to sync against (i.e., after Firebase data is loaded)
+    if (phmcListData.length > 0 || coronerListData.length > 0) {
+        welcomeUserAndSyncData();
+    }
 // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []); // Empty dependency array ensures this runs only once on mount.
+}, [phmcListData, coronerListData]); // Re-run if staff lists change. `showNotification` should be stable.
 
     const handleSelectChange = (selectedOption, actionMeta) => {
-        const { name } = actionMeta; // 'name' prop from the Select component
+        const { name } = actionMeta;
         const timestamp = Date.now().toString();
 
         if (selectedOption) {
@@ -2288,54 +2577,94 @@ useEffect(() => {
                 ...prevFormData,
                 [name]: selectedOption.value
             }));
+            // Always set the main employee name in localStorage if selected
+            localStorage.setItem(name, selectedOption.value);
+            localStorage.setItem(`${name}_timestamp`, timestamp);
 
-            // If it's phmcEmployee or coronerEmployee, find full details
+
             if (name === 'phmcEmployee') {
                 const employeeDetails = phmcListData.find(emp => emp.name === selectedOption.value);
                 if (employeeDetails) {
-                    setFormData(prevFormData => ({
-                        ...prevFormData,
+                    const updates = {
                         phmcEmployeeSignature: employeeDetails.signature || '',
                         phmcEmployeeLastName: employeeDetails.lastName || '',
-                        // any other fields you need from phmcListData
+                        // Use category as primary for rank, fallback to rank field if category isn't rank-like
+                        phmcRank: employeeDetails.category || employeeDetails.rank || '',
+                    };
+                    setFormData(prevFormData => ({
+                        ...prevFormData,
+                        ...updates
                     }));
+
+                    // Explicitly save phmcEmployee and its timestamp here as well
                     localStorage.setItem('phmcEmployee', selectedOption.value);
                     localStorage.setItem('phmcEmployee_timestamp', timestamp);
-                    // Store other details if needed
+                    // Save other PHMC details
+                    localStorage.setItem('phmcEmployeeSignature', updates.phmcEmployeeSignature);
+                    localStorage.setItem('phmcEmployeeSignature_timestamp', timestamp);
+                    localStorage.setItem('phmcEmployeeLastName', updates.phmcEmployeeLastName);
+                    localStorage.setItem('phmcEmployeeLastName_timestamp', timestamp);
+                    localStorage.setItem('phmcRank', updates.phmcRank);
+                    localStorage.setItem('phmcRank_timestamp', timestamp);
                 }
             } else if (name === 'coronerEmployee') {
                 const coronerDetails = coronerListData.find(cor => cor.name === selectedOption.value);
                 if (coronerDetails) {
-                    setFormData(prevFormData => ({
-                        ...prevFormData,
+                    const updates = {
                         coronerBadge: coronerDetails.badge || '',
                         coronerRank: coronerDetails.rank || '',
                         coronerDiscord: coronerDetails.discord || '',
-                        // any other fields
+                        coronerPHNumber: coronerDetails.phNumber || '50056', // Default if missing
+                    };
+                    setFormData(prevFormData => ({
+                        ...prevFormData,
+                        ...updates
                     }));
-                    localStorage.setItem('coronerEmployee', selectedOption.value);
-                    localStorage.setItem('coronerEmployee_timestamp', timestamp);
-                    // Store other details
+                    // These are correctly placed for coronerEmployee
+                    localStorage.setItem('coronerBadge', updates.coronerBadge);
+                    localStorage.setItem('coronerBadge_timestamp', timestamp);
+                    localStorage.setItem('coronerRank', updates.coronerRank);
+                    localStorage.setItem('coronerRank_timestamp', timestamp);
+                    localStorage.setItem('coronerDiscord', updates.coronerDiscord);
+                    localStorage.setItem('coronerDiscord_timestamp', timestamp);
+                    localStorage.setItem('coronerPHNumber', updates.coronerPHNumber);
+                    localStorage.setItem('coronerPHNumber_timestamp', timestamp);
                 }
             }
         } else {
             // Handle clear
+            const fieldsToClearInForm = { [name]: '' };
+            const lsKeysToRemove = [name, `${name}_timestamp`];
+
+            if (name === 'phmcEmployee') {
+                fieldsToClearInForm.phmcEmployeeSignature = '';
+                fieldsToClearInForm.phmcEmployeeLastName = '';
+                fieldsToClearInForm.phmcRank = '';
+                lsKeysToRemove.push(
+                    'phmcEmployeeSignature', 'phmcEmployeeSignature_timestamp',
+                    'phmcEmployeeLastName', 'phmcEmployeeLastName_timestamp',
+                    'phmcRank', 'phmcRank_timestamp'
+                );
+            } else if (name === 'coronerEmployee') {
+                fieldsToClearInForm.coronerBadge = '';
+                fieldsToClearInForm.coronerRank = '';
+                fieldsToClearInForm.coronerDiscord = '';
+                fieldsToClearInForm.coronerPHNumber = '50056'; // Reset to default
+                lsKeysToRemove.push(
+                    'coronerBadge', 'coronerBadge_timestamp',
+                    'coronerRank', 'coronerRank_timestamp',
+                    'coronerDiscord', 'coronerDiscord_timestamp',
+                    'coronerPHNumber', 'coronerPHNumber_timestamp'
+                );
+            }
+
             setFormData(prevFormData => ({
                 ...prevFormData,
-                [name]: '',
-                ...(name === 'phmcEmployee' && { phmcEmployeeSignature: '', phmcEmployeeLastName: '' }),
-                ...(name === 'coronerEmployee' && { coronerBadge: '', coronerRank: '', coronerDiscord: '' }),
+                ...fieldsToClearInForm
             }));
-            if (name === 'phmcEmployee') {
-                localStorage.removeItem('phmcEmployee');
-                localStorage.removeItem('phmcEmployee_timestamp');
-            } else if (name === 'coronerEmployee') {
-                localStorage.removeItem('coronerEmployee');
-                localStorage.removeItem('coronerEmployee_timestamp');
-            }
+            lsKeysToRemove.forEach(key => localStorage.removeItem(key));
         }
     };
-
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
         const valToSet = type === 'checkbox' ? checked : value;
@@ -2351,17 +2680,6 @@ useEffect(() => {
         if (fiveDayExpiryFields.includes(name)) {
              localStorage.setItem(name, valToSet);
              localStorage.setItem(`${name}_timestamp`, timestamp);
-
-            // If department changes, clear related employee fields
-            if (name === 'department') {
-                setFormData(prev => ({
-                    ...prev,
-                    phmcEmployee: '', phmcEmployeeSignature: '', phmcEmployeeLastName: '',
-                    coronerEmployee: '', coronerBadge: '', coronerRank: '', coronerDiscord: ''
-                }));
-                localStorage.removeItem('phmcEmployee'); localStorage.removeItem('phmcEmployee_timestamp');
-                localStorage.removeItem('coronerEmployee'); localStorage.removeItem('coronerEmployee_timestamp');
-            }
         }
     };
 
@@ -2455,8 +2773,8 @@ const getCopyButtonText = () => {
 
 // New main handler function
 const handleCopyAndNotify = async () => {
-    const bbCodeToCopy = getBBCodeContent(); // Use your existing function
-    const versionName = versionNames[bbCodeVersion] || "Unknown Form"; // Use existing map
+    const bbCodeToCopy = getBBCodeContent();
+    const versionName = versionNames[bbCodeVersion] || "Unknown Form";
 
     if (!bbCodeToCopy) {
         showNotification(`Failed to generate BBCode for ${versionName}. Please check form data. Copying and saving skipped.`, 'error');
@@ -2468,15 +2786,37 @@ const handleCopyAndNotify = async () => {
 
     if (!canProceedAfterSaveAttempt) {
         console.log("Report saving failed, or validation error occurred for saveable form, or BBCode generation failed. Copying to clipboard is skipped.");
-        return; // Exit without copying
+        return;
     }
 
     const currentDateTime = new Date().toLocaleString();
     const {
         decedentName, coronerEmployee, coronerRank, patientName, decedentOOC,
         phmcEmployee, requestingOfficer, patientID, patientFirstName, patientLastName,
-        showRequestingOfficerInput // Ensure this is destructured if not already
+        // showRequestingOfficerInput // This was in your comment, ensure it's destructured if needed elsewhere
     } = formData;
+
+    // --- Fetch total saved reports count from Firebase ---
+    let firebaseSavedCount = 0;
+    try {
+        const allReportsRef = ref(database, 'savedReports');
+        const snapshot = await get(allReportsRef);
+        if (snapshot.exists()) {
+            const usersData = snapshot.val();
+            for (const userId in usersData) {
+                if (typeof usersData[userId] === 'object' && usersData[userId] !== null) {
+                    firebaseSavedCount += Object.keys(usersData[userId]).length;
+                }
+            }
+        }
+        console.log(`Total saved reports in Firebase: ${firebaseSavedCount}`);
+    } catch (error) {
+        console.error("Error fetching total saved reports count from Firebase:", error);
+        Sentry.captureException(error, { extra: { context: 'Firebase Total Saved Reports Count' } });
+        // Default to 0 or a placeholder if fetching fails, or handle more gracefully
+        firebaseSavedCount = 0; 
+    }
+    // --- End fetching total saved reports count ---
 
     try {
         if (!navigator.clipboard || !navigator.clipboard.writeText) {
@@ -2484,21 +2824,10 @@ const handleCopyAndNotify = async () => {
         }
 
         await navigator.clipboard.writeText(bbCodeToCopy);
-        showNotification(`${versionName} copied to clipboard!`, 'check-circle'); // Main copy notification
+        showNotification(`${versionName} copied to clipboard!`, 'check-circle');
         console.log(`Notification 1: ${versionName} copied to clipboard!`);
 
-
-        // --- Debugging for Coroner Email Switch Notification ---
-        console.log("Attempting to show Coroner Email switch notification. Current state:", {
-            bbCodeVersion: bbCodeVersion,
-            isDeathReportForm: bbCodeVersion === 1,
-            showRequestingOfficerInput: formData.showRequestingOfficerInput,
-            isReportRequested: formData.showRequestingOfficerInput === true
-        });
-
         if (bbCodeVersion === 1 && formData.showRequestingOfficerInput === true) {
-            console.log("CONDITIONS MET: Showing Coroner Email switch notification.");
-            // Capture the ID of this specific notification
             const coronerEmailNotificationId = showNotification(
                 <>
                     A Coroner Email was requested for this report.
@@ -2507,23 +2836,18 @@ const handleCopyAndNotify = async () => {
                         size="sm"
                         className="ms-2 notification-action-button"
                         onClick={() => {
-                            console.log("Coroner Email switch button CLICKED in notification.");
-                            handleAgencySelect(2); // Switch to Coroner Email (bbCodeVersion 2)
-                            removeNotification(coronerEmailNotificationId); // Dismiss this notification
+                            handleAgencySelect(2); 
+                            removeNotification(coronerEmailNotificationId); 
                         }}
                     >
                         Switch to Coroner Email Form
                     </Button>
                 </>,
-                'info-circle', // Icon for the notification
-                15000          // Duration in milliseconds (15 seconds)
+                'info-circle', 
+                15000          
             );
-        } else {
-            console.log("CONDITIONS NOT MET for Coroner Email switch notification. formData.showRequestingOfficerInput is:", formData.showRequestingOfficerInput);
         }
-        // --- END ADDED NOTIFICATION LOGIC ---
 
-        // Proceed to send webhook
         const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
         if (discordWebhookUrl) {
             const currentIdentifier = `${decedentName || ''}|${decedentOOC || ''}`;
@@ -2531,9 +2855,6 @@ const handleCopyAndNotify = async () => {
             if (currentIdentifier && currentIdentifier === lastWebhookIdentifier) {
                 console.log('Duplicate report copy detected, skipping webhook.');
             } else {
-                let savedCount = parseInt(localStorage.getItem('SavedReportCount') || '0', 10);
-                if (isNaN(savedCount)) savedCount = 0;
-
                 const userValue = phmcEmployee
                     ? `Hospital Staff ${phmcEmployee}`
                     : coronerEmployee
@@ -2543,16 +2864,12 @@ const handleCopyAndNotify = async () => {
                             : 'Unknown User';
                 
                 let actionMessage = "BBCode Copied";
-                const knownSaveableVersions = [1, 3, 4, 5, 6, 7, 19, 25];
-                if (knownSaveableVersions.includes(bbCodeVersion) && canProceedAfterSaveAttempt) {
-                    let validationForSavePassed = false;
-                    if (bbCodeVersion === 1 && formData.decedentOOC && formData.dateTime) validationForSavePassed = true;
-                    else if ((bbCodeVersion >= 3 && bbCodeVersion <= 7) && formData.patientID && formData.patientName && formData.date) validationForSavePassed = true;
-                    else if (bbCodeVersion === 19 && formData.patientID && formData.lastName && formData.date) validationForSavePassed = true;
-                    else if (bbCodeVersion === 25 && formData.patientName && formData.date) validationForSavePassed = true;
-                    
-                    if(validationForSavePassed) actionMessage = "BBCode Copied & Report Saved to Local Storage";
+                // This logic for actionMessage can be simplified or adjusted
+                // as saveReport now handles its own success/failure notifications for Firebase.
+                if (canProceedAfterSaveAttempt) { // saveReport indicates if the save process was attempted and didn't fail validation
+                    actionMessage = "BBCode Copied & Report Save Processed";
                 }
+
 
                 const successEmbed = {
                     title: "Someone has used your generator!",
@@ -2566,7 +2883,8 @@ const handleCopyAndNotify = async () => {
                         { name: "Requesting Officer", value: requestingOfficer || "N/A", inline: true },
                         { name: "Timestamp", value: currentDateTime, inline: false },
                         { name: "Action", value: actionMessage, inline: false },
-                        { name: "Total Saved Reports", value: savedCount.toString(), inline: false }
+                        // Updated to use the count from Firebase
+                        { name: "Total Saved Reports (Firebase)", value: firebaseSavedCount.toString(), inline: false } 
                     ],
                     footer: { text: `PHMC Forms Tool | gh-pages ${commitInfo.sha || 'N/A'}` },
                     timestamp: new Date().toISOString()
@@ -2596,7 +2914,7 @@ const handleCopyAndNotify = async () => {
         console.error('Error during copy/save or webhook: ', error);
         Sentry.captureException(error, { extra: { context: 'handleCopyAndNotify', errorName: error.name, errorMessage: error.message } });
 
-        const saveStatusMessage = canProceedAfterSaveAttempt ? "Report saving process was run (saved if applicable)." : "Report saving failed or was skipped due to validation.";
+        const saveStatusMessage = canProceedAfterSaveAttempt ? "Report saving process was run." : "Report saving failed or was skipped.";
 
         if (error.message === "Clipboard API not available") {
             showNotification(`Clipboard API not available! BBCode not copied. ${saveStatusMessage}`, 'exclamation-triangle');
@@ -2604,6 +2922,7 @@ const handleCopyAndNotify = async () => {
             showNotification(`Failed to copy BBCode! ${saveStatusMessage}`, 'exclamation-triangle');
         }
 
+        // ... (rest of your error handling for Discord webhook)
         const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
         if (discordWebhookUrl) {
             const userValue = phmcEmployee
@@ -2623,7 +2942,7 @@ const handleCopyAndNotify = async () => {
                     { name: "OOC Name", value: decedentOOC || "N/A", inline: true },
                     { name: "Requesting Officer", value: requestingOfficer || "N/A", inline: true },
                     { name: "Timestamp", value: currentDateTime, inline: false },
-                    { name: "Action", value: `Report saving process was run (saved if applicable), but BBCode could not be copied. Error: ${error.message}`, inline: false },
+                    { name: "Action", value: `Report saving process was run, but BBCode could not be copied. Error: ${error.message}`, inline: false },
                 ],
                 footer: { text: `PHMC Forms Tool | gh-pages ${commitInfo.sha || 'N/A'}` },
                 timestamp: new Date().toISOString()
@@ -3410,6 +3729,7 @@ const handleCopyAndNotify = async () => {
                         isUploading={isUploading}
                         handleImageUpload={handleImageUpload}
                         phmcGroupedOptions={phmcGroupedOptions}
+                        
                         handleAutopsyImageUploadAndCreateAlbum={handleAutopsyImageUploadAndCreateAlbum}
 
                         />
@@ -3477,6 +3797,7 @@ const handleCopyAndNotify = async () => {
                             // BodyMassIndex might not be used by MentalHealth, verify component
                             followup={selectOptions.followup || []}
                             admission={selectOptions.admission || []}
+                            handleSelectChange={handleSelectChange} 
                         />
                         ) : bbCodeVersion === 16 ? ( // generateMentalHealthPBC
                             <MentalHealth
@@ -3489,6 +3810,7 @@ const handleCopyAndNotify = async () => {
                             // BodyMassIndex might not be used by MentalHealth, verify component
                             followup={selectOptions.followup || []}
                             admission={selectOptions.admission || []}
+                            handleSelectChange={handleSelectChange}                             
                         />
                         ) : bbCodeVersion === 18 ? ( // generateAgencyFeedback
                             <AgencyFeedback
@@ -3524,6 +3846,7 @@ const handleCopyAndNotify = async () => {
                             lab={selectOptions.lab || []}
                             admission={selectOptions.admission || []}
                             bloodOxy={selectOptions.bloodOxy || []}
+                                                        handleSelectChange={handleSelectChange} 
                             />
                         ) : bbCodeVersion === 20 ? ( // General Consultation (PHMC)
                             <GeneralConsult
@@ -3550,6 +3873,7 @@ const handleCopyAndNotify = async () => {
                             handleImageUpload={handleImageUpload}
                             isUploading={isUploading}
                             bloodOxy={selectOptions.bloodOxy || []}
+                                                        handleSelectChange={handleSelectChange} 
                             />
                            ) : bbCodeVersion === 21 ? ( // GENERAL CONSULTATION (PBC)
                             <GeneralConsult
@@ -3585,6 +3909,7 @@ const handleCopyAndNotify = async () => {
                             phmcGroupedOptions={phmcGroupedOptions}
                             departmentLarge={selectOptions.departmentLarge || []}
                             setFormData={setFormData}
+                            handleSelectChange={handleSelectChange} 
                         />
                         ) : bbCodeVersion === 23 ? ( // COMMENTARY NOTE (PBC)
                         <CommNotePBC
@@ -4184,6 +4509,15 @@ const handleCopyAndNotify = async () => {
                 deleteReport={deleteReport}
                 getBBCodeContent={getBBCodeContent} 
                 showNotification={showNotification}
+                    reportsForSelectedUser={savedReports} // savedReports state from App.js
+                    onEmployeeSelect={loadUserSavedReports} // Pass the new function
+                    employeeOptions={combinedStaffOptions} // Your existing staff options
+                    isLoadingReports={isLoadingUserReports} // Pass the new loading state
+                    loadReportForUser={loadReportForUser} // You'll update this function next
+                    deleteReportForUser={deleteReportForUser} // You'll update this function next
+    currentCoronerEmployee={formData.coronerEmployee}
+    currentPhmcEmployee={formData.phmcEmployee}
+
             />
             <WebhookModal
                 show={showWebhookModal}
