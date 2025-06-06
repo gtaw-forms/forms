@@ -923,7 +923,6 @@ const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
             embedData.fields.push({ name: "Suggested data.js Entry", value: `\`\`\`javascript\n${dataJsEntry}\n\`\`\``, inline: false });
 
             submissionValid = true;
-            successMessage = 'Done! Please ping Alyson Frost in the PHMC Discord for approval.';
 
         } else if (isRemoveStaff) {
             requestActionTitle = "➖ Staff Removal Request";
@@ -1000,7 +999,6 @@ const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
                     });
                     showNotification(`Failed to submit request. Status: ${response.status}`, 'exclamation-triangle');
                 } else {
-                    showNotification(successMessage, 'check-circle');
                     setShowMissingEmployeeModal(false);
 
                     // --- START Firebase Database Update ---
@@ -1268,7 +1266,6 @@ const handleCoronerRankSubmit = async ({ selectedEmployee, newRank }) => { // Ac
         } else {
             // Use submittedValue for notification consistency if needed, or customize
             const notificationValue = newRank ? `${selectedEmployee} -> ${newRank}` : selectedEmployee;
-            showNotification(`Coroner info "${notificationValue}" submitted successfully! Please contact Alyson Frost in the PHMC Discord for approval.`, 'check-circle');
             setShowCoronerRankModal(false); // Close modal on success
         }
     } catch (error) {
