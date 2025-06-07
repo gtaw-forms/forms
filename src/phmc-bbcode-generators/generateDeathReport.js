@@ -64,7 +64,7 @@ const generateDeathReport = (formData) => {
     // --- Morgue Status Message ---
     // Ensure morgueStatus is checked correctly (it might be boolean or string 'true'/'false')
     const morgueStatusMessage = morgueStatus === 'true' || morgueStatus === true
-     ? '[bold]color=red) [/color][/bold]\n'
+     ? '[bold][color=red]The Morgue Screen Photo is currently unavailable. [/color][/bold]\n'
      : '';
 
 
