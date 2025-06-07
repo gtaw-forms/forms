@@ -17,7 +17,9 @@ import CoronerRankModal from './components/CoronerRankModal';
 import CoronerTipsModal from './components/CoronerTipsModal'; 
 import BusinessCardModal from './components/BusinessCardModal'; 
 import EasterEggModal from './components/EasterEggModal'; 
-import EmsAmaModal from './components/EmsAmaModal'; // +++ Import the new modal
+import EmsAmaModal from './components/EmsAmaModal'; 
+import MissingEmployeeModal from './components/MissingEmployeeModal';
+import generateEntryJob from './saaa-form-generators/generateEntryJob';
 import {
     generateDeathReport,
     generateEmail,
@@ -38,7 +40,7 @@ import {
     generateConsultationNotesPBC,
     generatePsychEvalPHMC,
     generatePsychEvalPBC,
-} from './bbcode-generators'; 
+} from './phmc-bbcode-generators'; 
 import {
     CommNotePHMC,
     CommNotePBC,
@@ -56,7 +58,7 @@ import {
     BasicPatientFile,
     Shrink,
     Autopsy,
-} from './field-data';
+} from './phmc-field-data';
 
 // logos
 import email from './assets/email.png'
@@ -72,11 +74,12 @@ import './App.css';
 import './buttons.css'
 
 import 'react-bootstrap-typeahead/css/Typeahead.css';
-import generateAutopsy from './bbcode-generators/generateAutopsy';
+import generateAutopsy from './phmc-bbcode-generators/generateAutopsy';
 
 // database
 import { database } from './firebase'; // Your Firebase config
 import { ref, get, set, remove} from 'firebase/database'; // Added set
+import SaaaBusinessCardModal from './saaa-components/SaaaBusinessCardModal';
 
 // Automated Imports from field-data
 function App() {
@@ -2251,7 +2254,9 @@ const filterFormData = (formData, bbCodeVersion) => {
                 return generatePsychEvalPHMC(formData);
             case 29:
               return generatePsychEvalPBC(formData);
-            default:
+            case 30: 
+            return generateEntryJob(formData);
+
        }
     };
 
@@ -2733,7 +2738,7 @@ useEffect(() => {
         27: "Email Forms",
         28: "Psychological Evaluation PHMC",
         29: "Psychological Evaluation PBC",
-
+        30: "SAAA Entry Job Form",
     };
 
 
@@ -3998,6 +4003,28 @@ const handleCopyAndNotify = async () => {
                             followup={selectOptions.followup || []}
                             Risk={selectOptions.Risk || []}
                             />
+                        ) : bbCodeVersion === 30 ? ( //PBC? Shrink Internal
+                            <Shrink
+                            formData={formData}
+                            handleChange={handleChange}
+                            phmcGroupedOptions={phmcGroupedOptions}
+                            setFormData={setFormData}
+                            phmcRank={selectOptions.phmcRank || []}
+                            setShowMissingEmployeeModal={setShowMissingEmployeeModal}
+                            Appearance={selectOptions.Appearance || []}
+                            Behavior={selectOptions.Behavior || []}
+                            Speech={selectOptions.Speech || []}
+                            Mood={selectOptions.Mood || []}
+                            Affect={selectOptions.Affect || []}
+                            ThoughtProcess={selectOptions.ThoughtProcess || []}
+                            ThoughtContent={selectOptions.ThoughtContent || []}
+                            Insight={selectOptions.Insight || []}
+                            Cognition={selectOptions.Cognition || []}
+                            admission={selectOptions.admission || []}
+                            followup={selectOptions.followup || []}
+                            Risk={selectOptions.Risk || []}
+                            />
+                        
                         ) : null}
                         <div className="button-group">
                             <Button
@@ -4036,355 +4063,26 @@ const handleCopyAndNotify = async () => {
                     </form>
                 </div>
                 <div className="output-container">
-                {showMissingEmployeeModal && (
-        <div className="modal-overlay">
-            <div className="modal">
-                <Modal.Header>
-                    <Modal.Title>Manage Employee Data</Modal.Title> {/* Updated Title */}
-                    <Button variant="secondary" className="close" onClick={() => { setShowMissingEmployeeModal(false); setRequestType(''); /* Reset type on close */ }}>
-                        <span>CLOSE</span>
-                    </Button>
-                </Modal.Header>
-                <div className="radio-inline-container">
-                <span className="radio-text">Action:</span>
-                    {/* --- Use original handlers and new one --- */}
-                    <Form.Check
-                        type="radio"
-                        id="addCoronerRadio"
-                        label="  Add Coroner"
-                        name="requestTypeGroup" // Add name for grouping
-                        checked={isJohnDoe} // Check against isJohnDoe
-                        onChange={handleDoeChange('john')} // Use original handler
-                        inline
-                    />
-                    <Form.Check
-                        type="radio"
-                        id="addPhmcRadio"
-                        label="  Add Hospital Staff"
-                        name="requestTypeGroup" // Add name for grouping
-                        checked={isJaneDoe} // Check against isJaneDoe
-                        onChange={handleDoeChange('jane')} // Use original handler
-                        inline
-                    />
-                    <Form.Check
-                        type="radio"
-                        id="removeStaffRadio"
-                        label="  Remove Staff"
-                        name="requestTypeGroup" // Add name for grouping
-                        checked={isRemoveStaff} // Check against isRemoveStaff
-                        onChange={handleRemoveStaffChange} // Use NEW handler
-                        inline
-                    />
-                    {/* --- End Updated Radio Buttons --- */}
-                </div>
-
-                <Modal.Body>
-                    <Form>
-                        {requestType === 'addPhmc' && ( 
-                            <>
-                            <hr></hr>
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                    <Form.Control
-                        type="text"
-                        name="coronerName"
-                        value={missingEmployeeData.coronerName}
-                        onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerName')}
-                        placeholder='Coroner Name'
-
-                        />
-                        <Form.Control
-                        type="text"
-                        name="coronerDiscord"
-                        value={missingEmployeeData.coronerDiscord}
-                        onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerDiscord')}
-                        placeholder='Coroner Discord Name'
-                        />
-                        <Form.Control
-                        type="text"
-                        name="coronerRank"
-                        value={missingEmployeeData.coronerRank}
-                        onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerRank')}
-                        placeholder='Coroner Rank / Position'
-                        />
-                                                    
-                        </div>
-
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                            <Form.Control
-                                type="text"
-                                name="coronerPHNumber"
-                                value={missingEmployeeData.coronerPHNumber}
-                                onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerPHNumber')}
-                                placeholder='Coroner PH number (Optional)'
-                            />
-                            <Form.Control
-                            type="text"
-                            name="coronerBadge"
-                            value={missingEmployeeData.coronerBadge}
-                            onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerBadge')}
-                            placeholder='Coroner Badge Number (Required***)'
-                            />
-
-                        </div>
-                                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                                    <Form.Control type="text" name="coronerPHNumber" value={missingEmployeeData.coronerPHNumber} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerPHNumber')} placeholder='Employee PH number (Optional)' />
-                                </div>
-                                <Select
-                                    name="phmcEmployee" // This is the REQUESTER
-                                    value={missingEmployeeData.phmcEmployee ? phmcGroupedOptions.flatMap(group => group.options).find(option => option.value === missingEmployeeData.phmcEmployee) || null : null}
-                                    onChange={(selectedOption) => handleMissingEmployeeChange(selectedOption?.value || '', 'phmcEmployee')}
-                                    options={phmcGroupedOptions}
-                                    isClearable
-                                    placeholder="Who is requesting this addition..."
-                                    className="form-control mt-2" // Added margin top
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                            </>
-                        )}
-
-{isJohnDoe && ( // <--- Changed back to isJohnDoe
-                            <>
-                                <div style={{ display: 'flex', gap: '10px' }}>
-                                    <Form.Control type="text" name="coronerName" value={missingEmployeeData.coronerName} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerName')} placeholder='Coroner Name' required />
-                                    <Form.Control type="text" name="coronerDiscord" value={missingEmployeeData.coronerDiscord} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerDiscord')} placeholder='Coroner Discord Name' required />
-                                    <Form.Control type="text" name="coronerRank" value={missingEmployeeData.coronerRank} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerRank')} placeholder='Coroner Rank / Position' required />
-                                </div>
-                                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                                    <Form.Control type="text" name="coronerPHNumber" value={missingEmployeeData.coronerPHNumber} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerPHNumber')} placeholder='Coroner PH number (Optional)' />
-                                    <Form.Control type="text" name="coronerBadge" value={missingEmployeeData.coronerBadge} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerBadge')} placeholder='Coroner Badge Number (Required***)' required />
-                                </div>
-                                <Select
-                                    name="coronerEmployee" // This is the REQUESTER
-                                    value={missingEmployeeData.coronerEmployee ? coronerGroupedOptions.flatMap(group => group.options).find(option => option.value === missingEmployeeData.coronerEmployee) || null : null}
-                                    onChange={(selectedOption) => handleMissingEmployeeChange(selectedOption?.value || '', 'coronerEmployee')}
-                                    options={coronerGroupedOptions}
-                                    isClearable
-                                    placeholder="Who is requesting this addition..."
-                                    className="form-control mt-2" // Added margin top
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                            '&:hover': {
-                                                borderColor: '#30363d'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        })
-                                    }}
-                                />
-                            </>
-                        )}
-
-                        {/* == ADD PHMC STAFF FIELDS (using isJaneDoe) == */}
-                        {isJaneDoe && ( // <--- Changed back to isJaneDoe
-    <>
-        <div style={{ display: 'flex', gap: '10px' }}>
-            <Form.Control type="text" name="coronerName" value={missingEmployeeData.coronerName} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerName')} placeholder='First Name and Last Name' required />
-            <Form.Control type="text" name="employeeLastName" value={missingEmployeeData.employeeLastName} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'employeeLastName')} placeholder='Employee Last Name' required />
-            <Form.Control type="text" name="coronerRank" value={missingEmployeeData.coronerRank} onChange={(e) => handleMissingEmployeeChange(e.target.value, 'coronerRank')} placeholder='Employee Rank / Position' required />
-        </div>
-        <Select
-            name="phmcEmployee" // This is the REQUESTER
-            value={missingEmployeeData.phmcEmployee ? phmcGroupedOptions.flatMap(group => group.options).find(option => option.value === missingEmployeeData.phmcEmployee) || null : null}
-            onChange={(selectedOption) => handleMissingEmployeeChange(selectedOption?.value || '', 'phmcEmployee')}
-            options={phmcGroupedOptions}
-            isClearable
-            placeholder="Who is requesting this addition..."
-            className="form-control mt-2" // Added margin top
-            styles={{
-                control: (base) => ({
-                    ...base,
-                    backgroundColor: '#16202c',
-                    color: '#eeeeeeb0',
-                    borderColor: '#30363d',
-                    '&:hover': {
-                        borderColor: '#30363d'
-                    }
-                }),
-                menu: (base) => ({
-                    ...base,
-                    backgroundColor: '#16202c',
-                    zIndex: 1000
-                }),
-                option: (base, state) => ({
-                    ...base,
-                    backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                    color: '#eeeeeeb0'
-                }),
-                singleValue: (base) => ({
-                    ...base,
-                    color: '#eeeeeeb0'
-                }),
-                input: (base) => ({
-                    ...base,
-                    color: '#eeeeeeb0'
-                }),
-                placeholder: (base) => ({
-                    ...base,
-                    color: '#eeeeeeb0'
-                })
-            }}
-        />
-    </>
-)}
-                        {isRemoveStaff && (
-                            <>
-                                <Form.Label>Staff to Remove:</Form.Label>
-                                <Select
-                                    isMulti
-                                    name="staffToRemove"
-                                    options={combinedStaffOptions} // Use the combined list
-                                    value={combinedStaffOptions.flatMap(group => group.options).filter(option => missingEmployeeData.staffToRemove.includes(option.value))}
-                                    onChange={(selectedOptions) => {
-                                        const selectedValues = selectedOptions ? selectedOptions.map(option => option.value) : [];
-                                        handleMissingEmployeeChange(selectedValues, 'staffToRemove');
-                                    }}
-                                    isClearable
-                                    placeholder="Select staff member(s) to remove..."
-                                    className="form-control mb-2"
-                                    styles={{                                        
-                                        control: (base) => ({
-                                    ...base,
-                                    minHeight: '38px',
-                                    backgroundColor: '#16202c',
-                                    color: '#eeeeeeb0',
-                                    borderColor: '#6c757d',
-                                    '&:hover': {
-                                        borderColor: '#eeeeeeb0'
-                                    }
-                                }),
-                                menu: (base) => ({
-                                    ...base,
-                                    backgroundColor: '#16202c',
-                                    zIndex: 1000,
-                                    border: '1px solid #6c757d',
-                                    borderRadius: '0.375rem'
-                                }),
-                                option: (base, state) => ({
-                                    ...base,
-                                    backgroundColor: state.isFocused ? '#30363d' : '#16202c',
-                                    color: '#eeeeeeb0',
-                                    padding: '0.5rem 1rem',
-                                    '&:hover': {
-                                        backgroundColor: '#30363d'
-                                    }
-                                }),
-                                multiValue: (base) => ({
-                                    ...base,
-                                    backgroundColor: '#30363d',
-                                    color: '#eeeeeeb0'
-                                }),
-                                multiValueLabel: (base) => ({
-                                    ...base,
-                                    color: '#eeeeeeb0'
-                                }),
-                                multiValueRemove: (base) => ({
-                                    ...base,
-                                    color: '#6c757d',
-                                    '&:hover': {
-                                        backgroundColor: '#dc3545',
-                                        color: '#fff'
-                                    }
-                                }),
-                                input: (base) => ({
-                                    ...base,
-                                    color: '#eeeeeeb0'
-                                }),
-                                placeholder: (base) => ({
-                                    ...base,
-                                    color: '#6c757d'
-                                })
-                            }}
-                            />
-                        <Form.Label>Authorized By:</Form.Label>
-                                <Form.Control
-                                    type="text"
-                                    name="authorizedBy"
-                                    value={missingEmployeeData.authorizedBy}
-                                    onChange={(e) => handleMissingEmployeeChange(e.target.value, 'authorizedBy')}
-                                    placeholder='Your Name (Authorizing Removal)'
-                                    required
-                                />
-                                <span className="helper-text">
-                                    (Only authorized personnel should submit removal requests.)
-                                </span>
-                            </>
-                        )}
-                        {/* --- End Conditional Rendering --- */}
-                    </Form>
-                </Modal.Body>
-                <Modal.Footer>
-                    <Button variant="primary" onClick={handleMissingEmployeeSubmit}>
-                        Submit Request
-                    </Button>
-                    {/* --- Update cancel button onClick --- */}
-                    <Button variant="secondary" className="close" onClick={() => {
-                        setShowMissingEmployeeModal(false);
-                        setIsJohnDoe(false); // Reset state on close
-                        setIsJaneDoe(false); // Reset state on close
-                        setIsRemoveStaff(false); // Reset state on close
-                    }}>
-                        Cancel
-                    </Button>
-                </Modal.Footer>
-            </div>
-        </div>
-    )}
+<MissingEmployeeModal
+    show={showMissingEmployeeModal}
+    onHide={() => {
+        setShowMissingEmployeeModal(false);
+        setIsJohnDoe(false); // Reset state on close
+        setIsJaneDoe(false); // Reset state on close
+        setIsRemoveStaff(false); // Reset state on close
+    }}
+    isJohnDoe={isJohnDoe}
+    isJaneDoe={isJaneDoe}
+    isRemoveStaff={isRemoveStaff}
+    handleDoeChange={handleDoeChange}
+    handleRemoveStaffChange={handleRemoveStaffChange}
+    missingEmployeeData={missingEmployeeData}
+    handleMissingEmployeeChange={handleMissingEmployeeChange}
+    phmcGroupedOptions={phmcGroupedOptions}
+    coronerGroupedOptions={coronerGroupedOptions}
+    combinedStaffOptions={combinedStaffOptions}
+    handleMissingEmployeeSubmit={handleMissingEmployeeSubmit}
+/>
         {showFeatureRequestModal && (
         <div className="modal-overlay">
             <div className="modal">
@@ -4479,6 +4177,13 @@ const handleCopyAndNotify = async () => {
     showNotification={showNotification}
     commitInfo={commitInfo}
 />
+{/* <SaaaBusinessCardModal
+    show={showBusinessCard}
+    onHide={() => setShowBusinessCard(false)} // Or onHide={toggleBusinessCard} if you prefer
+    showNotification={showNotification}
+    commitInfo={commitInfo}
+/>
+ */}
 <EmsAmaModal
     show={showEmsAmaModal}
     onHide={() => setShowEmsAmaModal(false)}
