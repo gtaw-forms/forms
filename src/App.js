@@ -986,7 +986,7 @@ const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        content: `Employee has been removed from the Database`,
+                        content: `New Employee Management Request: ${requestActionTitle}`,
                         embeds: [embedData]
                     }),
                 });
@@ -2209,6 +2209,51 @@ const filterFormData = (formData, bbCodeVersion) => {
 };
         const [showBBCode, setShowBBCode] = useState(false);
 
+    const getBBCodeContent = () => {
+        switch (bbCodeVersion) {
+            case 1:
+                return generateDeathReport(formData);
+            case 2:
+                return generateEmail(formData);
+            case 3: 
+                return generateAdvancedPatientFile(formData);
+            case 4:
+                return generateAutopsy(formData);
+            case 5:
+                return generateSurgicalOps(formData);
+            case 6:
+                return generatePhysEvalInternalMed(formData);
+            case 7: 
+                return generatePhysEvalInternalMedPBC(formData);
+            case 14:
+                return generateMentalHealthPHMC(formData);
+            case 16:
+                return generateMentalHealthPBC(formData);
+            case 18:
+                return generateAgencyFeedback(formData);
+            case 19:
+                return generateEmergencyProtocol(formData);
+            case 20:
+                return generateConsultationNotesPHMC(formData);
+            case 21:
+                return generateConsultationNotesPBC(formData);
+            case 22:
+                return generateCommentaryNotePHMC(formData);
+            case 23:
+                return generateCommentaryNotePBC(formData);
+            case 24:
+                return generateMedicalRecordRelease(formData);
+            case 25:
+                return generateBasicPatientFile(formData);
+            case 27:
+                return generateEmailPHMCEmail(formData);
+             case 28: 
+                return generatePsychEvalPHMC(formData);
+            case 29:
+              return generatePsychEvalPBC(formData);
+            default:
+       }
+    };
 
     //  BBCode generation logic
 {showBBCode && (
@@ -2304,51 +2349,6 @@ const toggleEmsAmaModal = () => {
     // Add new state
     const [parsedBBCode, setParsedBBCode] = useState('');
     // update Switch logic
-    const getBBCodeContent = () => {
-        switch (bbCodeVersion) {
-            case 1:
-                return generateDeathReport(formData);
-            case 2:
-                return generateEmail(formData);
-            case 3: 
-                return generateAdvancedPatientFile(formData);
-            case 4:
-                return generateAutopsy(formData);
-            case 5:
-                return generateSurgicalOps(formData);
-            case 6:
-                return generatePhysEvalInternalMed(formData);
-            case 7: 
-                return generatePhysEvalInternalMedPBC(formData);
-            case 14:
-                return generateMentalHealthPHMC(formData);
-            case 16:
-                return generateMentalHealthPBC(formData);
-            case 18:
-                return generateAgencyFeedback(formData);
-            case 19:
-                return generateEmergencyProtocol(formData);
-            case 20:
-                return generateConsultationNotesPHMC(formData);
-            case 21:
-                return generateConsultationNotesPBC(formData);
-            case 22:
-                return generateCommentaryNotePHMC(formData);
-            case 23:
-                return generateCommentaryNotePBC(formData);
-            case 24:
-                return generateMedicalRecordRelease(formData);
-            case 25:
-                return generateBasicPatientFile(formData);
-            case 27:
-                return generateEmailPHMCEmail(formData);
-             case 28: 
-                return generatePsychEvalPHMC(formData);
-            case 29:
-              return generatePsychEvalPBC(formData);
-            default:
-       }
-    };
     const parseBBCode = () => {
         let deathReportBbCode = generateDeathReport(formData);
 
