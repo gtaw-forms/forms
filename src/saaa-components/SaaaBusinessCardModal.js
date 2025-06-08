@@ -2,9 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Form, Button } from 'react-bootstrap';
 import domtoimage from 'dom-to-image';
 import * as Sentry from "@sentry/react";
-import SaaaBusinessCardImage from '../assets/saaa-business-card.webp'; // Updated: Path to the new SAAA business card image
-// If you have specific CSS for this modal, import it here:
-// import './SaaaBusinessCardModal.css';
+import SaaaBusinessCardImageWebP from '../assets/saaa-business-card.webp'; // Current image
+import SaaaBusinessCardImagePng from '../assets/saaa-business-card2.png'; // Alternative image
 
 const SaaaBusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
     const [name, setName] = useState('');
@@ -12,27 +11,92 @@ const SaaaBusinessCardModal = ({ show, onHide, showNotification, commitInfo }) =
     const [phoneNumber, setPhoneNumber] = useState('');
     const [imgurLink, setImgurLink] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [usePngImage, setUsePngImage] = useState(false); // State to toggle image
 
     const businessCardRef = useRef(null);
-    const nameRef = useRef(null);
-    const rankRef = useRef(null);
-    const departmentRef = useRef(null); // Used for phone number overlay
 
-    // Webhook queue and rate limiting
+    const modalContainerStyle = {
+        fontFamily: 'Poppins-Medium, sans-serif',
+        backgroundColor: '#0d1117',
+        color: '#c9d1d9',
+        padding: '20px',
+        borderRadius: '5px',
+        border: '1px solid #30363d',
+    };
+
+    const nameOverlayStyle = {
+        position: 'absolute', top: '29%', left: '56%', color: 'white',
+        fontSize: '35PX',
+        fontWeight: 'bold',
+        pointerEvents: 'none', cursor: 'default', whiteSpace: 'nowrap',
+        fontFamily: 'Poppins-Medium, sans-serif',
+    };
+
+    const rankOverlayStyle = {
+        position: 'absolute', top: '39.9%', left: '54%', color: 'white',
+        fontSize: '20px', cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap',
+        fontFamily: 'Poppins-Medium, sans-serif',
+    };
+
+    const phoneNumberOverlayStyle = {
+        position: 'absolute',
+        top: '52%',
+        right: '15%',
+        color: 'white',
+        fontSize: '25px',
+        cursor: 'default',
+        pointerEvents: 'none',
+        whiteSpace: 'nowrap',
+        fontFamily: 'Poppins-Medium, sans-serif',
+        textAlign: 'right',
+    };
+
+    const emailOverlayStyle = {
+        position: 'absolute',
+        top: '62%',
+        right: '15%',
+        color: 'white',
+        fontSize: '25px',
+        cursor: 'default',
+        pointerEvents: 'none',
+        whiteSpace: 'nowrap',
+        fontFamily: 'Poppins-Medium, sans-serif',
+        textAlign: 'right',
+    };
+    const staticAgencyNameOverlayStyle = {
+        position: 'absolute', top: '73%', left: '45.4%', color: 'white',
+        fontSize: '20px', pointerEvents: 'none', cursor: 'default', whiteSpace: 'nowrap',
+        fontFamily: 'Poppins-Medium, sans-serif',
+    };
+    const staticWebsiteOverlayStyle = {
+        position: 'absolute', top: '83%', left: '61.9%', color: 'white',
+        fontSize: '19px', pointerEvents: 'none', cursor: 'default', whiteSpace: 'nowrap',
+        fontFamily: 'Poppins-Medium, sans-serif',
+    };
+
     const webhookQueue = useRef([]);
     const isWebhookProcessing = useRef(false);
     const lastWebhookCallTimestamp = useRef(0);
-    const webhookRateLimitDelay = 1100; // 1.1 seconds
+    const webhookRateLimitDelay = 1100;
 
     useEffect(() => {
         if (show) {
-            // Consider using SAAA specific localStorage keys if needed, e.g., 'saaaName'
+            // Load from localStorage when the modal is shown
             setName(localStorage.getItem('saaaBusinessCardName') || '');
             setRank(localStorage.getItem('saaaBusinessCardRank') || '');
             setPhoneNumber(localStorage.getItem('saaaBusinessCardPhoneNumber') || '');
-            setImgurLink(null); // Reset Imgur link when modal opens
+            setImgurLink(null);
         }
     }, [show]);
+
+
+    useEffect(() => {
+        if (show) {
+            localStorage.setItem('saaaBusinessCardName', name);
+            localStorage.setItem('saaaBusinessCardRank', rank);
+            localStorage.setItem('saaaBusinessCardPhoneNumber', phoneNumber);
+        }
+    }, [name, rank, phoneNumber, show]);
 
     const handleNameChange = (e) => setName(e.target.value);
     const handleRankChange = (e) => setRank(e.target.value);
@@ -41,7 +105,6 @@ const SaaaBusinessCardModal = ({ show, onHide, showNotification, commitInfo }) =
     const uploadToImgur = useCallback(async (base64Image) => {
         const imgurClientId = process.env.REACT_APP_IMGUR_CLIENT_ID;
         const accessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
-        // Potentially use a different album for SAAA cards if desired
         const albumId = process.env.REACT_APP_IMGUR_SAAA_ALBUM_ID || process.env.REACT_APP_IMGUR_ALBUM_ID;
         const apiUrl = 'https://api.imgur.com/3/image';
 
@@ -117,7 +180,6 @@ const SaaaBusinessCardModal = ({ show, onHide, showNotification, commitInfo }) =
     }, []);
 
     const sendDiscordWebhook = useCallback(async (cardName, cardRank, cardPhoneNumber, generatedImgurLink, errorMessage = null) => {
-        // Potentially use a different webhook URL for SAAA notifications
         const webhookURL = process.env.REACT_APP_SAAA_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
         if (!webhookURL) {
             console.warn('Discord webhook URL is not set in environment variables.');
@@ -125,17 +187,17 @@ const SaaaBusinessCardModal = ({ show, onHide, showNotification, commitInfo }) =
         }
 
         const embed = {
-            title: "SAAA Business Card Creation Alert!", // Updated Title
-            description: "A new SAAA business card was generated.", // Updated Description
-            color: errorMessage ? 0xFF0000 : 0x00FF00, // Keep color logic or customize
+            title: "SAAA Business Card Creation Alert!",
+            description: "A new SAAA business card was generated.",
+            color: errorMessage ? 0xFF0000 : 0x00FF00,
             fields: [
                 { name: "Employee Name", value: cardName || "N/A", inline: true },
-                { name: "Employee Rank/Title", value: cardRank || "N/A", inline: true }, // Adjusted field name
+                { name: "Employee Rank/Title", value: cardRank || "N/A", inline: true },
                 { name: "Phone Number", value: cardPhoneNumber || "N/A", inline: true },
                 errorMessage ? { name: "Error", value: errorMessage, inline: false } : null
             ].filter(field => field !== null),
             footer: {
-                text: `SAAA Forms Tool | gh-pages ${commitInfo.sha || 'N/A'}` // Updated Footer
+                text: `SAAA Forms Tool | gh-pages ${commitInfo.sha || 'N/A'}`
             },
             timestamp: new Date().toISOString()
         };
@@ -157,18 +219,13 @@ const SaaaBusinessCardModal = ({ show, onHide, showNotification, commitInfo }) =
 
     const handleSave = useCallback(async () => {
         setIsSaving(true);
-        showNotification('Uploading SAAA Card, Just a moment....', 'upload'); // Updated notification
-
-        // Consider SAAA specific localStorage keys
-        localStorage.setItem('saaaBusinessCardName', name);
-        localStorage.setItem('saaaBusinessCardRank', rank);
-        localStorage.setItem('saaaBusinessCardPhoneNumber', phoneNumber);
+        showNotification('Uploading SAAA Card, Just a moment....', 'upload');
 
         try {
             const dataUrl = await domtoimage.toPng(businessCardRef.current);
             const link = await uploadToImgur(dataUrl);
             setImgurLink(link);
-            showNotification(`SAAA Business Card Saved & Uploaded to Imgur: ${link}`, 'save'); // Updated notification
+            showNotification(`SAAA Business Card Saved & Uploaded to Imgur: ${link}`, 'save');
             sendDiscordWebhook(name, rank, phoneNumber, link);
 
             if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -180,7 +237,7 @@ const SaaaBusinessCardModal = ({ show, onHide, showNotification, commitInfo }) =
                         console.error('Failed to copy Imgur link to clipboard:', err);
                         Sentry.captureException(err, {
                             extra: {
-                                message: 'Clipboard writeText failed for SAAA card.', // Updated context
+                                message: 'Clipboard writeText failed for SAAA card.',
                                 imgurLink: link,
                                 userAgent: navigator.userAgent,
                             }
@@ -202,8 +259,8 @@ const SaaaBusinessCardModal = ({ show, onHide, showNotification, commitInfo }) =
                 showNotification('Clipboard API not available. Please copy the link manually.', 'warning');
             }
         } catch (error) {
-            console.error('Error in SAAA handleSave:', error); // Updated context
-            let errorContext = 'Error generating SAAA business card'; // Updated context
+            console.error('Error in SAAA handleSave:', error);
+            let errorContext = 'Error generating SAAA business card';
             let detailedMessage = error.message || String(error);
 
             if (detailedMessage.includes('Imgur upload failed')) {
@@ -212,130 +269,96 @@ const SaaaBusinessCardModal = ({ show, onHide, showNotification, commitInfo }) =
                  errorContext = 'Image Conversion Failed';
             }
             showNotification(errorContext, 'error');
-            Sentry.captureException(error, { extra: { context: 'SAAA Business Card Save', name, rank } }); // Updated context
+            Sentry.captureException(error, { extra: { context: 'SAAA Business Card Save', name, rank } });
             sendDiscordWebhook(name, rank, phoneNumber, null, `${errorContext}: ${detailedMessage}`);
         } finally {
             setIsSaving(false);
         }
     }, [name, rank, phoneNumber, showNotification, uploadToImgur, sendDiscordWebhook, commitInfo]);
 
+    const toggleCardImage = () => {
+        setUsePngImage(prev => !prev);
+    };
 
     if (!show) {
         return null;
     }
 
-    // IMPORTANT: The overlay div/text positions (top, left, fontSize) for name, rank, and phone number
-    // will likely need to be adjusted based on the layout of your new SaaaBusinessCardImage.
-    // These are copied from the original and are placeholders.
+    const emailString = name ? `${name.toLowerCase().replace(/\s+/g, '.')}@saaa.gov.us` : '@saaa.gov.us';
+    const currentCardImage = usePngImage ? SaaaBusinessCardImagePng : SaaaBusinessCardImageWebP;
+
+
     return (
         <div className="modal-overlay">
-            {/* Consider adding a SAAA-specific class for styling if needed */}
-            <div className="agency-selector-modal saaa-business-card-modal" onClick={e => e.stopPropagation()}>
+            <div style={modalContainerStyle} onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
-                    <h4>SAAA Business Card</h4> {/* Updated Title */}
+                    <h4 style={{ fontFamily: 'Poppins-Medium, sans-serif' }}>SAAA Business Card</h4>
                     <Button
                         variant="secondary"
                         className="close"
                         onClick={onHide}
-                        aria-label="Close SAAA business card modal" // Updated ARIA label
+                        aria-label="Close SAAA business card modal"
                     >
                         <i className="fas fa-times"></i>
                     </Button>
                 </div>
-                <div className="business-card-content"> {/* You might want a SAAA-specific class here too */}
-                    If you get any errors, please let me know on Discord.
+                <div className="business-card-content">
+                    <p style={{ fontFamily: 'Poppins-Medium, sans-serif' }}>
+                        If you get any errors, please let me know on Discord.
+                    </p>
+                    {/* Temporary Image Toggle Button */}
+                    <Button 
+                        variant="outline-secondary" 
+                        size="sm" 
+                        onClick={toggleCardImage} 
+                        style={{ marginBottom: '10px', display: 'block', marginLeft: 'auto', marginRight: 'auto' }}
+                    >
+                        Switch Card Image (Currently: {usePngImage ? 'PNG' : 'WebP'})
+                    </Button>
                     {imgurLink && (
                         <div className="imgur-link-container">
-                            <p>
+                            <p style={{ fontFamily: 'Poppins-Medium, sans-serif' }}>
                                 <strong>Imgur Link: </strong>
                                 <a href={imgurLink} target="_blank" rel="noopener noreferrer">
                                     {imgurLink}
                                 </a>
                             </p>
-                            Instructions!
-                            <br />
-                            1) /note [id of the blank note item in your inventory] [amount] [name for the cards]
-                            <br />
-                            2) /note [id of the new note item in your inventory] [amount] [content] [URL from Imgur]
+                            <span style={{ fontFamily: 'Poppins-Medium, sans-serif' }}>Instructions!</span>
                         </div>
                     )}
-                    <div className="business-card-image-container" ref={businessCardRef} style={{ position: 'relative', width: '100%', maxWidth: '800px' /* Adjust as needed */ }}>
+                    <div className="business-card-image-container" ref={businessCardRef} style={{ position: 'relative', width: '100%', maxWidth: '800px' }}>
                         <img
-                            src={SaaaBusinessCardImage} // Updated: Use SAAA image
-                            alt="SAAA Business Card" // Updated Alt Text
+                            src={currentCardImage} // Use the state-controlled image
+                            alt="SAAA Business Card"
                             style={{ display: 'block', width: '100%', height: 'auto' }}
                         />
-                        {/* ADJUST THESE OVERLAY POSITIONS BASED ON YOUR SAAA IMAGE */}
-                        <div
-                            className="name-overlay"
-                            ref={nameRef}
-                            style={{
-                                position: 'absolute', top: '23.44%', left: '2.75%', color: 'black', // Example values
-                                fontSize: '35px', pointerEvents: 'none', cursor: 'default', whiteSpace: 'nowrap' // Example values
-                            }}
-                        >
+                        <div className="name-overlay" style={nameOverlayStyle}>
                             {name}
                         </div>
-                        <div
-                            className="rank-overlay"
-                            ref={rankRef}
-                            style={{
-                                position: 'absolute', top: '31.92%', left: '3.31%', color: '#cb1212', // Example values
-                                fontSize: '15px', cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap' // Example values
-                            }}
-                        >
+                        <div className="rank-overlay" style={rankOverlayStyle}>
                             {rank}
                         </div>
-                        <div
-                            className="phone-number-overlay"
-                            ref={departmentRef}
-                            style={{
-                                position: 'absolute', top: '53.03%', left: '11.06%', color: 'black', // Example values
-                                fontSize: '15px', cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap' // Example values
-                            }}
-                        >
+                        <div className="phone-number-overlay" style={phoneNumberOverlayStyle}>
                             {phoneNumber}
                         </div>
-                        <div
-                            className="static-agency-name-overlay"
-                            style={{
-                                position: 'absolute',
-                                top: '10%', // ADJUST THIS
-                                left: '5%',  // ADJUST THIS
-                                color: 'black', // ADJUST THIS
-                                fontSize: '20px', // ADJUST THIS
-                                pointerEvents: 'none',
-                                cursor: 'default',
-                                whiteSpace: 'nowrap'
-                            }}
-                        >
-                            Los Santos Aviation Administration
+                        <div className="email-overlay" style={emailOverlayStyle}>
+                            {emailString}
                         </div>
-                        <div
-                            className="static-website-overlay"
-                            style={{
-                                position: 'absolute',
-                                top: '85%', // ADJUST THIS
-                                left: '5%',  // ADJUST THIS
-                                color: 'grey', // ADJUST THIS
-                                fontSize: '12px', // ADJUST THIS
-                                pointerEvents: 'none',
-                                cursor: 'default',
-                                whiteSpace: 'nowrap'
-                            }}
-                        >
+                        <div className="static-agency-name-overlay" style={staticAgencyNameOverlayStyle}>
+                            Los Santos International Airport
+                        </div>
+                        <div className="static-website-overlay" style={staticWebsiteOverlayStyle}>
                             ((saaa.gta.world))
                         </div>
-                        {/* END: Added Static Text Overlays */}
                     </div>
-                    <div className="business-card-input-fields">
-                        <Form.Control type="text" placeholder="Name" value={name} onChange={handleNameChange} />
-                        <Form.Control type="text" placeholder="Rank/Title" value={rank} onChange={handleRankChange} />
-                        <Form.Control type="text" placeholder="Phone Number" value={phoneNumber} onChange={handlePhoneNumberChange} />
+                    <div className="business-card-input-fields" style={{ marginTop: '1rem' }}>
+                        <Form.Control style={{ fontFamily: 'Poppins-Medium, sans-serif', marginBottom: '0.5rem' }} type="text" placeholder="Name (12 Character Limit)" value={name} onChange={handleNameChange} maxLength={17} />
+                        <Form.Control style={{ fontFamily: 'Poppins-Medium, sans-serif', marginBottom: '0.5rem' }} type="text" placeholder="Rank/Title" value={rank} onChange={handleRankChange} />
+                        <Form.Control style={{ fontFamily: 'Poppins-Medium, sans-serif' }} type="text" placeholder="Phone Number" value={phoneNumber} onChange={handlePhoneNumberChange} />
                     </div>
                 </div>
-                <Button onClick={handleSave} disabled={isSaving}>
-                    {isSaving ? 'Saving...' : 'Save SAAA Card'} 
+                <Button style={{ fontFamily: 'Poppins-Medium, sans-serif' }} onClick={handleSave} disabled={isSaving}>
+                    {isSaving ? 'Saving...' : 'Save SAAA Card'}
                 </Button>
             </div>
         </div>

@@ -4,7 +4,7 @@ import { Form, Button, InputGroup } from 'react-bootstrap';
 const BasicPatientFile = ({
     formData,
     handleChange,
-    patientTitle,
+    patientTitleOptions: patientTitle, // Changed: Destructure patientTitleOptions and alias to patientTitle
     patientBloodType,
     handleImageUpload,
     isUploading,
@@ -34,7 +34,8 @@ const BasicPatientFile = ({
             className={`form-control ${!formData.patientTitle ? 'is-invalid' : ''}`}
         >
             <option value="" disabled>Title</option>
-            {patientTitle.map((option) => (
+            {/* Ensure patientTitle (the options array) is not null/undefined before mapping */}
+            {(patientTitle || []).map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
             ))}
         </Form.Select>
@@ -174,7 +175,7 @@ const BasicPatientFile = ({
             className={`form-control ${!formData.patientBloodType ? 'is-invalid' : ''}`}
         >
             <option value="" disabled>Patient Blood Type</option>
-            {patientBloodType.map((option) => (
+            {(patientBloodType || []).map((option) => ( // Added fallback for patientBloodType as well
                 <option key={option.value} value={option.value}>{option.label}</option>
             ))}
         </Form.Select>
