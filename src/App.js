@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback} from 'react'; 
-import Select from 'react-select';
+import { formDefinitions, getFormDefinition, generateVersionNames as generateVersionNamesFromDefs } from './formDefinitions'; 
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import Notification from './components/Notification';
 import { Modal, Form, Button } from 'react-bootstrap';
+import { handleFormCopyAndNotify } from './notificationService'; // Adjust path if needed
 import SavedReportsModal from './components/SavedReportsModal'; 
 import getRelevantFields from './components/RevelantFields';
-import AgencySelector from './components/AgencySelector';
+import AgencyGroupSelectorModal from './components/AgencyGroupSelectorModal'; // Corrected import
+import AgencySelector from './components/AgencySelector'; // Expected import
 import Footer from './components/Footer';
 import SeasonalEvents from './components/SeasonalEvents';
 import HeaderInfo from './components/HeaderInfo';
@@ -17,9 +19,12 @@ import CoronerRankModal from './components/CoronerRankModal';
 import CoronerTipsModal from './components/CoronerTipsModal'; 
 import BusinessCardModal from './components/BusinessCardModal'; 
 import EasterEggModal from './components/EasterEggModal'; 
-import EmsAmaModal from './components/EmsAmaModal'; 
+import EmsAmaModal from './components/EmsAmaModal';
+import SwitchableFormsModal from './components/SwitchableFormsModal'; 
 import MissingEmployeeModal from './components/MissingEmployeeModal';
-import generateEntryJob from './saaa-form-generators/generateEntryJob';
+import SaaaEmployeeModal from './saaa-components/SaaaEmployeeModal'; 
+import FlightSchoolTipsModal from './saaa-components/FlightSchoolTipsModal';
+
 import {
     generateDeathReport,
     generateEmail,
@@ -41,24 +46,6 @@ import {
     generatePsychEvalPHMC,
     generatePsychEvalPBC,
 } from './phmc-bbcode-generators'; 
-import {
-    CommNotePHMC,
-    CommNotePBC,
-    DeathReport,
-    CoronerEmail,
-    PatientAdvanced,
-    MentalHealth,
-    EmailInternal,
-    Surgical,
-    PhysEval,
-    AgencyFeedback,
-    EmergencyForm,
-    GeneralConsult,
-    MedicalRelease,
-    BasicPatientFile,
-    Shrink,
-    Autopsy,
-} from './phmc-field-data';
 
 // logos
 import email from './assets/email.png'
@@ -74,7 +61,6 @@ import './App.css';
 import './buttons.css'
 
 import 'react-bootstrap-typeahead/css/Typeahead.css';
-import generateAutopsy from './phmc-bbcode-generators/generateAutopsy';
 
 // database
 import { database } from './firebase'; // Your Firebase config
@@ -165,15 +151,12 @@ const initialFormData = {
     patientTreatment: '',
     patientDiagnosis: '',
     patientPrescription: '',
-    // patientSummary: '', // Duplicated, ensure one source of truth
     date: '',
     patientRace: '',
-    // patientDiscord: '', // Duplicated, ensure one source of truth
     race: '',
     patientMedicalRecord: '',
     patientGender: '',
     patientDateOfBirth: '',
-    patientDateOfBirth: '', // Duplicated, choose one
     patientMedicalHistory: '',
     patientEmail: '',
     patientAddress: '',
@@ -202,6 +185,7 @@ const initialFormData = {
     patientKnowBabyGender: '',
     patientUltraSummary: '',
     patientWellWomanExam: '',
+    patientInjuryMechanism: '',
     patientLastWellWomanExam: '',
     patientPapResults: '',
     patientSTI: '',
@@ -389,8 +373,53 @@ const initialFormData = {
     autopsyDate: '',
     autopsyTime: '',
     externalExamination: '',
+        patientContactNumber: '',
+    patientDOB: '',
+    patientBirth: '',
+    healthImpairments: '',
+    healthStandingIssues: '',
+    eduHighSchoolName: '',
+    eduHighSchoolYear: '',
+    eduCollegeName: '',
+    eduCollegeYear: '',
+    eduCollegeDegree: '',
+    empGovExperience: '',
+    empPrev1Name: '',
+    empPrev1Period: '',
+    empPrev1Rank: '',
+    empPrev1Reason: '',
+    empPrev2Name: '',
+    empPrev2Period: '',
+    empPrev2Rank: '',
+    empPrev2Reason: '',
+    licCitizenship: '',
+    licPilotLicense: '',
+    oocUcpName: '',
+    oocDiscord: '',
+    oocForumName: '',
+    oocTimezone: '',
+    oocGtawPlaytime: '',
+    oocEnglishProficiency: '',
+    oocOtherFactionInfo: '',
+    oocFactionBans: '',
+    oocOtherCharacters: '',
+    charBackground: '',
+    ackAuthorize: false, // For the checkbox
+    Imaging: [],
+    XrayResults: [],
+    ctResults: [],
+    mriResults: [],
+    ultrasoundResults: [],
+
 };
-    // *** IMPLEMENT removeNotification to REMOVE from the array ***
+    const [saaaFormCompletionNotified, setSaaaFormCompletionNotified] = useState(false);
+
+    // ... existing useEffects ...
+
+
+
+    const [showFlightSchoolTipsModal, setShowFlightSchoolTipsModal] = useState(false);
+
     const removeNotification = useCallback((idToRemove) => {
         setNotifications(prevNotifications =>
             prevNotifications.filter(notif => notif.id !== idToRemove)
@@ -433,6 +462,8 @@ const initialFormData = {
         }
         return newNotification.id;
     }, [removeNotification]);
+    const [showSaaaEmployeeModal, setShowSaaaEmployeeModal] = useState(false);
+    const [saaaListData, setSaaaListData] = useState([]); // To store SAAA staff list
 
     useEffect(() => {
         let isMounted = true; // Flag to prevent state updates if component unmounts
@@ -463,6 +494,7 @@ const initialFormData = {
                     const allData = snapshot.val();
                     setPhmcListData(allData.staff?.phmc || []);
                     setCoronerListData(allData.staff?.coroner || []);
+                    setSaaaListData(allData.staff?.saaa || []); // Add this
                     setAgencyDataStore(allData.agencies || {});
                     setSelectOptions(allData.selectOptions || {});
                     showNotification('Data loaded successfully!', 'check-circle');
@@ -505,6 +537,155 @@ const initialFormData = {
             }
         };
     }, [showNotification, removeNotification]); // Add stable dependencies
+    const saaaGroupedOptions = useMemo(() => {
+        if (!saaaListData || saaaListData.length === 0) return [];
+        // Assuming SAAA staff have 'name' and 'rank' properties
+        // You might want to group them by rank or have a single group
+        return [{
+            label: 'SAAA Employees',
+            options: saaaListData.map(emp => ({
+                value: emp.name, // Or a unique ID
+                label: `${emp.name} (${emp.rank || 'N/A'})`
+            })).sort((a, b) => a.label.localeCompare(b.label))
+        }];
+    }, [saaaListData]);
+    const handleSaaaEmployeeSubmit = async (isAddMode, saaaData) => {
+        const webhookURL = process.env.REACT_APP_SAAA_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL; // Use SAAA specific or fallback
+        const { employeeName, employeeRank, employeePhoneNumber, requester, staffToRemove, authorizedBy } = saaaData;
+
+        if (!webhookURL) {
+            showNotification('Configuration error: SAAA Webhook URL missing.', 'exclamation-triangle');
+            Sentry.captureMessage('SAAA Webhook URL missing for employee management.', 'error');
+            return;
+        }
+
+        let embedData = {};
+        let requestActionTitle = '';
+        let firebaseUpdateSuccessful = false;
+
+        if (isAddMode) {
+            requestActionTitle = '➕ New SAAA Employee Addition Request';
+            // Adjust validation: requester is only required if there are SAAA employees to select from
+            if (!employeeName?.trim() || !employeeRank?.trim() || (saaaListData.length > 0 && !requester?.trim())) {
+                let missingFieldsMsg = 'Please fill in Employee Name and Rank.';
+                if (saaaListData.length > 0 && !requester?.trim()) {
+                    missingFieldsMsg = 'Please fill in Employee Name, Rank, and Requester for adding SAAA staff.';
+                }
+                showNotification(missingFieldsMsg, 'warning');
+                return;
+            }
+            embedData = {
+                title: requestActionTitle,
+                color: 0x007bff, // SAAA theme color (e.g., blue)
+                fields: [
+                    // Conditionally add requester field
+                    ...(requester?.trim() ? [{ name: "Requested By", value: requester, inline: false }] : [{ name: "Requested By", value: "N/A (No SAAA staff in system)", inline: false }]),
+                    { name: "Name to Add", value: employeeName, inline: true },
+                    { name: "Rank/Position", value: employeeRank, inline: true },
+                    ...(employeePhoneNumber?.trim() ? [{ name: "Phone Number", value: employeePhoneNumber, inline: true }] : []),
+                ],
+                timestamp: new Date().toISOString(),
+                footer: { text: `Submitted via Forms Tool - v${commitInfo.sha || 'N/A'}` }
+            };
+
+            // Firebase Add Logic
+            const newSaaaEmployee = {
+                name: employeeName.trim(),
+                rank: employeeRank.trim(),
+                phoneNumber: employeePhoneNumber?.trim() || '',
+            };
+            try {
+                const saaaListRef = ref(database, 'staff/saaa');
+                const snapshot = await get(saaaListRef);
+                const currentSaaaStaff = snapshot.exists() ? snapshot.val() : [];
+                if (!currentSaaaStaff.find(s => s.name === newSaaaEmployee.name)) {
+                    const updatedSaaaStaff = [...currentSaaaStaff, newSaaaEmployee];
+                    await set(saaaListRef, updatedSaaaStaff);
+                    setSaaaListData(updatedSaaaStaff); // Update local state
+                    firebaseUpdateSuccessful = true;
+                } else {
+                    showNotification(`SAAA Employee ${newSaaaEmployee.name} already exists.`, 'warning');
+                    return; 
+                }
+            } catch (dbError) {
+                console.error("Error adding SAAA employee to Firebase:", dbError);
+                Sentry.captureException(dbError, { extra: { context: 'Firebase Add SAAA Employee' } });
+                showNotification('Failed to update SAAA database.', 'error');
+                return; 
+            }
+
+        } else { // Remove Mode
+            requestActionTitle = '➖ SAAA Staff Removal Request';
+            // For remove mode, if saaaListData is empty, staffToRemove will also be empty.
+            // The existing validation for staffToRemove and authorizedBy should still apply.
+            if (!staffToRemove || staffToRemove.length === 0) {
+                showNotification('Please select at least one SAAA staff member to remove.', 'warning');
+                return;
+            }
+            if (!authorizedBy?.trim()) {
+                showNotification('Please enter your name in the "Authorized By" field.', 'warning');
+                return;
+            }
+            embedData = {
+                title: requestActionTitle,
+                color: 0xdc3545, 
+                fields: [
+                    { name: "Authorized By", value: authorizedBy, inline: false },
+                    { name: `Staff to Remove (${staffToRemove.length})`, value: staffToRemove.join('\n') || "None selected", inline: false },
+                ],
+                timestamp: new Date().toISOString(),
+                footer: { text: `Submitted via Forms Tool - v${commitInfo.sha || 'N/A'}` }
+            };
+
+            // Firebase Remove Logic
+            try {
+                const saaaListRef = ref(database, 'staff/saaa');
+                const snapshot = await get(saaaListRef);
+                let currentSaaaStaff = snapshot.exists() ? snapshot.val() : [];
+                const initialCount = currentSaaaStaff.length;
+                currentSaaaStaff = currentSaaaStaff.filter(s => !staffToRemove.includes(s.name));
+                if (currentSaaaStaff.length < initialCount) {
+                    await set(saaaListRef, currentSaaaStaff);
+                    setSaaaListData(currentSaaaStaff); 
+                    firebaseUpdateSuccessful = true;
+                } else {
+                    showNotification('No matching SAAA staff found in database to remove.', 'warning');
+                    return; 
+                }
+            } catch (dbError) {
+                console.error("Error removing SAAA staff from Firebase:", dbError);
+                Sentry.captureException(dbError, { extra: { context: 'Firebase Remove SAAA Staff' } });
+                showNotification('Failed to update SAAA database for removal.', 'error');
+                return; 
+            }
+        }
+
+        if (firebaseUpdateSuccessful || (!isAddMode && staffToRemove.length > 0 && authorizedBy?.trim())) {
+            try {
+                const response = await fetch(webhookURL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        content: `New SAAA Employee Management Request: ${requestActionTitle}`,
+                        embeds: [embedData]
+                    }),
+                });
+                if (!response.ok) {
+                    console.error(`Failed to send SAAA employee management webhook. Status: ${response.status}`);
+                    Sentry.captureMessage(`SAAA Discord webhook failed: ${response.status}`, { level: 'error' });
+                    showNotification(`Database updated, but failed to send Discord notification. Status: ${response.status}`, 'warning');
+                } else {
+                    showNotification(`SAAA Employee request processed and notification sent!`, 'check-circle');
+                }
+            } catch (error) {
+                console.error('Error sending SAAA employee management webhook:', error);
+                Sentry.captureException(error, { extra: { context: 'SAAA Employee Webhook Submission' } });
+                showNotification('Database updated, but a network error occurred sending Discord notification.', 'warning');
+            }
+        }
+        
+        setShowSaaaEmployeeModal(false);
+    };
 
     useEffect(() => {
         const handleResize = () => {
@@ -524,6 +705,23 @@ const initialFormData = {
     const [coronerListData, setCoronerListData] = useState([]);
     const [agencyDataStore, setAgencyDataStore] = useState({});
         const [selectOptions, setSelectOptions] = useState({});
+            const [bbCodeVersion, setBbCodeVersion] = useState(() => {
+        const storedVersion = localStorage.getItem('bbCodeVersion');
+        return storedVersion ? parseInt(storedVersion, 10) : (formDefinitions[0]?.version || 1);
+    });
+    const [selectedAgencyGroup, setSelectedAgencyGroup] = useState(null);
+    const [showCoronerTips, setShowCoronerTips] = useState(false);
+
+    const getBBCodeContent = () => {
+        const definition = getFormDefinition(bbCodeVersion);
+        if (definition && definition.generator) {
+            return definition.generator(formData);
+        }
+        Sentry.captureMessage(`No BBCode generator found for version: ${bbCodeVersion}`);
+        const formName = versionNames[bbCodeVersion] || `Form v${bbCodeVersion}`;
+        return `BBCode generation for form "${formName}" is not implemented.`;
+    };
+
     const [isLoadingData, setIsLoadingData] = useState(true); 
     const loadingNotificationIdRef = useRef(null); 
     useEffect(() => {
@@ -594,7 +792,6 @@ const initialFormData = {
     const [notifications, setNotifications] = useState([]);
     const [showUpdateNotification, setShowUpdateNotification] = useState(false); // New state for notification visibility
     const [commitInfo, setCommitInfo] = useState({ sha: '', date: null });
-    const [showPHMCModal, setShowPHMCModal] = useState(false);
     const { imageSource: deathReportImage, className: deathReportClass } = SeasonalEvents({ imageType: 'deathReport' });
     const { imageSource: civilianPaperworkImage, className: civilianPaperworkClass } = SeasonalEvents({ imageType: 'civilianPaperwork' });
 
@@ -618,6 +815,118 @@ const initialFormData = {
             })
             .catch(error => console.error('Error fetching commit:', error));
     }, []);
+
+// Switch Form Handling Logic
+    const [showPHMCModal, setShowPHMCModal] = useState(false); // This state will now control the generic SwitchableFormsModal
+    const [switchableModalTitle, setSwitchableModalTitle] = useState('');
+    const [switchableFormsList, setSwitchableFormsList] = useState([]);
+    const openSwitchableModal = (title, formsArray) => {
+        setSwitchableModalTitle(title);
+        setSwitchableFormsList(formsArray);
+        setShowPHMCModal(true); // Use the existing state to show/hide the modal
+    };
+    // useEffect for SAAA form completion notification
+    useEffect(() => {
+        if (selectedAgencyGroup === 'SAAA') {
+            const definition = getFormDefinition(bbCodeVersion);
+            if (definition && definition.requiredFields && definition.requiredFields.length > 0) {
+                let allFieldsValid = true;
+                for (const fieldName of definition.requiredFields) {
+                    const value = formData[fieldName];
+                    let fieldIsInvalid = false;
+
+                    // Specific check for specOtherText in Airline form (version 33)
+                    if (bbCodeVersion === 33 && fieldName === 'specOtherText') {
+                        if (formData.specOther && (typeof value === 'string' && !value.trim())) {
+                            fieldIsInvalid = true;
+                        }
+                        // If formData.specOther is false, specOtherText is not considered for this check
+                    } else if (typeof value === 'string' && !value.trim()) {
+                        fieldIsInvalid = true;
+                    } else if (typeof value === 'boolean' && !value) { // For checkboxes like ackAuthorize
+                        fieldIsInvalid = true;
+                    } else if (value === undefined || value === null) { // Catches uninitialized fields
+                        fieldIsInvalid = true;
+                    } else if (typeof value === 'number' && fieldName === 'heliportNumPads' && value < 1) { // Example for number field with min value
+                        fieldIsInvalid = true;
+                    }
+                    // Add more specific checks if other field types have unique "empty" or "invalid" states
+
+                    if (fieldIsInvalid) {
+                        allFieldsValid = false;
+                        break;
+                    }
+                }
+                 // Additional check for Airline form's specOtherText if specOther is true,
+                 // even if specOtherText is not in the main requiredFields list (or if it is, this ensures the conditionality)
+                if (bbCodeVersion === 33 && formData.specOther && (typeof formData.specOtherText !== 'string' || !formData.specOtherText.trim())) {
+                    allFieldsValid = false;
+                }
+
+
+                if (allFieldsValid) {
+                    if (!saaaFormCompletionNotified) {
+                        showNotification("Form Completed!", 'check-circle', 5000);
+                        setSaaaFormCompletionNotified(true);
+                    }
+                } else {
+                    // If any field becomes invalid again, reset the notification state
+                    if (saaaFormCompletionNotified) {
+                        setSaaaFormCompletionNotified(false);
+                    }
+                }
+            } else {
+                 // If no required fields defined for this SAAA form or no definition found
+                if (saaaFormCompletionNotified) {
+                    setSaaaFormCompletionNotified(false);
+                }
+            }
+        } else {
+            // If not an SAAA form, reset the notification state
+            if (saaaFormCompletionNotified) {
+                setSaaaFormCompletionNotified(false);
+            }
+        }
+    }, [formData, bbCodeVersion, selectedAgencyGroup, showNotification, saaaFormCompletionNotified]); // removeNotification is stable due to useCallback
+
+    // Reset SAAA form completion notification state when form or group changes
+    useEffect(() => {
+        setSaaaFormCompletionNotified(false);
+    }, [bbCodeVersion, selectedAgencyGroup]);
+
+    // Define form lists for each switchable group
+    const coronerFormsSubGroup = [
+        { version: 1, name: "Decedent Services", icon: corpse },
+        { version: 2, name: "Email Generator", icon: email },
+        { version: 18, name: "Agency Incidents", icon: PHMCLogo },
+        { version: 4, name: "Autopsy Report", icon: corpse }
+    ];
+    const physicalEvalFormsSubGroup = [
+        { version: 6, name: "Physical Evaluation PHMC", icon: PHMCLogo },
+        { version: 7, name: "Physical Evaluation PBC", icon: phmcpaletobay }
+    ];
+    const psychEvalFormsSubGroup = [
+        { version: 28, name: "Psychological Evaluation | PHMC", icon: PHMCLogo },
+        { version: 29, name: "Psychological Evaluation | PBC", icon: phmcpaletobay }
+    ];
+    const generalConsultFormsSubGroup = [
+        { version: 20, name: "General Consultation | PHMC", icon: PHMCLogo },
+        { version: 21, name: "General Consultation | PBC", icon: phmcpaletobay }
+    ];
+    const commentaryNoteFormsSubGroup = [
+        { version: 22, name: "Commentary Note | PHMC", icon: PHMCLogo },
+        { version: 23, name: "Commentary Note | PBC", icon: phmcpaletobay }
+    ];
+    const mentalHealthFormsSubGroup = [
+        { version: 14, name: "Mental Health - PHMC", icon: PHMCLogo },
+        { version: 16, name: "Mental Health | PBC", icon: phmcpaletobay }
+    ];
+    const civilianFormsSubGroup = [
+        { version: 24, name: "Medical Record Release", icon: Civilian },
+        { version: 25, name: "Basic Patient File", icon: nurse }, // Assuming nurse icon for basic
+        { version: 3, name: "Detailed Patient File", icon: nurse } // Assuming nurse icon for advanced
+    ];
+// --- 
     const handleImageUpload = async (event, fieldName) => {
         const files = event.target.files;
         if (!files.length) return;
@@ -685,16 +994,8 @@ const initialFormData = {
     
     const [showChangelog, setShowChangelog] = useState(false);
 
-    const [bbCodeVersion, setBbCodeVersion] = useState(() => {
-        const storedVersion = localStorage.getItem('bbCodeVersion');
-        return storedVersion ? parseInt(storedVersion, 10) : 1;
-    });
 
-    useEffect(() => {
-        localStorage.setItem('bbCodeVersion', bbCodeVersion.toString());
-    }, [bbCodeVersion]);
     // Coroner Tips Handling
-    const [showCoronerTips, setShowCoronerTips] = useState(false);
 
     // --- Updated useEffect for CoronerTipsModal ---
     useEffect(() => {
@@ -713,13 +1014,19 @@ const initialFormData = {
         }
 
     }, [bbCodeVersion]); // Re-run only when bbCodeVersion changes
-    
-// Feature Request Handling
+        useEffect(() => {
+        localStorage.setItem('bbCodeVersion', bbCodeVersion.toString());
+    }, [bbCodeVersion]);
+
+
     useEffect(() => {
-        if (bbCodeVersion === 1) { // Only log for Death Report form for relevance
-            console.log("formData.showRequestingOfficerInput in App.js updated to:", formData.showRequestingOfficerInput);
+        // Only save bbCodeVersion if a group has been selected
+        if (selectedAgencyGroup) {
+            localStorage.setItem('bbCodeVersion', bbCodeVersion.toString());
         }
-    }, [formData.showRequestingOfficerInput, bbCodeVersion]);
+    }, [bbCodeVersion, selectedAgencyGroup]);
+
+// Feature Request Handling
 
     const [showFeatureRequestModal, setShowFeatureRequestModal] = useState(false);
     const [featureRequest, setFeatureRequest] = useState('');
@@ -924,7 +1231,7 @@ const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
             if (missingEmployeeData.coronerPHNumber?.trim()) {
                 embedData.fields.push({ name: "Phone Number", value: missingEmployeeData.coronerPHNumber, inline: true });
             }
-            embedData.fields.push({ name: "Suggested data.js Entry", value: `\`\`\`javascript\n${dataJsEntry}\n\`\`\``, inline: false });
+            embedData.fields.push({ name: "Google Firebase Debug String: ", value: `\`\`\`javascript\n${dataJsEntry}\n\`\`\``, inline: false });
 
             submissionValid = true;
 
@@ -1396,7 +1703,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
             label: category,
             options: options.sort((a, b) => a.label.localeCompare(b.label))
         })).sort((a, b) => { // Your existing sorting logic for categories
-            const order = ['Leadership', 'Hospital Supervisor', 'Physician', 'Resident Physician', 'Physician Assistant', 'Psychiatrist', 'Psychologist', 'Dentist', 'Nursing', 'Emergency Medical Services', 'Attending Physician', 'Uncategorized'];
+            const order = ['Leadership', 'Hospital Supervisor', 'Chief Resident', 'Physician', 'Resident Physician', 'Physician Assistant', 'Psychiatrist', 'Psychologist', 'Dentist', 'Nursing', 'Emergency Medical Services', 'Attending Physician', 'Uncategorized'];
             return order.indexOf(a.label) - order.indexOf(b.label);
         });
     }, [phmcListData]);
@@ -1636,6 +1943,8 @@ const getCurrentReportAuthor = (formData) => {
 
 const saveReport = async () => {
     let key = '';
+    const bbCodeContent = getBBCodeContent(); // Correctly called here
+
     const currentAuthor = getCurrentReportAuthor(formData); // Assumes getCurrentReportAuthor is defined elsewhere
 
     // --- Validation logic to determine the key ---
@@ -1701,13 +2010,33 @@ const saveReport = async () => {
     }
     // Add other specific forms as needed...
     else { // Default handler for any other bbCodeVersion
-        const formName = versionNames[bbCodeVersion] || `FormV${bbCodeVersion}`; // versionNames map should be in scope
-        
-        // Try to find the most common identifier fields
-        let identifier = formData.patientName || formData.decedentName || formData.patientID || formData.decedentOOC || formData.lastName;
-        if (Array.isArray(identifier)) identifier = identifier.join(', '); // Handle if it's an array
+        const definition = getFormDefinition(bbCodeVersion); // Get current form definition
 
-        const dateField = formData.date || formData.dateTime || formData.autopsyDate; // Add more common date fields if they exist
+        if (definition && definition.group === 'SAAA') {
+            const bbCodeToCopy = getBBCodeContent();
+            if (bbCodeToCopy && navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(bbCodeToCopy).then(() => {
+                    showNotification(`Copied to clipboard! `, 'clipboard', 7000);
+                }).catch(err => {
+                    console.error('Failed to copy SAAA form BBCode: ', err);
+                    Sentry.captureException(err, { extra: { context: 'SAAA Form Clipboard Copy Fail', formName: definition.name } });
+                    showNotification(`Failed to copy BBCode for "${definition.name}" to clipboard. Saving not defined.`, 'exclamation-triangle', 10000);
+                });
+            } else if (!bbCodeToCopy) {
+                 showNotification(`Could not generate BBCode for "${definition.name}" to copy. Saving not defined.`, 'error', 10000);
+            } else {
+                showNotification(`Clipboard API not available. BBCode for "${definition.name}" not copied. Saving not defined.`, 'exclamation-triangle', 10000);
+            }
+            return false; // Prevent Firebase saving
+        }
+
+        // Existing generic key generation for non-SAAA forms or SAAA forms that might have specific logic above
+        const formName = versionNames[bbCodeVersion] || `FormV${bbCodeVersion}`;
+        
+        let identifier = formData.patientName || formData.decedentName || formData.patientID || formData.decedentOOC || formData.lastName;
+        if (Array.isArray(identifier)) identifier = identifier.join(', '); 
+
+        const dateField = formData.date || formData.dateTime || formData.autopsyDate; 
 
         if (!identifier || !dateField) {
             let missing = [];
@@ -1719,6 +2048,7 @@ const saveReport = async () => {
         key = `[${formName}] ${identifier} - ${dateField}`;
         console.log(`Using generic key for bbCodeVersion ${bbCodeVersion}: ${key}`);
     }
+    // END <<-------------------------------- MODIFICATION HERE
 
     // If key is still empty, something went wrong (should be caught by validations)
     if (!key) {
@@ -1735,7 +2065,7 @@ const saveReport = async () => {
     const sanitizedKey = key.replace(/[.#$[\]/]/g, '_');
 
     // --- Easter Egg Logic ---
-    const currentSavedCountForAuthor = savedReports.filter(r => r.authorName === currentAuthor).length; // Ensure 'authorName' matches the property in your savedReports objects
+    const currentSavedCountForAuthor = savedReports.filter(r => r.authorName === currentAuthor).length; 
     const easterEggAlreadyShown = localStorage.getItem('easterEggShown') === 'true';
     let showNormalEasterEgg = false;
     let showRareEasterEgg = false;
@@ -1760,16 +2090,10 @@ const saveReport = async () => {
     }
     // --- End Easter Egg Logic ---
 
-    const bbCodeContent = getBBCodeContent(); // Assumes getBBCodeContent is defined
-    if (bbCodeContent == null) {
-        console.error("SaveReport: getBBCodeContent() returned null or undefined for version", bbCodeVersion);
-        showNotification(`Failed to generate BBCode content. Cannot save or copy.`, 'error');
-        return false; 
-    }
 
     const reportDataToSave = {
         bbCodeVersion: bbCodeVersion,
-        data: filterFormData(formData, bbCodeVersion), // Assumes filterFormData is defined
+        data: filterFormData(formData, bbCodeVersion), 
         bbCode: bbCodeContent,
         timestamp: Date.now(),
         originalKey: key, 
@@ -1779,12 +2103,12 @@ const saveReport = async () => {
     const reportPath = `savedReports/${sanitizedAuthorId}/${sanitizedKey}`;
 
     try {
-        const reportRef = ref(database, reportPath); // Assumes 'database' is your Firebase DB instance
+        const reportRef = ref(database, reportPath); 
         await set(reportRef, reportDataToSave);
         showNotification(`Report "${key}" saved for ${currentAuthor} to Firebase!`, 'save');
 
-        if (selectedUserForSavedReports === currentAuthor) { // Assumes selectedUserForSavedReports state exists
-             loadUserSavedReports(currentAuthor); // Assumes loadUserSavedReports is defined
+        if (selectedUserForSavedReports === currentAuthor) { 
+             loadUserSavedReports(currentAuthor); 
         }
         return true; // Indicate success
 
@@ -2210,55 +2534,123 @@ const filterFormData = (formData, bbCodeVersion) => {
 
     return filteredData;
 };
+
+// switching agency logic
+    const [showAgencyGroupSelectorModal, setShowAgencyGroupSelectorModal] = useState(false);
+    const [hideAgencyGroupSelectorPreference, setHideAgencyGroupSelectorPreference] = useState(false);
+
+
+    // Effect to manage initial agency group selection
+    useEffect(() => {
+        const savedGroup = localStorage.getItem('selectedAgencyGroup');
+        const hidePreference = localStorage.getItem('hideAgencyGroupSelectorPreference') === 'true';
+        setHideAgencyGroupSelectorPreference(hidePreference);
+
+        if (savedGroup && hidePreference) { // Only auto-select if preference is to hide
+            setSelectedAgencyGroup(savedGroup);
+            setShowAgencyGroupSelectorModal(false);
+        } else {
+            setShowAgencyGroupSelectorModal(true); // Show if no saved group or preference is not to hide
+        }
+    }, []);
+
+    const handleSelectAgencyGroup = (group) => {
+        setSelectedAgencyGroup(group);
+        localStorage.setItem('selectedAgencyGroup', group);
+        setShowAgencyGroupSelectorModal(false);
+        if (hideAgencyGroupSelectorPreference) {
+            localStorage.setItem('hideAgencyGroupSelectorPreference', 'true');
+        }
+        // Reset bbCodeVersion or select a default for the new group
+        const defaultFormForGroup = formDefinitions.find(form => form.group === group);
+        if (defaultFormForGroup) {
+            setBbCodeVersion(defaultFormForGroup.version);
+        } else {
+            // Fallback if no forms are defined for the group yet
+            // Or, you might want to set bbCodeVersion to null and prompt form selection
+            setBbCodeVersion(formDefinitions[0]?.version || 1); // Default to the very first form or 1
+        }
+    };
+
+    const handleHideAgencyGroupSelectorPreference = (shouldHide) => {
+        setHideAgencyGroupSelectorPreference(shouldHide);
+        if (shouldHide) {
+            localStorage.setItem('hideAgencyGroupSelectorPreference', 'true');
+        } else {
+            localStorage.removeItem('hideAgencyGroupSelectorPreference');
+        }
+    };
+
+    // ... (keep existing useEffects for commit info, image upload, data fetching, etc.)
+const [showAgencySelector, setShowAgencySelector] = useState(false);
+const [hideAgencySelector, setHideAgencySelector] = useState(false); // For the "don't show again" checkbox in AgencySelector
+const toggleAgencySelector = () => {
+    setShowAgencySelector(prevShow => !prevShow);
+};
+
+    const handleAgencySelect = (version) => {
+        const definition = getFormDefinition(version);
+        if (definition && definition.group === selectedAgencyGroup) {
+            setBbCodeVersion(version);
+            setShowAgencySelector(false);
+                        setShowPHMCModal(false);
+            setLastWebhookIdentifier(null);
+            showNotification(`Switched to ${definition.name}`, 'exchange-alt');
+        } else if (definition) {
+            showNotification(`This form belongs to the ${definition.group} group. You are currently in the ${selectedAgencyGroup} group. Please change agency group if you wish to use this form.`, 'warning', 7000);
+        } else {
+            showNotification(`Selected form version ${version} is not defined.`, 'error');
+        }
+    };
+
+    const generateTitle = () => {
+        if (bbCodeVersion === 1) { // Death Report
+            const { typeOfDeath, decedentName, decedentOOC, dateTime } = formData;
+            // Added a check for dateTime to prevent "Invalid Date"
+            const date = dateTime ? new Date(dateTime).toLocaleDateString('en-US') : 'N/A';
+            return `[${typeOfDeath || 'N/A'}] ${decedentName || 'N/A'} ((${decedentOOC || 'N/A'})) - ${date}`;
+        // Coroner Email
+        } else if (bbCodeVersion === 2) {
+            const { decedentName, decedentOOC } = formData;
+            return `Coroner Report - ${decedentName || 'N/A'} | ((${decedentOOC || 'N/A'}))`;
+    // Autopsy Form
+        } else if (bbCodeVersion === 4) {
+            const { decedentName, decedentOOC } = formData;
+            return `CASE ## ${decedentName || 'N/A'} ((${decedentOOC || 'N/A'})) | SENT/COMPLETED/PENDING`;
+// Civilian Forms
+        } else if (bbCodeVersion === 3) { // Patient File - Advanced
+            const { patientName } = formData;
+            return `[Medical Information Registration] -  ${patientName || 'N/A'}`;
+        } else if (bbCodeVersion === 24) { // Medical Release Records
+            const { patientFirstName,  patientLastName } = formData;
+            return `[RELEASE REQUEST] ${patientFirstName || ''} ${patientLastName || ''} `.trim();
+        } else if (bbCodeVersion === 25 || bbCodeVersion === 26) { // Patient File - Basic (26 is not in formDefinitions, but keeping logic)
+            const { patientName } = formData;
+            return `[Medical Information Registration] -  ${patientName || 'N/A'}`;
+// PHMC Email or other forms
+        } else {
+            // Fallback for other PHMC forms or if specific fields aren't present
+            const definition = getFormDefinition(bbCodeVersion);
+            const formName = definition ? definition.name : `Form v${bbCodeVersion}`;
+            const primaryIdentifier = formData.patientName || formData.decedentName || formData.patientID || formData.lastName || `Details for ${formName}`;
+            const recordIdentifier = formData.patientMedicalRecord || '';
+
+            if (recordIdentifier && primaryIdentifier !== `Details for ${formName}`) {
+                return `${recordIdentifier} - ${primaryIdentifier}`;
+            } else if (primaryIdentifier !== `Details for ${formName}`) {
+                 return `[${definition?.group || 'Form'}] ${formName} - ${primaryIdentifier}`;
+            }
+            return `[${definition?.group || 'Form'}] ${formName}`;
+        }
+    };
+
+    // Ensure saveReport uses getRelevantFields which should be compatible or also use formDefinitions
+
+    const currentFormDefinition = getFormDefinition(bbCodeVersion);
+    const FieldComponent = currentFormDefinition ? currentFormDefinition.FieldComponent : null;
+
         const [showBBCode, setShowBBCode] = useState(false);
 
-    const getBBCodeContent = () => {
-        switch (bbCodeVersion) {
-            case 1:
-                return generateDeathReport(formData);
-            case 2:
-                return generateEmail(formData);
-            case 3: 
-                return generateAdvancedPatientFile(formData);
-            case 4:
-                return generateAutopsy(formData);
-            case 5:
-                return generateSurgicalOps(formData);
-            case 6:
-                return generatePhysEvalInternalMed(formData);
-            case 7: 
-                return generatePhysEvalInternalMedPBC(formData);
-            case 14:
-                return generateMentalHealthPHMC(formData);
-            case 16:
-                return generateMentalHealthPBC(formData);
-            case 18:
-                return generateAgencyFeedback(formData);
-            case 19:
-                return generateEmergencyProtocol(formData);
-            case 20:
-                return generateConsultationNotesPHMC(formData);
-            case 21:
-                return generateConsultationNotesPBC(formData);
-            case 22:
-                return generateCommentaryNotePHMC(formData);
-            case 23:
-                return generateCommentaryNotePBC(formData);
-            case 24:
-                return generateMedicalRecordRelease(formData);
-            case 25:
-                return generateBasicPatientFile(formData);
-            case 27:
-                return generateEmailPHMCEmail(formData);
-             case 28: 
-                return generatePsychEvalPHMC(formData);
-            case 29:
-              return generatePsychEvalPBC(formData);
-            case 30: 
-            return generateEntryJob(formData);
-
-       }
-    };
 
     //  BBCode generation logic
 {showBBCode && (
@@ -2273,38 +2665,6 @@ const filterFormData = (formData, bbCodeVersion) => {
 )}
    
 // Coroner Titles
-const generateTitle = () => {       
-if (bbCodeVersion === 1) {
-            const { typeOfDeath, decedentName, decedentOOC, dateTime } = formData;
-            const date = new Date(dateTime).toLocaleDateString('en-US');
-            return `[${typeOfDeath}] ${decedentName} ((${decedentOOC})) - ${date}`;
-// Coroner Email 
-        } else if (bbCodeVersion === 2) {
-            const { decedentName, decedentOOC } = formData;
-            return `Coroner Report - ${decedentName} | ((${decedentOOC}))`;
-    // Autopsy Form
-        } else if (bbCodeVersion === 4) {
-            const { decedentName, decedentOOC } = formData;
-            return `CASE ## ${decedentName} ((${decedentOOC})) | SENT/COMPLETED/PENDING`;
-
-// Civilian Forms
-        } else if (bbCodeVersion === 3) {
-            const { patientName } = formData;
-            return `[Medical Information Registration] -  ${patientName}`;
-        } else if (bbCodeVersion === 24) {
-            const { patientFirstName,  patientLastName } = formData;
-            return `[RELEASE REQUEST] ${patientFirstName} ${patientLastName} `;
-        } else if (bbCodeVersion === 25 || bbCodeVersion === 26) {
-            const { patientName } = formData;
-            return `[Medical Information Registration] -  ${patientName}`;
-// PHMC Email 
-        } else {
-            const { patientMedicalRecord, patientName } = formData;
-            return `${patientMedicalRecord} - ${patientName}`;
-        }
-    };
-// Everything else
-
 const DEFAULT_NOTIFICATION_DURATION = 3000; // default 3 seconds
 
 const getIconClass = (iconType) => {
@@ -2739,31 +3099,12 @@ useEffect(() => {
         28: "Psychological Evaluation PHMC",
         29: "Psychological Evaluation PBC",
         30: "SAAA Entry Job Form",
+        31: "SAAA Flight School Form",
+        32: "SAAA - Aircraft Registration",
+        33: "SAAA - Flight School",
+        34: "SAAA - Heliport Permit",
     };
 
-
-    const [hideAgencySelector, setHideAgencySelector] = useState(() => {
-        // Load the value from localStorage on component mount
-        const storedValue = localStorage.getItem('hideAgencySelector');
-        return storedValue ? JSON.parse(storedValue) : false; // Default to false if no value is stored
-    });
-    const [showAgencySelector, setShowAgencySelector] = useState(!hideAgencySelector);
-
-    const handleAgencySelect = (version) => {
-        setBbCodeVersion(version);
-        setShowPHMCModal(false);
-        setShowAgencySelector(false);
-        setLastWebhookIdentifier(null); 
-        showNotification(`Switched to ${versionNames[version]}`, 'exchange-alt');
-    };
-    
-    const toggleAgencySelector = () => {
-        setShowAgencySelector(!showAgencySelector);
-    };
-        useEffect(() => {
-        // Save the value to localStorage whenever hideAgencySelector changes
-        localStorage.setItem('hideAgencySelector', JSON.stringify(hideAgencySelector));
-    }, [hideAgencySelector]);
 
 // easter egg stuff
 const { season } = SeasonalEvents({ imageType: 'deathReport' }); // Get the season
@@ -2777,191 +3118,22 @@ const getCopyButtonText = () => {
 };
 
 // New main handler function
-const handleCopyAndNotify = async () => {
-    const bbCodeToCopy = getBBCodeContent();
-    const versionName = versionNames[bbCodeVersion] || "Unknown Form";
-
-    if (!bbCodeToCopy) {
-        showNotification(`Failed to generate BBCode for ${versionName}. Please check form data. Copying and saving skipped.`, 'error');
-        Sentry.captureMessage(`getBBCodeContent returned null/undefined for bbCodeVersion: ${bbCodeVersion} in handleCopyAndNotify`, 'error');
-        return;
-    }
-
-    const canProceedAfterSaveAttempt = await saveReport();
-
-    if (!canProceedAfterSaveAttempt) {
-        console.log("Report saving failed, or validation error occurred for saveable form, or BBCode generation failed. Copying to clipboard is skipped.");
-        return;
-    }
-
-    const currentDateTime = new Date().toLocaleString();
-    const {
-        decedentName, coronerEmployee, coronerRank, patientName, decedentOOC,
-        phmcEmployee, requestingOfficer, patientID, patientFirstName, patientLastName,
-        // showRequestingOfficerInput // This was in your comment, ensure it's destructured if needed elsewhere
-    } = formData;
-
-    // --- Fetch total saved reports count from Firebase ---
-    let firebaseSavedCount = 0;
-    try {
-        const allReportsRef = ref(database, 'savedReports');
-        const snapshot = await get(allReportsRef);
-        if (snapshot.exists()) {
-            const usersData = snapshot.val();
-            for (const userId in usersData) {
-                if (typeof usersData[userId] === 'object' && usersData[userId] !== null) {
-                    firebaseSavedCount += Object.keys(usersData[userId]).length;
-                }
-            }
-        }
-        console.log(`Total saved reports in Firebase: ${firebaseSavedCount}`);
-    } catch (error) {
-        console.error("Error fetching total saved reports count from Firebase:", error);
-        Sentry.captureException(error, { extra: { context: 'Firebase Total Saved Reports Count' } });
-        // Default to 0 or a placeholder if fetching fails, or handle more gracefully
-        firebaseSavedCount = 0; 
-    }
-    // --- End fetching total saved reports count ---
-
-    try {
-        if (!navigator.clipboard || !navigator.clipboard.writeText) {
-            throw new Error("Clipboard API not available");
-        }
-
-        await navigator.clipboard.writeText(bbCodeToCopy);
-        showNotification(`${versionName} copied to clipboard!`, 'check-circle');
-        console.log(`Notification 1: ${versionName} copied to clipboard!`);
-
-        if (bbCodeVersion === 1 && formData.showRequestingOfficerInput === true) {
-            const coronerEmailNotificationId = showNotification(
-                <>
-                    A Coroner Email was requested for this report.
-                    <Button
-                        variant="info"
-                        size="sm"
-                        className="ms-2 notification-action-button"
-                        onClick={() => {
-                            handleAgencySelect(2); 
-                            removeNotification(coronerEmailNotificationId); 
-                        }}
-                    >
-                        Switch to Coroner Email Form
-                    </Button>
-                </>,
-                'info-circle', 
-                15000          
-            );
-        }
-
-        const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-        if (discordWebhookUrl) {
-            const currentIdentifier = `${decedentName || ''}|${decedentOOC || ''}`;
-
-            if (currentIdentifier && currentIdentifier === lastWebhookIdentifier) {
-                console.log('Duplicate report copy detected, skipping webhook.');
-            } else {
-                const userValue = phmcEmployee
-                    ? `Hospital Staff ${phmcEmployee}`
-                    : coronerEmployee
-                        ? `${coronerRank || 'Coroner'} ${coronerEmployee}`
-                        : (patientFirstName || patientLastName)
-                            ? `${patientFirstName || ''} ${patientLastName || ''}`.trim()
-                            : 'Unknown User';
-                
-                let actionMessage = "BBCode Copied";
-                // This logic for actionMessage can be simplified or adjusted
-                // as saveReport now handles its own success/failure notifications for Firebase.
-                if (canProceedAfterSaveAttempt) { // saveReport indicates if the save process was attempted and didn't fail validation
-                    actionMessage = "BBCode Copied & Report Save Processed";
-                }
-
-
-                const successEmbed = {
-                    title: "Someone has used your generator!",
-                    description: "Here's the debug output.",
-                    color: 0x00FF00,
-                    fields: [
-                        { name: "User", value: userValue, inline: true },
-                        { name: "Form Type", value: versionName, inline: true },
-                        { name: "Patient/Decedent", value: `${patientName || decedentName || patientID || 'N/A'}`, inline: true },
-                        { name: "OOC Name", value: decedentOOC || "N/A", inline: true },
-                        { name: "Requesting Officer", value: requestingOfficer || "N/A", inline: true },
-                        { name: "Timestamp", value: currentDateTime, inline: false },
-                        { name: "Action", value: actionMessage, inline: false },
-                        // Updated to use the count from Firebase
-                        { name: "Total Saved Reports (Firebase)", value: firebaseSavedCount.toString(), inline: false } 
-                    ],
-                    footer: { text: `PHMC Forms Tool | gh-pages ${commitInfo.sha || 'N/A'}` },
-                    timestamp: new Date().toISOString()
-                };
-
-                const response = await fetch(discordWebhookUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ embeds: [successEmbed] })
-                });
-
-                if (response.ok) {
-                    setLastWebhookIdentifier(currentIdentifier);
-                } else {
-                    console.error('Failed to send Discord webhook after copy:', response.status, response.statusText);
-                    Sentry.captureMessage(`Discord webhook failed after copy: ${response.status}`, {
-                        level: 'error',
-                        extra: { statusText: response.statusText }
-                    });
-                }
-            }
-        } else {
-            console.warn('Discord webhook URL not set, skipping notification.');
-        }
-
-    } catch (error) {
-        console.error('Error during copy/save or webhook: ', error);
-        Sentry.captureException(error, { extra: { context: 'handleCopyAndNotify', errorName: error.name, errorMessage: error.message } });
-
-        const saveStatusMessage = canProceedAfterSaveAttempt ? "Report saving process was run." : "Report saving failed or was skipped.";
-
-        if (error.message === "Clipboard API not available") {
-            showNotification(`Clipboard API not available! BBCode not copied. ${saveStatusMessage}`, 'exclamation-triangle');
-        } else {
-            showNotification(`Failed to copy BBCode! ${saveStatusMessage}`, 'exclamation-triangle');
-        }
-
-        // ... (rest of your error handling for Discord webhook)
-        const discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-        if (discordWebhookUrl) {
-            const userValue = phmcEmployee
-                ? `Hospital Staff ${phmcEmployee}`
-                : coronerEmployee
-                    ? `${coronerRank || 'Coroner'} ${coronerEmployee}`
-                    : (patientFirstName || patientLastName)
-                        ? `${patientFirstName || ''} ${patientLastName || ''}`.trim()
-                        : 'Unknown User';
-            const failureEmbed = {
-                title: `BBCode Copy Failed (${error.message === "Clipboard API not available" ? "Clipboard API Unavailable" : "Error"})`,
-                color: 0xFF0000,
-                fields: [
-                    { name: "User", value: userValue, inline: true },
-                    { name: "Form Type", value: versionName, inline: true },
-                    { name: "Patient/Decedent", value: `${patientName || decedentName || patientID || 'N/A'}`, inline: true },
-                    { name: "OOC Name", value: decedentOOC || "N/A", inline: true },
-                    { name: "Requesting Officer", value: requestingOfficer || "N/A", inline: true },
-                    { name: "Timestamp", value: currentDateTime, inline: false },
-                    { name: "Action", value: `Report saving process was run, but BBCode could not be copied. Error: ${error.message}`, inline: false },
-                ],
-                footer: { text: `PHMC Forms Tool | gh-pages ${commitInfo.sha || 'N/A'}` },
-                timestamp: new Date().toISOString()
-            };
-            fetch(discordWebhookUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ embeds: [failureEmbed] })
-            }).catch(fetchError => {
-                console.error('Failed to send Discord failure webhook:', fetchError);
-                Sentry.captureException(fetchError, { extra: { context: 'Discord Webhook Clipboard Fail Send' } });
-            });
-        }
-    }
+const handleCopyAndNotifyWrapper = async () => {
+    await handleFormCopyAndNotify({
+        formData,
+        bbCodeVersion,
+        selectedAgencyGroup,
+        getBBCodeContent,    // This is already a method in App.js
+        getFormDefinition,   // This is imported from formDefinitions.js
+        saveReport,          // This is already a method in App.js
+        showNotification,    // This is already a method in App.js
+        removeNotification,  // This is already a method in App.js
+        handleAgencySelect,  // This is already a method in App.js
+        setLastWebhookIdentifier, // State setter from App.js
+        lastWebhookIdentifier,    // State from App.js
+        commitInfo,          // State from App.js
+        database,            // Imported in App.js from firebase.js
+    });
 };
 
     // handling updates and refresh 
@@ -3053,6 +3225,11 @@ const handleCopyAndNotify = async () => {
                                 
         return (
         <div className="App">
+            <AgencyGroupSelectorModal
+                show={showAgencyGroupSelectorModal && !selectedAgencyGroup}
+                onSelectGroup={handleSelectAgencyGroup}
+                onHideSelectorPreference={handleHideAgencyGroupSelectorPreference}
+            />
 
             <EasterEggModal
                 show={showEasterEggModal}
@@ -3090,17 +3267,23 @@ const handleCopyAndNotify = async () => {
             show={showCoronerTips}
             onClose={() => setShowCoronerTips(false)}
         />
+            <FlightSchoolTipsModal
+                show={showFlightSchoolTipsModal}
+                onHide={() => setShowFlightSchoolTipsModal(false)}
+            />
 
-{showAgencySelector && (
-    <AgencySelector
-        showAgencySelector={showAgencySelector}
-        setShowAgencySelector={setShowAgencySelector}
-        handleAgencySelect={handleAgencySelect}
-        isMobile={isMobile}
-        hideAgencySelector={hideAgencySelector}
-        setHideAgencySelector={setHideAgencySelector}
-    />
-)}
+                    {showAgencySelector && ( // Only show if a group is selected
+                        <AgencySelector
+                            showAgencySelector={showAgencySelector}
+                            setShowAgencySelector={setShowAgencySelector}
+                            handleAgencySelect={handleAgencySelect}
+                            isMobile={isMobile}
+                            hideAgencySelector={hideAgencySelector}
+                            setHideAgencySelector={setHideAgencySelector}
+                            selectedAgencyGroup={selectedAgencyGroup} // Pass current group
+                            formDefinitions={formDefinitions} // Pass all definitions
+                        />
+                    )}
             <div className="header-info-wrapper">
             <HeaderInfo commitInfo={commitInfo} /> 
             </div>
@@ -3118,15 +3301,28 @@ const handleCopyAndNotify = async () => {
                         View Changelog
                     </Button>
         <div className="floating-tools-container">
-            <Button
-                variant="light" // Or your preferred style
-                className="floating-tool-button"
-                onClick={() => setShowMissingEmployeeModal(true)}
-                title="Missing Employee Data"
-            >
-                <i className="fas fa-user-plus"></i>
-                <span className="floating-button-text">Missing Employee</span>
-            </Button>
+                        {selectedAgencyGroup === 'SAAA' && (
+                <Button
+                    variant="info" // Or SAAA theme color
+                    className="changelog-button" // Or a new class
+                    onClick={() => setShowSaaaEmployeeModal(true)}
+                    title="Manage SAAA Employees"
+                >
+                    <i className="fas fa-users-cog"></i> {/* Example Icon */}
+                    Manage SAAA Staff
+                </Button>
+            )}
+            {selectedAgencyGroup === 'PHMC' && (
+                <Button
+                    variant="info" // Or PHMC theme color
+                    className="changelog-button" // Or a new class
+                    onClick={() => setShowMissingEmployeeModal(true)}
+                    title="Manage PHMC Employees"
+                >
+                    <i className="fas fa-users-cog"></i> 
+                    Manage PHMC Staff
+                </Button>
+            )}
             <Button
                 variant="light"
                 className="floating-tool-button"
@@ -3145,6 +3341,8 @@ const handleCopyAndNotify = async () => {
                 <i className="fas fa-save"></i>
                 <span className="floating-button-text">Saved Reports</span>
             </Button>
+                                {selectedAgencyGroup === 'PHMC' && (
+
             <Button
                 variant="light"
                 className="floating-tool-button"
@@ -3154,6 +3352,21 @@ const handleCopyAndNotify = async () => {
 <i className="fa-solid fa-truck-medical"></i>
                 <span className="floating-button-text">EMS Against Medical Advise</span>
             </Button>
+                                )}
+                                <Button
+                                    className="changelog-button"
+                                    variant='warning'
+                                    onClick={() => {
+                                        localStorage.removeItem('selectedAgencyGroup'); // Clear saved group
+                                        // Optionally clear hide preference: localStorage.removeItem('hideAgencyGroupSelectorPreference');
+                                        setSelectedAgencyGroup(null);
+                                        setShowAgencyGroupSelectorModal(true);
+                                        // setHideAgencySelectorPreference(false); // if you want to force show next time
+                                    }}
+                                >
+                                    <i className="fas fa-users"></i>
+                                    Change Agency Group
+                                </Button>
 
         </div>
 
@@ -3183,7 +3396,7 @@ const handleCopyAndNotify = async () => {
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 2.4.0 -  </h3>
+                                    <h3>Changelog - Version 2.5.0 -  </h3>
                                     <Button
                                         className="close"
                                         variant='secondary'
@@ -3212,7 +3425,7 @@ const handleCopyAndNotify = async () => {
             </ul>
         </li>
     </ul>
-    - frosty :) 
+    - frosty x Austin Rhodes (Bailey - i3aileyy)
 </div>
                             </div>
                         </div>
@@ -3229,417 +3442,98 @@ const handleCopyAndNotify = async () => {
                             <i className="fas fa-hospital"></i>
                             PHMC
                         </Button>
-                     <Button
-                            className="changelog-button"
-                            variant='secondary'
-                            onClick={toggleAgencySelector}
-                        >
-                            <i className="fas fa-exchange-alt"></i>
-                            Select Form
-                        </Button>
-
-                        {(bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 4||  bbCodeVersion === 18) && (
-                            <>
                                 <Button
                                     className="changelog-button"
                                     variant='secondary'
-                                    onClick={() => setShowPHMCModal(true)}
+                                    onClick={toggleAgencySelector}
                                 >
-                                    <i className="fa fa-laptop"></i>
-                                    <span>Coroner Forms </span>
+                                    <i className="fas fa-exchange-alt"></i>
+                                    Select {selectedAgencyGroup} Form
                                 </Button>
 
-                                {showPHMCModal && (
-                                    <div className="modal-overlay" onClick={() => setShowPHMCModal(false)}>
-                                        <div className="agency-selector-modal" onClick={e => e.stopPropagation()}>
-                                            <div className="modal-header">
-                                                <h4>Coroner Forms (3)</h4>
-                                                <Button
-                                                    className="close-button"
-                                                    onClick={() => setShowPHMCModal(false)}
-                                                    aria-label="Close selector"
-                                                >
-                                                    <i className="fas fa-times"></i>
-                                                </Button>
-                                            </div>
-                                            <div className="agency-selector-buttons">
-                                                <div className="agency-row">
-                                                    <Button
-                                                        className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(1)}
-                                                    >
-                                                        <img src={corpse}
-                                                            className="Center"
-                                                            alt="Feedback"
-                                                        />
-                                                        <span>Decedent Services </span>
-                                                    </Button>
-                                                    <Button
-                                                        className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(2)}
-                                                    >
-                                                        <img src={email}
-                                                            className="Center"
-                                                            alt="Feedback"
-                                                        />
-                                                        <span>Email Generator </span>
-                                                    </Button>
-                                                    <Button
-                                                        className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(18)}
-                                                    >
-                                                        <img src={PHMCLogo}
-                                                            className="Center"
-                                                            alt="Feedback"
-                                                        />
-                                                        <span>Agency Incidents </span>
-                                                    </Button>
-                                                    <Button
-                                                        className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(4)}
-                                                    >
-                                                        <img src={PHMCLogo}
-                                                            className="Center"
-                                                            alt="Feedback"
-                                                        />
-                                                        <span>Autopsy Report  </span>
-                                                    </Button>
-
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </>
+                        {(bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 4 || bbCodeVersion === 18) && (
+                            <Button
+                                className="changelog-button"
+                                variant='secondary'
+                                onClick={() => openSwitchableModal("Coroner Forms", coronerFormsSubGroup)}
+                            >
+                                <i className="fa fa-laptop"></i>
+                                <span>Coroner Forms</span>
+                            </Button>
+                        )}
+                        {bbCodeVersion === 31 && ( // Changed FLIGHT_SCHOOL_FORM_VERSION to 31
+                            <Button
+                                className="changelog-button" // Or a more specific class
+                                variant='info' // Or any other variant
+                                onClick={() => setShowFlightSchoolTipsModal(true)}
+                                style={{ marginLeft: '10px' }} // Example style
+                            >
+                                <i className="fas fa-info-circle"></i>
+                                <span>Flight School Regs</span>
+                            </Button>
                         )}
 
                         {(bbCodeVersion === 6 || bbCodeVersion === 7) && (
-                            <>
-                                <Button
-                                    className="changelog-button"
-                                    variant='secondary'
-                                    onClick={() => setShowPHMCModal(true)}
-                                >
-                                    <i className="fas fa-exchange-alt"></i>
-                                    <span>Switch Physical Evaluation Forms</span>
-                                </Button>
-
-                                {showPHMCModal && (
-                                    <div className="modal-overlay" onClick={() => setShowPHMCModal(false)}>
-                                        <div className="agency-selector-modal" onClick={e => e.stopPropagation()}>
-                                            <div className="modal-header">
-                                                <h4>Select Internal Medicine Consultation Form (2)</h4>
-                                                <Button
-                                                    className="close-button"
-                                                    onClick={() => setShowPHMCModal(false)}
-                                                    aria-label="Close selector"
-                                                >
-                                                    <i className="fas fa-times"></i>
-                                                </Button>
-                                            </div>
-                                            <div className="agency-selector-buttons">
-                                                <div className="agency-row">
-                                                    <Button
-                                                        className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(6)}
-                                                    >
-                                                        <img src={PHMCLogo}
-                                                            className="Center"
-                                                            alt="Feedback"
-                                                        />
-                                                        <span>Physical Evaluation PHMC </span>
-                                                    </Button>
-                                                    <Button
-                                                        className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(7)}
-                                                    >
-                                                        <img src={PHMCLogo}
-                                                            className="Center"
-                                                            alt="Feedback"
-                                                        />
-                                                        <span>Physical Evaluation PBC </span>
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </>
+                            <Button
+                                className="changelog-button"
+                                variant='secondary'
+                                onClick={() => openSwitchableModal("Select Physical Evaluation Form", physicalEvalFormsSubGroup)}
+                            >
+                                <i className="fas fa-exchange-alt"></i>
+                                <span>Switch Physical Evaluation Forms</span>
+                            </Button>
                         )}
-                                                {(bbCodeVersion === 28 || bbCodeVersion === 29) && (
-                            <>
-                                <Button
-                                    className="changelog-button"
-                                    variant='secondary'
-                                    onClick={() => setShowPHMCModal(true)}
-                                >
-                                    <i className="fas fa-exchange-alt"></i>
-                                    <span>Switch Psychological Evaluation Form</span>
-                                </Button>
-
-                                {showPHMCModal && (
-                                    <div className="modal-overlay" onClick={() => setShowPHMCModal(false)}>
-                                        <div className="agency-selector-modal" onClick={e => e.stopPropagation()}>
-                                            <div className="modal-header">
-                                                <h4>Select Psychological Evaluation Form (2)</h4>
-                                                <Button
-                                                    className="close-button"
-                                                    onClick={() => setShowPHMCModal(false)}
-                                                    aria-label="Close selector"
-                                                >
-                                                    <i className="fas fa-times"></i>
-                                                </Button>
-                                            </div>
-                                            <div className="agency-selector-buttons">
-                                                <div className="agency-row">
-                                                    <Button
-                                                        className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(28)}
-                                                    >
-                                                        <img src={PHMCLogo}
-                                                            className="Center"
-                                                            alt="Feedback"
-                                                        />
-                                                        <span>Psychological Evaluation | PHMC </span>
-                                                    </Button>
-                                                    <Button
-                                                        className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(29)}
-                                                    >
-                                                        <img src={phmcpaletobay}
-                                                            className="Center"
-                                                            alt="Feedback"
-                                                        />
-                                                        <span>Psychological Evaluation | PBC </span>
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </>
+                        {(bbCodeVersion === 28 || bbCodeVersion === 29) && (
+                            <Button
+                                className="changelog-button"
+                                variant='secondary'
+                                onClick={() => openSwitchableModal("Select Psychological Evaluation Form", psychEvalFormsSubGroup)}
+                            >
+                                <i className="fas fa-exchange-alt"></i>
+                                <span>Switch Psychological Evaluation Form</span>
+                            </Button>
                         )}
 
-                        {( bbCodeVersion === 20 || bbCodeVersion === 21) && (
-                            <>
-                                <Button
-                                    className="changelog-button"
-                                    variant='secondary'
-                                    onClick={() => setShowPHMCModal(true)}
-                                >
-                                    <span>Switch General Consultation Forms </span>
-                                </Button>
-
-                                {showPHMCModal && (
-                                    <div className="modal-overlay" onClick={() => setShowPHMCModal(false)}>
-                                        <div className="agency-selector-modal" onClick={e => e.stopPropagation()}>
-                                            <div className="modal-header">
-                                                <h4>Select General Consultation Form (2)</h4>
-                                                <Button
-                                                    className="close-button"
-                                                    onClick={() => setShowPHMCModal(false)}
-                                                    aria-label="Close selector"
-                                                >
-                                                    <i className="fas fa-times"></i>
-                                                </Button>
-                                            </div>
-                                            <div className="agency-selector-buttons">
-                                                <div className="agency-row">
-                                                    <Button
-                                                        className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(20)}
-                                                    >
-                                                        <img src={PHMCLogo}
-                                                            className="Center"
-                                                            alt="Feedback"
-                                                        />
-                                                        <span>General Consultation | PHMC </span>
-                                                    </Button>
-                                                    <Button
-                                                        className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(21)}
-                                                    >
-                                                        <img src={phmcpaletobay}
-                                                            className="Center"
-                                                            alt="Feedback"
-                                                        />
-                                                        <span>General Consultation | PBC </span>
-                                                    </Button>
-
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </>
+                        {(bbCodeVersion === 20 || bbCodeVersion === 21) && (
+                            <Button
+                                className="changelog-button"
+                                variant='secondary'
+                                onClick={() => openSwitchableModal("Select General Consultation Form", generalConsultFormsSubGroup)}
+                            >
+                                <i className="fas fa-exchange-alt"></i> {/* Added icon for consistency */}
+                                <span>Switch General Consultation Forms</span>
+                            </Button>
                         )}
 
                         {(bbCodeVersion === 22 || bbCodeVersion === 23) && (
-                            <>
-                                <Button
-                                    className="changelog-button"
-                                    variant='secondary'
-                                    onClick={() => setShowPHMCModal(true)}
-                                >
-                                    <span>Switch Commentary Note Form </span>
-                                </Button>
-
-                                {showPHMCModal && (
-                                    <div className="modal-overlay" onClick={() => setShowPHMCModal(false)}>
-                                        <div className="agency-selector-modal" onClick={e => e.stopPropagation()}>
-                                            <div className="modal-header">
-                                                <h4>Select Commentary Note Form (2)</h4>
-                                                <Button
-                                                    className="close-button"
-                                                    onClick={() => setShowPHMCModal(false)}
-                                                    aria-label="Close selector"
-                                                >
-                                                    <i className="fas fa-times"></i>
-                                                </Button>
-                                            </div>
-                                            <div className="agency-selector-buttons">
-                                                <div className="agency-row">
-                                                    <Button
-                                                        className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(22)}
-                                                    >
-                                                        <img src={PHMCLogo}
-                                                            className="Center"
-                                                            alt="Feedback"
-                                                        />
-                                                        <span>Commentary Note | PHMC </span>
-                                                    </Button>
-                                                    <Button
-                                                        className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(23)}
-                                                    >
-                                                        <img src={phmcpaletobay}
-                                                            className="Center"
-                                                            alt="Feedback"
-                                                        />
-                                                        <span>Commentary Note | PBC </span>
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </>
+                            <Button
+                                className="changelog-button"
+                                variant='secondary'
+                                onClick={() => openSwitchableModal("Select Commentary Note Form", commentaryNoteFormsSubGroup)}
+                            >
+                                <i className="fas fa-exchange-alt"></i> {/* Added icon */}
+                                <span>Switch Commentary Note Form</span>
+                            </Button>
                         )}
                         {(bbCodeVersion === 14 || bbCodeVersion === 16) && (
-                            <>
-                                <Button
-                                    className="changelog-button"
-                                    variant='secondary'
-                                    onClick={() => setShowPHMCModal(true)}
-                                >
-                                    <span>Switch Mental Health Form </span>
-                                </Button>
-
-                                {showPHMCModal && (
-                                    <div className="modal-overlay" onClick={() => setShowPHMCModal(false)}>
-                                        <div className="agency-selector-modal" onClick={e => e.stopPropagation()}>
-                                            <div className="modal-header">
-                                                <h4>Select Mental Health Form (2)</h4>
-                                                <Button
-                                                    className="close-button"
-                                                    onClick={() => setShowPHMCModal(false)}
-                                                    aria-label="Close selector"
-                                                >
-                                                    <i className="fas fa-times"></i>
-                                                </Button>
-                                            </div>
-                                            <div className="agency-selector-buttons">
-                                                <div className="agency-row">
-                                                    <Button
-                                                        className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(14)}
-                                                    >
-                                                        <img src={PHMCLogo}
-                                                            className="Center"
-                                                            alt="Feedback"
-                                                        />
-                                                        <span>Mental Health - PHMC </span>
-                                                    </Button>
-                                                    <Button
-                                                        className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(16)}
-                                                    >
-                                                        <img src={phmcpaletobay}
-                                                            className="Center"
-                                                            alt="Feedback"
-                                                        />
-                                                        <span>Mental Health | PBC </span>
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </>
+                            <Button
+                                className="changelog-button"
+                                variant='secondary'
+                                onClick={() => openSwitchableModal("Select Mental Health Form", mentalHealthFormsSubGroup)}
+                            >
+                                <i className="fas fa-exchange-alt"></i> {/* Added icon */}
+                                <span>Switch Mental Health Form</span>
+                            </Button>
                         )}
                         {(bbCodeVersion === 3 || bbCodeVersion === 24 || bbCodeVersion === 25) && (
-                            <>
-                                <Button
-                                    className="changelog-button"
-                                    onClick={() => setShowPHMCModal(true)}
-                                >
-                                    <i className="fas fa-exchange-alt"></i>
-                                    <span>Change Civilian Hospital Forms</span>
-                                </Button>
-
-                                {showPHMCModal && (
-                                    <div className="modal-overlay" onClick={() => setShowPHMCModal(false)}>
-                                        <div className="agency-selector-modal" onClick={e => e.stopPropagation()}>
-                                            <div className="modal-header">
-                                                <h4>Select Civilian Forms (3)</h4>
-                                                <Button
-                                                    className="close-button"
-                                                    onClick={() => setShowPHMCModal(false)}
-                                                    aria-label="Close selector"
-                                                >
-                                                    <i className="fas fa-times"></i>
-                                                </Button>
-                                            </div>
-                                            <div className="agency-selector-buttons">
-                                                <div className="agency-row">
-                                                    <Button
-                                                        className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(24)}
-                                                    >
-                                                        <img src={Civilian}
-                                                            className="Center"
-                                                            alt="Feedback"
-                                                        />
-                                                        <span> Medical Record Release </span>
-                                                    </Button>
-                                                    <Button
-                                                        className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(25)}
-                                                    >
-                                                        <img src={nurse}
-                                                            className="Center"
-                                                            alt="Feedback"
-                                                        />
-                                                        <span>Basic Patient File </span>
-                                                    </Button>
-                                                    <Button
-                                                        className="agency-select-button"
-                                                        onClick={() => handleAgencySelect(3)}
-                                                    >
-                                                        <img src={nurse}
-                                                            className="Center"
-                                                            alt="Feedback"
-                                                        />
-                                                        <span>Detailed Patient File </span>
-                                                    </Button>
-
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </>
+                            <Button
+                                className="changelog-button"
+                                variant='secondary' // Added variant for consistency
+                                onClick={() => openSwitchableModal("Select Civilian Forms", civilianFormsSubGroup)}
+                            >
+                                <i className="fas fa-exchange-alt"></i>
+                                <span>Change Civilian Hospital Forms</span>
+                            </Button>
                         )}
 
                     </div>
@@ -3652,6 +3546,7 @@ const handleCopyAndNotify = async () => {
                     onDismiss={() => removeNotification(notif.id)}
                     // Pass other necessary props
                 />
+                
             ))}
             {/* If you were rendering a single notification before, it would look like:
             {notification && (
@@ -3664,368 +3559,100 @@ const handleCopyAndNotify = async () => {
             You'll need to switch to the array mapping approach above for stacking.
             */}
         </div>
-                    <form>
-                        {bbCodeVersion === 1 ? (
-                                             <DeathReport
-                            formData={formData}
-                            handleChange={handleChange}
-                            handleSelectChange={handleSelectChange}
-                            setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                            setShowCoronerRankModal={setShowCoronerRankModal}
-                            coronerGroupedOptions={coronerGroupedOptions}
-                            handleDoeChange={handleDoeChange}
-                            agencyData={agencyDataStore} // This prop seems unused by DeathReport directly, but can remain
-                            setFormData={setFormData}
-                            isJohnDoe={isJohnDoe}
-                            isJaneDoe={isJaneDoe}
-                            currentUtcTime={currentUtcTime}
-                            isUploading={isUploading}
-                            handleImageUpload={handleImageUpload}
-                            // --- Add these new props ---
-                            typeOfDeathOptions={selectOptions.typeOfDeathOptions || []}
-                            mannerOfDeathOptions={selectOptions.mannerOfDeathOptions || []}
-                            requestingAgencyOptions={selectOptions.requestingAgenciesOptions || []}
-                            isDisabled={isLoadingData}
-                        />
-                    ) : bbCodeVersion === 2 ? (
-                        <CoronerEmail
-                        formData={formData}
-                        handleChange={handleChange}
-                        handleSelectChange={handleSelectChange}
-                        setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                        setShowCoronerRankModal={setShowCoronerRankModal}
-                        coronerGroupedOptions={coronerGroupedOptions}
-                        fillPhoneChecked={fillPhoneChecked}
-                        setFillPhoneChecked={setFillPhoneChecked}
-                        handleFillCoronerPhone={handleFillCoronerPhone}
-                        addReport={addReport}
-                        removeReport={removeReport}
-                        handleReportChange={handleReportChange}
-                        isUploading={isUploading}
-                        parseBBCode={parseBBCode}
-                        toggleSavedReports={toggleSavedReports}
-                    />
-                        ) : bbCodeVersion === 3 ? (
-                            <PatientAdvanced
-                            formData={formData}
-                            handleChange={handleChange}
-                            handleImageUpload={handleImageUpload}
-                            isUploading={isUploading}
-                            setFormData={setFormData}
-                            // Props from selectOptions
-                            patientTitle={selectOptions.patientTitle || []}
-                            patientBloodType={selectOptions.patientBloodType || []}
-                            maritalStatus={selectOptions.maritalStatus || []}
-                            numberChildren={selectOptions.numberChildren || []}
-                            financialStatus={selectOptions.financialStatus || []}
-                            dnr={selectOptions.dnr || []}
-                            attorney={selectOptions.attorney || []}
-                            dnrOrder={selectOptions.dnrOrder || []}
-                        />
-                        ) : bbCodeVersion === 4 ? (
-                        <Autopsy
-                        formData={formData}
-                        handleChange={handleChange}
-                        handleSelectChange={handleSelectChange}
-                        coronerGroupedOptions={coronerGroupedOptions}
-                        setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                        setShowCoronerRankModal={setShowCoronerRankModal}
-                        setFormData={setFormData}
-                        isUploading={isUploading}
-                        handleImageUpload={handleImageUpload}
-                        phmcGroupedOptions={phmcGroupedOptions}
-                        
-                        handleAutopsyImageUploadAndCreateAlbum={handleAutopsyImageUploadAndCreateAlbum}
+                            <form>
+                                {FieldComponent ? (
+                                    <FieldComponent
+                                        formData={formData}
+                                        handleChange={handleChange}
+                                        setFormData={setFormData}
+                                        // Pass all necessary props from App.js state and selectOptions
+                                        // Example for DeathReport:
+                                        typeOfDeathOptions={selectOptions.typeOfDeathOptions || []}
+                                        mannerOfDeathOptions={selectOptions.mannerOfDeathOptions || []}
+                                        requestingAgencyOptions={selectOptions.requestingAgenciesOptions || []}
+                                        // Pass other props like phmcGroupedOptions, coronerGroupedOptions, etc.
+                                        phmcGroupedOptions={phmcGroupedOptions}
+                                        coronerGroupedOptions={coronerGroupedOptions}
+                                        setShowMissingEmployeeModal={setShowMissingEmployeeModal}
+                                        setShowCoronerRankModal={setShowCoronerRankModal}
+                                        handleSelectChange={handleSelectChange}
+                                        isUploading={isUploading}
+                                        handleImageUpload={handleImageUpload}
+                                        handleAutopsyImageUploadAndCreateAlbum={handleAutopsyImageUploadAndCreateAlbum}
+                                        // ... and so on for all props needed by any FieldComponent
+                                        // For MedicalRelease
+                                        patientTitleOptions={selectOptions.patientTitle || []}
+                                        patientPhoneOptions={selectOptions.patientPhone || []}
+                                        purposeOptions={selectOptions.PurposeMedicalInformationRelease || []}
+                                        formatOptions={selectOptions.PurposeMedicalInformationReleaseFormat || []}
+                                        medicalRecordOptions={selectOptions.MedicalRecordsRelease || []}
+                                        // For Surgical
+                                        phmcRank={selectOptions.phmcRank || []}
+                                        patientConsent={selectOptions.patientConsent || []}
+                                        complications={selectOptions.complications || []}
+                                        procedureGood={selectOptions.procedureGood || []}
+                                        // For PhysEval
+                                        BodyMassIndex={selectOptions.BodyMassIndex || []}
+                                        temperature={selectOptions.temperature || []}
+                                        heartRate={selectOptions.heartRate || []}
+                                        breathing={selectOptions.breathing || []}
+                                        bloodPressure={selectOptions.bloodPressure || []}
+                                        patientJob={selectOptions.patientJob || []}
+                                        patientJobRisks={selectOptions.patientJobRisks || []}
+                                        patientAllergiesRisk={selectOptions.patientAllergiesRisk || []}
+                                        patientMedicineRegular={selectOptions.patientMedicineRegular || []}
+                                        patientOther={selectOptions.patientOther || []}
+                                        predisposition={selectOptions.predisposition || []}
+                                        // For MentalHealth & ER & GeneralConsult
+                                        admission={selectOptions.admission || []}
+                                        followup={selectOptions.followup || []}
+                                        // For ER & GeneralConsult
+                                        painLevel={selectOptions.painLevel || []}
+                                        findings={selectOptions.findings || []}
+                                        lungs={selectOptions.lungs || []}
+                                        pupils={selectOptions.pupils || []}
+                                        wounds={selectOptions.wounds || []}
+                                        ecg={selectOptions.ecg || []}
+                                        sono={selectOptions.sono || []}
+                                        lab={selectOptions.lab || []}
+                                        bloodOxy={selectOptions.bloodOxy || []}
+                                        assignedDepartment={selectOptions.assignedDepartment || []}
+                                        departmentLarge={ (currentFormDefinition?.version === 23 && selectedAgencyGroup === "PHMC") ? (selectOptions.paletoClinicDepartment || []) : (selectOptions.departmentLarge || [])}
+                                        // For Shrink
+                                        Appearance={selectOptions.Appearance || []}
+                                        Behavior={selectOptions.Behavior || []}
+                                        Speech={selectOptions.Speech || []}
+                                        Mood={selectOptions.Mood || []}
+                                        Affect={selectOptions.Affect || []}
+                                        ThoughtProcess={selectOptions.ThoughtProcess || []}
+                                        ThoughtContent={selectOptions.ThoughtContent || []}
+                                        Insight={selectOptions.Insight || []}
+                                        Cognition={selectOptions.Cognition || []}
+                                        Risk={selectOptions.Risk || []}
+                                        // For CoronerEmail
+                                        fillPhoneChecked={fillPhoneChecked}
+                                        setFillPhoneChecked={setFillPhoneChecked}
+                                        handleFillCoronerPhone={handleFillCoronerPhone}
+                                        addReport={addReport}
+                                        removeReport={removeReport}
+                                        handleReportChange={handleReportChange}
+                                        parseBBCode={parseBBCode}
+                                        toggleSavedReports={toggleSavedReports}
+                                        // For DeathReport specific
+                                        isJohnDoe={isJohnDoe}
+                                        isJaneDoe={isJaneDoe}
+                                        handleDoeChange={handleDoeChange}
+                                        currentUtcTime={currentUtcTime}
+                                        Imaging={selectOptions.Imaging || []}
+                                        XrayResults={selectOptions.XrayResults || []}
+                                        ctResults={selectOptions.ctResults || []}
+                                        mriResults={selectOptions.mriResults || []}
+                                        ultrasoundResults={selectOptions.ultrasoundResults || []}
 
-                        />
-                        ) : bbCodeVersion === 5 ? (
-                        <Surgical
-                        formData={formData}
-                        handleChange={handleChange}
-                        phmcGroupedOptions={phmcGroupedOptions}
-                        phmcRank={selectOptions.phmcRank || []}
-                        setFormData={setFormData}
-                        patientConsent={selectOptions.patientConsent || []}
-                        complications={selectOptions.complications || []}
-                        procedureGood={selectOptions.procedureGood || []}
-                    />
-
-                    ) : bbCodeVersion === 6 ? (
-                        <PhysEval
-                        formData={formData}
-                        handleChange={handleChange}
-                        phmcGroupedOptions={phmcGroupedOptions}
-                        setFormData={setFormData}
-                        phmcRank={selectOptions.phmcRank || []}
-                        setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                        BodyMassIndex={selectOptions.BodyMassIndex || []}
-                        temperature={selectOptions.temperature || []}
-                        heartRate={selectOptions.heartRate || []}
-                        breathing={selectOptions.breathing || []}
-                        bloodPressure={selectOptions.bloodPressure || []}
-                        patientJob={selectOptions.patientJob || []}
-                        patientJobRisks={selectOptions.patientJobRisks || []}
-                        patientAllergiesRisk={selectOptions.patientAllergiesRisk || []}
-                        patientMedicineRegular={selectOptions.patientMedicineRegular || []}
-                        patientOther={selectOptions.patientOther || []}
-                        predisposition={selectOptions.predisposition || []}
-                    />
-
-                    ) : bbCodeVersion === 7 ? ( // generatePhysEvalInternalMed
-                        <PhysEval
-                        formData={formData}
-                        handleChange={handleChange}
-                        phmcGroupedOptions={phmcGroupedOptions}
-                        setFormData={setFormData}
-                        phmcRank={selectOptions.phmcRank || []}
-                        setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                        BodyMassIndex={selectOptions.BodyMassIndex || []}
-                        temperature={selectOptions.temperature || []}
-                        heartRate={selectOptions.heartRate || []}
-                        breathing={selectOptions.breathing || []}
-                        bloodPressure={selectOptions.bloodPressure || []}
-                        patientJob={selectOptions.patientJob || []}
-                        patientJobRisks={selectOptions.patientJobRisks || []}
-                        patientAllergiesRisk={selectOptions.patientAllergiesRisk || []}
-                        patientMedicineRegular={selectOptions.patientMedicineRegular || []}
-                        patientOther={selectOptions.patientOther || []}
-                        predisposition={selectOptions.predisposition || []}
-                    />
-                        ) : bbCodeVersion === 14 ? ( // generateMentalHealthPHMC
-                            <MentalHealth
-                            formData={formData}
-                            handleChange={handleChange}
-                            phmcGroupedOptions={phmcGroupedOptions}
-                            setFormData={setFormData}
-                            phmcRank={selectOptions.phmcRank || []}
-                            setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                            // BodyMassIndex might not be used by MentalHealth, verify component
-                            followup={selectOptions.followup || []}
-                            admission={selectOptions.admission || []}
-                            handleSelectChange={handleSelectChange} 
-                        />
-                        ) : bbCodeVersion === 16 ? ( // generateMentalHealthPBC
-                            <MentalHealth
-                            formData={formData}
-                            handleChange={handleChange}
-                            phmcGroupedOptions={phmcGroupedOptions}
-                            setFormData={setFormData}
-                            phmcRank={selectOptions.phmcRank || []}
-                            setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                            // BodyMassIndex might not be used by MentalHealth, verify component
-                            followup={selectOptions.followup || []}
-                            admission={selectOptions.admission || []}
-                            handleSelectChange={handleSelectChange}                             
-                        />
-                        ) : bbCodeVersion === 18 ? ( // generateAgencyFeedback
-                            <AgencyFeedback
-                            formData={formData}
-                            handleChange={handleChange}
-                            handleSelectChange={handleSelectChange}
-                            setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                            setShowCoronerRankModal={setShowCoronerRankModal}
-                            coronerGroupedOptions={coronerGroupedOptions}
-                            setFormData={setFormData}
-                            isUploading={isUploading}
-                            handleImageUpload={handleImageUpload}
-                        />
-                        ) : bbCodeVersion === 19 ? ( // Emergency Form - generateERForm
-                            <EmergencyForm
-                            formData={formData}
-                            handleChange={handleChange}
-                            phmcGroupedOptions={phmcGroupedOptions}
-                            setFormData={setFormData}
-                            phmcRank={selectOptions.phmcRank || []}
-                            setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                            temperature={selectOptions.temperature || []}
-                            heartRate={selectOptions.heartRate || []}
-                            breathing={selectOptions.breathing || []}
-                            bloodPressure={selectOptions.bloodPressure || []}
-                            painLevel={selectOptions.painLevel || []}
-                            findings={selectOptions.findings || []}
-                            lungs={selectOptions.lungs || []}
-                            pupils={selectOptions.pupils || []}
-                            wounds={selectOptions.wounds || []}
-                            ecg={selectOptions.ecg || []}
-                            sono={selectOptions.sono || []}
-                            lab={selectOptions.lab || []}
-                            admission={selectOptions.admission || []}
-                            bloodOxy={selectOptions.bloodOxy || []}
-                                                        handleSelectChange={handleSelectChange} 
-                            />
-                        ) : bbCodeVersion === 20 ? ( // General Consultation (PHMC)
-                            <GeneralConsult
-                            formData={formData}
-                            handleChange={handleChange}
-                            phmcGroupedOptions={phmcGroupedOptions}
-                            setFormData={setFormData}
-                            phmcRank={selectOptions.phmcRank || []}
-                            setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                            temperature={selectOptions.temperature || []}
-                            heartRate={selectOptions.heartRate || []}
-                            breathing={selectOptions.breathing || []}
-                            bloodPressure={selectOptions.bloodPressure || []}
-                            findings={selectOptions.findings || []}
-                            lungs={selectOptions.lungs || []}
-                            pupils={selectOptions.pupils || []}
-                            wounds={selectOptions.wounds || []}
-                            ecg={selectOptions.ecg || []}
-                            sono={selectOptions.sono || []}
-                            lab={selectOptions.lab || []}
-                            followup={selectOptions.followup || []}
-                            assignedDepartment={selectOptions.assignedDepartment || []}
-                            admission={selectOptions.admission || []}
-                            handleImageUpload={handleImageUpload}
-                            isUploading={isUploading}
-                            bloodOxy={selectOptions.bloodOxy || []}
-                                                        handleSelectChange={handleSelectChange} 
-                            />
-                           ) : bbCodeVersion === 21 ? ( // GENERAL CONSULTATION (PBC)
-                            <GeneralConsult
-                            formData={formData}
-                            handleChange={handleChange}
-                            phmcGroupedOptions={phmcGroupedOptions}
-                            setFormData={setFormData}
-                            phmcRank={selectOptions.phmcRank || []}
-                            setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                            temperature={selectOptions.temperature || []}
-                            heartRate={selectOptions.heartRate || []}
-                            breathing={selectOptions.breathing || []}
-                            bloodPressure={selectOptions.bloodPressure || []}
-                            findings={selectOptions.findings || []}
-                            lungs={selectOptions.lungs || []}
-                            pupils={selectOptions.pupils || []}
-                            wounds={selectOptions.wounds || []}
-                            ecg={selectOptions.ecg || []}
-                            sono={selectOptions.sono || []}
-                            lab={selectOptions.lab || []}
-                            followup={selectOptions.followup || []}
-                            assignedDepartment={selectOptions.paletoClinicDepartment || []} // PBC uses paletoClinicDepartment
-                            admission={selectOptions.admission || []}
-                            handleImageUpload={handleImageUpload}
-                            isUploading={isUploading}
-                            bloodOxy={selectOptions.bloodOxy || []}
-                            />
-                    ) : bbCodeVersion === 22 ? ( // COMMENTARY NOTE (phmc)
-                        <CommNotePHMC
-                            formData={formData}
-                            handleChange={handleChange}
-                            setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                            phmcGroupedOptions={phmcGroupedOptions}
-                            departmentLarge={selectOptions.departmentLarge || []}
-                            setFormData={setFormData}
-                            handleSelectChange={handleSelectChange} 
-                        />
-                        ) : bbCodeVersion === 23 ? ( // COMMENTARY NOTE (PBC)
-                        <CommNotePBC
-                            formData={formData}
-                            handleChange={handleChange}
-                            setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                            phmcGroupedOptions={phmcGroupedOptions}
-                            departmentLarge={selectOptions.paletoClinicDepartment || []} // PBC uses paletoClinicDepartment
-                            setFormData={setFormData}
-                        />
-                     ) : bbCodeVersion === 24 ? ( // Medical Record Release
-                        <MedicalRelease
-                            formData={formData}
-                            handleChange={handleChange}
-                            setFormData={setFormData}
-                            patientTitleOptions={selectOptions.patientTitle || []}
-                            patientPhoneOptions={selectOptions.patientPhone || []}
-                            purposeOptions={selectOptions.PurposeMedicalInformationRelease || []}
-                            formatOptions={selectOptions.PurposeMedicalInformationReleaseFormat || []}
-                            medicalRecordOptions={selectOptions.MedicalRecordsRelease || []}
-                            phmcGroupedOptions={phmcGroupedOptions}
-                            handleImageUpload={handleImageUpload}
-                            isUploading={isUploading}
-                            handleSelectChange={handleSelectChange}
-                        />
-                    ) : bbCodeVersion === 25 ? ( // Basic Patient File
-                            <BasicPatientFile
-                            formData={formData}
-                            handleChange={handleChange}
-                            handleSelectChange={handleSelectChange}
-                            setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                            isUploading={isUploading}
-                            handleImageUpload={handleImageUpload}
-                            patientTitle={selectOptions.patientTitle || []}
-                            patientBloodType={selectOptions.patientBloodType || []}
-                            />
-                        ) : bbCodeVersion === 27 ? ( //PHMC Email Internal
-                            <EmailInternal
-                            formData={formData}
-                            handleChange={handleChange}
-                            setFormData={setFormData}
-                            isUploading={isUploading}
-                            handleImageUpload={handleImageUpload}
-                            phmcGroupedOptions={phmcGroupedOptions}
-                            />
-                        ) : bbCodeVersion === 28 ? ( //PHMC Shrink Internal
-                            <Shrink
-                            formData={formData}
-                            handleChange={handleChange}
-                            phmcGroupedOptions={phmcGroupedOptions}
-                            setFormData={setFormData}
-                            phmcRank={selectOptions.phmcRank || []}
-                            setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                            Appearance={selectOptions.Appearance || []}
-                            Behavior={selectOptions.Behavior || []}
-                            Speech={selectOptions.Speech || []}
-                            Mood={selectOptions.Mood || []}
-                            Affect={selectOptions.Affect || []}
-                            ThoughtProcess={selectOptions.ThoughtProcess || []}
-                            ThoughtContent={selectOptions.ThoughtContent || []}
-                            Insight={selectOptions.Insight || []}
-                            Cognition={selectOptions.Cognition || []}
-                            admission={selectOptions.admission || []}
-                            followup={selectOptions.followup || []}
-                            Risk={selectOptions.Risk || []}
-                            />
-
-                        ) : bbCodeVersion === 29 ? ( //PBC? Shrink Internal
-                            <Shrink
-                            formData={formData}
-                            handleChange={handleChange}
-                            phmcGroupedOptions={phmcGroupedOptions}
-                            setFormData={setFormData}
-                            phmcRank={selectOptions.phmcRank || []}
-                            setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                            Appearance={selectOptions.Appearance || []}
-                            Behavior={selectOptions.Behavior || []}
-                            Speech={selectOptions.Speech || []}
-                            Mood={selectOptions.Mood || []}
-                            Affect={selectOptions.Affect || []}
-                            ThoughtProcess={selectOptions.ThoughtProcess || []}
-                            ThoughtContent={selectOptions.ThoughtContent || []}
-                            Insight={selectOptions.Insight || []}
-                            Cognition={selectOptions.Cognition || []}
-                            admission={selectOptions.admission || []}
-                            followup={selectOptions.followup || []}
-                            Risk={selectOptions.Risk || []}
-                            />
-                        ) : bbCodeVersion === 30 ? ( //PBC? Shrink Internal
-                            <Shrink
-                            formData={formData}
-                            handleChange={handleChange}
-                            phmcGroupedOptions={phmcGroupedOptions}
-                            setFormData={setFormData}
-                            phmcRank={selectOptions.phmcRank || []}
-                            setShowMissingEmployeeModal={setShowMissingEmployeeModal}
-                            Appearance={selectOptions.Appearance || []}
-                            Behavior={selectOptions.Behavior || []}
-                            Speech={selectOptions.Speech || []}
-                            Mood={selectOptions.Mood || []}
-                            Affect={selectOptions.Affect || []}
-                            ThoughtProcess={selectOptions.ThoughtProcess || []}
-                            ThoughtContent={selectOptions.ThoughtContent || []}
-                            Insight={selectOptions.Insight || []}
-                            Cognition={selectOptions.Cognition || []}
-                            admission={selectOptions.admission || []}
-                            followup={selectOptions.followup || []}
-                            Risk={selectOptions.Risk || []}
-                            />
-                        
-                        ) : null}
+                                    />
+                                ) : (
+                                    <p>Please select an agency group and then a form type.</p>
+                                )}
                         <div className="button-group">
                             <Button
                                 type="button"
@@ -4083,6 +3710,14 @@ const handleCopyAndNotify = async () => {
     combinedStaffOptions={combinedStaffOptions}
     handleMissingEmployeeSubmit={handleMissingEmployeeSubmit}
 />
+            <SaaaEmployeeModal
+                show={showSaaaEmployeeModal}
+                onHide={() => setShowSaaaEmployeeModal(false)}
+                saaaGroupedOptions={saaaGroupedOptions}
+                handleSaaaEmployeeSubmit={handleSaaaEmployeeSubmit}
+                showNotification={showNotification}
+                // commitInfo={commitInfo} // Pass if needed
+            />
         {showFeatureRequestModal && (
         <div className="modal-overlay">
             <div className="modal">
@@ -4130,33 +3765,6 @@ const handleCopyAndNotify = async () => {
     )}
 
                                         
-{/*                 {<div className="form-type-header">
-                    <h3>You are viewing:
-                            {bbCodeVersion === 1 ? ' Decedent Report' :
-                                bbCodeVersion === 2 ? ' Coroner Email' :
-                                    bbCodeVersion === 3 ? ' Patient File - Advanced' : 
-                                            bbCodeVersion === 5 ? ' Surgical Operations' :
-                                                bbCodeVersion === 6 ? ' generatePhysEvalInternalMed ' :
-                                                    bbCodeVersion === 7 ? 'GeneratePhysEvalInternalMedPBC' :
-                                                                                bbCodeVersion === 14 ? 'generateMentalHealthPHMC - FULLY TESTED' :
-                                                                                        bbCodeVersion === 16 ? 'generateMentalHealthPBC - FULLY TESTED' :
-                                                                                            bbCodeVersion === 17 ? 'generateMentalHealthPBC - FULLY TESTED' :
-                                                                                                bbCodeVersion === 18 ? 'Coroner Agency Incidents' :
-                                                                                                    bbCodeVersion === 19 ? 'Emergency Protocol Form NEW' :
-                                                                                                        bbCodeVersion === 20 ? 'General Consultation PHMC' :
-                                                                                                            bbCodeVersion === 21 ? 'General Consultation PBC' :
-                                                                                                                bbCodeVersion === 22 ? 'PHMC Commentary Note' :
-                                                                                                                    bbCodeVersion === 23 ? 'PBC Commentary Note' :
-                                                                                                                        bbCodeVersion === 24 ? 'Medical Record Release' :
-                                                                                                                            bbCodeVersion === 25 ? 'Basic Patient File' :
-                                                                                                                            bbCodeVersion === 27 ? 'Email PHMC Email' :
-                                                                                                                            bbCodeVersion === 28 ? 'Psych Eval PHMC' :
-                                                                                                                            bbCodeVersion === 29 ? 'Psych Eval PBC' :
-
-                                                                                                                ' MISSING TITLE - CHANGE DEV_TEXT'}
-                        </h3>
-                    </div>}
- */}        
  <div className="bbcode-section">
  <div className={`char-counter ${getBBCodeContent()?.length > 60000 ? 'char-counter-warning' : ''}`}>
     Character Counter: {getBBCodeContent()?.length ?? 'Error'}/60000
@@ -4171,19 +3779,31 @@ const handleCopyAndNotify = async () => {
         </div>
     ) : null}
 </div>
-<BusinessCardModal
-    show={showBusinessCard}
-    onHide={() => setShowBusinessCard(false)} // Or onHide={toggleBusinessCard} if you prefer
-    showNotification={showNotification}
-    commitInfo={commitInfo}
-/>
-{/* <SaaaBusinessCardModal
-    show={showBusinessCard}
-    onHide={() => setShowBusinessCard(false)} // Or onHide={toggleBusinessCard} if you prefer
-    showNotification={showNotification}
-    commitInfo={commitInfo}
-/>
- */}
+                    {selectedAgencyGroup === 'PHMC' && (
+                        <BusinessCardModal
+                            show={showBusinessCard}
+                            onHide={() => setShowBusinessCard(false)}
+                            showNotification={showNotification}
+                            commitInfo={commitInfo}
+                        />
+                    )}
+                    {selectedAgencyGroup === 'SAAA' && (
+                        <SaaaBusinessCardModal
+                            show={showBusinessCard} // Assuming SAAA card also uses showBusinessCard state
+                            onHide={() => setShowBusinessCard(false)}
+                            showNotification={showNotification}
+                            commitInfo={commitInfo}
+                        />
+                    )}
+                                <SwitchableFormsModal
+                show={showPHMCModal}
+                onHide={() => setShowPHMCModal(false)}
+                title={switchableModalTitle}
+                forms={switchableFormsList}
+                handleFormSelect={handleAgencySelect} // Pass the existing handler
+                isMobile={isMobile}
+            />
+
 <EmsAmaModal
     show={showEmsAmaModal}
     onHide={() => setShowEmsAmaModal(false)}
@@ -4365,14 +3985,14 @@ const handleCopyAndNotify = async () => {
                             Copy Title
                         </Button>
                     )}
-                       <Button
-                            type="button"
-                            className="changelog-button"
-                            onClick={handleCopyAndNotify}
-                        >
-                            <i className="fas fa-clipboard"></i>
-                            {getCopyButtonText()}
-</Button>                        
+<Button
+    type="button"
+    className="changelog-button" // Or your existing class
+    onClick={handleCopyAndNotifyWrapper} // Use the new wrapper
+>
+    <i className="fas fa-clipboard"></i>
+    {getCopyButtonText()}
+</Button>
                     </div>
 
 {bbCodeVersion === 1 && (
@@ -4428,7 +4048,7 @@ const handleCopyAndNotify = async () => {
         </a>
     </div>
 )}
-{bbCodeVersion !== 1 && bbCodeVersion !== 2  && bbCodeVersion !== 3 && bbCodeVersion !== 4 && bbCodeVersion !== 24 && bbCodeVersion !== 25 && bbCodeVersion !== 26 && (
+{selectedAgencyGroup === 'PHMC' && bbCodeVersion !== 1 && bbCodeVersion !== 2  && bbCodeVersion !== 3 && bbCodeVersion !== 4 && bbCodeVersion !== 24 && bbCodeVersion !== 25 && bbCodeVersion !== 26 && (
     <div className="image-container">
         <a href="https://phmc.gta.world/viewforum.php?f=97" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="Easter Bunny goes bounce bounce">
             <img

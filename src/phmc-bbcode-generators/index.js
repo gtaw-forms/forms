@@ -8,7 +8,6 @@ export { default as generatePhysEvalInternalMedPBC } from './generatePhysEvalInt
 export { default as generateMentalHealthPHMC } from './generateMentalHealthPHMC';
 export { default as generateMentalHealthPBC } from './generateMentalHealthPBC';
 export { default as generateConsultationNotesPHMC } from './generateConsultationNotesPHMC';
-export { default as generateAgencyFeedback } from './generateAgencyFeedback';
 export { default as generateEmergencyProtocol } from './generateEmergencyProtocol';
 export { default as generateCommentaryNotePHMC } from './generateCommentaryNotesPHMC'; // Corrected filename
 export { default as generateCommentaryNotePBC } from './generateCommentaryNotePBC';
@@ -18,3 +17,4 @@ export { default as generateEmailPHMCEmail } from './generateEmailPHMCEmail';
 export { default as generateConsultationNotesPBC } from './generateConsultationNotesPBC';
 export { default as generatePsychEvalPHMC } from './generatePsychEvalPHMC';
 export { default as generatePsychEvalPBC } from './generatePsychEvalPBC';
+export { default as generateAutopsy } from './generateAutopsy';

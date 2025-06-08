@@ -281,14 +281,14 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
                             className="phone-number-overlay"
                             ref={departmentRef}
                             style={{
-                                position: 'absolute', top: '53.03%', left: '11.06%', color: 'black',
+                                position: 'absolute', top: '53.03%', left: '12.06%', color: 'black',
                                 fontSize: '15px', cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap'
                             }}
                         >
                             {phoneNumber}
                         </div>
                     </div>
-                    <div className="business-card-input-fields">
+                    <div className="business-card-input-fields" style={{ marginTop: '1rem' }}>
                         <Form.Control type="text" placeholder="Name" value={name} onChange={handleNameChange} />
                         <Form.Control type="text" placeholder="Rank" value={rank} onChange={handleRankChange} />
                         <Form.Control type="text" placeholder="Phone Number" value={phoneNumber} onChange={handlePhoneNumberChange} />

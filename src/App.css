@@ -351,6 +351,7 @@ a {
 }
 
 .modal {
+    
     background-color: #0d1117;
     border-radius: 8px;
     padding: 20px;
@@ -758,7 +759,14 @@ input[type="checkbox"] {
     font-weight: normal;
     font-style: normal;
   }
-  
+  @font-face {
+  font-family: 'Poppins-Medium';
+  src: url('./assets/fonts/Poppins-Medium.ttf') format('truetype');
+  /* Add other formats if you have them */
+  font-weight: normal; /* Or 500 */
+  font-style: normal;
+}
+
   .business-card-modal .name-overlay,
   .business-card-modal .rank-overlay,
   .business-card-modal .department-overlay,

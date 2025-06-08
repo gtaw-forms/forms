@@ -1,15 +1,49 @@
+// src/saaa-form-generators/generateEntryJob.js
 
-const generateEmail = (formData) => {
+const generateEntryJob = (formData) => {
     const {
-        requestingOfficer,
-        department,
-        coronerEmployee,
-        coronerRank,
-        coronerDiscord,
-        coronerPHNumber,
-        deathReport,
-        additionalReports,
+        patientTitle = 'N/A',
+        patientFirstName = 'N/A',
+        patientLastName = 'N/A',
+        patientContactNumber = 'N/A',
+        patientDOB = 'N/A',
+        patientBirth = 'N/A',
+        healthImpairments = 'N/A',
+        healthStandingIssues = 'N/A',
+        eduHighSchoolName = 'N/A',
+        eduHighSchoolYear = 'N/A',
+        eduCollegeName = 'N/A',
+        eduCollegeYear = 'N/A',
+        eduCollegeDegree = 'N/A',
+        empGovExperience = 'N/A',
+        empPrev1Name = 'N/A',
+        empPrev1Period = 'N/A',
+        empPrev1Rank = 'N/A',
+        empPrev1Reason = 'N/A',
+        empPrev2Name = 'N/A',
+        empPrev2Period = 'N/A',
+        empPrev2Rank = 'N/A',
+        empPrev2Reason = 'N/A',
+        licCitizenship = 'N/A',
+        licPilotLicense = 'N/A',
+        oocUcpName = 'N/A',
+        oocDiscord = 'N/A',
+        oocForumName = 'N/A',
+        oocTimezone = 'N/A',
+        oocGtawPlaytime = 'N/A',
+        oocEnglishProficiency = 'N/A',
+        oocOtherFactionInfo = 'N/A',
+        oocFactionBans = 'N/A',
+        oocOtherCharacters = 'N/A',
+        adminRecordLink = 'LINK_NOT_PROVIDED',
+        inGameStatsLink = 'LINK_NOT_PROVIDED',
+        charBackground = 'N/A',
+        ackAuthorize = false,
     } = formData;
+
+    const acknowledgementText = ackAuthorize
+        ? `[X] By submitting this application, I, ${patientFirstName} ${patientLastName}, hereby certify that all questions contained in this document were met with truthful statements. I fully authorize the investigation of any content shared on this document. I am aware that lying, omitting, plagiarizing, or maliciously adulterating this application will result in immediate denial and an indefinite ban from applying for future job vacancies.`
+        : `[ ] By submitting this application, I, ${patientFirstName} ${patientLastName}, hereby certify that all questions contained in this document were met with truthful statements. I fully authorize the investigation of any content shared on this document. I am aware that lying, omitting, plagiarizing, or maliciously adulterating this application will result in immediate denial and an indefinite ban from applying for future job vacancies. (NOT ACKNOWLEDGED)`;
 
     let bbCode = `[divbox=transparent]
 [table]
@@ -34,124 +68,119 @@ SAN ANDREAS AVIATION ADMINISTRATION
 [divbox=#FFFFFF][b] [color=#107fc0]GENERAL INFORMATION[/color][/b][/divbox]
 
 [divbox=#FFFFFF]
-Title: patientTitle
-Firstname: patientFirstname
-Lastname: patientLastname
-Contact Number: patientContactNumber
-Date of Birth: patientDOB
-Place of Birth: patientBirth
+Title: ${patientTitle}
+Firstname: ${patientFirstName}
+Lastname: ${patientLastName}
+Contact Number: ${patientContactNumber}
+Date of Birth: ${patientDOB}
+Place of Birth: ${patientBirth}
 [/divbox]
 
 [divbox=#FFFFFF][b]2. [color=#107fc0]HEALTH INFORMATION[/color][/b][/divbox]
 
 [divbox=#FFFFFF]
 Do you have, or have you ever been diagnosed with any visual or hearing impairment(s), cardiovascular issue(s), color blindness or speech disorder(s)?
-Answer
+${healthImpairments}
 
 Do you have, or have you ever been diagnosed with any health issues that may impede your ability to stand for long periods of time?
-Answer
+${healthStandingIssues}
 [/divbox]
 
 [divbox=#FFFFFF][b]3. [color=#107fc0]EDUCATIONAL INFORMATION[/color][/b][/divbox]
 
 [divbox=#FFFFFF]
 High School - Name:
-Answer
+${eduHighSchoolName}
 
 High School - Year of Graduation:
-Answer
+${eduHighSchoolYear}
 
 College/University - Name:
-Answer
+${eduCollegeName}
 
 College/University - Year of Graduation:
-Answer
+${eduCollegeYear}
 
 College/University - Qualification/Degree:
-Answer
-
+${eduCollegeDegree}
 [/divbox]
 
 [divbox=#FFFFFF][b]4. [color=#107fc0]EMPLOYMENT INFORMATION[/color][/b][/divbox]
 
 [divbox=#FFFFFF]
 Have you ever worked for any Government Agency before?
-Answer
+${empGovExperience}
 
 Previous Employers: 
-Employer Name: Answer
-Period of Employment: DD/MM/YY - DD/MM/YY
-Rank or Position: Answer
-Reason for leaving: Answer
+Employer Name: ${empPrev1Name}
+Period of Employment: ${empPrev1Period}
+Rank or Position: ${empPrev1Rank}
+Reason for leaving: ${empPrev1Reason}
 
 Previous Employers: 
-Employer Name: Answer
-Period of Employment: DD/MM/YY - DD/MM/YY
-Rank or Position: Answer
-Reason for leaving: Answer
-
+Employer Name: ${empPrev2Name}
+Period of Employment: ${empPrev2Period}
+Rank or Position: ${empPrev2Rank}
+Reason for leaving: ${empPrev2Reason}
 [/divbox]
 
 [divbox=#FFFFFF][b]5. [color=#107fc0]LICENSES, PERMITS & CITIZENSHIP[/color][/b][/divbox]
 
 [divbox=#FFFFFF]
 Do you possess a valid United States of America citizenship?
-Answer
+${licCitizenship}
 
 Do you possess a valid Pilot License? (a pilot license is not required to apply, except for the position of Flight Instructor / Safety Investigator)
-Answer
-
+${licPilotLicense}
 [/divbox]
 
-[divbox=#FFFFFF][b]6. [color=#107fc0](( OUT OF CHARACTER ))[/color][/b][/divbox]
+[divbox=#FFFFFF][b]6. color=#107fc0)[/color][/b][/divbox]
 
 [divbox=#FFFFFF]
 UCP name:
-Answer
+${oocUcpName}
 
 Discord:
-Answer
+${oocDiscord}
 
 Forum name:
-Answer
+${oocForumName}
 
 Timezone:
-Answer
+${oocTimezone}
 
 How long have you been playing on GTA World?
-Answer
+${oocGtawPlaytime}
 
 Are you able to communicate effectively in English?
-Answer
+${oocEnglishProficiency}
 
 Are you currently a member of any other official faction on any of your characters? If yes, post a screenshot of the double faction permission in your answer below.
-
+${oocOtherFactionInfo}
 
 Are you currently banned from any faction? If yes, please elaborate.
-Answer
+${oocFactionBans}
 
 Please list all of your characters below, excluding the one you are applying with:
-Answer
+${oocOtherCharacters}
 
 Post a clear, unedited screenshot of your admin record:
-LINK
+${adminRecordLink}
 
 Post a clear, unedited screenshot of your ingame stats:
-LINK
-
+${inGameStatsLink}
 
 Write a brief background of your character:
-Answer
-
+${charBackground}
 [/divbox]
 
 [divbox=#FFFFFF][b]7. [color=#107fc0]ACKNOWLEDGEMENT & AUTHORIZATION[/color][/b][/divbox]
 
 [divbox=#FFFFFF]
-By submitting this application, I, Firstname, Lastname, hereby certify that all questions contained in this document were met with truthful statements. I fully authorize the investigation of any content shared on this document. I am aware that lying, omitting, plagiarizing, or maliciously adulterating this application will result in immediate denial and an indefinite ban from applying for future job vacancies.
+${acknowledgementText}
 [/divbox]`;
 
     return bbCode;
 };
 
-export default generateEmail;
+export default generateEntryJob;
