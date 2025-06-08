@@ -3433,15 +3433,27 @@ const handleCopyAndNotifyWrapper = async () => {
 
                     <div className="button-group">
 
-                     <Button
+                     {selectedAgencyGroup === 'PHMC' && (
+                        <Button
                             type="button"
-                            variant="phmc"
+                            variant="phmc" // You might want a dynamic variant too
                             className="changelog-button"
                             onClick={() => window.open('https://phmc.gta.world/', '_blank')}
                         >
                             <i className="fas fa-hospital"></i>
                             PHMC
                         </Button>
+                    )}
+                    {selectedAgencyGroup === 'SAAA' && (
+                        <Button
+                            type="button"
+                            variant="info" // Or an SAAA specific variant if you have one
+                            className="changelog-button"
+                            onClick={() => window.open('https://saaa.gta.world/', '_blank')}
+                        >
+                            SAAA
+                        </Button>
+                    )}
                                 <Button
                                     className="changelog-button"
                                     variant='secondary'
