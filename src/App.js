@@ -24,7 +24,7 @@ import SwitchableFormsModal from './components/SwitchableFormsModal';
 import MissingEmployeeModal from './components/MissingEmployeeModal';
 import SaaaEmployeeModal from './saaa-components/SaaaEmployeeModal'; 
 import FlightSchoolTipsModal from './saaa-components/FlightSchoolTipsModal';
-
+import saaaLogo from './assets/saaa-button.png'; // Import SAAA logo
 import {
     generateDeathReport,
     generateEmail,
@@ -4061,6 +4061,73 @@ const handleCopyAndNotifyWrapper = async () => {
         </a>
     </div>
 )}
+{bbCodeVersion === 30 && (
+    <div className="image-container">
+        <a href="https://saaa.gta.world/posting.php?mode=post&f=71" target="_blank" rel="noopener noreferrer">
+            <img
+                src={saaaLogo}
+                height={350}
+                width={350}
+                className="Center"
+                alt="Entry Recruitment Form"
+            />
+        </a>
+    </div>
+)}
+{bbCodeVersion === 31 && (
+    <div className="image-container">
+        <a href="https://saaa.gta.world/posting.php?mode=post&f=28" target="_blank" rel="noopener noreferrer">
+            <img
+                src={saaaLogo}
+                height={350}
+                width={350}
+                className="Center"
+                alt="Flight School Application Form"
+            />
+        </a>
+    </div>
+)}
+{bbCodeVersion === 32 && (
+    <div className="image-container">
+        <a href="https://saaa.gta.world/posting.php?mode=post&f=7" target="_blank" rel="noopener noreferrer">
+            <img
+                src={saaaLogo}
+                height={350}
+                width={350}
+                className="Center"
+                alt="Aircraft Registration Form"
+            />
+        </a>
+    </div>
+)}
+
+{bbCodeVersion === 33 && (
+    <div className="image-container">
+        <a href="https://saaa.gta.world/posting.php?mode=post&f=112" target="_blank" rel="noopener noreferrer">
+            <img
+                src={saaaLogo}
+                height={350}
+                width={350}
+                className="Center"
+                alt="Airline Companies Registration"
+            />
+        </a>
+    </div>
+)}
+{bbCodeVersion === 34 && (
+    <div className="image-container">
+        <a href="https://saaa.gta.world/posting.php?mode=post&f=216" target="_blank" rel="noopener noreferrer">
+            <img
+                src={saaaLogo}
+                height={350}
+                width={350}
+                className="Center"
+                alt="Heliport Registration Form"
+            />
+        </a>
+    </div>
+)}
+
                 </div>
                             </div>
                             <Footer />
