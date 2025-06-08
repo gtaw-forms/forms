@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Form, Button } from 'react-bootstrap';
 import domtoimage from 'dom-to-image';
 import * as Sentry from "@sentry/react";
-import SaaaBusinessCardImageWebP from '../assets/saaa-business-card.webp'; // Current image
-import SaaaBusinessCardImagePng from '../assets/saaa-business-card2.png'; // Alternative image
+// import SaaaBusinessCardImageWebP from '../assets/saaa-business-card.webp'; // Removed WebP
+import SaaaBusinessCardImagePng from '../assets/saaa-business-card2.png'; // Keep PNG
 
 const SaaaBusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
     const [name, setName] = useState('');
@@ -11,7 +11,7 @@ const SaaaBusinessCardModal = ({ show, onHide, showNotification, commitInfo }) =
     const [phoneNumber, setPhoneNumber] = useState('');
     const [imgurLink, setImgurLink] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
-    const [usePngImage, setUsePngImage] = useState(false); // State to toggle image
+    // const [usePngImage, setUsePngImage] = useState(false); // Removed state for image toggle
 
     const businessCardRef = useRef(null);
 
@@ -81,7 +81,6 @@ const SaaaBusinessCardModal = ({ show, onHide, showNotification, commitInfo }) =
 
     useEffect(() => {
         if (show) {
-            // Load from localStorage when the modal is shown
             setName(localStorage.getItem('saaaBusinessCardName') || '');
             setRank(localStorage.getItem('saaaBusinessCardRank') || '');
             setPhoneNumber(localStorage.getItem('saaaBusinessCardPhoneNumber') || '');
@@ -276,17 +275,14 @@ const SaaaBusinessCardModal = ({ show, onHide, showNotification, commitInfo }) =
         }
     }, [name, rank, phoneNumber, showNotification, uploadToImgur, sendDiscordWebhook, commitInfo]);
 
-    const toggleCardImage = () => {
-        setUsePngImage(prev => !prev);
-    };
+    // Removed toggleCardImage function
 
     if (!show) {
         return null;
     }
 
     const emailString = name ? `${name.toLowerCase().replace(/\s+/g, '.')}@saaa.gov.us` : '@saaa.gov.us';
-    const currentCardImage = usePngImage ? SaaaBusinessCardImagePng : SaaaBusinessCardImageWebP;
-
+    const currentCardImage = SaaaBusinessCardImagePng; // Always use PNG
 
     return (
         <div className="modal-overlay">
@@ -306,15 +302,7 @@ const SaaaBusinessCardModal = ({ show, onHide, showNotification, commitInfo }) =
                     <p style={{ fontFamily: 'Poppins-Medium, sans-serif' }}>
                         If you get any errors, please let me know on Discord.
                     </p>
-                    {/* Temporary Image Toggle Button */}
-                    <Button 
-                        variant="outline-secondary" 
-                        size="sm" 
-                        onClick={toggleCardImage} 
-                        style={{ marginBottom: '10px', display: 'block', marginLeft: 'auto', marginRight: 'auto' }}
-                    >
-                        Switch Card Image (Currently: {usePngImage ? 'PNG' : 'WebP'})
-                    </Button>
+                    {/* Removed Image Toggle Button */}
                     {imgurLink && (
                         <div className="imgur-link-container">
                             <p style={{ fontFamily: 'Poppins-Medium, sans-serif' }}>
@@ -328,7 +316,7 @@ const SaaaBusinessCardModal = ({ show, onHide, showNotification, commitInfo }) =
                     )}
                     <div className="business-card-image-container" ref={businessCardRef} style={{ position: 'relative', width: '100%', maxWidth: '800px' }}>
                         <img
-                            src={currentCardImage} // Use the state-controlled image
+                            src={currentCardImage} // Uses the PNG image
                             alt="SAAA Business Card"
                             style={{ display: 'block', width: '100%', height: 'auto' }}
                         />

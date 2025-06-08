@@ -9,13 +9,13 @@ const generateEmergencyProtocol = (formData) => {
         patientMedicine,
         patientProcedure,
         patientChiefComplaint,
-        // Destructure the imaging fields
         Imaging, // This is expected to be an array of selected imaging types
         XrayResults,
         ctResults,
         mriResults,
         ultrasoundResults,
         patientInjuryMechanism,
+        prescriptionImage
     } = formData;
 
     // --- Imaging Section Logic ---
@@ -38,6 +38,17 @@ const generateEmergencyProtocol = (formData) => {
 [td][center]Imaging Results: ${imagingResultsString}[/center][/tr][/table]`;
     }
     // --- End Imaging Section Logic ---
+    // --- Prescription Image Logic ---
+    let prescriptionImageBBCode = '';
+    if (prescriptionImage && prescriptionImage.trim() !== '') {
+        if (prescriptionImage.trim().toLowerCase().startsWith('http://') || prescriptionImage.trim().toLowerCase().startsWith('https://')) {
+            prescriptionImageBBCode = `[img]${prescriptionImage.trim()}[/img]`;
+        } else {
+            prescriptionImageBBCode = prescriptionImage.trim();
+        }
+    } else {
+        prescriptionImageBBCode = 'N/A';
+    }
 
     let bbCode = `[divbox=white][table][tr][td][center][br][/br][br][/br][b]EMERGENCY PROTOCOL[/b]
 
@@ -89,6 +100,7 @@ ${patientProcedure || 'N/A'}
 [br][/br]
 [u]Medication: [/u][br][/br]
 ${patientMedicine || 'N/A'}
+${prescriptionImageBBCode}
 [u]Follow-Up: [/u][br][/br]
 [cb${formData.followup === 'AsNeeded' ? 'c' : ''}] As needed
 [cb${formData.followup === 'Recommended' ? 'c' : ''}] Recommended
