@@ -26,7 +26,7 @@ const SaaaBusinessCardModal = ({ show, onHide, showNotification, commitInfo }) =
 
     const nameOverlayStyle = {
         position: 'absolute', top: '29%', left: '56%', color: 'white',
-        fontSize: '35PX',
+        fontSize: '35px', // Corrected PX to px
         fontWeight: 'bold',
         pointerEvents: 'none', cursor: 'default', whiteSpace: 'nowrap',
         fontFamily: 'Poppins-Medium, sans-serif',
@@ -221,7 +221,20 @@ const SaaaBusinessCardModal = ({ show, onHide, showNotification, commitInfo }) =
         showNotification('Uploading SAAA Card, Just a moment....', 'upload');
 
         try {
-            const dataUrl = await domtoimage.toPng(businessCardRef.current);
+            // Ensure custom fonts are loaded before capturing
+            await document.fonts.ready;
+
+            // Define the canonical dimensions of your business card image
+            // Replace these with the actual width and height of SaaaBusinessCardImagePng
+            const cardImageActualWidth = 2463; // Example: actual width of saaa-business-card2.png
+            const cardImageActualHeight = 1403; // Example: actual height of saaa-business-card2.png
+
+            const dataUrl = await domtoimage.toPng(businessCardRef.current, {
+                width: cardImageActualWidth,
+                height: cardImageActualHeight,
+                // You can also specify quality if needed, e.g., quality: 0.95
+            });
+
             const link = await uploadToImgur(dataUrl);
             setImgurLink(link);
             showNotification(`SAAA Business Card Saved & Uploaded to Imgur: ${link}`, 'save');
@@ -274,7 +287,6 @@ const SaaaBusinessCardModal = ({ show, onHide, showNotification, commitInfo }) =
             setIsSaving(false);
         }
     }, [name, rank, phoneNumber, showNotification, uploadToImgur, sendDiscordWebhook, commitInfo]);
-
     // Removed toggleCardImage function
 
     if (!show) {
