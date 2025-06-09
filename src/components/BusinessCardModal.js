@@ -167,16 +167,28 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
             // --- START OF CHANGES ---
             // Define the canonical dimensions of your business card image
             // !!! IMPORTANT: Replace these with the actual width and height of business-card.png !!!
-            const cardImageActualWidth = 2100;  // Example: actual width of business-card.png
-            const cardImageActualHeight = 1200; // Example: actual height of business-card.png
+            const cardImageActualWidth = 750;
+            const cardImageActualHeight = 440;
             // --- END OF CHANGES ---
 
             const dataUrl = await domtoimage.toPng(businessCardRef.current, {
-                // --- START OF CHANGES ---
                 width: cardImageActualWidth,
                 height: cardImageActualHeight,
-                // You can also specify quality if needed, e.g., quality: 0.95
-                // --- END OF CHANGES ---
+                style: { // Apply the same forceful styling as in SaaaBusinessCardModal
+                    width: `${cardImageActualWidth}px !important`,
+                    height: `${cardImageActualHeight}px !important`,
+                    minWidth: `${cardImageActualWidth}px !important`,
+                    minHeight: `${cardImageActualHeight}px !important`,
+                    maxWidth: 'none !important',
+                    maxHeight: 'none !important',
+                    transform: 'scale(1) !important',
+                    margin: '0 !important',
+                    padding: '0 !important',
+                    boxSizing: 'border-box !important',
+                    display: 'block !important',
+                                    quality: 0.95 // Optional
+
+                }
             });
 
             const link = await uploadToImgur(dataUrl);

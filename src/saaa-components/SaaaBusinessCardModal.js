@@ -221,18 +221,29 @@ const SaaaBusinessCardModal = ({ show, onHide, showNotification, commitInfo }) =
         showNotification('Uploading SAAA Card, Just a moment....', 'upload');
 
         try {
-            // Ensure custom fonts are loaded before capturing
             await document.fonts.ready;
 
-            // Define the canonical dimensions of your business card image
-            // Replace these with the actual width and height of SaaaBusinessCardImagePng
-            const cardImageActualWidth = 2463; // Example: actual width of saaa-business-card2.png
-            const cardImageActualHeight = 1403; // Example: actual height of saaa-business-card2.png
+            const cardImageActualWidth = 800;
+            const cardImageActualHeight = 455;
 
             const dataUrl = await domtoimage.toPng(businessCardRef.current, {
-                width: cardImageActualWidth,
-                height: cardImageActualHeight,
-                // You can also specify quality if needed, e.g., quality: 0.95
+                width: cardImageActualWidth,    // Output image canvas width
+                height: cardImageActualHeight,  // Output image canvas height
+                style: {
+                    // Force the cloned node to these dimensions for rendering
+                    width: `${cardImageActualWidth}px !important`,
+                    height: `${cardImageActualHeight}px !important`,
+                    minWidth: `${cardImageActualWidth}px !important`, // Ensure it's at least this size
+                    minHeight: `${cardImageActualHeight}px !important`,// Ensure it's at least this size
+                    maxWidth: 'none !important', // Override any max-width from component style
+                    maxHeight: 'none !important',// Override any max-height
+                    transform: 'scale(1) !important', // Reset any transforms
+                    margin: '0 !important',           // Reset margins
+                    padding: '0 !important',          // Reset paddings
+                    boxSizing: 'border-box !important', // Explicitly set box-sizing
+                    display: 'block !important',      // Ensure it's a block-level element that respects width/height
+                }
+                // quality: 0.95 // Optional: adjust quality
             });
 
             const link = await uploadToImgur(dataUrl);
@@ -287,7 +298,6 @@ const SaaaBusinessCardModal = ({ show, onHide, showNotification, commitInfo }) =
             setIsSaving(false);
         }
     }, [name, rank, phoneNumber, showNotification, uploadToImgur, sendDiscordWebhook, commitInfo]);
-    // Removed toggleCardImage function
 
     if (!show) {
         return null;
