@@ -1,0 +1,12 @@
+/* src/components/BusinessCardModal.css */
+@font-face {
+  font-family: 'LufgaMedium'; /* This is the name you'll use in JavaScript */
+  src: url('../assets/fonts/LufgaMedium.woff2') format('woff2'),
+       url('../assets/fonts/LufgaMedium.tff') format('truetype'); /* Adjust path and format as needed */
+  /* Add other formats if you have them for broader browser support */
+  /* e.g., url('../assets/fonts/LufgaMedium.woff') format('woff'),
+           url('../assets/fonts/LufgaMedium.ttf') format('truetype'); */
+  font-weight: normal; /* Or the appropriate weight for this font file */
+  font-style: normal;
+}
+

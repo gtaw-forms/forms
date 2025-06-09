@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Form, Button } from 'react-bootstrap';
-import domtoimage from 'dom-to-image';
+// import domtoimage from 'dom-to-image'; // No longer needed for image generation
 import * as Sentry from "@sentry/react";
 import BusinessCardImage from '../assets/business-card.png';
-// import './BusinessCardModal.css';
+// import './BusinessCardModal.css'; // Ensure this is imported if LufgaMedium font is defined here
 
 const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
     const [name, setName] = useState('');
@@ -12,11 +12,12 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
     const [imgurLink, setImgurLink] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
 
-    const businessCardRef = useRef(null);
+    // Refs for input fields or visual preview elements if needed, but not for image generation source
     const nameRef = useRef(null);
     const rankRef = useRef(null);
-    const departmentRef = useRef(null);
+    const departmentRef = useRef(null); // For phone number overlay
 
+    // Webhook queue logic (remains the same)
     const webhookQueue = useRef([]);
     const isWebhookProcessing = useRef(false);
     const lastWebhookCallTimestamp = useRef(0);
@@ -36,6 +37,7 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
     const handlePhoneNumberChange = (e) => setPhoneNumber(e.target.value);
 
     const uploadToImgur = useCallback(async (base64Image) => {
+        // This function remains the same
         const imgurClientId = process.env.REACT_APP_IMGUR_CLIENT_ID;
         const accessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
         const albumId = process.env.REACT_APP_IMGUR_ALBUM_ID;
@@ -63,15 +65,18 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
                 return data.data.link;
             } else {
                 console.error('Imgur upload failed:', data);
-                throw new Error(`Imgur upload failed: ${data.data.error}`);
+                Sentry.captureMessage("Imgur API Error (Business Card)", { extra: data, level: "error" });
+                throw new Error(`Imgur upload failed: ${data.data?.error || 'Unknown error'}`);
             }
         } catch (error) {
             console.error('Imgur upload failed:', error);
+            Sentry.captureException(error, { extra: { context: 'Imgur Upload Function (Business Card)' } });
             throw error;
         }
     }, []);
 
     const processWebhookQueue = useCallback(async () => {
+        // This function remains the same
         if (webhookQueue.current.length === 0 || isWebhookProcessing.current) {
             return;
         }
@@ -81,7 +86,6 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
 
         if (timeSinceLastCall < webhookRateLimitDelay) {
             const delay = webhookRateLimitDelay - timeSinceLastCall;
-            console.log(`Rate limiting Discord webhook. Delaying for ${delay}ms.`);
             setTimeout(() => {
                 isWebhookProcessing.current = false;
                 processWebhookQueue();
@@ -98,12 +102,18 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
                 body: JSON.stringify(message)
             });
             if (!response.ok) {
-                console.error('Failed to send Discord webhook:', response.status, response.statusText);
+                const errorData = await response.text();
+                console.error('Failed to send Discord webhook (Business Card):', response.status, response.statusText, errorData);
+                Sentry.captureMessage("Discord Webhook Send Failure (Business Card)", {
+                    extra: { status: response.status, statusText: response.statusText, responseBody: errorData },
+                    level: "error"
+                });
             } else {
                 lastWebhookCallTimestamp.current = Date.now();
             }
         } catch (error) {
-            console.error('Error sending Discord webhook:', error);
+            console.error('Error sending Discord webhook (Business Card):', error);
+            Sentry.captureException(error, { extra: { context: 'Discord Webhook Send Function (Business Card)' } });
         } finally {
             isWebhookProcessing.current = false;
             if (webhookQueue.current.length > 0) {
@@ -112,25 +122,41 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
         }
     }, []);
 
-    const sendDiscordWebhook = useCallback(async (cardName, cardRank, cardPhoneNumber, generatedImgurLink, errorMessage = null) => {
+    const sendDiscordWebhook = useCallback(async (cardName, cardRank, cardPhoneNumber, generatedImgurLink, debugDetails, errorMessage = null) => {
         const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
         if (!webhookURL) {
             console.warn('Discord webhook URL is not set in environment variables.');
+            Sentry.captureMessage("Discord Webhook URL not set (Business Card)", { level: "warning" });
             return;
         }
+
+        const {
+            screenResolution = 'N/A',
+            windowSize = 'N/A',
+            userAgent = 'N/A',
+            devicePixelRatio = 'N/A',
+            canvasWidth = 0,
+            canvasHeight = 0
+        } = debugDetails || {};
 
         const embed = {
             title: "Business Card Creation Alert!",
             description: "A new business card was generated.",
-            color: errorMessage ? 0xFF0000 : 0x00FF00,
+            color: errorMessage ? 0xFF0000 : 0x00FF00, // Red for error, Green for success
             fields: [
                 { name: "Employee Name", value: cardName || "N/A", inline: true },
                 { name: "Employee Rank", value: cardRank || "N/A", inline: true },
                 { name: "Phone Number", value: cardPhoneNumber || "N/A", inline: true },
-                errorMessage ? { name: "Error", value: errorMessage, inline: false } : null
+                // Debug Information
+                { name: "Screen Resolution", value: screenResolution, inline: true },
+                { name: "Window Size", value: windowSize, inline: true },
+                { name: "Device Pixel Ratio", value: devicePixelRatio.toString(), inline: true },
+                { name: "Canvas Gen. Size", value: `${canvasWidth}x${canvasHeight}`, inline: true },
+                { name: "User Agent", value: `\`\`\`${userAgent.substring(0, 950)}\`\`\``, inline: false },
+                errorMessage ? { name: "Error", value: `\`\`\`${errorMessage.substring(0, 1000)}\`\`\``, inline: false } : null
             ].filter(field => field !== null),
             footer: {
-                text: `PHMC Forms Tool | gh-pages ${commitInfo.sha || 'N/A'}`
+                text: `PHMC Forms Tool | gh-pages ${commitInfo?.sha?.substring(0, 7) || 'N/A'}`
             },
             timestamp: new Date().toISOString()
         };
@@ -150,51 +176,103 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
         }
     }, [commitInfo, processWebhookQueue]);
 
+    // Define these styles once, as they are used for both preview and canvas drawing
+    const nameOverlayStyle = {
+        position: 'absolute', top: '23.44%', left: '2.75%', color: 'black',
+        fontSize: '35px', pointerEvents: 'none', cursor: 'default', whiteSpace: 'nowrap',
+        fontFamily: 'LufgaMedium, Arial, sans-serif' // Use the font name defined in @font-face
+    };
+
+    const rankOverlayStyle = {
+        position: 'absolute', top: '31.92%', left: '3.31%', color: '#cb1212',
+        fontSize: '15px', cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap',
+        fontFamily: 'LufgaMedium, Arial, sans-serif' // Use the font name
+    };
+
+    const phoneNumberOverlayStyle = {
+        position: 'absolute', top: '53.03%', left: '12.06%', color: 'black',
+        fontSize: '15px', cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap',
+        fontFamily: 'LufgaMedium, Arial, sans-serif' // Use the font name
+    };
+
+
     const handleSave = useCallback(async () => {
         setIsSaving(true);
-        showNotification('Uploading, Just a moment....', 'upload');
+        showNotification('Processing Business Card...', 'upload');
 
         localStorage.setItem('name', name);
         localStorage.setItem('rank', rank);
         localStorage.setItem('phoneNumber', phoneNumber);
 
-        try {
-            // Ensure custom fonts are loaded before capturing (if any are used by overlays)
-            // If your overlays use standard system fonts, this line might not be strictly necessary
-            // but it's good practice if there's any chance of custom fonts being involved.
-            await document.fonts.ready;
+        const cardImageActualWidth = 750;
+        const cardImageActualHeight = 440;
 
-            // --- START OF CHANGES ---
-            // Define the canonical dimensions of your business card image
-            // !!! IMPORTANT: Replace these with the actual width and height of business-card.png !!!
-            const cardImageActualWidth = 750;
-            const cardImageActualHeight = 440;
-            // --- END OF CHANGES ---
+        const captureDebugDetails = () => ({
+            screenResolution: `${window.screen.width}x${window.screen.height}`,
+            windowSize: `${window.innerWidth}x${window.innerHeight}`,
+            userAgent: navigator.userAgent,
+            devicePixelRatio: window.devicePixelRatio || 1,
+            canvasWidth: cardImageActualWidth,
+            canvasHeight: cardImageActualHeight
+        });
 
-            const dataUrl = await domtoimage.toPng(businessCardRef.current, {
-                width: cardImageActualWidth,
-                height: cardImageActualHeight,
-                style: { // Apply the same forceful styling as in SaaaBusinessCardModal
-                    width: `${cardImageActualWidth}px !important`,
-                    height: `${cardImageActualHeight}px !important`,
-                    minWidth: `${cardImageActualWidth}px !important`,
-                    minHeight: `${cardImageActualHeight}px !important`,
-                    maxWidth: 'none !important',
-                    maxHeight: 'none !important',
-                    transform: 'scale(1) !important',
-                    margin: '0 !important',
-                    padding: '0 !important',
-                    boxSizing: 'border-box !important',
-                    display: 'block !important',
-                                    quality: 0.95 // Optional
+        const canvas = document.createElement('canvas');
+        canvas.width = cardImageActualWidth;
+        canvas.height = cardImageActualHeight;
+        const ctx = canvas.getContext('2d');
 
-                }
+        const loadImage = (src) => {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = "anonymous";
+                img.onload = () => resolve(img);
+                img.onerror = (err) => {
+                    console.error("Failed to load base image for canvas:", err);
+                    reject(new Error("Failed to load base image."));
+                };
+                img.src = src;
             });
+        };
 
+        try {
+            const baseImage = await loadImage(BusinessCardImage);
+            if (document.fonts && typeof document.fonts.ready === 'function') {
+                await document.fonts.ready;
+            }
+
+            ctx.drawImage(baseImage, 0, 0, cardImageActualWidth, cardImageActualHeight);
+            ctx.textBaseline = 'top';
+
+            const nameX = cardImageActualWidth * (parseFloat(nameOverlayStyle.left) / 100);
+            const nameY = cardImageActualHeight * (parseFloat(nameOverlayStyle.top) / 100);
+            const nameFontSize = parseInt(nameOverlayStyle.fontSize);
+            ctx.fillStyle = nameOverlayStyle.color;
+            ctx.font = `${nameFontSize}px ${nameOverlayStyle.fontFamily || 'sans-serif'}`;
+            ctx.fillText(name, nameX, nameY);
+
+            const rankX = cardImageActualWidth * (parseFloat(rankOverlayStyle.left) / 100);
+            const rankY = cardImageActualHeight * (parseFloat(rankOverlayStyle.top) / 100);
+            const rankFontSize = parseInt(rankOverlayStyle.fontSize);
+            ctx.fillStyle = rankOverlayStyle.color;
+            ctx.font = `${rankFontSize}px ${rankOverlayStyle.fontFamily || 'sans-serif'}`;
+            ctx.fillText(rank, rankX, rankY);
+
+            const phoneX = cardImageActualWidth * (parseFloat(phoneNumberOverlayStyle.left) / 100);
+            const phoneY = cardImageActualHeight * (parseFloat(phoneNumberOverlayStyle.top) / 100);
+            const phoneFontSize = parseInt(phoneNumberOverlayStyle.fontSize);
+            ctx.fillStyle = phoneNumberOverlayStyle.color;
+            ctx.font = `${phoneFontSize}px ${phoneNumberOverlayStyle.fontFamily || 'sans-serif'}`;
+            ctx.fillText(phoneNumber, phoneX, phoneY);
+
+            const dataUrl = canvas.toDataURL('image/png');
+            
+            showNotification('Uploading to Imgur...', 'upload');
             const link = await uploadToImgur(dataUrl);
             setImgurLink(link);
-            showNotification(`Business Card Saved & Uploaded to Imgur: ${link}`, 'save');
-            sendDiscordWebhook(name, rank, phoneNumber, link);
+            showNotification(`Business Card Saved & Uploaded: ${link}`, 'save');
+            
+            const debugInfo = captureDebugDetails();
+            sendDiscordWebhook(name, rank, phoneNumber, link, debugInfo);
 
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(link)
@@ -205,72 +283,46 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
                         console.error('Failed to copy Imgur link to clipboard:', err);
                         Sentry.captureException(err, {
                             extra: {
-                                message: 'Clipboard writeText failed.',
+                                message: 'Clipboard writeText failed (Business Card).',
                                 imgurLink: link,
                                 userAgent: navigator.userAgent,
                             }
                         });
                         let userMessage = 'Failed to copy Imgur link automatically.';
-                        if (err.name === 'NotAllowedError') {
-                            userMessage += ' Please grant clipboard permission.';
-                        } else if (err.message.includes('focused')) {
-                            userMessage += ' Please ensure this window is focused and try copying manually.';
-                        } else {
-                            userMessage += ' Please copy the link manually.';
-                        }
+                        if (err.name === 'NotAllowedError') userMessage += ' Please grant clipboard permission.';
+                        else if (err.message.includes('focused')) userMessage += ' Please ensure this window is focused.';
+                        else userMessage += ' Please copy the link manually.';
                         showNotification(userMessage, 'error');
                     });
             } else {
-                const clipboardWarning = 'Clipboard API not available in this browser/context.';
+                const clipboardWarning = 'Clipboard API not available for Business Card.';
                 console.warn(clipboardWarning);
-                Sentry.captureMessage(clipboardWarning, 'warning');
+                Sentry.captureMessage(clipboardWarning, { level: 'warning' });
                 showNotification('Clipboard API not available. Please copy the link manually.', 'warning');
             }
         } catch (error) {
-            console.error('Error in handleSave:', error);
+            console.error('Error in Business Card handleSave:', error);
             let errorContext = 'Error generating business card';
             let detailedMessage = error.message || String(error);
 
-            if (detailedMessage.includes('Imgur upload failed')) {
-                errorContext = 'Imgur Upload Failed';
-            } else if (error.name === 'Error' && businessCardRef.current && !domtoimage.toPng) {
-                 errorContext = 'Image Conversion Failed';
-            }
-            showNotification(errorContext, 'error');
-            Sentry.captureException(error, { extra: { context: 'Business Card Save', name, rank } });
-            sendDiscordWebhook(name, rank, phoneNumber, null, `${errorContext}: ${detailedMessage}`);
+            if (detailedMessage.includes('Imgur upload failed')) errorContext = 'Imgur Upload Failed';
+            else if (detailedMessage.includes('Failed to load base image')) errorContext = 'Base Image Load Failed';
+            else errorContext = 'Image Generation Failed';
+            
+            showNotification(`${errorContext}: ${detailedMessage.substring(0,100)}...`, 'error');
+            Sentry.captureException(error, { extra: { context: 'Business Card Save', name, rank, detailedMessage } });
+            
+            const debugInfoForError = captureDebugDetails();
+            sendDiscordWebhook(name, rank, phoneNumber, null, debugInfoForError, `${errorContext}: ${detailedMessage}`);
         } finally {
             setIsSaving(false);
         }
-    }, [name, rank, phoneNumber, showNotification, uploadToImgur, sendDiscordWebhook, commitInfo]);
+    }, [name, rank, phoneNumber, showNotification, uploadToImgur, sendDiscordWebhook, commitInfo, nameOverlayStyle, rankOverlayStyle, phoneNumberOverlayStyle]);
 
 
     if (!show) {
         return null;
     }
-
-    // Ensure font styles use 'px' (they already do in your provided code, but good to double-check)
-    const nameOverlayStyle = {
-        position: 'absolute', top: '23.44%', left: '2.75%', color: 'black',
-        fontSize: '35px', // Correct: uses px
-        pointerEvents: 'none', cursor: 'default', whiteSpace: 'nowrap'
-        // fontFamily: 'YourCustomFont, sans-serif', // If you use a custom font, ensure it's loaded
-    };
-
-    const rankOverlayStyle = {
-        position: 'absolute', top: '31.92%', left: '3.31%', color: '#cb1212',
-        fontSize: '15px', // Correct: uses px
-        cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap'
-        // fontFamily: 'YourCustomFont, sans-serif',
-    };
-
-    const phoneNumberOverlayStyle = {
-        position: 'absolute', top: '53.03%', left: '12.06%', color: 'black',
-        fontSize: '15px', // Correct: uses px
-        cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap'
-        // fontFamily: 'YourCustomFont, sans-serif',
-    };
-
 
     return (
         <div className="modal-overlay">
@@ -287,7 +339,6 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
                     </Button>
                 </div>
                 <div className="business-card-content">
-                    If you get any errors, please let me know on Discord.
                     {imgurLink && (
                         <div className="imgur-link-container">
                             <p>
@@ -303,42 +354,50 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
                             2) /note [id of the new note item in your inventory] [amount] [content] [URL from Imgur]
                         </div>
                     )}
-                    <div className="business-card-image-container" ref={businessCardRef} style={{ position: 'relative', width: '100%', maxWidth: '800px' }}>
+                    <div 
+                        className="business-card-image-container" 
+                        style={{ 
+                            position: 'relative', 
+                            width: '100%', 
+                            maxWidth: '800px',
+                            margin: '0 auto 1rem auto'
+                        }}
+                    >
                         <img
                             src={BusinessCardImage}
-                            alt="Business Card"
-                            style={{ display: 'block', width: '100%', height: 'auto' }}
+                            alt="Business Card Preview"
+                            style={{ display: 'block', width: '100%', height: 'auto', border: '1px solid #ccc' }}
                         />
                         <div
                             className="name-overlay"
                             ref={nameRef}
-                            style={nameOverlayStyle} // Using the style object
+                            style={nameOverlayStyle}
                         >
                             {name}
                         </div>
                         <div
                             className="rank-overlay"
                             ref={rankRef}
-                            style={rankOverlayStyle} // Using the style object
+                            style={rankOverlayStyle}
                         >
                             {rank}
                         </div>
                         <div
                             className="phone-number-overlay"
                             ref={departmentRef}
-                            style={phoneNumberOverlayStyle} // Using the style object
+                            style={phoneNumberOverlayStyle}
                         >
                             {phoneNumber}
                         </div>
                     </div>
                     <div className="business-card-input-fields" style={{ marginTop: '1rem' }}>
-                        <Form.Control type="text" placeholder="Name" value={name} onChange={handleNameChange} />
-                        <Form.Control type="text" placeholder="Rank" value={rank} onChange={handleRankChange} />
-                        <Form.Control type="text" placeholder="Phone Number" value={phoneNumber} onChange={handlePhoneNumberChange} />
+                        <Form.Control className="mb-2" type="text" placeholder="Name" value={name} onChange={handleNameChange} />
+                        <Form.Control className="mb-2" type="text" placeholder="Rank" value={rank} onChange={handleRankChange} />
+                        <Form.Control className="mb-2" type="text" placeholder="Phone Number" value={phoneNumber} onChange={handlePhoneNumberChange} />
                     </div>
                 </div>
-                <Button onClick={handleSave} disabled={isSaving}>
-                    {isSaving ? 'Saving...' : 'Save'}
+                <Button className="mt-3 w-100" onClick={handleSave} disabled={isSaving}>
+                    {isSaving ? 'Saving...' : 'Save & Upload Business Card'}
                 </Button>
             </div>
         </div>
