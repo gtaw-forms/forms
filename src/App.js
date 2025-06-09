@@ -2764,6 +2764,19 @@ const toggleAgencySelector = () => {
 
     const currentFormDefinition = getFormDefinition(bbCodeVersion);
     const FieldComponent = currentFormDefinition ? currentFormDefinition.FieldComponent : null;
+    if (selectedAgencyGroup && !FieldComponent && !isLoadingData) {
+        const warningMessage = `No FieldComponent found for bbCodeVersion: ${bbCodeVersion} in group: ${selectedAgencyGroup}.`;
+        console.warn(`[App.js] ${warningMessage}`, currentFormDefinition);
+        Sentry.captureMessage(warningMessage, {
+            level: 'warning',
+            extra: {
+                bbCodeVersion: bbCodeVersion,
+                selectedAgencyGroup: selectedAgencyGroup,
+                currentFormDefinition: currentFormDefinition || 'Not found', // Ensure currentFormDefinition is not undefined for Sentry
+                isLoadingData: isLoadingData
+            }
+        });
+    }
 
         const [showBBCode, setShowBBCode] = useState(false);
 
@@ -3776,6 +3789,8 @@ const handleCopyAndNotifyWrapper = async () => {
                                         ctResults={selectOptions.ctResults || []}
                                         mriResults={selectOptions.mriResults || []}
                                         ultrasoundResults={selectOptions.ultrasoundResults || []}
+                                        patientBloodType={selectOptions.patientBloodType || []} 
+
 
                                     />
                                 ) : (

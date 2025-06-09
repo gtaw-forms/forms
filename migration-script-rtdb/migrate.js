@@ -13,9 +13,6 @@ admin.initializeApp({
 const db = admin.database();
 
 // Define or import all your selectOption arrays here
-// (Including Imaging, XrayResults, ctResults, mriResults, ultrasoundResults,
-// and all others like PurposeMedicalInformationRelease, patientBloodType, etc.)
-
 const PurposeMedicalInformationRelease = [
     { value: 'Further Treatment', label: 'Further Treatment / Continued Care' },
     { value: 'Personal', label: 'Personal Use' },
@@ -329,7 +326,7 @@ const requestingAgenciesOptions = [
     { value: 'Protech', label: 'Protech Security Solutions' }
 ];
 const Imaging = [
-        { value: 'NoneRequired', label: 'None Required' },
+    { value: 'NoneRequired', label: 'None Required' }, // Corrected value
     { value: 'XRay', label: 'X-Ray' },
     { value: 'CTScan', label: 'CT Scan' },
     { value: 'MRI', label: 'MRI' },
@@ -337,6 +334,7 @@ const Imaging = [
     { value: 'Other', label: 'Other' },
 ];
 const XrayResults = [
+    { value: 'NothingFound' , label: 'Nothing Found' },
     { value: 'Dislocation', label: 'Dislocation' },
     { value: 'Hairline Fracture' , label: 'Hairline Fracture' },
     { value: 'Displaced Fracture', label: 'Displaced Fracture' },
@@ -347,6 +345,7 @@ const XrayResults = [
     { value: 'Hemothorax', label: 'Hemothorax - Blood in Pleural Cavity' },
 ];
 const ctResults  = [
+    { value: 'NothingFound' , label: 'Nothing Found' },
     { value: 'Aortic Dissection', label: 'Aortic Dissection' },
     { value: 'Intracranial Hemorrhage', label: 'Intracranial Hemorrhage' },
     { value: 'Midline Shift' , label: 'Midline Shift' },
@@ -356,6 +355,7 @@ const ctResults  = [
     { value: 'Tumor', label: 'Tumor' },
 ];
 const mriResults = [
+    { value: 'NothingFound' , label: 'Nothing Found' },
     { value: 'Cancerous Mass', label: 'Cancerous Mass' },
     { value: 'Degenerative Disc Disease', label: 'Degenerative Disc Disease' },
     { value: 'Herniated Disc', label: 'Herniated Disc' },
@@ -365,6 +365,7 @@ const mriResults = [
     { value: 'Stroke', label: 'Stroke' },
 ];
 const ultrasoundResults = [
+   { value: 'NothingFound' , label: 'Nothing Found' },
     { value: 'Cyst', label: 'Cyst' },
     { value: 'Ectopic Pregnancy', label: 'Ectopic Pregnancy' },
     { value: 'Free Fluid Accumulation', label: 'Free Fluid Accumulation' },
@@ -376,7 +377,6 @@ const ultrasoundResults = [
 ];
 
 const selectOptionsData = {
-    // Include ALL existing selectOptions you want to keep
     PurposeMedicalInformationRelease,
     PurposeMedicalInformationReleaseFormat,
     patientBloodType,
@@ -433,8 +433,6 @@ const selectOptionsData = {
     typeOfDeathOptions,
     mannerOfDeathOptions,
     requestingAgenciesOptions,
-
-    // Add the new imaging options
     Imaging,
     XrayResults,
     ctResults,
@@ -444,18 +442,75 @@ const selectOptionsData = {
 
 async function migrateToRealtimeDB() {
   console.log('Starting Realtime Database migration for selectOptions...');
-
-  const rootRef = db.ref();
+  const selectOptionsRef = db.ref('selectOptions');
+  let migrationSuccessful = false; // Flag to track success
 
   try {
-    // This will overwrite the entire selectOptions node with the content of selectOptionsData
-    await rootRef.child('selectOptions').set(selectOptionsData);
-    console.log('selectOptions migrated successfully!');
+    const snapshot = await selectOptionsRef.once('value');
+    const firebaseData = snapshot.val() || {}; // Existing data from Firebase, or empty object
 
-    // The 'agencies' and 'staff' nodes will not be touched by this operation.
+    console.log('--- Comparing local script data with Firebase data ---');
+    const changes = {
+      newKeys: [],
+      changedKeys: [],
+    };
+
+    // Check for new or changed keys
+    for (const key in selectOptionsData) {
+      if (Object.hasOwnProperty.call(selectOptionsData, key)) {
+        if (!firebaseData.hasOwnProperty(key)) {
+          changes.newKeys.push(key);
+        } else if (JSON.stringify(selectOptionsData[key]) !== JSON.stringify(firebaseData[key])) {
+          changes.changedKeys.push(key);
+        }
+      }
+    }
+
+    if (changes.newKeys.length === 0 && changes.changedKeys.length === 0) {
+      console.log('No new additions or changes detected between local script and Firebase.');
+    } else {
+      if (changes.newKeys.length > 0) {
+        console.log('\nNEW ADDITIONS to be written to Firebase:');
+        changes.newKeys.forEach(key => {
+          console.log(`  - ${key}`);
+          // console.log(JSON.stringify(selectOptionsData[key], null, 2)); // Uncomment for full data
+        });
+      }
+      if (changes.changedKeys.length > 0) {
+        console.log('\nCHANGES to be written to Firebase (key content will be updated):');
+        changes.changedKeys.forEach(key => {
+          console.log(`  - ${key} (content differs)`);
+          // Optionally log old and new values for changed keys if needed for more detail
+          // console.log(`    Old in Firebase:`, JSON.stringify(firebaseData[key], null, 2));
+          // console.log(`    New in Script:`, JSON.stringify(selectOptionsData[key], null, 2));
+        });
+      }
+    }
+    console.log('--- End of comparison ---');
+
+    // Proceed with writing data
+    console.log('\nAttempting to write/overwrite /selectOptions in Firebase...');
+    await selectOptionsRef.set(selectOptionsData);
+    console.log('selectOptions migrated successfully!');
+    migrationSuccessful = true; // Set flag to true on success
 
   } catch (error) {
     console.error('Migration FAILED:', error);
+    migrationSuccessful = false; // Ensure flag is false on error
+  } finally {
+    admin.app().delete()
+      .then(() => {
+        console.log("Firebase app resources released.");
+        if (migrationSuccessful) {
+          process.exit(0); // Exit with success code
+        } else {
+          process.exit(1); // Exit with error code
+        }
+      })
+      .catch(err => {
+        console.error("Error closing Firebase app:", err);
+        process.exit(1); // Exit with error code if closing app fails
+      });
   }
 }
 
