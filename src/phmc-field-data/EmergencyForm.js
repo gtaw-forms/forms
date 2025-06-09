@@ -114,10 +114,11 @@ const EmergencyForm = ({
         CTScan: { options: ctResults || [], formDataKey: 'ctResults', label: 'CT Scan Results' },
         MRI: { options: mriResults || [], formDataKey: 'mriResults', label: 'MRI Results' },
         Ultrasound: { options: ultrasoundResults || [], formDataKey: 'ultrasoundResults', label: 'Ultrasound Results' },
+        // Add 'Other' here if it has specific results, otherwise it's handled by general logic
     }), [XrayResults, ctResults, mriResults, ultrasoundResults]);
 
     const groupedImagingResultsOptions = useMemo(() => {
-        if (!formData.Imaging || formData.Imaging.length === 0) {
+        if (!formData.Imaging || formData.Imaging.length === 0 || formData.Imaging.includes('NoneRequired')) {
             return [];
         }
         return formData.Imaging.reduce((acc, imagingType) => {
@@ -134,7 +135,7 @@ const EmergencyForm = ({
 
     const selectedImagingResultsValue = useMemo(() => {
         let selectedValues = [];
-        if (formData.Imaging) {
+        if (formData.Imaging && !formData.Imaging.includes('NoneRequired')) {
             formData.Imaging.forEach(imagingType => {
                 const mapping = imagingOptionsMapping[imagingType];
                 if (mapping && formData[mapping.formDataKey]) {
@@ -346,31 +347,47 @@ const EmergencyForm = ({
                     formData.Imaging?.includes(option.value)
                 )}
                 onChange={(selectedOptions) => {
-                    const newImagingSelection = selectedOptions ? selectedOptions.map(option => option.value) : [];
-                    const oldImagingSelection = formData.Imaging || [];
-                    const updatedFormData = { Imaging: newImagingSelection };
+                    const newImagingSelectionValues = selectedOptions ? selectedOptions.map(option => option.value) : [];
+                    let updatedFormDataSlice = { Imaging: [] }; // Initialize with Imaging key
 
-                    // Clear results for imaging types that were deselected
-                    oldImagingSelection.forEach(type => {
-                        if (!newImagingSelection.includes(type)) {
-                            const mapping = imagingOptionsMapping[type];
-                            if (mapping) {
-                                updatedFormData[mapping.formDataKey] = [];
+                    if (newImagingSelectionValues.includes('NoneRequired')) {
+                        // If "None Required" is selected, it's the only one that should be active.
+                        updatedFormDataSlice.Imaging = ['NoneRequired'];
+                        // Clear all specific imaging results
+                        Object.values(imagingOptionsMapping).forEach(mapping => {
+                            updatedFormDataSlice[mapping.formDataKey] = [];
+                        });
+                    } else {
+                        // If other options are selected, "None Required" should not be.
+                        updatedFormDataSlice.Imaging = newImagingSelectionValues.filter(val => val !== 'NoneRequired');
+
+                        // Clear results for imaging types that were previously selected but are now deselected
+                        const oldImagingSelectionValues = formData.Imaging || [];
+                        oldImagingSelectionValues.forEach(type => {
+                            if (type !== 'NoneRequired' && !updatedFormDataSlice.Imaging.includes(type)) {
+                                const mapping = imagingOptionsMapping[type];
+                                if (mapping) {
+                                    // Ensure we only clear if it's not already being cleared by "NoneRequired" logic
+                                    // (though this specific check might be redundant given the structure)
+                                    if (!updatedFormDataSlice.hasOwnProperty(mapping.formDataKey)) {
+                                         updatedFormDataSlice[mapping.formDataKey] = [];
+                                    }
+                                }
                             }
-                        }
-                    });
-                    setFormData(prev => ({ ...prev, ...updatedFormData }));
+                        });
+                    }
+                    setFormData(prev => ({ ...prev, ...updatedFormDataSlice }));
                 }}
                 options={Imaging || []}
-                className={`form-control p-0 ${!formData.Imaging || formData.Imaging.length === 0 ? 'is-invalid' : ''}`}
+                className={`form-control p-0 ${(!formData.Imaging || formData.Imaging.length === 0) && !(formData.Imaging?.includes('NoneRequired')) ? 'is-invalid' : ''}`}
                 classNamePrefix="react-select"
                 placeholder="Select Imaging Type(s)... (Multi-select)"
                 styles={customSelectStyles}
             />
             <Form.Label></Form.Label>
 
-            {/* Single Merged Imaging Results Select */}
-            {formData.Imaging && formData.Imaging.length > 0 && (
+            {/* Single Merged Imaging Results Select - Conditionally Rendered */}
+            {formData.Imaging && formData.Imaging.length > 0 && !formData.Imaging.includes('NoneRequired') && (
                 <>
                     <Form.Label>Imaging Results</Form.Label>
                     <Select
@@ -383,8 +400,7 @@ const EmergencyForm = ({
                         classNamePrefix="react-select"
                         placeholder="Select Imaging Result(s)..."
                         styles={customSelectStyles}
-                        // You might want to add validation styling here based on whether any results are selected
-                        // For example, if formData.Imaging is not empty but all result arrays are empty.
+                        // isDisabled={formData.Imaging?.includes('NoneRequired')} // Alternative to conditional rendering
                     />
                 </>
             )}

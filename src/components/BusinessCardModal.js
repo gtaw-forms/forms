@@ -2,8 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Form, Button } from 'react-bootstrap';
 import domtoimage from 'dom-to-image';
 import * as Sentry from "@sentry/react";
-import BusinessCardImage from '../assets/business-card.png'; // Assuming assets folder is one level up from components
-// If you have specific CSS for this modal, import it here:
+import BusinessCardImage from '../assets/business-card.png';
 // import './BusinessCardModal.css';
 
 const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
@@ -16,20 +15,19 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
     const businessCardRef = useRef(null);
     const nameRef = useRef(null);
     const rankRef = useRef(null);
-    const departmentRef = useRef(null); // Used for phone number overlay
+    const departmentRef = useRef(null);
 
-    // Webhook queue and rate limiting
     const webhookQueue = useRef([]);
     const isWebhookProcessing = useRef(false);
     const lastWebhookCallTimestamp = useRef(0);
-    const webhookRateLimitDelay = 1100; // 1.1 seconds
+    const webhookRateLimitDelay = 1100;
 
     useEffect(() => {
         if (show) {
             setName(localStorage.getItem('name') || '');
             setRank(localStorage.getItem('rank') || '');
             setPhoneNumber(localStorage.getItem('phoneNumber') || '');
-            setImgurLink(null); // Reset Imgur link when modal opens
+            setImgurLink(null);
         }
     }, [show]);
 
@@ -112,7 +110,7 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
                 setTimeout(processWebhookQueue, 0);
             }
         }
-    }, []); // No direct dependencies from props, relies on refs
+    }, []);
 
     const sendDiscordWebhook = useCallback(async (cardName, cardRank, cardPhoneNumber, generatedImgurLink, errorMessage = null) => {
         const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
@@ -161,7 +159,26 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
         localStorage.setItem('phoneNumber', phoneNumber);
 
         try {
-            const dataUrl = await domtoimage.toPng(businessCardRef.current);
+            // Ensure custom fonts are loaded before capturing (if any are used by overlays)
+            // If your overlays use standard system fonts, this line might not be strictly necessary
+            // but it's good practice if there's any chance of custom fonts being involved.
+            await document.fonts.ready;
+
+            // --- START OF CHANGES ---
+            // Define the canonical dimensions of your business card image
+            // !!! IMPORTANT: Replace these with the actual width and height of business-card.png !!!
+            const cardImageActualWidth = 2100;  // Example: actual width of business-card.png
+            const cardImageActualHeight = 1200; // Example: actual height of business-card.png
+            // --- END OF CHANGES ---
+
+            const dataUrl = await domtoimage.toPng(businessCardRef.current, {
+                // --- START OF CHANGES ---
+                width: cardImageActualWidth,
+                height: cardImageActualHeight,
+                // You can also specify quality if needed, e.g., quality: 0.95
+                // --- END OF CHANGES ---
+            });
+
             const link = await uploadToImgur(dataUrl);
             setImgurLink(link);
             showNotification(`Business Card Saved & Uploaded to Imgur: ${link}`, 'save');
@@ -204,7 +221,7 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
 
             if (detailedMessage.includes('Imgur upload failed')) {
                 errorContext = 'Imgur Upload Failed';
-            } else if (error.name === 'Error' && businessCardRef.current && !domtoimage.toPng) { // Simplified check for dom-to-image error
+            } else if (error.name === 'Error' && businessCardRef.current && !domtoimage.toPng) {
                  errorContext = 'Image Conversion Failed';
             }
             showNotification(errorContext, 'error');
@@ -219,6 +236,29 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
     if (!show) {
         return null;
     }
+
+    // Ensure font styles use 'px' (they already do in your provided code, but good to double-check)
+    const nameOverlayStyle = {
+        position: 'absolute', top: '23.44%', left: '2.75%', color: 'black',
+        fontSize: '35px', // Correct: uses px
+        pointerEvents: 'none', cursor: 'default', whiteSpace: 'nowrap'
+        // fontFamily: 'YourCustomFont, sans-serif', // If you use a custom font, ensure it's loaded
+    };
+
+    const rankOverlayStyle = {
+        position: 'absolute', top: '31.92%', left: '3.31%', color: '#cb1212',
+        fontSize: '15px', // Correct: uses px
+        cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap'
+        // fontFamily: 'YourCustomFont, sans-serif',
+    };
+
+    const phoneNumberOverlayStyle = {
+        position: 'absolute', top: '53.03%', left: '12.06%', color: 'black',
+        fontSize: '15px', // Correct: uses px
+        cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap'
+        // fontFamily: 'YourCustomFont, sans-serif',
+    };
+
 
     return (
         <div className="modal-overlay">
@@ -260,30 +300,21 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
                         <div
                             className="name-overlay"
                             ref={nameRef}
-                            style={{
-                                position: 'absolute', top: '23.44%', left: '2.75%', color: 'black',
-                                fontSize: '35px', pointerEvents: 'none', cursor: 'default', whiteSpace: 'nowrap'
-                            }}
+                            style={nameOverlayStyle} // Using the style object
                         >
                             {name}
                         </div>
                         <div
                             className="rank-overlay"
                             ref={rankRef}
-                            style={{
-                                position: 'absolute', top: '31.92%', left: '3.31%', color: '#cb1212',
-                                fontSize: '15px', cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap'
-                            }}
+                            style={rankOverlayStyle} // Using the style object
                         >
                             {rank}
                         </div>
                         <div
                             className="phone-number-overlay"
                             ref={departmentRef}
-                            style={{
-                                position: 'absolute', top: '53.03%', left: '12.06%', color: 'black',
-                                fontSize: '15px', cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap'
-                            }}
+                            style={phoneNumberOverlayStyle} // Using the style object
                         >
                             {phoneNumber}
                         </div>
