@@ -410,6 +410,39 @@ const initialFormData = {
     ctResults: [],
     mriResults: [],
     ultrasoundResults: [],
+    recruitmentPosition: '',
+    applicantTitleAndFullName: '',
+    genderMale: false,
+    genderFemale: false,
+    genderOther: false,
+    applicantGenderOtherText: '',
+    applicantDOBAndPlace: '',
+    applicantAddress: '',
+    applicantContactDetails: '',
+    locationPHMC: false,
+    locationPBC: false,
+    applicantMedicalConditions: '',
+    citizenUS: false,
+    citizenPermanent: false,
+    citizenNone: false,
+    eduHighSchool: false,
+    eduCertificate: false,
+    eduDiploma: false,
+    eduAssociate: false,
+    eduBachelor: false,
+    eduMaster: false,
+    eduDoctorate: false,
+    applicantSchoolName: '',
+    applicantEnrollmentTerm: '',
+    applicantMajor: '',
+    applicantLanguages: '',
+    applicantPrevEmployment: '',
+    applicantPrevDuties: '',
+    applicantPrevDismissalReason: '',
+    applicantMotivationLetter: '',
+    oocMedicalExperience: '',
+    oocAdminRecordLink: '',
+    oocStatsLink: '',
 
 };
     const [saaaFormCompletionNotified, setSaaaFormCompletionNotified] = useState(false);
@@ -715,13 +748,21 @@ const initialFormData = {
     const getBBCodeContent = () => {
         const definition = getFormDefinition(bbCodeVersion);
         if (definition && definition.generator) {
-            return definition.generator(formData);
+            // Prepare arguments for the generator
+            const generatorArgs = {
+                ...formData, // Current form data
+                // Inject the position details map if the current form needs it
+                ...(definition.version === 50 && { // Or check by group: definition.group === "PHMC Recruitment"
+                    // Use positionDetailsData and fetch from the correct path in selectOptions
+                    positionDetailsData: selectOptions.positionDetailsData || {}, 
+                }),
+            };
+            return definition.generator(generatorArgs);
         }
         Sentry.captureMessage(`No BBCode generator found for version: ${bbCodeVersion}`);
-        const formName = versionNames[bbCodeVersion] || `Form v${bbCodeVersion}`;
+        const formName = (getFormDefinition(bbCodeVersion) || {}).name || `Form v${bbCodeVersion}`;
         return `BBCode generation for form "${formName}" is not implemented.`;
     };
-
     const [isLoadingData, setIsLoadingData] = useState(true); 
     const loadingNotificationIdRef = useRef(null); 
     useEffect(() => {
@@ -3232,6 +3273,7 @@ useEffect(() => {
         32: "SAAA - Aircraft Registration",
         33: "SAAA - Flight School",
         34: "SAAA - Heliport Permit",
+        50: "PHMC - Physician Careers",
     };
 
 
@@ -3790,6 +3832,7 @@ const handleCopyAndNotifyWrapper = async () => {
                                         mriResults={selectOptions.mriResults || []}
                                         ultrasoundResults={selectOptions.ultrasoundResults || []}
                                         patientBloodType={selectOptions.patientBloodType || []} 
+                                        selectOptions={selectOptions} // Make sure this is passed
 
 
                                     />

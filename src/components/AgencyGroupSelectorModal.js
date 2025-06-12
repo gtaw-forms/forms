@@ -1,11 +1,20 @@
-import { Button, Form, Image } from 'react-bootstrap'; // Added Image
-import phmcLogo from '../assets/phmc.png'; // Import PHMC logo
-import saaLogo from '../assets/saaa.png';   // Import SAAA logo
+// src/components/AgencyGroupSelectorModal.js
+import { Button, Form, Image } from 'react-bootstrap';
+import phmcLogo from '../assets/phmc.png';
+import saaLogo from '../assets/saaa.png';
+// import recruitmentIcon from '../assets/your-recruitment-icon.png'; // Optional: if you have a new icon
 
 const AgencyGroupSelectorModal = ({ show, onSelectGroup, onHideSelectorPreference, hidePreference }) => {
     if (!show) {
         return null;
     }
+
+    // --- Check if the hostname is localhost or a LAN IP ---
+    const isDevelopmentEnvironment =
+        window.location.hostname === 'localhost' ||
+        window.location.hostname.startsWith('192.168.') ||
+        window.location.hostname.startsWith('10.') || // Common private IP range
+        window.location.hostname.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./); // Common private IP range 172.16.0.0 – 172.31.255.255
 
     const overlayStyle = {
         position: 'fixed',
@@ -28,7 +37,7 @@ const AgencyGroupSelectorModal = ({ show, onSelectGroup, onHideSelectorPreferenc
         padding: '1.5rem',
         border: '1px solid #4b5563',
         width: 'auto',
-        maxWidth: '40rem', 
+        maxWidth: '40rem',
         boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
         borderRadius: '0.375rem',
         backgroundColor: '#111827',
@@ -56,27 +65,26 @@ const AgencyGroupSelectorModal = ({ show, onSelectGroup, onHideSelectorPreferenc
         fontSize: '1.125rem',
         color: '#9ca3af',
     };
-    
+
     const baseButtonStyle = {
         padding: '1rem',
         fontSize: '1.125rem',
         borderRadius: '0.375rem',
-        // boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)', // Optional: remove or adjust shadow for transparent bg
-        width: '100%', 
+        width: '100%',
         marginBottom: '1rem',
-        display: 'flex', 
-        flexDirection: 'column', 
-        alignItems: 'center', 
-        justifyContent: 'center', 
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
         minHeight: '120px',
-        backgroundColor: 'transparent', // Changed
-        color: '#ffffff', // Changed
-        border: '1px solid #ffffff', // Added a white border for visibility
+        backgroundColor: 'transparent',
+        color: '#ffffff',
+        border: '1px solid #ffffff',
     };
 
     const imageStyle = {
-        maxHeight: '50px', // Adjusted from 150px to 50px as per previous step
-        marginBottom: '0.5rem', 
+        maxHeight: '50px',
+        marginBottom: '0.5rem',
         objectFit: 'contain',
     };
 
@@ -103,31 +111,44 @@ const AgencyGroupSelectorModal = ({ show, onSelectGroup, onHideSelectorPreferenc
                         Please select the set of forms you'd like to work with:
                     </p>
                 </div>
-                <div 
-                    className="d-block d-sm-flex justify-content-center" 
-                    style={{gap: '1.5rem'}} 
+                <div
+                    className="d-block d-sm-flex justify-content-center"
+                    style={{gap: '1.5rem', flexWrap: 'wrap'}}
                 >
                     <Button
-                        variant="outline-light" 
+                        variant="outline-light"
                         style={{...baseButtonStyle}}
                         onClick={() => onSelectGroup('PHMC')}
-                        className="agency-group-button-phmc flex-sm-fill" 
+                        className="agency-group-button-phmc flex-sm-fill"
                     >
                         <Image src={phmcLogo} alt="PHMC Logo" style={imageStyle} />
                         PHMC Forms
                     </Button>
                     <Button
-                        variant="outline-light" 
+                        variant="outline-light"
                         style={{...baseButtonStyle}}
                         onClick={() => onSelectGroup('SAAA')}
-                        className="agency-group-button-saaa flex-sm-fill" 
+                        className="agency-group-button-saaa flex-sm-fill"
                     >
                         <Image src={saaLogo} alt="SAAA Logo" style={imageStyle} />
                         SAAA Forms
                     </Button>
+                    {/* --- Conditionally render the PHMC Recruitment Button --- */}
+                    {isDevelopmentEnvironment && (
+                        <Button
+                            variant="outline-light"
+                            style={{...baseButtonStyle}}
+                            onClick={() => onSelectGroup('PHMC Recruitment')}
+                            className="agency-group-button-phmc-recruitment flex-sm-fill" // Optional: new class for specific styling
+                        >
+                            {/* Using PHMC logo as a placeholder. Replace src with your recruitment icon if you have one. */}
+                            <Image src={phmcLogo} alt="PHMC Recruitment Logo" style={imageStyle} />
+                            [DEV]PHMC Recruitment
+                        </Button>
+                    )}
                 </div>
                 <div style={checkboxContainerStyle}>
-                    <Form.Check 
+                    <Form.Check
                         type="checkbox"
                         id="hideAgencyGroupSelector"
                         label={
