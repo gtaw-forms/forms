@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Form, Button } from 'react-bootstrap';
-import domtoimage from 'dom-to-image';
+// import domtoimage from 'dom-to-image'; // No longer needed
 import * as Sentry from "@sentry/react";
 import EMSAMAImage from '../assets/EMSAMA.png';
 
-import './EmsAmaModal.css';
+import './EmsAmaModal.css'; // Ensure this CSS defines 'LufgaBold' if used, or use a fallback
 
 const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
     const [patientSignature, setPatientSignature] = useState('');
@@ -13,13 +13,23 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
     const [paramedicSignature, setParamedicSignature] = useState('');
     const [imgurLink, setImgurLink] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
-    const [isPreviewVisible, setIsPreviewVisible] = useState(false);
+    const [isPreviewVisible, setIsPreviewVisible] = useState(true); // Keep preview visible by default
 
-    const amaCardRef = useRef(null);
-    const patientSignatureRef = useRef(null);
-    const dateRef = useRef(null);
-    const guardianSignatureRef = useRef(null);
-    const paramedicSignatureRef = useRef(null);
+    // Refs for the visual preview elements (optional, but good for consistency if styles are complex)
+    const patientSignaturePreviewRef = useRef(null);
+    const datePreviewRef = useRef(null);
+    const guardianSignaturePreviewRef = useRef(null);
+    const paramedicSignaturePreviewRef = useRef(null);
+    // amaCardRef is for the preview container, not directly used by canvas generation
+    const amaCardPreviewRef = useRef(null);
+
+
+    // Webhook queue logic (remains the same as in your original EmsAmaModal)
+    const webhookQueue = useRef([]);
+    const isWebhookProcessing = useRef(false);
+    const lastWebhookCallTimestamp = useRef(0);
+    const webhookRateLimitDelay = 1100;
+
 
     useEffect(() => {
         if (show) {
@@ -28,7 +38,7 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
             setGuardianSignature(localStorage.getItem('emsAmaGuardianSignature') || '');
             setParamedicSignature(localStorage.getItem('emsAmaParamedicSignature') || '');
             setImgurLink(null);
-            setIsPreviewVisible(false);
+            // setIsPreviewVisible(false); // Or true, depending on desired default state
         }
     }, [show]);
 
@@ -38,6 +48,7 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
     const handleParamedicSignatureChange = (e) => setParamedicSignature(e.target.value);
 
     const uploadToImgur = useCallback(async (base64Image) => {
+        // This function remains the same as in your original EmsAmaModal
         const imgurClientId = process.env.REACT_APP_IMGUR_CLIENT_ID;
         const accessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
         const albumId = process.env.REACT_APP_IMGUR_ALBUM_ID;
@@ -64,23 +75,19 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
             if (data.success) {
                 return data.data.link;
             } else {
-                console.error('Imgur upload failed:', data);
-                Sentry.captureMessage("Imgur API Error", { extra: data, level: "error" });
+                console.error('Imgur upload failed (AMA):', data);
+                Sentry.captureMessage("Imgur API Error (AMA)", { extra: data, level: "error" });
                 throw new Error(`Imgur upload failed: ${data.data?.error || 'Unknown error'}`);
             }
         } catch (error) {
-            console.error('Imgur upload failed:', error);
-            Sentry.captureException(error, { extra: { context: 'Imgur Upload Function' } });
+            console.error('Imgur upload failed (AMA):', error);
+            Sentry.captureException(error, { extra: { context: 'Imgur Upload Function (AMA)' } });
             throw error;
         }
     }, []);
 
-    const webhookQueue = useRef([]);
-    const isWebhookProcessing = useRef(false);
-    const lastWebhookCallTimestamp = useRef(0);
-    const webhookRateLimitDelay = 1100;
-
     const processWebhookQueue = useCallback(async () => {
+        // This function remains the same as in your original EmsAmaModal
         if (webhookQueue.current.length === 0 || isWebhookProcessing.current) {
             return;
         }
@@ -107,8 +114,8 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
             });
             if (!response.ok) {
                 const errorData = await response.text();
-                console.error('Failed to send Discord webhook:', response.status, response.statusText, errorData);
-                Sentry.captureMessage("Discord Webhook Send Failure", {
+                console.error('Failed to send Discord webhook (AMA):', response.status, response.statusText, errorData);
+                Sentry.captureMessage("Discord Webhook Send Failure (AMA)", {
                     extra: { status: response.status, statusText: response.statusText, responseBody: errorData },
                     level: "error"
                 });
@@ -116,8 +123,8 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
                 lastWebhookCallTimestamp.current = Date.now();
             }
         } catch (error) {
-            console.error('Error sending Discord webhook:', error);
-            Sentry.captureException(error, { extra: { context: 'Discord Webhook Send Function' } });
+            console.error('Error sending Discord webhook (AMA):', error);
+            Sentry.captureException(error, { extra: { context: 'Discord Webhook Send Function (AMA)' } });
         } finally {
             isWebhookProcessing.current = false;
             if (webhookQueue.current.length > 0) {
@@ -127,10 +134,11 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
     }, []);
 
     const sendDiscordWebhook = useCallback(async (patientSig, formDate, guardianSig, paramedicSig, generatedImgurLink, errorMessage = null) => {
+        // This function remains the same as in your original EmsAmaModal
         const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
         if (!webhookURL) {
-            console.warn('Discord webhook URL is not set in environment variables.');
-            Sentry.captureMessage("Discord Webhook URL not set", { level: "warning" });
+            console.warn('Discord webhook URL is not set for AMA.');
+            Sentry.captureMessage("Discord Webhook URL not set (AMA)", { level: "warning" });
             return;
         }
 
@@ -166,30 +174,28 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
         }
     }, [commitInfo, processWebhookQueue]);
 
+    // Define overlay styles for canvas drawing and preview
+    // Ensure font family matches what's loaded (e.g., 'LufgaBold' from EmsAmaModal.css or a safe fallback)
+    const patientSignatureOverlayStyle = {
+        position: 'absolute', top: '73%', left: '12%', color: 'black',
+        fontSize: '20px', fontFamily: 'LufgaBold, Arial, sans-serif', whiteSpace: 'nowrap'
+    };
+    const dateOverlayStyle = {
+        position: 'absolute', top: '83%', left: '12%', color: 'black',
+        fontSize: '20px', fontFamily: 'LufgaBold, Arial, sans-serif', whiteSpace: 'nowrap'
+    };
+    const guardianSignatureOverlayStyle = {
+        position: 'absolute', top: '73%', left: '60%', color: 'black',
+        fontSize: '20px', fontFamily: 'LufgaBold, Arial, sans-serif', whiteSpace: 'nowrap'
+    };
+    const paramedicSignatureOverlayStyle = {
+        position: 'absolute', top: '83%', left: '60%', color: 'black',
+        fontSize: '20px', fontFamily: 'LufgaBold, Arial, sans-serif', whiteSpace: 'nowrap'
+    };
+
+
     const handleSave = useCallback(async () => {
-        setIsSaving(true); // Set saving state immediately
-
-        let currentAmaCardRef = amaCardRef.current;
-
-        // If preview is not visible, show it and wait for DOM update
-        if (!isPreviewVisible) {
-            setIsPreviewVisible(true);
-            // Wait for the next render cycle for amaCardRef to be available
-            // This ensures the DOM element is present for domtoimage
-            await new Promise(resolve => setTimeout(resolve, 50)); // Adjust delay if necessary
-            currentAmaCardRef = amaCardRef.current; // Re-fetch the ref after state update and delay
-        }
-
-        if (!currentAmaCardRef) {
-            showNotification("Form preview could not be loaded. Please try again.", 'error');
-            Sentry.captureMessage("amaCardRef.current is null in handleSave even after attempting to show preview.", {
-                extra: { isPreviewVisibleState: isPreviewVisible }, // Log the state at this point
-                level: "error"
-            });
-            setIsSaving(false); // Reset saving state on early exit
-            return;
-        }
-        
+        setIsSaving(true);
         showNotification('Processing AMA form...', 'upload');
 
         localStorage.setItem('emsAmaPatientSignature', patientSignature);
@@ -197,11 +203,78 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
         localStorage.setItem('emsAmaGuardianSignature', guardianSignature);
         localStorage.setItem('emsAmaParamedicSignature', paramedicSignature);
 
-        try {
-            const dataUrl = await domtoimage.toPng(currentAmaCardRef, {
-                // quality: 0.95,
-                // bgcolor: '#ffffff'
+        // Get image natural dimensions (assuming EMSAMAImage is 1000x1414 or similar)
+        // For more robustness, load image to get dimensions, like in BusinessCardModal
+        const amaImageActualWidth = 1000; // Replace with actual width or dynamic loading
+        const amaImageActualHeight = 1414; // Replace with actual height or dynamic loading
+
+        const canvas = document.createElement('canvas');
+        canvas.width = amaImageActualWidth;
+        canvas.height = amaImageActualHeight;
+        const ctx = canvas.getContext('2d');
+
+        const loadImage = (src) => {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = "anonymous"; // Important if image is hosted externally and fonts are webfonts
+                img.onload = () => resolve(img);
+                img.onerror = (err) => {
+                    console.error("Failed to load base AMA image for canvas:", err);
+                    Sentry.captureException(err, { extra: { context: 'AMA loadImage', imgSrc: src } });
+                    reject(new Error("Failed to load base AMA image."));
+                };
+                img.src = src;
             });
+        };
+        
+        try {
+            const baseImage = await loadImage(EMSAMAImage);
+            
+            // Ensure fonts are loaded before drawing text
+            if (document.fonts && typeof document.fonts.ready === 'function') {
+                await document.fonts.ready;
+                console.log("Fonts ready for AMA canvas.");
+            } else {
+                console.warn("document.fonts.ready not available. Text rendering might be inconsistent.");
+            }
+
+            ctx.drawImage(baseImage, 0, 0, amaImageActualWidth, amaImageActualHeight);
+            ctx.textBaseline = 'top'; // Consistent text positioning
+
+            // Draw Patient Signature
+            const patientSigX = amaImageActualWidth * (parseFloat(patientSignatureOverlayStyle.left) / 100);
+            const patientSigY = amaImageActualHeight * (parseFloat(patientSignatureOverlayStyle.top) / 100);
+            const patientSigFontSize = parseInt(patientSignatureOverlayStyle.fontSize);
+            ctx.fillStyle = patientSignatureOverlayStyle.color;
+            ctx.font = `${patientSigFontSize}px ${patientSignatureOverlayStyle.fontFamily}`;
+            ctx.fillText(patientSignature, patientSigX, patientSigY);
+
+            // Draw Date
+            const dateX = amaImageActualWidth * (parseFloat(dateOverlayStyle.left) / 100);
+            const dateY = amaImageActualHeight * (parseFloat(dateOverlayStyle.top) / 100);
+            const dateFontSize = parseInt(dateOverlayStyle.fontSize);
+            ctx.fillStyle = dateOverlayStyle.color;
+            ctx.font = `${dateFontSize}px ${dateOverlayStyle.fontFamily}`;
+            ctx.fillText(date, dateX, dateY);
+
+            // Draw Guardian Signature
+            const guardianSigX = amaImageActualWidth * (parseFloat(guardianSignatureOverlayStyle.left) / 100);
+            const guardianSigY = amaImageActualHeight * (parseFloat(guardianSignatureOverlayStyle.top) / 100);
+            const guardianSigFontSize = parseInt(guardianSignatureOverlayStyle.fontSize);
+            ctx.fillStyle = guardianSignatureOverlayStyle.color;
+            ctx.font = `${guardianSigFontSize}px ${guardianSignatureOverlayStyle.fontFamily}`;
+            ctx.fillText(guardianSignature, guardianSigX, guardianSigY);
+
+            // Draw Paramedic Signature
+            const paramedicSigX = amaImageActualWidth * (parseFloat(paramedicSignatureOverlayStyle.left) / 100);
+            const paramedicSigY = amaImageActualHeight * (parseFloat(paramedicSignatureOverlayStyle.top) / 100);
+            const paramedicSigFontSize = parseInt(paramedicSignatureOverlayStyle.fontSize);
+            ctx.fillStyle = paramedicSignatureOverlayStyle.color;
+            ctx.font = `${paramedicSigFontSize}px ${paramedicSignatureOverlayStyle.fontFamily}`;
+            ctx.fillText(paramedicSignature, paramedicSigX, paramedicSigY);
+
+            const dataUrl = canvas.toDataURL('image/png');
+
             showNotification('Uploading to Imgur...', 'upload');
             const link = await uploadToImgur(dataUrl);
             setImgurLink(link);
@@ -214,13 +287,9 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
                         showNotification('Imgur link copied to clipboard!', 'clipboard');
                     })
                     .catch(err => {
-                        console.error('Failed to copy Imgur link to clipboard:', err);
+                        console.error('Failed to copy Imgur link to clipboard (AMA):', err);
                         Sentry.captureException(err, {
-                            extra: {
-                                message: 'Clipboard writeText failed for AMA form.',
-                                imgurLink: link,
-                                userAgent: navigator.userAgent,
-                            }
+                            extra: { message: 'Clipboard writeText failed for AMA form.', imgurLink: link, userAgent: navigator.userAgent }
                         });
                         let userMessage = 'Failed to copy Imgur link automatically.';
                         if (err.name === 'NotAllowedError') userMessage += ' Please grant clipboard permission.';
@@ -240,19 +309,21 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
             let detailedMessage = error.message || String(error);
 
             if (detailedMessage.includes('Imgur upload failed')) errorContext = 'Imgur Upload Failed';
-            else if (error.name === 'Error' && domtoimage && !domtoimage.toPng) errorContext = 'Image Conversion Library Error';
-            else if (error.name === 'Error') errorContext = 'Image Conversion Failed';
-
+            else if (detailedMessage.includes('Failed to load base AMA image')) errorContext = 'Base Image Load Failed';
+            else errorContext = 'Image Generation Failed';
+            
             showNotification(`${errorContext}: ${detailedMessage.substring(0,100)}...`, 'error');
-            Sentry.captureException(error, { extra: { context: 'EMS AMA Save', patientSignature, date } });
+            Sentry.captureException(error, { extra: { context: 'EMS AMA Save', patientSignature, date, detailedMessage } });
             sendDiscordWebhook(patientSignature, date, guardianSignature, paramedicSignature, null, `${errorContext}: ${detailedMessage}`);
         } finally {
             setIsSaving(false);
         }
     }, [
-        patientSignature, date, guardianSignature, paramedicSignature, 
+        patientSignature, date, guardianSignature, paramedicSignature,
         showNotification, uploadToImgur, sendDiscordWebhook, commitInfo,
-        isPreviewVisible, setIsPreviewVisible // Added dependencies
+        // Removed isPreviewVisible from dependencies as canvas generation is independent
+        // Add overlay style objects if they were to become dynamic state/props
+        patientSignatureOverlayStyle, dateOverlayStyle, guardianSignatureOverlayStyle, paramedicSignatureOverlayStyle
     ]);
 
 
@@ -300,56 +371,49 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
                     </Button>
 
                     {isPreviewVisible && (
-                        <div className="business-card-image-container" ref={amaCardRef} style={{ position: 'relative', width: '100%', maxWidth: '800px', margin: '0 auto 1rem auto' }}>
+                        <div 
+                            className="business-card-image-container" // Re-use class if styles are similar
+                            ref={amaCardPreviewRef} 
+                            style={{ 
+                                position: 'relative', 
+                                width: '100%', 
+                                maxWidth: '800px', // Adjust as needed for AMA form aspect ratio
+                                margin: '0 auto 1rem auto' 
+                            }}
+                        >
                             <img
                                 src={EMSAMAImage}
                                 alt="EMS AMA Form Preview"
                                 style={{ display: 'block', width: '100%', height: 'auto', border: '1px solid #ccc' }}
                             />
                             <div
-                                className="patient-signature-overlay"
-                                ref={patientSignatureRef}
-                                style={{
-                                    position: 'absolute', top: '73%', left: '12%', color: 'black',
-                                    fontSize: '20px', pointerEvents: 'none', cursor: 'default', whiteSpace: 'nowrap'
-                                }}
+                                ref={patientSignaturePreviewRef}
+                                style={patientSignatureOverlayStyle} // Use defined style object
                             >
                                 {patientSignature}
                             </div>
                             <div
-                                className="date-overlay"
-                                ref={dateRef}
-                                style={{
-                                    position: 'absolute', top: '83%', left: '12%', color: 'black',
-                                    fontSize: '20px', cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap'
-                                }}
+                                ref={datePreviewRef}
+                                style={dateOverlayStyle} // Use defined style object
                             >
                                 {date}
                             </div>
                             <div
-                                className="guardian-signature-overlay"
-                                ref={guardianSignatureRef}
-                                style={{
-                                    position: 'absolute', top: '73%', left: '60%', color: 'black',
-                                    fontSize: '20px', cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap'
-                                }}
+                                ref={guardianSignaturePreviewRef}
+                                style={guardianSignatureOverlayStyle} // Use defined style object
                             >
                                 {guardianSignature}
                             </div>
                             <div
-                                className="paramedic-signature-overlay"
-                                ref={paramedicSignatureRef}
-                                style={{
-                                    position: 'absolute', top: '83%', left: '60%', color: 'black',
-                                    fontSize: '20px', cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap'
-                                }}
+                                ref={paramedicSignaturePreviewRef}
+                                style={paramedicSignatureOverlayStyle} // Use defined style object
                             >
                                 {paramedicSignature}
                             </div>
                         </div>
                     )}
 
-                    <div className="business-card-input-fields">
+                    <div className="business-card-input-fields"> {/* Re-use class if styles are similar */}
                         <Form.Group className="mb-2 ems-ama-input-group">
                             <Form.Label>Patient Signature (Type Name)</Form.Label>
                             <Form.Control size="sm" type="text" placeholder="Enter patient's full name" value={patientSignature} onChange={handlePatientSignatureChange} />
@@ -368,7 +432,6 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
                         </Form.Group>
                     </div>
                 </div>
-                {/* Hint text removed */}
                 <Button className="ems-ama-save-button" onClick={handleSave} disabled={isSaving}>
                     {isSaving ? 'Saving...' : 'Save & Upload AMA Form'}
                 </Button>
