@@ -14,6 +14,8 @@ import {
     generateConsultationNotesPBC, generatePsychEvalPHMC, generatePsychEvalPBC,
     generateAutopsy,
 } from './phmc-bbcode-generators'; // Assuming all PHMC generators are here
+import generatePhysician from './phmc-recruitment-generators/generatePhysician'; // Make sure this path is correct
+import PhysicianFields from './phmc-field-data/Physician'; // Path to your new component
 
 import generateEntryJob from './saaa-form-generators/generateEntryJob'; // SAAA generator
 import generateFlightSchool from './saaa-form-generators/generateFlightSchool'; // SAAA generator
@@ -142,7 +144,19 @@ export const formDefinitions = [
             'heliportAddresses', 'heliportNumPads', 'heliportPhotoLinks',
             'heliportLayoutPlanLinks', 'ackAuthorize'
         ]
+        
     },
+    {
+        version: 50,
+        name: "PHMC General Application",
+        group: "PHMC Recruitment",
+        icon: application, // Or your preferred icon
+        generator: generatePhysician, // Use the updated generator
+        FieldComponent: PhysicianFields, // Use the new field component
+        titleKey: "phmcGeneralApplication",
+        sortOrder: 200,
+    },
+
 ];
 
 // Helper to get form definition by version

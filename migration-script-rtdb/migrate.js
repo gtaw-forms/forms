@@ -375,6 +375,29 @@ const ultrasoundResults = [
     { value: 'Ovarian Torsion', label: 'Ovarian Torsion' },
     { value: 'Pregnancy Confirmation', label: 'Pregnancy Confirmation' },
 ];
+    const positionDetailsData = {
+        "Resident Physician": {
+            displayName: "Resident Physician",
+            url: "https://phmc.gta.world/viewtopic.php?t=5"
+        },
+        "Attending Physician": {
+            displayName: "Attending Physician",
+            url: "https://phmc.gta.world/viewtopic.php?t=ATTENDING_JOB_POST_ID" // Replace
+        },
+        "Nurse": {
+            displayName: "Nurse",
+            url: "https://phmc.gta.world/viewtopic.php?t=NURSE_JOB_POST_ID" // Replace
+        },
+        "Medical Scribe": {
+            displayName: "Medical Scribe",
+            url: "https://phmc.gta.world/viewtopic.php?t=SCRIBE_JOB_POST_ID" // Replace
+        },
+        // Add other positions and their specific URLs here
+    };
+const phmcRecruitmentPositions = Object.keys(positionDetailsData).map(key => ({
+    value: key, // e.g., "Resident Physician"
+    label: positionDetailsData[key].displayName // e.g., "Resident Physician"
+}));
 
 const selectOptionsData = {
     PurposeMedicalInformationRelease,
@@ -438,6 +461,8 @@ const selectOptionsData = {
     ctResults,
     mriResults,
     ultrasoundResults,
+    positionDetailsData,
+    phmcRecruitmentPositions,
 };
 
 async function migrateToRealtimeDB() {
