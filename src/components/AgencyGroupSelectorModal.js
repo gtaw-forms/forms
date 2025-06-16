@@ -248,7 +248,6 @@ const AgencyGroupSelectorModal = ({
                     </div>
 
                     {/* PHMC Recruitment (Development) Button - remains as is, will take full width of its parent */}
-                    {isDevelopmentEnvironment && (
                         <Button
                             variant="outline-light"
                             style={{ // This button will take the full width of its parent by default
@@ -307,7 +306,6 @@ const AgencyGroupSelectorModal = ({
                                 </span>
                             )}
                         </Button>
-                    )}
                 </div>
                 <div style={checkboxContainerStyle}>
                     <Form.Check
