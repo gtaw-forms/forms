@@ -182,8 +182,9 @@ select {
 
 /* Form Label Styling */
 .form-label {
+  margin-right: 2rem !important; /* Adds space to the right of the label */
     color: #acb1cad3;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.9rem;
 }
 
 .helper-text {
@@ -790,4 +791,62 @@ input[type="checkbox"] {
 
 .imgur-link-container a:hover {
     text-decoration: underline;
+}
+
+/* Modal content for business card */
+.position-info-modal-content::-webkit-scrollbar {
+  width: 10px; /* Width of the scrollbar */
+}
+
+.position-info-modal-content::-webkit-scrollbar-track {
+  background: #161b22; /* Background of the scrollbar track (darker shade) */
+  border-radius: 5px;
+}
+
+.position-info-modal-content::-webkit-scrollbar-thumb {
+  background-color: #30363d; /* Color of the scrollbar thumb (a bit lighter) */
+  border-radius: 5px;
+  border: 2px solid #161b22; /* Creates a padding effect around the thumb */
+}
+
+.position-info-modal-content::-webkit-scrollbar-thumb:hover {
+  background-color: #484f58; /* Color of the thumb on hover */
+}
+
+/* For Firefox */
+.position-info-modal-content {
+  scrollbar-width: thin; /* "auto" or "thin" */
+  scrollbar-color: #30363d #161b22; /* thumb_color track_color */
+}
+.custom-validation-message {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Add to your App.css or index.css */
+.notification-actions {
+  display: flex;
+  justify-content: flex-end; /* Or center, space-around */
+  padding-top: 8px;
+  margin-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1); /* Optional separator */
+}
+
+.notification-action-button {
+  background-color: #007bff; /* Example primary color */
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  margin-left: 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85em;
+}
+
+.notification-action-button:hover {
+  opacity: 0.9;
+}
+
+.notification-action-secondary { /* Example for a secondary button style */
+  background-color: #6c757d;
 }
