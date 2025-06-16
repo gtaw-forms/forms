@@ -1,6 +1,6 @@
 // c:\Users\cross\Documents\GitHub\phmc-forms\src\phmc-civilian-fields\Nursing.js
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Form, Button } from 'react-bootstrap';
+import { Form, Button, InputGroup, Spinner } from 'react-bootstrap'; // Added InputGroup and Spinner
 
 // Helper component for collapsible section headers
 const CollapsibleHeader = ({ title, isOpen, onToggle, sectionId }) => (
@@ -29,7 +29,7 @@ const CollapsibleHeader = ({ title, isOpen, onToggle, sectionId }) => (
 );
 
 const LOCAL_STORAGE_KEY_NURSING = 'nursingApplicationFormData';
-const EXPIRY_DURATION_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
+const EXPIRY_DURATION_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
 
 // Define which fields belong to this form for localStorage or other logic
 const nursingFormFields = [
@@ -49,7 +49,9 @@ const NursingFields = ({
     formData,
     handleChange,
     setFormData,
-    selectOptions // This will contain nursePositionDetailsData
+    selectOptions,
+    handleImageUpload, // Added prop
+    isUploading        // Added prop
 }) => {
     // Use nursePositionDetailsData from selectOptions for position dropdown
     const positionDetails = selectOptions?.nursePositionDetailsData || {};
@@ -471,12 +473,66 @@ const NursingFields = ({
                     </Form.Group>
                     <Form.Group className="mb-3">
                         <Form.Label>5.6 Unedited Screenshot of your Admin Record</Form.Label>
-                        <Form.Control type="url" name="oocAdminRecordLink" value={formData.oocAdminRecordLink || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} placeholder="Direct link to image (e.g., Imgur)" required className={`form-control ${!formData.oocAdminRecordLink ? 'is-invalid' : ''} mb-4`} />
+                        <InputGroup>
+                            <Form.Control
+                                type="url"
+                                name="oocAdminRecordLink"
+                                value={formData.oocAdminRecordLink || ''}
+                                onChange={handleChange}
+                                onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')}
+                                placeholder="Direct link to image (e.g., Imgur)"
+                                required
+                                className={`form-control ${!formData.oocAdminRecordLink ? 'is-invalid' : ''}`}
+                            />
+                            <Button
+                                variant="outline-secondary"
+                                onClick={() => document.getElementById('nursing-oocAdminRecordUpload').click()}
+                                disabled={isUploading}
+                            >
+                                {isUploading ? <Spinner as="span" animation="border" size="sm" /> : <i className="fas fa-upload"></i>}
+                            </Button>
+                        </InputGroup>
+                        <input
+                            type="file"
+                            id="nursing-oocAdminRecordUpload"
+                            style={{ display: 'none' }}
+                            accept="image/*"
+                            onChange={(e) => handleImageUpload(e, 'oocAdminRecordLink')}
+                        />
+                        <div className="mb-4"></div> {/* Spacer */}
                     </Form.Group>
+
                     <Form.Group className="mb-3">
                         <Form.Label>5.7 Screenshot of Character Statistics (/stats)</Form.Label>
-                        <Form.Control type="url" name="oocStatsLink" value={formData.oocStatsLink || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} placeholder="Direct link to image (e.g., Imgur)" required className={`form-control ${!formData.oocStatsLink ? 'is-invalid' : ''} mb-4`} />
+                        <InputGroup>
+                            <Form.Control
+                                type="url"
+                                name="oocStatsLink"
+                                value={formData.oocStatsLink || ''}
+                                onChange={handleChange}
+                                onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')}
+                                placeholder="Direct link to image (e.g., Imgur)"
+                                required
+                                className={`form-control ${!formData.oocStatsLink ? 'is-invalid' : ''}`}
+                            />
+                            <Button
+                                variant="outline-secondary"
+                                onClick={() => document.getElementById('nursing-oocStatsUpload').click()}
+                                disabled={isUploading}
+                            >
+                                {isUploading ? <Spinner as="span" animation="border" size="sm" /> : <i className="fas fa-upload"></i>}
+                            </Button>
+                        </InputGroup>
+                        <input
+                            type="file"
+                            id="nursing-oocStatsUpload"
+                            style={{ display: 'none' }}
+                            accept="image/*"
+                            onChange={(e) => handleImageUpload(e, 'oocStatsLink')}
+                        />
+                        <div className="mb-4"></div> {/* Spacer */}
                     </Form.Group>
+
                     <Form.Group className="mb-3">
                         <Form.Label>5.8 Character's Background Story</Form.Label>
                         <Form.Control as="textarea" rows={8} name="charBackground" value={formData.charBackground || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} required className={`form-control ${!formData.charBackground ? 'is-invalid' : ''} mb-4`} />
