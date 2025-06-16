@@ -1,5 +1,5 @@
 // src/components/SwitchableFormsModal.js
-import React from 'react';
+import React, { useEffect } from 'react'; // Added useEffect for logging
 import { Button, Image } from 'react-bootstrap';
 
 // Style definitions (consistent with AgencySelector)
@@ -45,13 +45,13 @@ const modalCloseButtonStyle = {
 };
 const modalBodyStyle = { overflowY: 'auto', flexGrow: 1 };
 
-const formButtonStyle = {
+const formButtonStyle = { // This is the base style for regular buttons
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'space-around',
     padding: '0.75rem',
-    height: '8rem',
+    height: '8rem', // Default height, recruitment button might need more
     textAlign: 'center',
     backgroundColor: '#343a40',
     color: '#f8f9fa',
@@ -59,7 +59,7 @@ const formButtonStyle = {
     borderRadius: '0.1rem',
     boxShadow: '0 0.125rem 0.25rem rgba(0, 0, 0, 0.075)',
     transition: 'transform 0.15s ease-in-out, background-color 0.15s ease-in-out',
-    width: '100%', // Make buttons fill their grid item
+    width: '100%',
     fontSize: '0.875rem',
 };
 
@@ -67,7 +67,7 @@ const gridContainerStyle = {
     display: 'flex',
     flexWrap: 'wrap',
     gap: '0.75rem',
-    justifyContent: 'center', // Center items if they don't fill the row
+    justifyContent: 'center',
 };
 
 const gridItemStyleBase = {
@@ -76,19 +76,116 @@ const gridItemStyleBase = {
     justifyContent: 'center',
 };
 
+// Styles for the recruitment status list on the button
+const positionStatusListStyle = {
+    fontSize: '0.75rem',
+    marginTop: '0.5rem',
+    textAlign: 'left',
+    width: '90%',
+    lineHeight: '1.2',
+    listStyleType: 'disc', // Added for ul
+    paddingLeft: '15px',   // Added for ul
+    marginBlockStart: '0.2em', // Added for ul
+    marginBlockEnd: '0.2em',   // Added for ul
+};
+const openStatusStyle = { color: '#28a745', fontWeight: 'bold' };
+const closedStatusStyle = { color: '#dc3545', fontWeight: 'bold' };
+
+// Helper function (can be outside the component or imported)
+const getRecruitmentButtonProps = (
+    positionDetailsForGroup,
+    baseStyle,
+    baseText,
+    groupDisplayName
+) => {
+    let overallRecruitmentOpen = false;
+    let openPositionDetails = [];
+    let closedPositionDetails = [];
+    let allPositionsStatusMessages = [];
+
+    // statusKnown will be false if positionDetailsForGroup is undefined, null, or an empty object
+    const statusKnown = positionDetailsForGroup && typeof positionDetailsForGroup === 'object' && Object.keys(positionDetailsForGroup).length > 0;
+
+    if (statusKnown) {
+        Object.values(positionDetailsForGroup).forEach(position => {
+            if (position.status === "OPEN") {
+                overallRecruitmentOpen = true;
+                openPositionDetails.push(position.displayName);
+            } else if (position.status === "CLOSED") {
+                closedPositionDetails.push(position.displayName);
+            }
+            allPositionsStatusMessages.push(`${position.displayName}: ${position.status || 'N/A'}`);
+        });
+    }
+
+    let buttonText = baseText;
+    let buttonTitle = `${groupDisplayName || 'Recruitment'} Status`;
+    let dynamicStyle = { ...baseStyle };
+    dynamicStyle.height = 'auto';
+    dynamicStyle.minHeight = baseStyle.height || '8rem';
+    dynamicStyle.justifyContent = 'flex-start';
+    dynamicStyle.paddingTop = '0.75rem';
+    dynamicStyle.paddingBottom = '0.75rem';
+
+    if (!statusKnown) {
+        buttonText += " - Status Unknown"; // Changed from "Status Data Missing"
+        buttonTitle = `${groupDisplayName || 'Recruitment'} status could not be loaded or is not configured.`;
+        dynamicStyle.color = '#6c757d';
+        dynamicStyle.borderColor = '#6c757d';
+    } else if (overallRecruitmentOpen) {
+        buttonText += ` - Open (${openPositionDetails.length})`;
+        buttonTitle = `Open Positions for ${groupDisplayName || 'Recruitment'}: ${openPositionDetails.join(', ') || 'None'}\n\nAll Statuses:\n${allPositionsStatusMessages.join('\n')}`;
+        dynamicStyle.color = '#28a745';
+        dynamicStyle.borderColor = '#28a745';
+    } else {
+        buttonText += " - Closed";
+        buttonTitle = `All ${groupDisplayName || 'Recruitment'} positions are currently closed or no open positions are listed.\n\nAll Statuses:\n${allPositionsStatusMessages.join('\n')}`;
+        dynamicStyle.color = '#dc3545';
+        dynamicStyle.borderColor = '#dc3545';
+    }
+    dynamicStyle.backgroundColor = 'transparent';
+
+    return {
+        text: buttonText,
+        title: buttonTitle,
+        style: dynamicStyle,
+        openPositions: openPositionDetails,
+        closedPositions: closedPositionDetails,
+        overallOpen: overallRecruitmentOpen,
+        statusKnown: statusKnown, // This is important for rendering the lists
+    };
+};
+
+
 const SwitchableFormsModal = ({
-    show,
-    onHide,
-    title,
-    forms, // Array of { version, name, icon }
-    handleFormSelect, // Renamed from handleAgencySelect for clarity in this context
-    isMobile
+    show, onHide, title, forms, handleFormSelect, isMobile,
+    physicianRecruitmentDetails,
+    psychRecruitmentStatus, // Assuming this prop is correctly named and passed for Psych data
+    adminRecruitmentDetails,
+    emsRecruitmentDetails,
+    nurseRecruitmentDetails, // This is the prop for Nursing data
+    coronerRecruitmentDetails,
+    formDefinitions
 }) => {
+    // Log props when the modal is shown or relevant props change
+    useEffect(() => {
+        if (show) {
+            // console.log('[SwitchableFormsModal Effect] Props received:', {
+            //     physicianRecruitmentDetails,
+            //     psychRecruitmentStatus,
+            //     adminRecruitmentDetails,
+            //     emsRecruitmentDetails,
+            //     nurseRecruitmentDetails,
+            //     coronerRecruitmentDetails,
+            // });
+        }
+    }, [show, physicianRecruitmentDetails, psychRecruitmentStatus, adminRecruitmentDetails, emsRecruitmentDetails, nurseRecruitmentDetails, coronerRecruitmentDetails]);
+
+
     if (!show || !forms || forms.length === 0) {
         return null;
     }
 
-    // Dynamically adjust modal width and grid item flex based on the number of forms
     const modalContentStyle = {
         ...modalContentStyleBase,
         width: isMobile ? '90%' : (forms.length > 2 ? '75%' : '50%'),
@@ -97,11 +194,11 @@ const SwitchableFormsModal = ({
 
     const gridItemStyle = {
         ...gridItemStyleBase,
-        flex: isMobile ? '1 0 48%' : // Mobile: 2 items per row
-              forms.length === 1 ? '1 0 98%' : // Desktop: 1 item
-              forms.length === 2 ? '1 0 48%' : // Desktop: 2 items
-              forms.length === 3 ? '1 0 30%' : // Desktop: 3 items
-              '1 0 23%', // Desktop: 4 items
+        flex: isMobile ? '1 0 48%' :
+              forms.length === 1 ? '1 0 98%' :
+              forms.length === 2 ? '1 0 48%' :
+              forms.length === 3 ? '1 0 30%' :
+              '1 0 23%',
     };
 
     return (
@@ -120,26 +217,151 @@ const SwitchableFormsModal = ({
                 </div>
                 <div style={modalBodyStyle}>
                     <div style={gridContainerStyle}>
-                        {forms.map(form => (
-                            <div key={form.version} style={gridItemStyle}>
-                                <Button
-                                    variant="custom-dark"
-                                    style={formButtonStyle}
-                                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#495057'}
-                                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#343a40'}
-                                    onClick={() => handleFormSelect(form.version)}
-                                    title={form.name}
-                                >
-                                    <Image
-                                        src={form.icon}
-                                        alt={form.name}
-                                        fluid
-                                        style={{ maxHeight: '3.5rem', objectFit: 'contain', marginBottom: '0.25rem', width: 'auto' }}
-                                    />
-                                    <span className="text-break">{form.name}</span>
-                                </Button>
-                            </div>
-                        ))}
+                        {forms.map(form => {
+                            let buttonDisplayProps = {
+                                text: form.name,
+                                title: form.name,
+                                style: { ...formButtonStyle },
+                                openPositions: [],
+                                closedPositions: [],
+                                isRecruitmentForm: false,
+                                overallOpen: false,
+                                statusKnown: true,
+                            };
+
+                            const definition = formDefinitions?.find(def => def.version === form.version);
+                            const isRecruitmentGroupForm = definition?.group === "PHMC Recruitment";
+
+                            if (isRecruitmentGroupForm) {
+                                let currentRecruitmentDataSource;
+                                let groupDisplayName = form.name; // Default to form name
+
+                                if (definition?.titleKey === "phmcGeneralApplication") {
+                                    currentRecruitmentDataSource = physicianRecruitmentDetails;
+                                    groupDisplayName = "Physician Careers";
+                                } else if (definition?.titleKey === "phmcPsychApplication") {
+                                    currentRecruitmentDataSource = psychRecruitmentStatus;
+                                    groupDisplayName = "Psychologist/Psychiatrist Careers";
+                                } else if (definition?.titleKey === "phmcAdminApplication") {
+                                    currentRecruitmentDataSource = adminRecruitmentDetails;
+                                    groupDisplayName = "Admin Careers";
+                                } else if (definition?.titleKey === "phmcEMSApplication") {
+                                    currentRecruitmentDataSource = emsRecruitmentDetails;
+                                    groupDisplayName = "EMS Careers";
+                                } else if (definition?.titleKey === "phmcNursingApplication") {
+                                    currentRecruitmentDataSource = nurseRecruitmentDetails;
+                                    groupDisplayName = "Nursing Careers";
+                                } else if (definition?.titleKey === "phmcCoronerRecruitmentApplication") {
+                                    currentRecruitmentDataSource = coronerRecruitmentDetails;
+                                    groupDisplayName = "Coroner Careers";
+                                }
+
+                                // Only call getRecruitmentButtonProps if currentRecruitmentDataSource is defined
+                                // and it's an object (even if empty, getRecruitmentButtonProps handles that)
+                                if (currentRecruitmentDataSource !== undefined && typeof currentRecruitmentDataSource === 'object') {
+                                    const recruitmentProps = getRecruitmentButtonProps(
+                                        currentRecruitmentDataSource,
+                                        formButtonStyle,
+                                        form.name,
+                                        groupDisplayName
+                                    );
+                                    buttonDisplayProps = {
+                                        ...buttonDisplayProps,
+                                        ...recruitmentProps,
+                                        isRecruitmentForm: true,
+                                    };
+                                } else if (currentRecruitmentDataSource === undefined) {
+                                    // This is the case that was causing critical logs.
+                                    // We still mark it as a recruitment form for styling, but acknowledge status is unknown.
+                                    buttonDisplayProps.text = `${form.name} - Status Unknown`;
+                                    buttonDisplayProps.title = `${groupDisplayName} status could not be loaded or is not configured.`;
+                                    buttonDisplayProps.style = {
+                                        ...formButtonStyle,
+                                        height: 'auto',
+                                        minHeight: formButtonStyle.height || '8rem',
+                                        justifyContent: 'flex-start',
+                                        paddingTop: '0.75rem',
+                                        paddingBottom: '0.75rem',
+                                        color: '#6c757d',
+                                        borderColor: '#6c757d',
+                                        backgroundColor: 'transparent',
+                                    };
+                                    buttonDisplayProps.isRecruitmentForm = true; // Still treat as recruitment for hover, etc.
+                                    buttonDisplayProps.statusKnown = false; // Explicitly set statusKnown to false
+                                    // console.warn( // Changed to warn for undefined data source
+                                    //     `[SwitchableFormsModal] WARN: currentRecruitmentDataSource for ${groupDisplayName} (titleKey: ${definition?.titleKey}) ` +
+                                    //     `is UNDEFINED. This might indicate a missing prop or incorrect data structure.`
+                                    // );
+                                }
+                            }
+
+
+                            return (
+                                <div key={form.version} style={gridItemStyle}>
+                                    <Button
+                                        variant="custom-dark"
+                                        style={buttonDisplayProps.style}
+                                        onMouseOver={(e) => {
+                                            if (buttonDisplayProps.isRecruitmentForm) {
+                                                e.currentTarget.style.backgroundColor = buttonDisplayProps.statusKnown
+                                                    ? (buttonDisplayProps.overallOpen ? 'rgba(40, 167, 69, 0.1)' : 'rgba(220, 53, 69, 0.1)')
+                                                    : 'rgba(108, 117, 125, 0.1)';
+                                            } else {
+                                                e.currentTarget.style.backgroundColor = '#495057';
+                                            }
+                                        }}
+                                        onMouseOut={(e) => {
+                                            e.currentTarget.style.backgroundColor = buttonDisplayProps.isRecruitmentForm
+                                                ? 'transparent'
+                                                : formButtonStyle.backgroundColor;
+                                        }}
+                                        onClick={() => handleFormSelect(form.version)}
+                                        title={buttonDisplayProps.title}
+                                    >
+                                        <Image
+                                            src={form.icon}
+                                            alt={form.name}
+                                            fluid
+                                            style={{ maxHeight: '3.5rem', objectFit: 'contain', marginBottom: '0.25rem', width: 'auto' }}
+                                        />
+                                        <span className="text-break">{buttonDisplayProps.text}</span>
+
+                                        {buttonDisplayProps.isRecruitmentForm && buttonDisplayProps.statusKnown && (
+                                            <>
+                                                {buttonDisplayProps.openPositions.length > 0 && (
+                                                    <div style={{...positionStatusListStyle, alignSelf: 'stretch'}}>
+                                                        <strong style={openStatusStyle}>Open:</strong>
+                                                        <ul style={{ paddingLeft: '15px', marginBlockStart: '0.2em', marginBlockEnd: '0.2em' }}>
+                                                            {buttonDisplayProps.openPositions.slice(0, 9).map(pos => <li key={`open-${form.version}-${pos}`}>{pos}</li>)}
+                                                            {buttonDisplayProps.openPositions.length > 9 && <li>...and more</li>}
+                                                        </ul>
+                                                    </div>
+                                                )}
+                                                {buttonDisplayProps.closedPositions.length > 0 && (
+                                                    <div style={{...positionStatusListStyle, alignSelf: 'stretch'}}>
+                                                        <strong style={closedStatusStyle}>Closed:</strong>
+                                                        <ul style={{ paddingLeft: '15px', marginBlockStart: '0.2em', marginBlockEnd: '0.2em' }}>
+                                                            {buttonDisplayProps.closedPositions.slice(0, 3).map(pos => <li key={`closed-${form.version}-${pos}`}>{pos}</li>)}
+                                                            {buttonDisplayProps.closedPositions.length > 3 && <li>...and more</li>}
+                                                        </ul>
+                                                    </div>
+                                                )}
+                                                {buttonDisplayProps.openPositions.length === 0 && buttonDisplayProps.closedPositions.length === 0 && (
+                                                     <div style={{...positionStatusListStyle, textAlign: 'center', color: '#6c757d', alignSelf: 'stretch'}}>
+                                                        No positions listed.
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
+                                         {buttonDisplayProps.isRecruitmentForm && !buttonDisplayProps.statusKnown && (
+                                             <div style={{...positionStatusListStyle, textAlign: 'center', color: '#6c757d', alignSelf: 'stretch'}}>
+                                                {/* Text is already "Status Unknown" from getRecruitmentButtonProps, so this div might just be for spacing or additional info if needed */}
+                                            </div>
+                                         )}
+                                    </Button>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             </div>

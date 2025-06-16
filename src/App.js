@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback} from 'react'; 
+import React, { useState, useEffect, useRef, useMemo, useCallback} from 'react';
 import { formDefinitions, getFormDefinition, generateVersionNames as generateVersionNamesFromDefs } from './formDefinitions'; 
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import Notification from './components/Notification';
 import { Modal, Form, Button } from 'react-bootstrap';
-import { handleFormCopyAndNotify } from './notificationService'; // Adjust path if needed
 import SavedReportsModal from './components/SavedReportsModal'; 
 import getRelevantFields from './components/RevelantFields';
 import AgencyGroupSelectorModal from './components/AgencyGroupSelectorModal'; // Corrected import
@@ -23,6 +22,13 @@ import EmsAmaModal from './components/EmsAmaModal';
 import SwitchableFormsModal from './components/SwitchableFormsModal'; 
 import MissingEmployeeModal from './components/MissingEmployeeModal';
 import SaaaEmployeeModal from './saaa-components/SaaaEmployeeModal'; 
+import RecruitmentStatusDisplay from './components/RecruitmentStatusDisplay'; // Add this import
+// admin
+import AdminModal from './components/Admin/AdminModal'; // We will create this
+
+// 
+import { handleFormCopyAndNotify, handlePhysicianApplicationCopyAndNotify } from './notificationService'; // Add the new import
+
 import FlightSchoolTipsModal from './saaa-components/FlightSchoolTipsModal';
 import saaaLogo from './assets/saaa-button.png'; // Import SAAA logo
 import {
@@ -46,6 +52,7 @@ import {
     generatePsychEvalPHMC,
     generatePsychEvalPBC,
 } from './phmc-bbcode-generators'; 
+import PositionInfoModal from './components/PositionInfoModal'; // Adjust path as needed
 
 // logos
 import email from './assets/email.png'
@@ -443,13 +450,41 @@ const initialFormData = {
     oocMedicalExperience: '',
     oocAdminRecordLink: '',
     oocStatsLink: '',
+    saaaJobSelection: '',
 
 };
+    const [showAdminModal, setShowAdminModal] = useState(false); // This can be removed if not used elsewhere
+
+    const handleAdminPanelClick = () => {
+        const adminFormGroup = "Admin";
+        setSelectedAgencyGroup(adminFormGroup);
+        localStorage.setItem('selectedAgencyGroup', adminFormGroup);
+
+        const adminFormVersion = 999;
+        setBbCodeVersion(adminFormVersion);
+
+        setFormData(prevFormData => ({
+            ...initialFormData,
+            coronerEmployee: prevFormData.coronerEmployee,
+            phmcEmployee: prevFormData.phmcEmployee,
+            coronerBadge: prevFormData.coronerBadge,
+            coronerRank: prevFormData.coronerRank,
+            coronerDiscord: prevFormData.coronerDiscord,
+            SubmitDate: new Date().toISOString().split('T')[0],
+            // Updated fields for Admin Panel
+            isAdminAuthenticated: false, // Will be set by AdminAuthAndActions
+            adminUserEmail: null,      // Will be set by AdminAuthAndActions
+            adminDisplayData: null,    // Will hold data for the selected recruitment category
+            adminSelectedCategoryName: null, // Will hold the display name of the selected category
+        }));
+
+        setShowAgencySelector(false);
+        setShowPHMCModal(false);
+        setLastWebhookIdentifier(null);
+        showNotification(`Switched to Admin Control Panel`, 'info-circle');
+    };
+
     const [saaaFormCompletionNotified, setSaaaFormCompletionNotified] = useState(false);
-
-    // ... existing useEffects ...
-
-
 
     const [showFlightSchoolTipsModal, setShowFlightSchoolTipsModal] = useState(false);
 
@@ -457,8 +492,58 @@ const initialFormData = {
         setNotifications(prevNotifications =>
             prevNotifications.filter(notif => notif.id !== idToRemove)
         );
-    }, []); // setNotifications is stable
+        // Clear refs if the removed notification was the one being tracked
+        if (loadingNotificationIdRef.current === idToRemove) {
+            loadingNotificationIdRef.current = null;
+        }
+        if (resultNotificationIdRef.current === idToRemove) {
+            resultNotificationIdRef.current = null;
+        }
+    }, []);
 
+    const showNotification = useCallback((message, icon = 'check-circle', duration = DEFAULT_NOTIFICATION_DURATION, actions = []) => {
+        const newNotificationId = Date.now() + Math.random();
+        const isInteractive = actions && actions.length > 0;
+        // Persistent loading notifications are those with duration 0 AND no actions
+        const isPersistentLoading = duration === 0 && !isInteractive;
+
+        const newNotification = {
+            id: newNotificationId,
+            message: message,
+            icon: getIconClass(icon),
+            actions: actions, // Pass actions to the notification object
+        };
+
+        setNotifications(prevNotifications => {
+            let updatedNotifications = [...prevNotifications];
+
+            if (isPersistentLoading) {
+                if (loadingNotificationIdRef.current) {
+                    updatedNotifications = updatedNotifications.filter(n => n.id !== loadingNotificationIdRef.current);
+                }
+                loadingNotificationIdRef.current = newNotificationId;
+            } else if (!isInteractive) { // Standard, non-interactive result notification
+                if (resultNotificationIdRef.current) {
+                    updatedNotifications = updatedNotifications.filter(n => n.id !== resultNotificationIdRef.current);
+                }
+                resultNotificationIdRef.current = newNotificationId;
+            }
+            // Interactive notifications are just added; they don't use the loading/result refs.
+
+            updatedNotifications.push(newNotification);
+
+            // Auto-dismiss for non-interactive, non-persistent-loading notifications
+            if (!isInteractive && !isPersistentLoading && duration > 0) {
+                setTimeout(() => {
+                    removeNotification(newNotificationId);
+                }, duration);
+            }
+            // Interactive notifications and persistent loading notifications are not auto-dismissed by duration.
+            // They are dismissed by user action (clicking a button in the notification or the 'x').
+            return updatedNotifications;
+        });
+        return newNotificationId;
+    }, [removeNotification]);
     const clearForm = () => {
         setFormData(prevFormData => ({
             ...initialFormData,
@@ -481,25 +566,11 @@ const initialFormData = {
         showNotification('Form cleared! Employee selections preserved.', 'check-circle');
     };
 
-        const showNotification = useCallback((message, icon = 'check-circle', duration = DEFAULT_NOTIFICATION_DURATION) => {
-        const newNotification = {
-            id: Date.now() + Math.random(),
-            message: message,
-            icon: getIconClass(icon), // getIconClass is stable (defined outside)
-        };
-        setNotifications(prevNotifications => [...prevNotifications, newNotification]);
-        if (duration > 0) {
-            setTimeout(() => {
-                removeNotification(newNotification.id); // removeNotification is stable
-            }, duration);
-        }
-        return newNotification.id;
-    }, [removeNotification]);
     const [showSaaaEmployeeModal, setShowSaaaEmployeeModal] = useState(false);
     const [saaaListData, setSaaaListData] = useState([]); // To store SAAA staff list
 
     useEffect(() => {
-        let isMounted = true; // Flag to prevent state updates if component unmounts
+        let isMounted = true;
         let loadingNotificationId = null;
 
         const fetchData = async () => {
@@ -515,46 +586,58 @@ const initialFormData = {
                 const dbRootRef = ref(database);
                 const snapshot = await get(dbRootRef);
 
-                // Attempt to remove loading notification as soon as fetch completes
                 if (loadingNotificationId && isMounted) {
                     removeNotification(loadingNotificationId);
-                    loadingNotificationId = null; // Clear it so cleanup doesn't try again
+                    loadingNotificationId = null;
                 }
 
-                if (!isMounted) return; // Check again before setting state
+                if (!isMounted) return;
 
                 if (snapshot.exists()) {
                     const allData = snapshot.val();
                     setPhmcListData(allData.staff?.phmc || []);
                     setCoronerListData(allData.staff?.coroner || []);
-                    setSaaaListData(allData.staff?.saaa || []); // Add this
+                    setSaaaListData(allData.staff?.saaa || []);
                     setAgencyDataStore(allData.agencies || {});
-                    setSelectOptions(allData.selectOptions || {});
+                    const fetchedSelectOptions = allData.selectOptions || {};
+                    setSelectOptions(fetchedSelectOptions);
+                    
+                    setPhysicianRecruitmentDetails(fetchedSelectOptions.physicianRecruitmentDetails || {});
+                    setPsychRecruitmentDetails(fetchedSelectOptions.psychPositionDetailsData || {}); // New
+                    setSaaaRecruitmentDetails(fetchedSelectOptions.saaaPositionDetailsData || {});
+
                     showNotification('Data loaded successfully!', 'check-circle');
                 } else {
                     showNotification('Initial application data not found on server.', 'error');
                     setPhmcListData([]);
                     setCoronerListData([]);
+                    setSaaaListData([]);
                     setAgencyDataStore({});
                     setSelectOptions({});
+                    setPhysicianRecruitmentDetails({});
+                    setSaaaRecruitmentStatus({});
+                    setPhysicianRecruitmentDetails({});
+                    setPsychRecruitmentDetails({});
+                    setSaaaRecruitmentDetails({});
+
                 }
             } catch (error) {
                 if (isMounted) {
-                    if (loadingNotificationId) { // Ensure it's removed on error too
+                    if (loadingNotificationId) {
                         removeNotification(loadingNotificationId);
                         loadingNotificationId = null;
                     }
                     console.error("Error fetching data from Realtime Database:", error);
                     Sentry.captureException(error, { extra: { context: 'Firebase Data Fetch' } });
                     showNotification('Failed to load initial application data. Please try again later.', 'error');
+                    setPhysicianRecruitmentDetails({});
+                    setSaaaRecruitmentStatus({}); // Clear SAAA status on error
                 }
             } finally {
                 if (isMounted) {
                     setIsLoadingData(false);
-                    // Final check to remove loading notification if it's somehow still there
                     if (loadingNotificationId) {
                         removeNotification(loadingNotificationId);
-                        loadingNotificationId = null;
                     }
                 }
             }
@@ -564,12 +647,14 @@ const initialFormData = {
 
         return () => {
             isMounted = false;
-            // Cleanup: If the component unmounts while the loading notification is still visible, remove it.
             if (loadingNotificationId) {
                 removeNotification(loadingNotificationId);
             }
         };
-    }, [showNotification, removeNotification]); // Add stable dependencies
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showNotification, removeNotification]);
+
+
     const saaaGroupedOptions = useMemo(() => {
         if (!saaaListData || saaaListData.length === 0) return [];
         // Assuming SAAA staff have 'name' and 'rank' properties
@@ -745,26 +830,42 @@ const initialFormData = {
     const [selectedAgencyGroup, setSelectedAgencyGroup] = useState(null);
     const [showCoronerTips, setShowCoronerTips] = useState(false);
 
-    const getBBCodeContent = () => {
-        const definition = getFormDefinition(bbCodeVersion);
+const getBBCodeContent = () => {
+    const definition = getFormDefinition(bbCodeVersion);
+
         if (definition && definition.generator) {
-            // Prepare arguments for the generator
+            if (bbCodeVersion === 999) { // Admin Control Panel version
+                return definition.generator({
+                    isAdminAuthenticated: formData.isAdminAuthenticated,
+                    adminUserEmail: formData.adminUserEmail,
+                    adminDisplayData: formData.adminDisplayData, // Pass new generic data field
+                    adminSelectedCategoryName: formData.adminSelectedCategoryName, // Pass category name
+                });
+        } else { // For all other forms that have a definition and generator
+            let specificPositionData = {};
+            if (definition.titleKey === "phmcGeneralApplication") { // Physician
+                specificPositionData = physicianRecruitmentDetails;
+            } else if (definition.titleKey === "phmcPsychApplication") { // Psych
+                specificPositionData = psychRecruitmentDetails;
+            } else if (definition.group === "SAAA") { // General SAAA check
+                specificPositionData = saaaRecruitmentDetails;
+            }
+            // Add more conditions if other forms need specific recruitment data
+
             const generatorArgs = {
-                ...formData, // Current form data
-                // Inject the position details map if the current form needs it
-                ...(definition.version === 50 && { // Or check by group: definition.group === "PHMC Recruitment"
-                    // Use positionDetailsData and fetch from the correct path in selectOptions
-                    positionDetailsData: selectOptions.positionDetailsData || {}, 
-                }),
+                ...formData,
+                positionDetailsData: specificPositionData || {}, // Pass the correctly scoped data
             };
             return definition.generator(generatorArgs);
         }
+    } else { // Fallback if no definition or generator is found
         Sentry.captureMessage(`No BBCode generator found for version: ${bbCodeVersion}`);
         const formName = (getFormDefinition(bbCodeVersion) || {}).name || `Form v${bbCodeVersion}`;
         return `BBCode generation for form "${formName}" is not implemented.`;
-    };
+    }
+};
     const [isLoadingData, setIsLoadingData] = useState(true); 
-    const loadingNotificationIdRef = useRef(null); 
+    const loadingNotificationIdRef = useRef(null);
     useEffect(() => {
         const fetchData = async () => {
             setIsLoadingData(true);
@@ -827,10 +928,13 @@ const initialFormData = {
 
     const [formData, setFormData] = useState(initialFormData);
 
+    const [saaaRecruitmentStatus, setSaaaRecruitmentStatus] = useState({}); // New state for SAAA
+
     const [isUploading, setIsUploading] = useState(false);
     const [isJohnDoe, setIsJohnDoe] = useState(false);
     const [isJaneDoe, setIsJaneDoe] = useState(false);
     const [notifications, setNotifications] = useState([]);
+    const resultNotificationIdRef = useRef(null);  // For timed result messages
     const [showUpdateNotification, setShowUpdateNotification] = useState(false); // New state for notification visibility
     const [commitInfo, setCommitInfo] = useState({ sha: '', date: null });
     const { imageSource: deathReportImage, className: deathReportClass } = SeasonalEvents({ imageType: 'deathReport' });
@@ -939,7 +1043,6 @@ const initialFormData = {
     const coronerFormsSubGroup = [
         { version: 1, name: "Decedent Services", icon: corpse },
         { version: 2, name: "Email Generator", icon: email },
-        { version: 18, name: "Agency Incidents", icon: PHMCLogo },
         { version: 4, name: "Autopsy Report", icon: corpse }
     ];
     const physicalEvalFormsSubGroup = [
@@ -1068,6 +1171,9 @@ const initialFormData = {
     }, [bbCodeVersion, selectedAgencyGroup]);
 
 // Feature Request Handling
+const phmcRecruitmentFormsSubGroup = formDefinitions.filter(
+    form => form.group === "PHMC Recruitment"
+);
 
     const [showFeatureRequestModal, setShowFeatureRequestModal] = useState(false);
     const [featureRequest, setFeatureRequest] = useState('');
@@ -2677,6 +2783,43 @@ const loadReport = (key) => {
         }
         setSavedReports(saved);
     };
+    const [showPositionInfoModal, setShowPositionInfoModal] = useState(false);
+        const [currentPositionInfo, setCurrentPositionInfo] = useState(null); // Add this line
+    const handleShowPositionInfo = (positionKey) => {
+        let data = null;
+        const definition = getFormDefinition(bbCodeVersion); // Get current form definition
+
+        if (!positionKey) {
+            showNotification("Please select a position first.", 'warning');
+            return;
+        }
+
+        if (selectedAgencyGroup === 'PHMC Recruitment') {
+            if (definition?.titleKey === "phmcGeneralApplication" && selectOptions?.physicianRecruitmentDetails) {
+                data = selectOptions.physicianRecruitmentDetails[positionKey];
+            } else if (definition?.titleKey === "phmcPsychApplication" && selectOptions?.psychPositionDetailsData) {
+                data = selectOptions.psychPositionDetailsData[positionKey];
+            } else if (definition?.titleKey === "phmcAdminApplication" && selectOptions?.adminPositionDetailsData) {
+                data = selectOptions.adminPositionDetailsData[positionKey];
+            } else if (definition?.titleKey === "phmcNursingApplication" && selectOptions?.nursePositionDetailsData) {
+                data = selectOptions.nursePositionDetailsData[positionKey];
+            } else if (definition?.titleKey === "phmcEMSApplication" && selectOptions?.emsPositionDetailsData) {
+                data = selectOptions.emsPositionDetailsData[positionKey];
+            } else if (definition?.titleKey === "phmcCoronerRecruitmentApplication" && selectOptions?.coronerPositionDetailsData) {
+                data = selectOptions.coronerPositionDetailsData[positionKey];
+            }
+        } else if (selectedAgencyGroup === 'SAAA' && selectOptions?.saaaPositionDetailsData) {
+            // This part remains for SAAA if you have a similar button for it
+            data = selectOptions.saaaPositionDetailsData[positionKey];
+        }
+
+        if (data) {
+            setCurrentPositionInfo(data);
+            setShowPositionInfoModal(true);
+        } else {
+            showNotification("Detailed information for this position is not available.", 'warning');
+        }
+    };
 
 // Function to filter form data based on bbCodeVersion
 const filterFormData = (formData, bbCodeVersion) => {
@@ -2695,6 +2838,9 @@ const filterFormData = (formData, bbCodeVersion) => {
 // switching agency logic
     const [showAgencyGroupSelectorModal, setShowAgencyGroupSelectorModal] = useState(false);
     const [hideAgencyGroupSelectorPreference, setHideAgencyGroupSelectorPreference] = useState(false);
+    const [physicianRecruitmentDetails, setPhysicianRecruitmentDetails] = useState({});
+    const [psychRecruitmentDetails, setPsychRecruitmentDetails] = useState({}); // New
+    const [saaaRecruitmentDetails, setSaaaRecruitmentDetails] = useState({});
 
 
     // Effect to manage initial agency group selection
@@ -2710,6 +2856,11 @@ const filterFormData = (formData, bbCodeVersion) => {
             setShowAgencyGroupSelectorModal(true); // Show if no saved group or preference is not to hide
         }
     }, []);
+    const [hasOptedIn, setHasOptedIn] = useState(() => {
+        // Initialize from localStorage
+        const storedOptIn = localStorage.getItem('recruitmentOptIn');
+        return storedOptIn === 'true';
+    });
 
     const handleSelectAgencyGroup = (group) => {
         setSelectedAgencyGroup(group);
@@ -2718,14 +2869,46 @@ const filterFormData = (formData, bbCodeVersion) => {
         if (hideAgencyGroupSelectorPreference) {
             localStorage.setItem('hideAgencyGroupSelectorPreference', 'true');
         }
-        // Reset bbCodeVersion or select a default for the new group
-        const defaultFormForGroup = formDefinitions.find(form => form.group === group);
-        if (defaultFormForGroup) {
-            setBbCodeVersion(defaultFormForGroup.version);
+
+        if (group === "PHMC Recruitment") {
+            // REMOVED: Opt-in notification logic is moved from here.
+            openSwitchableModal("PHMC Recruitment Forms", phmcRecruitmentFormsSubGroup);
+        } else if (group) {
+            toggleAgencySelector();
+        }
+    };
+
+    const handleRecruitmentOptIn = (optIn) => {
+        setHasOptedIn(optIn);
+        localStorage.setItem('recruitmentOptIn', optIn.toString());
+
+        if (optIn) {
+            showNotification("You've opted in to recruitment notifications!", 'check-circle');
+            console.log("User opted IN to recruitment notifications. Implement subscription logic.");
         } else {
-            // Fallback if no forms are defined for the group yet
-            // Or, you might want to set bbCodeVersion to null and prompt form selection
-            setBbCodeVersion(formDefinitions[0]?.version || 1); // Default to the very first form or 1
+            showNotification("You've opted out of recruitment notifications for now.", 'info-circle');
+            console.log("User opted OUT of recruitment notifications.");
+        }
+    };
+
+    const handleMainFormSelectionButtonClick = () => {
+        if (!selectedAgencyGroup) {
+            // If no group is selected, show the agency group selector
+            setShowAgencyGroupSelectorModal(true);
+            return;
+        }
+
+        // If the selected group is "PHMC Recruitment", always open the SwitchableFormsModal
+        if (selectedAgencyGroup === "PHMC Recruitment") {
+            openSwitchableModal("PHMC Recruitment Forms", phmcRecruitmentFormsSubGroup);
+        }
+        // Add other specific groups that should use SwitchableFormsModal if they can be set as selectedAgencyGroup
+        // else if (selectedAgencyGroup === "Coroner") { // Example
+        //     openSwitchableModal("Coroner Forms", coronerFormsSubGroup);
+        // }
+        else {
+            // For all other groups (like "PHMC", "SAAA"), use the generic AgencySelector
+            toggleAgencySelector();
         }
     };
 
@@ -2747,19 +2930,51 @@ const toggleAgencySelector = () => {
 
     const handleAgencySelect = (version) => {
         const definition = getFormDefinition(version);
-        if (definition && definition.group === selectedAgencyGroup) {
+        if (definition &&
+            (definition.group === selectedAgencyGroup ||
+             (selectedAgencyGroup === "PHMC Recruitment" && definition.group === "PHMC Recruitment")
+            )
+           ) {
             setBbCodeVersion(version);
+
+            setFormData(prevFormData => ({
+                ...initialFormData,
+                coronerEmployee: prevFormData.coronerEmployee,
+                phmcEmployee: prevFormData.phmcEmployee,
+                coronerBadge: prevFormData.coronerBadge,
+                coronerRank: prevFormData.coronerRank,
+                coronerDiscord: prevFormData.coronerDiscord,
+                SubmitDate: new Date().toISOString().split('T')[0],
+                recruitmentPosition: '',
+            }));
+
             setShowAgencySelector(false);
-                        setShowPHMCModal(false);
+            setShowPHMCModal(false);
             setLastWebhookIdentifier(null);
             showNotification(`Switched to ${definition.name}`, 'exchange-alt');
+
+            // --- NEW LOGIC FOR OPT-IN NOTIFICATION ---
+            if (definition.group === "PHMC Recruitment") {
+                if (!localStorage.getItem('recruitmentOptIn')) {
+                    showNotification(
+                        "Would you like to receive notifications about new recruitment opportunities in PHMC?",
+                        'info-circle',
+                        0, // Stays until dismissed or action taken
+                        [
+                            { label: 'No Thanks', handler: () => handleRecruitmentOptIn(false), variant: 'secondary' },
+                            { label: 'Yes, Opt In!', handler: () => handleRecruitmentOptIn(true), variant: 'primary' }
+                        ]
+                    );
+                }
+            }
+            // --- END NEW LOGIC ---
+
         } else if (definition) {
             showNotification(`This form belongs to the ${definition.group} group. You are currently in the ${selectedAgencyGroup} group. Please change agency group if you wish to use this form.`, 'warning', 7000);
         } else {
             showNotification(`Selected form version ${version} is not defined.`, 'error');
         }
     };
-
     const generateTitle = () => {
         if (bbCodeVersion === 1) { // Death Report
             const { typeOfDeath, decedentName, decedentOOC, dateTime } = formData;
@@ -2784,8 +2999,24 @@ const toggleAgencySelector = () => {
         } else if (bbCodeVersion === 25 || bbCodeVersion === 26) { // Patient File - Basic (26 is not in formDefinitions, but keeping logic)
             const { patientName } = formData;
             return `[Medical Information Registration] -  ${patientName || 'N/A'}`;
-// PHMC Email or other forms
-        } else {
+        } else if (bbCodeVersion === 30) { // SAAA Job Selection
+            const { saaaJobSelection, patientFirstName, patientLastName } = formData;
+            let positionDisplay = saaaJobSelection || "N/A";
+            if (saaaJobSelection && selectOptions?.saaaPositionDetailsData?.[saaaJobSelection]) {
+                positionDisplay = selectOptions.saaaPositionDetailsData[saaaJobSelection].shortCode || saaaJobSelection;
+            }
+            return `[${positionDisplay}] - ${patientFirstName || ''} ${patientLastName || ''}`.trim();
+        } else if (bbCodeVersion === 50) { // PHMC Recruitment Application
+            const { recruitmentPosition, applicantTitleAndFullName } = formData;
+            let positionDisplay = recruitmentPosition || "N/A"; // Default to full name or N/A
+            if (recruitmentPosition && selectOptions?.positionDetailsData?.[recruitmentPosition]) {
+                // Use shortCode from positionDetailsData for PHMC Recruitment
+                positionDisplay = selectOptions.positionDetailsData[recruitmentPosition].shortCode || recruitmentPosition;
+            }
+            return `[${positionDisplay}] - ${applicantTitleAndFullName || ''}`.trim();
+        }
+        // PHMC Email or other forms
+        else {
             // Fallback for other PHMC forms or if specific fields aren't present
             const definition = getFormDefinition(bbCodeVersion);
             const formName = definition ? definition.name : `Form v${bbCodeVersion}`;
@@ -2953,22 +3184,47 @@ useEffect(() => {
     setFormData(newFormData);
 // eslint-disable-next-line react-hooks/exhaustive-deps
 }, []); // Runs once on mount
+const hasWelcomedUserRef = useRef(false);
+const lastWelcomedUserRef = useRef(null); // To track who was last welcomed
 
 useEffect(() => {
     const welcomeUserAndSyncData = () => {
-        let userWelcomed = false;
         const currentTimestamp = Date.now().toString();
         let madeChanges = false;
-        let updatedUserName = null;
+        let identifiedUserName = null; // The user identified in this run of the function
+        let userToWelcome = null; // Specific user to show welcome message for
+        let nameForSyncNotification = null; // To store the name for the "Data for X has been synchronized" message
+
+        // Determine current user from formData
+        if (formData.coronerEmployee) {
+            identifiedUserName = formData.coronerEmployee;
+        } else if (formData.phmcEmployee) {
+            identifiedUserName = formData.phmcEmployee;
+        }
+
+        // If a user is identified and they are different from the last welcomed user,
+        // or if no one was previously welcomed, reset the welcome flag.
+        if (identifiedUserName && identifiedUserName !== lastWelcomedUserRef.current) {
+            hasWelcomedUserRef.current = false;
+            lastWelcomedUserRef.current = identifiedUserName; // Update who we are about to welcome
+            userToWelcome = identifiedUserName;
+        } else if (!identifiedUserName && lastWelcomedUserRef.current) {
+            // If no user is identified now, but one was previously welcomed (e.g., user cleared selection)
+            hasWelcomedUserRef.current = false;
+            lastWelcomedUserRef.current = null;
+        }
+        // If identifiedUserName is the same as lastWelcomedUserRef.current,
+        // hasWelcomedUserRef.current remains as is (true if already welcomed, false otherwise).
 
         // --- Coroner Data Sync ---
         if (formData.coronerEmployee) {
             const selectedCoronerNameInForm = formData.coronerEmployee;
-            if (!userWelcomed) { // Welcome only once if both are filled
+            if (userToWelcome === selectedCoronerNameInForm && !hasWelcomedUserRef.current) {
                 showNotification(`Welcome back ${selectedCoronerNameInForm}, getting your information...`, 'info-circle', 3000);
-                userWelcomed = true;
+                hasWelcomedUserRef.current = true; // Mark as welcomed for this session/user
             }
-            updatedUserName = selectedCoronerNameInForm;
+            if (!nameForSyncNotification) nameForSyncNotification = selectedCoronerNameInForm;
+
 
             const coronerDetailsFromDataJs = coronerListData.find(c => c.name === selectedCoronerNameInForm);
             if (coronerDetailsFromDataJs) {
@@ -3010,11 +3266,12 @@ useEffect(() => {
                     localStorage.setItem('coronerEmployee_timestamp', currentTimestamp);
                     madeChanges = true;
                 } else {
+                    // Even if no data changed, update timestamps for active fields to prevent premature clearing
                     localStorage.setItem('coronerEmployee_timestamp', currentTimestamp);
-                    localStorage.setItem('coronerRank_timestamp', currentTimestamp);
-                    localStorage.setItem('coronerBadge_timestamp', currentTimestamp);
-                    localStorage.setItem('coronerDiscord_timestamp', currentTimestamp);
-                    localStorage.setItem('coronerPHNumber_timestamp', currentTimestamp);
+                    if (formData.coronerRank) localStorage.setItem('coronerRank_timestamp', currentTimestamp);
+                    if (formData.coronerBadge) localStorage.setItem('coronerBadge_timestamp', currentTimestamp);
+                    if (formData.coronerDiscord) localStorage.setItem('coronerDiscord_timestamp', currentTimestamp);
+                    if (formData.coronerPHNumber) localStorage.setItem('coronerPHNumber_timestamp', currentTimestamp);
                 }
             } else {
                 showNotification(`The previously selected coroner "${selectedCoronerNameInForm}" is no longer valid and has been cleared.`, 'warning', 7000);
@@ -3027,17 +3284,23 @@ useEffect(() => {
                     ...prev,
                     coronerEmployee: '', coronerBadge: '', coronerRank: '', coronerDiscord: '', coronerPHNumber: '50056',
                 }));
+                // If this was the user we were tracking, clear them
+                if (lastWelcomedUserRef.current === selectedCoronerNameInForm) {
+                    lastWelcomedUserRef.current = null;
+                    hasWelcomedUserRef.current = false;
+                }
             }
         }
 
         // --- PHMC Employee Data Sync ---
         if (formData.phmcEmployee) {
             const selectedPhmcEmployeeName = formData.phmcEmployee;
-            if (!userWelcomed) {
+            // Ensure welcome is only shown if this is the primary identified user to welcome
+            if (userToWelcome === selectedPhmcEmployeeName && !hasWelcomedUserRef.current) {
                 showNotification(`Welcome back ${selectedPhmcEmployeeName}, getting your information...`, 'info-circle', 3000);
-                userWelcomed = true;
+                hasWelcomedUserRef.current = true; // Mark as welcomed
             }
-            if (!updatedUserName) updatedUserName = selectedPhmcEmployeeName;
+            if (!nameForSyncNotification) nameForSyncNotification = selectedPhmcEmployeeName;
 
             const phmcDetailsFromDataJs = phmcListData.find(p => p.name === selectedPhmcEmployeeName);
             if (phmcDetailsFromDataJs) {
@@ -3072,10 +3335,11 @@ useEffect(() => {
                     localStorage.setItem('phmcEmployee_timestamp', currentTimestamp);
                     madeChanges = true;
                 } else {
+                    // Even if no data changed, update timestamps for active fields
                     localStorage.setItem('phmcEmployee_timestamp', currentTimestamp);
-                    localStorage.setItem('phmcEmployeeSignature_timestamp', currentTimestamp);
-                    localStorage.setItem('phmcEmployeeLastName_timestamp', currentTimestamp);
-                    localStorage.setItem('phmcRank_timestamp', currentTimestamp);
+                    if (formData.phmcEmployeeSignature) localStorage.setItem('phmcEmployeeSignature_timestamp', currentTimestamp);
+                    if (formData.phmcEmployeeLastName) localStorage.setItem('phmcEmployeeLastName_timestamp', currentTimestamp);
+                    if (formData.phmcRank) localStorage.setItem('phmcRank_timestamp', currentTimestamp);
                 }
             } else {
                 showNotification(`The previously selected PHMC staff "${selectedPhmcEmployeeName}" is no longer valid and has been cleared.`, 'warning', 7000);
@@ -3088,20 +3352,29 @@ useEffect(() => {
                     ...prev,
                     phmcEmployee: '', phmcEmployeeSignature: '', phmcEmployeeLastName: '', phmcRank: '',
                 }));
+                // If this was the user we were tracking, clear them
+                if (lastWelcomedUserRef.current === selectedPhmcEmployeeName) {
+                    lastWelcomedUserRef.current = null;
+                    hasWelcomedUserRef.current = false;
+                }
             }
         }
 
-        if (madeChanges && updatedUserName) {
-            showNotification(`Data for ${updatedUserName} has been synchronized with the latest records.`, 'check-circle', 5000);
+        if (madeChanges && nameForSyncNotification) { // Use nameForSyncNotification
+            showNotification(`Data for ${nameForSyncNotification} has been synchronized with the latest records.`, 'check-circle', 5000);
         }
     };
 
-    // Only run if there's data to sync against (i.e., after Firebase data is loaded)
-    if (phmcListData.length > 0 || coronerListData.length > 0) {
-        welcomeUserAndSyncData();
+    // This useEffect handles the data synchronization and welcome message.
+    // It runs when staff lists are loaded or when the selected employee in the form changes.
+    if (((phmcListData && phmcListData.length > 0) || (coronerListData && coronerListData.length > 0))) {
+        // Only call if an employee is actually selected in the form, or if we need to reset welcome status
+        if (formData.coronerEmployee || formData.phmcEmployee || lastWelcomedUserRef.current) {
+             welcomeUserAndSyncData();
+        }
     }
 // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [phmcListData, coronerListData]); // Re-run if staff lists change. `showNotification` should be stable.
+}, [phmcListData, coronerListData, formData.coronerEmployee, formData.phmcEmployee]); // showNotification should be stable.
 
     const handleSelectChange = (selectedOption, actionMeta) => {
         const { name } = actionMeta;
@@ -3274,6 +3547,11 @@ useEffect(() => {
         33: "SAAA - Flight School",
         34: "SAAA - Heliport Permit",
         50: "PHMC - Physician Careers",
+        51: "PHMC - Psych Careers",
+        52: "PHMC - Admin Careers",
+        53: "PHMC - Nursing Careers",
+        54: "PHMC - Coroner Careers",
+        55: "PHMC - EMS Careers"
     };
 
 
@@ -3288,24 +3566,36 @@ const getCopyButtonText = () => {
     return `${baseText}${formName}`;
 };
 
-// New main handler function
-const handleCopyAndNotifyWrapper = async () => {
-    await handleFormCopyAndNotify({
-        formData,
-        bbCodeVersion,
-        selectedAgencyGroup,
-        getBBCodeContent,    // This is already a method in App.js
-        getFormDefinition,   // This is imported from formDefinitions.js
-        saveReport,          // This is already a method in App.js
-        showNotification,    // This is already a method in App.js
-        removeNotification,  // This is already a method in App.js
-        handleAgencySelect,  // This is already a method in App.js
-        setLastWebhookIdentifier, // State setter from App.js
-        lastWebhookIdentifier,    // State from App.js
-        commitInfo,          // State from App.js
-        database,            // Imported in App.js from firebase.js
-    });
-};
+    const handleCopyAndNotifyWrapper = async () => {
+        const definition = getFormDefinition(bbCodeVersion);
+
+        if (definition && definition.version === 50) { // Check for Physician Application form
+            await handlePhysicianApplicationCopyAndNotify({
+                formData,
+                getBBCodeContent,    // Already a method in App.js
+                showNotification,    // Already a method in App.js
+                commitInfo,          // State from App.js
+                selectOptions,       // Pass selectOptions from App.js state
+            });
+        } else {
+            // Existing generic handler
+            await handleFormCopyAndNotify({
+                formData,
+                bbCodeVersion,
+                selectedAgencyGroup,
+                getBBCodeContent,
+                getFormDefinition,
+                saveReport,
+                showNotification,
+                removeNotification,
+                handleAgencySelect,
+                setLastWebhookIdentifier,
+                lastWebhookIdentifier,
+                commitInfo,
+                database,
+            });
+        }
+    };
 
     // handling updates and refresh 
     const initialCommitSha = useRef(null); // Ref to store the initial commit SHA
@@ -3354,7 +3644,6 @@ const handleCopyAndNotifyWrapper = async () => {
     }, []); // Empty dependency array ensures this runs once on mount and sets up polling
 
     
-    
         const handleRefresh = () => {
             window.location.reload(true);
         };
@@ -3400,8 +3689,16 @@ const handleCopyAndNotifyWrapper = async () => {
                 show={showAgencyGroupSelectorModal && !selectedAgencyGroup}
                 onSelectGroup={handleSelectAgencyGroup}
                 onHideSelectorPreference={handleHideAgencyGroupSelectorPreference}
+    physicianRecruitmentDetails={selectOptions.physicianRecruitmentDetails || {}}
+    psychRecruitmentDetails={selectOptions.psychPositionDetailsData || {}}
+    adminRecruitmentDetails={selectOptions.adminPositionDetailsData || {}}
+    emsRecruitmentDetails={selectOptions.emsPositionDetailsData || {}}
+                    handleFormSelect={handleAgencySelect} // This now triggers the opt-in logic
+    nurseRecruitmentDetails={selectOptions.nursePositionDetailsData || {}}
+    coronerRecruitmentDetails={selectOptions.coronerPositionDetailsData || {}}
             />
 
+            
             <EasterEggModal
                 show={showEasterEggModal}
                 type={easterEggType} // Pass the type ('normal' or 'rare')
@@ -3453,8 +3750,26 @@ const handleCopyAndNotifyWrapper = async () => {
                             setHideAgencySelector={setHideAgencySelector}
                             selectedAgencyGroup={selectedAgencyGroup} // Pass current group
                             formDefinitions={formDefinitions} // Pass all definitions
+                                    saaaRecruitmentDetails={saaaRecruitmentDetails} // <<< Add this prop
+
                         />
+                        
                     )}
+                                <PositionInfoModal
+                show={showPositionInfoModal}
+                onClose={() => setShowPositionInfoModal(false)}
+                // Pass the correct position key based on the form
+                selectedPositionKey={bbCodeVersion === 50 ? formData.recruitmentPosition : formData.saaaJobSelection}
+                positionData={currentPositionInfo}
+            />
+            <AdminModal
+                show={showAdminModal}
+                onHide={() => setShowAdminModal(false)}
+                // You can pass other necessary props like showNotification if needed
+                showNotification={showNotification}
+                commitInfo={commitInfo} // If AdminModal needs it for webhooks
+            />
+
             <div className="header-info-wrapper">
             <HeaderInfo commitInfo={commitInfo} /> 
             </div>
@@ -3471,6 +3786,17 @@ const handleCopyAndNotifyWrapper = async () => {
                         <i className="fas fa-history"></i>
                         View Changelog
                     </Button>
+                    <Button
+                        type="button"
+                        variant="danger"
+                        className="changelog-button"
+                        onClick={handleAdminPanelClick} // This now switches to the admin form
+                        title="Open Admin Control Panel"
+                    >
+                        <i className="fas fa-user-shield"></i>
+                        Admin Panel
+                    </Button>
+
         <div className="floating-tools-container">
                         {selectedAgencyGroup === 'SAAA' && (
                 <Button
@@ -3550,6 +3876,48 @@ const handleCopyAndNotifyWrapper = async () => {
                         <i className="fa-solid fa-address-card"></i>
                         Business Card Tool
                     </Button>
+                    {(() => {
+                        if (selectedAgencyGroup === 'PHMC Recruitment' && formData.recruitmentPosition) {
+                            let currentRecruitmentDetailsSource = null;
+                            let positionDisplayNameForTitle = formData.recruitmentPosition || 'selected position';
+                            const currentFormDef = getFormDefinition(bbCodeVersion);
+
+                            if (currentFormDef?.titleKey === "phmcGeneralApplication") {
+                                currentRecruitmentDetailsSource = selectOptions.physicianRecruitmentDetails;
+                            } else if (currentFormDef?.titleKey === "phmcPsychApplication") {
+                                currentRecruitmentDetailsSource = selectOptions.psychPositionDetailsData;
+                            } else if (currentFormDef?.titleKey === "phmcAdminApplication") {
+                                currentRecruitmentDetailsSource = selectOptions.adminPositionDetailsData;
+                            } else if (currentFormDef?.titleKey === "phmcNursingApplication") {
+                                currentRecruitmentDetailsSource = selectOptions.nursePositionDetailsData;
+                            } else if (currentFormDef?.titleKey === "phmcEMSApplication") {
+                                currentRecruitmentDetailsSource = selectOptions.emsPositionDetailsData;
+                            } else if (currentFormDef?.titleKey === "phmcCoronerRecruitmentApplication") {
+                                currentRecruitmentDetailsSource = selectOptions.coronerPositionDetailsData;
+                            }
+
+                            if (currentRecruitmentDetailsSource && currentRecruitmentDetailsSource[formData.recruitmentPosition]) {
+                                positionDisplayNameForTitle = currentRecruitmentDetailsSource[formData.recruitmentPosition].displayName || formData.recruitmentPosition;
+                            }
+
+                            // Only render the button if the source data for the current form type is available
+                            if (currentRecruitmentDetailsSource) {
+                                return (
+                                    <Button
+                                        variant="info"
+                                        type="button"
+                                        className="changelog-button"
+                                        onClick={() => handleShowPositionInfo(formData.recruitmentPosition)}
+                                        title={`More info about ${positionDisplayNameForTitle}`}
+                                    >
+                                        <i className="fas fa-info-circle"></i>
+                                        Position Info
+                                    </Button>
+                                );
+                            }
+                        }
+                        return null; // Return null if conditions aren't met
+                    })()}
 
                     {(bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 18) && (
 
@@ -3604,7 +3972,7 @@ const handleCopyAndNotifyWrapper = async () => {
 
                     <div className="button-group">
 
-                     {selectedAgencyGroup === 'PHMC' && (
+                    { (selectedAgencyGroup === 'PHMC' || selectedAgencyGroup === 'PHMC Recruitment') && (
                         <Button
                             type="button"
                             variant="phmc" // You might want a dynamic variant too
@@ -3625,14 +3993,15 @@ const handleCopyAndNotifyWrapper = async () => {
                             SAAA
                         </Button>
                     )}
-                                <Button
-                                    className="changelog-button"
-                                    variant='secondary'
-                                    onClick={toggleAgencySelector}
-                                >
-                                    <i className="fas fa-exchange-alt"></i>
-                                    Select {selectedAgencyGroup} Form
-                                </Button>
+                        <Button
+                            className="changelog-button"
+                            variant='secondary'
+                            onClick={handleMainFormSelectionButtonClick} // Use the new handler
+                        >
+                            <i className="fas fa-exchange-alt"></i>
+                            {/* Update text to be more generic if no group is selected */}
+                            Select {selectedAgencyGroup || "Agency"} Form
+                        </Button>
 
                         {(bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 4 || bbCodeVersion === 18) && (
                             <Button
@@ -3720,17 +4089,16 @@ const handleCopyAndNotifyWrapper = async () => {
                         )}
 
                     </div>
-                    <div className="notification-container">
-            {notifications.map((notif) => (
-                <Notification
-                    key={notif.id}
-                    message={notif.message}
-                    icon={notif.icon}
-                    onDismiss={() => removeNotification(notif.id)}
-                    // Pass other necessary props
-                />
-                
-            ))}
+        <div className="notification-container">
+                {notifications.map((notif) => (
+                    <Notification
+                        key={notif.id}
+                        message={notif.message}
+                        icon={notif.icon}
+                        actions={notif.actions} // Pass actions to Notification component
+                        onDismiss={() => removeNotification(notif.id)}
+                    />
+                ))}
             {/* If you were rendering a single notification before, it would look like:
             {notification && (
                 <Notification
@@ -3743,11 +4111,13 @@ const handleCopyAndNotifyWrapper = async () => {
             */}
         </div>
                             <form>
+                                
                                 {FieldComponent ? (
                                     <FieldComponent
                                         formData={formData}
                                         handleChange={handleChange}
                                         setFormData={setFormData}
+                                        
                                         // Pass all necessary props from App.js state and selectOptions
                                         // Example for DeathReport:
                                         typeOfDeathOptions={selectOptions.typeOfDeathOptions || []}
@@ -3833,6 +4203,9 @@ const handleCopyAndNotifyWrapper = async () => {
                                         ultrasoundResults={selectOptions.ultrasoundResults || []}
                                         patientBloodType={selectOptions.patientBloodType || []} 
                                         selectOptions={selectOptions} // Make sure this is passed
+                                        physicianRecruitmentDetails={physicianRecruitmentDetails}
+                                        psychRecruitmentDetails={psychRecruitmentDetails}
+                                        saaaRecruitmentDetails={saaaRecruitmentDetails}
 
 
                                     />
@@ -3876,6 +4249,19 @@ const handleCopyAndNotifyWrapper = async () => {
                     </form>
                 </div>
                 <div className="output-container">
+<RecruitmentStatusDisplay
+    selectedAgencyGroup={selectedAgencyGroup}
+    bbCodeVersion={bbCodeVersion}
+    physicianRecruitmentDetails={physicianRecruitmentDetails} // Rename prop here too
+    psychRecruitmentDetails={psychRecruitmentDetails}
+    adminRecruitmentDetails={selectOptions.adminPositionDetailsData || {}} // Assuming admin data is in selectOptions
+    emsRecruitmentDetails={selectOptions.emsPositionDetailsData || {}}     // Assuming EMS data is in selectOptions
+    nurseRecruitmentDetails={selectOptions.nursePositionDetailsData || {}} // Assuming Nurse data is in selectOptions
+    saaaRecruitmentDetails={saaaRecruitmentDetails}
+    coronerRecruitmentDetails={selectOptions.coronerPositionDetailsData || {}}
+    // Pass other recruitment details objects as props when you add them
+/>
+
 <MissingEmployeeModal
     show={showMissingEmployeeModal}
     onHide={() => {
@@ -4030,13 +4416,21 @@ const handleCopyAndNotifyWrapper = async () => {
                             commitInfo={commitInfo}
                         />
                     )}
-                                <SwitchableFormsModal
-                show={showPHMCModal}
+            <SwitchableFormsModal
+                show={showPHMCModal} // Your state that controls this modal's visibility
                 onHide={() => setShowPHMCModal(false)}
-                title={switchableModalTitle}
-                forms={switchableFormsList}
-                handleFormSelect={handleAgencySelect} // Pass the existing handler
+                title={switchableModalTitle} // Your state for the modal title
+                forms={switchableFormsList} // Your state for the list of forms for this modal
+                handleFormSelect={handleAgencySelect} // This now triggers the opt-in logic
                 isMobile={isMobile}
+                physicianRecruitmentDetails={physicianRecruitmentDetails} // Renamed prop
+                psychRecruitmentStatus={psychRecruitmentDetails} // For Psych buttons - NEW PROP
+                formDefinitions={formDefinitions} // Pass all form definitions
+                    adminRecruitmentDetails={selectOptions.adminPositionDetailsData || {}} // Assuming admin data is in selectOptions
+                nurseRecruitmentDetails={selectOptions.nursePositionDetailsData || {}}
+                 emsRecruitmentDetails={selectOptions.emsPositionDetailsData || {}}
+                coronerRecruitmentDetails={selectOptions.coronerPositionDetailsData || {}}
+
             />
 
 <EmsAmaModal
@@ -4047,6 +4441,8 @@ const handleCopyAndNotifyWrapper = async () => {
 />
 
 <div className="button-group">
+                        {bbCodeVersion !== 999 && (
+
                             <Button
                                 variant="primary"
                                 onClick={() => setShowBBCode(!showBBCode)}
@@ -4056,10 +4452,13 @@ const handleCopyAndNotifyWrapper = async () => {
                                 <i className={`fas ${showBBCode ? 'fa-eye-slash' : 'fa-eye'}`}></i>
                                 {showBBCode ? ' Hide BBCode' : ' Show BBCode'}
                             </Button>
-                            
+                                                    )}
+                        {bbCodeVersion !== 999 && (
+
                             <Button 
                             variant="success"
                             onClick={saveReport}>Save Report</Button>
+                        )}
 
             <SavedReportsModal
                 show={showSavedReports}
@@ -4113,6 +4512,7 @@ const handleCopyAndNotifyWrapper = async () => {
         </div>
     </>
 )}
+
                         {showImages && (formData.scenePhotos || formData.additionalImages) && (
                             <>
                                 <h2>Uploaded Images</h2>
@@ -4159,16 +4559,16 @@ const handleCopyAndNotifyWrapper = async () => {
                             </>
                         )}
                     </div>
-                    {
-    (bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 3 || bbCodeVersion === 4 ||  bbCodeVersion === 24 || bbCodeVersion === 25) && (
-        <>
-            <h1>Generated Title</h1>
-            <div className="title-output">
-                <pre>{generateTitle()}</pre>
-            </div>
-        </>
-    )
-}                
+                {
+                    bbCodeVersion !== 999 && // Conditionally show title section
+                    (bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 3 || bbCodeVersion === 4 ||  bbCodeVersion === 24 || bbCodeVersion === 25 || bbCodeVersion === 30 || bbCodeVersion === 50)  && (
+                    <>
+                        <h1>Generated Title</h1>
+                        <div className="title-output">
+                            <pre>{generateTitle()}</pre>
+                        </div>
+                    </>
+                )}
 {bbCodeVersion === 2 && (
     <div className="agency-buttons">
         {formData.department && agencyDataStore[formData.department] && (
@@ -4196,38 +4596,41 @@ const handleCopyAndNotifyWrapper = async () => {
 
                     <div className="button-container">
 
-                    {
-    (bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 3 || bbCodeVersion === 4 ||  bbCodeVersion === 24 || bbCodeVersion === 25) && (
-                     <Button
-                            type="button"
-                            className="changelog-button"
-                            onClick={() => {
-                                const title = generateTitle();
-                                if (navigator.clipboard && navigator.clipboard.writeText) {
-                                    navigator.clipboard.writeText(title).then(() => {
-                                        showNotification('Title copied to clipboard!', 'check-circle');
-                                    }).catch(err => {
-                                        console.error('Failed to copy: ', err);
-                                        showNotification('Failed to copy title to clipboard!', 'exclamation-triangle');
-                                    });
-                                } else {
-                                    console.warn("Clipboard API not available");
-                                    showNotification('Clipboard API not available!', 'exclamation-triangle');
-                                }
-                            }}
-                        >
-                            <i className="fas fa-copy"></i>
-                            Copy Title
-                        </Button>
-                    )}
-<Button
-    type="button"
-    className="changelog-button" // Or your existing class
-    onClick={handleCopyAndNotifyWrapper} // Use the new wrapper
->
-    <i className="fas fa-clipboard"></i>
-    {getCopyButtonText()}
-</Button>
+                        {selectedAgencyGroup !== 'Admin' &&
+                            (bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 3 || bbCodeVersion === 4 ||  bbCodeVersion === 24 || bbCodeVersion === 25 || bbCodeVersion === 30 || bbCodeVersion === 50)  && (
+                            <Button
+                                type="button"
+                                className="changelog-button"
+                                onClick={() => {
+                                    const title = generateTitle();
+                                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                                        navigator.clipboard.writeText(title).then(() => {
+                                            showNotification('Title copied to clipboard!', 'check-circle');
+                                        }).catch(err => {
+                                            console.error('Failed to copy: ', err);
+                                            showNotification('Failed to copy title to clipboard!', 'exclamation-triangle');
+                                        });
+                                    } else {
+                                        console.warn("Clipboard API not available");
+                                        showNotification('Clipboard API not available!', 'exclamation-triangle');
+                                    }
+                                }}
+                            >
+                                <i className="fas fa-copy"></i>
+                                Copy Title
+                            </Button>
+                        )}
+                        {/* Conditionally render Copy BBCode button */}
+                        {selectedAgencyGroup !== 'Admin' && (
+                            <Button
+                                type="button"
+                                className="changelog-button"
+                                onClick={handleCopyAndNotifyWrapper}
+                            >
+                                <i className="fas fa-clipboard"></i>
+                                {getCopyButtonText()}
+                            </Button>
+                        )}
                     </div>
 
 {bbCodeVersion === 1 && (
@@ -4243,6 +4646,7 @@ const handleCopyAndNotifyWrapper = async () => {
         </a>
     </div>
 )}
+
 {bbCodeVersion === 4 && (
     <div className="image-container">
         <a href="https://phmc.gta.world/posting.php?mode=post&f=266" target="_blank" rel="noopener noreferrer" className={deathReportClass} title="Easter Bunny goes bounce bounce">
