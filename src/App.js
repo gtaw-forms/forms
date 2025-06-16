@@ -3962,25 +3962,6 @@ const getCopyButtonText = () => {
                                                 <li>Added an in-app notification prompt for users to opt-in to PHMC recruitment updates when accessing relevant career forms.</li>
                                             </ul>
                                         </li>
-                                        <li><strong>Recruitment Data & Display:</strong>
-                                            <ul>
-                                                <li>Enhanced `AgencyGroupSelectorModal` and `SwitchableFormsModal` to display live recruitment statuses (Open/Closed counts) on relevant buttons.</li>
-                                                <li>`RecruitmentStatusDisplay` component now shows a more detailed overview of active recruitment statuses.</li>
-                                                <li>Updated Firebase data structures (`selectOptions` in `migrate.js`) to support detailed recruitment role information.</li>
-                                            </ul>
-                                        </li>
-                                        <li><strong>Modal & UI Improvements:</strong>
-                                            <ul>
-                                                <li>Refined styling for `AddRoleModal` to align with the application's theme (e.g., `CoronerTipsModal`).</li>
-                                                <li>Implemented comprehensive input validation for the "Add Role" modal.</li>
-                                            </ul>
-                                        </li>
-                                        <li><strong>Security & Configuration:</strong>
-                                            <ul>
-                                                <li>Discussed and emphasized the importance of Firebase Security Rules for protecting backend data.</li>
-                                                <li>Clarified the handling of Firebase client-side API keys and `.env` file best practices.</li>
-                                            </ul>
-                                        </li>
                                     </ul>
                                     - frosty x Austin Rhodes (Bailey - i3aileyy)
                                 </div>
