@@ -1,15 +1,14 @@
-// src/components/Admin/AddRoleModal.js
+// src/components/Admin/RoleModal.js
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button, Form as BootstrapForm, Spinner } from 'react-bootstrap';
 import { database } from '../../firebase';
-import { ref, set, get } from "firebase/database";
+import { ref, set, update, get } from "firebase/database"; // Import update
 
 // Define initialRoleState outside the component for a stable reference
 const getInitialRoleState = (categoryDisplayName = '') => ({
-    // name: '', // Intended for Firebase key, derived from displayName - not directly validated as user input
     displayName: '',
     group: categoryDisplayName,
-    status: 'OPEN', // Has a default, so always "filled"
+    status: 'OPEN',
     poc: '',
     shortCode: '',
     url: '',
@@ -47,10 +46,32 @@ const modalFooterStyle = {
 };
 // --- End Custom Modal Styles ---
 
-const AddRoleModal = ({ show, onHide, categoryKey, categoryConfig, showNotification, onRoleAdded }) => {
+// MODIFIED: Accept roleToEdit prop and rename onRoleAdded to onRoleSaved
+const RoleModal = ({ show, onHide, categoryKey, categoryConfig, showNotification, onRoleSaved, roleToEdit }) => {
     const initialRoleState = useMemo(() => getInitialRoleState(categoryConfig?.displayName || ''), [categoryConfig?.displayName]);
+    const [roleData, setRoleData] = useState(() => {
+        if (roleToEdit) {
+            // Merge, ensuring all keys from initialRoleState exist, defaulting to initial values
+            // if not present in roleToEdit.
+            return { ...initialRoleState, ...roleToEdit };
+        }
+        return initialRoleState;
+    });
+    useEffect(() => {
+        if (show) {
+            if (roleToEdit) {
+                // When modal is shown for editing, merge roleToEdit with initialRoleState
+                // to ensure all expected fields are defined in roleData.
+                setRoleData({ ...initialRoleState, ...roleToEdit });
+            } else {
+                // When adding, use initialRoleState (which already considers categoryConfig for group)
+                setRoleData(initialRoleState);
+            }
+            setError('');
+        }
+    }, [show, roleToEdit, initialRoleState]); // categoryConfig is implicitly handled by initialRoleState's memoization
 
-    const [roleData, setRoleData] = useState(initialRoleState);
+    // MODIFIED: Initialize state based on roleToEdit or initialRoleState
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
 
@@ -58,23 +79,24 @@ const AddRoleModal = ({ show, onHide, categoryKey, categoryConfig, showNotificat
     const requiredFields = useMemo(() => [
         'displayName', 'group', 'shortCode', 'poc', 'url',
         'Overview', 'skill1', 'skill2', 'skill3', 'EduRequirement'
-        // 'status' is always pre-filled
     ], []);
 
     const [isFormValid, setIsFormValid] = useState(false);
 
     useEffect(() => {
         if (show) {
-            setRoleData(initialRoleState);
+            // MODIFIED: Reset state based on roleToEdit when modal is shown
+            setRoleData(roleToEdit || initialRoleState);
             setError('');
         }
-    }, [show, initialRoleState]);
+    }, [show, roleToEdit, initialRoleState]); // Added roleToEdit to deps
 
     // Validate form whenever roleData changes
     useEffect(() => {
         const validateForm = () => {
             for (const field of requiredFields) {
-                if (!roleData[field] || String(roleData[field]).trim() === '') {
+                // Check if field exists and is not just whitespace
+                if (!roleData.hasOwnProperty(field) || String(roleData[field]).trim() === '') {
                     return false;
                 }
             }
@@ -90,22 +112,26 @@ const AddRoleModal = ({ show, onHide, categoryKey, categoryConfig, showNotificat
     }, []);
 
     const handleClose = useCallback(() => {
-        setRoleData(initialRoleState); // Reset form data on close
+        // MODIFIED: Reset form data based on initial state, not roleToEdit
+        setRoleData(initialRoleState);
         setError('');
         onHide();
-    }, [onHide, initialRoleState]);
+    }, [onHide, initialRoleState]); // Removed roleToEdit from deps
 
     const handleSubmit = useCallback(async (e) => {
         e.preventDefault();
+        console.log('[RoleModal] handleSubmit called. Event default prevented.'); // Log 1
         setError('');
 
         if (!isFormValid) {
+            console.log('[RoleModal] Form is NOT valid. Aborting.'); // Log 2
             setError('All fields marked with * are required, and others must also be filled.');
             if (showNotification) showNotification('Please fill out all fields in the form.', 'warning');
             return;
         }
 
-        const roleKey = roleData.displayName.trim().replace(/[.#$[\]]/g, '_');
+        // MODIFIED: Use original key if editing, otherwise generate from displayName
+        const roleKey = roleToEdit?.originalKey || roleData.displayName.trim().replace(/[.#$[\]]/g, '_');
         if (!roleKey) {
             setError('Display Name cannot be empty or invalid for key generation.');
             if (showNotification) showNotification('Display Name is invalid for key.', 'warning');
@@ -120,30 +146,53 @@ const AddRoleModal = ({ show, onHide, categoryKey, categoryConfig, showNotificat
             return;
         }
 
-        const newRolePath = `${categoryConfig.path}/${roleKey}`;
+        const rolePath = `${categoryConfig.path}/${roleKey}`;
+
         try {
-            const existingRoleRef = ref(database, newRolePath);
-            const snapshot = await get(existingRoleRef);
-            if (snapshot.exists()) {
-                setError(`A role with the key "${roleKey}" (derived from Display Name) already exists.`);
-                if (showNotification) showNotification(`Role key "${roleKey}" already exists.`, 'error');
-                setIsSaving(false);
-                return;
+            // MODIFIED: Check for existence only if adding (roleToEdit is null)
+            if (!roleToEdit) {
+                const existingRoleRef = ref(database, rolePath);
+                const snapshot = await get(existingRoleRef);
+                if (snapshot.exists()) {
+                    setError(`A role with the key "${roleKey}" (derived from Display Name) already exists in this category.`);
+                    if (showNotification) showNotification(`Role key "${roleKey}" already exists.`, 'error');
+                    setIsSaving(false);
+                    return;
+                }
             }
 
-            const { name, ...dataToSave } = roleData;
-            await set(ref(database, newRolePath), dataToSave);
+            // Prepare data to save/update
+            const { name, ...dataToSave } = roleData; // 'name' field is not part of the data to save
 
-            if (showNotification) showNotification(`Role "${roleData.displayName}" added successfully!`, 'check-circle');
-            if (onRoleAdded) onRoleAdded();
+            // MODIFIED: Use set for adding, update for editing
+            if (!roleToEdit) {
+                 await set(ref(database, rolePath), dataToSave);
+                 if (showNotification) showNotification(`Role "${roleData.displayName}" added successfully!`, 'check-circle');
+            } else {
+                 // Use update to only change specified fields, or set to overwrite the whole object
+                 // Using set here to overwrite the whole role object with the new data
+                 await set(ref(database, rolePath), dataToSave);
+                 if (showNotification) showNotification(`Role "${roleData.displayName}" updated successfully!`, 'check-circle');
+            }
+
+
+            // MODIFIED: Call onRoleSaved with the saved data and action type
+            if (onRoleSaved) {
+                console.log('[RoleModal] Calling onRoleSaved with data:', { ...dataToSave, originalKey: roleKey }, roleToEdit ? 'edited' : 'added'); // Log 4
+                onRoleSaved({
+                    ...dataToSave,
+                    originalKey: roleKey
+                }, roleToEdit ? 'edited' : 'added');
+            }
+
             handleClose();
         } catch (dbError) {
-            console.error("Error adding new role:", dbError);
-            setError(`Failed to add role: ${dbError.message}`);
-            if (showNotification) showNotification(`Failed to add role. ${dbError.message}`, "error");
+            console.error(`[RoleModal] Error ${roleToEdit ? 'editing' : 'adding'} role:`, dbError); // Log 5
+            setError(`Failed to ${roleToEdit ? 'edit' : 'add'} role: ${dbError.message}`);
+            if (showNotification) showNotification(`Failed to ${roleToEdit ? 'edit' : 'add'} role. ${dbError.message}`, "error");
         }
         setIsSaving(false);
-    }, [roleData, categoryConfig, showNotification, onRoleAdded, handleClose, isFormValid]);
+    }, [roleData, categoryConfig, showNotification, onRoleSaved, handleClose, isFormValid, roleToEdit]); // Added roleToEdit to deps
 
     useEffect(() => {
         const handleEsc = (event) => {
@@ -163,11 +212,16 @@ const AddRoleModal = ({ show, onHide, categoryKey, categoryConfig, showNotificat
         return null;
     }
 
+    // MODIFIED: Dynamic modal title and button text
+    const modalTitle = roleToEdit ? `Edit Role: ${roleToEdit.displayName || roleToEdit.originalKey}` : `Add New Role to ${categoryConfig?.displayName || 'Category'}`;
+    const submitButtonText = roleToEdit ? (isSaving ? 'Saving Changes...' : 'Save Changes') : (isSaving ? 'Saving Role...' : 'Save Role');
+
+
     return (
         <div style={modalOverlayStyle} onClick={handleClose}>
             <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
                 <div style={modalHeaderStyle}>
-                    <h5 style={modalTitleStyle}>Add New Role to {categoryConfig?.displayName || 'Selected Category'}</h5>
+                    <h5 style={modalTitleStyle}>{modalTitle}</h5>
                     <Button
                         variant="link"
                         onClick={handleClose}
@@ -179,15 +233,23 @@ const AddRoleModal = ({ show, onHide, categoryKey, categoryConfig, showNotificat
                 </div>
                 <div style={modalBodyStyle}>
                     <BootstrapForm onSubmit={handleSubmit}>
-                        {/* Mark required fields with an asterisk for user guidance */}
+                         {/* Display Name field - Disable if editing as it's used as the key */}
                         <BootstrapForm.Group className="mb-3">
                             <BootstrapForm.Label>Display Name (Used as Key) *</BootstrapForm.Label>
-                            <BootstrapForm.Control type="text" name="displayName" value={roleData.displayName} onChange={handleChange} required />
+                            <BootstrapForm.Control
+                                type="text"
+                                name="displayName"
+                                value={roleData.displayName}
+                                onChange={handleChange}
+                                required
+                                disabled={!!roleToEdit} // Disable if editing
+                            />
+                             {roleToEdit && <BootstrapForm.Text muted>Display Name cannot be changed when editing.</BootstrapForm.Text>}
                         </BootstrapForm.Group>
                         <BootstrapForm.Group className="mb-3">
                             <BootstrapForm.Label>Group *</BootstrapForm.Label>
                             <BootstrapForm.Control type="text" name="group" value={roleData.group} onChange={handleChange} placeholder="e.g., Physician, Admin" required />
-                            <BootstrapForm.Text muted>Typically the same as the category name.</BootstrapForm.Text>
+                             <BootstrapForm.Text muted>Typically the same as the category name.</BootstrapForm.Text>
                         </BootstrapForm.Group>
                         <BootstrapForm.Group className="mb-3">
                             <BootstrapForm.Label>Status *</BootstrapForm.Label>
@@ -232,11 +294,11 @@ const AddRoleModal = ({ show, onHide, categoryKey, categoryConfig, showNotificat
                         {error && <p className="text-danger mt-2 mb-0">{error}</p>}
 
                         <div style={modalFooterStyle}>
-                            <Button variant="secondary" onClick={handleClose} disabled={isSaving} style={{ marginRight: '10px' }}>
+                            <Button variant="secondary" onClick={handleClose} disabled={isSaving}>
                                 Cancel
                             </Button>
                             <Button variant="primary" type="submit" disabled={isSaving || !isFormValid}>
-                                {isSaving ? <Spinner as="span" animation="border" size="sm" /> : "Save Role"}
+                                {submitButtonText}
                             </Button>
                         </div>
                     </BootstrapForm>
@@ -246,4 +308,4 @@ const AddRoleModal = ({ show, onHide, categoryKey, categoryConfig, showNotificat
     );
 };
 
-export default AddRoleModal;
+export default RoleModal;

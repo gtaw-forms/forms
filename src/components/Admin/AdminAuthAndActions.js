@@ -4,7 +4,8 @@ import { Form as BootstrapForm, Button, Spinner, ListGroup } from 'react-bootstr
 import { auth, database } from '../../firebase';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { ref, get, update } from "firebase/database";
-import AddRoleModal from './AddRoleModal';
+import AddRoleModal from './RoleModal';
+import * as Sentry from "@sentry/react"; // For error reporting
 
 const recruitmentCategories = {
     physician: { displayName: "Physician Recruitment", path: 'selectOptions/physicianRecruitmentDetails' },
@@ -62,6 +63,48 @@ const showDesktopNotification = (title, options) => {
     }
 };
 
+// Helper function to send admin action logs to Discord
+const sendAdminActionWebhook = async (adminEmail, action, details, categoryName = null) => {
+    const webhookURL = process.env.REACT_APP_ADMIN_ACTION_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+        console.log('[AdminAuthAndActions] sendAdminActionWebhook called. URL used:', webhookURL); // Log 8
+    if (!webhookURL) {
+        console.warn("Admin action webhook URL not configured. Skipping log.");
+        Sentry.captureMessage("Admin Action Webhook URL not configured", "warning");
+        return;
+    }
+
+    const embed = {
+        title: "Admin Panel Action Logged",
+        color: 0xFFA500, // Orange color for admin actions
+        fields: [
+            { name: "Admin User", value: adminEmail || "Unknown", inline: true },
+            { name: "Action Taken", value: action || "Unknown Action", inline: true },
+            ...(categoryName ? [{ name: "Category", value: categoryName, inline: true }] : []),
+            { name: "Details", value: `\`\`\`\n${details.substring(0,1000)}\n\`\`\``, inline: false },
+        ],
+        timestamp: new Date().toISOString(),
+        footer: { text: "PHMC Forms - Admin Panel" }
+    };
+
+    try {
+        const response = await fetch(webhookURL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ embeds: [embed] })
+        });
+        if (!response.ok) {
+            console.error(`Failed to send admin action webhook. Status: ${response.status}`);
+            Sentry.captureMessage(`Admin Action Discord webhook failed: ${response.status}`, "error");
+        } else {
+            console.log(`Admin action logged to Discord: ${action}`);
+        }
+    } catch (error) {
+        console.error('Error sending admin action webhook:', error);
+        Sentry.captureException(error, { extra: { context: 'Admin Action Webhook Submission' } });
+    }
+};
+
+
 const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAppNotification }) => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -73,7 +116,8 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     const [currentRecruitmentData, setCurrentRecruitmentData] = useState({});
     const [isLoadingRecruitmentData, setIsLoadingRecruitmentData] = useState(false);
     const [isUpdatingDb, setIsUpdatingDb] = useState(false);
-    const [showAddRoleModal, setShowAddRoleModal] = useState(false);
+    const [showRoleModal, setShowRoleModal] = useState(false);
+    const [roleToEdit, setRoleToEdit] = useState(null); // State to hold data of role being edited
 
     const [desktopNotificationPermission, setDesktopNotificationPermission] = useState(Notification.permission);
 
@@ -212,11 +256,21 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
             const successMessage = `${positionDetails.displayName || positionDetails.name || positionKey} status updated to ${newStatus} for ${categoryConfig.displayName}.`;
             if (showInAppNotification) showInAppNotification(successMessage, "check-circle");
 
+            // Log action to Discord
+            if (currentUser?.email) {
+                sendAdminActionWebhook(
+                    currentUser.email,
+                    "Toggled Recruitment Status",
+                    `Position: ${positionDetails.displayName || positionDetails.name || positionKey}\nNew Status: ${newStatus}`,
+                    categoryConfig.displayName
+                );
+            }
+
             console.log("[Desktop Notify] Checking permission for status update notification:", desktopNotificationPermission);
             if (desktopNotificationPermission === "granted") {
-                showDesktopNotification(`Status Updated: ${categoryConfig.displayName}`, {
+                showDesktopNotification(`Recruitment Status Updated: ${categoryConfig.displayName}`, {
                     body: `${positionDetails.displayName || positionDetails.name || positionKey} is now ${newStatus}.`,
-                    icon: '/logo192.png',
+                    icon: '/phmc512.png',
                     tag: `status-update-${selectedRecruitmentCategory}-${positionKey}`
                 });
             }
@@ -227,30 +281,85 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
         setIsUpdatingDb(false);
     };
 
-    const handleRoleAdded = () => {
+    const handleRoleSaved = (savedRoleData, actionType) => { // Receive savedRoleData and actionType
+                console.log('[AdminAuthAndActions] handleRoleSaved called. Action:', actionType, 'Data:', savedRoleData); // Log 6
         if (selectedRecruitmentCategory) {
             fetchRecruitmentDataForCategory(selectedRecruitmentCategory);
         }
+        // Log action to Discord
+        if (currentUser?.email && savedRoleData) {
+            const categoryConfig = recruitmentCategories[selectedRecruitmentCategory];
+            const action = actionType === 'edited' ? "Edited Role" : "Added New Role";
+                        console.log('[AdminAuthAndActions] Preparing to send webhook for role save.'); // Log 7
+            sendAdminActionWebhook(
+                currentUser.email,
+                action,
+                `Role Name: ${savedRoleData.displayName || savedRoleData.originalKey}\nShort Code: ${savedRoleData.shortCode || 'N/A'}\nStatus: ${savedRoleData.status || 'N/A'}\nKey: ${savedRoleData.originalKey}`,
+                categoryConfig?.displayName || "Unknown Category"
+            );
+
+            // Trigger desktop notification for Add/Edit Role
+            console.log(`[Desktop Notify] Checking permission for ${actionType} Role notification:`, desktopNotificationPermission);
+            if (desktopNotificationPermission === "granted" && savedRoleData?.displayName) {
+                 const notificationTitle = actionType === 'edited' ? `Role Updated: ${categoryConfig?.displayName || 'Recruitment'}` : `New Role Added: ${categoryConfig?.displayName || 'Recruitment'}`;
+                 const notificationBody = actionType === 'edited'
+                    ? `Role "${savedRoleData.displayName}" (${savedRoleData.shortCode || 'N/A'}) has been updated.`
+                    : `Role "${savedRoleData.displayName}" (${savedRoleData.shortCode || 'N/A'}) has been added.`;
+
+                showDesktopNotification(notificationTitle, {
+                    body: notificationBody,
+                    icon: '/phmc512.png',
+                    tag: `${actionType}-role-${selectedRecruitmentCategory}-${savedRoleData.originalKey}` // Unique tag
+                });
+            }
+        }
+        // MODIFIED: Clear roleToEdit state when modal is closed after saving
+        setRoleToEdit(null);
+    };
+
+
+    // NEW: Function to open the modal for adding a role
+    const handleAddRoleClick = () => {
+        setRoleToEdit(null); // Ensure roleToEdit is null for adding
+        setShowRoleModal(true);
+    };
+
+    // NEW: Function to open the modal for editing a role
+    const handleEditRoleClick = (roleKey, roleData) => {
+        // Store the role data including its key for editing
+        setRoleToEdit({ ...roleData, originalKey: roleKey });
+        setShowRoleModal(true);
+    };
+    const handleCloseRoleModal = () => {
+        setShowRoleModal(false);
+        setRoleToEdit(null); // Clear roleToEdit state when modal is closed
     };
 
     const handleEnableDesktopNotifications = async () => {
         console.log("[Desktop Notify] 'Enable Desktop Notifications' button clicked.");
         const granted = await requestNotificationPermission();
-        // Notification.permission might have been updated by the request, so re-read it
         const currentPermission = Notification.permission;
         console.log("[Desktop Notify] Permission after request:", currentPermission, "(Granted flag:", granted, ")");
         setDesktopNotificationPermission(currentPermission);
 
+        if (currentUser?.email) {
+            sendAdminActionWebhook(
+                currentUser.email,
+                "Desktop Notification Preference Changed",
+                `Permission status: ${currentPermission}${granted ? ' (Granted by user)' : ' (Not granted or dismissed)'}`
+            );
+        }
+
         if (granted) {
-            if (showInAppNotification) showInAppNotification("Desktop notifications enabled!", "check-circle");
+            if (showInAppNotification) showInAppNotification("Desktop notifications enabled for this site! Please ensure your OS settings also allow notifications from your browser.", "check-circle", 7000);
             showDesktopNotification("PHMC Forms: Notifications Enabled", {
-                body: "You will now receive desktop notifications for important admin actions.",
-                icon: '/logo192.png'
+                body: "You will now receive desktop notifications for important admin actions. Ensure your OS allows browser notifications.",
+                icon: '/phmc512.png'
             });
         } else {
             if (currentPermission === 'denied') {
                 if (showInAppNotification) showInAppNotification("Desktop notifications are blocked. Please enable them in your browser settings.", "warning");
-            } else { // 'default' - user dismissed the prompt
+            } else {
                 if (showInAppNotification) showInAppNotification("Desktop notifications were not enabled.", "warning");
             }
         }
@@ -325,7 +434,7 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                         <Button
                             variant="success"
                             size="sm"
-                            onClick={() => setShowAddRoleModal(true)}
+                            onClick={handleAddRoleClick} // MODIFIED: Use new handler
                         >
                             <i className="fas fa-plus-circle"></i> Add Role
                         </Button>
@@ -342,16 +451,28 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                                             {position.status || "N/A"}
                                         </strong>
                                     </div>
-                                    <Button
-                                        variant={position.status === "OPEN" ? "outline-danger" : "outline-success"}
-                                        size="sm"
-                                        onClick={() => handleTogglePositionStatus(key, position.status)}
-                                        disabled={isUpdatingDb}
-                                        style={{minWidth: '120px'}}
-                                    >
-                                        {isUpdatingDb && <Spinner as="span" animation="border" size="sm" />}
-                                        {position.status === "OPEN" ? "Set CLOSED" : "Set OPEN"}
-                                    </Button>
+                                    {/* NEW: Button group for Edit and Toggle */}
+                                    <div className="d-flex gap-2">
+                                        <Button
+                                            variant="outline-secondary"
+                                            size="sm"
+                                            onClick={() => handleEditRoleClick(key, position)} // NEW: Edit button handler
+                                            disabled={isUpdatingDb}
+                                            title={`Edit ${position.displayName || position.name || key}`}
+                                        >
+                                            <i className="fas fa-edit"></i> Edit
+                                        </Button>
+                                        <Button
+                                            variant={position.status === "OPEN" ? "outline-danger" : "outline-success"}
+                                            size="sm"
+                                            onClick={() => handleTogglePositionStatus(key, position.status)}
+                                            disabled={isUpdatingDb}
+                                            style={{minWidth: '120px'}}
+                                        >
+                                            {isUpdatingDb && <Spinner as="span" animation="border" size="sm" />}
+                                            {position.status === "OPEN" ? "Set CLOSED" : "Set OPEN"}
+                                        </Button>
+                                    </div>
                                 </ListGroup.Item>
                             ))}
                         </ListGroup>
@@ -366,12 +487,13 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
 
             {selectedRecruitmentCategory && recruitmentCategories[selectedRecruitmentCategory] && (
                 <AddRoleModal
-                    show={showAddRoleModal}
-                    onHide={() => setShowAddRoleModal(false)}
+                    show={showRoleModal}
+                    onHide={handleCloseRoleModal} // MODIFIED: Use new handler
                     categoryKey={selectedRecruitmentCategory}
                     categoryConfig={recruitmentCategories[selectedRecruitmentCategory]}
                     showNotification={showInAppNotification}
-                    onRoleAdded={handleRoleAdded}
+                    onRoleSaved={handleRoleSaved} // MODIFIED: Use new handler
+                    roleToEdit={roleToEdit} // NEW: Pass role data for editing
                 />
             )}
         </div>
