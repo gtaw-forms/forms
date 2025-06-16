@@ -2986,17 +2986,28 @@ const filterFormData = (formData, bbCodeVersion) => {
         const storedOptIn = localStorage.getItem('recruitmentOptIn');
         return storedOptIn === 'true';
     });
+    const [phmcRecruitmentOptIn, setPhmcRecruitmentOptIn] = useState(() => {
+        return localStorage.getItem('phmcRecruitmentOptIn') === 'true';
+    });
+    const optInNotificationIdRef = useRef(null); // Ref to store the ID of the opt-in prompt
 
-    const handleRecruitmentOptIn = (optIn) => {
-        setHasOptedIn(optIn);
-        localStorage.setItem('recruitmentOptIn', optIn.toString());
+    const handleRecruitmentOptIn = (optIn, notificationIdToDismiss = null) => {
+        setPhmcRecruitmentOptIn(optIn);
+        localStorage.setItem('phmcRecruitmentOptIn', optIn.toString());
+        localStorage.removeItem('phmcRecruitmentOptInPromptShownThisSession'); // Allow prompt again if they opt-out
 
         if (optIn) {
-            showNotification("You've opted in to recruitment notifications!", 'check-circle');
-            console.log("User opted IN to recruitment notifications. Implement subscription logic.");
+            showNotification("You've opted in to PHMC recruitment notifications!", 'check-circle');
         } else {
-            showNotification("You've opted out of recruitment notifications for now.", 'info-circle');
-            console.log("User opted OUT of recruitment notifications.");
+            showNotification("You've opted out of PHMC recruitment notifications.", 'info-circle');
+        }
+
+        if (notificationIdToDismiss) {
+            removeNotification(notificationIdToDismiss);
+        }
+        // Clear the ref if the dismissed notification was the opt-in prompt
+        if (optInNotificationIdRef.current === notificationIdToDismiss) {
+            optInNotificationIdRef.current = null;
         }
     };
 
@@ -3069,16 +3080,22 @@ const toggleAgencySelector = () => {
 
             // Logic for PHMC Recruitment opt-in notification
             if (definition.group === "PHMC Recruitment") {
-                if (!localStorage.getItem('recruitmentOptIn')) {
-                    showNotification(
-                        "Would you like to receive notifications about new recruitment opportunities in PHMC?",
+                // Only show prompt if not opted-in AND prompt hasn't been shown this session
+                if (!phmcRecruitmentOptIn && !sessionStorage.getItem('phmcRecruitmentOptInPromptShownThisSession')) {
+                    // Clear any previous opt-in prompt before showing a new one
+                    if (optInNotificationIdRef.current) {
+                        removeNotification(optInNotificationIdRef.current);
+                    }
+                    const newOptInNotificationId = showNotification(
+                        "Would you like to receive notifications about new PHMC recruitment opportunities?",
                         'info-circle',
                         0, // Stays until dismissed or action taken
                         [
-                            { label: 'No Thanks', handler: () => handleRecruitmentOptIn(false), variant: 'secondary' },
-                            { label: 'Yes, Opt In!', handler: () => handleRecruitmentOptIn(true), variant: 'primary' }
+                            { label: 'No Thanks', handler: () => { handleRecruitmentOptIn(false, newOptInNotificationId); sessionStorage.setItem('phmcRecruitmentOptInPromptShownThisSession', 'true'); }, variant: 'secondary' },
+                            { label: 'Yes, Opt In!', handler: () => { handleRecruitmentOptIn(true, newOptInNotificationId); /* No need for sessionStorage flag if they opt-in */ }, variant: 'primary' }
                         ]
                     );
+                    optInNotificationIdRef.current = newOptInNotificationId; // Store the new ID
                 }
             }
         } else {
@@ -4071,8 +4088,24 @@ const handleCopyAndNotifyWrapper = async () => {
                         <i className="fa-solid fa-address-card"></i>
                         Business Card Tool
                     </Button>
+            <div className="floating-top-right-tools">
+                {selectedAgencyGroup === 'PHMC Recruitment' && (
+                    <Button
+                        variant={phmcRecruitmentOptIn ? "outline-success" : "outline-secondary"}
+                        onClick={() => handleRecruitmentOptIn(!phmcRecruitmentOptIn)}
+                        className="changelog-button" // You can use existing or new class
+                        title={phmcRecruitmentOptIn ? "Click to Opt-out of PHMC Recruitment Notifications" : "Click to Opt-in to PHMC Recruitment Notifications"}
+                    > Desktop Alert Toggle
+                        <i className={`fas ${phmcRecruitmentOptIn ? 'fa-bell-slash' : 'fa-bell'}`}></i>
+                        {/* Optionally, keep text for larger screens or use icons only */}
+                        {/* {phmcRecruitmentOptIn ? " Rec. Notifs: ON" : " Rec. Notifs: OFF"} */}
+                    </Button>
+                )}
+            </div>
+
                     {(() => {
                         if (selectedAgencyGroup === 'PHMC Recruitment' && formData.recruitmentPosition) {
+
                             let currentRecruitmentDetailsSource = null;
                             let positionDisplayNameForTitle = formData.recruitmentPosition || 'selected position';
                             const currentFormDef = getFormDefinition(bbCodeVersion);
@@ -4112,6 +4145,7 @@ const handleCopyAndNotifyWrapper = async () => {
                             }
                         }
                         return null; // Return null if conditions aren't met
+                        
                     })()}
 
                     {(bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 18) && (
