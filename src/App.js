@@ -4158,7 +4158,7 @@ const handleCopyAndNotifyWrapper = async () => {
                                             </ul>
                                         </li>
                                     </ul>
-                                    - frosty x Austin Rhodes (Bailey - i3aileyy)
+                                    - frosty
                                 </div>
                             </div>
                         </div>
