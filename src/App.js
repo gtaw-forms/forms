@@ -3947,25 +3947,43 @@ const getCopyButtonText = () => {
                                 </div>
 <div className="modal-content">
     <ul>
-        <li><strong>Firebase Deployment:</strong>
-            <ul>
-                <li>Migrated core application data (staff lists, agency details, form dropdown options) to Firebase Realtime Database.</li>
-            </ul>
-        </li>
-        <li><strong>Dynamic Data Management:</strong>
-            <ul>
-                <li>Coroner Rank Modal now directly updates coroner rank and category in Firebase.</li>
-                <li>Employee Management (Add/Remove Staff) now updates Firebase records for both Coroners and PHMC staff.</li>
-            </ul>
-        </li>
-        <li><strong>Bug Fixes & Minor Tweaks:</strong>
-            <ul>
-                <li>Cleaned up redundant code and unused variables.</li>
-            </ul>
-        </li>
-    </ul>
-    - frosty x Austin Rhodes (Bailey - i3aileyy)
-</div>
+                                        <li><strong>Admin Panel Major Enhancements:</strong>
+                                            <ul>
+                                                <li>Introduced a comprehensive Admin Control Panel.</li>
+                                                <li>Admins can now select different recruitment categories (Physician, Psych, Admin, Nursing, EMS, Coroner, SAAA) via a dropdown.</li>
+                                                <li>Implemented functionality to manage (toggle OPEN/CLOSED) statuses for all positions within each selected recruitment category.</li>
+                                                <li>Added an "Add Role" feature with a modal, allowing admins to define new roles with detailed attributes (name, group, status, POC, shortCode, URL, overview, skills, education requirements) directly into Firebase.</li>
+                                                <li>Admin Panel UI integrated into the main application view, replacing the BBCode output for a more interactive experience.</li>
+                                            </ul>
+                                        </li>
+                                        <li><strong>Desktop & In-App Notifications:</strong>
+                                            <ul>
+                                                <li>Integrated Desktop Notifications for the Admin Panel to provide real-time feedback on recruitment status changes (requires user permission).</li>
+                                                <li>Added an in-app notification prompt for users to opt-in to PHMC recruitment updates when accessing relevant career forms.</li>
+                                            </ul>
+                                        </li>
+                                        <li><strong>Recruitment Data & Display:</strong>
+                                            <ul>
+                                                <li>Enhanced `AgencyGroupSelectorModal` and `SwitchableFormsModal` to display live recruitment statuses (Open/Closed counts) on relevant buttons.</li>
+                                                <li>`RecruitmentStatusDisplay` component now shows a more detailed overview of active recruitment statuses.</li>
+                                                <li>Updated Firebase data structures (`selectOptions` in `migrate.js`) to support detailed recruitment role information.</li>
+                                            </ul>
+                                        </li>
+                                        <li><strong>Modal & UI Improvements:</strong>
+                                            <ul>
+                                                <li>Refined styling for `AddRoleModal` to align with the application's theme (e.g., `CoronerTipsModal`).</li>
+                                                <li>Implemented comprehensive input validation for the "Add Role" modal.</li>
+                                            </ul>
+                                        </li>
+                                        <li><strong>Security & Configuration:</strong>
+                                            <ul>
+                                                <li>Discussed and emphasized the importance of Firebase Security Rules for protecting backend data.</li>
+                                                <li>Clarified the handling of Firebase client-side API keys and `.env` file best practices.</li>
+                                            </ul>
+                                        </li>
+                                    </ul>
+                                    - frosty x Austin Rhodes (Bailey - i3aileyy)
+                                </div>
                             </div>
                         </div>
                     )}
