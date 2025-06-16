@@ -64,6 +64,94 @@ const sendDiscordWebhookInternal = async (webhookUrl, embedData, commitInfo = {}
         return false;
     }
 };
+const sendPhysicianApplicationWebhook = async ({
+    webhookUrl,
+    formData,
+    commitInfo,
+    actionMessage, // e.g., "Physician Application Copied"
+    selectOptions, // To get position display name
+}) => {
+    const {
+        applicantTitleAndFullName,
+        recruitmentPosition, // This is the key, e.g., "Attending Physician"
+        applicantContactDetails,
+        oocUcpName,
+    } = formData;
+
+    const positionDisplayName = selectOptions?.positionDetailsData?.[recruitmentPosition]?.displayName || recruitmentPosition || "N/A";
+
+    const fields = [
+        { name: "Applicant Name", value: applicantTitleAndFullName || "N/A", inline: true },
+        { name: "Position Applied For", value: positionDisplayName, inline: true },
+        { name: "Contact Details", value: applicantContactDetails || "N/A", inline: false },
+        { name: "OOC UCP Name", value: oocUcpName || "N/A", inline: true },
+        { name: "Timestamp", value: new Date().toLocaleString(), inline: false },
+        { name: "Action", value: actionMessage || "Application Processed", inline: false },
+    ];
+
+    const embedData = {
+        title: "PHMC Recruitment Application Incoming",
+        color: 0x007bff, // Blue, or your PHMC Recruitment theme color
+        fields: fields,
+        footerText: "PHMC Recruitment Forms", // Custom footer
+    };
+
+    // Use the existing generic sender
+    await sendDiscordWebhookInternal(webhookUrl, embedData, commitInfo);
+};
+
+// New dedicated handler for Physician Application copy and notification
+export const handlePhysicianApplicationCopyAndNotify = async ({
+    formData,
+    getBBCodeContent, // Function from App.js to get BBCode
+    showNotification, // Function from App.js
+    commitInfo,
+    selectOptions,    // Pass selectOptions from App.js
+}) => {
+    const bbCodeToCopy = getBBCodeContent(); // This already handles passing positionDetailsData for version 50
+
+    if (!bbCodeToCopy) {
+        showNotification("Failed to generate Physician Application BBCode. Copying skipped.", 'error');
+        Sentry.captureMessage("getBBCodeContent returned null/undefined for Physician Application", 'error');
+        return;
+    }
+
+    try {
+        if (!navigator.clipboard || !navigator.clipboard.writeText) {
+            throw new Error("Clipboard API not available");
+        }
+        await navigator.clipboard.writeText(bbCodeToCopy);
+        showNotification("Physician Application BBCode copied to clipboard!", 'clipboard');
+
+        // Determine Webhook URL (e.g., a specific one for recruitment or a general PHMC one)
+        // For this example, let's assume a general PHMC webhook or a specific recruitment one.
+        // You might need to adjust this logic based on your .env setup.
+        const discordWebhookUrl = process.env.REACT_APP_PHMC_RECRUITMENT_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+
+        if (discordWebhookUrl) {
+            await sendPhysicianApplicationWebhook({
+                webhookUrl: discordWebhookUrl,
+                formData,
+                commitInfo,
+                actionMessage: "Physician Application BBCode Copied",
+                selectOptions,
+            });
+        } else {
+            console.warn("Discord webhook URL for Physician Applications not set, skipping notification.");
+            showNotification("BBCode copied, but Discord notification for recruitment not configured.", 'warning');
+        }
+
+    } catch (error) {
+        console.error('Error during Physician Application copy or webhook: ', error);
+        Sentry.captureException(error, { extra: { context: 'handlePhysicianApplicationCopyAndNotify' } });
+        let userMessage = "Failed to copy Physician Application BBCode.";
+        if (error.message === "Clipboard API not available") {
+            userMessage = "Clipboard API not available! BBCode not copied.";
+        }
+        showNotification(userMessage, 'exclamation-triangle');
+        // Optionally send a failure webhook here if needed
+    }
+};
 
 // Helper function to prepare and send a standardized form interaction webhook (previously in webhookService.js)
 const sendFormInteractionWebhookInternal = async ({

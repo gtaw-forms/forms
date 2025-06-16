@@ -1,3 +1,4 @@
+// src/saaa-field-data/EntryJob.js
 import React, { useState } from 'react'; // Import useState
 import { Form, Button, InputGroup } from 'react-bootstrap';
 
@@ -34,7 +35,8 @@ const EntryJob = ({
     setFormData,
     isUploading,
     handleImageUpload,
-    patientTitleOptions, // Use the original prop name here
+    patientTitleOptions,
+    selectOptions, // <-- Add selectOptions to props
 }) => {
     // State for collapsible sections (default to open)
     const [isGeneralInfoOpen, setIsGeneralInfoOpen] = useState(true);
@@ -45,10 +47,13 @@ const EntryJob = ({
     const [isOocOpen, setIsOocOpen] = useState(true);
     const [isAcknowledgementOpen, setIsAcknowledgementOpen] = useState(true);
 
-    // Filter out the "Master" option
+    // Filter out the "Master" option for patient titles
     const filteredPatientTitleOptions = (patientTitleOptions || []).filter(
         option => option.value !== 'Mstr'
     );
+
+    // Extract SAAA position details
+    const saaaPositions = selectOptions?.saaaPositionDetailsData || {};
 
     const handlePaste = (e, fieldName) => {
         const clipboardData = e.clipboardData || window.clipboardData;
@@ -89,8 +94,33 @@ const EntryJob = ({
                 sectionId="general-info"
             />
             {isGeneralInfoOpen && (
-                <div id="collapse-general-info">
-                    <div style={{ display: 'flex', gap: '10px', marginBottom: '0.5rem', marginTop: '0.5rem' }}>
+                <div id="collapse-general-info" style={{ paddingTop: '0.5rem' }}>
+                    {/* --- NEW Job Selection Dropdown --- */}
+                    <Form.Group className="mb-3">
+                        <Form.Label>Position Applying For</Form.Label>
+                        <Form.Select
+                            name="saaaJobSelection"
+                            value={formData.saaaJobSelection || ''}
+                            onChange={handleChange}
+                            required
+                            className={`form-control ${!formData.saaaJobSelection ? 'is-invalid' : ''}`}
+                        >
+                            <option value="">Select a Position...</option>
+                            {Object.entries(saaaPositions).map(([key, position]) => (
+                                <option
+                                    key={key}
+                                    value={key} // Use the key (e.g., "Air Traffic Controller") as the value
+                                    style={position.status === "CLOSED" ? { color: 'red', fontWeight: 'bold' } : {}}
+                                    disabled={position.status === "CLOSED"} // Optionally disable closed positions
+                                >
+                                    {position.displayName}{position.status === "CLOSED" ? " (Applications Closed)" : ""}
+                                </option>
+                            ))}
+                        </Form.Select>
+                    </Form.Group>
+                    {/* --- End Job Selection Dropdown --- */}
+
+                    <div style={{ display: 'flex', gap: '10px', marginBottom: '0.5rem' }}>
                         <Form.Select
                             name="patientTitle"
                             value={formData.patientTitle || ''}
@@ -99,7 +129,6 @@ const EntryJob = ({
                             className={`form-control ${!formData.patientTitle ? 'is-invalid' : ''}`}
                         >
                             <option value="" disabled>Title</option>
-                            {/* Use the filtered options */}
                             {filteredPatientTitleOptions.map((option) => (
                                 <option key={option.value} value={option.value}>{option.label}</option>
                             ))}
