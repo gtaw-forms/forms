@@ -50,25 +50,20 @@ const generateEMS = (formData) => {
         eduDoctorate,
 
         // EMS specific position details from formData
-        emsPositionDetailsData,
+        positionDetailsData, // MODIFIED: Changed from emsPositionDetailsData
 
         // Fields for non-Paramedic/non-EMT EMS (original structure for Section 3)
         emsLicenseLink,
         emsPartTimeReason,
-        // oocOtherCharLicenseProof, // No longer used in the "other EMS" OOC section
-        // dfpSanFireLink, // No longer used in the "other EMS" OOC section
-        // dfpPhmcLink,    // No longer used in the "other EMS" OOC section
-        // dfpLegalFactionLink, // No longer used in the "other EMS" OOC section
-        oocOtherFactionDfpLfm, // New field for the updated 4.8 in "other EMS" OOC
+        oocOtherFactionDfpLfm,
 
     } = formData;
 
     // Use EMS-specific position details
-    const positionDetailsMap = emsPositionDetailsData || {};
+    const positionDetailsMap = positionDetailsData || {}; // MODIFIED: Use the corrected variable
 
-    // Determine the dynamic display name and URL
     let dynamicDisplayPosition = "Position (Please Select)";
-    let dynamicJobPostingUrl = "https://phmc.gta.world/viewforum.php?f=168"; // Default EMS forum
+    let dynamicJobPostingUrl = "https://phmc.gta.world/viewforum.php?f=168";
 
     if (recruitmentPosition && Object.keys(positionDetailsMap).length > 0) {
         const selectedPositionKey = recruitmentPosition;
@@ -77,33 +72,35 @@ const generateEMS = (formData) => {
             dynamicJobPostingUrl = positionDetailsMap[selectedPositionKey].url || dynamicJobPostingUrl;
         } else {
             dynamicDisplayPosition = selectedPositionKey;
-            console.warn(`EMS Position "${selectedPositionKey}" not found in emsPositionDetailsData. Using default URL.`);
+            // This console.warn will now correctly reference the data source name
+            console.warn(`EMS Position "${selectedPositionKey}" not found in positionDetailsData. Using default URL.`);
         }
     } else if (recruitmentPosition) {
         dynamicDisplayPosition = recruitmentPosition;
-        console.warn(`emsPositionDetailsData is empty or not provided. Using default URL for "${recruitmentPosition}".`);
+        // This console.warn will now correctly reference the data source name
+        console.warn(`positionDetailsData is empty or not provided. Using default URL for "${recruitmentPosition}".`);
     }
 
-    // Helper for education checkboxes
     const eduCheck = (field) => field ? 'c' : '';
-
     let sections3onwardsBBCode = '';
 
-    // Common sections 3 (Employment History) and 4 (Motivational Letter) for Paramedic and EMT
-    const paramedicAndEmtSections3And4 = `[divbox=na][list=none][b][size=110][color=#FF0000]3[/color].  Employment History[/size][/b][/list]
+    // ... rest of your generateEMS.js logic remains the same ...
+    // (commonSections3And4, if/else if blocks for Paramedic, EMT, EMT Trainee, Other EMS)
+
+    const commonSections3And4 = `[divbox=na][list=none][b][size=110][color=#FF0000]3[/color].  Employment History[/size][/b][/list]
 [hr][/hr]
-[list=none][b][color=#FF0000]3.1[/color] Previous Employment:[/b] [i]${applicantPrevEmployment || 'ROLE at COMPANY between DD/MMM/YYYY to DD/MMM/YYYY'}[/i]
-[b][color=#FF0000]3.2[/color] Duties:[/b] [i]${applicantPrevDuties || 'ANSWER'}[/i]
-[b][color=#FF0000]3.3[/color] Reason for Dismissal:[/b] [i]${applicantPrevDismissalReason || 'ANSWER'}[/i][/list]
+[list=none][b][color=#FF0000]3.1[/color] Previous Employment:[/b] [i]${formData.applicantPrevEmployment || 'ROLE at COMPANY between DD/MMM/YYYY to DD/MMM/YYYY'}[/i]
+[b][color=#FF0000]3.2[/color] Duties:[/b] [i]${formData.applicantPrevDuties || 'ANSWER'}[/i]
+[b][color=#FF0000]3.3[/color] Reason for Dismissal:[/b] [i]${formData.applicantPrevDismissalReason || 'ANSWER'}[/i][/list]
 [br][/br][/divbox]
 [divbox=na][list=none][b][size=110][color=#FF0000]4[/color].  Motivational Letter[/size][/b][/list]
 [hr][/hr]
 [list=none][b][color=#FF0000]4.1[/color] Submit your motivational letter, describing why you wish to join us, why we should choose you rather than someone else, and why the qualities required from this job correspond to you :[/b] i[/i]
-[quote][i]${applicantMotivationLetter || 'ANSWER HERE'}[/i][/quote][/list]
+[quote][i]${formData.applicantMotivationLetter || 'ANSWER HERE'}[/i][/quote][/list]
 [br][/br][/divbox]`;
 
     if (recruitmentPosition === "Paramedic") {
-        sections3onwardsBBCode = paramedicAndEmtSections3And4 +
+        sections3onwardsBBCode = commonSections3And4 +
 `[divbox=na][list=none][b][size=110][color=#FF0000]5[/color].  (( Out of Character information ))[/size][/b][/list]
 [hr][/hr]
 [list=none][b][color=#FF0000]5.1[/color] User Control Panel (UCP) Username:[/b] [i]${oocUcpName || 'ANSWER'}[/i]
@@ -117,11 +114,8 @@ const generateEMS = (formData) => {
 [list=none][altspoiler=Stats][img]${oocStatsLink || 'LINK'}[/img][/altspoiler][/list]
 [b][color=#FF0000]5.8[/color] Provide your character's background story:[/b]
 [quote][i]${charBackground || 'ANSWER HERE'}[/i][/quote][/list][/divbox]`;
-    } else if (recruitmentPosition === "EMT") {
-        sections3onwardsBBCode = paramedicAndEmtSections3And4 +
-`[divbox=na][list=none][b][size=110][color=#FF0000]5[/color].  (( Out of Character information ))[/size][/b][/list]
-[hr][/hr]
-[list=none][b][color=#FF0000]5.1[/color] User Control Panel (UCP) Username:[/b] [i]${oocUcpName || 'ANSWER'}[/i]
+    } else if (recruitmentPosition === "EMT") { // Regular EMT
+        const oocFieldsBBCode = `[b][color=#FF0000]5.1[/color] User Control Panel (UCP) Username:[/b] [i]${oocUcpName || 'ANSWER'}[/i]
 [b][color=#FF0000]5.2[/color] [u]Unedited[/u] Screenshot of your Admin Record:[/b]
 [list=none][altspoiler=Admin Record][img]${oocAdminRecordLink || 'LINK'}[/img][/altspoiler][/list]
 [b][color=#FF0000]5.3[/color] GTA:W Forum Account Name:[/b] [i]${oocForumName || 'ANSWER'}[/i]
@@ -131,17 +125,36 @@ const generateEMS = (formData) => {
 [b][color=#FF0000]5.7[/color] Provide a screenshot of your character's statistics (/stats) which you're applying with:[/b] 
 [list=none][altspoiler=Stats][img]${oocStatsLink || 'LINK'}[/img][/altspoiler][/list]
 [b][color=#FF0000]5.8[/color] Provide your character's background story:[/b]
+[quote][i]${charBackground || 'ANSWER HERE'}[/i][/quote]`;
+
+        sections3onwardsBBCode = commonSections3And4 +
+    `[divbox=na][list=none][b][size=110][color=#FF0000]5[/color].  (( Out of Character information ))[/size][/b][/list]
+[hr][/hr]
+[list=none]${oocFieldsBBCode}[/list][/divbox]`;
+    } else if (recruitmentPosition === "EMT Trainee") { // EMT Trainee - OOC starts at section 4
+        sections3onwardsBBCode = `[divbox=na][list=none][b][size=110][color=#FF0000]4[/color].  (( Out of Character information ))[/size][/b][/list]
+[hr][/hr]
+[list=none][b][color=#FF0000]4.1[/color] User Control Panel (UCP) Username:[/b] [i]${oocUcpName || 'ANSWER'}[/i]
+[b][color=#FF0000]4.2[/color] GTA:W Forum Account Name:[/b] [i]${oocForumName || 'ANSWER'}[/i]
+[b][color=#FF0000]4.3[/color] Discord Name:[/b] [i]${oocDiscord || 'ANSWER'}[/i]
+[b][color=#FF0000]4.4[/color] Timezone:[/b] [i]${oocTimezone || 'ANSWER'}[/i]
+[b][color=#FF0000]4.5[/color] Do you have any real life medical experience or have you roleplayed in medical factions in the past?:[/b] [i]${oocMedicalExperience || 'ANSWER'}[/i]
+[b][color=#FF0000]4.6[/color] [u]Unedited[/u] Screenshot of your Admin Record with the current date & time displayed:[/b]
+[list=none][altspoiler=Admin Record][img]${oocAdminRecordLink || 'LINK'}[/img][/altspoiler][/list]
+[b][color=#FF0000]4.7[/color] Provide a screenshot of your character's statistics (/stats) which you're applying with:[/b] 
+[list=none][altspoiler=Stats][img]${oocStatsLink || 'LINK'}[/img][/altspoiler][/list]
+[b][color=#FF0000]4.8[/color] If you are a part of another official faction, please post a link to your DFP request from both [b]Pillbox Hill Medical Center[/b] [u]and[/u] your current faction. If utilizing the same character, permissions from LFM must be acquired and provided as well:[/b] [i]${oocOtherFactionDfpLfm || 'ANSWER'}[/i]
+[b][color=#FF0000]4.9[/color] Provide your character's background story:[/b]
 [quote][i]${charBackground || 'ANSWER HERE'}[/i][/quote][/list][/divbox]`;
-    } else {
-        // Default structure for other EMS roles (e.g., Part-Time Program)
+    } else { // Other EMS roles (e.g., Part-Time Program)
         const section3Licensing = `[divbox=na][list=none][b][size=110][color=#FF0000]3[/color].  Licensing & Request Information[/size][/b][/list]
 [hr][/hr]
 [list=none][b][color=#FF0000]3.1[/color] Provide a copy of your Emergency Medical Technician license (( /licenses )):[/b] [i]${emsLicenseLink || 'ANSWER/LINK'}[/i]
-
-[b][color=#FF0000]3.2[/b][/color] Please write a short paragraph about why you believe you should be offered a slot with our part-time program:
+[b][color=#FF0000]3.2[/color][/color] Please write a short paragraph about why you believe you should be offered a slot with our part-time program:
 [quote][i]${emsPartTimeReason || 'ANSWER HERE'}[/i][/quote][/list]
 [br][/br][/divbox]`;
 
+        // OOC for "Other EMS" also starts at section 4
         const section4OOC_OtherEMS = `[divbox=na][list=none][b][size=110][color=#FF0000]4[/color].  (( Out of Character information ))[/size][/b][/list]
 [hr][/hr]
 [list=none][b][color=#FF0000]4.1[/color] User Control Panel (UCP) Username:[/b] [i]${oocUcpName || 'ANSWER'}[/i]
@@ -156,10 +169,9 @@ const generateEMS = (formData) => {
 [b][color=#FF0000]4.8[/color] If you are a part of another official faction, please post a link to your DFP request from both [b]Pillbox Hill Medical Center[/b] [u]and[/u] your current faction. If utilizing the same character, permissions from LFM must be acquired and provided as well:[/b] [i]${oocOtherFactionDfpLfm || 'ANSWER'}[/i]
 [b][color=#FF0000]4.9[/color] Provide your character's background story:[/b]
 [quote][i]${charBackground || 'ANSWER HERE'}[/i][/quote][/list][/divbox]`;
-
         sections3onwardsBBCode = section3Licensing + section4OOC_OtherEMS;
     }
-
+    
     let bbCode = `[imageleft]https://i.imgur.com/dkdFQtg.png[/imageleft] [b][size=110]Pillbox Hill Medical Center[/size][/b] 
 Career Center [center][/center]
 [center]Applying as:[/center]

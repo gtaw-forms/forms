@@ -27,7 +27,7 @@ import RecruitmentStatusDisplay from './components/RecruitmentStatusDisplay'; //
 import AdminModal from './components/Admin/AdminModal'; // We will create this
 
 // 
-import { handleFormCopyAndNotify, handlePhysicianApplicationCopyAndNotify } from './notificationService'; // Add the new import
+import { handleFormCopyAndNotify, handlePhmcRecruitmentCopyAndNotify } from './notificationService'; // Add the new import
 
 import FlightSchoolTipsModal from './saaa-components/FlightSchoolTipsModal';
 import saaaLogo from './assets/saaa-button.png'; // Import SAAA logo
@@ -464,7 +464,7 @@ const initialFormData = {
         setBbCodeVersion(adminFormVersion);
 
         setFormData(prevFormData => ({
-            ...initialFormData,
+            ...prevFormData,
             coronerEmployee: prevFormData.coronerEmployee,
             phmcEmployee: prevFormData.phmcEmployee,
             coronerBadge: prevFormData.coronerBadge,
@@ -483,6 +483,7 @@ const initialFormData = {
         setLastWebhookIdentifier(null);
         showNotification(`Switched to Admin Control Panel`, 'info-circle');
     };
+    const versionsWithTitleSection = [1, 2, 3, 4, 24, 25, 30, 50, 51, 52, 53, 54, 55];
 
     const [saaaFormCompletionNotified, setSaaaFormCompletionNotified] = useState(false);
 
@@ -653,7 +654,114 @@ const initialFormData = {
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [showNotification, removeNotification]);
+            const [phmcListData, setPhmcListData] = useState([]);
+    const [coronerListData, setCoronerListData] = useState([]);
+    const [agencyDataStore, setAgencyDataStore] = useState({});
+        const [selectOptions, setSelectOptions] = useState({});
+            const [bbCodeVersion, setBbCodeVersion] = useState(() => {
+        const storedVersion = localStorage.getItem('bbCodeVersion');
+        return storedVersion ? parseInt(storedVersion, 10) : (formDefinitions[0]?.version || 1);
+    });
+    const [selectedAgencyGroup, setSelectedAgencyGroup] = useState(null);
+    const [showCoronerTips, setShowCoronerTips] = useState(false);
 
+    const [isLoadingData, setIsLoadingData] = useState(true); // Assuming you have this state
+    const [showAgencyGroupSelectorModal, setShowAgencyGroupSelectorModal] = useState(false);
+    const [hideAgencyGroupSelectorPreference, setHideAgencyGroupSelectorPreference] = useState(false);
+    const [physicianRecruitmentDetails, setPhysicianRecruitmentDetails] = useState({});
+    const [psychRecruitmentDetails, setPsychRecruitmentDetails] = useState({}); // New
+    const [saaaRecruitmentDetails, setSaaaRecruitmentDetails] = useState({});
+    const [adminRecruitmentDetails, setAdminRecruitmentDetails] = useState({});
+    const [emsRecruitmentDetails, setEmsRecruitmentDetails] = useState({});
+    const [nurseRecruitmentDetails, setNurseRecruitmentDetails] = useState({});
+    const [coronerRecruitmentDetails, setCoronerRecruitmentDetails] = useState({});
+    const loadingNotificationIdRef = useRef(null);
+
+    const fetchAllApplicationData = useCallback(async (isInitialLoad = false) => {
+        if (isInitialLoad) {
+            setIsLoadingData(true);
+            if (loadingNotificationIdRef.current) {
+                removeNotification(loadingNotificationIdRef.current);
+            }
+            loadingNotificationIdRef.current = showNotification(
+                "Loading application data...",
+                'spinner fa-spin',
+                0 // Indefinite
+            );
+        } else {
+            showNotification("Refreshing recruitment data...", 'sync-alt', 2000);
+        }
+
+        try {
+            const dbRootRef = ref(database);
+            const snapshot = await get(dbRootRef);
+
+            if (isInitialLoad && loadingNotificationIdRef.current) {
+                removeNotification(loadingNotificationIdRef.current);
+                loadingNotificationIdRef.current = null;
+            }
+
+            if (snapshot.exists()) {
+                const allData = snapshot.val();
+                setPhmcListData(allData.staff?.phmc || []);
+                setCoronerListData(allData.staff?.coroner || []);
+                setSaaaListData(allData.staff?.saaa || []);
+                setAgencyDataStore(allData.agencies || {});
+
+                const fetchedSelectOptions = allData.selectOptions || {};
+                setSelectOptions(fetchedSelectOptions);
+
+                // Update states that RecruitmentStatusDisplay depends on
+                setPhysicianRecruitmentDetails(fetchedSelectOptions.physicianRecruitmentDetails || {});
+                setPsychRecruitmentDetails(fetchedSelectOptions.psychPositionDetailsData || {});
+                setSaaaRecruitmentDetails(fetchedSelectOptions.saaaPositionDetailsData || {});
+                // Update new states
+                setAdminRecruitmentDetails(fetchedSelectOptions.adminPositionDetailsData || {});
+                setEmsRecruitmentDetails(fetchedSelectOptions.emsPositionDetailsData || {});
+                setNurseRecruitmentDetails(fetchedSelectOptions.nursePositionDetailsData || {});
+                setCoronerRecruitmentDetails(fetchedSelectOptions.coronerPositionDetailsData || {});
+
+
+                if (isInitialLoad) {
+                    showNotification('Application data loaded successfully!', 'check-circle');
+                }
+            } else {
+                showNotification('Initial application data not found on server.', 'error');
+                // Reset all relevant states
+                setPhmcListData([]); setCoronerListData([]); setSaaaListData([]);
+                setAgencyDataStore({}); setSelectOptions({});
+                setPhysicianRecruitmentDetails({}); setPsychRecruitmentDetails({}); setSaaaRecruitmentDetails({});
+                // Reset new states
+                setAdminRecruitmentDetails({}); setEmsRecruitmentDetails({}); setNurseRecruitmentDetails({}); setCoronerRecruitmentDetails({});
+            }
+        } catch (error) {
+            console.error("Error fetching data from Realtime Database:", error);
+            Sentry.captureException(error, { extra: { context: 'Firebase Data Fetch (fetchAllApplicationData)' } });
+            if (isInitialLoad && loadingNotificationIdRef.current) {
+                removeNotification(loadingNotificationIdRef.current);
+                loadingNotificationIdRef.current = null;
+            }
+            showNotification('Failed to load application data. Please try again later.', 'error');
+        } finally {
+            if (isInitialLoad) {
+                setIsLoadingData(false);
+                if (loadingNotificationIdRef.current) {
+                    removeNotification(loadingNotificationIdRef.current);
+                    loadingNotificationIdRef.current = null;
+                }
+            }
+        }
+    }, [
+        showNotification, removeNotification, setIsLoadingData,
+        setPhmcListData, setCoronerListData, setSaaaListData, setAgencyDataStore,
+        setSelectOptions, setPhysicianRecruitmentDetails, setPsychRecruitmentDetails, setSaaaRecruitmentDetails,
+        // Add new state setters to dependency array
+        setAdminRecruitmentDetails, setEmsRecruitmentDetails, setNurseRecruitmentDetails, setCoronerRecruitmentDetails
+    ]);
+
+    useEffect(() => {
+        fetchAllApplicationData(true);
+    }, [fetchAllApplicationData]);
 
     const saaaGroupedOptions = useMemo(() => {
         if (!saaaListData || saaaListData.length === 0) return [];
@@ -819,53 +927,57 @@ const initialFormData = {
         // Clean up the event listener on unmount
         return () => window.removeEventListener('resize', handleResize);
     }, []);
-        const [phmcListData, setPhmcListData] = useState([]);
-    const [coronerListData, setCoronerListData] = useState([]);
-    const [agencyDataStore, setAgencyDataStore] = useState({});
-        const [selectOptions, setSelectOptions] = useState({});
-            const [bbCodeVersion, setBbCodeVersion] = useState(() => {
-        const storedVersion = localStorage.getItem('bbCodeVersion');
-        return storedVersion ? parseInt(storedVersion, 10) : (formDefinitions[0]?.version || 1);
-    });
-    const [selectedAgencyGroup, setSelectedAgencyGroup] = useState(null);
-    const [showCoronerTips, setShowCoronerTips] = useState(false);
 
 const getBBCodeContent = () => {
     const definition = getFormDefinition(bbCodeVersion);
 
-        if (definition && definition.generator) {
-            if (bbCodeVersion === 999) { // Admin Control Panel version
-                return definition.generator({
-                    isAdminAuthenticated: formData.isAdminAuthenticated,
-                    adminUserEmail: formData.adminUserEmail,
-                    adminDisplayData: formData.adminDisplayData, // Pass new generic data field
-                    adminSelectedCategoryName: formData.adminSelectedCategoryName, // Pass category name
-                });
+    if (definition && definition.generator) {
+        if (bbCodeVersion === 999) { // Admin Control Panel version
+            return definition.generator({
+                isAdminAuthenticated: formData.isAdminAuthenticated,
+                adminUserEmail: formData.adminUserEmail,
+                adminDisplayData: formData.adminDisplayData,
+                adminSelectedCategoryName: formData.adminSelectedCategoryName,
+            });
         } else { // For all other forms that have a definition and generator
-            let specificPositionData = {};
-            if (definition.titleKey === "phmcGeneralApplication") { // Physician
-                specificPositionData = physicianRecruitmentDetails;
-            } else if (definition.titleKey === "phmcPsychApplication") { // Psych
-                specificPositionData = psychRecruitmentDetails;
-            } else if (definition.group === "SAAA") { // General SAAA check
-                specificPositionData = saaaRecruitmentDetails;
+            let specificPositionData = {}; // Initialize as empty
+
+            // Populate specificPositionData based on the form's group and titleKey
+            if (definition.group === "PHMC Recruitment") {
+                if (definition.titleKey === "phmcGeneralApplication") { // Physician (50)
+                    // physicianRecruitmentDetails is a dedicated state variable
+                    specificPositionData = physicianRecruitmentDetails || {};
+                } else if (definition.titleKey === "phmcPsychApplication") { // Psych (51)
+                    // psychRecruitmentDetails is a dedicated state variable
+                    specificPositionData = psychRecruitmentDetails || {};
+                } else if (definition.titleKey === "phmcAdminApplication") { // Admin (52)
+                    specificPositionData = selectOptions.adminPositionDetailsData || {};
+                } else if (definition.titleKey === "phmcNursingApplication") { // Nursing (53)
+                    specificPositionData = selectOptions.nursePositionDetailsData || {};
+                } else if (definition.titleKey === "phmcCoronerRecruitmentApplication") { // Coroner (54)
+                    specificPositionData = selectOptions.coronerPositionDetailsData || {};
+                } else if (definition.titleKey === "phmcEMSApplication") { // EMS (55)
+                    specificPositionData = selectOptions.emsPositionDetailsData || {};
+                }
+            } else if (definition.group === "SAAA") { // SAAA Forms
+                // saaaRecruitmentDetails is a dedicated state variable
+                specificPositionData = saaaRecruitmentDetails || {};
             }
-            // Add more conditions if other forms need specific recruitment data
+            // Add other conditions for other groups if they need specific data passed this way
 
             const generatorArgs = {
                 ...formData,
-                positionDetailsData: specificPositionData || {}, // Pass the correctly scoped data
+                // Ensure positionDetailsData is always an object, even if specificPositionData is null/undefined
+                positionDetailsData: specificPositionData || {},
             };
             return definition.generator(generatorArgs);
         }
-    } else { // Fallback if no definition or generator is found
+    } else {
         Sentry.captureMessage(`No BBCode generator found for version: ${bbCodeVersion}`);
         const formName = (getFormDefinition(bbCodeVersion) || {}).name || `Form v${bbCodeVersion}`;
         return `BBCode generation for form "${formName}" is not implemented.`;
     }
 };
-    const [isLoadingData, setIsLoadingData] = useState(true); 
-    const loadingNotificationIdRef = useRef(null);
     useEffect(() => {
         const fetchData = async () => {
             setIsLoadingData(true);
@@ -2271,29 +2383,48 @@ const saveReport = async () => {
         }
         key = `[Feedback] ${formData.department} - ${formData.dateTime}`;
     }
-    // Add other specific forms as needed...
-    else { // Default handler for any other bbCodeVersion
+    // --- MODIFICATION FOR PHMC RECRUITMENT ---
+    else if (getFormDefinition(bbCodeVersion)?.group === 'PHMC Recruitment') {
+        const definition = getFormDefinition(bbCodeVersion);
+        const formName = definition ? definition.name : `Form v${bbCodeVersion}`;
+        if (bbCodeContent && navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(bbCodeContent).then(() => {
+                showNotification(`BBCode for "${formName}" copied to clipboard!`, 'clipboard', 7000);
+            }).catch(err => {
+                console.error(`Failed to copy BBCode for "${formName}": `, err);
+                Sentry.captureException(err, { extra: { context: 'PHMC Recruitment Clipboard Copy Fail', formName: formName } });
+                showNotification(`Failed to copy BBCode for "${formName}" to clipboard.`, 'exclamation-triangle', 10000);
+            });
+        } else if (!bbCodeContent) {
+             showNotification(`Could not generate BBCode for "${formName}" to copy.`, 'error', 10000);
+        } else {
+            showNotification(`Clipboard API not available. BBCode for "${formName}" not copied.`, 'exclamation-triangle', 10000);
+        }
+        return false; // Prevent Firebase saving for PHMC Recruitment forms
+    }
+    // --- END MODIFICATION ---
+    else { // Default handler for any other bbCodeVersion (includes SAAA)
         const definition = getFormDefinition(bbCodeVersion); // Get current form definition
 
         if (definition && definition.group === 'SAAA') {
-            const bbCodeToCopy = getBBCodeContent();
-            if (bbCodeToCopy && navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(bbCodeToCopy).then(() => {
+            // const bbCodeToCopy = getBBCodeContent(); // bbCodeContent is already defined at the top
+            if (bbCodeContent && navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(bbCodeContent).then(() => {
                     showNotification(`Copied to clipboard! `, 'clipboard', 7000);
                 }).catch(err => {
                     console.error('Failed to copy SAAA form BBCode: ', err);
                     Sentry.captureException(err, { extra: { context: 'SAAA Form Clipboard Copy Fail', formName: definition.name } });
                     showNotification(`Failed to copy BBCode for "${definition.name}" to clipboard. Saving not defined.`, 'exclamation-triangle', 10000);
                 });
-            } else if (!bbCodeToCopy) {
+            } else if (!bbCodeContent) {
                  showNotification(`Could not generate BBCode for "${definition.name}" to copy. Saving not defined.`, 'error', 10000);
             } else {
                 showNotification(`Clipboard API not available. BBCode for "${definition.name}" not copied. Saving not defined.`, 'exclamation-triangle', 10000);
             }
-            return false; // Prevent Firebase saving
+            return false; // Prevent Firebase saving for SAAA forms
         }
 
-        // Existing generic key generation for non-SAAA forms or SAAA forms that might have specific logic above
+        // Existing generic key generation for non-SAAA, non-PHMC Recruitment forms
         const formName = versionNames[bbCodeVersion] || `FormV${bbCodeVersion}`;
         
         let identifier = formData.patientName || formData.decedentName || formData.patientID || formData.decedentOOC || formData.lastName;
@@ -2311,7 +2442,6 @@ const saveReport = async () => {
         key = `[${formName}] ${identifier} - ${dateField}`;
         console.log(`Using generic key for bbCodeVersion ${bbCodeVersion}: ${key}`);
     }
-    // END <<-------------------------------- MODIFICATION HERE
 
     // If key is still empty, something went wrong (should be caught by validations)
     if (!key) {
@@ -2836,11 +2966,6 @@ const filterFormData = (formData, bbCodeVersion) => {
 };
 
 // switching agency logic
-    const [showAgencyGroupSelectorModal, setShowAgencyGroupSelectorModal] = useState(false);
-    const [hideAgencyGroupSelectorPreference, setHideAgencyGroupSelectorPreference] = useState(false);
-    const [physicianRecruitmentDetails, setPhysicianRecruitmentDetails] = useState({});
-    const [psychRecruitmentDetails, setPsychRecruitmentDetails] = useState({}); // New
-    const [saaaRecruitmentDetails, setSaaaRecruitmentDetails] = useState({});
 
 
     // Effect to manage initial agency group selection
@@ -2861,22 +2986,6 @@ const filterFormData = (formData, bbCodeVersion) => {
         const storedOptIn = localStorage.getItem('recruitmentOptIn');
         return storedOptIn === 'true';
     });
-
-    const handleSelectAgencyGroup = (group) => {
-        setSelectedAgencyGroup(group);
-        localStorage.setItem('selectedAgencyGroup', group);
-        setShowAgencyGroupSelectorModal(false);
-        if (hideAgencyGroupSelectorPreference) {
-            localStorage.setItem('hideAgencyGroupSelectorPreference', 'true');
-        }
-
-        if (group === "PHMC Recruitment") {
-            // REMOVED: Opt-in notification logic is moved from here.
-            openSwitchableModal("PHMC Recruitment Forms", phmcRecruitmentFormsSubGroup);
-        } else if (group) {
-            toggleAgencySelector();
-        }
-    };
 
     const handleRecruitmentOptIn = (optIn) => {
         setHasOptedIn(optIn);
@@ -2930,13 +3039,13 @@ const toggleAgencySelector = () => {
 
     const handleAgencySelect = (version) => {
         const definition = getFormDefinition(version);
-        if (definition &&
-            (definition.group === selectedAgencyGroup ||
-             (selectedAgencyGroup === "PHMC Recruitment" && definition.group === "PHMC Recruitment")
-            )
-           ) {
+        if (definition) {
+            // Update bbCodeVersion and selectedAgencyGroup based on the selected form
             setBbCodeVersion(version);
+            setSelectedAgencyGroup(definition.group);
+            localStorage.setItem('selectedAgencyGroup', definition.group);
 
+            // Reset form data, preserving employee selections
             setFormData(prevFormData => ({
                 ...initialFormData,
                 coronerEmployee: prevFormData.coronerEmployee,
@@ -2945,15 +3054,20 @@ const toggleAgencySelector = () => {
                 coronerRank: prevFormData.coronerRank,
                 coronerDiscord: prevFormData.coronerDiscord,
                 SubmitDate: new Date().toISOString().split('T')[0],
-                recruitmentPosition: '',
+                recruitmentPosition: '', // Clear recruitment position as well
+                // Ensure other relevant admin panel fields are reset if necessary
+                isAdminAuthenticated: prevFormData.isAdminAuthenticated, // Preserve admin auth state
+                adminUserEmail: prevFormData.adminUserEmail,
+                adminDisplayData: definition.group === "Admin" ? prevFormData.adminDisplayData : null,
+                adminSelectedCategoryName: definition.group === "Admin" ? prevFormData.adminSelectedCategoryName : null,
             }));
 
-            setShowAgencySelector(false);
-            setShowPHMCModal(false);
+            setShowAgencySelector(false); // Close the AgencySelector modal
+            setShowPHMCModal(false);      // Close the SwitchableFormsModal
             setLastWebhookIdentifier(null);
-            showNotification(`Switched to ${definition.name}`, 'exchange-alt');
+            showNotification(`Switched to ${definition.name} (Group: ${definition.group})`, 'exchange-alt');
 
-            // --- NEW LOGIC FOR OPT-IN NOTIFICATION ---
+            // Logic for PHMC Recruitment opt-in notification
             if (definition.group === "PHMC Recruitment") {
                 if (!localStorage.getItem('recruitmentOptIn')) {
                     showNotification(
@@ -2967,36 +3081,136 @@ const toggleAgencySelector = () => {
                     );
                 }
             }
-            // --- END NEW LOGIC ---
-
-        } else if (definition) {
-            showNotification(`This form belongs to the ${definition.group} group. You are currently in the ${selectedAgencyGroup} group. Please change agency group if you wish to use this form.`, 'warning', 7000);
         } else {
             showNotification(`Selected form version ${version} is not defined.`, 'error');
         }
     };
+        const reSyncSelectedAgencyGroup = useCallback(() => {
+        const definition = getFormDefinition(bbCodeVersion);
+        if (definition) {
+            // Only update if the current selectedAgencyGroup is different from the form's actual group
+            if (selectedAgencyGroup !== definition.group) {
+                setSelectedAgencyGroup(definition.group);
+                localStorage.setItem('selectedAgencyGroup', definition.group);
+            }
+        } else {
+            // If no valid form definition for the current bbCodeVersion, reset selectedAgencyGroup
+            if (selectedAgencyGroup !== null) {
+                setSelectedAgencyGroup(null);
+                localStorage.removeItem('selectedAgencyGroup');
+            }
+        }
+    }, [bbCodeVersion, selectedAgencyGroup, setSelectedAgencyGroup]); // Add all dependencies
+
+    // Handler for closing the SwitchableFormsModal (e.g., PHMC Recruitment forms list)
+    const handleCloseSwitchableModal = useCallback(() => {
+        setShowPHMCModal(false);
+        reSyncSelectedAgencyGroup(); // Re-sync after modal closes
+    }, [setShowPHMCModal, reSyncSelectedAgencyGroup]);
+
+    // Handler for closing the AgencySelector modal (e.g., PHMC or SAAA forms list)
+    const handleCloseAgencySelector = useCallback(() => {
+        setShowAgencySelector(false);
+        reSyncSelectedAgencyGroup(); // Re-sync after modal closes
+    }, [setShowAgencySelector, reSyncSelectedAgencyGroup]);
+
+    const handleSelectAgencyGroup = (group) => {
+        // Set selectedAgencyGroup immediately to provide feedback (e.g., show RecruitmentStatusDisplay)
+        // This will be corrected by the modal's onHide handler if no form is actually selected from that group.
+        setSelectedAgencyGroup(group);
+        localStorage.setItem('selectedAgencyGroup', group); // Persist this choice
+
+        setShowAgencyGroupSelectorModal(false);
+        if (hideAgencyGroupSelectorPreference) {
+            localStorage.setItem('hideAgencyGroupSelectorPreference', 'true');
+        }
+
+        if (group === "PHMC Recruitment") {
+            openSwitchableModal("PHMC Recruitment Forms", phmcRecruitmentFormsSubGroup);
+        } else if (group === "Admin") {
+            handleAdminPanelClick(); // Assuming this handles its own context
+        } else if (group) { // For PHMC, SAAA general groups
+            // toggleAgencySelector(); // This was original, now AgencySelector uses handleCloseAgencySelector
+            setShowAgencySelector(true); // Directly show, close will be handled by handleCloseAgencySelector
+        }
+    };
+
+    // This useEffect ensures selectedAgencyGroup is primarily driven by bbCodeVersion.
+    // It runs when bbCodeVersion changes, correcting selectedAgencyGroup if needed.
+    useEffect(() => {
+        localStorage.setItem('bbCodeVersion', bbCodeVersion.toString());
+        const definition = getFormDefinition(bbCodeVersion);
+        if (definition) {
+            if (selectedAgencyGroup !== definition.group) { // Optimization
+                setSelectedAgencyGroup(definition.group);
+            }
+            // Always ensure localStorage is in sync with the definition's group
+            localStorage.setItem('selectedAgencyGroup', definition.group);
+        } else {
+            if (selectedAgencyGroup !== null) { // Optimization
+                setSelectedAgencyGroup(null);
+            }
+            localStorage.removeItem('selectedAgencyGroup');
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [bbCodeVersion]); // This effect should primarily react to bbCodeVersion changes.
+
     const generateTitle = () => {
-        if (bbCodeVersion === 1) { // Death Report
+        const definition = getFormDefinition(bbCodeVersion);
+
+        if (definition?.group === 'PHMC Recruitment') {
+            const { recruitmentPosition, applicantTitleAndFullName } = formData;
+            let positionDisplay = recruitmentPosition || "N/A";
+            let positionDetailsSource = null;
+
+            // Determine the correct source for position details based on the form's titleKey
+            switch (definition.titleKey) {
+                case "phmcGeneralApplication": // Physician
+                    positionDetailsSource = selectOptions.physicianRecruitmentDetails;
+                    break;
+                case "phmcPsychApplication": // Psych
+                    positionDetailsSource = selectOptions.psychPositionDetailsData;
+                    break;
+                case "phmcAdminApplication": // Admin
+                    positionDetailsSource = selectOptions.adminPositionDetailsData;
+                    break;
+                case "phmcNursingApplication": // Nursing
+                    positionDetailsSource = selectOptions.nursePositionDetailsData;
+                    break;
+                case "phmcCoronerRecruitmentApplication": // Coroner Recruitment
+                    positionDetailsSource = selectOptions.coronerPositionDetailsData;
+                    break;
+                case "phmcEMSApplication": // EMS
+                    positionDetailsSource = selectOptions.emsPositionDetailsData;
+                    break;
+                default:
+                    // Fallback or if a new PHMC Recruitment form is added without a case here
+                    console.warn(`No specific positionDetailsSource mapping for PHMC Recruitment form: ${definition.titleKey}`);
+            }
+
+            if (recruitmentPosition && positionDetailsSource && positionDetailsSource[recruitmentPosition]) {
+                positionDisplay = positionDetailsSource[recruitmentPosition].shortCode || recruitmentPosition;
+            }
+            return `[${positionDisplay}] - ${applicantTitleAndFullName || 'Applicant Name N/A'}`.trim();
+        }
+        // --- Existing specific title generation logic for non-PHMC Recruitment forms ---
+        else if (bbCodeVersion === 1) { // Death Report
             const { typeOfDeath, decedentName, decedentOOC, dateTime } = formData;
-            // Added a check for dateTime to prevent "Invalid Date"
             const date = dateTime ? new Date(dateTime).toLocaleDateString('en-US') : 'N/A';
             return `[${typeOfDeath || 'N/A'}] ${decedentName || 'N/A'} ((${decedentOOC || 'N/A'})) - ${date}`;
-        // Coroner Email
-        } else if (bbCodeVersion === 2) {
+        } else if (bbCodeVersion === 2) { // Coroner Email
             const { decedentName, decedentOOC } = formData;
             return `Coroner Report - ${decedentName || 'N/A'} | ((${decedentOOC || 'N/A'}))`;
-    // Autopsy Form
-        } else if (bbCodeVersion === 4) {
+        } else if (bbCodeVersion === 4) { // Autopsy Form
             const { decedentName, decedentOOC } = formData;
             return `CASE ## ${decedentName || 'N/A'} ((${decedentOOC || 'N/A'})) | SENT/COMPLETED/PENDING`;
-// Civilian Forms
         } else if (bbCodeVersion === 3) { // Patient File - Advanced
             const { patientName } = formData;
             return `[Medical Information Registration] -  ${patientName || 'N/A'}`;
         } else if (bbCodeVersion === 24) { // Medical Release Records
             const { patientFirstName,  patientLastName } = formData;
             return `[RELEASE REQUEST] ${patientFirstName || ''} ${patientLastName || ''} `.trim();
-        } else if (bbCodeVersion === 25 || bbCodeVersion === 26) { // Patient File - Basic (26 is not in formDefinitions, but keeping logic)
+        } else if (bbCodeVersion === 25 || bbCodeVersion === 26) { // Patient File - Basic
             const { patientName } = formData;
             return `[Medical Information Registration] -  ${patientName || 'N/A'}`;
         } else if (bbCodeVersion === 30) { // SAAA Job Selection
@@ -3006,19 +3220,9 @@ const toggleAgencySelector = () => {
                 positionDisplay = selectOptions.saaaPositionDetailsData[saaaJobSelection].shortCode || saaaJobSelection;
             }
             return `[${positionDisplay}] - ${patientFirstName || ''} ${patientLastName || ''}`.trim();
-        } else if (bbCodeVersion === 50) { // PHMC Recruitment Application
-            const { recruitmentPosition, applicantTitleAndFullName } = formData;
-            let positionDisplay = recruitmentPosition || "N/A"; // Default to full name or N/A
-            if (recruitmentPosition && selectOptions?.positionDetailsData?.[recruitmentPosition]) {
-                // Use shortCode from positionDetailsData for PHMC Recruitment
-                positionDisplay = selectOptions.positionDetailsData[recruitmentPosition].shortCode || recruitmentPosition;
-            }
-            return `[${positionDisplay}] - ${applicantTitleAndFullName || ''}`.trim();
         }
-        // PHMC Email or other forms
+        // --- Fallback for other forms ---
         else {
-            // Fallback for other PHMC forms or if specific fields aren't present
-            const definition = getFormDefinition(bbCodeVersion);
             const formName = definition ? definition.name : `Form v${bbCodeVersion}`;
             const primaryIdentifier = formData.patientName || formData.decedentName || formData.patientID || formData.lastName || `Details for ${formName}`;
             const recordIdentifier = formData.patientMedicalRecord || '';
@@ -3566,18 +3770,19 @@ const getCopyButtonText = () => {
     return `${baseText}${formName}`;
 };
 
-    const handleCopyAndNotifyWrapper = async () => {
-        const definition = getFormDefinition(bbCodeVersion);
+const handleCopyAndNotifyWrapper = async () => {
+    const definition = getFormDefinition(bbCodeVersion);
 
-        if (definition && definition.version === 50) { // Check for Physician Application form
-            await handlePhysicianApplicationCopyAndNotify({
-                formData,
-                getBBCodeContent,    // Already a method in App.js
-                showNotification,    // Already a method in App.js
-                commitInfo,          // State from App.js
-                selectOptions,       // Pass selectOptions from App.js state
-            });
-        } else {
+    if (definition?.group === "PHMC Recruitment") { // Check for the group
+        await handlePhmcRecruitmentCopyAndNotify({ // Call the new generic handler
+            formData,
+            getBBCodeContent,
+            showNotification,
+            commitInfo,
+            selectOptions,
+            formDefinition: definition, // Pass the full definition
+        });
+    } else {
             // Existing generic handler
             await handleFormCopyAndNotify({
                 formData,
@@ -3785,16 +3990,6 @@ const getCopyButtonText = () => {
                     >
                         <i className="fas fa-history"></i>
                         View Changelog
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="danger"
-                        className="changelog-button"
-                        onClick={handleAdminPanelClick} // This now switches to the admin form
-                        title="Open Admin Control Panel"
-                    >
-                        <i className="fas fa-user-shield"></i>
-                        Admin Panel
                     </Button>
 
         <div className="floating-tools-container">
@@ -4205,6 +4400,10 @@ const getCopyButtonText = () => {
                                         physicianRecruitmentDetails={physicianRecruitmentDetails}
                                         psychRecruitmentDetails={psychRecruitmentDetails}
                                         saaaRecruitmentDetails={saaaRecruitmentDetails}
+                        adminRecruitmentDetails={adminRecruitmentDetails}
+                        emsRecruitmentDetails={emsRecruitmentDetails}
+                        nurseRecruitmentDetails={nurseRecruitmentDetails}
+                        coronerRecruitmentDetails={coronerRecruitmentDetails}
 
 
                                     />
@@ -4248,6 +4447,19 @@ const getCopyButtonText = () => {
                     </form>
                 </div>
                 <div className="output-container">
+                                <div className="floating-admin-button-container">
+                <Button
+                    type="button"
+                    variant="danger"
+                    className="changelog-button" // You can keep this or use a new class for specific floating styles
+                    onClick={handleAdminPanelClick}
+                    title="Open Admin Control Panel"
+                >
+                    <i className="fas fa-user-shield"></i>
+                    Admin Panel
+                </Button>
+            </div>
+
 <RecruitmentStatusDisplay
     selectedAgencyGroup={selectedAgencyGroup}
     bbCodeVersion={bbCodeVersion}
@@ -4560,7 +4772,7 @@ const getCopyButtonText = () => {
                     </div>
                 {
                     bbCodeVersion !== 999 && // Conditionally show title section
-                    (bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 3 || bbCodeVersion === 4 ||  bbCodeVersion === 24 || bbCodeVersion === 25 || bbCodeVersion === 30 || bbCodeVersion === 50)  && (
+versionsWithTitleSection.includes(bbCodeVersion) && ( 
                     <>
                         <h1>Generated Title</h1>
                         <div className="title-output">
@@ -4596,8 +4808,8 @@ const getCopyButtonText = () => {
                     <div className="button-container">
 
                         {selectedAgencyGroup !== 'Admin' &&
-                            (bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 3 || bbCodeVersion === 4 ||  bbCodeVersion === 24 || bbCodeVersion === 25 || bbCodeVersion === 30 || bbCodeVersion === 50)  && (
-                            <Button
+versionsWithTitleSection.includes(bbCodeVersion) && ( 
+                                <Button
                                 type="button"
                                 className="changelog-button"
                                 onClick={() => {

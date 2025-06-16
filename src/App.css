@@ -850,3 +850,10 @@ input[type="checkbox"] {
 .notification-action-secondary { /* Example for a secondary button style */
   background-color: #6c757d;
 }
+.floating-admin-button-container {
+  position: fixed;
+  top: 0px;
+  right: 20px;
+  z-index: 1050; /* Ensure it's above most content but below modals if needed */
+}
+

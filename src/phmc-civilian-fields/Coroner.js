@@ -1,6 +1,6 @@
-// src/phmc-civilian-fields/CoronerFields.js
+// src/phmc-civilian-fields/Coroner.js
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Form, Button } from 'react-bootstrap';
+import { Form, Button, InputGroup, Spinner } from 'react-bootstrap'; // Added InputGroup and Spinner
 
 // Helper component for collapsible section headers
 const CollapsibleHeader = ({ title, isOpen, onToggle, sectionId }) => (
@@ -29,7 +29,7 @@ const CollapsibleHeader = ({ title, isOpen, onToggle, sectionId }) => (
 );
 
 const LOCAL_STORAGE_KEY_CORONER = 'coronerApplicationFormData';
-const EXPIRY_DURATION_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
+const EXPIRY_DURATION_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
 
 const coronerFormFields = [
     'recruitmentPosition', 'applicantTitleAndFullName', 'genderMale', 'genderFemale', 'genderOther',
@@ -46,11 +46,13 @@ const coronerFormFields = [
 const CoronerFields = ({
     formData,
     handleChange,
-    setFormData, // Added back as it's used for localStorage loading
-    selectOptions // This will contain coronerPositionDetailsData
+    setFormData, 
+    selectOptions,
+    handleImageUpload, // Added prop
+    isUploading        // Added prop
 }) => {
-    // Use coronerPositionDetailsData from selectOptions for position dropdown
     const positionDetails = selectOptions?.coronerPositionDetailsData || {};
+    const [isOocInfoOpen, setIsOocInfoOpen] = useState(true);
 
     const [openSections, setOpenSections] = useState({
         personalInfo: true,
@@ -69,7 +71,7 @@ const CoronerFields = ({
                 prevCompletionStatusOnBlurRef.current[sectionId] = false;
             }
         });
-    }, [openSections]); // Initialize when openSections structure is known
+    }, [openSections]); 
 
     useEffect(() => {
         try {
@@ -119,11 +121,11 @@ const CoronerFields = ({
             if (typeof field === 'string') {
                 const value = formData[field];
                 if (typeof value === 'string' && !value.trim()) return false;
-                if (typeof value === 'boolean' && !value) return false; // For single checkboxes that must be true
+                if (typeof value === 'boolean' && !value) return false; 
                 if (value === undefined || value === null) return false;
-            } else if (typeof field === 'object' && field.anyOf) { // For groups where at least one must be checked
+            } else if (typeof field === 'object' && field.anyOf) { 
                 if (!field.anyOf.some(subField => formData[subField])) return false;
-            } else if (typeof field === 'object' && field.conditional) { // For conditional fields
+            } else if (typeof field === 'object' && field.conditional) { 
                 if (formData[field.conditional.if.field] === field.conditional.if.value) {
                     const conditionalValue = formData[field.conditional.then.field];
                     if (typeof conditionalValue === 'string' && !conditionalValue.trim()) return false;
@@ -147,7 +149,7 @@ const CoronerFields = ({
             'applicantSchoolName', 'applicantEnrollmentTerm', 'applicantMajor', 'applicantLanguages'
         ],
         employmentInfo: [
-            'applicantPrevEmployment', 'applicantPrevDuties', // applicantPrevDismissalReason is optional
+            'applicantPrevEmployment', 'applicantPrevDuties', 
         ],
         motivationalLetter: ['applicantMotivationLetter'],
         oocInfo: [
@@ -161,9 +163,9 @@ const CoronerFields = ({
         const wasCompleteAtLastBlur = prevCompletionStatusOnBlurRef.current[sectionId] === true;
 
         if (isOpenState && isNowComplete && !wasCompleteAtLastBlur) {
-            setIsOpenFunction(false); // Auto-collapse
+            setIsOpenFunction(false); 
         }
-        prevCompletionStatusOnBlurRef.current[sectionId] = isNowComplete; // Update last known status
+        prevCompletionStatusOnBlurRef.current[sectionId] = isNowComplete; 
     }, [checkFieldsCompletion, sectionRequiredFields]);
 
 
@@ -418,34 +420,94 @@ const CoronerFields = ({
             />
             {openSections.oocInfo && (
                 <div id="collapse-coroner-ooc-info" style={{ paddingTop: '0.5rem' }}>
-                    <Form.Group className="mb-3">
-                        <Form.Label>5.1 User Control Panel (UCP) Username</Form.Label>
-                        <Form.Control type="text" name="oocUcpName" value={formData.oocUcpName || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', openSections.oocInfo, (val) => setOpenSections(p => ({...p, oocInfo: val})), 'oocInfo')} required className={`form-control ${!formData.oocUcpName ? 'is-invalid' : ''} mb-4`} />
+                    <Form.Group className="mb-3" controlId="psychOocUcpName">
+                        <Form.Label className="field-label">5.1 User Control Panel (UCP) Username:</Form.Label>
+                        <Form.Control type="text" name="oocUcpName" value={formData.oocUcpName || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} placeholder="Your UCP name" required className={`form-control ${!formData.oocUcpName?.trim() ? 'is-invalid' : ''}`} />
+                        {!formData.oocUcpName?.trim() && <div className="invalid-feedback d-block">UCP Username is required.</div>}
                     </Form.Group>
-                    <Form.Group className="mb-3">
-                        <Form.Label>5.2 GTA:W Forum Account Name</Form.Label>
-                        <Form.Control type="text" name="oocForumName" value={formData.oocForumName || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', openSections.oocInfo, (val) => setOpenSections(p => ({...p, oocInfo: val})), 'oocInfo')} required className={`form-control ${!formData.oocForumName ? 'is-invalid' : ''} mb-4`} />
+                    <Form.Group className="mb-3" controlId="psychOocForumName">
+                        <Form.Label className="field-label">5.2 GTA:W Forum Account Name:</Form.Label>
+                        <Form.Control type="text" name="oocForumName" value={formData.oocForumName || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} placeholder="Your forum name" required className={`form-control ${!formData.oocForumName?.trim() ? 'is-invalid' : ''}`} />
+                        {!formData.oocForumName?.trim() && <div className="invalid-feedback d-block">Forum Name is required.</div>}
                     </Form.Group>
-                    <Form.Group className="mb-3">
-                        <Form.Label>5.3 Discord Name</Form.Label>
-                        <Form.Control type="text" name="oocDiscord" value={formData.oocDiscord || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', openSections.oocInfo, (val) => setOpenSections(p => ({...p, oocInfo: val})), 'oocInfo')} placeholder="username#1234 or new username format" required className={`form-control ${!formData.oocDiscord ? 'is-invalid' : ''} mb-4`} />
+                    <Form.Group className="mb-3" controlId="psychOocDiscord">
+                        <Form.Label className="field-label">5.3 Discord Name:</Form.Label>
+                        <Form.Control type="text" name="oocDiscord" value={formData.oocDiscord || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} placeholder="yourdiscord#1234 or new username" required className={`form-control ${!formData.oocDiscord?.trim() ? 'is-invalid' : ''}`} />
+                        {!formData.oocDiscord?.trim() && <div className="invalid-feedback d-block">Discord Name is required.</div>}
                     </Form.Group>
-                    <Form.Group className="mb-3">
-                        <Form.Label>5.4 Timezone</Form.Label>
-                        <Form.Control type="text" name="oocTimezone" value={formData.oocTimezone || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', openSections.oocInfo, (val) => setOpenSections(p => ({...p, oocInfo: val})), 'oocInfo')} placeholder="e.g., UTC+0, EST, PST" required className={`form-control ${!formData.oocTimezone ? 'is-invalid' : ''} mb-4`} />
+                    <Form.Group className="mb-3" controlId="psychOocTimezone">
+                        <Form.Label className="field-label">5.4 Timezone:</Form.Label>
+                        <Form.Control type="text" name="oocTimezone" value={formData.oocTimezone || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} placeholder="e.g., EST, PST, GMT+2" required className={`form-control ${!formData.oocTimezone?.trim() ? 'is-invalid' : ''}`} />
+                        {!formData.oocTimezone?.trim() && <div className="invalid-feedback d-block">Timezone is required.</div>}
                     </Form.Group>
-                    <Form.Group className="mb-3">
-                        <Form.Label>5.5 Do you have any real life medical experience or have you roleplayed in medical factions in the past?:</Form.Label>
-                        <Form.Control as="textarea" rows={3} name="oocMedicalExperience" value={formData.oocMedicalExperience || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', openSections.oocInfo, (val) => setOpenSections(p => ({...p, oocInfo: val})), 'oocInfo')} placeholder="Describe in detail (or N/A)" required className={`form-control ${!formData.oocMedicalExperience ? 'is-invalid' : ''} mb-4`} />
+                    <Form.Group className="mb-3" controlId="psychOocMedicalExperience">
+                        <Form.Label className="field-label">5.5 Real life medical experience or past medical RP:</Form.Label>
+                        <Form.Control as="textarea" rows={3} name="oocMedicalExperience" value={formData.oocMedicalExperience || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} placeholder="Describe any relevant experience" required className={`form-control ${!formData.oocMedicalExperience?.trim() ? 'is-invalid' : ''}`} />
+                        {!formData.oocMedicalExperience?.trim() && <div className="invalid-feedback d-block">This field is required.</div>}
                     </Form.Group>
+                    
                     <Form.Group className="mb-3">
                         <Form.Label>5.6 Unedited Screenshot of your Admin Record with the current date & time displayed:</Form.Label>
-                        <Form.Control type="text" name="oocAdminRecordLink" value={formData.oocAdminRecordLink || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', openSections.oocInfo, (val) => setOpenSections(p => ({...p, oocInfo: val})), 'oocInfo')} placeholder="Direct link to image (e.g., Imgur)" required className={`form-control ${!formData.oocAdminRecordLink ? 'is-invalid' : ''} mb-4`} />
+                        <InputGroup>
+                            <Form.Control
+                                type="text"
+                                name="oocAdminRecordLink"
+                                value={formData.oocAdminRecordLink || ''}
+                                onChange={handleChange}
+                                onBlur={() => handleSectionFieldBlur('oocInfo', openSections.oocInfo, (val) => setOpenSections(p => ({...p, oocInfo: val})), 'oocInfo')}
+                                placeholder="Direct link to image (e.g., Imgur)"
+                                required
+                                className={`form-control ${!formData.oocAdminRecordLink ? 'is-invalid' : ''}`}
+                            />
+                            <Button
+                                variant="outline-secondary"
+                                onClick={() => document.getElementById('coroner-oocAdminRecordUpload').click()}
+                                disabled={isUploading}
+                            >
+                                {isUploading ? <Spinner as="span" animation="border" size="sm" /> : <i className="fas fa-upload"></i>}
+                            </Button>
+                        </InputGroup>
+                        <input
+                            type="file"
+                            id="coroner-oocAdminRecordUpload"
+                            style={{ display: 'none' }}
+                            accept="image/*"
+                            onChange={(e) => handleImageUpload(e, 'oocAdminRecordLink')}
+                        />
+                        <div className="mb-4"></div> {/* Spacer */}
                     </Form.Group>
+
                     <Form.Group className="mb-3">
                         <Form.Label>5.7 Provide a screenshot of your character's statistics (/stats) which you're applying with:</Form.Label>
-                        <Form.Control type="text" name="oocStatsLink" value={formData.oocStatsLink || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', openSections.oocInfo, (val) => setOpenSections(p => ({...p, oocInfo: val})), 'oocInfo')} placeholder="Direct link to image (e.g., Imgur)" required className={`form-control ${!formData.oocStatsLink ? 'is-invalid' : ''} mb-4`} />
+                        <InputGroup>
+                            <Form.Control
+                                type="text"
+                                name="oocStatsLink"
+                                value={formData.oocStatsLink || ''}
+                                onChange={handleChange}
+                                onBlur={() => handleSectionFieldBlur('oocInfo', openSections.oocInfo, (val) => setOpenSections(p => ({...p, oocInfo: val})), 'oocInfo')}
+                                placeholder="Direct link to image (e.g., Imgur)"
+                                required
+                                className={`form-control ${!formData.oocStatsLink ? 'is-invalid' : ''}`}
+                            />
+                            <Button
+                                variant="outline-secondary"
+                                onClick={() => document.getElementById('coroner-oocStatsUpload').click()}
+                                disabled={isUploading}
+                            >
+                                {isUploading ? <Spinner as="span" animation="border" size="sm" /> : <i className="fas fa-upload"></i>}
+                            </Button>
+                        </InputGroup>
+                        <input
+                            type="file"
+                            id="coroner-oocStatsUpload"
+                            style={{ display: 'none' }}
+                            accept="image/*"
+                            onChange={(e) => handleImageUpload(e, 'oocStatsLink')}
+                        />
+                        <div className="mb-4"></div> {/* Spacer */}
                     </Form.Group>
+
                     <Form.Group className="mb-3">
                         <Form.Label>5.8 Provide your character's background story:</Form.Label>
                         <Form.Control as="textarea" rows={5} name="charBackground" value={formData.charBackground || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', openSections.oocInfo, (val) => setOpenSections(p => ({...p, oocInfo: val})), 'oocInfo')} required className={`form-control ${!formData.charBackground ? 'is-invalid' : ''} mb-4`} />

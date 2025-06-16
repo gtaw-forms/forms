@@ -53,12 +53,12 @@ const generateNursing = (formData) => {
         eduDoctorate,
 
         // Nursing specific position details from formData
-        nursePositionDetailsData,
+        positionDetailsData,
 
     } = formData;
 
     // Use nursing-specific position details
-    const positionDetailsMap = nursePositionDetailsData || {};
+    const positionDetailsMap = positionDetailsData || {}; // MODIFIED: Use the corrected variable
 
     // Determine the dynamic display name and URL
     let dynamicDisplayPosition = "Position (Please Select)";

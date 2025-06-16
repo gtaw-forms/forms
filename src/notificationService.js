@@ -64,55 +64,90 @@ const sendDiscordWebhookInternal = async (webhookUrl, embedData, commitInfo = {}
         return false;
     }
 };
-const sendPhysicianApplicationWebhook = async ({
+
+// --- MODIFIED: General PHMC Recruitment Webhook Sender ---
+const sendPhmcRecruitmentWebhook = async ({
     webhookUrl,
     formData,
     commitInfo,
-    actionMessage, // e.g., "Physician Application Copied"
-    selectOptions, // To get position display name
+    actionMessage,
+    selectOptions,
+    formDefinition, // Added: to get form name and determine position details source
 }) => {
     const {
         applicantTitleAndFullName,
-        recruitmentPosition, // This is the key, e.g., "Attending Physician"
+        recruitmentPosition,
         applicantContactDetails,
         oocUcpName,
+        oocDiscord,
     } = formData;
 
-    const positionDisplayName = selectOptions?.positionDetailsData?.[recruitmentPosition]?.displayName || recruitmentPosition || "N/A";
+    let positionDetailsSource = null;
+    // Determine the correct source for position details based on the form's titleKey
+    // This logic mirrors what's in App.js's generateTitle and getBBCodeContent
+    if (formDefinition) {
+        switch (formDefinition.titleKey) {
+            case "phmcGeneralApplication":
+                positionDetailsSource = selectOptions.physicianRecruitmentDetails;
+                break;
+            case "phmcPsychApplication":
+                positionDetailsSource = selectOptions.psychPositionDetailsData;
+                break;
+            case "phmcAdminApplication":
+                positionDetailsSource = selectOptions.adminPositionDetailsData;
+                break;
+            case "phmcNursingApplication":
+                positionDetailsSource = selectOptions.nursePositionDetailsData;
+                break;
+            case "phmcCoronerRecruitmentApplication":
+                positionDetailsSource = selectOptions.coronerPositionDetailsData;
+                break;
+            case "phmcEMSApplication":
+                positionDetailsSource = selectOptions.emsPositionDetailsData;
+                break;
+            default:
+                console.warn(`No specific positionDetailsSource mapping for PHMC Recruitment form: ${formDefinition.titleKey} in webhook.`);
+        }
+    }
+
+    const positionDisplayName = positionDetailsSource?.[recruitmentPosition]?.displayName || recruitmentPosition || "N/A";
+    const formNameForTitle = formDefinition?.name || "PHMC Recruitment Application";
 
     const fields = [
         { name: "Applicant Name", value: applicantTitleAndFullName || "N/A", inline: true },
         { name: "Position Applied For", value: positionDisplayName, inline: true },
         { name: "Contact Details", value: applicantContactDetails || "N/A", inline: false },
         { name: "OOC UCP Name", value: oocUcpName || "N/A", inline: true },
+        { name: "Discord Name", value: oocDiscord || "N/A", inline: true },
         { name: "Timestamp", value: new Date().toLocaleString(), inline: false },
         { name: "Action", value: actionMessage || "Application Processed", inline: false },
     ];
 
     const embedData = {
-        title: "PHMC Recruitment Application Incoming",
+        title: `${formNameForTitle} Notification`,
         color: 0x007bff, // Blue, or your PHMC Recruitment theme color
         fields: fields,
         footerText: "PHMC Recruitment Forms", // Custom footer
     };
 
-    // Use the existing generic sender
     await sendDiscordWebhookInternal(webhookUrl, embedData, commitInfo);
 };
 
-// New dedicated handler for Physician Application copy and notification
-export const handlePhysicianApplicationCopyAndNotify = async ({
+// --- MODIFIED: General PHMC Recruitment Handler ---
+export const handlePhmcRecruitmentCopyAndNotify = async ({
     formData,
-    getBBCodeContent, // Function from App.js to get BBCode
-    showNotification, // Function from App.js
+    getBBCodeContent,
+    showNotification,
     commitInfo,
-    selectOptions,    // Pass selectOptions from App.js
+    selectOptions,
+    formDefinition, // Added: to pass to the webhook sender
 }) => {
-    const bbCodeToCopy = getBBCodeContent(); // This already handles passing positionDetailsData for version 50
+    const bbCodeToCopy = getBBCodeContent();
+    const formName = formDefinition?.name || "PHMC Recruitment Application";
 
     if (!bbCodeToCopy) {
-        showNotification("Failed to generate Physician Application BBCode. Copying skipped.", 'error');
-        Sentry.captureMessage("getBBCodeContent returned null/undefined for Physician Application", 'error');
+        showNotification(`Failed to generate ${formName} BBCode. Copying skipped.`, 'error');
+        Sentry.captureMessage(`getBBCodeContent returned null/undefined for ${formName}`, 'error');
         return;
     }
 
@@ -121,37 +156,35 @@ export const handlePhysicianApplicationCopyAndNotify = async ({
             throw new Error("Clipboard API not available");
         }
         await navigator.clipboard.writeText(bbCodeToCopy);
-        showNotification("Physician Application BBCode copied to clipboard!", 'clipboard');
+        showNotification(`${formName} BBCode copied to clipboard!`, 'clipboard');
 
-        // Determine Webhook URL (e.g., a specific one for recruitment or a general PHMC one)
-        // For this example, let's assume a general PHMC webhook or a specific recruitment one.
-        // You might need to adjust this logic based on your .env setup.
         const discordWebhookUrl = process.env.REACT_APP_PHMC_RECRUITMENT_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
         if (discordWebhookUrl) {
-            await sendPhysicianApplicationWebhook({
+            await sendPhmcRecruitmentWebhook({ // Call the generalized function
                 webhookUrl: discordWebhookUrl,
                 formData,
                 commitInfo,
-                actionMessage: "Physician Application BBCode Copied",
+                actionMessage: `${formName} BBCode Copied`,
                 selectOptions,
+                formDefinition, // Pass the definition
             });
         } else {
-            console.warn("Discord webhook URL for Physician Applications not set, skipping notification.");
+            console.warn(`Discord webhook URL for ${formName} not set, skipping notification.`);
             showNotification("BBCode copied, but Discord notification for recruitment not configured.", 'warning');
         }
 
     } catch (error) {
-        console.error('Error during Physician Application copy or webhook: ', error);
-        Sentry.captureException(error, { extra: { context: 'handlePhysicianApplicationCopyAndNotify' } });
-        let userMessage = "Failed to copy Physician Application BBCode.";
+        console.error(`Error during ${formName} copy or webhook: `, error);
+        Sentry.captureException(error, { extra: { context: `handlePhmcRecruitmentCopyAndNotify for ${formName}` } });
+        let userMessage = `Failed to copy ${formName} BBCode.`;
         if (error.message === "Clipboard API not available") {
             userMessage = "Clipboard API not available! BBCode not copied.";
         }
         showNotification(userMessage, 'exclamation-triangle');
-        // Optionally send a failure webhook here if needed
     }
 };
+// --- END MODIFICATIONS ---
 
 // Helper function to prepare and send a standardized form interaction webhook (previously in webhookService.js)
 const sendFormInteractionWebhookInternal = async ({
@@ -260,17 +293,20 @@ export const handleFormCopyAndNotify = async ({
         return;
     }
 
-    const canProceedAfterSaveAttempt = await saveReport(); // For SAAA, this copies to clipboard and returns false.
+    const canProceedAfterSaveAttempt = await saveReport();
 
-    // If saving failed for a non-SAAA form, then exit.
-    // SAAA forms return false from saveReport but should still proceed to webhook.
-    if (!canProceedAfterSaveAttempt && selectedAgencyGroup !== 'SAAA') {
-        console.log("Report saving failed for non-SAAA form, or validation error occurred. Webhook and further copy skipped.");
-        return;
+    if (!canProceedAfterSaveAttempt) {
+        if (selectedAgencyGroup === 'PHMC Recruitment') {
+            console.log("PHMC Recruitment form: Processed (copied to clipboard, no Firebase save). Generic webhook skipped.");
+            return;
+        } else if (selectedAgencyGroup !== 'SAAA') {
+            console.log("Report saving failed for non-SAAA, non-PHMC Recruitment form, or validation error occurred. Webhook and further copy skipped.");
+            return;
+        }
     }
 
     const {
-        decedentName, decedentOOC, // Used for PHMC/Coroner identifier
+        decedentName, decedentOOC,
     } = formData;
 
     let firebaseSavedCount = 0;
@@ -291,11 +327,7 @@ export const handleFormCopyAndNotify = async ({
         firebaseSavedCount = 0;
     }
 
-    let coronerEmailNotificationId = null;
-
     try {
-        // Clipboard copy for non-SAAA forms that successfully saved.
-        // SAAA forms have their BBCode copied to clipboard within the saveReport function.
         if (selectedAgencyGroup !== 'SAAA') {
             if (!navigator.clipboard || !navigator.clipboard.writeText) {
                 throw new Error("Clipboard API not available");
@@ -309,14 +341,13 @@ export const handleFormCopyAndNotify = async ({
                         onClick={(e) => {
                             e.stopPropagation();
                             handleAgencySelect(2);
-                            if (coronerEmailNotificationId) removeNotification(coronerEmailNotificationId);
                         }}
                         style={{ marginLeft: '10px', cursor: 'pointer', padding: '0.25rem 0.5rem', fontSize: '0.875rem', border: '1px solid #0dcaf0', background: '#0dcaf0', color: 'white', borderRadius: '0.25rem' }}
                     >
                         Switch to Coroner Email Form
                     </button>
                 );
-                coronerEmailNotificationId = showNotification(
+                showNotification(
                     <>
                         A Coroner Email was requested for this report. {buttonJSX}
                     </>,
@@ -325,8 +356,6 @@ export const handleFormCopyAndNotify = async ({
                 );
             }
         }
-        // For SAAA forms, the clipboard copy and its notification are handled by saveReport in App.js.
-        // Now, proceed to webhook for all cases that reach here.
 
         let discordWebhookUrl;
         if (selectedAgencyGroup === 'SAAA') {
@@ -346,21 +375,18 @@ export const handleFormCopyAndNotify = async ({
             if (currentIdentifier && currentIdentifier === lastWebhookIdentifier && selectedAgencyGroup !== 'SAAA') {
                 console.log('Duplicate PHMC/Coroner report copy detected, skipping webhook.');
             } else {
-                // Determine actionMessage for webhook
-                let webhookActionMessage = "BBCode Copied"; // Default for SAAA or if save didn't happen for PHMC/Coroner
-                if (canProceedAfterSaveAttempt && selectedAgencyGroup !== 'SAAA') { // True if non-SAAA form saved successfully
+                let webhookActionMessage = "BBCode Copied";
+                if (canProceedAfterSaveAttempt && selectedAgencyGroup !== 'SAAA') {
                     webhookActionMessage = "BBCode Copied & Report Save Processed";
                 }
-                // For SAAA, canProceedAfterSaveAttempt is false, but copy happened in saveReport.
-                // "BBCode Copied" is accurate for SAAA webhook action.
 
                 await sendFormInteractionWebhookInternal({
                     webhookUrl: discordWebhookUrl,
                     formData,
                     versionName,
-                    selectedAgencyGroup, // <-- Add this
+                    selectedAgencyGroup,
                     statusTitle: "Someone has used your generator!",
-                    statusColor: 0x00FF00, // Green
+                    statusColor: 0x00FF00,
                     actionMessage: webhookActionMessage,
                     commitInfo,
                     firebaseSavedCount,
@@ -384,8 +410,10 @@ export const handleFormCopyAndNotify = async ({
         let copyFailUserMessage = `An error occurred. ${saveStatusMessage}`;
         if (error.message === "Clipboard API not available") {
             copyFailUserMessage = `Clipboard API not available! BBCode not copied. ${saveStatusMessage}`;
-        } else if (selectedAgencyGroup !== 'SAAA') { // Error likely from clipboard copy attempt for non-SAAA
+        } else if (selectedAgencyGroup !== 'SAAA') {
             copyFailUserMessage = `Failed to copy BBCode! ${saveStatusMessage}`;
+        } else {
+            copyFailUserMessage = `Error after BBCode copy. ${saveStatusMessage}`;
         }
         showNotification(copyFailUserMessage, 'exclamation-triangle');
 
@@ -402,7 +430,7 @@ export const handleFormCopyAndNotify = async ({
                 failureActionMessage = `Clipboard API unavailable. ${saveStatusMessage}`;
             } else if (selectedAgencyGroup !== 'SAAA') {
                 failureActionMessage = `BBCode could not be copied. ${saveStatusMessage}`;
-            } else { // For SAAA, error here is likely post-copy (e.g., webhook send itself)
+            } else {
                 failureActionMessage = `Error after BBCode copy. ${saveStatusMessage}`;
             }
 
@@ -410,9 +438,9 @@ export const handleFormCopyAndNotify = async ({
                     webhookUrl: failureWebhookUrl,
                     formData,
                     versionName,
-                    selectedAgencyGroup, // <-- Add this
+                    selectedAgencyGroup,
                     statusTitle: `Processing Failed (...)`,
-                    statusColor: 0xFF0000, // Red
+                    statusColor: 0xFF0000,
                     actionMessage: failureActionMessage,
                     commitInfo,
                     errorMessage: error.message,

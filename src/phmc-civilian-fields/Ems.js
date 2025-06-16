@@ -1,5 +1,6 @@
+// c:\Users\cross\Documents\GitHub\phmc-forms\src\phmc-civilian-fields\Ems.js
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Form, Button } from 'react-bootstrap';
+import { Form, Button, InputGroup, Spinner } from 'react-bootstrap'; // Added InputGroup and Spinner
 
 // Helper component for collapsible section headers
 const CollapsibleHeader = ({ title, isOpen, onToggle, sectionId }) => (
@@ -27,40 +28,138 @@ const CollapsibleHeader = ({ title, isOpen, onToggle, sectionId }) => (
     </Button>
 );
 
+const LOCAL_STORAGE_KEY_EMS = 'emsApplicationFormData';
+const EXPIRY_DURATION_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
+
+const emsFormFields = [
+    'recruitmentPosition', 'applicantTitleAndFullName', 'genderMale', 'genderFemale', 'genderOther',
+    'applicantGenderOtherText', 'applicantDOBAndPlace', 'applicantAddress', 'applicantContactDetails',
+    'applicantMedicalConditions', 'citizenUS', 'citizenPermanent', 'citizenNone',
+    'eduHighSchool', 'eduCertificate', 'eduDiploma', 'eduAssociate', 'eduBachelor', 'eduMaster', 'eduDoctorate',
+    'applicantSchoolName', 'applicantEnrollmentTerm', 'applicantMajor', 'applicantLanguages',
+    'applicantPrevEmployment', 'applicantPrevDuties', 'applicantPrevDismissalReason', // For Paramedic/EMT
+    'emsLicenseLink', 'emsPartTimeReason', // For OtherEMS
+    'applicantMotivationLetter', // For Paramedic/EMT
+    'oocUcpName', 'oocForumName', 'oocDiscord', 'oocTimezone',
+    'oocMedicalExperience', // For Paramedic/EMT
+    'oocAdminRecordLink', 'oocStatsLink', 'charBackground',
+    'oocOtherCharLicenseProof', 'dfpSanFireLink', 'dfpPhmcLink', 'dfpLegalFactionLink' // For OtherEMS
+];
+
+
 const EMSFields = ({
     formData,
     handleChange,
-    // setFormData, // setFormData is not used in this component directly
-    selectOptions // This will contain emsPositionDetailsData
+    setFormData,
+    selectOptions,
+    handleImageUpload, // Added prop
+    isUploading        // Added prop
 }) => {
-    // Use emsPositionDetailsData from selectOptions for position dropdown
     const positionDetails = selectOptions?.emsPositionDetailsData || {};
     const selectedRole = formData.recruitmentPosition || '';
 
     const isParamedic = selectedRole === 'Paramedic';
     const isEMT = selectedRole === 'EMT';
-    // Consider any role not 'Paramedic' or 'EMT' as 'OtherEMS' for simplicity in this example
-    // You might have a more specific list or way to identify 'OtherEMS' roles
-    const isOtherEMS = selectedRole && !isParamedic && !isEMT;
-
+    const isEMTTrainee = selectedRole === 'EMT Trainee';
+    const isOtherEMS = selectedRole && !isParamedic && !isEMT && !isEMTTrainee;
 
     const [openSections, setOpenSections] = useState({
         personalInfo: true,
         educationalInfo: true,
-        employmentInfo: true, // For Paramedic/EMT
-        licensingInfo: true,  // For OtherEMS
-        motivationalLetter: true, // For Paramedic/EMT
-        oocInfo: true, // For all, but content varies
+        employmentInfo: true, 
+        licensingInfo: true,  
+        motivationalLetter: true, 
+        oocInfo: true, 
     });
+
+    // --- START localStorage Logic ---
+    useEffect(() => {
+        try {
+            const savedDataString = localStorage.getItem(LOCAL_STORAGE_KEY_EMS);
+            if (savedDataString) {
+                const savedData = JSON.parse(savedDataString);
+                if (savedData && savedData.data && savedData.timestamp) {
+                    if (Date.now() - savedData.timestamp < EXPIRY_DURATION_MS) {
+                        const relevantSavedData = {};
+                        emsFormFields.forEach(field => {
+                            if (savedData.data.hasOwnProperty(field)) {
+                                relevantSavedData[field] = savedData.data[field];
+                            }
+                        });
+                        setFormData(prev => ({ ...prev, ...relevantSavedData }));
+                    } else {
+                        localStorage.removeItem(LOCAL_STORAGE_KEY_EMS);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Error loading EMS form data from localStorage:", error);
+            localStorage.removeItem(LOCAL_STORAGE_KEY_EMS);
+        }
+    }, [setFormData]);
+
+    useEffect(() => {
+        try {
+            const dataToSave = {};
+            emsFormFields.forEach(field => {
+                if (formData.hasOwnProperty(field)) {
+                    dataToSave[field] = formData[field];
+                }
+            });
+            const emsDataWithTimestamp = {
+                data: dataToSave,
+                timestamp: Date.now()
+            };
+            localStorage.setItem(LOCAL_STORAGE_KEY_EMS, JSON.stringify(emsDataWithTimestamp));
+        } catch (error) {
+            console.error("Error saving EMS form data to localStorage:", error);
+        }
+    }, [formData]);
+    // --- END localStorage Logic ---
+
 
     const toggleSection = (sectionName) => {
         setOpenSections(prev => ({ ...prev, [sectionName]: !prev[sectionName] }));
     };
+    const oocFieldsConfig = {
+        Paramedic: [
+            { label: '5.1 User Control Panel (UCP) Username', name: 'oocUcpName', type: 'text' },
+            { label: '5.2 GTA:W Forum Account Name', name: 'oocForumName', type: 'text' },
+            { label: '5.3 Discord Name', name: 'oocDiscord', type: 'text', placeholder: "username#1234 or new username format" },
+            { label: '5.4 Timezone', name: 'oocTimezone', type: 'text', placeholder: "e.g., UTC+0, EST, PST" },
+            { label: '5.5 Do you have any real life medical experience or have you roleplayed in medical factions in the past?:', name: 'oocMedicalExperience', type: 'textarea', rows: 3, placeholder: "Describe in detail (or N/A)" },
+            { label: '5.6 Unedited Screenshot of your Admin Record with the current date & time displayed:', name: 'oocAdminRecordLink', type: 'imageupload', placeholder: "Direct link to image (e.g., Imgur)" },
+            { label: '5.7 Provide a screenshot of your character\'s statistics (/stats) which you\'re applying with:', name: 'oocStatsLink', type: 'imageupload', placeholder: "Direct link to image (e.g., Imgur)" },
+            { label: '5.8 Provide your character\'s background story:', name: 'charBackground', type: 'textarea', rows: 5 }
+        ],
+        EMT: [
+            { label: '5.1 User Control Panel (UCP) Username', name: 'oocUcpName', type: 'text' },
+            { label: '5.2 Unedited Screenshot of your Admin Record:', name: 'oocAdminRecordLink', type: 'imageupload', placeholder: "Direct link to image (e.g., Imgur)" },
+            { label: '5.3 GTA:W Forum Account Name', name: 'oocForumName', type: 'text' },
+            { label: '5.4 Discord Name', name: 'oocDiscord', type: 'text', placeholder: "username#1234 or new username format" },
+            { label: '5.5 Timezone', name: 'oocTimezone', type: 'text', placeholder: "e.g., UTC+0, EST, PST" },
+            { label: '5.6 Do you have any real life medical experience or have you roleplayed in medical factions in the past?:', name: 'oocMedicalExperience', type: 'textarea', rows: 3, placeholder: "Describe in detail (or N/A)" },
+            { label: '5.7 Provide a screenshot of your character\'s statistics (/stats) which you\'re applying with:', name: 'oocStatsLink', type: 'imageupload', placeholder: "Direct link to image (e.g., Imgur)" },
+            { label: '5.8 Provide your character\'s background story:', name: 'charBackground', type: 'textarea', rows: 5 }
+        ],
+        'EMT Trainee': [ // Updated for EMT Trainee
+            { label: '4.1 User Control Panel (UCP) Username', name: 'oocUcpName', type: 'text' },
+            { label: '4.2 GTA:W Forum Account Name', name: 'oocForumName', type: 'text' },
+            { label: '4.3 Discord Name', name: 'oocDiscord', type: 'text', placeholder: "username#1234 or new username format" },
+            { label: '4.4 Timezone', name: 'oocTimezone', type: 'text', placeholder: "e.g., UTC+0, EST, PST" },
+            { label: '4.5 Do you have any real life medical experience or have you roleplayed in medical factions in the past?:', name: 'oocMedicalExperience', type: 'textarea', rows: 3, placeholder: "Describe in detail (or N/A)" },
+            { label: '4.6 Unedited Screenshot of your Admin Record with the current date & time displayed:', name: 'oocAdminRecordLink', type: 'imageupload', placeholder: "Direct link to image (e.g., Imgur)" },
+            { label: '4.7 Provide a screenshot of your character\'s statistics (/stats) which you\'re applying with:', name: 'oocStatsLink', type: 'imageupload', placeholder: "Direct link to image (e.g., Imgur)" },
+            { label: '4.8 If you are a part of another official faction, please post a link to your DFP request from both Pillbox Hill Medical Center and your current faction. If utilizing the same character, permissions from LFM must be acquired and provided as well:', name: 'oocOtherFactionDfpLfm', type: 'text', placeholder: "ANSWER/LINK(S)" },
+            { label: '4.9 Provide your character\'s background story:', name: 'charBackground', type: 'textarea', rows: 5 }
+        ]
+    };
 
     return (
         <>
-            {/* --- 1. Personal Information (Common to all) --- */}
-            <CollapsibleHeader
+            {/* ... (Personal Information - Section 1, Educational Background - Section 2 remain the same) ... */}
+             {/* --- 1. Personal Information (Common to all) --- */}
+             <CollapsibleHeader
                 title="1. Personal Information"
                 isOpen={openSections.personalInfo}
                 onToggle={() => toggleSection('personalInfo')}
@@ -232,10 +331,8 @@ const EMSFields = ({
                 </div>
             )}
 
-            {/* --- Conditional Sections Start Here --- */}
-
-            {/* Section 3: Employment History (Paramedic/EMT) OR Licensing & Request Information (OtherEMS) */}
-            {(isParamedic || isEMT) && (
+            {/* Section 3: Employment History (Paramedic/EMT ONLY) */}
+            {(isParamedic || isEMT) && ( // MODIFIED: Exclude EMT Trainee
                 <>
                     <CollapsibleHeader
                         title="3. Employment History"
@@ -245,6 +342,7 @@ const EMSFields = ({
                     />
                     {openSections.employmentInfo && (
                         <div id="collapse-ems-employment-info" style={{ paddingTop: '0.5rem' }}>
+                            {/* ... Employment history fields ... */}
                             <Form.Group className="mb-3">
                                 <Form.Label>3.1 Previous Employment</Form.Label>
                                 <Form.Control type="text" name="applicantPrevEmployment" value={formData.applicantPrevEmployment || ''} onChange={handleChange} placeholder="ROLE at COMPANY between DD/MMM/YYYY to DD/MMM/YYYY (or N/A)" required className={`form-control ${!formData.applicantPrevEmployment ? 'is-invalid' : ''} mb-4`} />
@@ -262,6 +360,7 @@ const EMSFields = ({
                 </>
             )}
 
+            {/* Section 3: Licensing & Request Information (OtherEMS ONLY) */}
             {isOtherEMS && (
                 <>
                     <CollapsibleHeader
@@ -272,9 +371,35 @@ const EMSFields = ({
                     />
                     {openSections.licensingInfo && (
                         <div id="collapse-ems-licensing-info" style={{ paddingTop: '0.5rem' }}>
+                            {/* ... Licensing fields ... */}
                             <Form.Group className="mb-3">
                                 <Form.Label>3.1 Provide a copy of your Emergency Medical Technician license (( /licenses ))</Form.Label>
-                                <Form.Control type="text" name="emsLicenseLink" value={formData.emsLicenseLink || ''} onChange={handleChange} placeholder="Link to license screenshot" required className={`form-control ${!formData.emsLicenseLink ? 'is-invalid' : ''} mb-4`} />
+                                <InputGroup>
+                                    <Form.Control
+                                        type="text"
+                                        name="emsLicenseLink"
+                                        value={formData.emsLicenseLink || ''}
+                                        onChange={handleChange}
+                                        placeholder="Link to license screenshot"
+                                        required
+                                        className={`form-control ${!formData.emsLicenseLink ? 'is-invalid' : ''}`}
+                                    />
+                                    <Button
+                                        variant="outline-secondary"
+                                        onClick={() => document.getElementById('ems-licenseUpload').click()}
+                                        disabled={isUploading}
+                                    >
+                                        {isUploading ? <Spinner as="span" animation="border" size="sm" /> : <i className="fas fa-upload"></i>}
+                                    </Button>
+                                </InputGroup>
+                                <input
+                                    type="file"
+                                    id="ems-licenseUpload"
+                                    style={{ display: 'none' }}
+                                    accept="image/*"
+                                    onChange={(e) => handleImageUpload(e, 'emsLicenseLink')}
+                                />
+                                <div className="mb-4"></div> {/* Spacer */}
                             </Form.Group>
                             <Form.Group className="mb-3">
                                 <Form.Label>3.2 Please write a short paragraph about why you believe you should be offered a slot with our part-time program:</Form.Label>
@@ -285,8 +410,8 @@ const EMSFields = ({
                 </>
             )}
 
-            {/* Section 4: Motivational Letter (Paramedic/EMT) OR OOC Info (OtherEMS) */}
-            {(isParamedic || isEMT) && (
+            {/* Section 4: Motivational Letter (Paramedic/EMT ONLY) */}
+            {(isParamedic || isEMT) && ( // MODIFIED: Exclude EMT Trainee
                 <>
                     <CollapsibleHeader
                         title="4. Motivational Letter"
@@ -310,81 +435,79 @@ const EMSFields = ({
                 </>
             )}
 
-            {/* Section 5 for Paramedic/EMT (OOC Info) OR Section 4 for OtherEMS (OOC Info) */}
-            {(isParamedic || isEMT) && (
+            {/* OOC Section: Section 5 for Paramedic/EMT, Section 4 for EMT Trainee/OtherEMS */}
+            {(isParamedic || isEMT || isEMTTrainee) && (
                 <>
                     <CollapsibleHeader
-                        title="5. (( Out of Character information ))"
+                        title={isEMTTrainee ? "4. (( Out of Character information ))" : "5. (( Out of Character information ))"}
                         isOpen={openSections.oocInfo}
                         onToggle={() => toggleSection('oocInfo')}
-                        sectionId="ems-ooc-info-paramedic-emt"
+                        sectionId="ems-ooc-info-main"
                     />
                     {openSections.oocInfo && (
-                        <div id="collapse-ems-ooc-info-paramedic-emt" style={{ paddingTop: '0.5rem' }}>
-                            <Form.Group className="mb-3">
-                                <Form.Label>5.1 User Control Panel (UCP) Username</Form.Label>
-                                <Form.Control type="text" name="oocUcpName" value={formData.oocUcpName || ''} onChange={handleChange} required className={`form-control ${!formData.oocUcpName ? 'is-invalid' : ''} mb-4`} />
-                            </Form.Group>
-
-                            {isParamedic && (
-                                <Form.Group className="mb-3">
-                                    <Form.Label>5.2 GTA:W Forum Account Name</Form.Label>
-                                    <Form.Control type="text" name="oocForumName" value={formData.oocForumName || ''} onChange={handleChange} required className={`form-control ${!formData.oocForumName ? 'is-invalid' : ''} mb-4`} />
+                        <div id="collapse-ems-ooc-info-main" style={{ paddingTop: '0.5rem' }}>
+                            {(oocFieldsConfig[selectedRole] || []).map(field => (
+                                <Form.Group className="mb-3" key={`${selectedRole}-${field.name}`}>
+                                    <Form.Label>{field.label}</Form.Label>
+                                    {field.type === 'textarea' ? (
+                                        <Form.Control
+                                            as="textarea"
+                                            rows={field.rows || 3}
+                                            name={field.name}
+                                            value={formData[field.name] || ''}
+                                            onChange={handleChange}
+                                            placeholder={field.placeholder || ''}
+                                            required
+                                            className={`form-control ${!formData[field.name] ? 'is-invalid' : ''} mb-4`}
+                                        />
+                                    ) : field.type === 'imageupload' ? (
+                                        <>
+                                            <InputGroup>
+                                                <Form.Control
+                                                    type="url"
+                                                    name={field.name}
+                                                    value={formData[field.name] || ''}
+                                                    onChange={handleChange}
+                                                    placeholder={field.placeholder || "Direct link to image (e.g., Imgur)"}
+                                                    required
+                                                    className={`form-control ${!formData[field.name] ? 'is-invalid' : ''}`}
+                                                />
+                                                <Button
+                                                    variant="outline-secondary"
+                                                    onClick={() => document.getElementById(`ems-ooc-${field.name}-upload`).click()}
+                                                    disabled={isUploading}
+                                                >
+                                                    {isUploading ? <Spinner as="span" animation="border" size="sm" /> : <i className="fas fa-upload"></i>}
+                                                </Button>
+                                            </InputGroup>
+                                            <input
+                                                type="file"
+                                                id={`ems-ooc-${field.name}-upload`}
+                                                style={{ display: 'none' }}
+                                                accept="image/*"
+                                                onChange={(e) => handleImageUpload(e, field.name)}
+                                            />
+                                            <div className="mb-4"></div> {/* Spacer */}
+                                        </>
+                                    ) : ( // Default to text input
+                                        <Form.Control
+                                            type="text"
+                                            name={field.name}
+                                            value={formData[field.name] || ''}
+                                            onChange={handleChange}
+                                            placeholder={field.placeholder || ''}
+                                            required
+                                            className={`form-control ${!formData[field.name] ? 'is-invalid' : ''} mb-4`}
+                                        />
+                                    )}
                                 </Form.Group>
-                            )}
-                            {isEMT && (
-                                <Form.Group className="mb-3">
-                                    <Form.Label>5.2 Unedited Screenshot of your Admin Record:</Form.Label>
-                                    <Form.Control type="text" name="oocAdminRecordLink" value={formData.oocAdminRecordLink || ''} onChange={handleChange} placeholder="Direct link to image (e.g., Imgur)" required className={`form-control ${!formData.oocAdminRecordLink ? 'is-invalid' : ''} mb-4`} />
-                                </Form.Group>
-                            )}
-
-                            <Form.Group className="mb-3">
-                                <Form.Label>{isParamedic ? '5.3' : '5.3'} Discord Name</Form.Label>
-                                <Form.Control type="text" name="oocDiscord" value={formData.oocDiscord || ''} onChange={handleChange} placeholder="username#1234 or new username format" required className={`form-control ${!formData.oocDiscord ? 'is-invalid' : ''} mb-4`} />
-                            </Form.Group>
-
-                            <Form.Group className="mb-3">
-                                <Form.Label>{isParamedic ? '5.4' : (isEMT ? '5.4 GTA:W Forum Account Name' : '5.4 Timezone')}</Form.Label>
-                                {isEMT ? (
-                                    <Form.Control type="text" name="oocForumName" value={formData.oocForumName || ''} onChange={handleChange} required className={`form-control ${!formData.oocForumName ? 'is-invalid' : ''} mb-4`} />
-                                ) : (
-                                    <Form.Control type="text" name="oocTimezone" value={formData.oocTimezone || ''} onChange={handleChange} placeholder="e.g., UTC+0, EST, PST" required className={`form-control ${!formData.oocTimezone ? 'is-invalid' : ''} mb-4`} />
-                                )}
-                            </Form.Group>
-                            
-                            <Form.Group className="mb-3">
-                                <Form.Label>{isParamedic ? '5.5' : (isEMT ? '5.5 Timezone' : '5.5 Do you have any real life medical experience...?')}</Form.Label>
-                                {isEMT ? (
-                                     <Form.Control type="text" name="oocTimezone" value={formData.oocTimezone || ''} onChange={handleChange} placeholder="e.g., UTC+0, EST, PST" required className={`form-control ${!formData.oocTimezone ? 'is-invalid' : ''} mb-4`} />
-                                ) : (
-                                    <Form.Control as="textarea" rows={3} name="oocMedicalExperience" value={formData.oocMedicalExperience || ''} onChange={handleChange} placeholder="Describe in detail (or N/A)" required className={`form-control ${!formData.oocMedicalExperience ? 'is-invalid' : ''} mb-4`} />
-                                )}
-                            </Form.Group>
-
-                            <Form.Group className="mb-3">
-                                <Form.Label>{isParamedic ? '5.6 Unedited Screenshot of your Admin Record with the current date & time displayed:' : (isEMT ? '5.6 Do you have any real life medical experience...?' : '5.6 Admin Record')}</Form.Label>
-                                {isEMT ? (
-                                    <Form.Control as="textarea" rows={3} name="oocMedicalExperience" value={formData.oocMedicalExperience || ''} onChange={handleChange} placeholder="Describe in detail (or N/A)" required className={`form-control ${!formData.oocMedicalExperience ? 'is-invalid' : ''} mb-4`} />
-                                ) : (
-                                    <Form.Control type="text" name="oocAdminRecordLink" value={formData.oocAdminRecordLink || ''} onChange={handleChange} placeholder="Direct link to image (e.g., Imgur)" required className={`form-control ${!formData.oocAdminRecordLink ? 'is-invalid' : ''} mb-4`} />
-                                )}
-                            </Form.Group>
-
-                            <Form.Group className="mb-3">
-                                <Form.Label>5.7 Provide a screenshot of your character's statistics (/stats) which you're applying with:</Form.Label>
-                                <Form.Control type="text" name="oocStatsLink" value={formData.oocStatsLink || ''} onChange={handleChange} placeholder="Direct link to image (e.g., Imgur)" required className={`form-control ${!formData.oocStatsLink ? 'is-invalid' : ''} mb-4`} />
-                            </Form.Group>
-                            <Form.Group className="mb-3">
-                                <Form.Label>5.8 Provide your character's background story:</Form.Label>
-                                <Form.Control as="textarea" rows={5} name="charBackground" value={formData.charBackground || ''} onChange={handleChange} required className={`form-control ${!formData.charBackground ? 'is-invalid' : ''} mb-4`} />
-                            </Form.Group>
+                            ))}
                         </div>
                     )}
                 </>
             )}
 
-            {isOtherEMS && (
+            {isOtherEMS && ( // OOC for Other EMS (Part-Time Program)
                  <>
                     <CollapsibleHeader
                         title="4. (( Out of Character information ))"
@@ -394,39 +517,88 @@ const EMSFields = ({
                     />
                     {openSections.oocInfo && (
                         <div id="collapse-ems-ooc-info-other" style={{ paddingTop: '0.5rem' }}>
+                            {/* ... OOC fields for Other EMS ... */}
                             <Form.Group className="mb-3">
                                 <Form.Label>4.1 User Control Panel (UCP) Username</Form.Label>
                                 <Form.Control type="text" name="oocUcpName" value={formData.oocUcpName || ''} onChange={handleChange} required className={`form-control ${!formData.oocUcpName ? 'is-invalid' : ''} mb-4`} />
                             </Form.Group>
                             <Form.Group className="mb-3">
-                                <Form.Label>4.2 Unedited Screenshot of your Admin Record:</Form.Label>
-                                <Form.Control type="text" name="oocAdminRecordLink" value={formData.oocAdminRecordLink || ''} onChange={handleChange} placeholder="Direct link to image (e.g., Imgur)" required className={`form-control ${!formData.oocAdminRecordLink ? 'is-invalid' : ''} mb-4`} />
-                            </Form.Group>
-                            <Form.Group className="mb-3">
-                                <Form.Label>4.3 GTA:W Forum Account Name</Form.Label>
+                                <Form.Label>4.2 GTA:W Forum Account Name</Form.Label>
                                 <Form.Control type="text" name="oocForumName" value={formData.oocForumName || ''} onChange={handleChange} required className={`form-control ${!formData.oocForumName ? 'is-invalid' : ''} mb-4`} />
                             </Form.Group>
                             <Form.Group className="mb-3">
-                                <Form.Label>4.4 Discord Name</Form.Label>
+                                <Form.Label>4.3 Discord Name</Form.Label>
                                 <Form.Control type="text" name="oocDiscord" value={formData.oocDiscord || ''} onChange={handleChange} placeholder="username#1234 or new username format" required className={`form-control ${!formData.oocDiscord ? 'is-invalid' : ''} mb-4`} />
                             </Form.Group>
                             <Form.Group className="mb-3">
-                                <Form.Label>4.5 Timezone</Form.Label>
+                                <Form.Label>4.4 Timezone</Form.Label>
                                 <Form.Control type="text" name="oocTimezone" value={formData.oocTimezone || ''} onChange={handleChange} placeholder="e.g., UTC+0, EST, PST" required className={`form-control ${!formData.oocTimezone ? 'is-invalid' : ''} mb-4`} />
                             </Form.Group>
-                             <Form.Group className="mb-3">
-                                <Form.Label>4.6 Do you hold a valid BLS/ALS license on another character? If yes, provide proof of such via /licenses:</Form.Label>
-                                <Form.Control type="text" name="oocOtherCharLicenseProof" value={formData.oocOtherCharLicenseProof || ''} onChange={handleChange} placeholder="ANSWER/LINK (IF APPLICABLE)" className="form-control mb-4" />
+                            <Form.Group className="mb-3">
+                                <Form.Label>4.5 Do you have any real life medical experience or have you roleplayed in medical factions in the past?:</Form.Label>
+                                <Form.Control as="textarea" rows={3} name="oocMedicalExperience" value={formData.oocMedicalExperience || ''} onChange={handleChange} placeholder="Describe in detail (or N/A)" required className={`form-control ${!formData.oocMedicalExperience ? 'is-invalid' : ''} mb-4`} />
+                            </Form.Group>
+                            <Form.Group className="mb-3">
+                                <Form.Label>4.6 Unedited Screenshot of your Admin Record:</Form.Label>
+                                <InputGroup>
+                                    <Form.Control
+                                        type="text"
+                                        name="oocAdminRecordLink"
+                                        value={formData.oocAdminRecordLink || ''}
+                                        onChange={handleChange}
+                                        placeholder="Direct link to image (e.g., Imgur)"
+                                        required
+                                        className={`form-control ${!formData.oocAdminRecordLink ? 'is-invalid' : ''}`}
+                                    />
+                                     <Button
+                                        variant="outline-secondary"
+                                        onClick={() => document.getElementById('ems-other-oocAdminRecordUpload').click()}
+                                        disabled={isUploading}
+                                    >
+                                        {isUploading ? <Spinner as="span" animation="border" size="sm" /> : <i className="fas fa-upload"></i>}
+                                    </Button>
+                                </InputGroup>
+                            <input
+                                    type="file"
+                                    id="ems-other-oocAdminRecordUpload"
+                                    style={{ display: 'none' }}
+                                    accept="image/*"
+                                    onChange={(e) => handleImageUpload(e, 'oocAdminRecordLink')}
+                                />
+                                <div className="mb-4"></div> {/* Spacer */}
                             </Form.Group>
                             <Form.Group className="mb-3">
                                 <Form.Label>4.7 Provide a screenshot of your character's statistics (/stats) which you're applying with:</Form.Label>
-                                <Form.Control type="text" name="oocStatsLink" value={formData.oocStatsLink || ''} onChange={handleChange} placeholder="Direct link to image (e.g., Imgur)" required className={`form-control ${!formData.oocStatsLink ? 'is-invalid' : ''} mb-4`} />
+                                <InputGroup>
+                                    <Form.Control
+                                        type="text"
+                                        name="oocStatsLink"
+                                        value={formData.oocStatsLink || ''}
+                                        onChange={handleChange}
+                                        placeholder="Direct link to image (e.g., Imgur)"
+                                        required
+                                        className={`form-control ${!formData.oocStatsLink ? 'is-invalid' : ''}`}
+                                    />
+                                    <Button
+                                        variant="outline-secondary"
+                                        onClick={() => document.getElementById('ems-other-oocStatsUpload').click()}
+                                        disabled={isUploading}
+                                    >
+                                        {isUploading ? <Spinner as="span" animation="border" size="sm" /> : <i className="fas fa-upload"></i>}
+                                    </Button>
+                                </InputGroup>
+                                <input
+                                    type="file"
+                                    id="ems-other-oocStatsUpload"
+                                    style={{ display: 'none' }}
+                                    accept="image/*"
+                                    onChange={(e) => handleImageUpload(e, 'oocStatsLink')}
+                                />
+                                <div className="mb-4"></div> {/* Spacer */}
                             </Form.Group>
                             <Form.Group className="mb-3">
-                                <Form.Label>4.8 Provide a link of proof to both your DFP from SANFIRE, PHMC and Legal Faction Management:</Form.Label>
-                                <Form.Control type="text" name="dfpSanFireLink" value={formData.dfpSanFireLink || ''} onChange={handleChange} placeholder="SAN FIRE DFP Link (or N/A)" className="form-control mb-2" />
-                                <Form.Control type="text" name="dfpPhmcLink" value={formData.dfpPhmcLink || ''} onChange={handleChange} placeholder="PHMC DFP Link (or N/A)" className="form-control mb-2" />
-                                <Form.Control type="text" name="dfpLegalFactionLink" value={formData.dfpLegalFactionLink || ''} onChange={handleChange} placeholder="Legal Faction Management DFP Link (or N/A)" className="form-control mb-4" />
+                                <Form.Label>4.8 If you are a part of another official faction, please post a link to your DFP request from both Pillbox Hill Medical Center and your current faction. If utilizing the same character, permissions from LFM must be acquired and provided as well:</Form.Label>
+                                <Form.Control type="text" name="oocOtherFactionDfpLfm" value={formData.oocOtherFactionDfpLfm || ''} onChange={handleChange} placeholder="ANSWER/LINK(S)" className="form-control mb-4" />
                             </Form.Group>
                             <Form.Group className="mb-3">
                                 <Form.Label>4.9 Provide your character's background story:</Form.Label>
