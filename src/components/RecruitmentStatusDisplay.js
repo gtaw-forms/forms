@@ -1,87 +1,65 @@
 // src/components/RecruitmentStatusDisplay.js
-import React from 'react';
+import React, { useEffect } from 'react';
 
 const RecruitmentStatusDisplay = ({
     selectedAgencyGroup,
-    bbCodeVersion, // To determine which specific section to highlight if needed
+    bbCodeVersion,
     physicianRecruitmentDetails,
     psychRecruitmentDetails,
-    adminRecruitmentDetails, // For Admin Careers
-    emsRecruitmentDetails,   // For EMS Careers
-    nurseRecruitmentDetails, // For Nursing Careers
-    coronerRecruitmentDetails, // For Coroner Careers - NEW PROP
+    adminRecruitmentDetails,
+    emsRecruitmentDetails,
+    nurseRecruitmentDetails,
+    coronerRecruitmentDetails,
     saaaRecruitmentDetails,
-    // Add other recruitment data props here as they become available
 }) => {
+    useEffect(() => {
+    }, [selectedAgencyGroup, bbCodeVersion]);
+
     let mainTitle = "Recruitment Overview";
     let sectionsToShow = [];
 
-    // Determine which recruitment data and title to use
     if (selectedAgencyGroup === 'PHMC Recruitment') {
-        let allPhmcSections = [];
-        allPhmcSections.push({
-            title: "Physician Careers",
-            data: physicianRecruitmentDetails,
-            groupFilter: "Physician",
-            isActive: bbCodeVersion === 50,
-        });
-        allPhmcSections.push({
-            title: "Psychologist/Psychiatrist Careers",
-            data: psychRecruitmentDetails,
-            groupFilter: "Psych",
-            isActive: bbCodeVersion === 51,
-        });
-        allPhmcSections.push({
-            title: "Admin Careers",
-            data: adminRecruitmentDetails,
-            groupFilter: "Admin",
-            isActive: bbCodeVersion === 52,
-        });
-        allPhmcSections.push({
-            title: "Nursing Careers",
-            data: nurseRecruitmentDetails,
-            groupFilter: "Nurse",
-            isActive: bbCodeVersion === 53, // Assuming 53 is for Nursing
-        });
-        allPhmcSections.push({ // ADDED CORONER SECTION
-            title: "Coroner Careers",
-            data: coronerRecruitmentDetails,
-            groupFilter: "Coroner",
-            isActive: bbCodeVersion === 54, // Assuming 54 is for Coroner Recruitment
-        });
-        allPhmcSections.push({
-            title: "EMS Careers",
-            data: emsRecruitmentDetails,
-            groupFilter: "EMS",
-            isActive: bbCodeVersion === 55, // Assuming 55 is for EMS
-        });
-
+        const allPhmcSections = [
+            { title: "Physician Careers", data: physicianRecruitmentDetails, groupFilter: "Physician", isActive: bbCodeVersion === 50 },
+            { title: "Psychologist/Psychiatrist Careers", data: psychRecruitmentDetails, groupFilter: "Psych", isActive: bbCodeVersion === 51 },
+            { title: "Admin Careers", data: adminRecruitmentDetails, groupFilter: "Admin", isActive: bbCodeVersion === 52 },
+            { title: "Nursing Careers", data: nurseRecruitmentDetails, groupFilter: "Nurse", isActive: bbCodeVersion === 53 },
+            { title: "Coroner Careers", data: coronerRecruitmentDetails, groupFilter: "Coroner", isActive: bbCodeVersion === 54 },
+            { title: "EMS Careers", data: emsRecruitmentDetails, groupFilter: "EMS", isActive: bbCodeVersion === 55 },
+        ];
 
         const activeSection = allPhmcSections.find(s => s.isActive);
 
         if (activeSection) {
+            // A specific PHMC Recruitment form is active, show its status
             mainTitle = `${activeSection.title} Status`;
             sectionsToShow = [activeSection];
         } else {
-            mainTitle = "PHMC Recruitment Overview";
-            sectionsToShow = allPhmcSections;
+            // If selectedAgencyGroup is 'PHMC Recruitment' but the current bbCodeVersion
+            // does NOT correspond to any of the defined PHMC Recruitment forms (e.g., bbCodeVersion: 1),
+            // then this component should not display anything for this group.
+            return null;
         }
 
     } else if (selectedAgencyGroup === 'SAAA') {
         mainTitle = "SAAA Recruitment Status";
         sectionsToShow.push({
-            title: "SAAA Careers", // SAAA section title
+            title: "SAAA Careers",
             data: saaaRecruitmentDetails,
             groupFilter: "SAAA",
-            isActive: true,
+            isActive: true, // SAAA always shows its section if group is SAAA
         });
     } else {
+        // Not PHMC Recruitment or SAAA group, so component is not active.
         return null;
     }
 
+    // Filter out sections that have no data.
     sectionsToShow = sectionsToShow.filter(section => section.data && Object.keys(section.data).length > 0);
 
     if (sectionsToShow.length === 0) {
+        // This means the group was relevant (e.g., PHMC Recruitment with an active section, or SAAA),
+        // but the relevant section(s) had no actual position data.
         return (
             <div className="recruitment-status-box" style={styles.statusBoxBase}>
                 <h5 style={{...styles.mainTitleStyle, borderColor: selectedAgencyGroup === 'SAAA' ? '#0dcaf0' : '#495057', color: selectedAgencyGroup === 'SAAA' ? '#0dcaf0' : '#f8f9fa'}}>
@@ -91,7 +69,7 @@ const RecruitmentStatusDisplay = ({
             </div>
         );
     }
-
+    
     return (
         <div
             className="recruitment-status-box"
@@ -117,23 +95,17 @@ const RecruitmentStatusDisplay = ({
                 const openPositions = positions.filter(pos => pos.status === "OPEN");
                 const closedPositions = positions.filter(pos => pos.status === "CLOSED");
 
-                // Conditionally apply marginTop only if it's not the first section AND there are multiple sections
                 const sectionStyle = (index > 0 && sectionsToShow.length > 1) ? { marginTop: '1.5rem' } : {};
 
                 if (positions.length === 0) {
                     return (
-                        // Only show section title if there are multiple sections to display (overview mode)
                         sectionsToShow.length > 1 ? (
                             <div key={section.title} style={sectionStyle}>
                                 <h6 style={styles.sectionTitleStyle}>{section.title}:</h6>
                                 <p style={styles.noDataText}>No positions currently listed or status is not set for this category.</p>
                             </div>
                         ) : (
-                            // If it's the only section and has no positions, the main "No recruitment data" message handles it.
-                            // Or, if you want to be explicit even for a single section with no positions:
                             <div key={section.title} style={sectionStyle}>
-                                 {/* Optionally, if mainTitle doesn't cover it and it's the ONLY section */}
-                                 {/* <h6 style={styles.sectionTitleStyle}>{section.title}:</h6> */}
                                 <p style={styles.noDataText}>No positions currently listed or status is not set for this category.</p>
                             </div>
                         )
@@ -142,7 +114,6 @@ const RecruitmentStatusDisplay = ({
 
                 return (
                     <div key={section.title} style={sectionStyle}>
-                        {/* Only show individual section title if there's more than one section being displayed */}
                         {sectionsToShow.length > 1 && (
                             <h6 style={styles.sectionTitleStyle}>{section.title}:</h6>
                         )}
@@ -180,7 +151,6 @@ const RecruitmentStatusDisplay = ({
     );
 };
 
-// Basic styles (can be moved to a CSS file)
 const styles = {
     statusBoxBase: {
         marginBottom: '2.5rem',
@@ -188,15 +158,15 @@ const styles = {
         borderRadius: '0.3rem',
         backgroundColor: '#2c3034',
         color: '#f8f9fa',
-        border: '1px solid', // Base border, color set dynamically
+        border: '1px solid',
     },
     mainTitleStyle: {
-        borderBottom: '1px solid', // Border color set dynamically
+        borderBottom: '1px solid',
         paddingBottom: '0.5rem',
         marginBottom: '1rem',
     },
     sectionTitleStyle: {
-        color: '#6cb2eb', // Light blue for section titles
+        color: '#6cb2eb',
         fontWeight: 'bold',
         marginBottom: '0.5rem',
     },

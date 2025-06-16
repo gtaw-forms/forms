@@ -1,6 +1,5 @@
-// c:\Users\cross\Documents\GitHub\phmc-forms\src\phmc-civilian-fields\admin.js
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Form, Button } from 'react-bootstrap';
+import { Form, Button, InputGroup, Spinner } from 'react-bootstrap'; // Added InputGroup and Spinner
 
 // Helper component for collapsible section headers
 const CollapsibleHeader = ({ title, isOpen, onToggle, sectionId }) => (
@@ -29,7 +28,7 @@ const CollapsibleHeader = ({ title, isOpen, onToggle, sectionId }) => (
 );
 
 const LOCAL_STORAGE_KEY_ADMIN = 'adminApplicationFormData';
-const EXPIRY_DURATION_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
+const EXPIRY_DURATION_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
 
 // Define which fields belong to this form for localStorage or other logic
 const adminFormFields = [
@@ -47,7 +46,11 @@ const AdminFields = ({
     formData,
     handleChange,
     setFormData,
-    selectOptions // This will contain adminPositionDetailsData
+    selectOptions,
+    handleImageUpload, // Added prop
+    isUploading        // Added prop
+    
+
 }) => {
     // Use adminPositionDetailsData from selectOptions for position dropdown
     const positionDetails = selectOptions?.adminPositionDetailsData || {};
@@ -412,30 +415,86 @@ const AdminFields = ({
                     <Form.Group className="mb-3">
                         <Form.Label>5.1 User Control Panel (UCP) Username</Form.Label>
                         <Form.Control type="text" name="oocUcpName" value={formData.oocUcpName || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} required className={`form-control ${!formData.oocUcpName ? 'is-invalid' : ''} mb-4`} />
+                        {!formData.oocUcpName && <div className="invalid-feedback d-block custom-validation-message">UCP Username is required.</div>}
                     </Form.Group>
                     <Form.Group className="mb-3">
                         <Form.Label>5.2 GTA:W Forum Account Name</Form.Label>
                         <Form.Control type="text" name="oocForumName" value={formData.oocForumName || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} required className={`form-control ${!formData.oocForumName ? 'is-invalid' : ''} mb-4`} />
+                        {!formData.oocForumName && <div className="invalid-feedback d-block custom-validation-message">Forum Name is required.</div>}
                     </Form.Group>
                     <Form.Group className="mb-3">
                         <Form.Label>5.3 Discord Name</Form.Label>
                         <Form.Control type="text" name="oocDiscord" value={formData.oocDiscord || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} placeholder="username#1234 or new username format" required className={`form-control ${!formData.oocDiscord ? 'is-invalid' : ''} mb-4`} />
+                        {!formData.oocDiscord && <div className="invalid-feedback d-block custom-validation-message">Discord Name is required.</div>}
                     </Form.Group>
                     <Form.Group className="mb-3">
                         <Form.Label>5.4 Timezone</Form.Label>
                         <Form.Control type="text" name="oocTimezone" value={formData.oocTimezone || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} placeholder="e.g., UTC+0, EST, PST" required className={`form-control ${!formData.oocTimezone ? 'is-invalid' : ''} mb-4`} />
+                        {!formData.oocTimezone && <div className="invalid-feedback d-block custom-validation-message">Timezone is required.</div>}
                     </Form.Group>
-                    {/* Question 5.5 from BBCode is Admin Record */}
+                    
                     <Form.Group className="mb-3">
                         <Form.Label>5.5 Unedited Screenshot of your Admin Record</Form.Label>
-                        <Form.Control type="url" name="oocAdminRecordLink" value={formData.oocAdminRecordLink || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} placeholder="Direct link to image (e.g., Imgur)" required className={`form-control ${!formData.oocAdminRecordLink ? 'is-invalid' : ''} mb-4`} />
+                        <InputGroup>
+                            <Form.Control
+                                type="url"
+                                name="oocAdminRecordLink"
+                                value={formData.oocAdminRecordLink || ''}
+                                onChange={handleChange}
+                                onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')}
+                                placeholder="Direct link to image (e.g., Imgur)"
+                                required
+                                className={`form-control ${!formData.oocAdminRecordLink ? 'is-invalid' : ''}`}
+                            />
+                            <Button
+                                variant="outline-secondary"
+                                onClick={() => document.getElementById('admin-oocAdminRecordUpload').click()}
+                                disabled={isUploading}
+                            >
+                                {isUploading ? <Spinner as="span" animation="border" size="sm" /> : <i className="fas fa-upload"></i>}
+                            </Button>
+                        </InputGroup>
+                        <input
+                            type="file"
+                            id="admin-oocAdminRecordUpload"
+                            style={{ display: 'none' }}
+                            accept="image/*"
+                            onChange={(e) => handleImageUpload(e, 'oocAdminRecordLink')}
+                        />
+                         <div className="mb-4"></div> {/* Spacer */}
                     </Form.Group>
-                    {/* Question 5.6 from BBCode is Stats */}
+
                     <Form.Group className="mb-3">
                         <Form.Label>5.6 Screenshot of Character Statistics (/stats)</Form.Label>
-                        <Form.Control type="url" name="oocStatsLink" value={formData.oocStatsLink || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} placeholder="Direct link to image (e.g., Imgur)" required className={`form-control ${!formData.oocStatsLink ? 'is-invalid' : ''} mb-4`} />
+                        <InputGroup>
+                            <Form.Control
+                                type="url"
+                                name="oocStatsLink"
+                                value={formData.oocStatsLink || ''}
+                                onChange={handleChange}
+                                onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')}
+                                placeholder="Direct link to image (e.g., Imgur)"
+                                required
+                                className={`form-control ${!formData.oocStatsLink ? 'is-invalid' : ''}`}
+                            />
+                            <Button
+                                variant="outline-secondary"
+                                onClick={() => document.getElementById('admin-oocStatsUpload').click()}
+                                disabled={isUploading}
+                            >
+                                {isUploading ? <Spinner as="span" animation="border" size="sm" /> : <i className="fas fa-upload"></i>}
+                            </Button>
+                        </InputGroup>
+                        <input
+                            type="file"
+                            id="admin-oocStatsUpload"
+                            style={{ display: 'none' }}
+                            accept="image/*"
+                            onChange={(e) => handleImageUpload(e, 'oocStatsLink')}
+                        />
+                         <div className="mb-4"></div> {/* Spacer */}
                     </Form.Group>
-                    {/* Question 5.7 from BBCode is Background */}
+
                     <Form.Group className="mb-3">
                         <Form.Label>5.7 Character's Background Story</Form.Label>
                         <Form.Control as="textarea" rows={8} name="charBackground" value={formData.charBackground || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} required className={`form-control ${!formData.charBackground ? 'is-invalid' : ''} mb-4`} />

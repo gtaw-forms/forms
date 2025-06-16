@@ -47,11 +47,11 @@ const generateAdmin = (formData) => {
         charBackground,
 
         // Data for position details
-        adminPositionDetailsData,
+        positionDetailsData,
 
     } = formData;
 
-    const positionDetailsMap = adminPositionDetailsData || {};
+    const positionDetailsMap = positionDetailsData || {}; // MODIFIED: Use the corrected variable
 
     let dynamicDisplayPosition = "Position (Please Select)";
     let dynamicJobPostingUrl = "https://phmc.gta.world/viewforum.php?f=14"; // Default/fallback employment forum

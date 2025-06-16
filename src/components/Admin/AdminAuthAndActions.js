@@ -5,8 +5,10 @@ import { auth, database } from '../../firebase';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { ref, get, update } from "firebase/database";
 import AddRoleModal from './RoleModal';
-import * as Sentry from "@sentry/react"; // For error reporting
+import RenameRoleKeyModal from './RenameRoleKeyModal'; // Import the new modal
+import * as Sentry from "@sentry/react";
 
+// ... (recruitmentCategories, notification helpers, sendAdminActionWebhook remain the same) ...
 const recruitmentCategories = {
     physician: { displayName: "Physician Recruitment", path: 'selectOptions/physicianRecruitmentDetails' },
     psych: { displayName: "Psychologist/Psychiatrist Recruitment", path: 'selectOptions/psychPositionDetailsData' },
@@ -116,11 +118,16 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     const [currentRecruitmentData, setCurrentRecruitmentData] = useState({});
     const [isLoadingRecruitmentData, setIsLoadingRecruitmentData] = useState(false);
     const [isUpdatingDb, setIsUpdatingDb] = useState(false);
+    
     const [showRoleModal, setShowRoleModal] = useState(false);
-    const [roleToEdit, setRoleToEdit] = useState(null); // State to hold data of role being edited
+    const [roleToEdit, setRoleToEdit] = useState(null);
+
+    const [showRenameKeyModal, setShowRenameKeyModal] = useState(false); // New state
+    const [roleToRenameKeyDetails, setRoleToRenameKeyDetails] = useState(null); // New state
 
     const [desktopNotificationPermission, setDesktopNotificationPermission] = useState(Notification.permission);
 
+    // ... (useEffect for desktopNotificationPermission, fetchRecruitmentDataForCategory, auth state change useEffect remain the same)
     useEffect(() => {
         const updatePermissionStatus = () => {
             console.log("[Desktop Notify] Permission status changed to:", Notification.permission);
@@ -281,59 +288,72 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
         setIsUpdatingDb(false);
     };
 
-    const handleRoleSaved = (savedRoleData, actionType) => { // Receive savedRoleData and actionType
-                console.log('[AdminAuthAndActions] handleRoleSaved called. Action:', actionType, 'Data:', savedRoleData); // Log 6
+    const handleRoleSaved = (savedRoleData, actionType) => {
         if (selectedRecruitmentCategory) {
             fetchRecruitmentDataForCategory(selectedRecruitmentCategory);
         }
-        // Log action to Discord
         if (currentUser?.email && savedRoleData) {
             const categoryConfig = recruitmentCategories[selectedRecruitmentCategory];
             const action = actionType === 'edited' ? "Edited Role" : "Added New Role";
-                        console.log('[AdminAuthAndActions] Preparing to send webhook for role save.'); // Log 7
             sendAdminActionWebhook(
                 currentUser.email,
                 action,
                 `Role Name: ${savedRoleData.displayName || savedRoleData.originalKey}\nShort Code: ${savedRoleData.shortCode || 'N/A'}\nStatus: ${savedRoleData.status || 'N/A'}\nKey: ${savedRoleData.originalKey}`,
                 categoryConfig?.displayName || "Unknown Category"
             );
-
-            // Trigger desktop notification for Add/Edit Role
-            console.log(`[Desktop Notify] Checking permission for ${actionType} Role notification:`, desktopNotificationPermission);
             if (desktopNotificationPermission === "granted" && savedRoleData?.displayName) {
                  const notificationTitle = actionType === 'edited' ? `Role Updated: ${categoryConfig?.displayName || 'Recruitment'}` : `New Role Added: ${categoryConfig?.displayName || 'Recruitment'}`;
                  const notificationBody = actionType === 'edited'
                     ? `Role "${savedRoleData.displayName}" (${savedRoleData.shortCode || 'N/A'}) has been updated.`
                     : `Role "${savedRoleData.displayName}" (${savedRoleData.shortCode || 'N/A'}) has been added.`;
-
                 showDesktopNotification(notificationTitle, {
                     body: notificationBody,
                     icon: '/phmc512.png',
-                    tag: `${actionType}-role-${selectedRecruitmentCategory}-${savedRoleData.originalKey}` // Unique tag
+                    tag: `${actionType}-role-${selectedRecruitmentCategory}-${savedRoleData.originalKey}`
                 });
             }
         }
-        // MODIFIED: Clear roleToEdit state when modal is closed after saving
         setRoleToEdit(null);
     };
 
-
-    // NEW: Function to open the modal for adding a role
     const handleAddRoleClick = () => {
-        setRoleToEdit(null); // Ensure roleToEdit is null for adding
+        setRoleToEdit(null);
         setShowRoleModal(true);
     };
 
-    // NEW: Function to open the modal for editing a role
     const handleEditRoleClick = (roleKey, roleData) => {
-        // Store the role data including its key for editing
         setRoleToEdit({ ...roleData, originalKey: roleKey });
         setShowRoleModal(true);
     };
+
     const handleCloseRoleModal = () => {
         setShowRoleModal(false);
-        setRoleToEdit(null); // Clear roleToEdit state when modal is closed
+        setRoleToEdit(null);
     };
+
+    // --- New handlers for Rename Key Modal ---
+    const handleRenameRoleKeyClick = (roleKey, roleData) => {
+        setRoleToRenameKeyDetails({ key: roleKey, data: roleData });
+        setShowRenameKeyModal(true);
+    };
+
+    const handleRoleKeyRenamed = () => {
+        // This function is called after a key is successfully renamed by the modal
+        if (selectedRecruitmentCategory) {
+            fetchRecruitmentDataForCategory(selectedRecruitmentCategory); // Refresh the list
+        }
+        // Desktop notification for key rename can be added here if desired, similar to handleRoleSaved
+        if (currentUser?.email && roleToRenameKeyDetails && desktopNotificationPermission === "granted") {
+            const categoryConfig = recruitmentCategories[selectedRecruitmentCategory];
+            showDesktopNotification(`Role Key Renamed: ${categoryConfig?.displayName || 'Recruitment'}`, {
+                body: `Key for "${roleToRenameKeyDetails.data.displayName || roleToRenameKeyDetails.key}" has been changed.`,
+                icon: '/phmc512.png',
+                tag: `rename-key-${selectedRecruitmentCategory}-${roleToRenameKeyDetails.key}`
+            });
+        }
+        setRoleToRenameKeyDetails(null); // Clear the details
+    };
+    // --- End New handlers ---
 
     const handleEnableDesktopNotifications = async () => {
         console.log("[Desktop Notify] 'Enable Desktop Notifications' button clicked.");
@@ -397,6 +417,7 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     return (
         <div>
             <p>Logged in as: {currentUser.email}</p>
+            {/* ... (Desktop Notification Button and message remain the same) ... */}
             {desktopNotificationPermission === 'default' && (
                 <Button
                     variant="outline-info"
@@ -434,7 +455,7 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                         <Button
                             variant="success"
                             size="sm"
-                            onClick={handleAddRoleClick} // MODIFIED: Use new handler
+                            onClick={handleAddRoleClick}
                         >
                             <i className="fas fa-plus-circle"></i> Add Role
                         </Button>
@@ -450,13 +471,23 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                                         <strong style={{color: position.status === "OPEN" ? 'green' : 'red'}}>
                                             {position.status || "N/A"}
                                         </strong>
+                                        <br />
+                                        <small className="text-muted">DB Key: {key}</small>
                                     </div>
-                                    {/* NEW: Button group for Edit and Toggle */}
                                     <div className="d-flex gap-2">
+                                        <Button
+                                            variant="outline-warning" // Changed color for distinction
+                                            size="sm"
+                                            onClick={() => handleRenameRoleKeyClick(key, position)} // New handler
+                                            disabled={isUpdatingDb}
+                                            title={`Rename Database Key for ${position.displayName || position.name || key}`}
+                                        >
+                                            <i className="fas fa-key"></i> Rename Key
+                                        </Button>
                                         <Button
                                             variant="outline-secondary"
                                             size="sm"
-                                            onClick={() => handleEditRoleClick(key, position)} // NEW: Edit button handler
+                                            onClick={() => handleEditRoleClick(key, position)}
                                             disabled={isUpdatingDb}
                                             title={`Edit ${position.displayName || position.name || key}`}
                                         >
@@ -488,12 +519,29 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
             {selectedRecruitmentCategory && recruitmentCategories[selectedRecruitmentCategory] && (
                 <AddRoleModal
                     show={showRoleModal}
-                    onHide={handleCloseRoleModal} // MODIFIED: Use new handler
+                    onHide={handleCloseRoleModal}
                     categoryKey={selectedRecruitmentCategory}
                     categoryConfig={recruitmentCategories[selectedRecruitmentCategory]}
                     showNotification={showInAppNotification}
-                    onRoleSaved={handleRoleSaved} // MODIFIED: Use new handler
-                    roleToEdit={roleToEdit} // NEW: Pass role data for editing
+                    onRoleSaved={handleRoleSaved}
+                    roleToEdit={roleToEdit}
+                />
+            )}
+            {/* New Modal Instance */}
+            {roleToRenameKeyDetails && selectedRecruitmentCategory && recruitmentCategories[selectedRecruitmentCategory] && (
+                <RenameRoleKeyModal
+                    show={showRenameKeyModal}
+                    onHide={() => {
+                        setShowRenameKeyModal(false);
+                        setRoleToRenameKeyDetails(null);
+                    }}
+                    categoryConfig={recruitmentCategories[selectedRecruitmentCategory]}
+                    currentRoleKey={roleToRenameKeyDetails.key}
+                    currentRoleData={roleToRenameKeyDetails.data}
+                    showInAppNotification={showInAppNotification}
+                    onKeyRenamed={handleRoleKeyRenamed}
+                    sendAdminActionWebhook={sendAdminActionWebhook} // Pass the logging function
+                    adminUserEmail={currentUser?.email}
                 />
             )}
         </div>
@@ -501,3 +549,4 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
 };
 
 export default AdminAuthAndActions;
+

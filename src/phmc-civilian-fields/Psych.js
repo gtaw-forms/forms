@@ -1,5 +1,6 @@
+// c:\Users\cross\Documents\GitHub\phmc-forms\src\phmc-civilian-fields\Psych.js
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Form, Button } from 'react-bootstrap'; // Removed Row
+import { Form, Button, InputGroup, Spinner } from 'react-bootstrap'; // Added InputGroup and Spinner
 
 // Helper component for collapsible section headers (from Physician.js)
 const CollapsibleHeader = ({ title, isOpen, onToggle, sectionId }) => (
@@ -27,6 +28,8 @@ const CollapsibleHeader = ({ title, isOpen, onToggle, sectionId }) => (
     </Button>
 );
 
+const LOCAL_STORAGE_KEY_PSYCH = 'psychApplicationFormData';
+const EXPIRY_DURATION_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
 
 // Define which fields belong to this form for potential localStorage or other logic
 const psychFormFields = [
@@ -45,25 +48,24 @@ const PsychFields = ({
     formData,
     handleChange,
     setFormData,
-    selectOptions, // For general dropdowns
-    psychRecruitmentDetails, // New prop for Psych position details
+    selectOptions, 
+    psychRecruitmentDetails,
+    handleImageUpload, // Added prop
+    isUploading        // Added prop
     }) => {
 
     const currentPositionDetails = psychRecruitmentDetails || {};
-    const currentRecruitmentOptions = selectOptions.psychRecruitmentPositions || []; // From Firebase
+    const currentRecruitmentOptions = selectOptions.psychRecruitmentPositions || []; 
 
     const selectedRecruitmentPositionValue = formData.recruitmentPosition;
     const selectedRecruitmentPosition = currentRecruitmentOptions.find(
         option => option.value === selectedRecruitmentPositionValue
     );
 
-    // --- MODIFIED: Condition for layout ---
     const shouldShowSimplifiedLayout =
         selectedRecruitmentPositionValue === "Counseling Psychologist" ||
         selectedRecruitmentPositionValue === "Psychologist";
-    // --- END MODIFICATION ---
 
-    // State for collapsible sections
     const [isPersonalInfoOpen, setIsPersonalInfoOpen] = useState(true);
     const [isEducationalInfoOpen, setIsEducationalInfoOpen] = useState(true);
     const [isEmploymentInfoOpen, setIsEmploymentInfoOpen] = useState(true);
@@ -81,24 +83,68 @@ const PsychFields = ({
         });
     }, []);
 
-    // Define required fields for each section for auto-collapse logic
+    // --- START localStorage Logic ---
+    useEffect(() => {
+        try {
+            const savedDataString = localStorage.getItem(LOCAL_STORAGE_KEY_PSYCH);
+            if (savedDataString) {
+                const savedData = JSON.parse(savedDataString);
+                if (savedData && savedData.data && savedData.timestamp) {
+                    if (Date.now() - savedData.timestamp < EXPIRY_DURATION_MS) {
+                        const relevantSavedData = {};
+                        psychFormFields.forEach(field => {
+                            if (savedData.data.hasOwnProperty(field)) {
+                                relevantSavedData[field] = savedData.data[field];
+                            }
+                        });
+                        setFormData(prev => ({ ...prev, ...relevantSavedData }));
+                    } else {
+                        localStorage.removeItem(LOCAL_STORAGE_KEY_PSYCH);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Error loading psych form data from localStorage:", error);
+            localStorage.removeItem(LOCAL_STORAGE_KEY_PSYCH);
+        }
+    }, [setFormData]);
+
+    useEffect(() => {
+        try {
+            const dataToSave = {};
+            psychFormFields.forEach(field => {
+                if (formData.hasOwnProperty(field)) {
+                    dataToSave[field] = formData[field];
+                }
+            });
+            const psychDataWithTimestamp = {
+                data: dataToSave,
+                timestamp: Date.now()
+            };
+            localStorage.setItem(LOCAL_STORAGE_KEY_PSYCH, JSON.stringify(psychDataWithTimestamp));
+        } catch (error) {
+            console.error("Error saving psych form data to localStorage:", error);
+        }
+    }, [formData]);
+    // --- END localStorage Logic ---
+
+
     const sectionRequiredFields = {
         personalInfo: [
             'recruitmentPosition', 'applicantTitleAndFullName',
             { anyOf: ['genderMale', 'genderFemale', 'genderOther'] },
             { conditional: { if: { field: 'genderOther', value: true }, then: { field: 'applicantGenderOtherText' } } },
             'applicantDOBAndPlace', 'applicantAddress', 'applicantContactDetails',
-            { // --- MODIFIED: Conditional check based on layout ---
+            { 
                 check: (currentFormData, showSimplified) => {
-                    if (showSimplified) { // Counseling Psychologist or Psychologist
+                    if (showSimplified) { 
                         return !!currentFormData.applicantMedicalConditions?.trim() &&
                                (!!currentFormData.citizenUS || !!currentFormData.citizenPermanent || !!currentFormData.citizenNone);
-                    } else { // Other Psych roles (only location is required for this dynamic part)
+                    } else { 
                         return (!!currentFormData.locationPHMC || !!currentFormData.locationPBC);
                     }
                 }
             }
-            // --- END MODIFICATION ---
         ],
         educationalInfo: [
             { anyOf: ['eduHighSchool', 'eduCertificate', 'eduDiploma', 'eduAssociate', 'eduBachelor', 'eduMaster', 'eduDoctorate'] },
@@ -114,7 +160,7 @@ const PsychFields = ({
         ]
     };
 
-    const checkFieldsCompletion = useCallback((fieldsToCheck, showSimplifiedFlag) => { // Added showSimplifiedFlag
+    const checkFieldsCompletion = useCallback((fieldsToCheck, showSimplifiedFlag) => { 
         for (const field of fieldsToCheck) {
             if (typeof field === 'string') {
                 const value = formData[field];
@@ -130,25 +176,21 @@ const PsychFields = ({
                     if (conditionalValue === undefined || conditionalValue === null) return false;
                 }
             } else if (typeof field === 'object' && field.check) {
-                // --- MODIFIED: Pass the flag to the check function ---
                 if (!field.check(formData, showSimplifiedFlag)) return false;
-                // --- END MODIFICATION ---
             }
         }
         return true;
     }, [formData]);
 
     const handleSectionFieldBlur = useCallback((sectionId, isOpenState, setIsOpenFunction, requiredFieldsKey) => {
-        // --- MODIFIED: Pass shouldShowSimplifiedLayout to checkFieldsCompletion ---
         const isNowComplete = checkFieldsCompletion(sectionRequiredFields[requiredFieldsKey], shouldShowSimplifiedLayout);
-        // --- END MODIFICATION ---
         const wasCompleteAtLastBlur = prevCompletionStatusOnBlurRef.current[sectionId] === true;
 
         if (isOpenState && isNowComplete && !wasCompleteAtLastBlur) {
             setIsOpenFunction(false);
         }
         prevCompletionStatusOnBlurRef.current[sectionId] = isNowComplete;
-    }, [checkFieldsCompletion, sectionRequiredFields, shouldShowSimplifiedLayout]); // Added shouldShowSimplifiedLayout dependency
+    }, [checkFieldsCompletion, sectionRequiredFields, shouldShowSimplifiedLayout]); 
 
 
     return (
@@ -167,9 +209,9 @@ const PsychFields = ({
                         <Form.Select
                             name="recruitmentPosition"
                             value={formData.recruitmentPosition || ''}
-                            onChange={handleChange} // handleChange already handles e.target.name and e.target.value
+                            onChange={handleChange} 
                             onBlur={() => handleSectionFieldBlur('personalInfo', isPersonalInfoOpen, setIsPersonalInfoOpen, 'personalInfo')}
-                            required // Keep if it's a required field
+                            required 
                             className={`form-control ${!formData.recruitmentPosition ? 'is-invalid' : ''}`}
                         >
                             <option value="">Select Psych Position...</option>
@@ -250,7 +292,6 @@ const PsychFields = ({
                         {!formData.applicantContactDetails?.trim() && <div className="invalid-feedback d-block">Contact Details are required.</div>}
                     </Form.Group>
 
-                    {/* --- MODIFIED: Conditional Rendering based on shouldShowSimplifiedLayout --- */}
                     {shouldShowSimplifiedLayout ? (
                         <>
                             <Form.Group className="mb-3" controlId="psychApplicantMedicalConditionsSimplified">
@@ -283,10 +324,8 @@ const PsychFields = ({
                                     {!(formData.locationPHMC || formData.locationPBC) && <div className="invalid-feedback d-block">At least one location must be selected.</div>}
                                 </div>
                             </Form.Group>
-                            {/* Medical Conditions and Citizenship are NOT shown here for "other" Psych roles as per generatePsych.js logic */}
                         </>
                     )}
-                    {/* --- END MODIFICATION --- */}
                 </div>
             )}
 
@@ -419,17 +458,69 @@ const PsychFields = ({
                     </Form.Group>
                     <Form.Group className="mb-3" controlId="psychOocAdminRecordLink">
                         <Form.Label className="field-label">5.6 Unedited Screenshot of Admin Record (Link):</Form.Label>
-                        <Form.Control type="url" name="oocAdminRecordLink" value={formData.oocAdminRecordLink || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} placeholder="Direct link to image (e.g., Imgur)" required className={`form-control ${!formData.oocAdminRecordLink?.trim() ? 'is-invalid' : ''}`} />
+                        <InputGroup>
+                            <Form.Control
+                                type="url"
+                                name="oocAdminRecordLink"
+                                value={formData.oocAdminRecordLink || ''}
+                                onChange={handleChange}
+                                onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')}
+                                placeholder="Direct link to image (e.g., Imgur)"
+                                required
+                                className={`form-control ${!formData.oocAdminRecordLink?.trim() ? 'is-invalid' : ''}`}
+                            />
+                            <Button
+                                variant="outline-secondary"
+                                onClick={() => document.getElementById('psych-oocAdminRecordUpload').click()}
+                                disabled={isUploading}
+                            >
+                                {isUploading ? <Spinner as="span" animation="border" size="sm" /> : <i className="fas fa-upload"></i>}
+                            </Button>
+                        </InputGroup>
+                        <input
+                            type="file"
+                            id="psych-oocAdminRecordUpload"
+                            style={{ display: 'none' }}
+                            accept="image/*"
+                            onChange={(e) => handleImageUpload(e, 'oocAdminRecordLink')}
+                        />
                         {!formData.oocAdminRecordLink?.trim() && <div className="invalid-feedback d-block">Admin Record link is required.</div>}
                     </Form.Group>
+
                     <Form.Group className="mb-3" controlId="psychOocStatsLink">
                         <Form.Label className="field-label">5.7 Screenshot of Character Stats (/stats) (Link):</Form.Label>
-                        <Form.Control type="url" name="oocStatsLink" value={formData.oocStatsLink || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} placeholder="Direct link to image (e.g., Imgur)" required className={`form-control ${!formData.oocStatsLink?.trim() ? 'is-invalid' : ''}`} />
+                        <InputGroup>
+                            <Form.Control
+                                type="url"
+                                name="oocStatsLink"
+                                value={formData.oocStatsLink || ''}
+                                onChange={handleChange}
+                                onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')}
+                                placeholder="Direct link to image (e.g., Imgur)"
+                                required
+                                className={`form-control ${!formData.oocStatsLink?.trim() ? 'is-invalid' : ''}`}
+                            />
+                            <Button
+                                variant="outline-secondary"
+                                onClick={() => document.getElementById('psych-oocStatsUpload').click()}
+                                disabled={isUploading}
+                            >
+                                {isUploading ? <Spinner as="span" animation="border" size="sm" /> : <i className="fas fa-upload"></i>}
+                            </Button>
+                        </InputGroup>
+                        <input
+                            type="file"
+                            id="psych-oocStatsUpload"
+                            style={{ display: 'none' }}
+                            accept="image/*"
+                            onChange={(e) => handleImageUpload(e, 'oocStatsLink')}
+                        />
                         {!formData.oocStatsLink?.trim() && <div className="invalid-feedback d-block">Stats link is required.</div>}
                     </Form.Group>
+
                     <Form.Group className="mb-3" controlId="psychCharBackground">
                         <Form.Label className="field-label">5.8 Provide your character's background story:</Form.Label>
-                        <Form.Control as="textarea" rows={8} name="charBackground" value={formData.charBackground || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} placeholder="Your character's background..." required className={`form-control ${!formData.charBackground?.trim() ? 'is-invalid' : ''}`} />
+                        <Form.Control as="textarea" rows={8} name="charBackground" value={formData.charBackground || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} placeholder="Your character's background..." required className={`form-control ${!formData.charBackground?.trim() ? 'is-invalid' : ''} mb-4`} />
                         {!formData.charBackground?.trim() && <div className="invalid-feedback d-block">Character Background is required.</div>}
                     </Form.Group>
                 </div>

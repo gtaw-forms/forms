@@ -45,14 +45,14 @@ const generateCoroner = (formData) => {
         oocAdminRecordLink,
         oocStatsLink,
         charBackground,
-
+        positionDetailsData
         // Data for position details - This will be accessed via formData.coronerPositionDetailsData
         // coronerPositionDetailsData, // Removed from direct destructuring
 
     } = formData;
 
     // Access coronerPositionDetailsData from the formData object
-    const positionDetailsMap = formData.coronerPositionDetailsData || {};
+    const positionDetailsMap = positionDetailsData || {}; // MODIFIED: Use the corrected variable
 
     let dynamicDisplayPosition = "Position (Please Select)";
     // Default Coroner employment forum URL
