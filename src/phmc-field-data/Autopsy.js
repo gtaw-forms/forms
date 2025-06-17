@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react'; // Added useEffect for logging
+import React, { useState, useEffect } from 'react';
 import { Form, Button, InputGroup } from 'react-bootstrap';
 import Select from 'react-select';
 import AutopsyDiagramModal from '../components/AutopsyDiagramModal';
+
 const Autopsy = ({
     formData,
     handleChange,
@@ -14,10 +15,11 @@ const Autopsy = ({
     setShowCoronerRankModal,
     showNotification,
 }) => {
-        useEffect(() => {
-    }, [showNotification]);
+    // This useEffect is currently empty and can be removed if not used for other debugging.
+    // useEffect(() => {
+    // console.log('[Autopsy.js] Received showNotification prop:', typeof showNotification, showNotification);
+    // }, [showNotification]);
 
-    // State for the Autopsy Diagram Modal
     const [showAutopsyDiagramModal, setShowAutopsyDiagramModal] = useState(false);
 
     const handleOpenDiagramModal = () => setShowAutopsyDiagramModal(true);
@@ -28,16 +30,28 @@ const Autopsy = ({
             ...prev,
             autopsyDiagramMarkers: markers,
         }));
+        // Note: Closing the modal here means if a user uploads to Imgur
+        // and then clicks "Done & Save Diagram", the modal closes.
+        // The Imgur URL is handled separately by onDiagramImgurUpload.
         handleCloseDiagramModal();
-        // You might want to add a notification here if you have that system
-        console.log("Autopsy Diagram Markers Saved:", markers);
-                // Example of using showNotification within Autopsy.js if needed
-         if (showNotification) {
-             showNotification("Autopsy diagram data saved!", "save");
-         } else {
-             console.warn("[Autopsy.js] showNotification is not available in handleSaveAutopsyDiagram");
-         }
+        if (showNotification) {
+            showNotification("Autopsy diagram marker data saved!", "save");
+        } else {
+            console.warn("[Autopsy.js] showNotification is not available in handleSaveAutopsyDiagram");
+        }
+    };
 
+    // New handler for when the diagram is successfully uploaded to Imgur from the modal
+    const handleDiagramImgurUploadSuccess = (imgurUrl) => {
+        setFormData(prev => ({
+            ...prev,
+            autopsyDiagramImgurUrl: imgurUrl, // Store the Imgur URL
+        }));
+        if (showNotification) {
+            showNotification("Autopsy Diagram image uploaded and URL saved!", "upload");
+        }
+        // Optionally, you might want to close the modal here too, or let the user close it.
+        // handleCloseDiagramModal(); 
     };
 
 
@@ -359,10 +373,10 @@ const Autopsy = ({
             <AutopsyDiagramModal
                show={showAutopsyDiagramModal}
                onHide={handleCloseDiagramModal}
-               onSaveDiagram={handleSaveAutopsyDiagram}
+               onSaveDiagram={handleSaveAutopsyDiagram} // Saves markers
+               onDiagramImgurUpload={handleDiagramImgurUploadSuccess} // New prop for Imgur URL
                initialMarkers={formData.autopsyDiagramMarkers || []}
-               showNotification={showNotification} // Now correctly passing the function prop
-
+               showNotification={showNotification}
             />
         </>
     );
