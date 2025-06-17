@@ -1,10 +1,9 @@
 // src/components/AutopsyDiagramModal.js
 import React, { useState, useRef, useEffect } from 'react';
-import { Button } from 'react-bootstrap';
+import { Button, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import bodySilhouette from '../assets/body-silhouette.jpg';
 
-// --- Styles (modalOverlayStyle, modalContentStyle, etc. remain the same) ---
-// ... (Keep all existing style objects as they are)
+// --- Styles (Keep existing styles) ---
 const modalOverlayStyle = {
     position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
     backgroundColor: 'rgba(0, 0, 0, 0.7)', display: 'flex',
@@ -48,11 +47,11 @@ const modalBodyStyle = {
 const imageContainerStyle = {
     position: 'relative',
     width: '100%',
-    flexGrow: 1,
+    flexGrow: 1, // Allow image container to take available space
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
-    overflow: 'auto',
+    overflow: 'auto', // Add scroll to container if image is larger than space
     marginBottom: '10px',
 };
 const bodyImageStyle = {
@@ -63,13 +62,13 @@ const bodyImageStyle = {
     objectFit: 'contain',
 };
 const markerControlsStyle = {
-    marginBottom: '15px',
+    marginBottom: '15px', // Space below the entire controls wrapper
     display: 'flex',
     flexWrap: 'wrap',
-    gap: '10px',
+    gap: '10px', // Space between buttons
     justifyContent: 'center',
     alignItems: 'center',
-    flexShrink: 0,
+    // flexShrink: 0 is on the wrapper div now
 };
 const modalFooterStyle = {
     borderTop: '1px solid #30363d', paddingTop: '15px', marginTop: 'auto',
@@ -105,7 +104,7 @@ const AutopsyDiagramModal = ({
 }) => {
     const [markers, setMarkers] = useState([]);
     const [selectedMarkerType, setSelectedMarkerType] = useState('circle');
-    // REMOVE: const [labelSide, setLabelSide] = useState('right');
+    // REMOVED: const [showMoreLabelButtons, setShowMoreLabelButtons] = useState(false);
     const imageRef = useRef(null);
     const imageContainerRef = useRef(null);
     const prevShowRef = useRef(show);
@@ -123,18 +122,17 @@ const AutopsyDiagramModal = ({
 
     useEffect(() => {
         if (show && !prevShowRef.current) {
-            // Ensure new markers from initialMarkers also have a labelSide
             setMarkers(initialMarkers.map(marker => ({
                 ...marker,
                 label: marker.label || '',
-                labelSide: marker.labelSide || 'right' // Default to right if not present
+                labelSide: marker.labelSide || 'right'
             })));
+            // REMOVED: setShowMoreLabelButtons(false);
         }
         prevShowRef.current = show;
     }, [show, initialMarkers]);
 
     const handleImageClick = (event) => {
-        // ... (handleImageClick logic remains the same until newMarker creation)
         const imgElement = imageRef.current;
         const containerElement = imageContainerRef.current;
 
@@ -187,17 +185,15 @@ const AutopsyDiagramModal = ({
                 type: selectedMarkerType,
                 id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
                 label: '',
-                labelSide: 'right', // Default label side for new markers
+                labelSide: 'right',
             };
             setMarkers(prevMarkers => [...prevMarkers, newMarker]);
         }
     };
-    
+
     const handleToggleLastMarkerLabelSide = () => {
         setMarkers(prevMarkers => {
             if (prevMarkers.length === 0) return prevMarkers;
-            
-            // Find the last marker that actually has a label to toggle
             let lastLabeledMarkerIndex = -1;
             for (let i = prevMarkers.length - 1; i >= 0; i--) {
                 if (prevMarkers[i].label && prevMarkers[i].label.trim() !== '') {
@@ -205,27 +201,20 @@ const AutopsyDiagramModal = ({
                     break;
                 }
             }
-
-            if (lastLabeledMarkerIndex === -1) { // No marker with a label found
+            if (lastLabeledMarkerIndex === -1) {
                  if (showNotification) showNotification("No labeled marker to toggle side for. Add a label first.", "info");
                 return prevMarkers;
             }
-
             return prevMarkers.map((marker, index) => {
                 if (index === lastLabeledMarkerIndex) {
-                    return {
-                        ...marker,
-                        labelSide: marker.labelSide === 'right' ? 'left' : 'right'
-                    };
+                    return { ...marker, labelSide: marker.labelSide === 'right' ? 'left' : 'right' };
                 }
                 return marker;
             });
         });
     };
 
-
     const drawDiagramOnCanvas = async () => {
-        // ... (coordinate transformation logic remains the same) ...
         if (!canvasRef.current || !bodyImage) {
             console.error("Canvas or body image not ready for drawing.");
             return null;
@@ -270,8 +259,21 @@ const AutopsyDiagramModal = ({
         const visualContentScreenX = displayedImgRect.left + visualContentOffsetXInDisplayedImg;
         const visualContentScreenY = displayedImgRect.top + visualContentOffsetYInDisplayedImg;
 
-        markers.forEach(marker => {
-            // ... (marker coordinate calculation logic remains the same) ...
+        const markersToDraw = [];
+        let labelPrefixCounter = 0;
+        markers.forEach(m => {
+            if (m.label && m.label.trim() !== '') {
+                markersToDraw.push({
+                    ...m,
+                    displayLabel: `${String.fromCharCode(65 + labelPrefixCounter++)}-${m.label}`
+                });
+            } else {
+                markersToDraw.push(m);
+            }
+        });
+
+
+        markersToDraw.forEach(marker => {
             const markerScreenX = containerRect.left + (marker.x / 100) * containerRect.width;
             const markerScreenY = containerRect.top + (marker.y / 100) * containerRect.height;
             const markerX_RelativeToVisual = markerScreenX - visualContentScreenX;
@@ -286,7 +288,6 @@ const AutopsyDiagramModal = ({
             const canvasDrawX = (percX_onVisual / 100) * canvas.width;
             const canvasDrawY = (percY_onVisual / 100) * canvas.height;
 
-            // --- Drawing logic for Circle/X (remains the same) ---
             if (marker.type === 'circle') {
                 ctx.beginPath();
                 ctx.arc(canvasDrawX, canvasDrawY, 15, 0, 2 * Math.PI);
@@ -306,12 +307,13 @@ const AutopsyDiagramModal = ({
                 ctx.lineTo(canvasDrawX - crossSize, canvasDrawY + crossSize);
                 ctx.stroke();
             }
-            
-            if (marker.label) {
-                const labelText = marker.label;
+
+            const labelToDraw = marker.displayLabel || marker.label;
+
+            if (labelToDraw) {
                 const labelFontSize = 20;
                 ctx.font = `${labelFontSize}px Arial`;
-                const textMetrics = ctx.measureText(labelText);
+                const textMetrics = ctx.measureText(labelToDraw);
                 const textWidth = textMetrics.width;
                 const textHeight = labelFontSize;
                 const padding = 4;
@@ -321,30 +323,28 @@ const AutopsyDiagramModal = ({
                 const labelBgY = canvasDrawY - (textHeight / 2) - padding;
 
                 let labelBgX, labelTextX;
-                // Use marker.labelSide here
                 if (marker.labelSide === 'right') {
                     labelTextX = canvasDrawX + 18;
                     labelBgX = labelTextX - padding;
                     ctx.textAlign = 'left';
-                } else { // marker.labelSide === 'left'
+                } else {
                     labelTextX = canvasDrawX - 18;
                     labelBgX = labelTextX - textWidth - padding;
                     ctx.textAlign = 'right';
                 }
-                
+
                 ctx.fillStyle = 'rgba(50, 50, 50, 0.7)';
                 ctx.fillRect(labelBgX, labelBgY, labelBgWidth, labelBgHeight);
-                
+
                 ctx.fillStyle = '#FFFFFF';
                 ctx.textBaseline = 'middle';
-                ctx.fillText(labelText, labelTextX, labelTextY);
+                ctx.fillText(labelToDraw, labelTextX, labelTextY);
             }
         });
         return canvas;
     };
 
-    const renderMarker = (marker) => {
-        // ... (anchorPointStyle, symbolBaseStyle, circleSymbolStyle, crossSymbolStyle remain the same) ...
+    const renderMarker = (marker, index, allMarkers) => {
         const anchorPointStyle = {
             position: 'absolute',
             left: `${marker.x}%`,
@@ -376,11 +376,29 @@ const AutopsyDiagramModal = ({
             pointerEvents: 'none', zIndex: 1,
         };
 
-        // Use marker.labelSide here
         if (marker.labelSide === 'right') {
             labelStyle.left = '12px';
-        } else { // marker.labelSide === 'left'
+        } else {
             labelStyle.right = '12px';
+        }
+
+        let displayLabelText = marker.label;
+        if (marker.label && marker.label.trim() !== '') {
+            let labeledMarkerIndex = -1;
+            let count = 0;
+            for (let i = 0; i < allMarkers.length; i++) {
+                if (allMarkers[i].label && allMarkers[i].label.trim() !== '') {
+                    if (allMarkers[i].id === marker.id) {
+                        labeledMarkerIndex = count;
+                        break;
+                    }
+                    count++;
+                }
+            }
+            if (labeledMarkerIndex !== -1) {
+                const prefix = String.fromCharCode(65 + labeledMarkerIndex);
+                displayLabelText = `${prefix}-${marker.label}`;
+            }
         }
 
         return (
@@ -389,16 +407,15 @@ const AutopsyDiagramModal = ({
                 onClick={(e) => { e.stopPropagation(); handleRemoveMarker(marker.id); }}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); handleRemoveMarker(marker.id); }}}
                 role="button" tabIndex={0}
-                aria-label={`Remove ${marker.type}${marker.label ? ' ' + marker.label : ''} at ${marker.x.toFixed(0)}%, ${marker.y.toFixed(0)}%`}
+                aria-label={`Remove ${marker.type}${displayLabelText ? ' ' + displayLabelText : ''} at ${marker.x.toFixed(0)}%, ${marker.y.toFixed(0)}%`}
             >
                 {marker.type === 'circle' && <div style={circleSymbolStyle}></div>}
                 {marker.type === 'cross' && <div style={crossSymbolStyle}>X</div>}
-                {marker.label && <span style={labelStyle}>{marker.label}</span>}
+                {marker.label && <span style={labelStyle}>{displayLabelText}</span>}
             </div>
         );
     };
-    
-    // ... (handleCopyToClipboard, handleUploadToImgur, handleAddLabelToLastMarker, etc. remain the same) ...
+
     const handleCopyToClipboard = async () => {
         setIsProcessingImage(true);
         const canvas = await drawDiagramOnCanvas();
@@ -491,10 +508,20 @@ const AutopsyDiagramModal = ({
 
     if (!show) return null;
 
-    // Determine if the "Toggle Label Side" button should be disabled
     const lastLabeledMarker = markers.slice().reverse().find(m => m.label && m.label.trim() !== '');
     const isToggleLabelSideDisabled = !lastLabeledMarker;
 
+    const moreLabelButtons = [
+        { short: "BLUNT", full: "Blunt Force Trauma" },
+        { short: "BURN", full: "Burn Injury" },
+        { short: "LAC", full: "Laceration" },
+        { short: "FX", full: "Fracture" },
+        { short: "BITE", full: "Bite Mark" },
+        { short: "TSR", full: "Taser Probe Mark" },
+        { short: "CHEM", full: "Chemical Exposure" },
+        { short: "ENV", full: "Environmental Exposure" },
+        { short: "AMP", full: "Amputation" },
+    ];
 
     return (
         <>
@@ -506,29 +533,46 @@ const AutopsyDiagramModal = ({
                         <button onClick={onHide} style={modalCloseButtonStyle} aria-label="Close modal">&times;</button>
                     </div>
                     <div style={modalBodyStyle}>
-                        <div style={markerControlsStyle}>
-                            <Button variant={selectedMarkerType === 'circle' ? 'danger' : 'outline-danger'} size="sm" onClick={() => setSelectedMarkerType('circle')}>Circle (O)</Button>
-                            <Button variant={selectedMarkerType === 'cross' ? 'primary' : 'outline-primary'} size="sm" onClick={() => setSelectedMarkerType('cross')}>Cross (X)</Button>
-                            <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('(GSW)')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>GSW</Button>
-                            <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('(STAB)')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>STAB</Button>
-                            <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('(UNK)')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>UNK</Button>
-                            <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('(TRAUMA)')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>TRAUMA</Button>
-                            {/* New Button to Toggle Label Side for the last labeled marker */}
-                            <Button
-                                variant="outline-secondary"
-                                size="sm"
-                                onClick={handleToggleLastMarkerLabelSide}
-                                disabled={isToggleLabelSideDisabled}
-                                title="Toggle Last Label's Side"
-                            >
-                                <i className={`fas fa-exchange-alt`}></i> Toggle Label
-                            </Button>
-                            <Button variant="outline-secondary" size="sm" onClick={handleUndoLastMarker} disabled={markers.length === 0}>Undo</Button>
-                            <Button variant="outline-warning" size="sm" onClick={handleClearAllMarkers} disabled={markers.length === 0}>Clear All</Button>
-                        </div>
+                        {/* Wrapper div for controls */}
+                        <div style={{ flexShrink: 0 }}>
+                            <div style={markerControlsStyle}>
+                                <Button variant={selectedMarkerType === 'circle' ? 'danger' : 'outline-danger'} size="sm" onClick={() => setSelectedMarkerType('circle')}>Circle (O)</Button>
+                                <Button variant={selectedMarkerType === 'cross' ? 'primary' : 'outline-primary'} size="sm" onClick={() => setSelectedMarkerType('cross')}>Cross (X)</Button>
+                                {/* Always show all label buttons */}
+                                <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('(GSW)')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>GSW</Button>
+                                <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('(STAB)')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>STAB</Button>
+                                <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('(UNK)')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>UNK</Button>
+                                <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('(TRAUMA)')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>TRAUMA</Button>
+                                {moreLabelButtons.map(btn => (
+                                    <OverlayTrigger
+                                        key={btn.short}
+                                        placement="top"
+                                        overlay={<Tooltip id={`tooltip-${btn.short}`}>{btn.full}</Tooltip>}
+                                    >
+                                        <Button
+                                            variant="outline-light"
+                                            size="sm"
+                                            onClick={() => handleAddLabelToLastMarker(`(${btn.short})`)}
+                                            disabled={markers.length === 0}
+                                            style={{ fontSize: '0.75rem' }}
+                                        >
+                                            {btn.short}
+                                        </Button>
+                                    </OverlayTrigger>
+                                ))}
+                                {/* REMOVED: Show More Types button */}
+                                <Button variant="outline-secondary" size="sm" onClick={handleToggleLastMarkerLabelSide} disabled={isToggleLabelSideDisabled} title="Toggle Last Label's Side">
+                                    <i className={`fas fa-exchange-alt`}></i> Toggle Label
+                                </Button>
+                                <Button variant="outline-secondary" size="sm" onClick={handleUndoLastMarker} disabled={markers.length === 0}>Undo</Button>
+                                <Button variant="outline-warning" size="sm" onClick={handleClearAllMarkers} disabled={markers.length === 0}>Clear All</Button>
+                            </div>
+                            {/* REMOVED: Conditional rendering div for more buttons */}
+                        </div> {/* End Wrapper div for controls */}
+
                         <div ref={imageContainerRef} style={imageContainerStyle}>
                             <img ref={imageRef} src={bodySilhouette} alt="Autopsy diagram area" style={bodyImageStyle} onClick={handleImageClick} />
-                            {markers.map(marker => renderMarker(marker))}
+                            {markers.map((marker, index) => renderMarker(marker, index, markers))}
                         </div>
                         <small style={{ color: '#8b949e', flexShrink: 0 }}>
                             Click diagram to place marker. Click marker to remove. Add label to last placed marker.
