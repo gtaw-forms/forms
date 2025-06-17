@@ -2630,49 +2630,83 @@ const loadReportForUser = async (reportFirebaseKey, userId) => {
                  const coronerDetails = coronerListData.find(c => c.name === loadedCoronerEmployee);
                  if (coronerDetails) {
                      console.log(`[loadReportForUser] Valid coroner "${loadedCoronerEmployee}" found. Syncing details.`);
-                     loadedFormData.coronerEmployee = loadedCoronerEmployee;
+                     // Sync with current data from coronerListData
+                     loadedFormData.coronerEmployee = loadedCoronerEmployee; // Ensure it's set from the found detail, though likely same
                      loadedFormData.coronerBadge = coronerDetails.badge || '';
                      loadedFormData.coronerRank = coronerDetails.rank || '';
                      loadedFormData.coronerDiscord = coronerDetails.discord || '';
                      loadedFormData.coronerPHNumber = coronerDetails.phNumber || '50056';
 
+                     // Update localStorage with synced data
                      localStorage.setItem('coronerEmployee', loadedFormData.coronerEmployee);
                      localStorage.setItem('coronerEmployee_timestamp', currentTimestamp);
-                     // ... (localStorage sets for badge, rank, etc.)
+                     localStorage.setItem('coronerBadge', loadedFormData.coronerBadge);
+                     localStorage.setItem('coronerBadge_timestamp', currentTimestamp);
+                     localStorage.setItem('coronerRank', loadedFormData.coronerRank);
+                     localStorage.setItem('coronerRank_timestamp', currentTimestamp);
+                     localStorage.setItem('coronerDiscord', loadedFormData.coronerDiscord);
+                     localStorage.setItem('coronerDiscord_timestamp', currentTimestamp);
+                     localStorage.setItem('coronerPHNumber', loadedFormData.coronerPHNumber);
+                     localStorage.setItem('coronerPHNumber_timestamp', currentTimestamp);
                  } else {
-                     console.warn(`[loadReportForUser] Loaded coroner "${loadedCoronerEmployee}" NOT found in current list. Clearing coroner fields.`);
-                     loadedFormData.coronerEmployee = '';
-                     loadedFormData.coronerBadge = '';
-                     loadedFormData.coronerRank = '';
-                     loadedFormData.coronerDiscord = '';
-                     loadedFormData.coronerPHNumber = '50056';
-                     // ... (localStorage removes for coroner fields)
+                     console.warn(`[loadReportForUser] Loaded coroner "${loadedCoronerEmployee}" NOT found in current list. Using saved data from report.`);
+                     showNotification(`Coroner "${loadedCoronerEmployee}" not found in current staff list. Using data from saved report.`, 'warning', 7000);
+                     // Keep existing loadedFormData.coronerEmployee and its related fields (badge, rank, etc.)
+                     // Update localStorage timestamps for the loaded (but not found in current list) data to prevent premature clearing
+                     if (loadedFormData.coronerEmployee) localStorage.setItem('coronerEmployee_timestamp', currentTimestamp);
+                     if (loadedFormData.coronerBadge) localStorage.setItem('coronerBadge_timestamp', currentTimestamp);
+                     if (loadedFormData.coronerRank) localStorage.setItem('coronerRank_timestamp', currentTimestamp);
+                     if (loadedFormData.coronerDiscord) localStorage.setItem('coronerDiscord_timestamp', currentTimestamp);
+                     if (loadedFormData.coronerPHNumber) localStorage.setItem('coronerPHNumber_timestamp', currentTimestamp);
                  }
             } else {
                 console.log('[loadReportForUser] No coronerEmployee in loaded report data.');
-                 // ... (localStorage removes for coroner fields if not present)
+                // If no coronerEmployee was in the loaded report, clear any existing coronerEmployee from localStorage
+                const coronerFieldsToClear = ['coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord', 'coronerPHNumber'];
+                coronerFieldsToClear.forEach(field => {
+                    localStorage.removeItem(field);
+                    localStorage.removeItem(`${field}_timestamp`);
+                });
             }
 
              if (loadedPhmcEmployee) {
                  const phmcDetails = phmcListData.find(p => p.name === loadedPhmcEmployee);
                  if (phmcDetails) {
                      console.log(`[loadReportForUser] Valid PHMC employee "${loadedPhmcEmployee}" found. Syncing details.`);
-                     loadedFormData.phmcEmployee = loadedPhmcEmployee;
+                     // Sync with current data from phmcListData
+                     loadedFormData.phmcEmployee = loadedPhmcEmployee; // Ensure it's set
                      loadedFormData.phmcEmployeeSignature = phmcDetails.signature || '';
                      loadedFormData.phmcEmployeeLastName = phmcDetails.lastName || '';
                      loadedFormData.phmcRank = phmcDetails.category || phmcDetails.rank || '';
-                     // ... (localStorage sets for PHMC fields)
+
+                     // Update localStorage with synced data
+                     localStorage.setItem('phmcEmployee', loadedFormData.phmcEmployee);
+                     localStorage.setItem('phmcEmployee_timestamp', currentTimestamp);
+                     localStorage.setItem('phmcEmployeeSignature', loadedFormData.phmcEmployeeSignature);
+                     localStorage.setItem('phmcEmployeeSignature_timestamp', currentTimestamp);
+                     localStorage.setItem('phmcEmployeeLastName', loadedFormData.phmcEmployeeLastName);
+                     localStorage.setItem('phmcEmployeeLastName_timestamp', currentTimestamp);
+                     localStorage.setItem('phmcRank', loadedFormData.phmcRank);
+                     localStorage.setItem('phmcRank_timestamp', currentTimestamp);
+
                  } else {
-                     console.warn(`[loadReportForUser] Loaded PHMC employee "${loadedPhmcEmployee}" NOT found in current list. Clearing PHMC fields.`);
-                     loadedFormData.phmcEmployee = '';
-                     loadedFormData.phmcEmployeeSignature = '';
-                     loadedFormData.phmcEmployeeLastName = '';
-                     loadedFormData.phmcRank = '';
-                     // ... (localStorage removes for PHMC fields)
+                     console.warn(`[loadReportForUser] Loaded PHMC employee "${loadedPhmcEmployee}" NOT found in current list. Using saved data from report.`);
+                     showNotification(`PHMC Staff "${loadedPhmcEmployee}" not found in current staff list. Using data from saved report.`, 'warning', 7000);
+                     // Keep existing loadedFormData.phmcEmployee and its related fields
+                     // Update localStorage timestamps for the loaded (but not found in current list) data
+                     if (loadedFormData.phmcEmployee) localStorage.setItem('phmcEmployee_timestamp', currentTimestamp);
+                     if (loadedFormData.phmcEmployeeSignature) localStorage.setItem('phmcEmployeeSignature_timestamp', currentTimestamp);
+                     if (loadedFormData.phmcEmployeeLastName) localStorage.setItem('phmcEmployeeLastName_timestamp', currentTimestamp);
+                     if (loadedFormData.phmcRank) localStorage.setItem('phmcRank_timestamp', currentTimestamp);
                  }
              } else {
                 console.log('[loadReportForUser] No phmcEmployee in loaded report data.');
-                 // ... (localStorage removes for PHMC fields if not present)
+                // If no phmcEmployee was in the loaded report, clear any existing phmcEmployee from localStorage
+                const phmcFieldsToClear = ['phmcEmployee', 'phmcEmployeeSignature', 'phmcEmployeeLastName', 'phmcRank'];
+                phmcFieldsToClear.forEach(field => {
+                    localStorage.removeItem(field);
+                    localStorage.removeItem(`${field}_timestamp`);
+                });
              }
             console.log('[loadReportForUser] loadedFormData after employee validation/sync:', JSON.parse(JSON.stringify(loadedFormData)));
 
@@ -2738,8 +2772,10 @@ const loadReportForUser = async (reportFirebaseKey, userId) => {
                 setFormData(prev => {
                     console.log('[loadReportForUser] setFormData (default) - prevFormData:', JSON.parse(JSON.stringify(prev)));
                     const finalDataToSet = {
-                        ...prev,
-                        ...loadedFormData,
+                        ...prev, // Keep existing form data
+                        ...loadedFormData, // Overwrite with loaded data, but preserve employee fields if they were not in loadedFormData
+                        coronerEmployee: loadedFormData.coronerEmployee || prev.coronerEmployee, // Prioritize loaded, fallback to previous
+                        phmcEmployee: loadedFormData.phmcEmployee || prev.phmcEmployee, // Prioritize loaded, fallback to previous
                     };
                     console.log('[loadReportForUser] setFormData (default) - finalDataToSet:', JSON.parse(JSON.stringify(finalDataToSet)));
                     return finalDataToSet;
