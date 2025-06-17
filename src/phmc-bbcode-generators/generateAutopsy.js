@@ -14,7 +14,9 @@ const generateAutopsy = (formData) => {
         autopsyPhotosUnavailable,
         RadiologyResult,             // Added this from your Autopsy.js
         autopsyDate: formAutopsyDate,
-        autopsyTime: formAutopsyTime
+        autopsyTime: formAutopsyTime,
+        autopsyDiagramImgurUrl, // Assuming the Imgur URL is stored here
+
     } = formData;
 
     // --- Dynamic Death Causes List ---
@@ -46,7 +48,17 @@ const generateAutopsy = (formData) => {
             anatomicSummaryListItems += `\n[/list]`;
         }
     }
-    
+    // --- Autopsy Diagram Logic ---
+    let autopsyDiagramBBCode = '';
+    if (autopsyDiagramImgurUrl && autopsyDiagramImgurUrl.trim() !== '') {
+        autopsyDiagramBBCode = `[b]Autopsy Diagram[/b]:\n[img]${autopsyDiagramImgurUrl.trim()}[/img]\n`;
+    } else {
+        // Option 1: Omit the line if no diagram
+        // autopsyDiagramBBCode = ''; 
+        // Option 2: Indicate no diagram is available
+        autopsyDiagramBBCode = `[b]Autopsy Diagram[/b]: N/A\n`;
+    }
+
     // --- Photography Link/Image Logic ---
     let photographySectionBBCode = '';
     if (autopsyPhotosUnavailable) {
@@ -84,6 +96,7 @@ From the anatomic findings and pertinent history, I ascribe the death to:
 ${deathCausesListItems}
 [b]MANNER OF DEATH:[/b] ${deathType || 'Undetermined'}
 [b]HOW INJURY OCCURRED:[/b] ${causeOfDeath || 'Unknown'}
+${autopsyDiagramBBCode} 
 [b]Anatomic Summary:[/b]
 ${anatomicSummaryListItems}
 [b]External Examination:[/b]
