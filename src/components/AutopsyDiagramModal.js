@@ -1,4 +1,3 @@
-// src/components/AutopsyDiagramModal.js
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from 'react-bootstrap';
 // Placeholder for a human body silhouette or diagram
@@ -89,7 +88,7 @@ const loadImage = (src) => {
     });
 };
 
-const AutopsyDiagramModal = ({ show, onHide, onSaveDiagram, initialMarkers = [] }) => {
+const AutopsyDiagramModal = ({ show, onHide, onSaveDiagram, initialMarkers = [], showNotification }) => {
     const [markers, setMarkers] = useState([]);
     const [selectedMarkerType, setSelectedMarkerType] = useState('circle');
     const imageRef = useRef(null);
@@ -122,39 +121,86 @@ const AutopsyDiagramModal = ({ show, onHide, onSaveDiagram, initialMarkers = [] 
         }
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d');
-        canvas.width = bodyImage.naturalWidth;
-        canvas.height = bodyImage.naturalHeight;
+        const sourceImage = bodyImage;
+
+        canvas.width = sourceImage.naturalWidth;
+        canvas.height = sourceImage.naturalHeight;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(bodyImage, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(sourceImage, 0, 0, canvas.width, canvas.height);
+
+        const displayedImgElement = imageRef.current;
+        const containerElement = imageContainerRef.current;
+
+        if (!displayedImgElement || !containerElement) {
+            console.error("DOM elements for coordinate transformation not found in drawDiagramOnCanvas");
+            return canvas;
+        }
+
+        const containerRect = containerElement.getBoundingClientRect();
+        const displayedImgRect = displayedImgElement.getBoundingClientRect();
+        const naturalWidth = sourceImage.naturalWidth;
+        const naturalHeight = sourceImage.naturalHeight;
+        const displayedImgBoxWidth = displayedImgRect.width;
+        const displayedImgBoxHeight = displayedImgRect.height;
+        const naturalAspectRatio = naturalWidth / naturalHeight;
+        const displayedImgBoxAspectRatio = displayedImgBoxWidth > 0 ? displayedImgBoxWidth / displayedImgBoxHeight : naturalAspectRatio;
+
+        let visualContentW, visualContentH;
+        if (naturalAspectRatio > displayedImgBoxAspectRatio) {
+            visualContentW = displayedImgBoxWidth;
+            visualContentH = displayedImgBoxWidth / naturalAspectRatio;
+        } else {
+            visualContentH = displayedImgBoxHeight;
+            visualContentW = displayedImgBoxHeight * naturalAspectRatio;
+        }
+
+        const visualContentOffsetXInDisplayedImg = (displayedImgBoxWidth - visualContentW) / 2;
+        const visualContentOffsetYInDisplayedImg = (displayedImgBoxHeight - visualContentH) / 2;
+        const visualContentScreenX = displayedImgRect.left + visualContentOffsetXInDisplayedImg;
+        const visualContentScreenY = displayedImgRect.top + visualContentOffsetYInDisplayedImg;
 
         markers.forEach(marker => {
-            const xPx = (marker.x / 100) * canvas.width;
-            const yPx = (marker.y / 100) * canvas.height;
+            const markerScreenX = containerRect.left + (marker.x / 100) * containerRect.width;
+            const markerScreenY = containerRect.top + (marker.y / 100) * containerRect.height;
+            const markerX_RelativeToVisual = markerScreenX - visualContentScreenX;
+            const markerY_RelativeToVisual = markerScreenY - visualContentScreenY;
+
+            let percX_onVisual = visualContentW > 0 ? (markerX_RelativeToVisual / visualContentW) * 100 : 0;
+            let percY_onVisual = visualContentH > 0 ? (markerY_RelativeToVisual / visualContentH) * 100 : 0;
+
+            percX_onVisual = Math.max(0, Math.min(100, percX_onVisual));
+            percY_onVisual = Math.max(0, Math.min(100, percY_onVisual));
+
+            const canvasDrawX = (percX_onVisual / 100) * canvas.width;
+            const canvasDrawY = (percY_onVisual / 100) * canvas.height;
+
             if (marker.type === 'circle') {
                 ctx.beginPath();
-                ctx.arc(xPx, yPx, 7.5, 0, 2 * Math.PI);
+                ctx.arc(canvasDrawX, canvasDrawY, 15, 0, 2 * Math.PI); // Increased radius from 7.5 to 10
                 ctx.fillStyle = 'rgba(255, 0, 0, 0.7)';
                 ctx.fill();
                 ctx.strokeStyle = 'darkred';
-                ctx.lineWidth = 1;
+                ctx.lineWidth = 1.5; // Slightly thicker border
                 ctx.stroke();
             } else if (marker.type === 'cross') {
                 ctx.beginPath();
                 ctx.strokeStyle = 'blue';
-                ctx.lineWidth = 2;
-                const crossSize = 10;
-                ctx.moveTo(xPx - crossSize, yPx - crossSize);
-                ctx.lineTo(xPx + crossSize, yPx + crossSize);
-                ctx.moveTo(xPx + crossSize, yPx - crossSize);
-                ctx.lineTo(xPx - crossSize, yPx + crossSize);
+                ctx.lineWidth = 5; // Increased line width
+                const crossSize = 15; // Increased size from 10 to 12
+                ctx.moveTo(canvasDrawX - crossSize, canvasDrawY - crossSize);
+                ctx.lineTo(canvasDrawX + crossSize, canvasDrawY + crossSize);
+                ctx.moveTo(canvasDrawX + crossSize, canvasDrawY - crossSize);
+                ctx.lineTo(canvasDrawX - crossSize, canvasDrawY + crossSize);
                 ctx.stroke();
             }
+
             if (marker.label) {
-                ctx.font = '12px Arial';
+                ctx.font = '20px Arial'; // Increased font size from 12px to 16px
                 ctx.fillStyle = '#000000';
                 ctx.textAlign = 'left';
                 ctx.textBaseline = 'middle';
-                ctx.fillText(marker.label, xPx + 15, yPx);
+                // Adjust label offset if needed, e.g., based on new circle radius
+                ctx.fillText(marker.label, canvasDrawX + 18, canvasDrawY); // Increased offset from 15 to 18
             }
         });
         return canvas;
@@ -171,25 +217,44 @@ const AutopsyDiagramModal = ({ show, onHide, onSaveDiagram, initialMarkers = [] 
                             new ClipboardItem({ [blob.type]: blob })
                         ]);
                         console.log('[DEBUG] Diagram copied to clipboard!');
-                        alert('Diagram copied to clipboard!');
+                        // Use the prop directly
+                        if (showNotification) { // Check if the prop is provided
+                            showNotification('Diagram copied to clipboard!', 'success');
+                        } else {
+                            alert('Diagram copied to clipboard!'); // Fallback
+                        }
                     } catch (err) {
                         console.error('[DEBUG] Failed to copy diagram to clipboard:', err);
-                        alert('Failed to copy diagram. See console for details.');
+                        if (showNotification) {
+                            showNotification('Failed to copy diagram. See console for details.', 'error');
+                        } else {
+                            alert('Failed to copy diagram. See console for details.');
+                        }
                     }
                 } else {
-                    alert('Failed to create image blob for clipboard.');
+                    if (showNotification) {
+                        showNotification('Failed to create image blob for clipboard.', 'error');
+                    } else {
+                        alert('Failed to create image blob for clipboard.');
+                    }
                 }
                 setIsProcessingImage(false);
             }, 'image/png');
         } else {
-            alert('Clipboard API not available or canvas drawing failed.');
+            if (showNotification) {
+                showNotification('Clipboard API not available or canvas drawing failed.', 'error');
+            } else {
+                alert('Clipboard API not available or canvas drawing failed.');
+            }
             setIsProcessingImage(false);
         }
     };
 
     const handleUploadToImgur = async () => {
+        // ... (similar changes for showNotification calls)
         if (!IMGUR_CLIENT_ID) {
-            alert('Imgur Client ID is not configured. Please check environment variables.');
+            if (showNotification) showNotification('Imgur Client ID is not configured. Please check environment variables.', 'error');
+            else alert('Imgur Client ID is not configured. Please check environment variables.');
             console.error('[DEBUG] Imgur Client ID (REACT_APP_IMGUR_CLIENT_ID) is missing.');
             return;
         }
@@ -197,28 +262,21 @@ const AutopsyDiagramModal = ({ show, onHide, onSaveDiagram, initialMarkers = [] 
         setIsProcessingImage(true);
         const canvas = await drawDiagramOnCanvas();
         if (!canvas) {
-            alert('Failed to draw diagram on canvas.');
+            if (showNotification) showNotification('Failed to draw diagram on canvas.', 'error');
+            else alert('Failed to draw diagram on canvas.');
             setIsProcessingImage(false);
             return;
         }
-
-        // Imgur API expects image as base64, file, or URL.
-        // For client-side, sending the raw blob is often preferred if the API supports it,
-        // or base64 encoded string. toDataURL gives base64.
         const dataUrl = canvas.toDataURL('image/png');
-        const base64Image = dataUrl.split(',')[1]; // Get base64 part
+        const base64Image = dataUrl.split(',')[1]; 
 
         try {
             const formData = new FormData();
             formData.append('image', base64Image);
-            // formData.append('type', 'base64'); // 'type' is often inferred or not needed when sending base64 directly
-
             const response = await fetch('https://api.imgur.com/3/image', {
                 method: 'POST',
                 headers: {
-                    // Use Client-ID for authorization for anonymous/application uploads
                     Authorization: `Client-ID ${IMGUR_CLIENT_ID}`,
-                    // 'Accept': 'application/json', // Good practice
                 },
                 body: formData,
             });
@@ -226,17 +284,21 @@ const AutopsyDiagramModal = ({ show, onHide, onSaveDiagram, initialMarkers = [] 
             const result = await response.json();
 
             if (result.success) {
+
                 console.log('[DEBUG] Imgur Upload Successful:', result.data.link);
-                alert(`Uploaded to Imgur! Link: ${result.data.link}`);
-                // Optionally, you could pass this link back via onSaveDiagram or another callback
-                // For example: if (onSaveDiagram) onSaveDiagram(markers, result.data.link);
+                if (showNotification) showNotification(`Uploaded to Imgur! Link: ${result.data.link}`, 'success');
+                else alert(`Uploaded to Imgur! Link: ${result.data.link}`);
             } else {
+
                 console.error('[DEBUG] Imgur Upload Failed:', result.data.error || result.status, result);
-                alert(`Imgur Upload Failed: ${result.data.error?.message || result.data.error || 'Unknown error'}`);
+                const errorMessage = result.data.error?.message || result.data.error || 'Unknown error';
+                if (showNotification) showNotification(`Imgur Upload Failed: ${errorMessage}`, 'error');
+                else alert(`Imgur Upload Failed: ${errorMessage}`);
             }
         } catch (error) {
             console.error('[DEBUG] Error uploading to Imgur:', error);
-            alert('Error during Imgur upload. See console.');
+            if (showNotification) showNotification('Error during Imgur upload. See console.', 'error');
+            else alert('Error during Imgur upload. See console.');
         }
         setIsProcessingImage(false);
     };
@@ -370,7 +432,10 @@ const AutopsyDiagramModal = ({ show, onHide, onSaveDiagram, initialMarkers = [] 
     if (!show) return null;
 
     return (
-        <div style={modalOverlayStyle} onClick={onHide}>
+        <> 
+            <canvas ref={canvasRef} style={{ display: 'none' }} />
+
+            <div style={modalOverlayStyle} onClick={onHide}>
             <div style={modalContentStyle} onClick={e => e.stopPropagation()}>
                 <div style={modalHeaderStyle}>
                     <h5 style={modalTitleStyle}>Autopsy Diagram (TESTING) </h5>
@@ -393,7 +458,6 @@ const AutopsyDiagramModal = ({ show, onHide, onSaveDiagram, initialMarkers = [] 
                         >
                             Cross (X)
                         </Button>
-                        {/* Label Buttons */}
                         <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('(GSW)')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>GSW</Button>
                         <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('(STAB)')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>STAB</Button>
                         <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('(UNK)')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>UNK</Button>
@@ -406,7 +470,7 @@ const AutopsyDiagramModal = ({ show, onHide, onSaveDiagram, initialMarkers = [] 
                     <div ref={imageContainerRef} style={imageContainerStyle}>
                         <img
                             ref={imageRef}
-                            src={bodySilhouette} // Changed from bodySilhouettePath
+                            src={bodySilhouette} 
                             alt="Autopsy diagram area"
                             style={bodyImageStyle}
                             onClick={handleImageClick}
@@ -418,12 +482,12 @@ const AutopsyDiagramModal = ({ show, onHide, onSaveDiagram, initialMarkers = [] 
                     </small>
                 </div>
 
-                <div style={modalFooterStyle}>
+                    <div style={modalFooterStyle}>
                         <Button
                             variant="outline-info"
                             size="sm"
                             onClick={handleCopyToClipboard}
-                            disabled={isProcessingImage || !bodyImage || !canvasRef.current} // Added !canvasRef.current
+                            disabled={isProcessingImage || !bodyImage || !canvasRef.current}
                         >
                             {isProcessingImage ? 'Processing...' : 'Copy Diagram'}
                         </Button>
@@ -431,16 +495,17 @@ const AutopsyDiagramModal = ({ show, onHide, onSaveDiagram, initialMarkers = [] 
                             variant="outline-success"
                             size="sm"
                             onClick={handleUploadToImgur}
-                            disabled={isProcessingImage || !bodyImage || !canvasRef.current || !IMGUR_CLIENT_ID} // Added !canvasRef.current
+                            disabled={isProcessingImage || !bodyImage || !canvasRef.current || !IMGUR_CLIENT_ID}
                             style={{marginLeft: '10px'}}
                         >
                             {isProcessingImage ? 'Processing...' : 'Upload to Imgur'}
                         </Button>
-                    <Button variant="secondary" onClick={onHide} disabled={isProcessingImage}>Cancel</Button>
-                    <Button variant="primary" onClick={handleSave} disabled={isProcessingImage}>Done & Save Diagram</Button>
+                        <Button variant="secondary" onClick={onHide} disabled={isProcessingImage}>Cancel</Button>
+                        <Button variant="primary" onClick={handleSave} disabled={isProcessingImage}>Done & Save Diagram</Button>
+                    </div>
                 </div>
             </div>
-        </div>
+        </>
     );
 };
 

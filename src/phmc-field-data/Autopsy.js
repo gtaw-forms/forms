@@ -1,8 +1,7 @@
-import React, { useState } from 'react'; // Added useState
+import React, { useState, useEffect } from 'react'; // Added useEffect for logging
 import { Form, Button, InputGroup } from 'react-bootstrap';
 import Select from 'react-select';
-import AutopsyDiagramModal from '../components/AutopsyDiagramModal'; // Import the modal
-
+import AutopsyDiagramModal from '../components/AutopsyDiagramModal';
 const Autopsy = ({
     formData,
     handleChange,
@@ -13,7 +12,11 @@ const Autopsy = ({
     handleAutopsyImageUploadAndCreateAlbum,
     setShowMissingEmployeeModal,
     setShowCoronerRankModal,
+    showNotification,
 }) => {
+        useEffect(() => {
+    }, [showNotification]);
+
     // State for the Autopsy Diagram Modal
     const [showAutopsyDiagramModal, setShowAutopsyDiagramModal] = useState(false);
 
@@ -28,6 +31,13 @@ const Autopsy = ({
         handleCloseDiagramModal();
         // You might want to add a notification here if you have that system
         console.log("Autopsy Diagram Markers Saved:", markers);
+                // Example of using showNotification within Autopsy.js if needed
+         if (showNotification) {
+             showNotification("Autopsy diagram data saved!", "save");
+         } else {
+             console.warn("[Autopsy.js] showNotification is not available in handleSaveAutopsyDiagram");
+         }
+
     };
 
 
@@ -347,10 +357,12 @@ const Autopsy = ({
 
             {/* Autopsy Diagram Modal Instance */}
             <AutopsyDiagramModal
-                show={showAutopsyDiagramModal}
-                onHide={handleCloseDiagramModal}
-                onSaveDiagram={handleSaveAutopsyDiagram}
-                initialMarkers={formData.autopsyDiagramMarkers || []}
+               show={showAutopsyDiagramModal}
+               onHide={handleCloseDiagramModal}
+               onSaveDiagram={handleSaveAutopsyDiagram}
+               initialMarkers={formData.autopsyDiagramMarkers || []}
+               showNotification={showNotification} // Now correctly passing the function prop
+
             />
         </>
     );

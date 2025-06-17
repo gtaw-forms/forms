@@ -503,6 +503,7 @@ const initialFormData = {
     }, []);
 
     const showNotification = useCallback((message, icon = 'check-circle', duration = DEFAULT_NOTIFICATION_DURATION, actions = []) => {
+
         const newNotificationId = Date.now() + Math.random();
         const isInteractive = actions && actions.length > 0;
         // Persistent loading notifications are those with duration 0 AND no actions
@@ -539,8 +540,7 @@ const initialFormData = {
                     removeNotification(newNotificationId);
                 }, duration);
             }
-            // Interactive notifications and persistent loading notifications are not auto-dismissed by duration.
-            // They are dismissed by user action (clicking a button in the notification or the 'x').
+
             return updatedNotifications;
         });
         return newNotificationId;
@@ -4438,7 +4438,7 @@ const handleCopyAndNotifyWrapper = async () => {
                         emsRecruitmentDetails={emsRecruitmentDetails}
                         nurseRecruitmentDetails={nurseRecruitmentDetails}
                         coronerRecruitmentDetails={coronerRecruitmentDetails}
-
+                    showNotification={showNotification}
 
                                     />
                                 ) : (
