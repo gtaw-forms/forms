@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react'; // Added useState
 import { Form, Button, InputGroup } from 'react-bootstrap';
-import Select from 'react-select'; // Keep if used for coroner selection
+import Select from 'react-select';
+import AutopsyDiagramModal from '../components/AutopsyDiagramModal'; // Import the modal
 
 const Autopsy = ({
     formData,
@@ -9,10 +10,26 @@ const Autopsy = ({
     coronerGroupedOptions,
     handleSelectChange,
     isUploading,
-    handleAutopsyImageUploadAndCreateAlbum, // Name remains, but functionality changed
+    handleAutopsyImageUploadAndCreateAlbum,
     setShowMissingEmployeeModal,
     setShowCoronerRankModal,
 }) => {
+    // State for the Autopsy Diagram Modal
+    const [showAutopsyDiagramModal, setShowAutopsyDiagramModal] = useState(false);
+
+    const handleOpenDiagramModal = () => setShowAutopsyDiagramModal(true);
+    const handleCloseDiagramModal = () => setShowAutopsyDiagramModal(false);
+
+    const handleSaveAutopsyDiagram = (markers) => {
+        setFormData(prev => ({
+            ...prev,
+            autopsyDiagramMarkers: markers,
+        }));
+        handleCloseDiagramModal();
+        // You might want to add a notification here if you have that system
+        console.log("Autopsy Diagram Markers Saved:", markers);
+    };
+
 
     const handleAddDeathCause = () => {
         setFormData(prev => ({
@@ -112,6 +129,17 @@ const Autopsy = ({
                     className={`form-control ${!formData.autopsyTime ? 'is-invalid' : ''}`}
                 />
             </div>
+
+            {/* Button to open the Autopsy Diagram Modal */}
+            <Form.Group className="mb-3">
+                <Form.Label>Autopsy Injury Diagram</Form.Label>
+                <div>
+                    <Button variant="info" onClick={handleOpenDiagramModal}>
+                        <i className="fas fa-male" style={{ marginRight: '5px' }}></i>
+                        Open Injury Diagram Tool ({formData.autopsyDiagramMarkers?.length || 0} markers)
+                    </Button>
+                </div>
+            </Form.Group>
 
             <Form.Label>Cause(s) of Death:</Form.Label>
             {(formData.autopsyDeathCauses || ['']).map((cause, index) => (
@@ -220,7 +248,7 @@ const Autopsy = ({
                     value={formData.autopsyAlbumUrl || ''}
                     onChange={handleChange}
                     placeholder="Paste Imgur URLs here, separated by commas, or use upload button."
-                    className={`form-control ${!formData.autopsyPhotosUnavailable && !formData.autopsyAlbumUrl.trim() ? 'is-invalid' : ''}`}
+                    className={`form-control ${!formData.autopsyPhotosUnavailable && !(formData.autopsyAlbumUrl || '').trim() ? 'is-invalid' : ''}`}
                     disabled={formData.autopsyPhotosUnavailable}
                 />
                 <Button
@@ -265,7 +293,7 @@ const Autopsy = ({
                 <button
                     type="button"
                     onClick={() => setShowMissingEmployeeModal(true)}
-                    className="close-button" 
+                    className="close-button"
                     style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', lineHeight: '1.2' }}
                 >
                     <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i>
@@ -274,7 +302,7 @@ const Autopsy = ({
                 <button
                     type="button"
                     onClick={() => setShowCoronerRankModal(true)}
-                    className="close-button" 
+                    className="close-button"
                     style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', lineHeight: '1.2' }}
                     title="Update Coroner Rank"
                 >
@@ -287,13 +315,12 @@ const Autopsy = ({
                 value={coronerGroupedOptions
                     .flatMap(group => group.options)
                     .find(option => option.value === formData.coronerEmployee) || null}
-                // Corrected onChange handler:
                 onChange={(selectedOption) => handleSelectChange(selectedOption, { name: 'coronerEmployee' })}
                 options={coronerGroupedOptions}
                 isClearable
                 placeholder="Search or select coroner..."
                 className={`form-control ${!formData.coronerEmployee ? 'is-invalid' : ''}`}
-                styles={{ 
+                styles={{
                     control: (base, state) => ({
                         ...base,
                         backgroundColor: '#16202c',
@@ -316,7 +343,15 @@ const Autopsy = ({
                     groupHeading: (base) => ({ ...base, color: '#6c757d', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.75rem', marginBottom: 4 })
                 }}
             />
-            <Form.Label></Form.Label> 
+            <Form.Label></Form.Label>
+
+            {/* Autopsy Diagram Modal Instance */}
+            <AutopsyDiagramModal
+                show={showAutopsyDiagramModal}
+                onHide={handleCloseDiagramModal}
+                onSaveDiagram={handleSaveAutopsyDiagram}
+                initialMarkers={formData.autopsyDiagramMarkers || []}
+            />
         </>
     );
 };
