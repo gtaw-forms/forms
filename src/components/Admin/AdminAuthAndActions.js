@@ -435,6 +435,8 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                 </p>
             )}
             <hr />
+            HELLO! WHAT YOU ARE ABOUT TO DO MAYBE DANGEROUS, PLEASE REVIEW EVERYTHING BEFORE CHANGING ANYTHING!
+            <hr />
             <BootstrapForm.Group className="mb-3" controlId="selectRecruitmentCategory">
                 <BootstrapForm.Label>Select Recruitment Option</BootstrapForm.Label>
                 <BootstrapForm.Select
