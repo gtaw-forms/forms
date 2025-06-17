@@ -1,9 +1,9 @@
-// src/services/notificationService.js
+// src/components/notificationService.js // Corrected path based on your input
 import * as Sentry from "@sentry/react";
 import { ref, get } from 'firebase/database';
 
-// Helper function to send a generic Discord webhook (previously in webhookService.js)
-const sendDiscordWebhookInternal = async (webhookUrl, embedData, commitInfo = {}, contextMessage = "") => {
+// Helper function to send a generic Discord webhook
+export const sendDiscordWebhookInternal = async (webhookUrl, embedData, commitInfo = {}, contextMessage = "") => { // Added export
     if (!webhookUrl) {
         console.error("Discord webhook URL not provided to sendDiscordWebhookInternal.");
         Sentry.captureMessage("Discord webhook URL missing in sendDiscordWebhookInternal.", "error");
@@ -72,7 +72,7 @@ const sendPhmcRecruitmentWebhook = async ({
     commitInfo,
     actionMessage,
     selectOptions,
-    formDefinition, // Added: to get form name and determine position details source
+    formDefinition, 
 }) => {
     const {
         applicantTitleAndFullName,
@@ -83,8 +83,6 @@ const sendPhmcRecruitmentWebhook = async ({
     } = formData;
 
     let positionDetailsSource = null;
-    // Determine the correct source for position details based on the form's titleKey
-    // This logic mirrors what's in App.js's generateTitle and getBBCodeContent
     if (formDefinition) {
         switch (formDefinition.titleKey) {
             case "phmcGeneralApplication":
@@ -125,22 +123,21 @@ const sendPhmcRecruitmentWebhook = async ({
 
     const embedData = {
         title: `${formNameForTitle} Notification`,
-        color: 0x007bff, // Blue, or your PHMC Recruitment theme color
+        color: 0x007bff, 
         fields: fields,
-        footerText: "PHMC Recruitment Forms", // Custom footer
+        footerText: "PHMC Recruitment Forms", 
     };
 
     await sendDiscordWebhookInternal(webhookUrl, embedData, commitInfo);
 };
 
-// --- MODIFIED: General PHMC Recruitment Handler ---
 export const handlePhmcRecruitmentCopyAndNotify = async ({
     formData,
     getBBCodeContent,
     showNotification,
     commitInfo,
     selectOptions,
-    formDefinition, // Added: to pass to the webhook sender
+    formDefinition, 
 }) => {
     const bbCodeToCopy = getBBCodeContent();
     const formName = formDefinition?.name || "PHMC Recruitment Application";
@@ -161,13 +158,13 @@ export const handlePhmcRecruitmentCopyAndNotify = async ({
         const discordWebhookUrl = process.env.REACT_APP_PHMC_RECRUITMENT_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
         if (discordWebhookUrl) {
-            await sendPhmcRecruitmentWebhook({ // Call the generalized function
+            await sendPhmcRecruitmentWebhook({ 
                 webhookUrl: discordWebhookUrl,
                 formData,
                 commitInfo,
                 actionMessage: `${formName} BBCode Copied`,
                 selectOptions,
-                formDefinition, // Pass the definition
+                formDefinition, 
             });
         } else {
             console.warn(`Discord webhook URL for ${formName} not set, skipping notification.`);
@@ -184,10 +181,8 @@ export const handlePhmcRecruitmentCopyAndNotify = async ({
         showNotification(userMessage, 'exclamation-triangle');
     }
 };
-// --- END MODIFICATIONS ---
 
-// Helper function to prepare and send a standardized form interaction webhook (previously in webhookService.js)
-const sendFormInteractionWebhookInternal = async ({
+const sendFormInteractionWebhookInternal = async ({ // Renamed to avoid conflict if you decide to export it
     webhookUrl,
     formData,
     versionName,
@@ -221,18 +216,17 @@ const sendFormInteractionWebhookInternal = async ({
             userValue = `SAAA Registrant: ${registrantFullName}`;
         } else if (ceoFullName) {
             userValue = `SAAA CEO: ${ceoFullName}`;
-        } else if (patientFirstName || patientLastName) { // For SAAA Entry Job
+        } else if (patientFirstName || patientLastName) { 
             userValue = `SAAA Applicant: ${patientFirstName || ''} ${patientLastName || ''}`.trim();
         }
-        // Add more SAAA specific user identifiers if needed
-    } else { // PHMC or Coroner group
+    } else { 
         if (coronerEmployee) {
             userValue = `${coronerRank || 'Coroner'} ${coronerEmployee}`;
         } else if (phmcEmployee) {
             userValue = `Hospital Staff ${phmcEmployee}`;
-        } else if (patientFirstName || patientLastName) { // General patient/user for PHMC civilian forms
+        } else if (patientFirstName || patientLastName) { 
             userValue = `${patientFirstName || ''} ${patientLastName || ''}`.trim();
-        } else if (patientName) { // Fallback patient name
+        } else if (patientName) { 
             userValue = patientName;
         }
     }
@@ -243,7 +237,6 @@ const sendFormInteractionWebhookInternal = async ({
         { name: "User", value: userValue, inline: true },
         { name: "Form Type", value: versionName, inline: true },
         { name: "Primary Identifier", value: primaryIdentifier, inline: true },
-        // Only show OOC Name and Requesting Officer if not SAAA, or if relevant to SAAA
         ...(selectedAgencyGroup !== 'SAAA' || formData.decedentOOC ? [{ name: "OOC Name", value: decedentOOC || "N/A", inline: true }] : []),
         ...(selectedAgencyGroup !== 'SAAA' || formData.requestingOfficer ? [{ name: "Requesting Officer", value: requestingOfficer || "N/A", inline: true }] : []),
         { name: "Timestamp", value: new Date().toLocaleString(), inline: false },
@@ -380,7 +373,7 @@ export const handleFormCopyAndNotify = async ({
                     webhookActionMessage = "BBCode Copied & Report Save Processed";
                 }
 
-                await sendFormInteractionWebhookInternal({
+                await sendFormInteractionWebhookInternal({ // Use the renamed internal function
                     webhookUrl: discordWebhookUrl,
                     formData,
                     versionName,
@@ -434,7 +427,7 @@ export const handleFormCopyAndNotify = async ({
                 failureActionMessage = `Error after BBCode copy. ${saveStatusMessage}`;
             }
 
-                await sendFormInteractionWebhookInternal({
+                await sendFormInteractionWebhookInternal({ // Use the renamed internal function
                     webhookUrl: failureWebhookUrl,
                     formData,
                     versionName,

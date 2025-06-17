@@ -2,6 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Form, Button, InputGroup } from 'react-bootstrap';
 import Select from 'react-select';
 import AutopsyDiagramModal from '../components/AutopsyDiagramModal';
+// Assuming sendDiscordWebhookInternal is available and can be imported
+// If it's not directly exportable or you prefer, you can define a similar function here
+// For this example, let's assume it's part of a service you can import:
+import { sendDiscordWebhookInternal } from '../components/notificationService'; // Adjust path if necessary
 
 const Autopsy = ({
     formData,
@@ -14,11 +18,9 @@ const Autopsy = ({
     setShowMissingEmployeeModal,
     setShowCoronerRankModal,
     showNotification,
+    commitInfo, // <-- Add commitInfo to props
 }) => {
-    // This useEffect is currently empty and can be removed if not used for other debugging.
-    // useEffect(() => {
-    // console.log('[Autopsy.js] Received showNotification prop:', typeof showNotification, showNotification);
-    // }, [showNotification]);
+    // ... (existing state and handlers: showAutopsyDiagramModal, handleOpenDiagramModal, etc.) ...
 
     const [showAutopsyDiagramModal, setShowAutopsyDiagramModal] = useState(false);
 
@@ -30,9 +32,6 @@ const Autopsy = ({
             ...prev,
             autopsyDiagramMarkers: markers,
         }));
-        // Note: Closing the modal here means if a user uploads to Imgur
-        // and then clicks "Done & Save Diagram", the modal closes.
-        // The Imgur URL is handled separately by onDiagramImgurUpload.
         handleCloseDiagramModal();
         if (showNotification) {
             showNotification("Autopsy diagram marker data saved!", "save");
@@ -41,17 +40,37 @@ const Autopsy = ({
         }
     };
 
-    // New handler for when the diagram is successfully uploaded to Imgur from the modal
-    const handleDiagramImgurUploadSuccess = (imgurUrl) => {
+    const handleDiagramImgurUploadSuccess = async (imgurUrl) => { // Made async
         setFormData(prev => ({
             ...prev,
-            autopsyDiagramImgurUrl: imgurUrl, // Store the Imgur URL
+            autopsyDiagramImgurUrl: imgurUrl,
         }));
         if (showNotification) {
             showNotification("Autopsy Diagram image uploaded and URL saved!", "upload");
         }
-        // Optionally, you might want to close the modal here too, or let the user close it.
-        // handleCloseDiagramModal(); 
+
+        // --- Send Discord Webhook Notification ---
+        const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL; // Or a specific one for diagrams
+        if (webhookURL && sendDiscordWebhookInternal) {
+            const embedData = {
+                title: "Autopsy Diagram Saved",
+                description: `A new autopsy diagram has been uploaded and linked.`,
+                color: 0x1ABC9C, // A teal color, for example
+                fields: [
+                    { name: "Decedent Name", value: formData.decedentName || "N/A", inline: true },
+                    { name: "Coroner", value: formData.coronerEmployee || "N/A", inline: true },
+                    { name: "Diagram URL", value: `View Diagram`, inline: false },
+                ],
+                // footerText can be customized if sendDiscordWebhookInternal supports it directly,
+                // otherwise, it uses its default.
+            };
+            // The contextMessage can be empty or provide a brief summary
+            await sendDiscordWebhookInternal(webhookURL, embedData, commitInfo, "New Autopsy Diagram Logged");
+        } else {
+            if (!webhookURL) console.warn("[Autopsy.js] Discord webhook URL for diagrams not configured.");
+            if (!sendDiscordWebhookInternal) console.warn("[Autopsy.js] sendDiscordWebhookInternal function not available.");
+        }
+        // --- End Webhook Notification ---
     };
 
 
@@ -373,8 +392,8 @@ const Autopsy = ({
             <AutopsyDiagramModal
                show={showAutopsyDiagramModal}
                onHide={handleCloseDiagramModal}
-               onSaveDiagram={handleSaveAutopsyDiagram} // Saves markers
-               onDiagramImgurUpload={handleDiagramImgurUploadSuccess} // New prop for Imgur URL
+               onSaveDiagram={handleSaveAutopsyDiagram}
+               onDiagramImgurUpload={handleDiagramImgurUploadSuccess}
                initialMarkers={formData.autopsyDiagramMarkers || []}
                showNotification={showNotification}
             />
