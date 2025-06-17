@@ -2328,7 +2328,7 @@ const saveReport = async () => {
             showNotification(`Please fill in Decedent OOC and Date/Time fields.`, 'exclamation-circle');
             return false;
         }
-        key = `${formData.decedentOOC} - ${formData.dateTime}`;
+        key = `[DEATH-REPORT] ${formData.decedentOOC} - ${formData.dateTime}`;
     } else if (bbCodeVersion === 4) { // Autopsy Report
         if (!formData.decedentName || !formData.decedentOOC || !formData.autopsyDate) {
             showNotification(`Please fill in Decedent IC Name, OOC Name, and Autopsy Date fields.`, 'exclamation-circle');
@@ -2407,7 +2407,6 @@ const saveReport = async () => {
         const definition = getFormDefinition(bbCodeVersion); // Get current form definition
 
         if (definition && definition.group === 'SAAA') {
-            // const bbCodeToCopy = getBBCodeContent(); // bbCodeContent is already defined at the top
             if (bbCodeContent && navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(bbCodeContent).then(() => {
                     showNotification(`Copied to clipboard! `, 'clipboard', 7000);
@@ -2440,7 +2439,7 @@ const saveReport = async () => {
             return false; 
         }
         key = `[${formName}] ${identifier} - ${dateField}`;
-        console.log(`Using generic key for bbCodeVersion ${bbCodeVersion}: ${key}`);
+        // Removed: console.log(`Using generic key for bbCodeVersion ${bbCodeVersion}: ${key}`);
     }
 
     // If key is still empty, something went wrong (should be caught by validations)
@@ -2603,44 +2602,100 @@ const loadReportForUser = async (reportFirebaseKey, userId) => {
     }
 
     const sanitizedUserId = userId.replace(/[.#$[\]/]/g, '_');
-    // reportFirebaseKey is already sanitized as it comes from Firebase keys
     const reportPath = `savedReports/${sanitizedUserId}/${reportFirebaseKey}`;
     const reportRef = ref(database, reportPath);
 
-    showNotification(`Loading report: ${reportFirebaseKey} for ${userId}...`, 'info-circle', 0);
+    const loadingNotifId = showNotification(`Loading report: ${reportFirebaseKey} for ${userId}...`, 'info-circle', 0);
+    console.log(`[loadReportForUser] Attempting to load report from path: ${reportPath}`);
 
     try {
         const snapshot = await get(reportRef);
         if (snapshot.exists()) {
             const reportData = snapshot.val();
+            console.log('[loadReportForUser] Raw reportData from Firebase:', JSON.parse(JSON.stringify(reportData))); // Deep copy for logging
+
             const loadedVersion = reportData.bbCodeVersion;
             const loadedBbCode = reportData.bbCode || '';
-            const loadedFormData = reportData.data || {};
+            let loadedFormData = reportData.data || {};
+            console.log('[loadReportForUser] Initial loadedFormData (reportData.data):', JSON.parse(JSON.stringify(loadedFormData)));
+            console.log('[loadReportForUser] Loaded bbCodeVersion:', loadedVersion);
+            console.log('[loadReportForUser] Loaded bbCode (first 100 chars):', loadedBbCode.substring(0, 100));
 
-            // --- Fields managed by localStorage with expiry (similar to old loadReport) ---
-            // This part might need adjustment if you're moving away from localStorage for these fields too.
-            // For now, keeping it similar to your previous `loadReport` logic.
+
+            const loadedCoronerEmployee = loadedFormData.coronerEmployee;
+            const loadedPhmcEmployee = loadedFormData.phmcEmployee;
+            const currentTimestamp = Date.now().toString();
+
+            if (loadedCoronerEmployee) {
+                 const coronerDetails = coronerListData.find(c => c.name === loadedCoronerEmployee);
+                 if (coronerDetails) {
+                     console.log(`[loadReportForUser] Valid coroner "${loadedCoronerEmployee}" found. Syncing details.`);
+                     loadedFormData.coronerEmployee = loadedCoronerEmployee;
+                     loadedFormData.coronerBadge = coronerDetails.badge || '';
+                     loadedFormData.coronerRank = coronerDetails.rank || '';
+                     loadedFormData.coronerDiscord = coronerDetails.discord || '';
+                     loadedFormData.coronerPHNumber = coronerDetails.phNumber || '50056';
+
+                     localStorage.setItem('coronerEmployee', loadedFormData.coronerEmployee);
+                     localStorage.setItem('coronerEmployee_timestamp', currentTimestamp);
+                     // ... (localStorage sets for badge, rank, etc.)
+                 } else {
+                     console.warn(`[loadReportForUser] Loaded coroner "${loadedCoronerEmployee}" NOT found in current list. Clearing coroner fields.`);
+                     loadedFormData.coronerEmployee = '';
+                     loadedFormData.coronerBadge = '';
+                     loadedFormData.coronerRank = '';
+                     loadedFormData.coronerDiscord = '';
+                     loadedFormData.coronerPHNumber = '50056';
+                     // ... (localStorage removes for coroner fields)
+                 }
+            } else {
+                console.log('[loadReportForUser] No coronerEmployee in loaded report data.');
+                 // ... (localStorage removes for coroner fields if not present)
+            }
+
+             if (loadedPhmcEmployee) {
+                 const phmcDetails = phmcListData.find(p => p.name === loadedPhmcEmployee);
+                 if (phmcDetails) {
+                     console.log(`[loadReportForUser] Valid PHMC employee "${loadedPhmcEmployee}" found. Syncing details.`);
+                     loadedFormData.phmcEmployee = loadedPhmcEmployee;
+                     loadedFormData.phmcEmployeeSignature = phmcDetails.signature || '';
+                     loadedFormData.phmcEmployeeLastName = phmcDetails.lastName || '';
+                     loadedFormData.phmcRank = phmcDetails.category || phmcDetails.rank || '';
+                     // ... (localStorage sets for PHMC fields)
+                 } else {
+                     console.warn(`[loadReportForUser] Loaded PHMC employee "${loadedPhmcEmployee}" NOT found in current list. Clearing PHMC fields.`);
+                     loadedFormData.phmcEmployee = '';
+                     loadedFormData.phmcEmployeeSignature = '';
+                     loadedFormData.phmcEmployeeLastName = '';
+                     loadedFormData.phmcRank = '';
+                     // ... (localStorage removes for PHMC fields)
+                 }
+             } else {
+                console.log('[loadReportForUser] No phmcEmployee in loaded report data.');
+                 // ... (localStorage removes for PHMC fields if not present)
+             }
+            console.log('[loadReportForUser] loadedFormData after employee validation/sync:', JSON.parse(JSON.stringify(loadedFormData)));
+
             const localStorageManagedFields = [
                 'placeOfDeath', 'pronouncedTimeOfDeath', 'dateTime', 'department',
-                'mannerOfDeath', 'coronerEmployee', 'coronerBadge', 'coronerRank',
-                'coronerDiscord', 'phmcEmployee', 'phmcSignature'
+                'mannerOfDeath',
             ];
-            const currentTimestamp = Date.now().toString();
             localStorageManagedFields.forEach(field => {
                 if (loadedFormData.hasOwnProperty(field) && loadedFormData[field]) {
                     localStorage.setItem(field, loadedFormData[field]);
                     localStorage.setItem(`${field}_timestamp`, currentTimestamp);
                 }
             });
-            // --- End localStorage management ---
 
-            // Logic to handle loading into different form versions (like your old loadReport)
-            if (bbCodeVersion === 2 && loadedVersion === 1) { // Loading Death Report into Coroner Email
+
+            if (bbCodeVersion === 2 && loadedVersion === 1) {
+                console.log('[loadReportForUser] Handling v1 Death Report loading into v2 Coroner Email.');
                 let modifiedBbCode = loadedBbCode.replace(/\[bold\]/g, '[b]').replace(/\[\/bold\]/g, '[/b]');
                 const currentDeathReportIsEmpty = !formData.deathReport || formData.deathReport.trim() === '';
                 let notificationMessage = '';
 
                 setFormData(prevFormData => {
+                    console.log('[loadReportForUser] setFormData (v1 into v2) - prevFormData:', JSON.parse(JSON.stringify(prevFormData)));
                     let updatedName = prevFormData.decedentName || '';
                     let updatedOoc = prevFormData.decedentOOC || '';
                     let updatedDeathReport = prevFormData.deathReport || '';
@@ -2664,34 +2719,48 @@ const loadReportForUser = async (reportFirebaseKey, userId) => {
                         updatedAdditionalReports = [...updatedAdditionalReports, modifiedBbCode];
                         notificationMessage = `Added report for ${loadedFormData.decedentName || reportData.originalKey} as an additional report.`;
                     }
-                    return {
-                        ...prevFormData, // Keep existing form data
-                        ...loadedFormData, // Apply loaded data
+                    const finalDataToSet = {
+                        ...prevFormData,
+                        ...loadedFormData,
                         decedentName: updatedName,
                         decedentOOC: updatedOoc,
                         deathReport: updatedDeathReport,
                         additionalReports: updatedAdditionalReports,
                     };
+                    console.log('[loadReportForUser] setFormData (v1 into v2) - finalDataToSet:', JSON.parse(JSON.stringify(finalDataToSet)));
+                    return finalDataToSet;
                 });
-                setParsedBBCode(''); // Clear any previously parsed BBCode
+                setParsedBBCode('');
                 showNotification(notificationMessage, 'plus-circle');
 
-            } else { // Default loading for other cases
-                setFormData(prev => ({ ...prev, ...loadedFormData })); // Merge, prioritizing loaded data for relevant fields
+            } else {
+                console.log('[loadReportForUser] Handling default report loading.');
+                setFormData(prev => {
+                    console.log('[loadReportForUser] setFormData (default) - prevFormData:', JSON.parse(JSON.stringify(prev)));
+                    const finalDataToSet = {
+                        ...prev,
+                        ...loadedFormData,
+                    };
+                    console.log('[loadReportForUser] setFormData (default) - finalDataToSet:', JSON.parse(JSON.stringify(finalDataToSet)));
+                    return finalDataToSet;
+                });
                 setBbCodeVersion(loadedVersion);
                 setParsedBBCode(loadedBbCode);
                 showNotification(`Report "${reportData.originalKey || reportFirebaseKey}" loaded.`, 'upload');
             }
-            setShowSavedReports(false); // Close the modal
+            setShowSavedReports(false);
+
         } else {
+            console.warn(`[loadReportForUser] Report not found in Firebase: ${reportFirebaseKey}`);
             showNotification(`Report not found in Firebase: ${reportFirebaseKey}`, 'error');
         }
     } catch (error) {
-        console.error(`Error loading report ${reportFirebaseKey} for user ${userId}:`, error);
+        console.error(`[loadReportForUser] Error loading report ${reportFirebaseKey} for user ${userId}:`, error);
         Sentry.captureException(error, { extra: { context: 'loadReportForUser', userId, reportFirebaseKey } });
         showNotification(`Failed to load report: ${error.message}`, 'error');
     } finally {
-        // Remove indefinite loading notification if one was set by showNotification
+        removeNotification(loadingNotifId);
+        console.log(`[loadReportForUser] Finished loading process for report: ${reportFirebaseKey}`);
     }
 };
 const deleteReportForUser = async (reportFirebaseKey, userId) => {
