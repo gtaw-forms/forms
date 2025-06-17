@@ -1,3 +1,4 @@
+// src/components/AutopsyDiagramModal.js
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from 'react-bootstrap';
 // Placeholder for a human body silhouette or diagram
@@ -88,7 +89,14 @@ const loadImage = (src) => {
     });
 };
 
-const AutopsyDiagramModal = ({ show, onHide, onSaveDiagram, initialMarkers = [], showNotification }) => {
+const AutopsyDiagramModal = ({
+    show,
+    onHide,
+    onSaveDiagram,
+    initialMarkers = [],
+    showNotification,
+    onDiagramImgurUpload // <-- This is the correct place for prop destructuring
+}) => {
     const [markers, setMarkers] = useState([]);
     const [selectedMarkerType, setSelectedMarkerType] = useState('circle');
     const imageRef = useRef(null);
@@ -102,7 +110,7 @@ const AutopsyDiagramModal = ({ show, onHide, onSaveDiagram, initialMarkers = [],
     const IMGUR_CLIENT_ID = process.env.REACT_APP_IMGUR_CLIENT_ID;
 
     useEffect(() => {
-        loadImage(bodySilhouette) 
+        loadImage(bodySilhouette)
             .then(img => setBodyImage(img))
             .catch(err => console.error("Failed to load body silhouette:", err));
     }, []);
@@ -268,7 +276,7 @@ const AutopsyDiagramModal = ({ show, onHide, onSaveDiagram, initialMarkers = [],
             return;
         }
         const dataUrl = canvas.toDataURL('image/png');
-        const base64Image = dataUrl.split(',')[1]; 
+        const base64Image = dataUrl.split(',')[1];
 
         try {
             const formData = new FormData();
@@ -288,6 +296,10 @@ const AutopsyDiagramModal = ({ show, onHide, onSaveDiagram, initialMarkers = [],
                 console.log('[DEBUG] Imgur Upload Successful:', result.data.link);
                 if (showNotification) showNotification(`Uploaded to Imgur! Link: ${result.data.link}`, 'success');
                 else alert(`Uploaded to Imgur! Link: ${result.data.link}`);
+                if (onDiagramImgurUpload) { // Check if the prop is provided
+                    onDiagramImgurUpload(result.data.link);
+                }
+
             } else {
 
                 console.error('[DEBUG] Imgur Upload Failed:', result.data.error || result.status, result);
@@ -395,36 +407,88 @@ const AutopsyDiagramModal = ({ show, onHide, onSaveDiagram, initialMarkers = [],
     };
 
     const renderMarker = (marker) => {
-        const markerContainerStyle = {
+        // This container is the anchor point, positioned by marker.x and marker.y.
+        // It represents the intended center of the visual symbol (circle/X).
+        const anchorPointStyle = {
             position: 'absolute',
             left: `${marker.x}%`,
             top: `${marker.y}%`,
-            transform: 'translate(-50%, -50%)',
-            display: 'flex',
-            alignItems: 'center',
-            cursor: 'pointer',
-            zIndex: 10,
+            zIndex: 10, // Ensure markers are on top
+            // This div itself doesn't need a size; it's a reference point.
+            // The click handlers are on this div, making the area around the center clickable.
         };
-        const mainMarkerVisualSyle = marker.type === 'circle' ? {
-            width: '15px', height: '15px', backgroundColor: 'rgba(255, 0, 0, 0.7)',
-            borderRadius: '50%', border: '1px solid darkred',
-        } : {
-            color: 'blue', fontSize: '20px', fontWeight: 'bold', lineHeight: '1',
+
+        // Base style for the visual symbol (circle or X)
+        const symbolBaseStyle = {
+            position: 'absolute', // Positioned relative to the anchorPointStyle's origin (0,0)
+            transform: 'translate(-50%, -50%)', // This centers the symbol on the anchor point
+            cursor: 'pointer', // Make the symbol itself indicate clickability
         };
-        const labelTextStyle = {
-            marginLeft: '4px', fontSize: '10px', color: '#f0f0f0',
-            backgroundColor: 'rgba(0,0,0,0.5)', padding: '1px 3px',
-            borderRadius: '3px', whiteSpace: 'nowrap', pointerEvents: 'none',
+
+        const circleSymbolStyle = {
+            ...symbolBaseStyle,
+            width: '15px', // On-screen diameter
+            height: '15px',
+            backgroundColor: 'rgba(255, 0, 0, 0.7)',
+            borderRadius: '50%',
+            border: '1px solid darkred',
         };
+
+        const crossSymbolStyle = {
+            ...symbolBaseStyle,
+            color: 'blue',
+            fontSize: '20px', // On-screen font size for the 'X'
+            fontWeight: 'bold',
+            lineHeight: '1', // Helps center the 'X' vertically
+            userSelect: 'none', // Prevent text selection when clicking the 'X'
+        };
+
+        // Style for the label
+        const labelStyle = {
+            position: 'absolute', // Positioned relative to the anchorPointStyle's origin
+            // Position the label to the right of the symbol.
+            // If symbol width is ~15-20px, its half-width is ~7.5-10px.
+            // Start label text a bit further to the right of the symbol's center.
+            left: '12px', // e.g., 12px to the right of the center point
+            top: '50%',   // Align top of label with the symbol's vertical center
+            transform: 'translateY(-50%)', // Further adjust to vertically center the label itself
+            fontSize: '10px', // On-screen label font size
+            color: '#f0f0f0',
+            backgroundColor: 'rgba(0,0,0,0.6)',
+            padding: '1px 4px',
+            borderRadius: '3px',
+            whiteSpace: 'nowrap',
+            pointerEvents: 'none', // Label should not interfere with clicks
+            zIndex: 1, // Optional: ensure label is above/below symbol if they could overlap
+        };
+
         return (
-            <div key={marker.id} style={markerContainerStyle}
-                onClick={(e) => { e.stopPropagation(); handleRemoveMarker(marker.id); }}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); handleRemoveMarker(marker.id); }}}
-                role="button" tabIndex={0}
+            <div
+                key={marker.id}
+                style={anchorPointStyle} // This div is the main clickable anchor
+                onClick={(e) => {
+                    e.stopPropagation();
+                    handleRemoveMarker(marker.id);
+                }}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.stopPropagation();
+                        handleRemoveMarker(marker.id);
+                    }
+                }}
+                role="button"
+                tabIndex={0}
                 aria-label={`Remove ${marker.type}${marker.label ? ' ' + marker.label : ''} at ${marker.x.toFixed(0)}%, ${marker.y.toFixed(0)}%`}
+                // To make the clickable area slightly larger than the visual symbol,
+                // you could add invisible padding or a transparent larger div here.
+                // For now, the symbol itself will be the primary visual click target.
             >
-                <div style={mainMarkerVisualSyle}>{marker.type === 'cross' ? 'X' : null}</div>
-                {marker.label && <span style={labelTextStyle}>{marker.label}</span>}
+                {/* The actual visual symbol (circle or X) centered on the anchor point */}
+                {marker.type === 'circle' && <div style={circleSymbolStyle}></div>}
+                {marker.type === 'cross' && <div style={crossSymbolStyle}>X</div>}
+
+                {/* The label, also positioned relative to the anchor point */}
+                {marker.label && <span style={labelStyle}>{marker.label}</span>}
             </div>
         );
     };
@@ -432,13 +496,13 @@ const AutopsyDiagramModal = ({ show, onHide, onSaveDiagram, initialMarkers = [],
     if (!show) return null;
 
     return (
-        <> 
+        <>
             <canvas ref={canvasRef} style={{ display: 'none' }} />
 
             <div style={modalOverlayStyle} onClick={onHide}>
             <div style={modalContentStyle} onClick={e => e.stopPropagation()}>
                 <div style={modalHeaderStyle}>
-                    <h5 style={modalTitleStyle}>Autopsy Diagram (TESTING) </h5>
+                    <h5 style={modalTitleStyle}>Autopsy Diagram</h5> {/* Removed (TESTING) for cleaner title */}
                     <button onClick={onHide} style={modalCloseButtonStyle} aria-label="Close modal">&times;</button>
                 </div>
 
@@ -470,7 +534,7 @@ const AutopsyDiagramModal = ({ show, onHide, onSaveDiagram, initialMarkers = [],
                     <div ref={imageContainerRef} style={imageContainerStyle}>
                         <img
                             ref={imageRef}
-                            src={bodySilhouette} 
+                            src={bodySilhouette}
                             alt="Autopsy diagram area"
                             style={bodyImageStyle}
                             onClick={handleImageClick}
@@ -508,5 +572,4 @@ const AutopsyDiagramModal = ({ show, onHide, onSaveDiagram, initialMarkers = [],
         </>
     );
 };
-
 export default AutopsyDiagramModal;
