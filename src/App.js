@@ -27,7 +27,7 @@ import RecruitmentStatusDisplay from './components/RecruitmentStatusDisplay'; //
 import AdminModal from './components/Admin/AdminModal'; // We will create this
 
 // 
-import { handleFormCopyAndNotify, handlePhmcRecruitmentCopyAndNotify } from './notificationService'; // Add the new import
+import { handleFormCopyAndNotify, handlePhmcRecruitmentCopyAndNotify } from './components/notificationService'; // Add the new import
 
 import FlightSchoolTipsModal from './saaa-components/FlightSchoolTipsModal';
 import saaaLogo from './assets/saaa-button.png'; // Import SAAA logo
@@ -4345,7 +4345,7 @@ const handleCopyAndNotifyWrapper = async () => {
                                         formData={formData}
                                         handleChange={handleChange}
                                         setFormData={setFormData}
-                                        
+                                        commitInfo={commitInfo}
                                         // Pass all necessary props from App.js state and selectOptions
                                         // Example for DeathReport:
                                         typeOfDeathOptions={selectOptions.typeOfDeathOptions || []}
