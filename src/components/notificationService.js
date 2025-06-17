@@ -182,7 +182,7 @@ export const handlePhmcRecruitmentCopyAndNotify = async ({
     }
 };
 
-const sendFormInteractionWebhookInternal = async ({ // Renamed to avoid conflict if you decide to export it
+const sendFormInteractionWebhookInternal = async ({
     webhookUrl,
     formData,
     versionName,
@@ -207,6 +207,7 @@ const sendFormInteractionWebhookInternal = async ({ // Renamed to avoid conflict
         requestingOfficer,
         registrantFullName,
         ceoFullName,
+        autopsyDiagramImgurUrl, // Ensure this is destructured
     } = formData;
 
     let userValue = 'Unknown User';
@@ -216,17 +217,17 @@ const sendFormInteractionWebhookInternal = async ({ // Renamed to avoid conflict
             userValue = `SAAA Registrant: ${registrantFullName}`;
         } else if (ceoFullName) {
             userValue = `SAAA CEO: ${ceoFullName}`;
-        } else if (patientFirstName || patientLastName) { 
+        } else if (patientFirstName || patientLastName) {
             userValue = `SAAA Applicant: ${patientFirstName || ''} ${patientLastName || ''}`.trim();
         }
-    } else { 
+    } else {
         if (coronerEmployee) {
             userValue = `${coronerRank || 'Coroner'} ${coronerEmployee}`;
         } else if (phmcEmployee) {
             userValue = `Hospital Staff ${phmcEmployee}`;
-        } else if (patientFirstName || patientLastName) { 
+        } else if (patientFirstName || patientLastName) {
             userValue = `${patientFirstName || ''} ${patientLastName || ''}`.trim();
-        } else if (patientName) { 
+        } else if (patientName) {
             userValue = patientName;
         }
     }
@@ -243,6 +244,12 @@ const sendFormInteractionWebhookInternal = async ({ // Renamed to avoid conflict
         { name: "Action", value: actionMessage, inline: false },
     ];
 
+    // --- MODIFICATION START ---
+    // Remove the previous field for the Autopsy Image URL
+    // The image will now be part of the main embed structure if available.
+    // --- MODIFICATION END ---
+
+
     if (firebaseSavedCount !== undefined) {
         fields.push({ name: "Total Saved Reports (Firebase)", value: firebaseSavedCount.toString(), inline: false });
     }
@@ -250,14 +257,55 @@ const sendFormInteractionWebhookInternal = async ({ // Renamed to avoid conflict
         fields.push({ name: "Error Details", value: errorMessage, inline: false });
     }
 
-    const embedData = {
+    // Construct the embed object
+    const embed = {
         title: statusTitle,
+        description: actionMessage,
         color: statusColor,
         fields: fields,
-        footerText: "Forms Tool",
+        timestamp: new Date().toISOString(),
+        footer: {
+            text: `Forms Tool | gh-pages ${commitInfo.sha || 'N/A'}`
+        },
+        // --- MODIFICATION START ---
+        // Conditionally add the image to the embed if it's an Autopsy Report and the URL exists
+        ...(versionName === "Autopsy Report" && autopsyDiagramImgurUrl && { image: { url: autopsyDiagramImgurUrl } })
+        // --- MODIFICATION END ---
     };
 
-    await sendDiscordWebhookInternal(webhookUrl, embedData, commitInfo);
+    try {
+        const response = await fetch(webhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                embeds: [embed]
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`Failed to send Discord webhook. Status: ${response.status} ${response.statusText}`, errorText);
+            Sentry.captureMessage(`Discord webhook send failed: ${response.status}`, {
+                level: 'error',
+                extra: {
+                    statusText: response.statusText,
+                    responseBody: errorText,
+                    webhookTitle: statusTitle, // Use statusTitle here as embed.title might be default
+                }
+            });
+            // Optionally, you might want to return false or throw an error
+        }
+        // Optionally, return true on success
+    } catch (error) {
+        console.error('Error sending Discord webhook:', error);
+        Sentry.captureException(error, {
+            extra: {
+                context: 'sendFormInteractionWebhookInternal Fetch Error',
+                webhookTitle: statusTitle, // Use statusTitle here
+            }
+        });
+        // Optionally, return false or throw the error
+    }
 };
 
 

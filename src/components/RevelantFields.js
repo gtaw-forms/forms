@@ -25,12 +25,31 @@ const getRelevantFields = (bbCodeVersion) => {
                 'patientSleep', 'patientSexLife', 'patientJobRisks', 'patientHazards', 'patientOther',
                 'dnrOther', 'decedentOOC', 'maritalStatus', 'numberChildren', 'financialStatus', 'dnr', 'dnrOrder', 'attorney'
             ];
-        case 4: // Dental Report
+        case 4: // Autopsy Report
             return [
-                'PatientMedicalRecord', 'PatientName', 'patientWeight', 'patientChewing',
-                'patientDateofBirth', 'patientMedicine', 'patientNewMedicine', 'patientTreatment',
-                'patientDiagnosis', 'patientPrescription', 'patientSummary', 'phmcEmployee', 'date',
-                'patientFormYes', 'patientFormNo', 'patientMale', 'patientFormYes2'
+                'coronerEmployee',
+                'coronerRank',
+                'coronerBadge',
+                'decedentName',
+                'decedentOOC',
+                'autopsyDate',
+                'autopsyTime',
+                'placeOfDeath',
+                'causeOfDeath', // Corrected: removed backticks
+                'deathType',
+                'autopsyDeathCauses',
+                'externalExamination',
+                'internalExamination',
+                'evidenceRecovered',
+                'autopsyAnatomicSummaryItems',
+                'autopsyAlbumUrl', // Keep one instance for general autopsy photos
+                'autopsyPhotosUnavailable',
+                'additionalNotes',
+                'synopsis',
+                'RadiologyResult', // Added from your Autopsy.js component
+                'autopsyDiagramImgurUrl', // Added: URL for the saved diagram image
+                'autopsyDiagramMarkers',  // Added: Marker data for the diagram (if you want to save for re-editing)
+                // Add any other fields specific to your Autopsy form component
             ];
         case 5: // Surgery Report
             return [

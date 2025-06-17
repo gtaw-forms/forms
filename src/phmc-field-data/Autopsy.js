@@ -40,38 +40,16 @@ const Autopsy = ({
         }
     };
 
-    const handleDiagramImgurUploadSuccess = async (imgurUrl) => { // Made async
+    const handleDiagramImgurUploadSuccess = async (imgurUrl) => { // imgurUrl is the parameter here
         setFormData(prev => ({
             ...prev,
-            autopsyDiagramImgurUrl: imgurUrl,
+            autopsyDiagramImgurUrl: imgurUrl, // The URL is saved to formData here
         }));
         if (showNotification) {
             showNotification("Autopsy Diagram image uploaded and URL saved!", "upload");
         }
-
-        // --- Send Discord Webhook Notification ---
-        const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL; // Or a specific one for diagrams
-        if (webhookURL && sendDiscordWebhookInternal) {
-            const embedData = {
-                title: "Autopsy Diagram Saved",
-                description: `A new autopsy diagram has been uploaded and linked.`,
-                color: 0x1ABC9C, // A teal color, for example
-                fields: [
-                    { name: "Decedent Name", value: formData.decedentName || "N/A", inline: true },
-                    { name: "Coroner", value: formData.coronerEmployee || "N/A", inline: true },
-                    { name: "Diagram URL", value: `View Diagram`, inline: false },
-                ],
-                // footerText can be customized if sendDiscordWebhookInternal supports it directly,
-                // otherwise, it uses its default.
-            };
-            // The contextMessage can be empty or provide a brief summary
-            await sendDiscordWebhookInternal(webhookURL, embedData, commitInfo, "New Autopsy Diagram Logged");
-        } else {
-            if (!webhookURL) console.warn("[Autopsy.js] Discord webhook URL for diagrams not configured.");
-            if (!sendDiscordWebhookInternal) console.warn("[Autopsy.js] sendDiscordWebhookInternal function not available.");
-        }
-        // --- End Webhook Notification ---
     };
+
 
 
     const handleAddDeathCause = () => {
