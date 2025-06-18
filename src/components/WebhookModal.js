@@ -1,8 +1,8 @@
-import React, { useState } from 'react'; // Removed useEffect as it's not needed here now
-import { Button, Form, InputGroup } from 'react-bootstrap'; // Added InputGroup
-import * as Sentry from "@sentry/react"; // Import Sentry
+import React, { useState, useEffect } from 'react';
+import { Button, Form, InputGroup } from 'react-bootstrap';
+import * as Sentry from "@sentry/react";
 
-// --- Styles (Keep existing styles: modalOverlayStyle, modalContentStyle, etc.) ---
+// --- Styles (Keep existing styles) ---
 const modalOverlayStyle = {
     position: 'fixed',
     top: 0,
@@ -64,7 +64,8 @@ const modalFooterStyle = {
     paddingTop: '15px',
     marginTop: '20px',
     display: 'flex',
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-end', // Buttons will remain to the right
+    alignItems: 'center',
     gap: '10px',
 };
 
@@ -88,24 +89,10 @@ const imagePreviewStyle = {
     border: '1px solid #30363d',
     borderRadius: '4px',
 };
-const imageUrlContainerStyle = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    marginTop: '10px',
-};
-const imageUrlTextStyle = {
-    flexGrow: 1,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontSize: '0.9em',
-    color: '#8b949e', // Dimmer color for URL
-};
 const clearImageButtonStyle = {
     padding: '2px 6px',
     fontSize: '0.8em',
-    backgroundColor: '#6e7681', // Grey button
+    backgroundColor: '#6e7681',
     color: '#ffffff',
     border: 'none',
     borderRadius: '3px',
@@ -113,8 +100,8 @@ const clearImageButtonStyle = {
 };
 const imagePreviewContainerStyle = {
     display: 'flex',
-    flexWrap: 'wrap', // Allow previews to wrap
-    gap: '10px',      // Space between previews
+    flexWrap: 'wrap',
+    gap: '10px',
     marginTop: '10px',
 };
 const urlPreviewStyle = {
@@ -124,12 +111,12 @@ const urlPreviewStyle = {
     padding: '5px 8px',
     border: '1px solid #30363d',
     borderRadius: '4px',
-    backgroundColor: '#161b22', // Slightly different background
+    backgroundColor: '#161b22',
     fontSize: '0.9em',
-    maxWidth: '250px', // Limit width
+    maxWidth: '250px',
 };
 const urlIconStyle = {
-    color: '#8b949e', // Icon color
+    color: '#8b949e',
 };
 const urlTextStyle = {
     color: '#c9d1d9',
@@ -137,10 +124,15 @@ const urlTextStyle = {
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
 };
-
 // --- End Styles ---
 
-// Updated props to include title state
+const LS_WEBHOOK_TITLE_CONTENT = 'webhookModal_title_content';
+const LS_WEBHOOK_TITLE_TIMESTAMP = 'webhookModal_title_timestamp';
+const LS_WEBHOOK_MESSAGE_CONTENT = 'webhookModal_message_content';
+const LS_WEBHOOK_MESSAGE_TIMESTAMP = 'webhookModal_message_timestamp';
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const FORM_GENERATOR_URL = "https://gtaw-forms.github.io/forms/";
+
 const WebhookModal = ({
     show,
     onClose,
@@ -151,12 +143,49 @@ const WebhookModal = ({
     onSubmit,
     onSubmitPhmc,
     showNotification,
-    commitInfo
+    commitInfo,
+    modalHeaderText = "Send Dev Webhook Embed"
 }) => {
-    const [mediaUrls, setMediaUrls] = useState([]); // Renamed from imageUrls
+    const [mediaUrls, setMediaUrls] = useState([]);
     const [isUploading, setIsUploading] = useState(false);
-    const [urlInput, setUrlInput] = useState(''); // State for the URL input field
+    const [urlInput, setUrlInput] = useState('');
     const phmcLogoUrl = 'https://i.imgur.com/QMaz0OC.png';
+
+    useEffect(() => {
+        if (show) {
+            const savedTitle = localStorage.getItem(LS_WEBHOOK_TITLE_CONTENT);
+            const savedTitleTs = localStorage.getItem(LS_WEBHOOK_TITLE_TIMESTAMP);
+            if (savedTitle && savedTitleTs && (Date.now() - parseInt(savedTitleTs, 10) < ONE_DAY_MS)) {
+                setWebhookTitle(savedTitle);
+            } else {
+                localStorage.removeItem(LS_WEBHOOK_TITLE_CONTENT);
+                localStorage.removeItem(LS_WEBHOOK_TITLE_TIMESTAMP);
+            }
+
+            const savedMessage = localStorage.getItem(LS_WEBHOOK_MESSAGE_CONTENT);
+            const savedMessageTs = localStorage.getItem(LS_WEBHOOK_MESSAGE_TIMESTAMP);
+            if (savedMessage && savedMessageTs && (Date.now() - parseInt(savedMessageTs, 10) < ONE_DAY_MS)) {
+                setWebhookMessage(savedMessage);
+            } else {
+                localStorage.removeItem(LS_WEBHOOK_MESSAGE_CONTENT);
+                localStorage.removeItem(LS_WEBHOOK_MESSAGE_TIMESTAMP);
+            }
+        }
+    }, [show, setWebhookTitle, setWebhookMessage]);
+
+    useEffect(() => {
+        if (show && typeof webhookTitle === 'string') {
+            localStorage.setItem(LS_WEBHOOK_TITLE_CONTENT, webhookTitle);
+            localStorage.setItem(LS_WEBHOOK_TITLE_TIMESTAMP, Date.now().toString());
+        }
+    }, [webhookTitle, show]);
+
+    useEffect(() => {
+        if (show && typeof webhookMessage === 'string') {
+            localStorage.setItem(LS_WEBHOOK_MESSAGE_CONTENT, webhookMessage);
+            localStorage.setItem(LS_WEBHOOK_MESSAGE_TIMESTAMP, Date.now().toString());
+        }
+    }, [webhookMessage, show]);
 
 
     const handleImageUpload = async (event) => {
@@ -186,7 +215,6 @@ const WebhookModal = ({
                 }
             });
 
-            // *** FIX: Use setMediaUrls ***
             setMediaUrls(prevUrls => [...prevUrls, ...successfulUrls]);
 
             if (successfulUrls.length > 0) {
@@ -250,13 +278,10 @@ const WebhookModal = ({
         showNotification('URL added successfully!', 'check-circle');
     };
 
-    // --- Updated clear function ---
     const clearMedia = () => {
-        setMediaUrls([]); // Use the correct state setter
+        setMediaUrls([]);
     };
-    // --- End Updated ---
     const isImageUrl = (url) => {
-        // Simple check for common image extensions or Imgur links
         return /\.(jpg|jpeg|png|gif)$/i.test(url) || url.includes('imgur.com');
     };
 
@@ -264,7 +289,6 @@ const WebhookModal = ({
         return url.includes('streamable.com');
     };
 
-    // --- Updated Data Preparation Logic ---
     const prepareWebhookDataInternal = () => {
         const title = webhookTitle.trim();
         const message = webhookMessage.trim();
@@ -279,42 +303,57 @@ const WebhookModal = ({
         }
 
         let description = message || '';
-        let firstImageUrl = null;
+        let firstImageUrlForEmbed = null;
 
-        // Find the first *image* URL for the embed.image field
         for (const url of mediaUrls) {
             if (isImageUrl(url)) {
-                firstImageUrl = url;
-                break; // Stop after finding the first image
+                firstImageUrlForEmbed = url;
+                break;
             }
         }
 
-        // Add footer
-        description += `\n\nPHMC Form Generator - v${commitInfo?.sha || 'N/A'}`;
+        const footerText = `PHMC Form Generator - v${commitInfo?.sha || 'N/A'} | ${FORM_GENERATOR_URL}`;
 
         if (description.length > 4096) {
-            showNotification('Embed body (including media links) cannot exceed 4096 characters.', 'warning');
+            showNotification('Embed body (message content) cannot exceed 4096 characters.', 'warning');
             return null;
         }
 
+        // --- MODIFICATION START: Add URL to embed title and as a field ---
+        const embedFields = [];
+        if (FORM_GENERATOR_URL) {
+            embedFields.push({ name: "Form Generator Link", value: FORM_GENERATOR_URL, inline: false });
+        }
+        // --- MODIFICATION END ---
+
         const embed = {
-            title: title || undefined,
+            title: title || "PHMC Form Generator Notification", // Default title if user leaves it blank
+            // --- MODIFICATION START: Make title a link ---
+            url: FORM_GENERATOR_URL,
+            // --- MODIFICATION END ---
             description: description.trim() || undefined,
             color: 0x7289DA,
             timestamp: new Date().toISOString(),
-            // Use the first *image* URL found for the main embed image
-            image: firstImageUrl ? { url: firstImageUrl } : undefined,
+            image: firstImageUrlForEmbed ? { url: firstImageUrlForEmbed } : undefined,
+            fields: embedFields, // Add the new field here
+            footer: {
+                text: footerText
+            }
         };
 
-        // Cleanup if only media was provided
         if (!message && !title && mediaUrls.length > 0) {
              embed.description = `Media submitted via PHMC Form Generator - v${commitInfo?.sha || 'N/A'}`;
              embed.description += '\n\n**Media:**\n';
              mediaUrls.forEach((url, index) => {
                  const type = isStreamableUrl(url) ? 'Video' : isImageUrl(url) ? 'Image' : 'Link';
-                 embed.description += `- ${type} ${index + 1}\n`;
+                 embed.description += `- ${type} ${index + 1}: ${url}\n`;
              });
+             if (embed.description.length > 4096) {
+                showNotification('Embed body (including media links) cannot exceed 4096 characters.', 'warning');
+                return null;
+             }
         }
+
 
         const payload = {
             username: "PHMC",
@@ -324,34 +363,35 @@ const WebhookModal = ({
 
         return payload;
     };
-    // --- End Data Preparation ---
 
-    // --- Modified Submit Handlers ---
+
     const handleDevSubmit = () => {
         const payload = prepareWebhookDataInternal();
         if (payload) {
-            onSubmit(payload); // Pass the prepared payload UP to App.js's handler
+            onSubmit(payload);
         }
     };
 
     const handlePhmcSubmit = () => {
         const payload = prepareWebhookDataInternal();
         if (payload) {
-            onSubmitPhmc(payload); // Pass the prepared payload UP to App.js's handler
+            onSubmitPhmc(payload);
         }
     };
-    // --- End Modified Submit Handlers ---
 
 
     if (!show) {
         return null;
     }
 
+    const titlePlaceholder = "Major Update / Minor Update / Hotfix";
+    const messagePlaceholder = `- Added: \n- Fixed: \n- Updated: `;
+
     return (
         <div style={modalOverlayStyle} onClick={onClose}>
             <div style={modalContentStyle} onClick={e => e.stopPropagation()}>
                 <div style={modalHeaderStyle}>
-                    <h5 style={modalTitleStyle}>Send Dev Webhook Embed</h5>
+                    <h5 style={modalTitleStyle}>{modalHeaderText}</h5>
                     <button onClick={onClose} style={closeButtonStyle} aria-label="Close modal">
                         &times;
                     </button>
@@ -359,12 +399,11 @@ const WebhookModal = ({
 
                 <div style={modalBodyStyle}>
                     <Form>
-                        {/* Title and Body Textarea (Keep as is) */}
                         <Form.Group controlId="webhookEmbedTitle" className="mb-3">
                             <Form.Label style={formLabelStyle}>Embed Title</Form.Label>
                             <Form.Control
                                 type="text"
-                                placeholder="Enter the embed title..."
+                                placeholder={titlePlaceholder}
                                 value={webhookTitle}
                                 onChange={(e) => setWebhookTitle(e.target.value)}
                                 style={formControlStyle}
@@ -374,37 +413,34 @@ const WebhookModal = ({
                             <Form.Label style={formLabelStyle}>Embed Body</Form.Label>
                             <Form.Control
                                 as="textarea"
-                                rows={4} // Reduced rows slightly
-                                placeholder="Enter the embed body content..."
+                                rows={4}
+                                placeholder={messagePlaceholder}
                                 value={webhookMessage}
                                 onChange={(e) => setWebhookMessage(e.target.value)}
                                 style={formControlStyle}
                             />
                             <Form.Text style={{ color: '#6c757d', fontSize: '0.85em' }}>
-                                Supports basic Markdown. Media links will be appended automatically.
+                                Supports basic Markdown. Media links will be appended automatically if only media is provided.
                             </Form.Text>
                         </Form.Group>
 
-                        {/* --- NEW: URL Input Field --- */}
                         <Form.Group controlId="webhookUrlInput" className="mb-3">
                             <Form.Label style={formLabelStyle}>Add Media URL (Image or Streamable)</Form.Label>
                             <InputGroup>
                                 <Form.Control
-                                    type="url" // Use type="url" for better semantics/validation
+                                    type="url"
                                     placeholder="Paste Image or Streamable URL..."
                                     value={urlInput}
                                     onChange={(e) => setUrlInput(e.target.value)}
                                     style={formControlStyle}
-                                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddUrl(); } }} // Add on Enter key
+                                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddUrl(); } }}
                                 />
                                 <Button variant="info" onClick={handleAddUrl}>
                                     <i className="fas fa-plus"></i> Add URL
                                 </Button>
                             </InputGroup>
                         </Form.Group>
-                        {/* --- End URL Input Field --- */}
 
-                        {/* Image Upload Section (Keep as is) */}
                         <Form.Group controlId="webhookImageUpload" className="mb-3">
                             <Form.Label style={formLabelStyle}>Upload Image(s)</Form.Label>
                             <InputGroup>
@@ -430,7 +466,6 @@ const WebhookModal = ({
                             </Form.Text>
                         </Form.Group>
 
-                        {/* --- Updated Preview Section --- */}
                         {mediaUrls.length > 0 && (
                             <Form.Group className="mb-3">
                                 <Form.Label style={formLabelStyle}>Added Media ({mediaUrls.length})</Form.Label>
@@ -445,13 +480,11 @@ const WebhookModal = ({
                                                     <span style={urlTextStyle}>Streamable Link</span>
                                                 </div>
                                             ) : (
-                                                // Fallback for other URLs
                                                 <div style={urlPreviewStyle} title={url}>
                                                     <i className="fas fa-link" style={urlIconStyle}></i>
                                                     <span style={urlTextStyle}>External Link</span>
                                                 </div>
                                             )}
-                                            {/* Optional: Add individual clear buttons here if needed */}
                                         </div>
                                     ))}
                                 </div>
@@ -460,12 +493,13 @@ const WebhookModal = ({
                                 </button>
                             </Form.Group>
                         )}
-                        {/* --- End Updated Preview Section --- */}
                     </Form>
                 </div>
 
-                {/* Footer (Keep as is) */}
+                {/* --- MODIFICATION START: Removed Form Generator URL from modal footer --- */}
                 <div style={modalFooterStyle}>
+                    {/* The div that previously showed the formGeneratorUrl is removed */}
+                    <div style={{ flexGrow: 1 }}></div> {/* This will push buttons to the right if no URL is shown */}
                     <Button variant="secondary" onClick={onClose}>
                         Cancel
                     </Button>
@@ -476,6 +510,7 @@ const WebhookModal = ({
                         <i className="fas fa-paper-plane"></i> Send to PHMC Discord
                     </Button>
                 </div>
+                {/* --- MODIFICATION END --- */}
             </div>
         </div>
     );
