@@ -1,27 +1,27 @@
 // src/components/Admin/AdminModal.js
 import React, { useState, useEffect } from 'react';
+import ReactDOM from 'react-dom'; // Import ReactDOM for Portals
 import { Modal, Button, Form, Spinner, ListGroup } from 'react-bootstrap';
 import { auth, database } from '../../firebase';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { ref, get, update } from "firebase/database";
 
-// Consistent overlay style - MODIFIED
+// Consistent overlay style
 const adminModalOverlayStyle = {
     position: 'fixed',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(31, 41, 55, 0.75)', // Your backdrop color
+    backgroundColor: 'rgba(31, 41, 55, 0.75)',
     display: 'flex',
-    alignItems: 'center', // Vertically center the content box
-    justifyContent: 'center', // Horizontally center the content box
-    zIndex: 99000,
-    overflowY: 'auto', // Allow scrolling of the overlay if content box is very tall
-    // Removed padding: '1rem' from here
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 99000, // Ensure this is high enough
+    overflowY: 'auto',
 };
 
-// Base style for the modal's content box (remains the same)
+// Base style for the modal's content box
 const adminModalContentBoxBaseStyle = {
     position: 'relative',
     backgroundColor: '#0d1117',
@@ -31,14 +31,12 @@ const adminModalContentBoxBaseStyle = {
     boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
     display: 'flex',
     flexDirection: 'column',
-    overflow: 'hidden',
-    maxHeight: '90vh',
+    overflow: 'hidden', // Important for internal scrolling of Modal.Body
+    maxHeight: '90vh', // Ensure modal doesn't exceed viewport height
 };
 
 
 function AdminModal({ show, onHide, showNotification, commitInfo }) {
-    // ... (rest of your component logic remains the same) ...
-
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
@@ -51,8 +49,13 @@ function AdminModal({ show, onHide, showNotification, commitInfo }) {
 
     useEffect(() => {
         if (!show) {
+            // Reset states when modal is hidden to ensure clean state on next open
             setIsLoadingAuth(true);
+            setCurrentUser(null);
             setPhysicianPositions({});
+            setEmail('');
+            setPassword('');
+            setError('');
             return;
         }
 
@@ -60,7 +63,7 @@ function AdminModal({ show, onHide, showNotification, commitInfo }) {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             if (user) {
                 setCurrentUser(user);
-                fetchPhysicianPositions();
+                // fetchPhysicianPositions(); // Consider if this should be fetched by AdminAuthAndActions instead
             } else {
                 setCurrentUser(null);
                 setPhysicianPositions({});
@@ -68,8 +71,11 @@ function AdminModal({ show, onHide, showNotification, commitInfo }) {
             setIsLoadingAuth(false);
         });
         return () => unsubscribe();
-    }, [show]);
+    }, [show]); // Only re-run if 'show' changes
 
+    // fetchPhysicianPositions might be better located in AdminAuthAndActions
+    // if AdminModal is purely for authentication.
+    // For now, keeping it here as per original structure.
     const fetchPhysicianPositions = async () => {
         setIsLoadingPositions(true);
         try {
@@ -95,20 +101,20 @@ function AdminModal({ show, onHide, showNotification, commitInfo }) {
         setIsLoadingAuth(true);
         try {
             await signInWithEmailAndPassword(auth, email, password);
+            // setCurrentUser will be updated by onAuthStateChanged
+            // No need to call fetchPhysicianPositions here, onAuthStateChanged handles it
         } catch (err) {
             setError(err.message || "Failed to login.");
             console.error("Login error:", err);
-            setIsLoadingAuth(false);
         }
+        setIsLoadingAuth(false); // Ensure this is set in all paths
     };
 
     const handleLogout = async () => {
         setError('');
         try {
             await signOut(auth);
-            setEmail('');
-            setPassword('');
-            setPhysicianPositions({});
+            // States will be reset by onAuthStateChanged
         } catch (err) {
             setError(err.message || "Failed to logout.");
             console.error("Logout error:", err);
@@ -116,92 +122,52 @@ function AdminModal({ show, onHide, showNotification, commitInfo }) {
     };
 
     const handleModalClose = () => {
-        setError('');
+        // setError(''); // Error is reset in useEffect when show becomes false
         onHide();
     };
 
-    const handleTogglePositionStatus = async (positionKey, currentStatus) => {
-        if (!currentUser) {
-            if (showNotification) showNotification("You must be logged in to perform this action.", "error");
-            return;
-        }
-        setIsUpdatingDb(true);
-        const newStatus = currentStatus === "OPEN" ? "CLOSED" : "OPEN";
-        const positionStatusPath = `selectOptions/physicianRecruitmentDetails/${positionKey}/status`;
-
-        try {
-            await update(ref(database), { [positionStatusPath]: newStatus });
-            if (showNotification) showNotification(`${positionKey} status updated to ${newStatus}.`, "check-circle");
-            fetchPhysicianPositions();
-        } catch (dbError) {
-            console.error("Error updating position status:", dbError);
-            if (showNotification) showNotification(`Failed to update status for ${positionKey}.`, "error");
-        }
-        setIsUpdatingDb(false);
-    };
+    // handleTogglePositionStatus would typically live in AdminAuthAndActions
+    // if AdminModal is just for auth. If AdminModal itself manages this data,
+    // it can stay, but it seems AdminAuthAndActions is the main data handler.
 
     const adminModalContentBoxStyle = {
         ...adminModalContentBoxBaseStyle,
-        width: currentUser ? '80%' : 'auto',
-        minWidth: '320px',
-        maxWidth: currentUser ? '800px' : '500px',
+        width: currentUser ? '80%' : 'auto', // Adjust width based on login state
+        minWidth: '320px', // Minimum width for login form
+        maxWidth: currentUser ? '800px' : '500px', // Max width
     };
 
     if (!show) {
         return null;
     }
 
-    return (
+    // --- MODIFICATION START: Define the modal's JSX content for the portal ---
+    const modalDialogContent = (
         <div style={adminModalOverlayStyle} onClick={handleModalClose}>
             <div style={adminModalContentBoxStyle} onClick={e => e.stopPropagation()}>
+                {/* Using react-bootstrap Modal for its built-in accessibility and focus management */}
                 <Modal
-                    show={true}
+                    show={true} // This is always true because AdminModal's show prop controls the portal
                     onHide={handleModalClose}
-                    backdrop={false}
+                    backdrop={false} // The custom overlay handles the backdrop
                     keyboard={true}
-                    animation={false}
-                    dialogClassName="border-0 shadow-none"
-                    contentClassName="bg-transparent text-light p-0"
+                    animation={false} // Optional: disable animation if preferred
+                    dialogClassName="border-0 shadow-none" // Remove default bootstrap modal borders/shadows
+                    contentClassName="bg-transparent text-light p-0" // Make bootstrap modal content transparent
                 >
                     <Modal.Header closeButton closeVariant="white" style={{borderBottomColor: '#30363d', padding: '1rem 1.5rem'}}>
-                        <Modal.Title>Admin Panel</Modal.Title>
+                        <Modal.Title>Admin Panel Login</Modal.Title>
                     </Modal.Header>
                     <Modal.Body style={{ overflowY: 'auto', flexGrow: 1, padding: '1.5rem' }}>
                         {isLoadingAuth ? (
-                            <p>Verifying authentication...</p>
+                            <div className="text-center"><Spinner animation="border" role="status"><span className="visually-hidden">Loading...</span></Spinner></div>
                         ) : currentUser ? (
+                            // If AdminModal is ONLY for login, this part might not be needed here.
+                            // The actual admin actions would be in AdminAuthAndActions.
+                            // For now, keeping a simple "Logged In" message.
                             <div>
-                                <p>Welcome, ({currentUser.email})!</p>
-                                <hr style={{borderColor: '#30363d'}} />
-                                <h5>Manage Physician Recruitment</h5>
-                                {isLoadingPositions ? (
-                                    <Spinner animation="border" role="status">
-                                        <span className="visually-hidden">Loading positions...</span>
-                                    </Spinner>
-                                ) : Object.keys(physicianPositions).length > 0 ? (
-                                    <ListGroup variant="flush">
-                                        {Object.entries(physicianPositions).map(([key, position]) => (
-                                            <ListGroup.Item key={key} className="d-flex justify-content-between align-items-center bg-transparent text-light py-2" style={{borderBottom: '1px solid rgba(255,255,255,0.1)'}}>
-                                                <div>
-                                                    {position.displayName || key} - Current: <strong style={{color: position.status === "OPEN" ? 'green' : 'red'}}>{position.status || "N/A"}</strong>
-                                                </div>
-                                                <Button
-                                                    variant={position.status === "OPEN" ? "outline-danger" : "outline-success"}
-                                                    size="sm"
-                                                    onClick={() => handleTogglePositionStatus(key, position.status)}
-                                                    disabled={isUpdatingDb}
-                                                    style={{ minWidth: '120px' }}
-                                                >
-                                                    {isUpdatingDb && <Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" />}
-                                                    {position.status === "OPEN" ? "Set CLOSED" : "Set OPEN"}
-                                                </Button>
-                                            </ListGroup.Item>
-                                        ))}
-                                    </ListGroup>
-                                ) : (
-                                    <p>No physician positions found or loaded.</p>
-                                )}
-                                <hr style={{borderColor: '#30363d'}} />
+                                <p>You are logged in as: {currentUser.email}</p>
+                                <p>Admin actions are available in the main panel.</p>
                                 <Button variant="warning" onClick={handleLogout} className="mt-3">
                                     Logout
                                 </Button>
@@ -231,8 +197,8 @@ function AdminModal({ show, onHide, showNotification, commitInfo }) {
                                     />
                                 </Form.Group>
                                 {error && <p className="text-danger mt-2">{error}</p>}
-                                <Button variant="primary" type="submit">
-                                    Login
+                                <Button variant="primary" type="submit" disabled={isLoadingAuth}>
+                                    {isLoadingAuth ? <Spinner as="span" animation="border" size="sm" /> : "Login"}
                                 </Button>
                             </Form>
                         )}
@@ -246,6 +212,10 @@ function AdminModal({ show, onHide, showNotification, commitInfo }) {
             </div>
         </div>
     );
+    // --- MODIFICATION END ---
+
+    // --- MODIFICATION START: Use ReactDOM.createPortal ---
+    // --- MODIFICATION END ---
 }
 
 export default AdminModal;

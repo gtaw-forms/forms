@@ -9,7 +9,7 @@ import RenameRoleKeyModal from './RenameRoleKeyModal';
 import WebhookModal from '../WebhookModal'; // Import WebhookModal
 import * as Sentry from "@sentry/react";
 
-// ... (recruitmentCategories, notification helpers, sendAdminActionWebhook, requestNotificationPermission, showDesktopNotification remain the same) ...
+// ... (recruitmentCategories, notification helpers, etc. remain the same) ...
 const recruitmentCategories = {
     physician: { displayName: "Physician Recruitment", path: 'selectOptions/physicianRecruitmentDetails' },
     psych: { displayName: "Psychologist/Psychiatrist Recruitment", path: 'selectOptions/psychPositionDetailsData' },
@@ -102,7 +102,7 @@ const sendAdminActionWebhook = async (adminEmail, action, details, categoryName 
 };
 
 
-const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAppNotification, commitInfo }) => { // Added commitInfo
+const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAppNotification, commitInfo }) => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
@@ -122,11 +122,9 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
 
     const [desktopNotificationPermission, setDesktopNotificationPermission] = useState(Notification.permission);
 
-    // --- MODIFICATION START: State for Admin Custom Webhook Modal ---
     const [showAdminCustomWebhookModal, setShowAdminCustomWebhookModal] = useState(false);
     const [adminCustomWebhookTitle, setAdminCustomWebhookTitle] = useState('');
     const [adminCustomWebhookMessage, setAdminCustomWebhookMessage] = useState('');
-    // --- MODIFICATION END ---
 
 
     useEffect(() => {
@@ -354,29 +352,25 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
         }
     };
 
-    // --- MODIFICATION START: Handler for opening the Admin Custom Webhook Modal ---
     const handleOpenAdminCustomWebhookModal = () => {
-        setAdminCustomWebhookTitle(''); // Default title
-        setAdminCustomWebhookMessage(''); // Default message
-        // If WebhookModal manages its own media URLs, no need to set them here
+        setAdminCustomWebhookTitle('');
+        setAdminCustomWebhookMessage('');
         setShowAdminCustomWebhookModal(true);
     };
-    // --- MODIFICATION END ---
 
-    // --- MODIFICATION START: Handler for submitting the Admin Custom Webhook ---
     const handleAdminCustomWebhookSubmit = async (payloadFromModal) => {
-        const webhookURL = process.env.REACT_APP_ADMIN_ACTION_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+        const webhookURL = process.env.REACT_APP_PHMC_DISCORD || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
         if (!webhookURL) {
             if (showInAppNotification) showInAppNotification('Admin Webhook URL not configured.', 'error');
             Sentry.captureMessage("Admin Custom Webhook URL not configured for AdminAuthAndActions", "error");
-            return;
+            return false; // Indicate failure
         }
 
         try {
             const response = await fetch(webhookURL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payloadFromModal), // Send the exact payload from WebhookModal
+                body: JSON.stringify(payloadFromModal),
             });
 
             if (!response.ok) {
@@ -387,18 +381,19 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                     extra: { statusText: response.statusText, responseBody: errorText }
                 });
                 if (showInAppNotification) showInAppNotification(`Failed to send admin webhook. Status: ${response.status}`, 'error');
+                return false; // Indicate failure
             } else {
                 if (showInAppNotification) showInAppNotification('Admin webhook message sent successfully!', 'check-circle');
                 setShowAdminCustomWebhookModal(false);
-                // WebhookModal manages its internal state for title, message, mediaUrls, so just closing is fine.
+                return true; // Indicate success
             }
         } catch (error) {
             console.error('Error sending admin custom webhook:', error);
             Sentry.captureException(error, { extra: { context: 'Admin Custom Webhook Submission Fetch (AdminAuthAndActions)' } });
             if (showInAppNotification) showInAppNotification('A network error occurred sending the admin webhook.', 'error');
+            return false; // Indicate failure
         }
     };
-    // --- MODIFICATION END ---
 
 
     if (isLoadingAuth) {
@@ -479,11 +474,9 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                 </>
             ) : ( <p>Please select a recruitment option from the dropdown to manage statuses or add roles.</p> )}
             
-            {/* --- MODIFICATION START: Admin Webhook Button --- */}
             <Button variant="info" onClick={handleOpenAdminCustomWebhookModal} className="mt-3 me-2">
                 <i className="fas fa-bullhorn"></i> ADMIN WEBHOOK
             </Button>
-            {/* --- MODIFICATION END --- */}
 
             <Button variant="warning" onClick={handleLogout} className="mt-3">Logout</Button>
 
@@ -494,7 +487,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                 <RenameRoleKeyModal show={showRenameKeyModal} onHide={() => { setShowRenameKeyModal(false); setRoleToRenameKeyDetails(null); }} categoryConfig={recruitmentCategories[selectedRecruitmentCategory]} currentRoleKey={roleToRenameKeyDetails.key} currentRoleData={roleToRenameKeyDetails.data} showInAppNotification={showInAppNotification} onKeyRenamed={handleRoleKeyRenamed} sendAdminActionWebhook={sendAdminActionWebhook} adminUserEmail={currentUser?.email} />
             )}
 
-            {/* --- MODIFICATION START: WebhookModal Instance for Admin --- */}
             <WebhookModal
                 show={showAdminCustomWebhookModal}
                 onClose={() => setShowAdminCustomWebhookModal(false)}
@@ -502,17 +494,21 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                 setWebhookTitle={setAdminCustomWebhookTitle}
                 webhookMessage={adminCustomWebhookMessage}
                 setWebhookMessage={setAdminCustomWebhookMessage}
-                onSubmit={handleAdminCustomWebhookSubmit}
-                onSubmitPhmc={() => {
-                    console.log("Admin Webhook Modal: PHMC Submit button clicked (currently no-op or could mirror admin submit)");
-                }}
+                onSubmit={handleAdminCustomWebhookSubmit} // Primary button action
+                // onSubmitPhmc is not strictly needed if showSecondaryButton is false,
+                // but can be set to a no-op or also to handleAdminCustomWebhookSubmit if desired.
+                // For this case, since we hide the secondary button, it won't be called.
+                onSubmitPhmc={null}
                 showNotification={showInAppNotification}
                 commitInfo={commitInfo}
-                // --- MODIFICATION START: Pass the desired header text ---
+                // --- MODIFICATION START: Pass new props for Admin context ---
                 modalHeaderText="Send Admin Webhook Embed"
+                primaryButtonText="Send to Admin Action Hook"
+                primaryWebhookUrlIdentifier="REACT_APP_PHMC_DISCORD" // Or include the fallback if it's often used: "REACT_APP_ADMIN_ACTION_DISCORD_WEBHOOK_URL || REACT_APP_DISCORD_WEBHOOK_URL"
+                showSecondaryButton={false} // Hide the secondary button for this instance
+                // secondaryButtonText and secondaryWebhookUrlIdentifier are not needed if showSecondaryButton is false
                 // --- MODIFICATION END ---
             />
-            {/* --- MODIFICATION END --- */}
         </div>
     );
 };

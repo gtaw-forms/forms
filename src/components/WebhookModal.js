@@ -1,3 +1,4 @@
+import ReactDOM from 'react-dom'; // Import ReactDOM for Portals
 import React, { useState, useEffect } from 'react';
 import { Button, Form, InputGroup } from 'react-bootstrap';
 import * as Sentry from "@sentry/react";
@@ -64,7 +65,7 @@ const modalFooterStyle = {
     paddingTop: '15px',
     marginTop: '20px',
     display: 'flex',
-    justifyContent: 'flex-end', // Buttons will remain to the right
+    justifyContent: 'flex-end',
     alignItems: 'center',
     gap: '10px',
 };
@@ -140,11 +141,18 @@ const WebhookModal = ({
     setWebhookTitle,
     webhookMessage,
     setWebhookMessage,
-    onSubmit,
-    onSubmitPhmc,
+    onSubmit, // Renamed from handleWebhookSubmit for clarity in App.js
+    onSubmitPhmc, // Renamed from handlePhmcWebhookSubmit for clarity in App.js
     showNotification,
     commitInfo,
-    modalHeaderText = "Send Dev Webhook Embed"
+    modalHeaderText = "Send Webhook Embed", // More generic default
+    // --- MODIFICATION START: New props for button customization ---
+    primaryButtonText = "Send to Primary Hook",
+    primaryWebhookUrlIdentifier = "N/A", // To display which REACT_APP_ variable is used
+    secondaryButtonText = "Send to Secondary Hook",
+    secondaryWebhookUrlIdentifier = "N/A", // To display which REACT_APP_ variable is used
+    showSecondaryButton = true // Prop to control visibility of the second button
+    // --- MODIFICATION END ---
 }) => {
     const [mediaUrls, setMediaUrls] = useState([]);
     const [isUploading, setIsUploading] = useState(false);
@@ -191,19 +199,16 @@ const WebhookModal = ({
     const handleImageUpload = async (event) => {
         const files = event.target.files;
         if (!files || files.length === 0) return;
-
         setIsUploading(true);
         const uploadPromises = [];
         for (let i = 0; i < files.length; i++) {
             uploadPromises.push(uploadSingleImageToImgur(files[i]));
         }
-
         try {
             const results = await Promise.allSettled(uploadPromises);
             const successfulUrls = [];
             let failedCount = 0;
             let firstErrorMessage = '';
-
             results.forEach(result => {
                 if (result.status === 'fulfilled') {
                     successfulUrls.push(result.value);
@@ -214,16 +219,13 @@ const WebhookModal = ({
                     Sentry.captureMessage(`Imgur upload failed in WebhookModal: ${result.reason.message}`, "error");
                 }
             });
-
             setMediaUrls(prevUrls => [...prevUrls, ...successfulUrls]);
-
             if (successfulUrls.length > 0) {
                 showNotification(`${successfulUrls.length} image(s) uploaded successfully!`, 'check-circle');
             }
             if (failedCount > 0) {
                 showNotification(`${failedCount} image(s) failed to upload. Error: ${firstErrorMessage}`, 'exclamation-circle');
             }
-
         } catch (error) {
             console.error('General upload process error:', error);
             Sentry.captureException(error, { extra: { context: 'WebhookModal Multi-Image Upload Process' } });
@@ -236,27 +238,21 @@ const WebhookModal = ({
     const uploadSingleImageToImgur = async (file) => {
         const imgurAccessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
         const imgurAlbumId = process.env.REACT_APP_IMGUR_ALBUM_ID;
-
         if (!imgurAccessToken || !imgurAlbumId) {
             throw new Error("Imgur API credentials not configured.");
         }
-
         const formData = new FormData();
         formData.append('image', file);
         formData.append('album', imgurAlbumId);
-
         const response = await fetch('https://api.imgur.com/3/image', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${imgurAccessToken}` },
             body: formData,
         });
-
         const data = await response.json();
-
         if (!data.success) {
             throw new Error(data.data.error || 'Unknown Imgur error');
         }
-
         return data.data.link;
     };
     const handleAddUrl = () => {
@@ -284,7 +280,6 @@ const WebhookModal = ({
     const isImageUrl = (url) => {
         return /\.(jpg|jpeg|png|gif)$/i.test(url) || url.includes('imgur.com');
     };
-
     const isStreamableUrl = (url) => {
         return url.includes('streamable.com');
     };
@@ -292,7 +287,6 @@ const WebhookModal = ({
     const prepareWebhookDataInternal = () => {
         const title = webhookTitle.trim();
         const message = webhookMessage.trim();
-
         if (!title && !message && mediaUrls.length === 0) {
             showNotification('Please enter a title, message, or add media (image/URL).', 'warning');
             return null;
@@ -301,46 +295,35 @@ const WebhookModal = ({
             showNotification('Embed title cannot exceed 256 characters.', 'warning');
             return null;
         }
-
         let description = message || '';
         let firstImageUrlForEmbed = null;
-
         for (const url of mediaUrls) {
             if (isImageUrl(url)) {
                 firstImageUrlForEmbed = url;
                 break;
             }
         }
-
         const footerText = `PHMC Form Generator - v${commitInfo?.sha || 'N/A'} | ${FORM_GENERATOR_URL}`;
-
         if (description.length > 4096) {
             showNotification('Embed body (message content) cannot exceed 4096 characters.', 'warning');
             return null;
         }
-
-        // --- MODIFICATION START: Add URL to embed title and as a field ---
         const embedFields = [];
         if (FORM_GENERATOR_URL) {
             embedFields.push({ name: "Form Generator Link", value: FORM_GENERATOR_URL, inline: false });
         }
-        // --- MODIFICATION END ---
-
         const embed = {
-            title: title || "PHMC Form Generator Notification", // Default title if user leaves it blank
-            // --- MODIFICATION START: Make title a link ---
+            title: title || "PHMC Form Generator Notification",
             url: FORM_GENERATOR_URL,
-            // --- MODIFICATION END ---
             description: description.trim() || undefined,
             color: 0x7289DA,
             timestamp: new Date().toISOString(),
             image: firstImageUrlForEmbed ? { url: firstImageUrlForEmbed } : undefined,
-            fields: embedFields, // Add the new field here
+            fields: embedFields,
             footer: {
                 text: footerText
             }
         };
-
         if (!message && !title && mediaUrls.length > 0) {
              embed.description = `Media submitted via PHMC Form Generator - v${commitInfo?.sha || 'N/A'}`;
              embed.description += '\n\n**Media:**\n';
@@ -353,32 +336,27 @@ const WebhookModal = ({
                 return null;
              }
         }
-
-
         const payload = {
             username: "PHMC",
             avatar_url: phmcLogoUrl,
             embeds: [embed],
         };
-
         return payload;
     };
 
-
-    const handleDevSubmit = () => {
+    const handlePrimarySubmit = () => {
         const payload = prepareWebhookDataInternal();
-        if (payload) {
+        if (payload && onSubmit) {
             onSubmit(payload);
         }
     };
 
-    const handlePhmcSubmit = () => {
+    const handleSecondarySubmit = () => {
         const payload = prepareWebhookDataInternal();
-        if (payload) {
+        if (payload && onSubmitPhmc) {
             onSubmitPhmc(payload);
         }
     };
-
 
     if (!show) {
         return null;
@@ -387,7 +365,8 @@ const WebhookModal = ({
     const titlePlaceholder = "Major Update / Minor Update / Hotfix";
     const messagePlaceholder = `- Added: \n- Fixed: \n- Updated: `;
 
-    return (
+    // --- MODIFICATION START: Define the modal's JSX content ---
+    const modalDialogContent = (
         <div style={modalOverlayStyle} onClick={onClose}>
             <div style={modalContentStyle} onClick={e => e.stopPropagation()}>
                 <div style={modalHeaderStyle}>
@@ -398,7 +377,7 @@ const WebhookModal = ({
                 </div>
 
                 <div style={modalBodyStyle}>
-                    <Form>
+                    <Form> {/* This Form is now inside the portal, not nested in App.js's form */}
                         <Form.Group controlId="webhookEmbedTitle" className="mb-3">
                             <Form.Label style={formLabelStyle}>Embed Title</Form.Label>
                             <Form.Control
@@ -496,24 +475,39 @@ const WebhookModal = ({
                     </Form>
                 </div>
 
-                {/* --- MODIFICATION START: Removed Form Generator URL from modal footer --- */}
                 <div style={modalFooterStyle}>
-                    {/* The div that previously showed the formGeneratorUrl is removed */}
-                    <div style={{ flexGrow: 1 }}></div> {/* This will push buttons to the right if no URL is shown */}
+                    <div style={{ flexGrow: 1 }}></div>
                     <Button variant="secondary" onClick={onClose}>
                         Cancel
                     </Button>
-                    <Button variant="warning" onClick={handleDevSubmit} title="Send to the Development Webhook">
-                        <i className="fas fa-vial"></i> Send Dev Embed
+                    <Button
+                        variant="warning"
+                        onClick={handlePrimarySubmit}
+                        title={`Uses: ${primaryWebhookUrlIdentifier}`}
+                    >
+                        <i className="fas fa-vial"></i> {primaryButtonText}
                     </Button>
-                    <Button variant="primary" onClick={handlePhmcSubmit} title="Send to the Official PHMC Webhook">
-                        <i className="fas fa-paper-plane"></i> Send to PHMC Discord
-                    </Button>
+                    {showSecondaryButton && (
+                        <Button
+                            variant="primary"
+                            onClick={handleSecondarySubmit}
+                            title={`SECOND BUTTONUses: ${secondaryWebhookUrlIdentifier}`}
+                        >
+                            <i className="fas fa-paper-plane"></i> {secondaryButtonText}
+                        </Button>
+                    )}
                 </div>
-                {/* --- MODIFICATION END --- */}
             </div>
         </div>
     );
+    // --- MODIFICATION END ---
+
+    // --- MODIFICATION START: Use ReactDOM.createPortal ---
+    return ReactDOM.createPortal(
+        modalDialogContent,
+        document.getElementById('modal-root')
+    );
+    // --- MODIFICATION END ---
 };
 
 export default WebhookModal;
