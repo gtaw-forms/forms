@@ -1,6 +1,6 @@
 // src/components/AutopsyDiagramModal.js
-import React, { useState, useRef, useEffect } from 'react';
-import { Button, OverlayTrigger, Tooltip } from 'react-bootstrap';
+import React, { useState, useRef, useEffect, useCallback } from 'react'; // Added useCallback
+import { Button, OverlayTrigger, Tooltip, Form } from 'react-bootstrap'; // Added Form
 import bodySilhouette from '../assets/body-silhouette.jpg';
 
 // --- Styles (Keep existing styles) ---
@@ -94,6 +94,36 @@ const loadImage = (src) => {
     });
 };
 
+// Helper function to group and label markers
+const getGroupedLabeledMarkers = (markers) => {
+    const labeledMarkers = markers.filter(m => m.label && m.label.trim() !== '');
+    const grouped = labeledMarkers.reduce((acc, marker) => {
+        const labelKey = marker.label.trim().toUpperCase(); // Group by trimmed uppercase label
+        if (!acc[labelKey]) {
+            acc[labelKey] = [];
+        }
+        acc[labelKey].push(marker);
+        return acc;
+    }, {});
+
+    const result = [];
+    // Sort groups alphabetically by label key
+    Object.keys(grouped).sort().forEach(labelKey => {
+        // Sort markers within each group (e.g., by placement order using id)
+        grouped[labelKey].sort((a, b) => a.id.localeCompare(b.id)); // Sort by ID (timestamp + random)
+        grouped[labelKey].forEach((marker, index) => {
+            const prefix = String.fromCharCode(65 + index); // A, B, C... within the group
+            result.push({
+                ...marker,
+                displayLabel: `${prefix}-${marker.label.trim()}`
+            });
+        });
+    });
+
+    return result;
+};
+
+
 const AutopsyDiagramModal = ({
     show,
     onHide,
@@ -104,7 +134,7 @@ const AutopsyDiagramModal = ({
 }) => {
     const [markers, setMarkers] = useState([]);
     const [selectedMarkerType, setSelectedMarkerType] = useState('circle');
-    // REMOVED: const [showMoreLabelButtons, setShowMoreLabelButtons] = useState(false);
+    const [editingMarkerId, setEditingMarkerId] = useState(null); // State to track which marker label is being edited
     const imageRef = useRef(null);
     const imageContainerRef = useRef(null);
     const prevShowRef = useRef(show);
@@ -122,12 +152,13 @@ const AutopsyDiagramModal = ({
 
     useEffect(() => {
         if (show && !prevShowRef.current) {
+            // When modal opens, load initial markers and ensure they have label/labelSide properties
             setMarkers(initialMarkers.map(marker => ({
                 ...marker,
-                label: marker.label || '',
-                labelSide: marker.labelSide || 'right'
+                label: marker.label || '', // Ensure label exists
+                labelSide: marker.labelSide || 'right' // Ensure labelSide exists
             })));
-            // REMOVED: setShowMoreLabelButtons(false);
+            setEditingMarkerId(null); // Reset editing state
         }
         prevShowRef.current = show;
     }, [show, initialMarkers]);
@@ -184,29 +215,29 @@ const AutopsyDiagramModal = ({
                 y: finalY,
                 type: selectedMarkerType,
                 id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
-                label: '',
+                label: '', // New markers start with an empty label
                 labelSide: 'right',
             };
             setMarkers(prevMarkers => [...prevMarkers, newMarker]);
+            setEditingMarkerId(newMarker.id); // Immediately start editing the label of the new marker
         }
     };
 
     const handleToggleLastMarkerLabelSide = () => {
         setMarkers(prevMarkers => {
             if (prevMarkers.length === 0) return prevMarkers;
-            let lastLabeledMarkerIndex = -1;
-            for (let i = prevMarkers.length - 1; i >= 0; i--) {
-                if (prevMarkers[i].label && prevMarkers[i].label.trim() !== '') {
-                    lastLabeledMarkerIndex = i;
-                    break;
-                }
-            }
+            // Find the last marker that has a label
+            const lastLabeledMarkerIndex = prevMarkers.slice().reverse().findIndex(m => m.label && m.label.trim() !== '');
+
             if (lastLabeledMarkerIndex === -1) {
                  if (showNotification) showNotification("No labeled marker to toggle side for. Add a label first.", "info");
                 return prevMarkers;
             }
+            // Adjust index for the original array
+            const originalIndex = prevMarkers.length - 1 - lastLabeledMarkerIndex;
+
             return prevMarkers.map((marker, index) => {
-                if (index === lastLabeledMarkerIndex) {
+                if (index === originalIndex) {
                     return { ...marker, labelSide: marker.labelSide === 'right' ? 'left' : 'right' };
                 }
                 return marker;
@@ -214,7 +245,7 @@ const AutopsyDiagramModal = ({
         });
     };
 
-    const drawDiagramOnCanvas = async () => {
+    const drawDiagramOnCanvas = useCallback(async () => {
         if (!canvasRef.current || !bodyImage) {
             console.error("Canvas or body image not ready for drawing.");
             return null;
@@ -259,22 +290,12 @@ const AutopsyDiagramModal = ({
         const visualContentScreenX = displayedImgRect.left + visualContentOffsetXInDisplayedImg;
         const visualContentScreenY = displayedImgRect.top + visualContentOffsetYInDisplayedImg;
 
-        const markersToDraw = [];
-        let labelPrefixCounter = 0;
-        markers.forEach(m => {
-            if (m.label && m.label.trim() !== '') {
-                markersToDraw.push({
-                    ...m,
-                    displayLabel: `${String.fromCharCode(65 + labelPrefixCounter++)}-${m.label}`
-                });
-            } else {
-                markersToDraw.push(m);
-            }
-        });
+        // Use the helper to get markers with grouped display labels
+        const markersToDraw = getGroupedLabeledMarkers(markers);
 
 
-        markersToDraw.forEach(marker => {
-            const markerScreenX = containerRect.left + (marker.x / 100) * containerRect.width;
+        markers.forEach(marker => { // Iterate through original markers to draw symbols
+             const markerScreenX = containerRect.left + (marker.x / 100) * containerRect.width;
             const markerScreenY = containerRect.top + (marker.y / 100) * containerRect.height;
             const markerX_RelativeToVisual = markerScreenX - visualContentScreenX;
             const markerY_RelativeToVisual = markerScreenY - visualContentScreenY;
@@ -307,44 +328,180 @@ const AutopsyDiagramModal = ({
                 ctx.lineTo(canvasDrawX - crossSize, canvasDrawY + crossSize);
                 ctx.stroke();
             }
+        });
 
-            const labelToDraw = marker.displayLabel || marker.label;
+        // Draw labels separately using the grouped list
+        markersToDraw.forEach(marker => {
+             const markerScreenX = containerRect.left + (marker.x / 100) * containerRect.width;
+            const markerScreenY = containerRect.top + (marker.y / 100) * containerRect.height;
+            const markerX_RelativeToVisual = markerScreenX - visualContentScreenX;
+            const markerY_RelativeToVisual = markerScreenY - visualContentScreenY;
+
+            let percX_onVisual = visualContentW > 0 ? (markerX_RelativeToVisual / visualContentW) * 100 : 0;
+            let percY_onVisual = visualContentH > 0 ? (markerY_RelativeToVisual / visualContentH) * 100 : 0;
+
+            percX_onVisual = Math.max(0, Math.min(100, percX_onVisual));
+            percY_onVisual = Math.max(0, Math.min(100, percY_onVisual));
+
+            const canvasDrawX = (percX_onVisual / 100) * canvas.width;
+            const canvasDrawY = (percY_onVisual / 100) * canvas.height;
+
+            const labelToDraw = marker.displayLabel; // Use the displayLabel from the grouped list
 
             if (labelToDraw) {
-                const labelFontSize = 20;
-                ctx.font = `${labelFontSize}px Arial`;
+                const labelFontSize = 20; // Adjust font size as needed for canvas
+                ctx.font = `${labelFontSize}px Arial`; // Use a standard font for canvas
                 const textMetrics = ctx.measureText(labelToDraw);
                 const textWidth = textMetrics.width;
-                const textHeight = labelFontSize;
+                const textHeight = labelFontSize; // Approximation
                 const padding = 4;
                 const labelBgWidth = textWidth + (padding * 2);
                 const labelBgHeight = textHeight + (padding * 2);
-                const labelTextY = canvasDrawY;
-                const labelBgY = canvasDrawY - (textHeight / 2) - padding;
+                const labelTextY = canvasDrawY; // Center text vertically on the marker Y
+                const labelBgY = canvasDrawY - (textHeight / 2) - padding; // Position background based on text height
 
                 let labelBgX, labelTextX;
                 if (marker.labelSide === 'right') {
-                    labelTextX = canvasDrawX + 18;
+                    labelTextX = canvasDrawX + 18; // Offset from marker center
                     labelBgX = labelTextX - padding;
                     ctx.textAlign = 'left';
                 } else {
-                    labelTextX = canvasDrawX - 18;
-                    labelBgX = labelTextX - textWidth - padding;
+                    labelTextX = canvasDrawX - 18; // Offset from marker center
+                    labelBgX = labelTextX - textWidth - padding; // Position background to the left of text
                     ctx.textAlign = 'right';
                 }
 
-                ctx.fillStyle = 'rgba(50, 50, 50, 0.7)';
+                ctx.fillStyle = 'rgba(50, 50, 50, 0.7)'; // Background color for label
                 ctx.fillRect(labelBgX, labelBgY, labelBgWidth, labelBgHeight);
 
-                ctx.fillStyle = '#FFFFFF';
-                ctx.textBaseline = 'middle';
+                ctx.fillStyle = '#FFFFFF'; // Text color
+                ctx.textBaseline = 'middle'; // Align text vertically to the middle
                 ctx.fillText(labelToDraw, labelTextX, labelTextY);
             }
         });
         return canvas;
+    }, [markers, bodyImage]); // Add markers and bodyImage to dependencies
+
+    const handleCopyToClipboard = useCallback(async () => {
+        setIsProcessingImage(true);
+        const canvas = await drawDiagramOnCanvas();
+        if (canvas && navigator.clipboard && navigator.clipboard.write) {
+            canvas.toBlob(async (blob) => {
+                if (blob) {
+                    try {
+                        await navigator.clipboard.write([
+                            new ClipboardItem({ [blob.type]: blob })
+                        ]);
+                        if (showNotification) showNotification('Diagram copied to clipboard!', 'check-circle');
+                    } catch (err) {
+                        console.error('Failed to copy diagram:', err);
+                        if (showNotification) showNotification('Failed to copy diagram. See console for details.', 'exclamation-triangle');
+                    }
+                } else {
+                    console.error('Failed to create image blob for clipboard.');
+                    if (showNotification) showNotification('Failed to create image blob for clipboard.', 'exclamation-triangle');
+                }
+                setIsProcessingImage(false);
+            }, 'image/png');
+        } else {
+            console.warn('Clipboard API not available or canvas drawing failed.');
+            if (showNotification) showNotification('Clipboard API not available or canvas drawing failed.', 'exclamation-triangle');
+            setIsProcessingImage(false);
+        }
+    }, [drawDiagramOnCanvas, showNotification]); // Add dependencies
+
+    const handleUploadToImgur = useCallback(async () => {
+        if (!IMGUR_CLIENT_ID) {
+            if (showNotification) showNotification('Imgur Client ID is not configured.', 'error');
+            return;
+        }
+        setIsProcessingImage(true);
+        const canvas = await drawDiagramOnCanvas();
+        if (!canvas) {
+            if (showNotification) showNotification('Failed to draw diagram on canvas.', 'exclamation-triangle');
+            setIsProcessingImage(false);
+            return;
+        }
+        const dataUrl = canvas.toDataURL('image/png');
+        const base64Image = dataUrl.split(',')[1];
+        try {
+            const formData = new FormData();
+            formData.append('image', base64Image);
+            const response = await fetch('https://api.imgur.com/3/image', {
+                method: 'POST',
+                headers: { Authorization: `Client-ID ${IMGUR_CLIENT_ID}` },
+                body: formData,
+            });
+            const result = await response.json();
+            if (result.success) {
+                if (showNotification) showNotification(`Uploaded to Imgur! Link: ${result.data.link}`, 'check-circle');
+                if (onDiagramImgurUpload) onDiagramImgurUpload(result.data.link);
+            } else {
+                const errorMessage = result.data.error?.message || result.data.error || 'Unknown error';
+                console.error('Imgur Upload Failed:', result);
+                if (showNotification) showNotification(`Imgur Upload Failed: ${errorMessage}`, 'exclamation-triangle');
+            }
+        } catch (error) {
+            console.error('Error during Imgur upload:', error);
+            if (showNotification) showNotification('Error during Imgur upload. See console.', 'exclamation-triangle');
+        }
+        setIsProcessingImage(false);
+    }, [drawDiagramOnCanvas, showNotification, onDiagramImgurUpload, IMGUR_CLIENT_ID]); // Add dependencies
+
+    const handleAddLabelToLastMarker = (labelText) => {
+        setMarkers(prevMarkers => {
+            if (prevMarkers.length === 0) return prevMarkers;
+            const lastMarkerIndex = prevMarkers.length - 1;
+            return prevMarkers.map((marker, index) =>
+                index === lastMarkerIndex ? { ...marker, label: labelText.substring(0, 9) } : marker // Apply label and limit length
+            );
+        });
+        setEditingMarkerId(null); // Stop editing after applying a predefined label
     };
 
-    const renderMarker = (marker, index, allMarkers) => {
+    const handleRemoveMarker = (markerIdToRemove) => {
+        setMarkers(prevMarkers => prevMarkers.filter(marker => marker.id !== markerIdToRemove));
+        if (editingMarkerId === markerIdToRemove) {
+            setEditingMarkerId(null); // Stop editing if the edited marker is removed
+        }
+    };
+
+    const handleUndoLastMarker = () => {
+        if (markers.length > 0) {
+            const lastMarkerId = markers[markers.length - 1].id;
+            setMarkers(prev => prev.slice(0, -1));
+            if (editingMarkerId === lastMarkerId) {
+                setEditingMarkerId(null); // Stop editing if the undone marker was being edited
+            }
+        }
+    };
+
+    const handleClearAllMarkers = () => {
+        if (markers.length > 0) {
+            setMarkers([]);
+            setEditingMarkerId(null); // Stop editing
+        }
+    };
+
+    const handleSave = () => {
+        if (onSaveDiagram) {
+            onSaveDiagram(markers);
+        }
+        onHide();
+    };
+
+    const handleLabelInputChange = (markerId, value) => {
+        setMarkers(prevMarkers => prevMarkers.map(marker =>
+            marker.id === markerId ? { ...marker, label: value.substring(0, 9) } : marker // Update label and limit length
+        ));
+    };
+
+    const handleLabelInputBlur = () => {
+        // Stop editing when the input loses focus
+        setEditingMarkerId(null);
+    };
+
+    const renderMarker = (marker) => {
         const anchorPointStyle = {
             position: 'absolute',
             left: `${marker.x}%`,
@@ -373,7 +530,8 @@ const AutopsyDiagramModal = ({
             transform: 'translateY(-50%)',
             fontSize: '10px', color: '#f0f0f0', backgroundColor: 'rgba(0,0,0,0.6)',
             padding: '1px 4px', borderRadius: '3px', whiteSpace: 'nowrap',
-            pointerEvents: 'none', zIndex: 1,
+            cursor: 'pointer', // Make label clickable
+            zIndex: 1,
         };
 
         if (marker.labelSide === 'right') {
@@ -382,28 +540,16 @@ const AutopsyDiagramModal = ({
             labelStyle.right = '12px';
         }
 
-        let displayLabelText = marker.label;
-        if (marker.label && marker.label.trim() !== '') {
-            let labeledMarkerIndex = -1;
-            let count = 0;
-            for (let i = 0; i < allMarkers.length; i++) {
-                if (allMarkers[i].label && allMarkers[i].label.trim() !== '') {
-                    if (allMarkers[i].id === marker.id) {
-                        labeledMarkerIndex = count;
-                        break;
-                    }
-                    count++;
-                }
-            }
-            if (labeledMarkerIndex !== -1) {
-                const prefix = String.fromCharCode(65 + labeledMarkerIndex);
-                displayLabelText = `${prefix}-${marker.label}`;
-            }
-        }
+        // Find the display label using the helper function
+        const labeledMarkers = getGroupedLabeledMarkers(markers);
+        const markerWithDisplayLabel = labeledMarkers.find(m => m.id === marker.id);
+        const displayLabelText = markerWithDisplayLabel?.displayLabel || marker.label; // Use displayLabel if available, fallback to raw label
+
 
         return (
             <div
                 key={marker.id} style={anchorPointStyle}
+                // Click on the anchor point removes the marker
                 onClick={(e) => { e.stopPropagation(); handleRemoveMarker(marker.id); }}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); handleRemoveMarker(marker.id); }}}
                 role="button" tabIndex={0}
@@ -411,98 +557,50 @@ const AutopsyDiagramModal = ({
             >
                 {marker.type === 'circle' && <div style={circleSymbolStyle}></div>}
                 {marker.type === 'cross' && <div style={crossSymbolStyle}>X</div>}
-                {marker.label && <span style={labelStyle}>{displayLabelText}</span>}
+
+                {/* Conditionally render input or label */}
+                {editingMarkerId === marker.id ? (
+                     <Form.Control
+                        type="text"
+                        value={marker.label}
+                        onChange={(e) => handleLabelInputChange(marker.id, e.target.value)}
+                        onBlur={handleLabelInputBlur}
+                        maxLength={9} // Limit input length
+                        autoFocus // Automatically focus the input when it appears
+                        size="sm"
+                        style={{
+                            position: 'absolute',
+                            top: '50%',
+                            transform: marker.labelSide === 'right' ? 'translateY(-50%)' : 'translate(-100%, -50%)', // Position based on side
+                            [marker.labelSide]: '12px', // Position based on side
+                            width: '80px', // Adjust width as needed
+                            fontSize: '10px',
+                            padding: '1px 4px',
+                            backgroundColor: '#16202c',
+                            color: '#eeeeeeb0',
+                            borderColor: '#30363d',
+                            zIndex: 2, // Ensure input is above other elements
+                        }}
+                        onClick={e => e.stopPropagation()} // Prevent click on input from closing modal/removing marker
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault(); // Prevent form submission if it were in a form
+                                handleLabelInputBlur(); // Treat Enter as blur
+                            }
+                        }}
+                    />
+                ) : (
+                    marker.label && ( // Only show label element if label exists
+                        <span
+                            style={labelStyle}
+                            onClick={(e) => { e.stopPropagation(); setEditingMarkerId(marker.id); }} // Click label to edit
+                        >
+                            {displayLabelText}
+                        </span>
+                    )
+                )}
             </div>
         );
-    };
-
-    const handleCopyToClipboard = async () => {
-        setIsProcessingImage(true);
-        const canvas = await drawDiagramOnCanvas();
-        if (canvas && navigator.clipboard && navigator.clipboard.write) {
-            canvas.toBlob(async (blob) => {
-                if (blob) {
-                    try {
-                        await navigator.clipboard.write([
-                            new ClipboardItem({ [blob.type]: blob })
-                        ]);
-                        if (showNotification) showNotification('Diagram copied to clipboard!', 'success');
-                    } catch (err) {
-                        if (showNotification) showNotification('Failed to copy diagram. See console for details.', 'error');
-                    }
-                } else {
-                    if (showNotification) showNotification('Failed to create image blob for clipboard.', 'error');
-                }
-                setIsProcessingImage(false);
-            }, 'image/png');
-        } else {
-            if (showNotification) showNotification('Clipboard API not available or canvas drawing failed.', 'error');
-            setIsProcessingImage(false);
-        }
-    };
-
-    const handleUploadToImgur = async () => {
-        if (!IMGUR_CLIENT_ID) {
-            if (showNotification) showNotification('Imgur Client ID is not configured.', 'error');
-            return;
-        }
-        setIsProcessingImage(true);
-        const canvas = await drawDiagramOnCanvas();
-        if (!canvas) {
-            if (showNotification) showNotification('Failed to draw diagram on canvas.', 'error');
-            setIsProcessingImage(false);
-            return;
-        }
-        const dataUrl = canvas.toDataURL('image/png');
-        const base64Image = dataUrl.split(',')[1];
-        try {
-            const formData = new FormData();
-            formData.append('image', base64Image);
-            const response = await fetch('https://api.imgur.com/3/image', {
-                method: 'POST',
-                headers: { Authorization: `Client-ID ${IMGUR_CLIENT_ID}` },
-                body: formData,
-            });
-            const result = await response.json();
-            if (result.success) {
-                if (showNotification) showNotification(`Uploaded to Imgur! Link: ${result.data.link}`, 'success');
-                if (onDiagramImgurUpload) onDiagramImgurUpload(result.data.link);
-            } else {
-                const errorMessage = result.data.error?.message || result.data.error || 'Unknown error';
-                if (showNotification) showNotification(`Imgur Upload Failed: ${errorMessage}`, 'error');
-            }
-        } catch (error) {
-            if (showNotification) showNotification('Error during Imgur upload. See console.', 'error');
-        }
-        setIsProcessingImage(false);
-    };
-    const handleAddLabelToLastMarker = (labelText) => {
-        setMarkers(prevMarkers => {
-            if (prevMarkers.length === 0) return prevMarkers;
-            const lastMarkerIndex = prevMarkers.length - 1;
-            return prevMarkers.map((marker, index) =>
-                index === lastMarkerIndex ? { ...marker, label: labelText } : marker
-            );
-        });
-    };
-    const handleRemoveMarker = (markerIdToRemove) => {
-        setMarkers(prevMarkers => prevMarkers.filter(marker => marker.id !== markerIdToRemove));
-    };
-    const handleUndoLastMarker = () => {
-        if (markers.length > 0) {
-            setMarkers(prev => prev.slice(0, -1));
-        }
-    };
-    const handleClearAllMarkers = () => {
-        if (markers.length > 0) {
-            setMarkers([]);
-        }
-    };
-    const handleSave = () => {
-        if (onSaveDiagram) {
-            onSaveDiagram(markers);
-        }
-        onHide();
     };
 
 
@@ -539,10 +637,10 @@ const AutopsyDiagramModal = ({
                                 <Button variant={selectedMarkerType === 'circle' ? 'danger' : 'outline-danger'} size="sm" onClick={() => setSelectedMarkerType('circle')}>Circle (O)</Button>
                                 <Button variant={selectedMarkerType === 'cross' ? 'primary' : 'outline-primary'} size="sm" onClick={() => setSelectedMarkerType('cross')}>Cross (X)</Button>
                                 {/* Always show all label buttons */}
-                                <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('(GSW)')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>GSW</Button>
-                                <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('(STAB)')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>STAB</Button>
-                                <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('(UNK)')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>UNK</Button>
-                                <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('(TRAUMA)')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>TRAUMA</Button>
+                                <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('GSW')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>GSW</Button>
+                                <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('STAB')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>STAB</Button>
+                                <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('UNK')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>UNK</Button>
+                                <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('TRAUMA')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>TRAUMA</Button>
                                 {moreLabelButtons.map(btn => (
                                     <OverlayTrigger
                                         key={btn.short}
@@ -552,7 +650,7 @@ const AutopsyDiagramModal = ({
                                         <Button
                                             variant="outline-light"
                                             size="sm"
-                                            onClick={() => handleAddLabelToLastMarker(`(${btn.short})`)}
+                                            onClick={() => handleAddLabelToLastMarker(btn.short)} // Pass only the short code
                                             disabled={markers.length === 0}
                                             style={{ fontSize: '0.75rem' }}
                                         >
@@ -560,22 +658,20 @@ const AutopsyDiagramModal = ({
                                         </Button>
                                     </OverlayTrigger>
                                 ))}
-                                {/* REMOVED: Show More Types button */}
                                 <Button variant="outline-secondary" size="sm" onClick={handleToggleLastMarkerLabelSide} disabled={isToggleLabelSideDisabled} title="Toggle Last Label's Side">
-                                    <i className={`fas fa-exchange-alt`}></i> Toggle Label
+                                    <i className={`fas fa-exchange-alt`}></i> Toggle Label Side
                                 </Button>
                                 <Button variant="outline-secondary" size="sm" onClick={handleUndoLastMarker} disabled={markers.length === 0}>Undo</Button>
                                 <Button variant="outline-warning" size="sm" onClick={handleClearAllMarkers} disabled={markers.length === 0}>Clear All</Button>
                             </div>
-                            {/* REMOVED: Conditional rendering div for more buttons */}
                         </div> {/* End Wrapper div for controls */}
 
                         <div ref={imageContainerRef} style={imageContainerStyle}>
                             <img ref={imageRef} src={bodySilhouette} alt="Autopsy diagram area" style={bodyImageStyle} onClick={handleImageClick} />
-                            {markers.map((marker, index) => renderMarker(marker, index, markers))}
+                            {markers.map(marker => renderMarker(marker))} {/* Pass individual marker */}
                         </div>
                         <small style={{ color: '#8b949e', flexShrink: 0 }}>
-                            Click diagram to place marker. Click marker to remove. Add label to last placed marker.
+                            Click diagram to place marker. Click marker to remove. Click label to edit (max 9 chars).
                         </small>
                     </div>
                     <div style={modalFooterStyle}>
