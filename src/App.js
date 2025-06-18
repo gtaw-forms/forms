@@ -1754,14 +1754,11 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
         return false;
     }
 };
-const webhookBodyTemplate = `A new update detected... parsing details
-Name(s) added:
-Name(s) removed: `;
 
     // --- Function to open the webhook modal with the template ---
     const openWebhookModalWithTemplate = () => {
-        setWebhookTitle('New Update Detected'); // Also clear the title when opening
-        setWebhookMessage(webhookBodyTemplate); // Set the template here
+        setWebhookTitle(''); // Set to empty string
+        setWebhookMessage(''); // Set to empty string
         setShowWebhookModal(true);
     };
 
@@ -4089,13 +4086,12 @@ const handleCopyAndNotifyWrapper = async () => {
                 selectedPositionKey={bbCodeVersion === 50 ? formData.recruitmentPosition : formData.saaaJobSelection}
                 positionData={currentPositionInfo}
             />
-            <AdminModal
-                show={showAdminModal}
-                onHide={() => setShowAdminModal(false)}
-                // You can pass other necessary props like showNotification if needed
-                showNotification={showNotification}
-                commitInfo={commitInfo} // If AdminModal needs it for webhooks
-            />
+                    <AdminModal
+                        show={bbCodeVersion === 999 && formData.isAdminAuthenticated === false && selectedAgencyGroup === "Admin"} // Example condition for showing AdminModal for login
+                        onHide={() => { /* Logic to hide admin modal or switch form */ }}
+                        showNotification={showNotification}
+                        commitInfo={commitInfo}
+                    />
 
             <div className="header-info-wrapper">
             <HeaderInfo commitInfo={commitInfo} /> 
@@ -4835,10 +4831,17 @@ const handleCopyAndNotifyWrapper = async () => {
                 setWebhookTitle={setWebhookTitle}
                 webhookMessage={webhookMessage}
                 setWebhookMessage={setWebhookMessage}
-                onSubmit={handleWebhookSubmit} // Pass updated handler
-                onSubmitPhmc={handlePhmcWebhookSubmit} // Pass updated handler
-                showNotification={showNotification} // Pass notification function
-                commitInfo={commitInfo} // Pass commit info
+                onSubmit={handleWebhookSubmit}      // For the primary button
+                onSubmitPhmc={handlePhmcWebhookSubmit} // For the secondary button
+                showNotification={showNotification}
+                commitInfo={commitInfo}
+                modalHeaderText="Send Webhook Message" // Or "Send Dev/PHMC Webhook"
+                primaryButtonText="Send to INTERNALDEV"
+                primaryWebhookUrlIdentifier="REACT_APP_DISCORD_WEBHOOK_URL"
+                secondaryButtonText="Send to PHMC Discord"
+                secondaryWebhookUrlIdentifier="REACT_APP_PHMC_DISCORD" // Make sure this matches your env var for PHMC
+                showSecondaryButton={true} // Explicitly show the secondary button
+                // --- MODIFICATION END ---
             />
 
                             {(formData.scenePhotos || formData.additionalImages) && (
