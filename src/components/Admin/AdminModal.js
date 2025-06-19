@@ -76,24 +76,6 @@ function AdminModal({ show, onHide, showNotification, commitInfo }) {
     // fetchPhysicianPositions might be better located in AdminAuthAndActions
     // if AdminModal is purely for authentication.
     // For now, keeping it here as per original structure.
-    const fetchPhysicianPositions = async () => {
-        setIsLoadingPositions(true);
-        try {
-            const positionsRef = ref(database, 'selectOptions/physicianRecruitmentDetails');
-            const snapshot = await get(positionsRef);
-            if (snapshot.exists()) {
-                setPhysicianPositions(snapshot.val());
-            } else {
-                setPhysicianPositions({});
-                if (showNotification) showNotification("No physician recruitment data found.", "warning");
-            }
-        } catch (dbError) {
-            console.error("Error fetching physician positions:", dbError);
-            if (showNotification) showNotification("Failed to load physician positions.", "error");
-            setPhysicianPositions({});
-        }
-        setIsLoadingPositions(false);
-    };
 
     const handleLogin = async (e) => {
         e.preventDefault();
@@ -162,9 +144,6 @@ function AdminModal({ show, onHide, showNotification, commitInfo }) {
                         {isLoadingAuth ? (
                             <div className="text-center"><Spinner animation="border" role="status"><span className="visually-hidden">Loading...</span></Spinner></div>
                         ) : currentUser ? (
-                            // If AdminModal is ONLY for login, this part might not be needed here.
-                            // The actual admin actions would be in AdminAuthAndActions.
-                            // For now, keeping a simple "Logged In" message.
                             <div>
                                 <p>You are logged in as: {currentUser.email}</p>
                                 <p>Admin actions are available in the main panel.</p>

@@ -125,6 +125,9 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     const [showAdminCustomWebhookModal, setShowAdminCustomWebhookModal] = useState(false);
     const [adminCustomWebhookTitle, setAdminCustomWebhookTitle] = useState('');
     const [adminCustomWebhookMessage, setAdminCustomWebhookMessage] = useState('');
+    const [showCoronerWebhookModal, setShowCoronerWebhookModal] = useState(false);
+    const [coronerWebhookTitle, setCoronerWebhookTitle] = useState('');
+    const [coronerWebhookMessage, setCoronerWebhookMessage] = useState('');
 
 
     useEffect(() => {
@@ -359,20 +362,28 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     };
 
     const handleAdminCustomWebhookSubmit = async (payloadFromModal) => {
-        const webhookURL = process.env.REACT_APP_PHMC_DISCORD || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-        if (!webhookURL) {
-            if (showInAppNotification) showInAppNotification('Admin Webhook URL not configured.', 'error');
-            Sentry.captureMessage("Admin Custom Webhook URL not configured for AdminAuthAndActions", "error");
-            return false; // Indicate failure
-        }
+        const webhookURLIdentifier = "REACT_APP_PHMC_DISCORD or REACT_APP_DISCORD_WEBHOOK_URL";
+        // const webhookURL = process.env.REACT_APP_PHMC_DISCORD || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
+        // --- MODIFICATION START: Comment out actual send, add console.log ---
+        console.log(`WEBHOOK: DISPATCHED %ADMIN-ACTION% to ${webhookURLIdentifier}`, payloadFromModal);
+        if (showInAppNotification) showInAppNotification('TEST: Admin webhook "sent" (logged to console).', 'check-circle');
+        setShowAdminCustomWebhookModal(false); // Close modal as if successful
+        return true; // Simulate success for testing
+        // --- MODIFICATION END ---
+
+        /*
+        if (!webhookURL) {
+            if (showInAppNotification) showInAppNotification('Admin Webhook URL (PHMC_DISCORD) not configured.', 'error');
+            Sentry.captureMessage("Admin Custom Webhook URL (PHMC_DISCORD) not configured for AdminAuthAndActions", "error");
+            return false;
+        }
         try {
             const response = await fetch(webhookURL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payloadFromModal),
             });
-
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error(`Failed to send admin custom webhook. Status: ${response.status}`, errorText);
@@ -381,17 +392,68 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                     extra: { statusText: response.statusText, responseBody: errorText }
                 });
                 if (showInAppNotification) showInAppNotification(`Failed to send admin webhook. Status: ${response.status}`, 'error');
-                return false; // Indicate failure
+                return false;
             } else {
                 if (showInAppNotification) showInAppNotification('Admin webhook message sent successfully!', 'check-circle');
                 setShowAdminCustomWebhookModal(false);
-                return true; // Indicate success
+                return true;
             }
         } catch (error) {
             console.error('Error sending admin custom webhook:', error);
             Sentry.captureException(error, { extra: { context: 'Admin Custom Webhook Submission Fetch (AdminAuthAndActions)' } });
             if (showInAppNotification) showInAppNotification('A network error occurred sending the admin webhook.', 'error');
-            return false; // Indicate failure
+            return false;
+        }
+        */
+    };
+
+    const handleOpenCoronerWebhookModal = () => {
+        setCoronerWebhookTitle('');
+        setCoronerWebhookMessage('');
+        setShowCoronerWebhookModal(true);
+    };
+
+    const handleCoronerWebhookSubmit = async (payloadFromModal) => {
+        const webhookURLIdentifier = "REACT_APP_CORONER_DISCORD_UPDATES";
+         const webhookURL = process.env.REACT_APP_CORONER_DISCORD_UPDATES;
+
+        // --- MODIFICATION START: Comment out actual send, add console.log ---
+        // console.log(`WEBHOOK: DISPATCHED %CORONER% to ${webhookURLIdentifier}`, payloadFromModal);
+        //if (showInAppNotification) showInAppNotification('TEST: Coroner webhook "sent" (logged to console).', 'check-circle');
+        //setShowCoronerWebhookModal(false); // Close modal as if successful
+        //return true; // Simulate success for testing
+        // --- MODIFICATION END ---
+
+        if (!webhookURL) {
+            if (showInAppNotification) showInAppNotification('Coroner Webhook URL (CORONER_DISCORD_UPDATES) not configured.', 'error');
+            Sentry.captureMessage("Coroner Webhook URL (CORONER_DISCORD_UPDATES) not configured", "error");
+            return false;
+        }
+        try {
+            const response = await fetch(webhookURL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payloadFromModal),
+            });
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`Failed to send Coroner webhook. Status: ${response.status}`, errorText);
+                Sentry.captureMessage(`Coroner Discord webhook failed: ${response.status}`, {
+                    level: 'error',
+                    extra: { statusText: response.statusText, responseBody: errorText }
+                });
+                if (showInAppNotification) showInAppNotification(`Failed to send Coroner webhook. Status: ${response.status}`, 'error');
+                return false;
+            } else {
+                if (showInAppNotification) showInAppNotification('Coroner webhook message sent successfully!', 'check-circle');
+                setShowCoronerWebhookModal(false);
+                return true;
+            }
+        } catch (error) {
+            console.error('Error sending Coroner webhook:', error);
+            Sentry.captureException(error, { extra: { context: 'Coroner Webhook Submission Fetch' } });
+            if (showInAppNotification) showInAppNotification('A network error occurred sending the Coroner webhook.', 'error');
+            return false;
         }
     };
 
@@ -477,6 +539,9 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
             <Button variant="info" onClick={handleOpenAdminCustomWebhookModal} className="mt-3 me-2">
                 <i className="fas fa-bullhorn"></i> ADMIN WEBHOOK
             </Button>
+            <Button variant="dark" onClick={handleOpenCoronerWebhookModal} className="mt-3 me-2"> {/* Using dark variant for coroner */}
+                <i className="fas fa-skull-crossbones"></i> CORONER WEBHOOK
+            </Button>
 
             <Button variant="warning" onClick={handleLogout} className="mt-3">Logout</Button>
 
@@ -494,21 +559,30 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                 setWebhookTitle={setAdminCustomWebhookTitle}
                 webhookMessage={adminCustomWebhookMessage}
                 setWebhookMessage={setAdminCustomWebhookMessage}
-                onSubmit={handleAdminCustomWebhookSubmit} // Primary button action
-                // onSubmitPhmc is not strictly needed if showSecondaryButton is false,
-                // but can be set to a no-op or also to handleAdminCustomWebhookSubmit if desired.
-                // For this case, since we hide the secondary button, it won't be called.
-                onSubmitPhmc={null}
+                onSubmit={handleAdminCustomWebhookSubmit}
                 showNotification={showInAppNotification}
                 commitInfo={commitInfo}
-                // --- MODIFICATION START: Pass new props for Admin context ---
-                modalHeaderText="Send Admin Webhook Embed"
+                modalHeaderText="Send Admin Action Embed"
                 primaryButtonText="Send to Admin Action Hook"
-                primaryWebhookUrlIdentifier="REACT_APP_PHMC_DISCORD" // Or include the fallback if it's often used: "REACT_APP_ADMIN_ACTION_DISCORD_WEBHOOK_URL || REACT_APP_DISCORD_WEBHOOK_URL"
-                showSecondaryButton={false} // Hide the secondary button for this instance
-                // secondaryButtonText and secondaryWebhookUrlIdentifier are not needed if showSecondaryButton is false
-                // --- MODIFICATION END ---
+                primaryWebhookUrlIdentifier="REACT_APP_PHMC_DISCORD or REACT_APP_DISCORD_WEBHOOK_URL" // Updated identifier
+                showSecondaryButton={false}
             />
+                        <WebhookModal
+                show={showCoronerWebhookModal}
+                onClose={() => setShowCoronerWebhookModal(false)}
+                webhookTitle={coronerWebhookTitle}
+                setWebhookTitle={setCoronerWebhookTitle}
+                webhookMessage={coronerWebhookMessage}
+                setWebhookMessage={setCoronerWebhookMessage}
+                onSubmit={handleCoronerWebhookSubmit} // This will be the primary action
+                showNotification={showInAppNotification}
+                commitInfo={commitInfo}
+                modalHeaderText="Send Coroner Update Embed"
+                primaryButtonText="Send to Coroner Updates"
+                primaryWebhookUrlIdentifier="REACT_APP_CORONER_DISCORD_UPDATES"
+                showSecondaryButton={false} // Only one send button needed for this specific modal
+            />
+
         </div>
     );
 };
