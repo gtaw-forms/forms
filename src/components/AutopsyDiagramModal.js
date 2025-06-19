@@ -1,7 +1,8 @@
 // src/components/AutopsyDiagramModal.js
 import React, { useState, useRef, useEffect, useCallback } from 'react'; // Added useCallback
 import { Button, OverlayTrigger, Tooltip, Form } from 'react-bootstrap'; // Added Form
-import bodySilhouette from '../assets/body-silhouette.jpg';
+import malebodySilhouette from '../assets/male-body-silhouette.jpg';
+import femalebodySilhouette from '../assets/female-body-silhouette.png';
 
 // --- Styles (Keep existing styles) ---
 const modalOverlayStyle = {
@@ -141,14 +142,22 @@ const AutopsyDiagramModal = ({
     const canvasRef = useRef(null);
     const [bodyImage, setBodyImage] = useState(null);
     const [isProcessingImage, setIsProcessingImage] = useState(false);
+    const [selectedSilhouetteType, setSelectedSilhouetteType] = useState('male'); // 'male' or 'female'
 
     const IMGUR_CLIENT_ID = process.env.REACT_APP_IMGUR_CLIENT_ID;
 
     useEffect(() => {
-        loadImage(bodySilhouette)
+        const imageToLoad = selectedSilhouetteType === 'female' ? femalebodySilhouette : malebodySilhouette;
+        loadImage(imageToLoad)
             .then(img => setBodyImage(img))
-            .catch(err => console.error("Failed to load body silhouette:", err));
-    }, []);
+            .catch(err => {
+                console.error(`Failed to load ${selectedSilhouetteType} body silhouette:`, err);
+                // Fallback to male silhouette if female fails or vice-versa, or show error
+                if (selectedSilhouetteType === 'female') {
+                    loadImage(malebodySilhouette).then(setBodyImage).catch(e => console.error("Fallback to male silhouette also failed:", e));
+                }
+            });
+    }, [selectedSilhouetteType]); // Re-run when selectedSilhouetteType changes
 
     useEffect(() => {
         if (show && !prevShowRef.current) {
@@ -631,12 +640,30 @@ const AutopsyDiagramModal = ({
                         <button onClick={onHide} style={modalCloseButtonStyle} aria-label="Close modal">&times;</button>
                     </div>
                     <div style={modalBodyStyle}>
-                        {/* Wrapper div for controls */}
                         <div style={{ flexShrink: 0 }}>
                             <div style={markerControlsStyle}>
+                                {/* --- MODIFICATION START: Silhouette Type Buttons --- */}
+                                <Button
+                                    variant={selectedSilhouetteType === 'male' ? 'info' : 'outline-info'}
+                                    size="sm"
+                                    onClick={() => setSelectedSilhouetteType('male')}
+                                    title="Use Male Silhouette"
+                                >
+                                    Male Body
+                                </Button>
+                                <Button
+                                    variant={selectedSilhouetteType === 'female' ? 'info' : 'outline-info'}
+                                    size="sm"
+                                    onClick={() => setSelectedSilhouetteType('female')}
+                                    title="Use Female Silhouette"
+                                >
+                                    Female Body
+                                </Button>
+                                <span style={{ borderLeft: '1px solid #30363d', height: '20px', margin: '0 5px' }}></span> {/* Visual separator */}
+                                {/* --- MODIFICATION END --- */}
+
                                 <Button variant={selectedMarkerType === 'circle' ? 'danger' : 'outline-danger'} size="sm" onClick={() => setSelectedMarkerType('circle')}>Circle (O)</Button>
                                 <Button variant={selectedMarkerType === 'cross' ? 'primary' : 'outline-primary'} size="sm" onClick={() => setSelectedMarkerType('cross')}>Cross (X)</Button>
-                                {/* Always show all label buttons */}
                                 <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('GSW')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>GSW</Button>
                                 <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('STAB')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>STAB</Button>
                                 <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('UNK')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>UNK</Button>
@@ -650,7 +677,7 @@ const AutopsyDiagramModal = ({
                                         <Button
                                             variant="outline-light"
                                             size="sm"
-                                            onClick={() => handleAddLabelToLastMarker(btn.short)} // Pass only the short code
+                                            onClick={() => handleAddLabelToLastMarker(btn.short)}
                                             disabled={markers.length === 0}
                                             style={{ fontSize: '0.75rem' }}
                                         >
@@ -664,11 +691,19 @@ const AutopsyDiagramModal = ({
                                 <Button variant="outline-secondary" size="sm" onClick={handleUndoLastMarker} disabled={markers.length === 0}>Undo</Button>
                                 <Button variant="outline-warning" size="sm" onClick={handleClearAllMarkers} disabled={markers.length === 0}>Clear All</Button>
                             </div>
-                        </div> {/* End Wrapper div for controls */}
+                        </div>
 
                         <div ref={imageContainerRef} style={imageContainerStyle}>
-                            <img ref={imageRef} src={bodySilhouette} alt="Autopsy diagram area" style={bodyImageStyle} onClick={handleImageClick} />
-                            {markers.map(marker => renderMarker(marker))} {/* Pass individual marker */}
+                            {/* --- MODIFICATION START: Dynamically set image source --- */}
+                            <img
+                                ref={imageRef}
+                                src={selectedSilhouetteType === 'female' ? femalebodySilhouette : malebodySilhouette}
+                                alt={`Autopsy diagram area - ${selectedSilhouetteType}`}
+                                style={bodyImageStyle}
+                                onClick={handleImageClick}
+                            />
+                            {/* --- MODIFICATION END --- */}
+                            {markers.map(marker => renderMarker(marker))}
                         </div>
                         <small style={{ color: '#8b949e', flexShrink: 0 }}>
                             Click diagram to place marker. Click marker to remove. Click label to edit (max 9 chars).
