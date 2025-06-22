@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback} from 'react';
-import { formDefinitions, getFormDefinition, generateVersionNames as generateVersionNamesFromDefs } from './formDefinitions'; 
+import { formDefinitions, getFormDefinition } from './formDefinitions'; 
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import Notification from './components/Notification';
 import { Modal, Form, Button } from 'react-bootstrap';
@@ -24,33 +24,16 @@ import MissingEmployeeModal from './components/MissingEmployeeModal';
 import SaaaEmployeeModal from './saaa-components/SaaaEmployeeModal'; 
 import RecruitmentStatusDisplay from './components/RecruitmentStatusDisplay'; // Add this import
 // admin
-import AdminModal from './components/Admin/AdminModal'; // We will create this
+import AdminModal from './components/Admin/AdminModal'; 
+import FormImageLink from './components/FormImageLink';
 
 // 
 import { handleFormCopyAndNotify, handlePhmcRecruitmentCopyAndNotify } from './components/notificationService'; // Add the new import
 
 import FlightSchoolTipsModal from './saaa-components/FlightSchoolTipsModal';
-import saaaLogo from './assets/saaa-button.png'; // Import SAAA logo
+import saaaLogo from './assets/saaa-button.png'; 
 import {
     generateDeathReport,
-    generateEmail,
-    generateSurgicalOps,
-    generateAdvancedPatientFile,
-    generatePhysEvalInternalMed,
-    generatePhysEvalInternalMedPBC,
-    generateMentalHealthPHMC,
-    generateMentalHealthPBC,
-    generateConsultationNotesPHMC,
-    generateAgencyFeedback,
-    generateEmergencyProtocol,
-    generateCommentaryNotePHMC,
-    generateCommentaryNotePBC,
-    generateMedicalRecordRelease,
-    generateBasicPatientFile,
-    generateEmailPHMCEmail,
-    generateConsultationNotesPBC,
-    generatePsychEvalPHMC,
-    generatePsychEvalPBC,
 } from './phmc-bbcode-generators'; 
 import PositionInfoModal from './components/PositionInfoModal'; // Adjust path as needed
 
@@ -85,7 +68,6 @@ const initialFormData = {
     evidenceLocker: '',
     department: '',
     dateTime: '',
-    phmcEmployeeSignature: '',
     phmcEmployeeLastName: '',  
     serialNumber: '',
     decedentName: '',
@@ -122,7 +104,6 @@ const initialFormData = {
     policeNotification: '',
     treatmentLocation: '',
     moreDeathReports: [''],
-    // patientName: '', // This is duplicated below, ensure one source of truth
     patientAllergies: '',
     surgeryComplications: '',
     surgeryProcedures: '',
@@ -453,7 +434,6 @@ const initialFormData = {
     saaaJobSelection: '',
 
 };
-    const [showAdminModal, setShowAdminModal] = useState(false); // This can be removed if not used elsewhere
 
     const handleAdminPanelClick = () => {
         const adminFormGroup = "Admin";
@@ -1291,7 +1271,6 @@ const phmcRecruitmentFormsSubGroup = formDefinitions.filter(
     const [featureRequest, setFeatureRequest] = useState('');
     const [discordName, setDiscordName] = useState('');
     const [showMissingEmployeeModal, setShowMissingEmployeeModal] = useState(false);
-    const [requestType, setRequestType] = useState('');
     const [isRemoveStaff, setIsRemoveStaff] = useState(false); 
     const [missingEmployeeData, setMissingEmployeeData] = useState({
         coronerName: '',
@@ -1484,7 +1463,7 @@ const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
                 }
                 const finalLastNameForEntry = parsedLastName || 'MISSING_LAST_NAME';
                 parsedLastNameForEmbed = parsedLastName || "N/A";
-                dataJsEntry = `{ name: '${calculatedFullName}', lastName: '${finalLastNameForEntry}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', category: '${missingEmployeeData.coronerRank || 'MISSING_CATEGORY'}', signature: '' },`;
+                dataJsEntry = `{ name: '${calculatedFullName}', lastName: '${finalLastNameForEntry}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', category: '${missingEmployeeData.coronerRank || 'MISSING_CATEGORY'}' },`;
             }
             embedData.fields.push({ name: "Last Name", value: parsedLastNameForEmbed, inline: true });
             if (missingEmployeeData.coronerPHNumber?.trim()) {
@@ -1517,7 +1496,7 @@ const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
                 const phmcData = phmcListData.find(p => p.name === staffNameToRemove);
                 if (phmcData) {
                     removedStaffDataStrings.push(
-                        `PHMC: { name: '${phmcData.name}', lastName: '${phmcData.lastName}', rank: '${phmcData.rank || phmcData.category}', category: '${phmcData.category}', signature: '${phmcData.signature || ''}' }`
+                        `PHMC: { name: '${phmcData.name}', lastName: '${phmcData.lastName}', rank: '${phmcData.rank || phmcData.category}', category: '${phmcData.category}',  }`
                     );
                 }
             }
@@ -1634,7 +1613,6 @@ const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
                             lastName: finalLastNameForEntry,
                             rank: missingEmployeeData.coronerRank,
                             category: missingEmployeeData.coronerRank,
-                            signature: ''
                         };
                         try {
                             const phmcListRef = ref(database, 'staff/phmc');
@@ -2064,7 +2042,6 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 groups[categoryName].push({
                     value: employee.name, // Or a unique ID if 'name' isn't unique
                     label: employee.name,
-                    signature: employee.signature,
                     category: employee.category,
                     lastName: employee.lastName
                     // Add any other fields needed by the Select component or your logic
@@ -2194,19 +2171,9 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
         return () => clearInterval(intervalId);
     }, []); 
     
-    // Save Coroner Form BBCode to local storage
+    // Saved Reports State and Functions
     const [savedReports, setSavedReports] = useState([]);
     const [showSavedReports, setShowSavedReports] = useState(false);
-    useEffect(() => {
-        loadSavedReports();
-    }, []); // Empty dependency array ensures this runs only once on mount
-
-    // Function to delete a saved report
-    const deleteReport = (key) => {
-        localStorage.removeItem(key);
-        showNotification(`Report deleted: ${key}`, 'trash');
-        loadSavedReports(); // Refresh the list of saved reports
-    };
     const combinedStaffOptions = [
         {
             label: 'Coroners',
@@ -2672,15 +2639,12 @@ const loadReportForUser = async (reportFirebaseKey, userId) => {
                      console.log(`[loadReportForUser] Valid PHMC employee "${loadedPhmcEmployee}" found. Syncing details.`);
                      // Sync with current data from phmcListData
                      loadedFormData.phmcEmployee = loadedPhmcEmployee; // Ensure it's set
-                     loadedFormData.phmcEmployeeSignature = phmcDetails.signature || '';
                      loadedFormData.phmcEmployeeLastName = phmcDetails.lastName || '';
                      loadedFormData.phmcRank = phmcDetails.category || phmcDetails.rank || '';
 
                      // Update localStorage with synced data
                      localStorage.setItem('phmcEmployee', loadedFormData.phmcEmployee);
                      localStorage.setItem('phmcEmployee_timestamp', currentTimestamp);
-                     localStorage.setItem('phmcEmployeeSignature', loadedFormData.phmcEmployeeSignature);
-                     localStorage.setItem('phmcEmployeeSignature_timestamp', currentTimestamp);
                      localStorage.setItem('phmcEmployeeLastName', loadedFormData.phmcEmployeeLastName);
                      localStorage.setItem('phmcEmployeeLastName_timestamp', currentTimestamp);
                      localStorage.setItem('phmcRank', loadedFormData.phmcRank);
@@ -2692,14 +2656,13 @@ const loadReportForUser = async (reportFirebaseKey, userId) => {
                      // Keep existing loadedFormData.phmcEmployee and its related fields
                      // Update localStorage timestamps for the loaded (but not found in current list) data
                      if (loadedFormData.phmcEmployee) localStorage.setItem('phmcEmployee_timestamp', currentTimestamp);
-                     if (loadedFormData.phmcEmployeeSignature) localStorage.setItem('phmcEmployeeSignature_timestamp', currentTimestamp);
                      if (loadedFormData.phmcEmployeeLastName) localStorage.setItem('phmcEmployeeLastName_timestamp', currentTimestamp);
                      if (loadedFormData.phmcRank) localStorage.setItem('phmcRank_timestamp', currentTimestamp);
                  }
              } else {
                 console.log('[loadReportForUser] No phmcEmployee in loaded report data.');
                 // If no phmcEmployee was in the loaded report, clear any existing phmcEmployee from localStorage
-                const phmcFieldsToClear = ['phmcEmployee', 'phmcEmployeeSignature', 'phmcEmployeeLastName', 'phmcRank'];
+                const phmcFieldsToClear = ['phmcEmployee', 'phmcEmployeeLastName', 'phmcRank'];
                 phmcFieldsToClear.forEach(field => {
                     localStorage.removeItem(field);
                     localStorage.removeItem(`${field}_timestamp`);
@@ -2837,184 +2800,12 @@ const showRareEasterEggDirectly = () => {
 };
 
 // --- Function to show the normal easter egg ---
-const showNormalEasterEggDirectly = () => {
-    setShowEasterEggModal(true);
-    setEasterEggType('normal');
-    // Optionally send a webhook for the normal manual trigger if desired
-    // if (window.location.hostname === 'localhost') {
-    //     sendEasterEggNotification('normal'); // Pass 'normal' type
-    // }
-};
 const [lastWebhookIdentifier, setLastWebhookIdentifier] = useState(null);
 
-const loadReport = (key) => {
-    const reportData = localStorage.getItem(key);
-    if (reportData) {
-        try {
-            const parsedData = JSON.parse(reportData);
-            const loadedVersion = parsedData.bbCodeVersion;
-            let loadedBbCode = parsedData.bbCode || '';
-            const loadedFormData = parsedData.data || {};
-
-            // --- Fields managed by localStorage with expiry ---
-            const localStorageManagedFields = [
-                'placeOfDeath',
-                'pronouncedTimeOfDeath',
-                'dateTime',
-                'department',
-                'mannerOfDeath', 
-                'coronerEmployee',
-                'coronerBadge',
-                'coronerRank',
-                'coronerDiscord',
-                'phmcEmployee',
-                'phmcSignature'
-            ];
-
-            // --- Update localStorage for managed fields when loading ---
-            const timestamp = Date.now().toString(); // Get current timestamp for loaded data
-            localStorageManagedFields.forEach(field => {
-                if (loadedFormData.hasOwnProperty(field) && loadedFormData[field]) {
-                    localStorage.setItem(field, loadedFormData[field]);
-                    localStorage.setItem(`${field}_timestamp`, timestamp);
-                    console.log(`Updated localStorage for ${field} from loaded report.`);
-                } else {
-                }
-            });
-
-
-            // --- Fancy spaghetti whatever the fuck for deathReport and coronerEmail idk (v2) ---
-            if (bbCodeVersion === 2 && loadedVersion === 1) {
-
-                if (loadedBbCode) {
-                    loadedBbCode = loadedBbCode.replace(/\[bold\]/g, '[b]').replace(/\[\/bold\]/g, '[/b]');
-                }
-
-                let notificationMessage = '';
-                const currentDeathReportIsEmpty = !formData.deathReport || formData.deathReport.trim() === '';
-
-                if (currentDeathReportIsEmpty) {
-                    notificationMessage = `Loaded report for ${loadedFormData.decedentName || key} into main Death Report field.`;
-                } else {
-                    notificationMessage = `Added report for ${loadedFormData.decedentName || key} as an additional report.`;
-                }
-
-                setFormData(prevFormData => {
-                    let updatedName = prevFormData.decedentName || '';
-                    let updatedOoc = prevFormData.decedentOOC || '';
-                    let updatedDeathReport = prevFormData.deathReport || '';
-                    let updatedAdditionalReports = prevFormData.additionalReports || [];
-
-                    if (prevFormData.decedentName && loadedFormData.decedentName) {
-                        updatedName = `${prevFormData.decedentName}, ${loadedFormData.decedentName}`;
-                    } else {
-                        updatedName = loadedFormData.decedentName || prevFormData.decedentName || '';
-                    }
-
-                    if (prevFormData.decedentOOC && loadedFormData.decedentOOC) {
-                        updatedOoc = `${prevFormData.decedentOOC}, ${loadedFormData.decedentOOC}`;
-                    } else {
-                        updatedOoc = loadedFormData.decedentOOC || prevFormData.decedentOOC || '';
-                    }
-
-                    if (!prevFormData.deathReport || prevFormData.deathReport.trim() === '') {
-                        updatedDeathReport = loadedBbCode;
-                    } else {
-                        updatedAdditionalReports = [...updatedAdditionalReports, loadedBbCode];
-                    }
-
-                    return {
-                        ...prevFormData,
-                        ...loadedFormData, // Apply loaded data first
-                        decedentName: updatedName,
-                        decedentOOC: updatedOoc,
-                        deathReport: updatedDeathReport,
-                        additionalReports: updatedAdditionalReports,
-                    };
-                });
-
-                setParsedBBCode('');
-                showNotification(notificationMessage, 'plus-circle');
-                setShowSavedReports(false);
-
-            } else {
-                 // --- Default Loading Logic (for all other cases) ---
-                setFormData(prevFormData => {
-                    // Create a new state object based on the loaded data
-                    let newState = { ...loadedFormData };
-
-                    // If loading *into* v2 (Coroner Email), handle potential merging
-                    if (bbCodeVersion === 2 && loadedVersion === 2) {
-                         if (prevFormData.decedentName && loadedFormData.decedentName) {
-                            newState.decedentName = `${prevFormData.decedentName}, ${loadedFormData.decedentName}`;
-                        }
-                        if (prevFormData.decedentOOC && loadedFormData.decedentOOC) {
-                            newState.decedentOOC = `${prevFormData.decedentOOC}, ${loadedFormData.decedentOOC}`;
-                        }
-                    }
-
-                    for (const key in prevFormData) {
-                        if (!newState.hasOwnProperty(key)) {
-                            newState[key] = prevFormData[key];
-                        }
-                    }
-
-                    return newState;
-                });
-
-                setBbCodeVersion(loadedVersion);
-                setParsedBBCode(loadedBbCode);
-                showNotification(`Report loaded from ${key}`, 'upload');
-                setShowSavedReports(false);
-            }
-
-        } catch (error) {
-            console.error("Error parsing report data:", error);
-            Sentry.captureException(error, { extra: { context: 'loadReport Parse Error', key: key } });
-            localStorage.removeItem(key);
-            showNotification(`Invalid report data deleted: ${key}`, 'trash');
-            loadSavedReports();
-        }
-    } else {
-        console.warn(`Attempted to load non-existent report with key: ${key}`);
-        showNotification(`Report not found: ${key}`, 'warning');
-    }
-};
     const toggleSavedReports = () => {
         setShowSavedReports(prev => !prev);
     };
 
-    const loadSavedReports = () => {
-        const saved = [];
-        const now = Date.now();
-        const thirtyOneDays = 31 * 24 * 60 * 60 * 1000; // 31 days in milliseconds
-
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key.includes(' - ')) {
-                const reportData = localStorage.getItem(key);
-                if (reportData) {
-                    try {
-                        const parsedData = JSON.parse(reportData);
-                        if (parsedData.timestamp && now - parsedData.timestamp < thirtyOneDays) {
-                            // Report is not expired
-                            saved.push(key);
-                        } else {
-                            // Report is expired, delete it
-                            localStorage.removeItem(key);
-                            showNotification(`Expired report deleted: ${key}`, 'trash');
-                        }
-                    } catch (error) {
-                        console.error("Error parsing report data:", error);
-                        // Handle parsing errors (e.g., invalid JSON)
-                        localStorage.removeItem(key); // Remove potentially corrupted data
-                        showNotification(`Invalid report data deleted: ${key}`, 'trash');
-                    }
-                }
-            }
-        }
-        setSavedReports(saved);
-    };
     const [showPositionInfoModal, setShowPositionInfoModal] = useState(false);
         const [currentPositionInfo, setCurrentPositionInfo] = useState(null); // Add this line
     const handleShowPositionInfo = (positionKey) => {
@@ -3083,11 +2874,6 @@ const filterFormData = (formData, bbCodeVersion) => {
             setShowAgencyGroupSelectorModal(true); // Show if no saved group or preference is not to hide
         }
     }, []);
-    const [hasOptedIn, setHasOptedIn] = useState(() => {
-        // Initialize from localStorage
-        const storedOptIn = localStorage.getItem('recruitmentOptIn');
-        return storedOptIn === 'true';
-    });
     const [phmcRecruitmentOptIn, setPhmcRecruitmentOptIn] = useState(() => {
         return localStorage.getItem('phmcRecruitmentOptIn') === 'true';
     });
@@ -3462,7 +3248,7 @@ const toggleEmsAmaModal = () => {
 
 const clearOldLocalStorage = () => {
     const fields = [
-        'phmcEmployee', 'phmcEmployeeSignature', 'phmcEmployeeLastName', 'phmcRank', // Added PHMC fields
+        'phmcEmployee', 'phmcEmployeeLastName', 'phmcRank', // Added PHMC fields
         'coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord', 'coronerPHNumber', // coronerPHNumber added for consistency
         'pronouncedTimeOfDeath', 'department', 'dateTime', 'placeOfDeath', 'mannerOfDeath'
     ];
@@ -3491,7 +3277,7 @@ useEffect(() => {
     const newFormData = { ...formData }; // Start with current formData to preserve any defaults not in localStorage
 
     const fieldsToLoadFromLS = [
-        'phmcEmployee', 'phmcEmployeeSignature', 'phmcEmployeeLastName', 'phmcRank',
+        'phmcEmployee', 'phmcEmployeeLastName', 'phmcRank',
         'coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord', 'coronerPHNumber',
         'pronouncedTimeOfDeath', 'department', 'dateTime', 'placeOfDeath', 'mannerOfDeath'
         // Add any other fields you persist and want to load
@@ -3629,17 +3415,10 @@ useEffect(() => {
             if (phmcDetailsFromDataJs) {
                 const updatesToForm = {};
                 let needsFormUpdate = false;
-                const phmcSignatureFromDb = phmcDetailsFromDataJs.signature || '';
                 const phmcLastNameFromDb = phmcDetailsFromDataJs.lastName || '';
                 const phmcRankFromDb = phmcDetailsFromDataJs.category || phmcDetailsFromDataJs.rank || '';
 
 
-                if (formData.phmcEmployeeSignature !== phmcSignatureFromDb) {
-                    updatesToForm.phmcEmployeeSignature = phmcSignatureFromDb;
-                    localStorage.setItem('phmcEmployeeSignature', phmcSignatureFromDb);
-                    localStorage.setItem('phmcEmployeeSignature_timestamp', currentTimestamp);
-                    needsFormUpdate = true;
-                }
                 if (formData.phmcEmployeeLastName !== phmcLastNameFromDb) {
                     updatesToForm.phmcEmployeeLastName = phmcLastNameFromDb;
                     localStorage.setItem('phmcEmployeeLastName', phmcLastNameFromDb);
@@ -3660,20 +3439,19 @@ useEffect(() => {
                 } else {
                     // Even if no data changed, update timestamps for active fields
                     localStorage.setItem('phmcEmployee_timestamp', currentTimestamp);
-                    if (formData.phmcEmployeeSignature) localStorage.setItem('phmcEmployeeSignature_timestamp', currentTimestamp);
                     if (formData.phmcEmployeeLastName) localStorage.setItem('phmcEmployeeLastName_timestamp', currentTimestamp);
                     if (formData.phmcRank) localStorage.setItem('phmcRank_timestamp', currentTimestamp);
                 }
             } else {
                 showNotification(`The previously selected PHMC staff "${selectedPhmcEmployeeName}" is no longer valid and has been cleared.`, 'warning', 7000);
-                const fieldsToClear = ['phmcEmployee', 'phmcEmployeeSignature', 'phmcEmployeeLastName', 'phmcRank'];
+                const fieldsToClear = ['phmcEmployee', 'phmcEmployeeLastName', 'phmcRank'];
                 fieldsToClear.forEach(field => {
                     localStorage.removeItem(field);
                     localStorage.removeItem(`${field}_timestamp`);
                 });
                 setFormData(prev => ({
                     ...prev,
-                    phmcEmployee: '', phmcEmployeeSignature: '', phmcEmployeeLastName: '', phmcRank: '',
+                    phmcEmployee: '', phmcEmployeeLastName: '', phmcRank: '',
                 }));
                 // If this was the user we were tracking, clear them
                 if (lastWelcomedUserRef.current === selectedPhmcEmployeeName) {
@@ -3717,7 +3495,6 @@ useEffect(() => {
                 const employeeDetails = phmcListData.find(emp => emp.name === selectedOption.value);
                 if (employeeDetails) {
                     const updates = {
-                        phmcEmployeeSignature: employeeDetails.signature || '',
                         phmcEmployeeLastName: employeeDetails.lastName || '',
                         // Use category as primary for rank, fallback to rank field if category isn't rank-like
                         phmcRank: employeeDetails.category || employeeDetails.rank || '',
@@ -3731,8 +3508,6 @@ useEffect(() => {
                     localStorage.setItem('phmcEmployee', selectedOption.value);
                     localStorage.setItem('phmcEmployee_timestamp', timestamp);
                     // Save other PHMC details
-                    localStorage.setItem('phmcEmployeeSignature', updates.phmcEmployeeSignature);
-                    localStorage.setItem('phmcEmployeeSignature_timestamp', timestamp);
                     localStorage.setItem('phmcEmployeeLastName', updates.phmcEmployeeLastName);
                     localStorage.setItem('phmcEmployeeLastName_timestamp', timestamp);
                     localStorage.setItem('phmcRank', updates.phmcRank);
@@ -3768,11 +3543,9 @@ useEffect(() => {
             const lsKeysToRemove = [name, `${name}_timestamp`];
 
             if (name === 'phmcEmployee') {
-                fieldsToClearInForm.phmcEmployeeSignature = '';
                 fieldsToClearInForm.phmcEmployeeLastName = '';
                 fieldsToClearInForm.phmcRank = '';
                 lsKeysToRemove.push(
-                    'phmcEmployeeSignature', 'phmcEmployeeSignature_timestamp',
                     'phmcEmployeeLastName', 'phmcEmployeeLastName_timestamp',
                     'phmcRank', 'phmcRank_timestamp'
                 );
@@ -4809,20 +4582,16 @@ const handleCopyAndNotifyWrapper = async () => {
             <SavedReportsModal
                 show={showSavedReports}
                 onClose={toggleSavedReports}
-                savedReports={savedReports}
-                loadReport={loadReport}
-                deleteReport={deleteReport}
                 getBBCodeContent={getBBCodeContent} 
                 showNotification={showNotification}
-                    reportsForSelectedUser={savedReports} // savedReports state from App.js
-                    onEmployeeSelect={loadUserSavedReports} // Pass the new function
-                    employeeOptions={combinedStaffOptions} // Your existing staff options
-                    isLoadingReports={isLoadingUserReports} // Pass the new loading state
-                    loadReportForUser={loadReportForUser} // You'll update this function next
-                    deleteReportForUser={deleteReportForUser} // You'll update this function next
-    currentCoronerEmployee={formData.coronerEmployee}
-    currentPhmcEmployee={formData.phmcEmployee}
-
+                reportsForSelectedUser={savedReports}
+                onEmployeeSelect={loadUserSavedReports}
+                employeeOptions={combinedStaffOptions}
+                isLoadingReports={isLoadingUserReports}
+                loadReportForUser={loadReportForUser}
+                deleteReportForUser={deleteReportForUser}
+                currentCoronerEmployee={formData.coronerEmployee}
+                currentPhmcEmployee={formData.phmcEmployee}
             />
             <WebhookModal
                 show={showWebhookModal}
@@ -4985,140 +4754,15 @@ versionsWithTitleSection.includes(bbCodeVersion) && (
                             </Button>
                         )}
                     </div>
-
-{bbCodeVersion === 1 && (
-    <div className="image-container">
-        <a href="https://phmc.gta.world/posting.php?mode=post&f=267" target="_blank" rel="noopener noreferrer" className={deathReportClass} title="Easter Bunny goes bounce bounce">
-            <img
-                src={deathReportImage}
-                height={350}
-                width={350}
-                className="Center"
-                alt="Death Reports Link"
-            />
-        </a>
-    </div>
-)}
-
-{bbCodeVersion === 4 && (
-    <div className="image-container">
-        <a href="https://phmc.gta.world/posting.php?mode=post&f=266" target="_blank" rel="noopener noreferrer" className={deathReportClass} title="Easter Bunny goes bounce bounce">
-            <img
-                src={deathReportImage}
-                height={350}
-                width={350}
-                className="Center"
-                alt="Death Reports Link"
-            />
-        </a>
-    </div>
-)}
-
- {bbCodeVersion === 24 && (
-    <div className="image-container">
-        <a href="https://phmc.gta.world/posting.php?mode=post&f=109" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="Easter Bunny goes bounce bounce">
-            <img
-                src={civilianPaperworkImage}
-                height={350}
-                width={350}
-                className="Center"
-                alt="Request Medical Records"
-            />
-        </a>
-    </div>
-)}
- {bbCodeVersion === 3 || bbCodeVersion === 25 && (
-    <div className="image-container">
-        <a href="https://phmc.gta.world/posting.php?mode=post&f=221" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="Easter Bunny goes bounce bounce">
-            <img
-                src={civilianPaperworkImage}
-                height={350}
-                width={350}
-                className="Center"
-                alt="Basic Patient File"
-            />
-        </a>
-    </div>
-)}
-{selectedAgencyGroup === 'PHMC' && bbCodeVersion !== 1 && bbCodeVersion !== 2  && bbCodeVersion !== 3 && bbCodeVersion !== 4 && bbCodeVersion !== 24 && bbCodeVersion !== 25 && bbCodeVersion !== 26 && (
-    <div className="image-container">
-        <a href="https://phmc.gta.world/viewforum.php?f=97" target="_blank" rel="noopener noreferrer" className={civilianPaperworkClass} title="Easter Bunny goes bounce bounce">
-            <img
-                src={civilianPaperworkImage}
-                height={350}
-                width={350}
-                className="Center"
-                alt="Staff Area - Medical Records"
-            />
-        </a>
-    </div>
-)}
-{bbCodeVersion === 30 && (
-    <div className="image-container">
-        <a href="https://saaa.gta.world/posting.php?mode=post&f=71" target="_blank" rel="noopener noreferrer">
-            <img
-                src={saaaLogo}
-                height={350}
-                width={350}
-                className="Center"
-                alt="Entry Recruitment Form"
-            />
-        </a>
-    </div>
-)}
-{bbCodeVersion === 31 && (
-    <div className="image-container">
-        <a href="https://saaa.gta.world/posting.php?mode=post&f=28" target="_blank" rel="noopener noreferrer">
-            <img
-                src={saaaLogo}
-                height={350}
-                width={350}
-                className="Center"
-                alt="Flight School Application Form"
-            />
-        </a>
-    </div>
-)}
-{bbCodeVersion === 32 && (
-    <div className="image-container">
-        <a href="https://saaa.gta.world/posting.php?mode=post&f=7" target="_blank" rel="noopener noreferrer">
-            <img
-                src={saaaLogo}
-                height={350}
-                width={350}
-                className="Center"
-                alt="Aircraft Registration Form"
-            />
-        </a>
-    </div>
-)}
-
-{bbCodeVersion === 33 && (
-    <div className="image-container">
-        <a href="https://saaa.gta.world/posting.php?mode=post&f=112" target="_blank" rel="noopener noreferrer">
-            <img
-                src={saaaLogo}
-                height={350}
-                width={350}
-                className="Center"
-                alt="Airline Companies Registration"
-            />
-        </a>
-    </div>
-)}
-{bbCodeVersion === 34 && (
-    <div className="image-container">
-        <a href="https://saaa.gta.world/posting.php?mode=post&f=216" target="_blank" rel="noopener noreferrer">
-            <img
-                src={saaaLogo}
-                height={350}
-                width={350}
-                className="Center"
-                alt="Heliport Registration Form"
-            />
-        </a>
-    </div>
-)}
+<FormImageLink
+    bbCodeVersion={bbCodeVersion}
+    selectedAgencyGroup={selectedAgencyGroup}
+    deathReportClass={deathReportClass}
+    civilianPaperworkClass={civilianPaperworkClass}
+    deathReportImage={deathReportImage}
+    civilianPaperworkImage={civilianPaperworkImage}
+    saaaLogo={saaaLogo} // Make sure saaaLogo is imported and available in App.js scope
+/>
 
                 </div>
                             </div>
