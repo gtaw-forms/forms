@@ -56,7 +56,7 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
                                     value={coronerGroupedOptions
                                         .flatMap(group => group.options)
                                         .find(option => option.value === formData.coronerEmployee) || null}
-                                    onChange={(selectedOption) => handleSelectChange(selectedOption, 'coroner')}
+                onChange={(selectedOption, actionMeta) => handleSelectChange(selectedOption, actionMeta)}
                                     options={coronerGroupedOptions}
                                     isClearable
                                     placeholder="Search or select coroner..."
