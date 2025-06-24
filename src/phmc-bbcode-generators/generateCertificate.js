@@ -1,44 +1,58 @@
-const generateEmailPHMCEmail = (formData) => {
+const generateCertificate = (formData) => {
     const {
         scenePhotos,
         decedentName,
-        patientNotes,
-        synopsis,
-        phmcEmployee,
-        decedentOOC,
-        patientCareer,
+        patientAge,
+        probableCauseOfDeath,
+        patientDateOfBirth,
+        dateofdeath,
+        TimeofDeath,
+        witnessName,
+        coronerEmployee,
+        date,
     } = formData;
     const scenePhotosBBCode = scenePhotos.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
 
-    let bbCode = `[divbox=na][br][/br][imageleft]https://i.imgur.com/dkdFQtg.png[/imageleft] [b][size=110]Pillbox Hill Medical Center[/size][/b] 
-[center][/center][br][/br]
-[center][size=130][/center][/size]
-[center][size=150][b]RE: ${patientNotes} [/b][/size][/center]
-
-[hr][/hr][br][/br][list=none]
-Dear ${decedentName},
-
-${synopsis}
+    let bbCode = `[divbox=#E8E8E8][br][/br][center][img]https://i.imgur.com/Hxjt4M2.png[/img][/center][br][/br]
 
 
-Respectfully submitted,
-${scenePhotosBBCode} 
-[/list][hr][/hr][list=none]
-[b][size=105]${phmcEmployee}[/size][/b]
-[size=85]${decedentOOC}
-${patientCareer}
-[/size]
+[hr][/hr]
+[center][size=125][b]DEPARTMENT OF PATHOLOGY AND FORENSIC MEDICINE ISSUED
+CERTIFICATE OF DEATH[/center][/b][/size]
+[hr][/hr][br]
 
-[b]Pillbox Hill Medical Center[/b]
-[size=85]Elgin Avenue/Strawberry Avenue, Pillbox Hill, Los Santos, SA
-Phone: 50056
-Mail: [url=https://phmc.gta.world/ucp.php?i=pm&mode=compose&g=40]info@phmc.health[/url]
-Website: [url=https://phmc.gta.world/index.php]www.phmc.health[/url]
+[center]I, [b]${coronerEmployee}[/b], on behalf of the Department of Pathology and Forensic Medicine of Pillbox Hill Medical Center, in the State of San Andreas, document, record, seal and hereby certify the death of [b]${decedentName}[/b]. I confirm the following information is factual to the best of my abilities:[/center][br][/br]
 
-Follow us on Facebrowser: [url=https://face.gta.world/pages/PHMC?ref=qs]Pillbox Hill Medical Center[/url][/size]
+[table][tr][td]NAME[/td][td]
+${decedentName || 'INSERT DECEDENT NAME HERE'}
 
-[size=70][i]The contents of this message and any attachments are confidential. They are intended for the named recipient(s) only.  If you have received this email by mistake, please notify the sender immediately and do not disclose the contents to anyone or make copies thereof.[/i][/size][/divbox] 
-`
+[tr][td]AGE[/td][td]
+${patientAge}	
+
+[tr][td]DATE OF BIRTH[/td][td]
+${patientDateOfBirth || 'INSERT DATE OF BIRTH HERE'}	
+
+[tr][td]CAUSE OF DEATH[/td][td]
+${probableCauseOfDeath || 'INSERT CAUSE OF DEATH HERE'}	
+
+[tr][td]TIME OF DEATH[/td][td]
+${TimeofDeath || 'INSERT TIME OF DEATH HERE'}	
+
+[tr][td]DATE OF DEATH[/td][td]
+${dateofdeath || 'INSERT DATE OF DEATH HERE'}	
+[/table][br][/br]
+[list=none][left]
+SIGNATURE OF MEDICAL-EXAMINER:
+PRINT NAME: Dr. Anne Carter
+
+SIGNATURE OF WITNESS:
+PRINT NAME: ${witnessName || 'INSERT WITNESS NAME HERE'}
+
+DATE CERTIFICATE ISSUED: ${date}
+[/list]
+
+[br][hr][/hr]
+[center]Note: This is the master copy of the death certificate. Additional copies can be requested at an additional fee[/center][br][/br]`
     return bbCode;
     };
-export default generateEmailPHMCEmail;
+export default generateCertificate;

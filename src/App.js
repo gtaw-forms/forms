@@ -467,7 +467,11 @@ const initialFormData = {
         setLastWebhookIdentifier(null);
         showNotification(`Switched to Admin Control Panel`, 'info-circle');
     };
-    const versionsWithTitleSection = [1, 2, 3, 4, 24, 25, 30, 50, 51, 52, 53, 54, 55];
+    const versionsWithTitleSection = useMemo(() =>
+        formDefinitions
+            .filter(def => def.hasCustomTitle)
+            .map(def => def.version),
+    []); // Empty dependency array means this runs only once.
 
     const [saaaFormCompletionNotified, setSaaaFormCompletionNotified] = useState(false);
 
@@ -1142,7 +1146,8 @@ const getBBCodeContent = () => {
     const coronerFormsSubGroup = [
         { version: 1, name: "Decedent Services", icon: corpse },
         { version: 2, name: "Email Generator", icon: email },
-        { version: 4, name: "Autopsy Report", icon: corpse }
+        { version: 4, name: "Autopsy Report", icon: corpse },
+        { version: 8, name: "Death Certificate", icon: PHMCLogo }
     ];
     const physicalEvalFormsSubGroup = [
         { version: 6, name: "Physical Evaluation PHMC", icon: PHMCLogo },
@@ -2262,7 +2267,7 @@ const [selectedUserForSavedReports, setSelectedUserForSavedReports] = useState(n
 
     const getCurrentReportAuthor = useCallback((formData) => {
         // Define which bbCodeVersions are primarily Coroner forms
-        const coronerFormVersions = [1, 2, 4, 18];
+        const coronerFormVersions = [1, 2, 4, 8, 18];
         // Define which bbCodeVersions are primarily PHMC forms
         const phmcFormVersions = [
             5, 6, 7, 9, 10, 12, 13, 14, 16, 19, 20, 21, 22, 23, 27, 28, 29, 35 // Added Sickness Email
@@ -2399,21 +2404,18 @@ const saveReport = async () => {
 
         // Existing generic key generation for non-SAAA, non-PHMC Recruitment forms
         const formName = versionNames[bbCodeVersion] || `FormV${bbCodeVersion}`;
-        
-        let identifier = formData.patientName || formData.decedentName || formData.patientID || formData.decedentOOC || formData.lastName;
-        if (Array.isArray(identifier)) identifier = identifier.join(', '); 
 
-        const dateField = formData.date || formData.dateTime || formData.autopsyDate; 
+        // MODIFIED: Prioritize decedentName, then patientName, then a generic placeholder
+        let identifier = formData.decedentName || formData.patientName || 'Unnamed Report';
+        if (Array.isArray(identifier)) identifier = identifier.join(', ');
 
-    if (!identifier) { // Only check for identifier, dateField is now optional
-        let missing = [];
-        if (!identifier) missing.push("an identifier (e.g., Patient/Decedent Name/ID)");
-        // Removed: if (!dateField) missing.push("a date field"); // This line is removed
-        showNotification(`To save this report (${formName}), please fill in at least ${missing.join(' and ')}.`, 'exclamation-circle');
-        return false; 
-    }
+        // MODIFIED: Ensure dateField always has a value
+        const dateField = formData.date || formData.dateTime || formData.autopsyDate || 'No Date';
+
+        // MODIFIED: Removed the check that would prevent saving if identifier was empty.
+        // The identifier will now always have a value ('Unnamed Report' at minimum).
+
         key = `[${formName}] ${identifier} - ${dateField}`;
-        // Removed: console.log(`Using generic key for bbCodeVersion ${bbCodeVersion}: ${key}`);
     }
 
     // If key is still empty, something went wrong (should be caught by validations)
@@ -2424,14 +2426,14 @@ const saveReport = async () => {
 
     if (!currentAuthor) {
         showNotification('Cannot determine report author. Please ensure an employee is selected or patient name is filled if applicable for this form type.', 'error');
-        return false; 
+        return false;
     }
-    
+
     const sanitizedAuthorId = currentAuthor.replace(/[.#$[\]/]/g, '_');
     const sanitizedKey = key.replace(/[.#$[\]/]/g, '_');
 
     // --- Easter Egg Logic ---
-    const currentSavedCountForAuthor = savedReports.filter(r => r.authorName === currentAuthor).length; 
+    const currentSavedCountForAuthor = savedReports.filter(r => r.authorName === currentAuthor).length;
     const easterEggAlreadyShown = localStorage.getItem('easterEggShown') === 'true';
     let showNormalEasterEgg = false;
     let showRareEasterEgg = false;
@@ -2459,22 +2461,22 @@ const saveReport = async () => {
 
     const reportDataToSave = {
         bbCodeVersion: bbCodeVersion,
-        data: filterFormData(formData, bbCodeVersion), 
+        data: filterFormData(formData, bbCodeVersion),
         bbCode: bbCodeContent,
         timestamp: Date.now(),
-        originalKey: key, 
-        authorName: currentAuthor 
+        originalKey: key,
+        authorName: currentAuthor
     };
 
     const reportPath = `savedReports/${sanitizedAuthorId}/${sanitizedKey}`;
 
     try {
-        const reportRef = ref(database, reportPath); 
+        const reportRef = ref(database, reportPath);
         await set(reportRef, reportDataToSave);
         showNotification(`Report "${key}" saved for ${currentAuthor} to Firebase!`, 'save');
 
-        if (selectedUserForSavedReports === currentAuthor) { 
-             loadUserSavedReports(currentAuthor); 
+        if (selectedUserForSavedReports === currentAuthor) {
+             loadUserSavedReports(currentAuthor);
         }
         return true; // Indicate success
 
@@ -3156,6 +3158,9 @@ const toggleAgencySelector = () => {
         } else if (bbCodeVersion === 2) { // Coroner Email
             const { decedentName, decedentOOC } = formData;
             return `Coroner Report - ${decedentName || 'N/A'} | ((${decedentOOC || 'N/A'}))`;
+                    } else if (bbCodeVersion === 4) { // Autopsy Form
+            const { decedentName, decedentOOC } = formData;
+            return `CASE ## ${decedentName || 'N/A'} ((${decedentOOC || 'N/A'})) | SENT/COMPLETED/PENDING`;
         } else if (bbCodeVersion === 4) { // Autopsy Form
             const { decedentName, decedentOOC } = formData;
             return `CASE ## ${decedentName || 'N/A'} ((${decedentOOC || 'N/A'})) | SENT/COMPLETED/PENDING`;
@@ -3168,6 +3173,9 @@ const toggleAgencySelector = () => {
         } else if (bbCodeVersion === 25 || bbCodeVersion === 26) { // Patient File - Basic
             const { patientName } = formData;
             return `[Medical Information Registration] -  ${patientName || 'N/A'}`;
+        } else if (bbCodeVersion === 8) { // Death Certificate
+            const { decedentOOC } = formData;
+            return `[Death Certificate] -  ${decedentOOC || 'N/A'}`;
         } else if (bbCodeVersion === 30) { // SAAA Job Selection
             const { saaaJobSelection, patientFirstName, patientLastName } = formData;
             let positionDisplay = saaaJobSelection || "N/A";
@@ -3671,6 +3679,7 @@ useEffect(() => {
         5: "Surgery Report",
         6: "Physical Evaluation (PHMC)",
         7: "Physical Evaluation (PBC)",
+        8: "Death Certificate",
         9: "Obs Main File",
         10: "Obs Follow Up",
         12: "Gynecology - Main File",
@@ -4165,7 +4174,7 @@ const handleCopyAndNotifyWrapper = async () => {
                             Select {selectedAgencyGroup || "Agency"} Form
                         </Button>
 
-                        {(bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 4 || bbCodeVersion === 18) && (
+                        {(bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 4 || bbCodeVersion === 8) && (
                             <Button
                                 className="changelog-button"
                                 variant='secondary'
