@@ -1,15 +1,14 @@
 // src/components/Admin/AdminAuthAndActions.js
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Form as BootstrapForm, Button, Spinner, ListGroup } from 'react-bootstrap';
 import { auth, database } from '../../firebase';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { ref, get, update } from "firebase/database";
 import AddRoleModal from './RoleModal';
 import RenameRoleKeyModal from './RenameRoleKeyModal';
-import WebhookModal from '../WebhookModal'; // Import WebhookModal
+import WebhookModal from '../WebhookModal';
 import * as Sentry from "@sentry/react";
 
-// ... (recruitmentCategories, notification helpers, etc. remain the same) ...
 const recruitmentCategories = {
     physician: { displayName: "Physician Recruitment", path: 'selectOptions/physicianRecruitmentDetails' },
     psych: { displayName: "Psychologist/Psychiatrist Recruitment", path: 'selectOptions/psychPositionDetailsData' },
@@ -28,7 +27,7 @@ const requestNotificationPermission = async () => {
     } else if (Notification.permission === "granted") {
         console.log("[Desktop Notify] Permission already granted.");
         return true;
-    } else if (Notification.permission !== "denied") { // 'default' or not set
+    } else if (Notification.permission !== "denied") {
         console.log("[Desktop Notify] Permission is default, prompting user.");
         const permission = await Notification.requestPermission();
         console.log("[Desktop Notify] User responded with permission:", permission);
@@ -63,7 +62,19 @@ const showDesktopNotification = (title, options) => {
     }
 };
 
-const sendAdminActionWebhook = async (adminEmail, action, details, categoryName = null) => {
+// Helper to get user agent and timezone
+const getUserContext = () => {
+    const userAgent = navigator.userAgent || "N/A";
+    let timeZone = "N/A";
+    try {
+        timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    } catch (e) {
+        console.warn("Could not determine user timezone:", e);
+    }
+    return { userAgent, timeZone };
+};
+
+const sendAdminActionWebhook = async (adminEmail, action, details, categoryName = null, userAgent = "N/A", userTimezone = "N/A") => {
     const webhookURL = process.env.REACT_APP_ADMIN_ACTION_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
     console.log('[AdminAuthAndActions] sendAdminActionWebhook called. URL used:', webhookURL);
     if (!webhookURL) {
@@ -79,6 +90,8 @@ const sendAdminActionWebhook = async (adminEmail, action, details, categoryName 
             { name: "Action Taken", value: action || "Unknown Action", inline: true },
             ...(categoryName ? [{ name: "Category", value: categoryName, inline: true }] : []),
             { name: "Details", value: `\`\`\`\n${details.substring(0,1000)}\n\`\`\``, inline: false },
+            { name: "User Agent", value: `\`\`\`${userAgent.substring(0, 250)}\`\`\``, inline: false }, // Truncate for Discord field limit
+            { name: "Timezone", value: userTimezone, inline: true },
         ],
         timestamp: new Date().toISOString(),
         footer: { text: "PHMC Forms - Admin Panel" }
@@ -113,7 +126,7 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     const [currentRecruitmentData, setCurrentRecruitmentData] = useState({});
     const [isLoadingRecruitmentData, setIsLoadingRecruitmentData] = useState(false);
     const [isUpdatingDb, setIsUpdatingDb] = useState(false);
-    
+
     const [showRoleModal, setShowRoleModal] = useState(false);
     const [roleToEdit, setRoleToEdit] = useState(null);
 
@@ -128,6 +141,8 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     const [showCoronerWebhookModal, setShowCoronerWebhookModal] = useState(false);
     const [coronerWebhookTitle, setCoronerWebhookTitle] = useState('');
     const [coronerWebhookMessage, setCoronerWebhookMessage] = useState('');
+
+    const prevUserUidRef = useRef(null);
 
 
     useEffect(() => {
@@ -161,7 +176,7 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
         if (!categoryKey || !recruitmentCategories[categoryKey]) {
             setCurrentRecruitmentData({});
             setFormData(prev => ({ ...prev, adminDisplayData: null, adminSelectedCategoryName: categoryKey ? "Invalid Category" : null }));
-            if (categoryKey && showInAppNotification) showInAppNotification("Invalid recruitment category selected.", "error");
+            if (showInAppNotification) showInAppNotification("Invalid recruitment category selected.", "error");
             return;
         }
         setIsLoadingRecruitmentData(true);
@@ -190,19 +205,40 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     useEffect(() => {
         setIsLoadingAuth(true);
         const unsubscribe = onAuthStateChanged(auth, (user) => {
-            if (user) {
+            const wasLoggedIn = prevUserUidRef.current !== null;
+            const isLoggedIn = user !== null;
+            const { userAgent, timeZone } = getUserContext(); // Capture user context
+
+            if (isLoggedIn && !wasLoggedIn) {
+                // User just logged in
                 setCurrentUser(user);
                 setFormData(prev => ({ ...prev, isAdminAuthenticated: true, adminUserEmail: user.email, adminDisplayData: null, adminSelectedCategoryName: null }));
-            } else {
+                sendAdminActionWebhook(user.email, "Admin Login", "User successfully logged in to the Admin Panel.", null, userAgent, timeZone);
+                if (showInAppNotification) showInAppNotification(`Welcome, ${user.email}!`, "check-circle");
+            } else if (!isLoggedIn && wasLoggedIn) {
+                // User just logged out
+                const loggedOutEmail = currentUser?.email || "Unknown User";
                 setCurrentUser(null);
                 setFormData(prev => ({ ...prev, isAdminAuthenticated: false, adminUserEmail: null, adminDisplayData: null, adminSelectedCategoryName: null }));
                 setCurrentRecruitmentData({});
                 setSelectedRecruitmentCategory('');
+                sendAdminActionWebhook(loggedOutEmail, "Admin Logout", "User successfully logged out from the Admin Panel.", null, userAgent, timeZone);
+                if (showInAppNotification) showInAppNotification(`Logged out from Admin Panel.`, "info-circle");
+            } else if (isLoggedIn && wasLoggedIn) {
+                // User is still logged in (e.g., component re-rendered)
+                setCurrentUser(user);
+                setFormData(prev => ({ ...prev, isAdminAuthenticated: true, adminUserEmail: user.email }));
+            } else {
+                // User is still logged out
+                setCurrentUser(null);
+                setFormData(prev => ({ ...prev, isAdminAuthenticated: false, adminUserEmail: null }));
             }
+
+            prevUserUidRef.current = user ? user.uid : null;
             setIsLoadingAuth(false);
         });
         return () => unsubscribe();
-    }, [setFormData]);
+    }, [setFormData, showInAppNotification, currentUser]);
 
     useEffect(() => {
         if (currentUser && selectedRecruitmentCategory && recruitmentCategories[selectedRecruitmentCategory]) {
@@ -216,11 +252,14 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     const handleLoginAttempt = async () => {
         setError('');
         setIsLoadingAuth(true);
+        const { userAgent, timeZone } = getUserContext(); // Capture user context
         try {
             await signInWithEmailAndPassword(auth, email, password);
         } catch (err) {
             setError(err.message || "Failed to login.");
             setIsLoadingAuth(false);
+            sendAdminActionWebhook(email, "Admin Login Failed", `Attempted login with email: ${email}. Error: ${err.message}`, null, userAgent, timeZone);
+            if (showInAppNotification) showInAppNotification(`Login failed: ${err.message}`, "error");
         }
     };
 
@@ -233,12 +272,13 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
 
     const handleLogout = async () => {
         setError('');
+        const { userAgent, timeZone } = getUserContext(); // Capture user context
         try {
             await signOut(auth);
-            setEmail('');
-            setPassword('');
         } catch (err) {
             setError(err.message || "Failed to logout.");
+            sendAdminActionWebhook(currentUser?.email || "Unknown User", "Admin Logout Failed", `Failed to log out. Error: ${err.message}`, null, userAgent, timeZone);
+            if (showInAppNotification) showInAppNotification(`Logout failed: ${err.message}`, "error");
         }
     };
 
@@ -254,12 +294,13 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
         const newStatus = currentStatus === "OPEN" ? "CLOSED" : "OPEN";
         const categoryConfig = recruitmentCategories[selectedRecruitmentCategory];
         const positionStatusPath = `${categoryConfig.path}/${positionKey}/status`;
+        const { userAgent, timeZone } = getUserContext(); // Capture user context
         try {
             await update(ref(database), { [positionStatusPath]: newStatus });
             const successMessage = `${positionDetails.displayName || positionDetails.name || positionKey} status updated to ${newStatus} for ${categoryConfig.displayName}.`;
             if (showInAppNotification) showInAppNotification(successMessage, "check-circle");
             if (currentUser?.email) {
-                sendAdminActionWebhook(currentUser.email, "Toggled Recruitment Status", `Position: ${positionDetails.displayName || positionDetails.name || positionKey}\nNew Status: ${newStatus}`, categoryConfig.displayName);
+                sendAdminActionWebhook(currentUser.email, "Toggled Recruitment Status", `Position: ${positionDetails.displayName || positionDetails.name || positionKey}\nNew Status: ${newStatus}`, categoryConfig.displayName, userAgent, timeZone);
             }
             console.log("[Desktop Notify] Checking permission for status update notification:", desktopNotificationPermission);
             if (desktopNotificationPermission === "granted") {
@@ -272,6 +313,7 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
             fetchRecruitmentDataForCategory(selectedRecruitmentCategory);
         } catch (dbError) {
             if (showInAppNotification) showInAppNotification(`Failed to update status for ${positionKey}.`, "error");
+            sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Toggle Recruitment Status", `Position: ${positionDetails.displayName || positionDetails.name || positionKey}\nAttempted Status: ${newStatus}\nError: ${dbError.message}`, categoryConfig.displayName, userAgent, timeZone);
         }
         setIsUpdatingDb(false);
     };
@@ -280,13 +322,16 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
         if (selectedRecruitmentCategory) {
             fetchRecruitmentDataForCategory(selectedRecruitmentCategory);
         }
+        const { userAgent, timeZone } = getUserContext(); // Capture user context
         if (currentUser?.email && savedRoleData) {
             const categoryConfig = recruitmentCategories[selectedRecruitmentCategory];
             const action = actionType === 'edited' ? "Edited Role" : "Added New Role";
             sendAdminActionWebhook(
                 currentUser.email, action,
                 `Role Name: ${savedRoleData.displayName || savedRoleData.originalKey}\nShort Code: ${savedRoleData.shortCode || 'N/A'}\nStatus: ${savedRoleData.status || 'N/A'}\nKey: ${savedRoleData.originalKey}`,
-                categoryConfig?.displayName || "Unknown Category"
+                categoryConfig?.displayName || "Unknown Category",
+                userAgent,
+                timeZone
             );
             if (desktopNotificationPermission === "granted" && savedRoleData?.displayName) {
                  const notificationTitle = actionType === 'edited' ? `Role Updated: ${categoryConfig?.displayName || 'Recruitment'}` : `New Role Added: ${categoryConfig?.displayName || 'Recruitment'}`;
@@ -296,27 +341,34 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                 showDesktopNotification(notificationTitle, { body: notificationBody, icon: '/phmc512.png', tag: `${actionType}-role-${selectedRecruitmentCategory}-${savedRoleData.originalKey}` });
             }
         }
-        setRoleToEdit(null);
     };
 
     const handleAddRoleClick = () => {
         setRoleToEdit(null);
         setShowRoleModal(true);
+        const { userAgent, timeZone } = getUserContext(); // Capture user context
+        sendAdminActionWebhook(currentUser?.email || "Unknown User", "Opened Add Role Modal", "Admin opened the modal to add a new role.", recruitmentCategories[selectedRecruitmentCategory]?.displayName, userAgent, timeZone);
     };
 
     const handleEditRoleClick = (roleKey, roleData) => {
         setRoleToEdit({ ...roleData, originalKey: roleKey });
         setShowRoleModal(true);
+        const { userAgent, timeZone } = getUserContext(); // Capture user context
+        sendAdminActionWebhook(currentUser?.email || "Unknown User", "Opened Edit Role Modal", `Admin opened the modal to edit role: ${roleData.displayName || roleKey}`, recruitmentCategories[selectedRecruitmentCategory]?.displayName, userAgent, timeZone);
     };
 
     const handleCloseRoleModal = () => {
         setShowRoleModal(false);
         setRoleToEdit(null);
+        const { userAgent, timeZone } = getUserContext(); // Capture user context
+        sendAdminActionWebhook(currentUser?.email || "Unknown User", "Closed Role Modal", "Admin closed the role add/edit modal.", recruitmentCategories[selectedRecruitmentCategory]?.displayName, userAgent, timeZone);
     };
 
     const handleRenameRoleKeyClick = (roleKey, roleData) => {
         setRoleToRenameKeyDetails({ key: roleKey, data: roleData });
         setShowRenameKeyModal(true);
+        const { userAgent, timeZone } = getUserContext(); // Capture user context
+        sendAdminActionWebhook(currentUser?.email || "Unknown User", "Opened Rename Role Key Modal", `Admin opened the modal to rename key for role: ${roleData.displayName || roleKey}`, recruitmentCategories[selectedRecruitmentCategory]?.displayName, userAgent, timeZone);
     };
 
     const handleRoleKeyRenamed = () => {
@@ -333,15 +385,16 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
         }
         setRoleToRenameKeyDetails(null);
     };
-    
+
     const handleEnableDesktopNotifications = async () => {
         console.log("[Desktop Notify] 'Enable Desktop Notifications' button clicked.");
         const granted = await requestNotificationPermission();
         const currentPermission = Notification.permission;
         console.log("[Desktop Notify] Permission after request:", currentPermission, "(Granted flag:", granted, ")");
         setDesktopNotificationPermission(currentPermission);
+        const { userAgent, timeZone } = getUserContext(); // Capture user context
         if (currentUser?.email) {
-            sendAdminActionWebhook(currentUser.email, "Desktop Notification Preference Changed", `Permission status: ${currentPermission}${granted ? ' (Granted by user)' : ' (Not granted or dismissed)'}`);
+            sendAdminActionWebhook(currentUser.email, "Desktop Notification Preference Changed", `Permission status: ${currentPermission}${granted ? ' (Granted by user)' : ' (Not granted or dismissed)'}`, null, userAgent, timeZone);
         }
         if (granted) {
             if (showInAppNotification) showInAppNotification("Desktop notifications enabled for this site! Please ensure your OS settings also allow notifications from your browser.", "check-circle", 7000);
@@ -359,22 +412,19 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
         setAdminCustomWebhookTitle('');
         setAdminCustomWebhookMessage('');
         setShowAdminCustomWebhookModal(true);
+        const { userAgent, timeZone } = getUserContext(); // Capture user context
+        sendAdminActionWebhook(currentUser?.email || "Unknown User", "Opened Admin Custom Webhook Modal", "Admin opened the modal to send a custom webhook to the Admin Action channel.", null, userAgent, timeZone);
     };
 
     const handleAdminCustomWebhookSubmit = async (payloadFromModal) => {
         const webhookURLIdentifier = "REACT_APP_PHMC_DISCORD or REACT_APP_DISCORD_WEBHOOK_URL";
         const webhookURL = process.env.REACT_APP_PHMC_DISCORD || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-
-        // --- MODIFICATION START: Comment out actual send, add console.log ---
-        //console.log(`WEBHOOK: DISPATCHED %ADMIN-ACTION% to ${webhookURLIdentifier}`, payloadFromModal);
-        //if (showInAppNotification) showInAppNotification('TEST: Admin webhook "sent" (logged to console).', 'check-circle');
-        //setShowAdminCustomWebhookModal(false); // Close modal as if successful
-        //return true; // Simulate success for testing
-        // --- MODIFICATION END ---
+        const { userAgent, timeZone } = getUserContext(); // Capture user context
 
         if (!webhookURL) {
             if (showInAppNotification) showInAppNotification('Admin Webhook URL (PHMC_DISCORD) not configured.', 'error');
             Sentry.captureMessage("Admin Custom Webhook URL (PHMC_DISCORD) not configured for AdminAuthAndActions", "error");
+            sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", "Webhook URL not configured.", null, userAgent, timeZone);
             return false;
         }
         try {
@@ -391,16 +441,19 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                     extra: { statusText: response.statusText, responseBody: errorText }
                 });
                 if (showInAppNotification) showInAppNotification(`Failed to send admin webhook. Status: ${response.status}`, 'error');
+                sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", `Status: ${response.status}, Error: ${errorText}`, null, userAgent, timeZone);
                 return false;
             } else {
                 if (showInAppNotification) showInAppNotification('Admin webhook message sent successfully!', 'check-circle');
                 setShowAdminCustomWebhookModal(false);
+                sendAdminActionWebhook(currentUser?.email || "Unknown User", "Sent Admin Custom Webhook", "Admin successfully sent a custom webhook to the Admin Action channel.", null, userAgent, timeZone);
                 return true;
             }
         } catch (error) {
             console.error('Error sending admin custom webhook:', error);
             Sentry.captureException(error, { extra: { context: 'Admin Custom Webhook Submission Fetch (AdminAuthAndActions)' } });
             if (showInAppNotification) showInAppNotification('A network error occurred sending the admin webhook.', 'error');
+            sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", `Network Error: ${error.message}`, null, userAgent, timeZone);
             return false;
         }
     };
@@ -409,22 +462,19 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
         setCoronerWebhookTitle('');
         setCoronerWebhookMessage('');
         setShowCoronerWebhookModal(true);
+        const { userAgent, timeZone } = getUserContext(); // Capture user context
+        sendAdminActionWebhook(currentUser?.email || "Unknown User", "Opened Coroner Webhook Modal", "Admin opened the modal to send a custom webhook to the Coroner Updates channel.", null, userAgent, timeZone);
     };
 
     const handleCoronerWebhookSubmit = async (payloadFromModal) => {
         const webhookURLIdentifier = "REACT_APP_CORONER_DISCORD_UPDATES";
          const webhookURL = process.env.REACT_APP_CORONER_DISCORD_UPDATES;
-
-        // --- MODIFICATION START: Comment out actual send, add console.log ---
-        // console.log(`WEBHOOK: DISPATCHED %CORONER% to ${webhookURLIdentifier}`, payloadFromModal);
-        //if (showInAppNotification) showInAppNotification('TEST: Coroner webhook "sent" (logged to console).', 'check-circle');
-        //setShowCoronerWebhookModal(false); // Close modal as if successful
-        //return true; // Simulate success for testing
-        // --- MODIFICATION END ---
+         const { userAgent, timeZone } = getUserContext(); // Capture user context
 
         if (!webhookURL) {
             if (showInAppNotification) showInAppNotification('Coroner Webhook URL (CORONER_DISCORD_UPDATES) not configured.', 'error');
             Sentry.captureMessage("Coroner Webhook URL (CORONER_DISCORD_UPDATES) not configured", "error");
+            sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", "Webhook URL not configured.", null, userAgent, timeZone);
             return false;
         }
         try {
@@ -441,16 +491,19 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                     extra: { statusText: response.statusText, responseBody: errorText }
                 });
                 if (showInAppNotification) showInAppNotification(`Failed to send Coroner webhook. Status: ${response.status}`, 'error');
+                sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", `Status: ${response.status}, Error: ${errorText}`, null, userAgent, timeZone);
                 return false;
             } else {
                 if (showInAppNotification) showInAppNotification('Coroner webhook message sent successfully!', 'check-circle');
                 setShowCoronerWebhookModal(false);
+                sendAdminActionWebhook(currentUser?.email || "Unknown User", "Sent Coroner Custom Webhook", "Admin successfully sent a custom webhook to the Coroner Updates channel.", null, userAgent, timeZone);
                 return true;
             }
         } catch (error) {
             console.error('Error sending Coroner webhook:', error);
             Sentry.captureException(error, { extra: { context: 'Coroner Webhook Submission Fetch' } });
             if (showInAppNotification) showInAppNotification('A network error occurred sending the Coroner webhook.', 'error');
+            sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", `Network Error: ${error.message}`, null, userAgent, timeZone);
             return false;
         }
     };
@@ -533,11 +586,11 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                     ) : ( <p>No positions loaded for {recruitmentCategories[selectedRecruitmentCategory]?.displayName}.</p> )}
                 </>
             ) : ( <p>Please select a recruitment option from the dropdown to manage statuses or add roles.</p> )}
-            
+
             <Button variant="info" onClick={handleOpenAdminCustomWebhookModal} className="mt-3 me-2">
                 <i className="fas fa-bullhorn"></i> ADMIN WEBHOOK
             </Button>
-            <Button variant="dark" onClick={handleOpenCoronerWebhookModal} className="mt-3 me-2"> {/* Using dark variant for coroner */}
+            <Button variant="dark" onClick={handleOpenCoronerWebhookModal} className="mt-3 me-2">
                 <i className="fas fa-skull-crossbones"></i> CORONER WEBHOOK
             </Button>
 
@@ -562,7 +615,7 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                 commitInfo={commitInfo}
                 modalHeaderText="Send Admin Action Embed"
                 primaryButtonText="Send to Admin Action Hook"
-                primaryWebhookUrlIdentifier="REACT_APP_PHMC_DISCORD or REACT_APP_DISCORD_WEBHOOK_URL" // Updated identifier
+                primaryWebhookUrlIdentifier="REACT_APP_PHMC_DISCORD or REACT_APP_DISCORD_WEBHOOK_URL"
                 showSecondaryButton={false}
             />
                         <WebhookModal
@@ -572,13 +625,13 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                 setWebhookTitle={setCoronerWebhookTitle}
                 webhookMessage={coronerWebhookMessage}
                 setWebhookMessage={setCoronerWebhookMessage}
-                onSubmit={handleCoronerWebhookSubmit} // This will be the primary action
+                onSubmit={handleCoronerWebhookSubmit}
                 showNotification={showInAppNotification}
                 commitInfo={commitInfo}
                 modalHeaderText="Send Coroner Update Embed"
                 primaryButtonText="Send to Coroner Updates"
                 primaryWebhookUrlIdentifier="REACT_APP_CORONER_DISCORD_UPDATES"
-                showSecondaryButton={false} // Only one send button needed for this specific modal
+                showSecondaryButton={false}
             />
 
         </div>
