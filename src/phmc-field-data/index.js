@@ -15,3 +15,4 @@ export { default as MedicalRelease } from './MedicalRelease'; // Removed .js ext
 export { default as BasicPatientFile } from './BasicPatientFile'; // Removed .js extension for consistency
 export { default as Shrink } from './Shrink'; // Removed .js extension for consistency
 export { default as Autopsy } from './Autopsy'; // Removed .js extension for consistency
+export { default as Certificate } from './Certificate'; // <--- ADD THIS LINE

@@ -41,6 +41,14 @@ const FormImageLink = ({
             linkTitle = "Easter Bunny goes bounce bounce";
             shouldRender = true;
             break;
+                    case 8:
+            linkHref = "https://phmc.gta.world/viewforum.php?f=266";
+            imgSrc = deathReportImage;
+            imgAlt = "Death Reports Link";
+            linkClass = deathReportClass;
+            shouldRender = true;
+            break;
+
         case 24:
             linkHref = "https://phmc.gta.world/posting.php?mode=post&f=109";
             imgSrc = civilianPaperworkImage;
