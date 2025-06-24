@@ -5,7 +5,6 @@ const generatePhysician = (formData) => {
         recruitmentPosition,
         applicantTitleAndFullName,
         applicantGenderOtherText, // Used if genderOther is true
-        applicantDOBAndPlace,
         applicantAddress,
         applicantContactDetails,
         applicantMedicalConditions,
@@ -57,6 +56,9 @@ const generatePhysician = (formData) => {
         eduBachelor,
         eduMaster,
         eduDoctorate,
+        applicantDOB,
+        // Additional fields
+        applicantBirthPlace
 
     } = formData;
 
@@ -97,7 +99,7 @@ Career Center [center][/center]
 [cb${genderFemale ? 'c' : ''}] Female
 [cb${genderOther ? 'c' : ''}] Other: ${genderOther && applicantGenderOtherText ? applicantGenderOtherText : ''}
 [/list]
-[b][color=#FF0000]1.3[/color] Date & Place of Birth:[/b] [i]${applicantDOBAndPlace || 'DD/MMM/YYYY in CITY'}[/i]
+[b][color=#FF0000]1.3[/color] Date & Place of Birth:[/b] [i]${applicantDOB || 'DD/MMM/YYYY'} in ${applicantBirthPlace || 'Birth Place'}[/i]
 [b][color=#FF0000]1.4[/color]  Address:[/b] [i]${applicantAddress || 'ANSWER'}[/i]
 [b][color=#FF0000]1.5[/color]  Contact Details:[/b] [i]${applicantContactDetails || 'ANSWER'}[/i]
 [b][color=#FF0000]1.6[/color]  Desired Employment Location:[/b] [i](add a c, where applicable like so cb[color=#FF0000][u][b]c[/b][/u][/color]) [/i]

@@ -33,7 +33,7 @@ const EXPIRY_DURATION_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
 
 const physicianFormFields = [
     'recruitmentPosition', 'applicantTitleAndFullName', 'genderMale', 'genderFemale', 'genderOther',
-    'applicantGenderOtherText', 'applicantDOBAndPlace', 'applicantAddress', 'applicantContactDetails',
+    'applicantGenderOtherText', 'applicantDOB', 'applicantBirthPlace', 'applicantAddress', 'applicantContactDetails', // MODIFIED: Split DOB field
     'locationPHMC', 'locationPBC', 'applicantMedicalConditions', 'citizenUS', 'citizenPermanent', 'citizenNone',
     'eduHighSchool', 'eduCertificate', 'eduDiploma', 'eduAssociate', 'eduBachelor', 'eduMaster', 'eduDoctorate',
     'applicantSchoolName', 'applicantEnrollmentTerm', 'applicantMajor', 'applicantLanguages',
@@ -137,7 +137,8 @@ const PhysicianFields = ({
             'recruitmentPosition', 'applicantTitleAndFullName',
             { anyOf: ['genderMale', 'genderFemale', 'genderOther'] },
             { conditional: { if: { field: 'genderOther', value: true }, then: { field: 'applicantGenderOtherText' } } },
-            'applicantDOBAndPlace', 'applicantAddress', 'applicantContactDetails',
+            'applicantDOB', 'applicantBirthPlace', // MODIFIED: Split DOB field
+            'applicantAddress', 'applicantContactDetails',
             { anyOf: ['locationPHMC', 'locationPBC'] },
             'applicantMedicalConditions',
             { anyOf: ['citizenUS', 'citizenPermanent', 'citizenNone'] }
@@ -201,7 +202,7 @@ const PhysicianFields = ({
                                 </option>
                             ))}
                         </Form.Select>
-                         {!formData.recruitmentPosition && <div className="invalid-feedback d-block custom-validation-message">Position is required.</div>}
+                         {!formData.recruitmentPosition && <div className="invalid-feedback d-block">Position is required.</div>}
                     </Form.Group>
 
                     <Form.Group className="mb-3">
@@ -212,17 +213,17 @@ const PhysicianFields = ({
                             value={formData.applicantTitleAndFullName || ''}
                             onChange={handleChange}
                             onBlur={() => handleSectionFieldBlur('personalInfo', isPersonalInfoOpen, setIsPersonalInfoOpen, 'personalInfo')}
-                            placeholder="e.g., Dr. John Smith"
+                            placeholder="e.g., Dr. John Smith, Ms. Jane Doe"
                             required
                             className={`form-control ${!formData.applicantTitleAndFullName ? 'is-invalid' : ''} mb-4`} // Added mb-4
                         />
-                        {!formData.applicantTitleAndFullName && <div className="invalid-feedback d-block custom-validation-message">Title & Full Name is required.</div>}
+                        {!formData.applicantTitleAndFullName && <div className="invalid-feedback d-block">Title & Full Name is required.</div>}
                     </Form.Group>
 
                     <Form.Group className="mb-1"> {/* Keep mb-1 on Form.Group for tighter group, or change to mb-3 if desired */}
                         <Form.Label>1.2 Gender</Form.Label>
-                        <div 
-                            style={{ display: 'flex', gap: '1rem' }} 
+                        <div
+                            style={{ display: 'flex', gap: '1rem' }}
                             className="gender-checkbox-group mb-4" // Added mb-4 to the div wrapping checkboxes
                             onBlur={() => handleSectionFieldBlur('personalInfo', isPersonalInfoOpen, setIsPersonalInfoOpen, 'personalInfo')}
                         >
@@ -240,8 +241,8 @@ const PhysicianFields = ({
                             />
                         </div>
                         {/* This validation message appears if no gender is selected */}
-                        {!(formData.genderMale || formData.genderFemale || formData.genderOther) && <div className="invalid-feedback d-block custom-validation-message">Gender selection is required.</div>}
-                        
+                        {!(formData.genderMale || formData.genderFemale || formData.genderOther) && <div className="invalid-feedback d-block">Gender selection is required.</div>}
+
                         {formData.genderOther && (
                             <Form.Control
                                 type="text" name="applicantGenderOtherText" value={formData.applicantGenderOtherText || ''}
@@ -251,45 +252,58 @@ const PhysicianFields = ({
                                 required={formData.genderOther}
                             />
                         )}
-                        {formData.genderOther && !formData.applicantGenderOtherText && <div className="invalid-feedback d-block custom-validation-message">Specification for 'Other' gender is required.</div>}
+                        {formData.genderOther && !formData.applicantGenderOtherText && <div className="invalid-feedback d-block">Specification for 'Other' gender is required.</div>}
                     </Form.Group>
 
+                    {/* MODIFIED: Split Date & Place of Birth */}
                     <Form.Group className="mb-3">
-                        <Form.Label>1.3 Date & Place of Birth</Form.Label>
+                        <Form.Label>1.3 Date of Birth</Form.Label>
                         <Form.Control
-                            type="text" name="applicantDOBAndPlace" value={formData.applicantDOBAndPlace || ''}
+                            type="date" name="applicantDOB" value={formData.applicantDOB || ''}
                             onChange={handleChange} onBlur={() => handleSectionFieldBlur('personalInfo', isPersonalInfoOpen, setIsPersonalInfoOpen, 'personalInfo')}
-                            placeholder="DD/MMM/YYYY in CITY" required
-                            className={`form-control ${!formData.applicantDOBAndPlace ? 'is-invalid' : ''} mb-4`} // Added mb-4
+                            required
+                            className={`form-control ${!formData.applicantDOB ? 'is-invalid' : ''} mb-4`}
                         />
-                        {!formData.applicantDOBAndPlace && <div className="invalid-feedback d-block custom-validation-message">Date & Place of Birth is required.</div>}
+                        {!formData.applicantDOB && <div className="invalid-feedback d-block">Date of Birth is required.</div>}
                     </Form.Group>
 
                     <Form.Group className="mb-3">
-                        <Form.Label>1.4 Address</Form.Label>
+                        <Form.Label>1.4 Place of Birth (City)</Form.Label>
+                        <Form.Control
+                            type="text" name="applicantBirthPlace" value={formData.applicantBirthPlace || ''}
+                            onChange={handleChange} onBlur={() => handleSectionFieldBlur('personalInfo', isPersonalInfoOpen, setIsPersonalInfoOpen, 'personalInfo')}
+                            placeholder="City of Birth" required
+                            className={`form-control ${!formData.applicantBirthPlace ? 'is-invalid' : ''} mb-4`}
+                        />
+                        {!formData.applicantBirthPlace && <div className="invalid-feedback d-block">Place of Birth (City) is required.</div>}
+                    </Form.Group>
+                    {/* END MODIFIED: Split Date & Place of Birth */}
+
+                    <Form.Group className="mb-3">
+                        <Form.Label>1.5 Address</Form.Label> {/* MODIFIED: Label number */}
                         <Form.Control
                             type="text" name="applicantAddress" value={formData.applicantAddress || ''}
                             onChange={handleChange} onBlur={() => handleSectionFieldBlur('personalInfo', isPersonalInfoOpen, setIsPersonalInfoOpen, 'personalInfo')}
                             placeholder="Your residential address" required
                             className={`form-control ${!formData.applicantAddress ? 'is-invalid' : ''} mb-4`} // Added mb-4
                         />
-                        {!formData.applicantAddress && <div className="invalid-feedback d-block custom-validation-message">Address is required.</div>}
+                        {!formData.applicantAddress && <div className="invalid-feedback d-block">Address is required.</div>}
                     </Form.Group>
 
                     <Form.Group className="mb-3">
-                        <Form.Label>1.5 Contact Details</Form.Label>
+                        <Form.Label>1.6 Contact Details</Form.Label> {/* MODIFIED: Label number */}
                         <Form.Control
                             type="text" name="applicantContactDetails" value={formData.applicantContactDetails || ''}
                             onChange={handleChange} onBlur={() => handleSectionFieldBlur('personalInfo', isPersonalInfoOpen, setIsPersonalInfoOpen, 'personalInfo')}
                             placeholder="Phone Number / Email" required
                             className={`form-control ${!formData.applicantContactDetails ? 'is-invalid' : ''} mb-4`} // Added mb-4
                         />
-                        {!formData.applicantContactDetails && <div className="invalid-feedback d-block custom-validation-message">Contact Details are required.</div>}
+                        {!formData.applicantContactDetails && <div className="invalid-feedback d-block">Contact Details are required.</div>}
                     </Form.Group>
 
                     <Form.Group className="mb-3">
-                        <Form.Label>1.6 Desired Employment Location</Form.Label>
-                        <div 
+                        <Form.Label>1.7 Desired Employment Location</Form.Label> {/* MODIFIED: Label number */}
+                        <div
                             onBlur={() => handleSectionFieldBlur('personalInfo', isPersonalInfoOpen, setIsPersonalInfoOpen, 'personalInfo')}
                             className="mb-4" // Added mb-4 to the div wrapping checkboxes
                         >
@@ -302,23 +316,23 @@ const PhysicianFields = ({
                                 checked={formData.locationPBC || false} onChange={handleChange}
                             />
                         </div>
-                        {!(formData.locationPHMC || formData.locationPBC) && <div className="invalid-feedback d-block custom-validation-message">At least one location must be selected.</div>}
+                        {!(formData.locationPHMC || formData.locationPBC) && <div className="invalid-feedback d-block">At least one location must be selected.</div>}
                     </Form.Group>
 
                     <Form.Group className="mb-3">
-                        <Form.Label>1.7 Medical Conditions, Allergies, or Prescribed Medication</Form.Label>
+                        <Form.Label>1.8 Medical Conditions, Allergies, or Prescribed Medication</Form.Label> {/* MODIFIED: Label number */}
                         <Form.Control
                             as="textarea" rows={3} name="applicantMedicalConditions" value={formData.applicantMedicalConditions || ''}
                             onChange={handleChange} onBlur={() => handleSectionFieldBlur('personalInfo', isPersonalInfoOpen, setIsPersonalInfoOpen, 'personalInfo')}
                             placeholder="List any relevant medical information, or N/A" required
                             className={`form-control ${!formData.applicantMedicalConditions ? 'is-invalid' : ''} mb-4`} // Added mb-4
                         />
-                        {!formData.applicantMedicalConditions && <div className="invalid-feedback d-block custom-validation-message">This field is required (enter N/A if none).</div>}
+                        {!formData.applicantMedicalConditions && <div className="invalid-feedback d-block">This field is required (enter N/A if none).</div>}
                     </Form.Group>
 
                     <Form.Group className="mb-3">
-                        <Form.Label>1.8 Citizenship</Form.Label>
-                        <div 
+                        <Form.Label>1.9 Citizenship</Form.Label> {/* MODIFIED: Label number */}
+                        <div
                             onBlur={() => handleSectionFieldBlur('personalInfo', isPersonalInfoOpen, setIsPersonalInfoOpen, 'personalInfo')}
                             className="mb-4" // Added mb-4 to the div wrapping checkboxes
                         >
@@ -335,7 +349,7 @@ const PhysicianFields = ({
                                 checked={formData.citizenNone || false} onChange={handleChange}
                             />
                         </div>
-                        {!(formData.citizenUS || formData.citizenPermanent || formData.citizenNone) && <div className="invalid-feedback d-block custom-validation-message">Citizenship status is required.</div>}
+                        {!(formData.citizenUS || formData.citizenPermanent || formData.citizenNone) && <div className="invalid-feedback d-block">Citizenship status is required.</div>}
                     </Form.Group>
                 </div>
             )}
@@ -351,7 +365,7 @@ const PhysicianFields = ({
                 <div id="collapse-educational-info" style={{ paddingTop: '0.5rem' }}>
                     <Form.Group className="mb-3">
                         <Form.Label>2.1 Highest Level of Education</Form.Label>
-                        <div 
+                        <div
                             onBlur={() => handleSectionFieldBlur('educationalInfo', isEducationalInfoOpen, setIsEducationalInfoOpen, 'educationalInfo')}
                             className="mb-4" // Added mb-4 to the div wrapping checkboxes
                         >
@@ -363,28 +377,28 @@ const PhysicianFields = ({
                             <Form.Check inline type="checkbox" label="Master's Degree" name="eduMaster" checked={formData.eduMaster || false} onChange={handleChange} />
                             <Form.Check inline type="checkbox" label="Doctorate" name="eduDoctorate" checked={formData.eduDoctorate || false} onChange={handleChange} />
                         </div>
-                        {!(formData.eduHighSchool || formData.eduCertificate || formData.eduDiploma || formData.eduAssociate || formData.eduBachelor || formData.eduMaster || formData.eduDoctorate) && <div className="invalid-feedback d-block custom-validation-message">Highest level of education is required.</div>}
+                        {!(formData.eduHighSchool || formData.eduCertificate || formData.eduDiploma || formData.eduAssociate || formData.eduBachelor || formData.eduMaster || formData.eduDoctorate) && <div className="invalid-feedback d-block">Highest level of education is required.</div>}
                     </Form.Group>
 
                     <Form.Group className="mb-3">
                         <Form.Label>2.2.1 School Name</Form.Label>
                         <Form.Control type="text" name="applicantSchoolName" value={formData.applicantSchoolName || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('educationalInfo', isEducationalInfoOpen, setIsEducationalInfoOpen, 'educationalInfo')} placeholder="Name of the institution" required className={`form-control ${!formData.applicantSchoolName ? 'is-invalid' : ''} mb-4`} />
-                        {!formData.applicantSchoolName && <div className="invalid-feedback d-block custom-validation-message">School Name is required.</div>}
+                        {!formData.applicantSchoolName && <div className="invalid-feedback d-block">School Name is required.</div>}
                     </Form.Group>
                     <Form.Group className="mb-3">
                         <Form.Label>2.2.2 Enrollment Term</Form.Label>
                         <Form.Control type="text" name="applicantEnrollmentTerm" value={formData.applicantEnrollmentTerm || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('educationalInfo', isEducationalInfoOpen, setIsEducationalInfoOpen, 'educationalInfo')} placeholder="DD/MMM/YYYY to DD/MMM/YYYY" required className={`form-control ${!formData.applicantEnrollmentTerm ? 'is-invalid' : ''} mb-4`} />
-                        {!formData.applicantEnrollmentTerm && <div className="invalid-feedback d-block custom-validation-message">Enrollment Term is required.</div>}
+                        {!formData.applicantEnrollmentTerm && <div className="invalid-feedback d-block">Enrollment Term is required.</div>}
                     </Form.Group>
                     <Form.Group className="mb-3">
                         <Form.Label>2.2.3 Major Course of Study</Form.Label>
                         <Form.Control type="text" name="applicantMajor" value={formData.applicantMajor || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('educationalInfo', isEducationalInfoOpen, setIsEducationalInfoOpen, 'educationalInfo')} placeholder="Your major or field of study" required className={`form-control ${!formData.applicantMajor ? 'is-invalid' : ''} mb-4`} />
-                        {!formData.applicantMajor && <div className="invalid-feedback d-block custom-validation-message">Major Course of Study is required.</div>}
+                        {!formData.applicantMajor && <div className="invalid-feedback d-block">Major Course of Study is required.</div>}
                     </Form.Group>
                     <Form.Group className="mb-3">
                         <Form.Label>2.3 Additional Languages</Form.Label>
                         <Form.Control type="text" name="applicantLanguages" value={formData.applicantLanguages || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('educationalInfo', isEducationalInfoOpen, setIsEducationalInfoOpen, 'educationalInfo')} placeholder="List any additional languages spoken (or N/A)" required className={`form-control ${!formData.applicantLanguages ? 'is-invalid' : ''} mb-4`} />
-                        {!formData.applicantLanguages && <div className="invalid-feedback d-block custom-validation-message">This field is required (enter N/A if none).</div>}
+                        {!formData.applicantLanguages && <div className="invalid-feedback d-block">This field is required (enter N/A if none).</div>}
                     </Form.Group>
                 </div>
             )}
@@ -401,12 +415,12 @@ const PhysicianFields = ({
                     <Form.Group className="mb-3">
                         <Form.Label>3.1 Previous Employment</Form.Label>
                         <Form.Control type="text" name="applicantPrevEmployment" value={formData.applicantPrevEmployment || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('employmentInfo', isEmploymentInfoOpen, setIsEmploymentInfoOpen, 'employmentInfo')} placeholder="ROLE at COMPANY between DD/MMM/YYYY to DD/MMM/YYYY (or N/A)" required className={`form-control ${!formData.applicantPrevEmployment ? 'is-invalid' : ''} mb-4`} />
-                        {!formData.applicantPrevEmployment && <div className="invalid-feedback d-block custom-validation-message">This field is required (enter N/A if none).</div>}
+                        {!formData.applicantPrevEmployment && <div className="invalid-feedback d-block">This field is required (enter N/A if none).</div>}
                     </Form.Group>
                     <Form.Group className="mb-3">
                         <Form.Label>3.2 Duties</Form.Label>
                         <Form.Control as="textarea" rows={3} name="applicantPrevDuties" value={formData.applicantPrevDuties || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('employmentInfo', isEmploymentInfoOpen, setIsEmploymentInfoOpen, 'employmentInfo')} placeholder="Describe your duties (or N/A)" required className={`form-control ${!formData.applicantPrevDuties ? 'is-invalid' : ''} mb-4`} />
-                        {!formData.applicantPrevDuties && <div className="invalid-feedback d-block custom-validation-message">This field is required (enter N/A if none).</div>}
+                        {!formData.applicantPrevDuties && <div className="invalid-feedback d-block">This field is required (enter N/A if none).</div>}
                     </Form.Group>
                     <Form.Group className="mb-3">
                         <Form.Label>3.3 Reason for Dismissal (if applicable)</Form.Label>
@@ -433,7 +447,7 @@ const PhysicianFields = ({
                             placeholder="Describe why you wish to join us, why we should choose you rather than someone else, and why the qualities required from this job correspond to you."
                             required className={`form-control ${!formData.applicantMotivationLetter ? 'is-invalid' : ''} mb-4`}
                         />
-                        {!formData.applicantMotivationLetter && <div className="invalid-feedback d-block custom-validation-message">Motivational Letter is required.</div>}
+                        {!formData.applicantMotivationLetter && <div className="invalid-feedback d-block">Motivational Letter is required.</div>}
                     </Form.Group>
                 </div>
             )}
@@ -450,27 +464,27 @@ const PhysicianFields = ({
                     <Form.Group className="mb-3">
                         <Form.Label>5.1 User Control Panel (UCP) Username</Form.Label>
                         <Form.Control type="text" name="oocUcpName" value={formData.oocUcpName || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} required className={`form-control ${!formData.oocUcpName ? 'is-invalid' : ''} mb-4`} />
-                        {!formData.oocUcpName && <div className="invalid-feedback d-block custom-validation-message">UCP Username is required.</div>}
+                        {!formData.oocUcpName && <div className="invalid-feedback d-block">UCP Username is required.</div>}
                     </Form.Group>
                     <Form.Group className="mb-3">
                         <Form.Label>5.2 GTA:W Forum Account Name</Form.Label>
                         <Form.Control type="text" name="oocForumName" value={formData.oocForumName || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} required className={`form-control ${!formData.oocForumName ? 'is-invalid' : ''} mb-4`} />
-                        {!formData.oocForumName && <div className="invalid-feedback d-block custom-validation-message">Forum Name is required.</div>}
+                        {!formData.oocForumName && <div className="invalid-feedback d-block">Forum Name is required.</div>}
                     </Form.Group>
                     <Form.Group className="mb-3">
                         <Form.Label>5.3 Discord Name</Form.Label>
                         <Form.Control type="text" name="oocDiscord" value={formData.oocDiscord || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} placeholder="username#1234 or new username format" required className={`form-control ${!formData.oocDiscord ? 'is-invalid' : ''} mb-4`} />
-                        {!formData.oocDiscord && <div className="invalid-feedback d-block custom-validation-message">Discord Name is required.</div>}
+                        {!formData.oocDiscord && <div className="invalid-feedback d-block">Discord Name is required.</div>}
                     </Form.Group>
                     <Form.Group className="mb-3">
                         <Form.Label>5.4 Timezone</Form.Label>
                         <Form.Control type="text" name="oocTimezone" value={formData.oocTimezone || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} placeholder="e.g., UTC+0, EST, PST" required className={`form-control ${!formData.oocTimezone ? 'is-invalid' : ''} mb-4`} />
-                        {!formData.oocTimezone && <div className="invalid-feedback d-block custom-validation-message">Timezone is required.</div>}
+                        {!formData.oocTimezone && <div className="invalid-feedback d-block">Timezone is required.</div>}
                     </Form.Group>
                     <Form.Group className="mb-3">
                         <Form.Label>5.5 Real-life Medical Experience / Medical Faction Roleplay History</Form.Label>
                         <Form.Control as="textarea" rows={3} name="oocMedicalExperience" value={formData.oocMedicalExperience || ''} onChange={handleChange} onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')} required className={`form-control ${!formData.oocMedicalExperience ? 'is-invalid' : ''} mb-4`} />
-                        {!formData.oocMedicalExperience && <div className="invalid-feedback d-block custom-validation-message">This field is required.</div>}
+                        {!formData.oocMedicalExperience && <div className="invalid-feedback d-block">This field is required.</div>}
                     </Form.Group>
                     <Form.Group className="mb-3">
                         <Form.Label>5.6 Admin Record Screenshot Link</Form.Label>
@@ -500,7 +514,7 @@ const PhysicianFields = ({
                             accept="image/*"
                             onChange={(e) => handleImageUpload(e, 'oocAdminRecordLink')}
                         />
-                        {!formData.oocAdminRecordLink && <div className="invalid-feedback d-block custom-validation-message">Admin Record link is required.</div>}
+                        {!formData.oocAdminRecordLink && <div className="invalid-feedback d-block">Admin Record link is required.</div>}
                         <div className="mb-4"></div> {/* Spacer if not invalid */}
                     </Form.Group>
                     <Form.Group className="mb-3">
