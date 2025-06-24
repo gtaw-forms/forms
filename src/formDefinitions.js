@@ -2,7 +2,7 @@
 import {
     CommNotePHMC, CommNotePBC, DeathReport, CoronerEmail, PatientAdvanced, MentalHealth,
     EmailInternal, Surgical, PhysEval, EmergencyForm, GeneralConsult,
-    MedicalRelease, BasicPatientFile, Shrink, Autopsy,
+    MedicalRelease, BasicPatientFile, Shrink, Autopsy, Certificate
 } from './phmc-field-data'; // Assuming all field components are here for now
 
 import {
@@ -12,7 +12,7 @@ import {
     generateEmergencyProtocol, generateCommentaryNotePHMC, generateCommentaryNotePBC,
     generateMedicalRecordRelease, generateBasicPatientFile, generateEmailPHMCEmail,
     generateConsultationNotesPBC, generatePsychEvalPHMC, generatePsychEvalPBC,
-    generateAutopsy,
+    generateAutopsy, generateCertificate
 } from './phmc-bbcode-generators'; // Assuming all PHMC generators are here
 import generatePhysician from './phmc-recruitment-generators/generatePhysician'; // Make sure this path is correct
 import PhysicianFields from './phmc-civilian-fields/Physician'; // Path to your new component
@@ -23,7 +23,6 @@ import generateAircraftReg from './saaa-form-generators/generateAircraftReg'; //
 import generateAirline from './saaa-form-generators/generateAirline';
 import generateHeliport from './saaa-form-generators/generateHeliport'; // SAAA generator
 import AdminAuthAndActions from './components/Admin/AdminAuthAndActions'; // New component
-
 // Import your icons
 import corpse from './assets/corpse.png';
 import emailIcon from './assets/email.png';
@@ -93,16 +92,18 @@ export const generateAdminView = (viewData) => {
 
 export const formDefinitions = [
     // Civilian Forms First
-    { version: 3, name: "[Civilian] Patient File - Advanced", group: "PHMC", icon: Civilian, generator: generateAdvancedPatientFile, FieldComponent: PatientAdvanced, titleKey: "patientFileAdvanced", sortOrder: 3 },
-    { version: 24, name: "[Civilian] Medical Release Form", group: "PHMC", icon: Civilian, generator: generateMedicalRecordRelease, FieldComponent: MedicalRelease, titleKey: "medicalRelease", sortOrder: 1 },
-    { version: 25, name: "[Civilian] Patient File - Basic", group: "PHMC", icon: Civilian, generator: generateBasicPatientFile, FieldComponent: BasicPatientFile, titleKey: "patientFileBasic", sortOrder: 2 },
+    { version: 3, name: "[Civilian] Patient File - Advanced", group: "PHMC", icon: Civilian, generator: generateAdvancedPatientFile, FieldComponent: PatientAdvanced, titleKey: "patientFileAdvanced", sortOrder: 3, hasCustomTitle: true },
+    { version: 24, name: "[Civilian] Medical Release Form", group: "PHMC", icon: Civilian, generator: generateMedicalRecordRelease, FieldComponent: MedicalRelease, titleKey: "medicalRelease", sortOrder: 1, hasCustomTitle: true },
+    { version: 25, name: "[Civilian] Patient File - Basic", group: "PHMC", icon: Civilian, generator: generateBasicPatientFile, FieldComponent: BasicPatientFile, titleKey: "patientFileBasic", sortOrder: 2, hasCustomTitle: true },
 
     // PHMC Forms (Forensic Services next, then others)
-    { version: 1, name: "Forensic Services ", group: "PHMC", icon: corpse, generator: generateDeathReport, FieldComponent: DeathReport, titleKey: "deathReport", sortOrder: 10 },
-    { version: 4, name: "Autopsy Report", group: "PHMC", icon: corpse /* Placeholder */, generator: generateAutopsy, FieldComponent: Autopsy, titleKey: "autopsyReport", sortOrder: 11, isHiddenInSelector: true }, // Already correct
-    { version: 2, name: "Coroner Email", group: "PHMC", icon: emailIcon, generator: generateEmail, FieldComponent: CoronerEmail, titleKey: "coronerEmail", sortOrder: 12, isHiddenInSelector: true }, // Already correct
+    { version: 1, name: "Forensic Services ", group: "PHMC", icon: corpse, generator: generateDeathReport, FieldComponent: DeathReport, titleKey: "deathReport", sortOrder: 10, hasCustomTitle: true },
+    { version: 4, name: "Autopsy Report", group: "PHMC", icon: corpse /* Placeholder */, generator: generateAutopsy, FieldComponent: Autopsy, titleKey: "autopsyReport", sortOrder: 11, isHiddenInSelector: true, hasCustomTitle: true },
+    { version: 2, name: "Coroner Email", group: "PHMC", icon: emailIcon, generator: generateEmail, FieldComponent: CoronerEmail, titleKey: "coronerEmail", sortOrder: 12, isHiddenInSelector: true, hasCustomTitle: true },
+    { version: 8, name: "Certificate of Death", group: "PHMC", icon: corpse, generator: generateCertificate, FieldComponent: Certificate, titleKey: "certificateOfDeath", sortOrder: 13, isHiddenInSelector: true, hasCustomTitle: true },
     { version: 5, name: "Surgical Ops", group: "PHMC", icon: surgeon, generator: generateSurgicalOps, FieldComponent: Surgical, titleKey: "surgicalOps", sortOrder: 20 },
     { version: 6, name: "Physical Evaluation", group: "PHMC", icon: nurse, generator: generatePhysEvalInternalMed, FieldComponent: PhysEval, titleKey: "physEvalPHMC", sortOrder: 21 },
+
     // Add isHiddenInSelector: true to the PBC version
     { version: 7, name: "Physical Evaluation (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generatePhysEvalInternalMedPBC, FieldComponent: PhysEval, titleKey: "physEvalPBC", sortOrder: 22, isHiddenInSelector: true },
     { version: 14, name: "Mental Health", group: "PHMC", icon: psychology, generator: generateMentalHealthPHMC, FieldComponent: MentalHealth, titleKey: "mentalHealthPHMC", sortOrder: 23 },
@@ -121,7 +122,6 @@ export const formDefinitions = [
     { version: 29, name: "Psychological Evaluation (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generatePsychEvalPBC, FieldComponent: Shrink, titleKey: "psychEvalPBC", sortOrder: 32, isHiddenInSelector: true },
     { version: 35, name: "Medical Sickness Email", group: "PHMC", icon: emailIcon, generator: generateSicknessEmail, FieldComponent: SicknessEmail, titleKey: "sicknessEmail", sortOrder: 33, isHiddenInSelector: true }, // No FieldComponent for this one
     // SAAA Forms
-    // Make sure to use a unique version number for SAAA forms that doesn't clash with PHMC
     {
         version: 30,
         name: "SAAA Entry Level Employment",
@@ -131,6 +131,7 @@ export const formDefinitions = [
         FieldComponent: EntryJob,
         titleKey: "saaaEntryJob",
         sortOrder: 100,
+        hasCustomTitle: true,
         requiredFields: [
             'patientTitle', 'patientFirstName', 'patientLastName', 'patientContactNumber', 'patientDOB', 'patientBirth',
             'healthImpairments', 'healthStandingIssues', 'eduHighSchoolName', 'eduHighSchoolYear',
@@ -152,8 +153,6 @@ export const formDefinitions = [
         requiredFields: [
             'regFullName', 'regContactNumber', 'regPosition', 'companyName', 'companyAddress',
             'chiefPilotFullName', 'chiefPilotContactNumber', 'trainingPlanLink'
-            // Note: aircraftTypesSelected & aircraftModelsSelected (multi-selects) are not included here
-            // as "required" for this notification unless specific "at least one" validation is added.
         ]
     },
     {
@@ -169,7 +168,6 @@ export const formDefinitions = [
             'registrantFirstName', 'registrantLastName', 'registrantDateOfBirth', 'registrantPlaceOfBirth',
             'registrantAddress', 'registrantContactNumber', 'aircraftType', 'aircraftModel',
             'aircraftDateOfPurchase', 'aircraftImageLink', 'requestedCallsign'
-            // ackAuthorize is not in the AircraftRegistration.js FieldComponent UI, so not listed here.
         ]
     },
     {
@@ -184,7 +182,6 @@ export const formDefinitions = [
         requiredFields: [
             'companyName', 'contactNumber', 'companyAddress', 'ceoFullName',
             'chiefPilots', 'staffList', 'ackAuthorize',
-            // specOtherText is conditionally required; handled in App.js logic if specOther is true
         ]
     },
     {
@@ -207,74 +204,78 @@ export const formDefinitions = [
         version: 50,
         name: "Physician Careers",
         group: "PHMC Recruitment",
-        icon: application, // Or your preferred icon
-        generator: generatePhysician, // Use the updated generator
-        FieldComponent: PhysicianFields, // Use the new field component
+        icon: application,
+        generator: generatePhysician,
+        FieldComponent: PhysicianFields,
         titleKey: "phmcGeneralApplication",
         sortOrder: 200,
+        hasCustomTitle: true,
     },
     {
-        version: 51, // Example new version number
+        version: 51,
         name: "Psychologist/Psychiatrist Careers",
-        group: "PHMC Recruitment", // Or a new group like "Psych Recruitment"
-        icon: application, // Or a specific icon for psych
+        group: "PHMC Recruitment",
+        icon: application,
         generator: generatePsych,
         FieldComponent: PsychFields,
-        titleKey: "phmcPsychApplication", // A unique key
-        sortOrder: 201, // Adjust sort order as needed
+        titleKey: "phmcPsychApplication",
+        sortOrder: 201,
+        hasCustomTitle: true,
     },
     {
-        version: 52, // Keep Admin as 52
+        version: 52,
         name: "Admin Careers",
         group: "PHMC Recruitment",
         icon: application,
-        generator: admin, // generateAdmin
+        generator: admin,
         FieldComponent: AdminFields,
-        titleKey: "phmcAdminApplication", // Stays the same for Admin
+        titleKey: "phmcAdminApplication",
         sortOrder: 202,
+        hasCustomTitle: true,
     },
     {
-        version: 53, // Unique version
+        version: 53,
         name: "Nursing Careers",
         group: "PHMC Recruitment",
-        icon: application, // Consider a unique icon for Nursing
-        generator: nursing, // Placeholder: replace with generateNurse eventually
-        FieldComponent: NursingFields, // Placeholder: replace with NurseFields eventually
-        titleKey: "phmcNursingApplication", // UNIQUE titleKey
-        sortOrder: 203, // Adjust sort order
+        icon: application,
+        generator: nursing,
+        FieldComponent: NursingFields,
+        titleKey: "phmcNursingApplication",
+        sortOrder: 203,
+        hasCustomTitle: true,
     },
     {
-        version: 54, // Unique version
-        name: "Coroner Careers", // This is for *applying* to be a Coroner
+        version: 54,
+        name: "Coroner Careers",
         group: "PHMC Recruitment",
-        icon: application, // Consider a unique icon for Coroner recruitment
-        generator: generateCoroner, // Placeholder: replace with generateCoronerApp eventually
-        FieldComponent: Coroner, // Placeholder: replace with CoronerAppFields eventually
-        titleKey: "phmcCoronerRecruitmentApplication", // UNIQUE titleKey
-        sortOrder: 204, // Adjust sort order
+        icon: application,
+        generator: generateCoroner,
+        FieldComponent: Coroner,
+        titleKey: "phmcCoronerRecruitmentApplication",
+        sortOrder: 204,
+        hasCustomTitle: true,
     },
     {
-        version: 55, // Unique version
+        version: 55,
         name: "EMS Careers",
         group: "PHMC Recruitment",
-        icon: application, // Consider a unique icon for EMS
-        generator: generateEMS, // Placeholder: replace with generateEMS eventually
-        FieldComponent: Ems, // Placeholder: replace with EMSFields eventually
-        titleKey: "phmcEMSApplication", // UNIQUE titleKey
-        sortOrder: 205, // Adjust sort order
+        icon: application,
+        generator: generateEMS,
+        FieldComponent: Ems,
+        titleKey: "phmcEMSApplication",
+        sortOrder: 205,
+        hasCustomTitle: true,
     },
     {
-        version: 999, // Example unique version
+        version: 999,
         name: "Admin Control Panel",
-        group: "Admin", // Or "PHMC", or a new "Admin" group
-        icon: application, // Or a specific admin icon
+        group: "Admin",
+        icon: application,
         FieldComponent: AdminAuthAndActions,
-        generator: generateAdminView, // This will render the data view
+        generator: generateAdminView,
         titleKey: "adminControlPanel",
-        sortOrder: 999, // Place it appropriately
+        sortOrder: 999,
     },
-
-
 ];
 
 // Helper to get form definition by version
