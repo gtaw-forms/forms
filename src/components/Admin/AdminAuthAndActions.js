@@ -363,16 +363,15 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
 
     const handleAdminCustomWebhookSubmit = async (payloadFromModal) => {
         const webhookURLIdentifier = "REACT_APP_PHMC_DISCORD or REACT_APP_DISCORD_WEBHOOK_URL";
-        // const webhookURL = process.env.REACT_APP_PHMC_DISCORD || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+        const webhookURL = process.env.REACT_APP_PHMC_DISCORD || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
         // --- MODIFICATION START: Comment out actual send, add console.log ---
-        console.log(`WEBHOOK: DISPATCHED %ADMIN-ACTION% to ${webhookURLIdentifier}`, payloadFromModal);
-        if (showInAppNotification) showInAppNotification('TEST: Admin webhook "sent" (logged to console).', 'check-circle');
-        setShowAdminCustomWebhookModal(false); // Close modal as if successful
-        return true; // Simulate success for testing
+        //console.log(`WEBHOOK: DISPATCHED %ADMIN-ACTION% to ${webhookURLIdentifier}`, payloadFromModal);
+        //if (showInAppNotification) showInAppNotification('TEST: Admin webhook "sent" (logged to console).', 'check-circle');
+        //setShowAdminCustomWebhookModal(false); // Close modal as if successful
+        //return true; // Simulate success for testing
         // --- MODIFICATION END ---
 
-        /*
         if (!webhookURL) {
             if (showInAppNotification) showInAppNotification('Admin Webhook URL (PHMC_DISCORD) not configured.', 'error');
             Sentry.captureMessage("Admin Custom Webhook URL (PHMC_DISCORD) not configured for AdminAuthAndActions", "error");
@@ -404,7 +403,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
             if (showInAppNotification) showInAppNotification('A network error occurred sending the admin webhook.', 'error');
             return false;
         }
-        */
     };
 
     const handleOpenCoronerWebhookModal = () => {
