@@ -18,3 +18,4 @@ export { default as generateConsultationNotesPBC } from './generateConsultationN
 export { default as generatePsychEvalPHMC } from './generatePsychEvalPHMC';
 export { default as generatePsychEvalPBC } from './generatePsychEvalPBC';
 export { default as generateAutopsy } from './generateAutopsy';
+export { default as generateSicknessEmail } from './generateSicknessEmail';

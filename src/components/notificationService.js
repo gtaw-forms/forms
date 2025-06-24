@@ -238,7 +238,7 @@ const sendFormInteractionWebhookInternal = async ({
         { name: "User", value: userValue, inline: true },
         { name: "Form Type", value: versionName, inline: true },
         { name: "Primary Identifier", value: primaryIdentifier, inline: true },
-        ...(selectedAgencyGroup !== 'SAAA' || formData.decedentOOC ? [{ name: "OOC Name", value: decedentOOC || "N/A", inline: true }] : []),
+        ...(selectedAgencyGroup !== 'SAAA' || formData.decedentOOC ? [{ name: "OOC Name", value: decedentOOC || patientName || "N/A", inline: true }] : []),
         ...(selectedAgencyGroup !== 'SAAA' || formData.requestingOfficer ? [{ name: "Requesting Officer", value: requestingOfficer || "N/A", inline: true }] : []),
         { name: "Timestamp", value: new Date().toLocaleString(), inline: false },
         { name: "Action", value: actionMessage, inline: false },

@@ -51,6 +51,8 @@ import generateCoroner from './phmc-recruitment-generators/generateCoroner';
 import Coroner from './phmc-civilian-fields/Coroner';
 import generateEMS from './phmc-recruitment-generators/generateEMS';
 import Ems from './phmc-civilian-fields/Ems';
+import SicknessEmail, { default as SicknessEmailFields } from './phmc-field-data/SicknessEmail'; // Import the new field component
+import { default as generateSicknessEmail } from './phmc-bbcode-generators/generateSicknessEmail'; // Import the new generator
 
 export const generateAdminView = (viewData) => {
     if (!viewData.isAdminAuthenticated) {
@@ -113,11 +115,11 @@ export const formDefinitions = [
     { version: 22, name: "Commentary Notes", group: "PHMC", icon: paperwork, generator: generateCommentaryNotePHMC, FieldComponent: CommNotePHMC, titleKey: "commNotePHMC", sortOrder: 28 },
     // Add isHiddenInSelector: true to the PBC version
     { version: 23, name: "Commentary Notes (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generateCommentaryNotePBC, FieldComponent: CommNotePBC, titleKey: "commNotePBC", sortOrder: 29, isHiddenInSelector: true },
-    { version: 27, name: "Internal Email", group: "PHMC", icon: emailIcon, generator: generateEmailPHMCEmail, FieldComponent: EmailInternal, titleKey: "internalEmail", sortOrder: 30 },
+    { version: 27, name: "PHMC Internal Email", group: "PHMC", icon: emailIcon, generator: generateEmailPHMCEmail, FieldComponent: EmailInternal, titleKey: "internalEmail", sortOrder: 30 },
     { version: 28, name: "Psychological Evaluation", group: "PHMC", icon: psychology, generator: generatePsychEvalPHMC, FieldComponent: Shrink, titleKey: "psychEvalPHMC", sortOrder: 31 },
     // Add isHiddenInSelector: true to the PBC version
     { version: 29, name: "Psychological Evaluation (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generatePsychEvalPBC, FieldComponent: Shrink, titleKey: "psychEvalPBC", sortOrder: 32, isHiddenInSelector: true },
-
+    { version: 35, name: "Medical Sickness Email", group: "PHMC", icon: emailIcon, generator: generateSicknessEmail, FieldComponent: SicknessEmail, titleKey: "sicknessEmail", sortOrder: 33, isHiddenInSelector: true }, // No FieldComponent for this one
     // SAAA Forms
     // Make sure to use a unique version number for SAAA forms that doesn't clash with PHMC
     {

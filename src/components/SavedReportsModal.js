@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import ReactDOM from 'react-dom'; // Import ReactDOM for portals
 import { Button, Form } from 'react-bootstrap';
+import Select from 'react-select'; // Still needed for the internal logic of selectedEmployee
 
-// --- Styles (Keep existing styles) ---
+// --- Styles (These are now directly applied to the custom modal structure) ---
 const modalStyle = {
     position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
     backgroundColor: 'rgba(0, 0, 0, 0.5)', display: 'flex',
@@ -17,20 +19,21 @@ const modalContentStyle = {
 const modalHeaderStyle = {
     fontSize: '1.3em', fontWeight: 'bold', marginBottom: '15px',
     textAlign: 'center', paddingBottom: '10px', flexShrink: 0,
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center', // Added for header layout
 };
 const closeButtonStyle = {
     position: 'absolute',
-    top: '15px', // Adjusted for a bit more space from the very top edge of the modal content
-    right: '15px', // Position from the right edge of the modal content
+    top: '15px',
+    right: '15px',
     background: 'transparent',
     border: 'none',
-    color: '#f85149', // Existing color for the 'X'
-    fontSize: '28px',  // Slightly larger for better visibility
-    fontWeight: 'bold', // Make the 'X' more prominent
-    lineHeight: '1',    // Ensures the 'X' is centered vertically
-    padding: '0.25rem 0.5rem', // Adds some padding around the 'X' for easier clicking
+    color: '#f85149',
+    fontSize: '28px',
+    fontWeight: 'bold',
+    lineHeight: '1',
+    padding: '0.25rem 0.5rem',
     cursor: 'pointer',
-    zIndex: 10 // Ensures the button is above other elements within the modal content
+    zIndex: 10
 };
 const controlsContainerStyle = {
     display: 'flex',
@@ -39,7 +42,7 @@ const controlsContainerStyle = {
     marginBottom: '15px',
     flexShrink: 0,
     gap: '10px',
-    paddingRight: '50px', // Add padding to prevent content from overlapping with the close button
+    paddingRight: '50px',
 };
 const tableContainerStyle = { flexGrow: 1, overflowY: 'auto', marginTop: '10px' };
 const tableStyle = { width: '100%', borderCollapse: 'collapse' };
@@ -70,15 +73,14 @@ const paginationStyle = {
 const searchInputStyle = {
     padding: '8px 10px', borderRadius: '5px', border: '1px solid #30363d',
     backgroundColor: '#0d1117', color: '#c9d1d9',
-    flexGrow: 1, // Allow search to take available space
-    maxWidth: '450px', // ADD THIS LINE - Adjust the value (e.g., '400px', '50%') as needed
-    // minWidth: '200px', // Optional: to ensure it doesn't get too small
+    flexGrow: 1,
+    maxWidth: '450px',
 };
-const switchButtonStyle = { // Style for the new switch button
+const switchButtonStyle = {
     ...actionButtonStyle,
-    backgroundColor: '#1f6feb', // A different color for distinction
-    marginRight: '10px', // Add some space to its right
-    flexShrink: 0, // Prevent it from shrinking
+    backgroundColor: '#1f6feb',
+    marginRight: '10px',
+    flexShrink: 0,
 };
 const hrStyle = { borderColor: '#30363d', margin: '15px 0' };
 // --- End Styles ---
@@ -89,80 +91,113 @@ const LOAD_DELAY_MS = 1000;
 const SavedReportsModal = ({
     show,
     onClose,
+    showNotification,
     reportsForSelectedUser,
+    onEmployeeSelect,
+    employeeOptions,
+    isLoadingReports,
     loadReportForUser,
     deleteReportForUser,
-    onEmployeeSelect,
-    showNotification,
-    isLoadingReports,
-    currentPhmcEmployee,
     currentCoronerEmployee,
+    currentPhmcEmployee,
+    filterByBbCodeVersions,
+    onReportSelectedForAttachment,
+    preselectedEmployeeType,
 }) => {
     const [currentPage, setCurrentPage] = useState(1);
-    const [sortedReports, setSortedReports] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedReportKeys, setSelectedReportKeys] = useState([]);
     const [isLoadingMultiple, setIsLoadingMultiple] = useState(false);
-    const [activeEmployeeForModal, setActiveEmployeeForModal] = useState(null);
+    const [selectedEmployee, setSelectedEmployee] = useState(null); // This state is still needed internally
+
+    const lastLoadedEmployeeRef = useRef(null);
 
     useEffect(() => {
         if (show) {
-            // Default to Coroner if both are present, otherwise pick the one available
-            const initialAuthor = currentCoronerEmployee || currentPhmcEmployee || null;
-            setActiveEmployeeForModal(initialAuthor);
-            if (initialAuthor) {
-                console.log(`[SavedReportsModal] Initial load for: ${initialAuthor}`);
-                onEmployeeSelect(initialAuthor);
-            } else {
-                console.log('[SavedReportsModal] No employee specified in form, clearing reports.');
-                onEmployeeSelect(null);
-                setSortedReports([]);
-            }
-        } else {
-            setActiveEmployeeForModal(null);
-            setSearchQuery('');
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [show, currentCoronerEmployee, currentPhmcEmployee]); // Re-run if these props change while modal is open
+            let employeeToSelectValue = null;
 
-    useEffect(() => {
-        const sorted = [...(reportsForSelectedUser || [])].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-        setSortedReports(sorted);
-        setCurrentPage(1);
-        setSelectedReportKeys([]);
+            if (preselectedEmployeeType === 'PHMC') {
+                employeeToSelectValue = currentPhmcEmployee;
+            } else {
+                employeeToSelectValue = currentCoronerEmployee || currentPhmcEmployee;
+            }
+
+            // Find the corresponding option object for the determined employee value
+            const employeeOption = employeeOptions.flatMap(group => group.options)
+                                                .find(opt => opt.value === employeeToSelectValue);
+
+            // Update the local `selectedEmployee` state if it's different from the current value
+            if (employeeOption?.value !== selectedEmployee?.value) {
+                setSelectedEmployee(employeeOption || null);
+            }
+
+            // Crucial: Only call `onEmployeeSelect` if the employee has changed
+            // or if reports haven't been loaded for the current employee yet.
+            // This prevents the infinite loop.
+            if (employeeToSelectValue && employeeToSelectValue !== lastLoadedEmployeeRef.current) {
+                lastLoadedEmployeeRef.current = employeeToSelectValue; // Update the ref to prevent re-trigger
+                onEmployeeSelect(employeeToSelectValue); // Trigger report loading in App.js
+            } else if (!employeeToSelectValue && lastLoadedEmployeeRef.current) {
+                // If no employee is selected now, but one was previously loaded, clear it
+                lastLoadedEmployeeRef.current = null;
+                onEmployeeSelect(null); // Clear reports
+            }
+
+        } else {
+            // When modal closes, reset all local states
+            setSelectedEmployee(null);
+            setCurrentPage(1);
+            setSearchQuery('');
+            setSelectedReportKeys([]);
+            lastLoadedEmployeeRef.current = null;
+        }
+    }, [
+        show,
+        currentCoronerEmployee,
+        currentPhmcEmployee,
+        employeeOptions,
+        onEmployeeSelect, // This is a useCallback, so it's stable
+        preselectedEmployeeType,
+        selectedEmployee // Include selectedEmployee to react to its internal changes and prevent re-setting
+    ]);
+
+    // Filter employee options based on preselectedEmployeeType (still useful for internal logic)
+    const filteredEmployeeOptions = useMemo(() => {
+        if (preselectedEmployeeType === 'PHMC') {
+            return employeeOptions.filter(group => group.label === 'PHMC Staff');
+        }
+        return employeeOptions;
+    }, [employeeOptions, preselectedEmployeeType]);
+
+    // Sort reports whenever reportsForSelectedUser changes
+    const sortedReports = useMemo(() => {
+        return [...(reportsForSelectedUser || [])].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
     }, [reportsForSelectedUser]);
 
-    const handleSwitchEmployee = () => {
-        let newActiveEmployee = null;
-        if (activeEmployeeForModal === currentCoronerEmployee && currentPhmcEmployee) {
-            newActiveEmployee = currentPhmcEmployee;
-        } else if (activeEmployeeForModal === currentPhmcEmployee && currentCoronerEmployee) {
-            newActiveEmployee = currentCoronerEmployee;
-        } else if (currentCoronerEmployee) { // Fallback if somehow activeEmployeeForModal is out of sync
-            newActiveEmployee = currentCoronerEmployee;
-        } else if (currentPhmcEmployee) {
-            newActiveEmployee = currentPhmcEmployee;
+    // Filter reports based on bbCodeVersions and search query
+    const searchedAndFilteredReports = useMemo(() => {
+        let reports = sortedReports;
+        if (filterByBbCodeVersions && filterByBbCodeVersions.length > 0) {
+            reports = reports.filter(report => filterByBbCodeVersions.includes(report.bbCodeVersion));
         }
-
-
-        if (newActiveEmployee && newActiveEmployee !== activeEmployeeForModal) {
-            setActiveEmployeeForModal(newActiveEmployee);
-            onEmployeeSelect(newActiveEmployee); // Load reports for the new employee
-            setSearchQuery(''); // Reset search
-            setCurrentPage(1); // Reset pagination
-            showNotification(`Switched to reports for ${newActiveEmployee}`, 'exchange-alt');
+        if (searchQuery) {
+            reports = reports.filter(report =>
+                report.originalKey.toLowerCase().includes(searchQuery.toLowerCase())
+            );
         }
-    };
+        return reports;
+    }, [sortedReports, filterByBbCodeVersions, searchQuery]);
 
-    const filteredReports = sortedReports.filter(report =>
-        report && typeof report.originalKey === 'string' &&
-        report.originalKey.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    // Reset pagination and selection when the underlying filtered reports change
+    useEffect(() => {
+        setCurrentPage(1);
+        setSelectedReportKeys([]);
+    }, [searchedAndFilteredReports]); // Depend on the memoized filtered list
 
-    const totalPages = Math.ceil(filteredReports.length / itemsPerPage);
+    const totalPages = Math.ceil(searchedAndFilteredReports.length / itemsPerPage);
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
-    const currentReportsOnPage = filteredReports.slice(startIndex, endIndex);
+    const currentReportsOnPage = searchedAndFilteredReports.slice(startIndex, endIndex);
 
     const handleCheckboxChange = (reportKey, checked) => {
         setSelectedReportKeys(prev =>
@@ -180,7 +215,7 @@ const SavedReportsModal = ({
     };
 
     const handleLoadSelected = async () => {
-        if (selectedReportKeys.length === 0 || !activeEmployeeForModal) {
+        if (selectedReportKeys.length === 0 || !selectedEmployee?.value) {
             showNotification('No reports selected or no employee identified.', 'warning');
             return;
         }
@@ -191,14 +226,18 @@ const SavedReportsModal = ({
         const calculatedDuration = numToLoad > 1 ? ((numToLoad - 1) * LOAD_DELAY_MS) + 500 : 3000;
         showNotification(`Loading ${numToLoad} report(s)...`, 'info-circle', calculatedDuration);
 
-        const reportsToLoad = reportsForSelectedUser
+        const reportsToLoad = sortedReports
             .filter(r => selectedReportKeys.includes(r.key))
             .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
 
         for (let i = 0; i < reportsToLoad.length; i++) {
             const report = reportsToLoad[i];
             try {
-                await loadReportForUser(report.key, activeEmployeeForModal);
+                if (onReportSelectedForAttachment) {
+                    await onReportSelectedForAttachment(report.key, selectedEmployee.value);
+                } else {
+                    await loadReportForUser(report.key, selectedEmployee.value);
+                }
                 if (i < reportsToLoad.length - 1) {
                     await new Promise(resolve => setTimeout(resolve, LOAD_DELAY_MS));
                 }
@@ -213,12 +252,15 @@ const SavedReportsModal = ({
     };
 
     const handleDeleteSelected = () => {
-        if (selectedReportKeys.length === 0 || !activeEmployeeForModal) {
+        if (selectedReportKeys.length === 0 || !selectedEmployee?.value) {
             showNotification('No reports selected or no employee identified.', 'warning');
             return;
         }
+        if (!window.confirm(`Are you sure you want to delete ${selectedReportKeys.length} selected report(s)? This action cannot be undone.`)) {
+            return;
+        }
         selectedReportKeys.forEach(reportKey => {
-            deleteReportForUser(reportKey, activeEmployeeForModal);
+            deleteReportForUser(reportKey, selectedEmployee.value);
         });
         showNotification(`${selectedReportKeys.length} report(s) deleted.`, 'trash');
         setSelectedReportKeys([]);
@@ -234,7 +276,7 @@ const SavedReportsModal = ({
         const separator = '\n\n[hr][/hr]\n\n';
 
         for (const reportKey of selectedReportKeys) {
-            const report = reportsForSelectedUser.find(r => r.key === reportKey);
+            const report = sortedReports.find(r => r.key === reportKey);
             if (report && report.bbCode) {
                 if (combinedBbCode) combinedBbCode += separator;
                 combinedBbCode += report.bbCode;
@@ -254,7 +296,7 @@ const SavedReportsModal = ({
     };
 
     const handleCopyBBCode = (reportKey) => {
-        const report = reportsForSelectedUser.find(r => r.key === reportKey);
+        const report = sortedReports.find(r => r.key === reportKey);
         if (report && report.bbCode) {
             navigator.clipboard.writeText(report.bbCode)
                 .then(() => showNotification('BBCode copied!', 'clipboard'))
@@ -273,16 +315,21 @@ const SavedReportsModal = ({
     const canSwitchEmployee = currentPhmcEmployee && currentCoronerEmployee && currentPhmcEmployee !== currentCoronerEmployee;
     let otherEmployeeName = '';
     if (canSwitchEmployee) {
-        otherEmployeeName = activeEmployeeForModal === currentCoronerEmployee ? currentPhmcEmployee : currentCoronerEmployee;
+        otherEmployeeName = selectedEmployee?.value === currentCoronerEmployee ? currentPhmcEmployee : currentCoronerEmployee;
     }
-
 
     if (!show) return null;
 
-    return (
-        <div style={modalStyle}>
-            <div style={modalContentStyle}>
-                
+    return ReactDOM.createPortal(
+        <div style={modalStyle} onClick={onClose}>
+            <div style={modalContentStyle} onClick={e => e.stopPropagation()}>
+                <div style={modalHeaderStyle}>
+                    <h5 style={{ margin: 0 }}>Saved Reports</h5>
+                    <button onClick={onClose} style={closeButtonStyle} aria-label="Close modal">&times;</button>
+                </div>
+
+                {/* Removed the "Select Employee to View Reports" Form.Group */}
+
                 <div style={controlsContainerStyle}>
                     <input
                         type="text"
@@ -290,12 +337,21 @@ const SavedReportsModal = ({
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         style={searchInputStyle}
-                        disabled={!activeEmployeeForModal || isLoadingReports}
+                        disabled={!selectedEmployee || isLoadingReports}
                     />
-                    {/* Switch button is now second, will be pushed to the right by justifyContent */}
-                    {canSwitchEmployee && (
+                    {canSwitchEmployee && !preselectedEmployeeType && (
                         <Button
-                            onClick={handleSwitchEmployee}
+                            onClick={() => {
+                                const newEmployeeValue = selectedEmployee?.value === currentCoronerEmployee ? currentPhmcEmployee : currentCoronerEmployee;
+                                const newEmployeeOption = employeeOptions.flatMap(g => g.options).find(o => o.value === newEmployeeValue);
+                                if (newEmployeeOption) {
+                                    setSelectedEmployee(newEmployeeOption);
+                                    onEmployeeSelect(newEmployeeOption.value);
+                                    setSearchQuery('');
+                                    setCurrentPage(1);
+                                    showNotification(`Switched to reports for ${newEmployeeOption.value}`, 'exchange-alt');
+                                }
+                            }}
                             style={switchButtonStyle}
                             title={`Switch to reports for ${otherEmployeeName}`}
                         >
@@ -304,21 +360,20 @@ const SavedReportsModal = ({
                         </Button>
                     )}
                 </div>
-<Button onClick={onClose} style={closeButtonStyle} aria-label="Close modal">
-    &times;
-</Button>
 
                 <hr style={hrStyle} />
 
                 <div style={modalHeaderStyle}>
-                    Manage Saved Reports {activeEmployeeForModal ? `for ${activeEmployeeForModal}` : '(No Employee Selected in Form)'}
-                    {activeEmployeeForModal && ` (${reportsForSelectedUser?.length || 0} total)`}
+                    <h5 style={{ margin: 0 }}>
+                        Saved Reports {selectedEmployee ? `for ${selectedEmployee.value}` : '(No Employee Selected)'}
+                        {selectedEmployee && ` (${searchedAndFilteredReports.length} total)`}
+                    </h5>
                 </div>
 
-                {isLoadingReports && activeEmployeeForModal && <p style={{ textAlign: 'center', flexShrink: 0 }}>Loading reports for {activeEmployeeForModal}...</p>}
+                {isLoadingReports && selectedEmployee && <p style={{ textAlign: 'center', flexShrink: 0 }}>Loading reports for {selectedEmployee.value}...</p>}
 
                 <div style={tableContainerStyle}>
-                    {!isLoadingReports && activeEmployeeForModal && filteredReports.length > 0 ? (
+                    {!isLoadingReports && selectedEmployee && searchedAndFilteredReports.length > 0 ? (
                         <table style={tableStyle}>
                             <thead>
                                 <tr>
@@ -338,11 +393,37 @@ const SavedReportsModal = ({
                                         <tr key={report.key} style={isSelected ? { backgroundColor: '#161b22' } : {}}>
                                             <td style={tdCheckboxStyle}><Form.Check type="checkbox" id={`select-${report.key}`} checked={isSelected} onChange={(e) => handleCheckboxChange(report.key, e.target.checked)} /></td>
                                             <td style={tdStyle} title={report.originalKey}>{report.originalKey}</td>
+                                            {/* Changed date formatting */}
                                             <td style={tdStyle}>{new Date(report.timestamp).toLocaleString()}</td>
                                             <td style={tdStyle}>{report.bbCodeVersion}</td>
                                             <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
-                                                <Button onClick={() => loadReportForUser(report.key, activeEmployeeForModal)} style={actionButtonStyle} title="Load this report">Load</Button>
-                                                <Button onClick={() => deleteReportForUser(report.key, activeEmployeeForModal)} style={deleteButtonStyle} title="Delete this report">Delete</Button>
+                                                <Button
+                                                    variant="primary"
+                                                    size="sm"
+                                                    className="me-2"
+                                                    onClick={() => {
+                                                        if (onReportSelectedForAttachment) {
+                                                            onReportSelectedForAttachment(report.key, selectedEmployee.value);
+                                                        } else {
+                                                            loadReportForUser(report.key, selectedEmployee.value);
+                                                        }
+                                                    }}
+                                                    disabled={isLoadingReports || !selectedEmployee}
+                                                >
+                                                    {onReportSelectedForAttachment ? 'Attach' : 'Load'}
+                                                </Button>
+                                                <Button
+                                                    variant="danger"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        if (window.confirm('Are you sure you want to delete this report?')) {
+                                                            deleteReportForUser(report.key, selectedEmployee.value);
+                                                        }
+                                                    }}
+                                                    disabled={isLoadingReports || !selectedEmployee}
+                                                >
+                                                    Delete
+                                                </Button>
                                                 <Button onClick={() => handleCopyBBCode(report.key)} style={copyButtonStyle} title="Copy BBCode">Copy BBCode</Button>
                                             </td>
                                         </tr>
@@ -351,20 +432,20 @@ const SavedReportsModal = ({
                             </tbody>
                         </table>
                     ) : (
-                        !isLoadingReports && activeEmployeeForModal && (
+                        !isLoadingReports && selectedEmployee && (
                             <p style={{ textAlign: 'center', marginTop: '20px' }}>
-                                {searchQuery ? `No reports match your search for ${activeEmployeeForModal}.` : `No reports saved for ${activeEmployeeForModal}.`}
+                                {searchQuery ? `No reports match your search for ${selectedEmployee.value}.` : `No reports saved for ${selectedEmployee.value}.`}
                             </p>
                         )
                     )}
-                    {!isLoadingReports && !activeEmployeeForModal && (
+                    {!isLoadingReports && !selectedEmployee && (
                         <p style={{ textAlign: 'center', marginTop: '20px' }}>
                             Please select an employee in the main form to view their saved reports.
                         </p>
                     )}
                 </div>
 
-                {!isLoadingReports && activeEmployeeForModal && filteredReports.length > 0 && (
+                {!isLoadingReports && selectedEmployee && searchedAndFilteredReports.length > 0 && (
                     <div style={bulkActionsContainerStyle}>
                         <Button onClick={handleDeleteSelected} style={deleteButtonStyle} disabled={selectedReportKeys.length === 0}>Delete Selected ({selectedReportKeys.length})</Button>
                         <Button onClick={handleCopySelectedBBCode} style={copyButtonStyle} disabled={selectedReportKeys.length === 0}>Copy Selected BBCode ({selectedReportKeys.length})</Button>
@@ -374,7 +455,7 @@ const SavedReportsModal = ({
                     </div>
                 )}
 
-                {totalPages > 1 && !isLoadingReports && activeEmployeeForModal && (
+                {totalPages > 1 && !isLoadingReports && selectedEmployee && (
                     <div style={paginationStyle}>
                         <Button onClick={goToPreviousPage} disabled={currentPage === 1} style={actionButtonStyle}>Previous</Button>
                         <span>Page {currentPage} of {totalPages}</span>
@@ -382,7 +463,8 @@ const SavedReportsModal = ({
                     </div>
                 )}
             </div>
-        </div>
+        </div>,
+        document.getElementById('modal-root') // Assuming you have a div with id="modal-root" in your index.html
     );
 };
 
