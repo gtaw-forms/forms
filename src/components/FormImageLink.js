@@ -88,6 +88,12 @@ const FormImageLink = ({
             imgAlt = "Heliport Registration Form";
             shouldRender = true;
             break;
+        case 35:
+            linkHref = "https://phmc.gta.world/ucp.php?i=pm&mode=compose";
+            imgSrc = civilianPaperworkImage;
+            imgAlt = "Patient Sicknote Request";
+            shouldRender = true;
+            break;
         default:
             // Handle the complex PHMC condition that's not a simple bbCodeVersion match
             if (selectedAgencyGroup === 'PHMC' && ![1, 2, 3, 4, 24, 25, 26].includes(bbCodeVersion)) {

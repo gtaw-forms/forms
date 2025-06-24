@@ -49,6 +49,7 @@ const phmcSubFormMap = {
     20: [21],
     22: [23],
     28: [29],
+    27: [35],
 };
 
 const getSaaaRecruitmentButtonProps = (
