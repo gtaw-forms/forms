@@ -60,6 +60,7 @@ import SaaaBusinessCardModal from './saaa-components/SaaaBusinessCardModal';
 // Automated Imports from field-data
 function App() {
     const [isMobile, setIsMobile] = useState(false);
+    const modalCloseTimer = useRef(null);
 
 const initialFormData = {
     coronerRank: 'Forensic Attendant',
@@ -2751,16 +2752,65 @@ const loadReportForUser = async (reportFirebaseKey, userId, returnOnly = false) 
         }
     }
 };
-    const handleReportSelectedForAttachment = useCallback(async (reportFirebaseKey, userId) => {
-        const result = await loadReportForUser(reportFirebaseKey, userId, true);
-        if (result.success && pendingReportAttachmentCallback.current) {
-            pendingReportAttachmentCallback.current(result.reportData);
+const handleReportSelectedForAttachment = useCallback(async (reportFirebaseKey, userId) => {
+    // When multiple reports are being loaded, we need to delay closing the modal.
+    // This clears any pending close command from a previous, rapidly-fired event.
+    if (modalCloseTimer.current) {
+        clearTimeout(modalCloseTimer.current);
+    }
+
+    const result = await loadReportForUser(reportFirebaseKey, userId, true);
+
+    if (result.success && pendingReportAttachmentCallback.current) {
+        const reportData = result.reportData;
+        const loadedVersion = reportData.bbCodeVersion;
+
+        // Specific handling for loading a v1 Death Report into the v2 Coroner Email form.
+        if (loadedVersion === 1 && bbCodeVersion === 2) {
+            setFormData(prev => {
+                const currentDeathReportIsEmpty = !prev.deathReport || prev.deathReport.trim() === '';
+                
+                if (currentDeathReportIsEmpty) {
+                    // If the main death report field is empty, this is the first report.
+                    showNotification(`Loaded report for ${reportData.originalKey} into main Death Report field.`, 'upload');
+                    return {
+                        ...prev,
+                        deathReport: reportData.bbCode,
+                    };
+                } else {
+                    // If the main field is already filled, append this as an additional report.
+                    showNotification(`Added report for ${reportData.originalKey} as an additional report.`, 'plus-circle');
+                    return {
+                        ...prev,
+                        additionalReports: [...prev.additionalReports, reportData.bbCode],
+                    };
+                }
+            });
         }
+
+        // The pending callback handles other cases, like attaching reports to SicknessEmail.
+        // For CoronerEmail, the callback is a no-op, which is correct since we handled the logic above.
+        pendingReportAttachmentCallback.current(result.reportData);
+
+    } else {
+        if (!result.success) {
+            showNotification('Failed to load the selected report.', 'error');
+        } else if (!pendingReportAttachmentCallback.current) {
+            showNotification('Attachment process could not be completed (no callback).', 'error');
+            Sentry.captureMessage('handleReportSelectedForAttachment was called but pendingReportAttachmentCallback.current was null.');
+        }
+    }
+
+    // Set a timer to close the modal. If another report is loaded quickly,
+    // the timer will be reset, ensuring the modal only closes after the last report is processed.
+    modalCloseTimer.current = setTimeout(() => {
         pendingReportAttachmentCallback.current = null;
         setReportSelectionFilter(null);
-        setPreselectedEmployeeType(null); // Reset the preselected type
+        setPreselectedEmployeeType(null);
         setShowSavedReports(false);
-    }, [loadReportForUser]);
+    }, 5000); // <--- INCREASED THIS VALUE TO 1000ms
+
+}, [loadReportForUser, bbCodeVersion, showNotification, setFormData, formData.deathReport, formData.additionalReports]);
 
 // New function to be passed to SicknessEmail to trigger the modal
 const onAttachReportSummaryRequest = useCallback((callback) => {
@@ -2830,33 +2880,37 @@ const showRareEasterEggDirectly = () => {
 // --- Function to show the normal easter egg ---
 const [lastWebhookIdentifier, setLastWebhookIdentifier] = useState(null);
 
-    const toggleSavedReports = useCallback(() => {
-        // If the modal is already open, the goal is always to close it.
-        if (showSavedReports) {
-            setShowSavedReports(false);
-            setPreselectedEmployeeType(null);
-            setReportSelectionFilter(null);
-            return;
-        }
+const toggleSavedReports = useCallback((filterVersions = null, employeeType = null, callback = null) => { // Add callback parameter
+    // If the modal is already open, the goal is always to close it.
+    if (showSavedReports) {
+        setShowSavedReports(false);
+        setPreselectedEmployeeType(null);
+        setReportSelectionFilter(null);
+        pendingReportAttachmentCallback.current = null; // Clear the callback when closing
+        return;
+    }
 
-        // If the modal is closed, check for a valid employee before opening.
-        const author = getCurrentReportAuthor(formData);
+    // If the modal is closed, check for a valid employee before opening.
+    const author = getCurrentReportAuthor(formData);
 
-        if (author) {
-            // An employee is selected, so it's safe to open the modal.
-            setShowSavedReports(true);
-        } else {
-            // No relevant employee is selected. Show a notification instead of opening the modal.
-            showNotification('Please select an employee in the form before viewing saved reports.', 'warning');
-        }
-    }, [
-        showSavedReports,
-        formData,
-        getCurrentReportAuthor,
-        showNotification,
-        setPreselectedEmployeeType,
-        setReportSelectionFilter
-    ]);
+    if (author) {
+        // An employee is selected, so it's safe to open the modal.
+        setShowSavedReports(true);
+        setPreselectedEmployeeType(employeeType); // Use passed employeeType
+        setReportSelectionFilter(filterVersions); // Use passed filterVersions
+        pendingReportAttachmentCallback.current = callback; // <--- SET THE CALLBACK HERE
+    } else {
+        // No relevant employee is selected. Show a notification instead of opening the modal.
+        showNotification('Please select an employee in the form before viewing saved reports.', 'warning');
+    }
+}, [
+    showSavedReports,
+    formData,
+    getCurrentReportAuthor,
+    showNotification,
+    setPreselectedEmployeeType,
+    setReportSelectionFilter
+]);
 
     const [showPositionInfoModal, setShowPositionInfoModal] = useState(false);
         const [currentPositionInfo, setCurrentPositionInfo] = useState(null); // Add this line
