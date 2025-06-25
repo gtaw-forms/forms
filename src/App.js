@@ -2589,10 +2589,10 @@ const loadReportForUser = async (reportFirebaseKey, userId, returnOnly = false) 
         if (snapshot.exists()) {
             const reportData = snapshot.val();
             const loadedVersion = reportData.bbCodeVersion;
-            const loadedBbCode = reportData.bbCode || '';
+            let loadedBbCode = reportData.bbCode || ''; // Get the BBCode from the saved report
             let loadedFormData = reportData.data || {};
 
-            // --- Employee Sync Logic (keep as is) ---
+            loadedBbCode = loadedBbCode.replace(/\[bold\]/gi, '[b]').replace(/\[\/bold\]/gi, '[/b]');
             const loadedCoronerEmployee = loadedFormData.coronerEmployee;
             const loadedPhmcEmployee = loadedFormData.phmcEmployee;
             const currentTimestamp = Date.now().toString();
@@ -2681,8 +2681,7 @@ const loadReportForUser = async (reportFirebaseKey, userId, returnOnly = false) 
 
             if (!returnOnly) { // Only set state if not in 'returnOnly' mode
                 if (bbCodeVersion === 2 && loadedVersion === 1) {
-                    // ... existing v1 into v2 logic ...
-                    let modifiedBbCode = loadedBbCode.replace(/\[bold\]/g, '[b]').replace(/\[\/bold\]/g, '[/b]');
+                    // This block now uses the already modified loadedBbCode
                     const currentDeathReportIsEmpty = !formData.deathReport || formData.deathReport.trim() === '';
                     let notificationMessage = '';
 
@@ -2704,10 +2703,10 @@ const loadReportForUser = async (reportFirebaseKey, userId, returnOnly = false) 
                         }
 
                         if (currentDeathReportIsEmpty) {
-                            updatedDeathReport = modifiedBbCode;
+                            updatedDeathReport = loadedBbCode; // Use the universally modified BBCode
                             notificationMessage = `Loaded report for ${loadedFormData.decedentName || reportData.originalKey} into main Death Report field.`;
                         } else {
-                            updatedAdditionalReports = [...updatedAdditionalReports, modifiedBbCode];
+                            updatedAdditionalReports = [...updatedAdditionalReports, loadedBbCode]; // Use the universally modified BBCode
                             notificationMessage = `Added report for ${loadedFormData.decedentName || reportData.originalKey} as an additional report.`;
                         }
                         const finalDataToSet = {
@@ -2720,9 +2719,10 @@ const loadReportForUser = async (reportFirebaseKey, userId, returnOnly = false) 
                         };
                         return finalDataToSet;
                     });
-                    setParsedBBCode('');
+                    setParsedBBCode(''); // Clear parsed BBCode as it's now directly in formData
                     showNotification(notificationMessage, 'plus-circle');
                 } else {
+                    // This else block will also benefit from the universal conversion
                     setFormData(prev => ({
                         ...prev,
                         ...loadedFormData,
@@ -2730,7 +2730,7 @@ const loadReportForUser = async (reportFirebaseKey, userId, returnOnly = false) 
                         phmcEmployee: loadedFormData.phmcEmployee || prev.phmcEmployee,
                     }));
                     setBbCodeVersion(loadedVersion);
-                    setParsedBBCode(loadedBbCode);
+                    setParsedBBCode(loadedBbCode); // This will now be the modified BBCode
                     showNotification(`Report "${reportData.originalKey || reportFirebaseKey}" loaded.`, 'upload');
                 }
                 setShowSavedReports(false); // Close modal if directly loading
