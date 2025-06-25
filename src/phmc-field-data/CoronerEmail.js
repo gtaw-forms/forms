@@ -226,57 +226,65 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
 
                                     />
                                 </Form.Group>
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Additional Reports:</Form.Label>
-                                    <div className="reports-container">
-                                        {formData.additionalReports.map((report, index) => (
-                                            <div key={index} className="report-input">
-                                                <Form.Control
-                                                    as="textarea"
-                                                    value={report}
-                                                    onChange={(e) => handleReportChange(index, e.target.value)}
-                                                    placeholder="Paste additional coroner report here"
-                                                    rows="4"
-                                                    className={`form-control ${!formData.additionalReports ? 'is-invalid' : ''}`}
-                                                    />
-                                                <Button
-                                                    variant="danger"
-                                                    onClick={() => removeReport(index)}
-                                                    className="remove-report-button"
-                                                >
-                                                    Remove Report
-                                                </Button>
-                                            </div>
-                                        ))}
-                                        <div className="email-buttons">
-                                            <Button
-                                                variant="success"
-                                                onClick={addReport}
-                                                className="email-button"
-                                            >
-                                                <i className="fas fa-plus"></i> Add Report
-                                            </Button>
-                                            <Button
-                                                variant="primary"
-                                                onClick={parseBBCode}
-                                                className="email-button"
-                                            >
-                                                <i className="fas fa-copy"></i> Parse BBCode
-                                            </Button>
-                                            <Button
-                                            variant="info"
-                                            onClick={toggleSavedReports} 
-                                            className="email-button"
-                                        >
-                                            <i className="fas fa-save"></i> Show Saved Reports 
-                                        </Button>
+            <Form.Group className="mb-3">
+                <Form.Label>Additional Reports:</Form.Label>
+                <div className="reports-container">
+                    {formData.additionalReports.map((report, index) => (
+                        <div key={index} className="report-input">
+                            <Form.Control
+                                as="textarea"
+                                value={report}
+                                onChange={(e) => handleReportChange(index, e.target.value)}
+                                placeholder="Paste additional coroner report here"
+                                rows="4"
+                                className={`form-control ${!formData.additionalReports ? 'is-invalid' : ''}`}
+                            />
+                            <Button
+                                variant="danger"
+                                onClick={() => removeReport(index)}
+                                className="remove-report-button"
+                            >
+                                Remove Report
+                            </Button>
+                        </div>
+                    ))}
+                    <div className="email-buttons">
+                        <Button
+                            variant="success"
+                            onClick={addReport}
+                            className="email-button"
+                        >
+                            <i className="fas fa-plus"></i> Add Report
+                        </Button>
+                        <Button
+                            variant="primary"
+                            onClick={parseBBCode}
+                            className="email-button"
+                        >
+                            <i className="fas fa-copy"></i> Parse BBCode
+                        </Button>
+                        <Button
+                            variant="info"
+                            onClick={() => toggleSavedReports([1], 'Coroner', (reportData) => {
+                                // This callback will be executed by handleReportSelectedForAttachment
+                                // after it has processed the report.
+                                // For CoronerEmail, the main form update (deathReport/additionalReports)
+                                // is already handled by the specific logic inside handleReportSelectedForAttachment
+                                // (the bbCodeVersion 1 to 2 conversion).
+                                // So, this callback can be a no-op or just log for debugging.
+                                console.log("CoronerEmail attachment post-processing callback executed:", reportData);
+                                // If you needed to do something *additional* here, you would add it.
+                            })}
+                            className="email-button"
+                        >
+                            <i className="fas fa-save"></i> Show Saved Reports
+                        </Button>
 
-                                        </div>
+                    </div>
 
-                                    </div>
-                                </Form.Group>
+                </div>
+            </Form.Group>
         </>
     );
 };
-
-export default CoronerEmail; // Export with PascalCase name
+export default CoronerEmail;
