@@ -397,3 +397,15 @@
     to { background-color: #3a506b; }
 }
 
+.bingo-phrases-textarea {
+    background-color: #161b22; /* Dark background */
+    color: #c9d1d9;           /* Light text color */
+    border: 1px solid #30363d; /* Subtle border */
+    /* Ensure Bootstrap's default focus styles don't override too harshly */
+    &:focus {
+        background-color: #161b22; /* Keep background on focus */
+        color: #c9d1d9;
+        border-color: #58a6ff; /* A subtle highlight on focus */
+        box-shadow: 0 0 0 0.25rem rgba(88, 166, 255, 0.25); /* Bootstrap-like focus ring */
+    }
+}
