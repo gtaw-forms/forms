@@ -1,0 +1,253 @@
+.bingo-modal-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1055;
+    margin: 0;
+    max-width: none;
+    pointer-events: auto;
+}
+
+.bingo-modal-dialog .modal-content {
+    background-color: #0d1117;
+    border: 5px solid #c0392b;
+    border-radius: 10px;
+    width: 90%;
+    max-width: 1200px;
+    pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    max-height: 95vh;
+}
+
+.bingo-modal-dialog .modal-header {
+    border-bottom: 2px solid #c0392b;
+    flex-shrink: 0;
+}
+
+.bingo-title {
+    font-family: 'Arial Black', Gadget, sans-serif;
+    color: #c0392b;
+    font-size: 2.5rem;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.bingo-content-wrapper {
+    display: flex;
+    gap: 20px;
+    flex-grow: 1;
+    overflow: hidden;
+    padding: 15px;
+}
+
+.bingo-main-section {
+    flex: 3;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* ADDED: Prevents the grid from overflowing its container */
+}
+
+.bingo-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    grid-template-rows: repeat(5, 1fr);
+    gap: 5px;
+    background-color: #c0392b;
+    border: 2px solid #c0392b;
+    padding: 5px;
+    flex-grow: 1;
+    overflow: hidden;
+}
+
+.bingo-square {
+    background-color: #16202c;
+    border: 1px solid #30363d;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 8px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    color: #acb1cad3;
+    aspect-ratio: 1 / 1;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    hyphens: auto;
+    line-height: 1.2;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    
+    /* --- ADDED FIXES FOR GRID ITEM SIZING --- */
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 0;
+    /* --- END FIXES --- */
+}
+
+.bingo-square:not(.free-space):hover {
+    background-color: #30363d;
+    border-color: #484f58;
+    transform: scale(1.02);
+}
+
+.bingo-square.free-space {
+    background-color: #010409;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.bingo-square.free-space img {
+    max-width: 60%;
+    height: auto;
+    max-height: 60%;
+}
+
+.bingo-square.free-space span {
+    font-weight: bold;
+    color: #c0392b;
+    font-size: 1rem;
+}
+
+.bingo-square.marked {
+    background-color: #234228;
+    border-color: #3fb950;
+    color: #a3d8b0;
+    position: relative;
+}
+
+.bingo-square.marked::after {
+    content: '\2713';
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    font-size: 1.5rem;
+    color: #3fb950;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+}
+
+.bingo-sidebar {
+    flex: 1;
+    background-color: #010409;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    max-height: 100%;
+    min-height: 0; /* ADDED: Prevents content from expanding the sidebar beyond its container */
+}
+
+.bingo-sidebar h5 {
+    color: #acb1cad3;
+    margin-bottom: 15px;
+    border-bottom: 1px solid #30363d;
+    padding-bottom: 10px;
+}
+
+.activity-log {
+    flex-grow: 1;
+    overflow-y: auto;
+}
+
+.activity-item {
+    background-color: #16202c;
+    border: 1px solid #30363d;
+    border-radius: 5px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    font-size: 0.9em;
+    color: #acb1cad3;
+    word-wrap: break-word;
+}
+
+.activity-item strong {
+    color: #58a6ff;
+}
+
+.activity-item .timestamp {
+    display: block;
+    font-size: 0.75em;
+    color: #8b949e;
+    margin-top: 4px;
+}
+
+.bingo-modal-dialog .modal-footer {
+    border-top: 2px solid #c0392b;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+/* Custom styles for react-select (no changes needed here) */
+.react-select-container .react-select__control {
+    background-color: #16202c !important;
+    border-color: #30363d !important;
+    color: #eeeeeeb0 !important;
+}
+.react-select-container .react-select__control:hover {
+    border-color: #6c757d !important;
+}
+.react-select-container .react-select__single-value {
+    color: #eeeeeeb0 !important;
+}
+.react-select-container .react-select__placeholder {
+    color: #eeeeeeb0 !important;
+}
+.react-select-container .react-select__indicator-separator {
+    background-color: #30363d !important;
+}
+.react-select-container .react-select__dropdown-indicator {
+    color: #eeeeeeb0 !important;
+}
+.react-select-container .react-select__menu {
+    background-color: #16202c !important;
+    border: 1px solid #30363d !important;
+}
+.react-select-container .react-select__option {
+    background-color: #16202c !important;
+    color: #eeeeeeb0 !important;
+}
+.react-select-container .react-select__option--is-focused {
+    background-color: #30363d !important;
+}
+.react-select-container .react-select__option--is-selected {
+    background-color: #c0392b !important;
+    color: white !important;
+}
+
+/* Responsive adjustments for smaller screens */
+@media (max-width: 768px) {
+    .bingo-content-wrapper {
+        flex-direction: column;
+        padding: 10px;
+    }
+
+    .bingo-main-section, .bingo-sidebar {
+        flex: none;
+        width: 100%;
+        max-height: unset;
+    }
+
+    .bingo-sidebar {
+        margin-top: 20px;
+    }
+
+    .bingo-title {
+        font-size: 1.8rem;
+    }
+
+    .bingo-square {
+        font-size: 0.65rem;
+        padding: 4px;
+    }
+    .bingo-square.free-space span {
+        font-size: 0.8rem;
+    }
+}

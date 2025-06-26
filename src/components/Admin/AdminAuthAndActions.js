@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Form as BootstrapForm, Button, Spinner, ListGroup } from 'react-bootstrap';
 import { auth, database } from '../../firebase';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
-import { ref, get, update } from "firebase/database";
+import { ref, get, update, remove } from "firebase/database"; 
 import AddRoleModal from './RoleModal';
 import RenameRoleKeyModal from './RenameRoleKeyModal';
 import WebhookModal from '../WebhookModal';
@@ -282,41 +282,80 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
         }
     };
 
-    const handleTogglePositionStatus = async (positionKey, currentStatus) => {
-        if (!currentUser || !selectedRecruitmentCategory || !recruitmentCategories[selectedRecruitmentCategory]) return;
-        const positionDetails = currentRecruitmentData[positionKey];
-        if (!positionDetails) {
-            console.error("Position details not found for key:", positionKey);
-            if (showInAppNotification) showInAppNotification("Error: Position details missing.", "error");
-            return;
+const handleTogglePositionStatus = async (positionKey, currentStatus) => {
+    // --- 1. Initial Validation & Early Exit ---
+    if (!currentUser || !selectedRecruitmentCategory || !recruitmentCategories[selectedRecruitmentCategory]) {
+        // No notification here, as this might be a normal state (e.g., user not logged in).
+        return;
+    }
+
+    const positionDetails = currentRecruitmentData[positionKey];
+    if (!positionDetails) {
+        console.error("Position details not found for key:", positionKey);
+        showInAppNotification("Error: Position details missing.", "error");
+        return;
+    }
+
+    // Extract frequently used or calculated values into clear variables.
+    const positionDisplayName = positionDetails.displayName || positionDetails.name || positionKey;
+    const newStatus = currentStatus === "OPEN" ? "CLOSED" : "OPEN";
+    const categoryConfig = recruitmentCategories[selectedRecruitmentCategory];
+    const positionStatusPath = `${categoryConfig.path}/${positionKey}/status`;
+    const { userAgent, timeZone } = getUserContext(); // Capture user context for logging.
+
+    // Indicate that an asynchronous operation is in progress.
+    setIsUpdatingDb(true);
+
+    try {
+        // --- 4. Core Operation: Firebase Update ---
+        await update(ref(database), { [positionStatusPath]: newStatus });
+
+        // --- 5. Success Path: Notifications & Webhooks ---
+        const successMessage = `${positionDisplayName} status updated to ${newStatus} for ${categoryConfig.displayName}.`;
+        showInAppNotification(successMessage, "check-circle"); // Notify user in-app.
+
+        // Log the successful action to the admin webhook.
+        sendAdminActionWebhook(
+            currentUser.email,
+            "Toggled Recruitment Status",
+            `Position: ${positionDisplayName}\nNew Status: ${newStatus}`,
+            categoryConfig.displayName,
+            userAgent,
+            timeZone
+        );
+
+        // Show desktop notification if permission is granted.
+        if (desktopNotificationPermission === "granted") {
+            showDesktopNotification(`Recruitment Status Updated: ${categoryConfig.displayName}`, {
+                body: `${positionDisplayName} is now ${newStatus}.`,
+                icon: '/phmc512.png', // Ensure this path is correct and accessible.
+                tag: `status-update-${selectedRecruitmentCategory}-${positionKey}` // Unique tag to prevent duplicate notifications.
+            });
         }
-        setIsUpdatingDb(true);
-        const newStatus = currentStatus === "OPEN" ? "CLOSED" : "OPEN";
-        const categoryConfig = recruitmentCategories[selectedRecruitmentCategory];
-        const positionStatusPath = `${categoryConfig.path}/${positionKey}/status`;
-        const { userAgent, timeZone } = getUserContext(); // Capture user context
-        try {
-            await update(ref(database), { [positionStatusPath]: newStatus });
-            const successMessage = `${positionDetails.displayName || positionDetails.name || positionKey} status updated to ${newStatus} for ${categoryConfig.displayName}.`;
-            if (showInAppNotification) showInAppNotification(successMessage, "check-circle");
-            if (currentUser?.email) {
-                sendAdminActionWebhook(currentUser.email, "Toggled Recruitment Status", `Position: ${positionDetails.displayName || positionDetails.name || positionKey}\nNew Status: ${newStatus}`, categoryConfig.displayName, userAgent, timeZone);
-            }
-            console.log("[Desktop Notify] Checking permission for status update notification:", desktopNotificationPermission);
-            if (desktopNotificationPermission === "granted") {
-                showDesktopNotification(`Recruitment Status Updated: ${categoryConfig.displayName}`, {
-                    body: `${positionDetails.displayName || positionDetails.name || positionKey} is now ${newStatus}.`,
-                    icon: '/phmc512.png',
-                    tag: `status-update-${selectedRecruitmentCategory}-${positionKey}`
-                });
-            }
-            fetchRecruitmentDataForCategory(selectedRecruitmentCategory);
-        } catch (dbError) {
-            if (showInAppNotification) showInAppNotification(`Failed to update status for ${positionKey}.`, "error");
-            sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Toggle Recruitment Status", `Position: ${positionDetails.displayName || positionDetails.name || positionKey}\nAttempted Status: ${newStatus}\nError: ${dbError.message}`, categoryConfig.displayName, userAgent, timeZone);
-        }
+
+        // Refresh the recruitment data in the UI to reflect the change.
+        fetchRecruitmentDataForCategory(selectedRecruitmentCategory);
+
+    } catch (dbError) {
+        // --- 6. Error Path: Notifications & Webhooks ---
+        console.error(`Error updating status for ${positionKey}:`, dbError); // Log error to console for debugging.
+        showInAppNotification(`Failed to update status for ${positionKey}.`, "error"); // Notify user in-app.
+
+        // Log the failed action to the admin webhook.
+        sendAdminActionWebhook(
+            currentUser?.email || "Unknown User", // Fallback for email if not available.
+            "Failed to Toggle Recruitment Status",
+            `Position: ${positionDisplayName}\nAttempted Status: ${newStatus}\nError: ${dbError.message}`,
+            categoryConfig.displayName,
+            userAgent,
+            timeZone
+        );
+    } finally {
+        // --- 7. Reset Loading State ---
+        // Always reset loading state regardless of whether the operation succeeded or failed.
         setIsUpdatingDb(false);
-    };
+    }
+};
 
     const handleRoleSaved = (savedRoleData, actionType) => {
         if (selectedRecruitmentCategory) {
@@ -457,6 +496,41 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
             return false;
         }
     };
+    const handleClearBingoActivity = async () => {
+        if (!window.confirm("Are you sure you want to clear ALL EMS Bingo activity logs? This action cannot be undone.")) {
+            return;
+        }
+
+        setIsUpdatingDb(true);
+        const bingoLogRef = ref(database, 'bingo/activityLog');
+        const { userAgent, timeZone } = getUserContext(); // Assuming getUserContext is defined in this file
+
+        try {
+            await remove(bingoLogRef);
+            showInAppNotification("EMS Bingo activity log has been cleared.", "check-circle");
+            sendAdminActionWebhook(
+                currentUser.email,
+                "Cleared EMS Bingo Activity",
+                "The entire 'bingo/activityLog' path was deleted from Firebase.",
+                "EMS Bingo",
+                userAgent,
+                timeZone
+            );
+        } catch (dbError) {
+            console.error("Error clearing bingo activity log:", dbError);
+            showInAppNotification("Failed to clear bingo activity log.", "error");
+            sendAdminActionWebhook(
+                currentUser.email,
+                "Failed to Clear EMS Bingo Activity",
+                `Error: ${dbError.message}`,
+                "EMS Bingo",
+                userAgent,
+                timeZone
+            );
+        } finally {
+            setIsUpdatingDb(false);
+        }
+    };
 
     const handleOpenCoronerWebhookModal = () => {
         setCoronerWebhookTitle('');
@@ -586,6 +660,26 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                     ) : ( <p>No positions loaded for {recruitmentCategories[selectedRecruitmentCategory]?.displayName}.</p> )}
                 </>
             ) : ( <p>Please select a recruitment option from the dropdown to manage statuses or add roles.</p> )}
+            <h5>EMS Bingo Management</h5>
+            <Button
+                variant="danger"
+                onClick={handleClearBingoActivity}
+                disabled={isUpdatingDb}
+                className="mt-2"
+            >
+                {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : <><i className="fas fa-trash-alt"></i> Clear Bingo Activity Log</>}
+            </Button>
+            <p className="text-muted small mt-1">This will permanently delete all entries in the 'Recent Activity' sidebar on the EMS Bingo card.</p>
+            
+            <hr />
+            <Button variant="info" onClick={handleOpenAdminCustomWebhookModal} className="mt-3 me-2">
+                <i className="fas fa-bullhorn"></i> ADMIN WEBHOOK
+            </Button>
+            <Button variant="dark" onClick={handleOpenCoronerWebhookModal} className="mt-3 me-2">
+                <i className="fas fa-skull-crossbones"></i> CORONER WEBHOOK
+            </Button>
+
+            <Button variant="warning" onClick={handleLogout} className="mt-3">Logout</Button>
 
             <Button variant="info" onClick={handleOpenAdminCustomWebhookModal} className="mt-3 me-2">
                 <i className="fas fa-bullhorn"></i> ADMIN WEBHOOK

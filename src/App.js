@@ -24,7 +24,6 @@ import MissingEmployeeModal from './components/MissingEmployeeModal';
 import SaaaEmployeeModal from './saaa-components/SaaaEmployeeModal'; 
 import RecruitmentStatusDisplay from './components/RecruitmentStatusDisplay'; // Add this import
 // admin
-import AdminModal from './components/Admin/AdminModal'; 
 import FormImageLink from './components/FormImageLink';
 
 // 
@@ -36,6 +35,7 @@ import {
     generateDeathReport,
 } from './phmc-bbcode-generators'; 
 import PositionInfoModal from './components/PositionInfoModal'; // Adjust path as needed
+import EmsBingoModal from './components/EmsBingoModal'; // <-- ADD THIS IMPORT
 
 // logos
 import email from './assets/email.png'
@@ -61,6 +61,7 @@ import SaaaBusinessCardModal from './saaa-components/SaaaBusinessCardModal';
 function App() {
     const [isMobile, setIsMobile] = useState(false);
     const modalCloseTimer = useRef(null);
+    const [showEmsBingoModal, setShowEmsBingoModal] = useState(false);
 
 const initialFormData = {
     coronerRank: 'Forensic Attendant',
@@ -1757,6 +1758,13 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
         setWebhookMessage(''); // Set to empty string
         setShowWebhookModal(true);
     };
+    useEffect(() => {
+        if (window.location.hash === '#bingo') {
+            setShowEmsBingoModal(true);
+            // This line removes the #bingo from the URL after opening the modal, which is a nice touch.
+            window.history.pushState("", document.title, window.location.pathname + window.location.search);
+        }
+    }, []); // Empty dependency array ensures this runs only once on mount
 
 const [showCoronerRankModal, setShowCoronerRankModal] = useState(false);
 const uniqueCoronerRanks = [...new Set(coronerListData.map(c => c.rank))].sort();
@@ -3974,12 +3982,6 @@ const handleCopyAndNotifyWrapper = async () => {
                 selectedPositionKey={bbCodeVersion === 50 ? formData.recruitmentPosition : formData.saaaJobSelection}
                 positionData={currentPositionInfo}
             />
-                    <AdminModal
-                        show={bbCodeVersion === 999 && formData.isAdminAuthenticated === false && selectedAgencyGroup === "Admin"} // Example condition for showing AdminModal for login
-                        onHide={() => { /* Logic to hide admin modal or switch form */ }}
-                        showNotification={showNotification}
-                        commitInfo={commitInfo}
-                    />
 
             <div className="header-info-wrapper">
             <HeaderInfo commitInfo={commitInfo} /> 
@@ -4514,6 +4516,12 @@ const handleCopyAndNotifyWrapper = async () => {
     coronerRecruitmentDetails={selectOptions.coronerPositionDetailsData || {}}
     // Pass other recruitment details objects as props when you add them
 />
+            <EmsBingoModal
+                show={showEmsBingoModal}
+                onHide={() => setShowEmsBingoModal(false)}
+                phmcGroupedOptions={phmcGroupedOptions} // Pass the grouped PHMC employee options
+                currentPhmcEmployee={formData.phmcEmployee} // Pass the currently selected PHMC employee from the main form
+            />
 
 <MissingEmployeeModal
     show={showMissingEmployeeModal}
