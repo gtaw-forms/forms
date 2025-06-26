@@ -1764,19 +1764,33 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
 
     // MODIFIED: This useEffect now stores the original URL
     useEffect(() => {
-        const path = window.location.pathname;
+        const urlParams = new URLSearchParams(window.location.search);
+        const redirectedPath = urlParams.get('p'); // Get the original path from the 'p' query param
+
+        const currentPath = window.location.pathname;
         const hash = window.location.hash;
 
-        if (hash === '#bingo' || path.endsWith('/bingo')) {
+        // Check for #bingo hash
+        if (hash === '#bingo') {
+            setShowEmsBingoModal(true);
+        } 
+        // Check if the current path ends with /bingo OR if we were redirected from a /bingo path
+        else if (currentPath.endsWith('/bingo') || (redirectedPath && redirectedPath.endsWith('/bingo'))) {
             setShowEmsBingoModal(true);
         }
-    }, []); // Empty dependency array ensures this runs only once on mount
 
-    // MODIFIED: This function now actively cleans the URL on modal close.
+        // Clean up the URL after the modal is opened, regardless of how it was opened.
+        // This prevents the 'p' parameter from lingering in the URL.
+        if (redirectedPath) {
+            const newUrl = new URL(window.location.href);
+            newUrl.searchParams.delete('p'); // Remove the 'p' parameter
+            window.history.replaceState({}, document.title, newUrl.href); // Update URL without adding to history
+        }
+
+    }, []); // Empty dependency array ensures this runs only once on mount
     const handleHideEmsBingoModal = useCallback(() => {
         setShowEmsBingoModal(false);
 
-        // Create a URL object from the current location to easily manipulate it.
         const url = new URL(window.location.href);
 
         // Check and clean the hash.
@@ -1786,12 +1800,9 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
 
         // Check and clean the path.
         if (url.pathname.endsWith('/bingo')) {
-            // Replace the /bingo part, defaulting to '/' if it's the root path.
             url.pathname = url.pathname.replace(/\/bingo$/, '') || '/';
         }
 
-        // Use replaceState to modify the current history entry without adding a new one.
-        // This makes the browser's back button behavior more intuitive for the user.
         window.history.replaceState({}, document.title, url.href);
 
     }, []);
