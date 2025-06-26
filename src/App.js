@@ -4564,6 +4564,8 @@ const handleCopyAndNotifyWrapper = async () => {
                 coronerGroupedOptions={coronerGroupedOptions} // <-- NEW: Pass coroner options
                 currentPhmcEmployee={formData.phmcEmployee}
                 showNotification={showNotification}
+                                setShowMissingEmployeeModal={setShowMissingEmployeeModal} // NEW: Pass the setter
+
             />
 
 <MissingEmployeeModal

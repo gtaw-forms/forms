@@ -1,4 +1,3 @@
-// src/components/Admin/AdminAuthAndActions.js
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Form as BootstrapForm, Button, Spinner, ListGroup } from 'react-bootstrap';
 import { auth, database } from '../../firebase';
@@ -8,7 +7,8 @@ import AddRoleModal from './RoleModal';
 import RenameRoleKeyModal from './RenameRoleKeyModal';
 import WebhookModal from '../WebhookModal';
 import * as Sentry from "@sentry/react";
-import EditBingoPhrasesModal from './EditBingoPhrasesModal'; // NEW: Import the new modal
+import EditBingoPhrasesModal from './EditBingoPhrasesModal';
+import ReviewPhraseRequestsModal from './ReviewPhraseRequestsModal'; // NEW: Import the new modal
 
 const recruitmentCategories = {
     physician: { displayName: "Physician Recruitment", path: 'selectOptions/physicianRecruitmentDetails' },
@@ -131,8 +131,9 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     const [currentRecruitmentData, setCurrentRecruitmentData] = useState({});
     const [isLoadingRecruitmentData, setIsLoadingRecruitmentData] = useState(false);
     const [isUpdatingDb, setIsUpdatingDb] = useState(false);
-    const [selectedAdminBingoType, setSelectedAdminBingoType] = useState(BINGO_TYPES[0].id); // Default to first type
-    const [showEditBingoPhrasesModal, setShowEditBingoPhrasesModal] = useState(false); // NEW: State for phrases modal
+    const [selectedAdminBingoType, setSelectedAdminBingoType] = useState(BINGO_TYPES[0].id);
+    const [showEditBingoPhrasesModal, setShowEditBingoPhrasesModal] = useState(false);
+    const [showReviewPhrasesModal, setShowReviewPhrasesModal] = useState(false); // NEW: State for review modal
 
     const [showRoleModal, setShowRoleModal] = useState(false);
     const [roleToEdit, setRoleToEdit] = useState(null);
@@ -639,7 +640,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
          const { userAgent, timeZone } = getUserContext(); // Capture user context
 
         if (!webhookURL) {
-            if (showInAppNotification) showInAppNotification('Coroner Webhook URL (CORONER_DISCORD_UPDATES) not configured.', "error");
+            if (showInAppNotification) showInAppNotification('Coroner Webhook URL (CORONER_DISCORD_UPDATES) not configured.', 'error');
             Sentry.captureMessage("Coroner Webhook URL (CORONER_DISCORD_UPDATES) not configured", "error");
             sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", "Webhook URL not configured.", null, userAgent, timeZone);
             return false;
@@ -657,7 +658,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                     level: 'error',
                     extra: { statusText: response.statusText, responseBody: errorText }
                 });
-                if (showInAppNotification) showInAppNotification(`Failed to send Coroner webhook. Status: ${response.status}`, "error");
+                if (showInAppNotification) showInAppNotification(`Failed to send Coroner webhook. Status: ${response.status}`, 'error');
                 sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", `Status: ${response.status}, Error: ${errorText}`, null, userAgent, timeZone);
                 return false;
             } else {
@@ -755,7 +756,6 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
             ) : ( <p></p> )}
             <hr />
             <h5>EMS Bingo Management</h5>
-            {/* NEW: Bingo Type Selector for Admin Actions */}
             <BootstrapForm.Group className="mb-3">
                 <BootstrapForm.Label>Select Bingo Type:</BootstrapForm.Label>
                 <BootstrapForm.Select
@@ -781,20 +781,27 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 variant="danger"
                 onClick={handleClearBingoActivity}
                 disabled={isUpdatingDb}
-                className="mt-2"
+                className="mt-2 me-2"
             >
                 {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : <><i className="fas fa-trash-alt"></i> Clear Activity Log</>}
             </Button>
-            {/* NEW: Button to edit master bingo phrases */}
             <Button
                 variant="info"
                 onClick={() => setShowEditBingoPhrasesModal(true)}
                 disabled={isUpdatingDb}
-                className="mt-2 ms-2" // Added margin-left
+                className="mt-2 me-2"
             >
                 <i className="fas fa-edit"></i> Edit Master Phrases
             </Button>
-            <p className="text-muted small mt-1">These actions apply to the selected Bingo type above. "Edit Master Phrases" applies to all types.</p>
+            <Button
+                variant="warning"
+                onClick={() => setShowReviewPhrasesModal(true)}
+                disabled={isUpdatingDb}
+                className="mt-2"
+            >
+                <i className="fas fa-inbox"></i> Review Phrase Requests
+            </Button>
+            <p className="text-muted small mt-1">"Generate Card" and "Clear Log" apply to the selected Bingo type. Phrase actions apply to the master list.</p>
             
             <hr />
             <Button variant="info" onClick={handleOpenAdminCustomWebhookModal} className="mt-3 me-2">
@@ -843,12 +850,18 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 primaryWebhookUrlIdentifier="REACT_APP_CORONER_DISCORD_UPDATES"
                 showSecondaryButton={false}
             />
-            {/* NEW: Edit Bingo Phrases Modal */}
             <EditBingoPhrasesModal
                 show={showEditBingoPhrasesModal}
                 onHide={() => setShowEditBingoPhrasesModal(false)}
                 showNotification={showInAppNotification}
                 commitInfo={commitInfo}
+                sendAdminActionWebhook={sendAdminActionWebhook}
+                adminUserEmail={currentUser?.email}
+            />
+            <ReviewPhraseRequestsModal
+                show={showReviewPhrasesModal}
+                onHide={() => setShowReviewPhrasesModal(false)}
+                showNotification={showInAppNotification}
                 sendAdminActionWebhook={sendAdminActionWebhook}
                 adminUserEmail={currentUser?.email}
             />

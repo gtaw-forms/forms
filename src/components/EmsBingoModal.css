@@ -29,8 +29,13 @@
 .bingo-modal-dialog .modal-header {
     border-bottom: 2px solid #c0392b;
     flex-shrink: 0;
+    /* REVERTED: Center content horizontally */
     justify-content: center;
-    text-align: center;
+    /* NEW: Make header a positioning context for absolute children */
+    position: relative;
+    /* Ensure there's enough padding on the left to prevent the button from overlapping the title */
+    padding-left: 60px; /* Adjust this value based on button width + desired spacing */
+    padding-right: 60px; /* Add similar padding on the right if a close button might appear there */
 }
 
 .bingo-title {
@@ -38,6 +43,18 @@
     color: #c0392b;
     font-size: 2.5rem;
     text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+    /* REMOVED: flex: 1; as it's no longer needed for centering with justify-content: center */
+    /* The `w-100 text-center` classes on the Modal.Title component itself will handle its centering within the available space */
+}
+
+.bingo-back-button {
+    /* NEW: Position absolutely within the header */
+    position: absolute;
+    left: 15px; /* Distance from the left edge of the header */
+    top: 50%; /* Vertically center the button */
+    transform: translateY(-50%); /* Adjust for the button's own height */
+    z-index: 1; /* Ensure it's above the title if they overlap */
+    /* No need for padding-left/right here, as it's absolutely positioned */
 }
 
 /* --- NEW/MODIFIED: Styles for the Modal.Body --- */
