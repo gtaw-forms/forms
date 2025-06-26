@@ -4559,9 +4559,10 @@ const handleCopyAndNotifyWrapper = async () => {
 />
             <EmsBingoModal
                 show={showEmsBingoModal}
-                onHide={handleHideEmsBingoModal} // <-- MODIFIED: Use the new cleanup handler
-                phmcGroupedOptions={phmcGroupedOptions} // Pass the grouped PHMC employee options
-                currentPhmcEmployee={formData.phmcEmployee} // Pass the currently selected PHMC employee from the main form
+                onHide={handleHideEmsBingoModal}
+                phmcGroupedOptions={phmcGroupedOptions}
+                coronerGroupedOptions={coronerGroupedOptions} // <-- NEW: Pass coroner options
+                currentPhmcEmployee={formData.phmcEmployee}
                 showNotification={showNotification}
             />
 

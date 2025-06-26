@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Modal, Button, Form, Spinner } from 'react-bootstrap';
 import Select from 'react-select';
 import './EmsBingoModal.css';
@@ -28,13 +28,36 @@ const EMPLOYEE_COLORS = [
     '#6a737d', // Grey
 ];
 
-// --- MODIFIED: New winning line definitions ---
+// --- NEW: Define Bingo Types and their properties ---
+const BINGO_TYPES = [
+    {
+        id: 'er',
+        name: 'Emergency Room',
+        path: 'ER', // Firebase path segment
+        employeeGroup: 'PHMC',
+        employeeFilter: ['Leadership', 'Hospital Supervisor', 'Chief Resident', 'Physician', 'Resident Physician', 'Physician Assistant', 'Psychiatrist', 'Psychologist', 'Dentist', 'Nursing', 'Emergency Medical Services', 'Attending Physician', 'Uncategorized'] // All PHMC
+    },
+    {
+        id: 'ems',
+        name: 'EMS',
+        path: 'EMS',
+        employeeGroup: 'PHMC',
+        employeeFilter: ['Emergency Medical Services'] // Only EMS staff
+    },
+    {
+        id: 'coroner',
+        name: 'Coroner',
+        path: 'Coroner',
+        employeeGroup: 'Coroner',
+        employeeFilter: [] // No specific filter needed, use all coronerGroupedOptions
+    }
+];
+// --- END NEW ---
+
+// Winning line definitions (no change)
 const BINGO_LINES = [
-    // Horizontal Rows
     [0, 1, 2, 3, 4], [5, 6, 7, 8, 9], [10, 11, 12, 13, 14], [15, 16, 17, 18, 19], [20, 21, 22, 23, 24],
-    // Vertical Columns
     [0, 5, 10, 15, 20], [1, 6, 11, 16, 21], [2, 7, 12, 17, 22], [3, 8, 13, 18, 23], [4, 9, 14, 19, 24],
-    // Four Corners
     [0, 4, 20, 24]
 ];
 
@@ -43,9 +66,9 @@ const BINGO_LINE_NAMES = [
     "Column 1", "Column 2", "Column 3", "Column 4", "Column 5",
     "Four Corners"
 ];
-// --- END MODIFICATION ---
 
-const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, currentPhmcEmployee, showNotification }) => {
+// MODIFIED: Added coronerGroupedOptions to props
+const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions, currentPhmcEmployee, showNotification }) => {
     const [phrases, setPhrases] = useState([]);
     const [masterPhraseList, setMasterPhraseList] = useState([]);
     const [isLoadingPhrases, setIsLoadingPhrases] = useState(true);
@@ -64,6 +87,9 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, currentPhmcEmployee, 
 
     const [completedBingoLines, setCompletedBingoLines] = useState(new Set());
 
+    // NEW: State for selected bingo type
+    const [selectedBingoType, setSelectedBingoType] = useState(null); // e.g., { id: 'ems', name: 'EMS', path: 'EMS', ... }
+
     const getEmployeeColor = useCallback((employeeName) => {
         if (!employeeColorMapRef.current.has(employeeName)) {
             const color = EMPLOYEE_COLORS[colorIndexRef.current % EMPLOYEE_COLORS.length];
@@ -73,7 +99,6 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, currentPhmcEmployee, 
         return employeeColorMapRef.current.get(employeeName);
     }, []);
 
-    // MODIFIED: This function now uses the new BINGO_LINES constant
     const checkForBingo = useCallback((currentMarkedSquares, currentPhrases, previouslyCompletedLines) => {
         if (currentPhrases.length === 0) return { newlyCompletedLineIndices: [], allCompletedLines: new Set(previouslyCompletedLines) };
 
@@ -95,7 +120,7 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, currentPhmcEmployee, 
         return { newlyCompletedLineIndices, allCompletedLines: currentCompletedLines };
     }, []);
 
-    // Effect to fetch master list of phrases from Firebase
+    // Effect to fetch master list of phrases from Firebase (for admin use)
     useEffect(() => {
         if (show && masterPhraseList.length === 0) {
             const phrasesRef = ref(database, 'bingo/phrases');
@@ -112,12 +137,12 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, currentPhmcEmployee, 
         }
     }, [show, masterPhraseList.length]);
 
-    // Listen for the current card layout from Firebase
+    // MODIFIED: Listen for the current card layout from Firebase (now type-specific)
     useEffect(() => {
-        if (!show) return;
+        if (!show || !selectedBingoType) return; // Only run if modal is open AND type is selected
 
         setIsLoadingPhrases(true);
-        const currentCardRef = ref(database, 'bingo/currentCard');
+        const currentCardRef = ref(database, `bingo/cards/${selectedBingoType.path}/phrases`);
         const unsubscribeCard = onValue(currentCardRef, (snapshot) => {
             const cardPhrases = snapshot.val();
             if (cardPhrases && Array.isArray(cardPhrases) && cardPhrases.length === 24) {
@@ -126,10 +151,10 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, currentPhmcEmployee, 
                 setLastSeenLogId(null);
                 setShowNewMessagesIndicator(false);
                 setCompletedBingoLines(new Set());
-                showNotification("New Bingo card loaded!", "info-circle");
+                showNotification(`New ${selectedBingoType.name} Bingo card loaded!`, "info-circle");
             } else {
                 setPhrases([]);
-                showNotification("No active Bingo card. Admin needs to generate one.", "warning");
+                showNotification(`No active ${selectedBingoType.name} Bingo card. Admin needs to generate one.`, "warning");
             }
             setIsLoadingPhrases(false);
         }, (error) => {
@@ -142,38 +167,41 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, currentPhmcEmployee, 
         return () => {
             off(currentCardRef, 'value', unsubscribeCard);
         };
-    }, [show, showNotification]);
+    }, [show, selectedBingoType, showNotification]); // Added selectedBingoType to dependencies
 
-    // Effect to set up selected employee when modal is shown
+    // Effect to set up selected employee when modal is shown or type changes
     useEffect(() => {
-        if (show) {
-            if (currentPhmcEmployee && phmcGroupedOptions) {
+        if (show && selectedBingoType) { // Only run if modal is open AND type is selected
+            if (currentPhmcEmployee && phmcGroupedOptions && selectedBingoType.employeeGroup === 'PHMC') {
                 const employeeOption = phmcGroupedOptions.flatMap(group => group.options)
                                                         .find(option => option.value === currentPhmcEmployee);
                 if (employeeOption) {
                     setSelectedEmployee(employeeOption);
                 }
+            } else {
+                setSelectedEmployee(null); // Clear selection if not PHMC or no current employee
             }
-        } else {
+        } else if (!show) { // Reset all states when modal closes
             setSelectedEmployee(null);
             setLastSeenLogId(null);
             employeeColorMapRef.current.clear();
             colorIndexRef.current = 0;
             setCompletedBingoLines(new Set());
+            setSelectedBingoType(null); // NEW: Reset selected bingo type on modal close
         }
-    }, [show, currentPhmcEmployee, phmcGroupedOptions]);
+    }, [show, selectedBingoType, currentPhmcEmployee, phmcGroupedOptions]);
 
-    // Effect to listen for Firebase activity log updates and sync marked squares
+    // MODIFIED: Effect to listen for Firebase activity log updates (now type-specific)
     useEffect(() => {
-        if (!show || phrases.length === 0 || isLoadingPhrases) {
+        if (!show || !selectedBingoType || phrases.length === 0 || isLoadingPhrases) {
             return;
         }
 
-        const bingoLogRef = ref(database, 'bingo/activityLog');
+        const bingoLogRef = ref(database, `bingo/logs/${selectedBingoType.path}/activityLog`);
         const unsubscribeLog = onValue(bingoLogRef, (snapshot) => {
             const data = snapshot.val();
             const tempMarkedSquares = new Map();
-            tempMarkedSquares.set(12, new Map([['Free Space', '#FFFFFF']]));
+            tempMarkedSquares.set(12, new Map([['Free Space', '#FFFFFF']])); // Always include the free space
 
             let currentLatestMessageId = null;
             let logEntries = [];
@@ -237,9 +265,8 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, currentPhmcEmployee, 
                         );
 
                         if (!bingoMessageAlreadyPosted) {
-                            // MODIFIED: Use BINGO_LINE_NAMES for a descriptive message
                             const lineName = BINGO_LINE_NAMES[lineIndex] || `Line ${lineIndex + 1}`;
-                            push(bingoLogRef, {
+                            push(bingoLogRef, { // This push uses the correct bingoLogRef from this useEffect's scope
                                 employee: "SYSTEM_ADMIN",
                                 phrase: `BINGO!!! (${lineName})`,
                                 timestamp: serverTimestamp(),
@@ -282,8 +309,7 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, currentPhmcEmployee, 
                 highlightTimerRef.current = null;
             }
         };
-    }, [show, phrases, isLoadingPhrases, getEmployeeColor, checkForBingo]);
-
+    }, [show, selectedBingoType, phrases, isLoadingPhrases, getEmployeeColor, checkForBingo]); // Added selectedBingoType to dependencies
     // Scroll listener for the "New Messages" indicator
     useEffect(() => {
         const currentActivityLogRef = activityLogRef.current;
@@ -310,14 +336,20 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, currentPhmcEmployee, 
         }
     };
 
+    // MODIFIED: handleSquareClick to use type-specific activity log
     const handleSquareClick = useCallback(async (index, phrase) => {
         if (!selectedEmployee) {
             alert('Please select your name from the dropdown before marking a square!');
             return;
         }
+        if (!selectedBingoType) { // Should not happen if UI is correct
+            alert('Please select a Bingo type first!');
+            return;
+        }
 
         const employeeName = selectedEmployee.value;
-        const bingoLogRef = ref(database, 'bingo/activityLog');
+        // FIX: Construct bingoLogRef dynamically based on selectedBingoType
+        const bingoLogRef = ref(database, `bingo/logs/${selectedBingoType.path}/activityLog`);
 
         const isMarkedByThisEmployee = markedSquaresLocal.has(index) && markedSquaresLocal.get(index).has(employeeName);
 
@@ -328,7 +360,8 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, currentPhmcEmployee, 
 
             if (mostRecentMarkedEntry) {
                 try {
-                    await remove(ref(database, `bingo/activityLog/${mostRecentMarkedEntry.id}`));
+                    // FIX: Use the dynamic path for removal as well
+                    await remove(ref(database, `bingo/logs/${selectedBingoType.path}/activityLog/${mostRecentMarkedEntry.id}`));
                     await push(bingoLogRef, {
                         employee: employeeName,
                         phrase: phrase,
@@ -371,7 +404,7 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, currentPhmcEmployee, 
                 });
             }
         }
-    }, [selectedEmployee, markedSquaresLocal, bingoActivityLog, getEmployeeColor]);
+    }, [selectedEmployee, markedSquaresLocal, bingoActivityLog, getEmployeeColor, selectedBingoType]); // Added selectedBingoType to dependencies
 
     const renderGrid = () => {
         if (isLoadingPhrases) {
@@ -434,85 +467,148 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, currentPhmcEmployee, 
     const handleEmployeeSelect = (option) => {
         setSelectedEmployee(option);
     };
+        const filteredEmployeeOptions = useMemo(() => {
+        if (!selectedBingoType) return [];
+
+        if (selectedBingoType.employeeGroup === 'PHMC') {
+            if (selectedBingoType.employeeFilter.length > 0) {
+                // Filter the grouped options by category label
+                return phmcGroupedOptions.filter(group => selectedBingoType.employeeFilter.includes(group.label));
+            }
+            return phmcGroupedOptions; // If no specific filter, return all PHMC
+        } else if (selectedBingoType.employeeGroup === 'Coroner') {
+            return coronerGroupedOptions;
+        }
+        return [];
+    }, [selectedBingoType, phmcGroupedOptions, coronerGroupedOptions]);
+
+    const handleSelectBingoType = (type) => {
+        setSelectedBingoType(type);
+    };
+
+    // NEW: Function to go back to type selection
+    const handleBackToSelection = () => {
+        setSelectedBingoType(null); // Reset selected type
+        setPhrases([]); // Clear current card phrases
+        setMarkedSquaresLocal(new Map([[12, new Map([['Free Space', '#FFFFFF']])]])); // Reset marked squares
+        setBingoActivityLog([]); // Clear activity log
+        setSelectedEmployee(null); // Clear selected employee
+        setCompletedBingoLines(new Set()); // Reset completed bingo lines
+        setLastSeenLogId(null); // Reset activity log tracking
+        setShowNewMessagesIndicator(false); // Hide new messages indicator
+        employeeColorMapRef.current.clear(); // Clear employee colors
+        colorIndexRef.current = 0; // Reset color index
+    };
 
     return (
         <Modal show={show} onHide={onHide} size="xl" centered dialogClassName="bingo-modal-dialog">
             <Modal.Header closeVariant="white">
-                <Modal.Title className="bingo-title w-100 text-center">EMS Bingo!</Modal.Title>
+                {selectedBingoType && ( // Only show back button if a type is selected
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={handleBackToSelection}
+                        className="bingo-back-button"
+                    >
+                        <i className="fas fa-arrow-left"></i> Back
+                    </Button>
+                )}
+                <Modal.Title className="bingo-title w-100 text-center">
+                    {selectedBingoType ? `${selectedBingoType.name} Bingo!` : "Select Bingo Type"}
+                </Modal.Title>
             </Modal.Header>
             <Modal.Body>
-                <div className="bingo-content-wrapper">
-                    <div className="bingo-main-section">
-                        <div className="bingo-grid">
-                            {renderGrid()}
+                {selectedBingoType ? ( // Conditional rendering: Show card if type is selected
+                    <div className="bingo-content-wrapper">
+                        <div className="bingo-main-section">
+                            <div className="bingo-grid">
+                                {renderGrid()}
+                            </div>
                         </div>
-                    </div>
-                    <div className="bingo-sidebar">
-                        {selectedEmployee && (
-                            <h5 className="welcome-message">Welcome {selectedEmployee.value}!</h5>
-                        )}
-                        {!selectedEmployee && (
-                            <Form.Group className="mb-3">
-                                <Form.Label>Select Your Name to Play:</Form.Label>
-                                <Select
-                                    name="phmcEmployeeBingo"
-                                    value={selectedEmployee}
-                                    onChange={handleEmployeeSelect}
-                                    options={phmcGroupedOptions}
-                                    isClearable
-                                    placeholder="Select your name..."
-                                    className="react-select-container"
-                                    classNamePrefix="react-select"
-                                    styles={{
-                                        control: (base) => ({ ...base, backgroundColor: '#16202c', color: '#eeeeeeb0', borderColor: '#30363d', '&:hover': { borderColor: '#30363d' } }),
-                                        menu: (base) => ({ ...base, backgroundColor: '#16202c', zIndex: 1000 }),
-                                        option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? 'Grey' : '#16202c', color: '#eeeeeeb0' }),
-                                        singleValue: (base) => ({ ...base, color: '#eeeeeeb0' }),
-                                        input: (base) => ({ ...base, color: '#eeeeeeb0' }),
-                                        placeholder: (base) => ({ ...base, color: '#eeeeeeb0' })
-                                    }}
-                                />
-                            </Form.Group>
-                        )}
-                        <h5>Recent Activity</h5>
-                        <div className="activity-log" ref={activityLogRef}>
-                            {bingoActivityLog.length > 0 ? (
-                                bingoActivityLog.map(entry => (
-                                    <div
-                                        key={entry.id}
-                                        className={`activity-item ${entry.id === highlightedMessageId ? 'highlight-new' : ''} ${entry.type === 'bingo' ? 'bingo-message' : ''}`}
-                                    >
-                                        {entry.type === 'bingo' ? (
-                                            <span className="bingo-text">
-                                                {entry.employee} - {entry.phrase}
+                        <div className="bingo-sidebar">
+                            {selectedEmployee && (
+                                <h5 className="welcome-message">Welcome {selectedEmployee.value}!</h5>
+                            )}
+                            {/* MODIFIED: Use filteredEmployeeOptions */}
+                            {!selectedEmployee && (
+                                <Form.Group className="mb-3">
+                                    <Form.Label>Select Your Name to Play:</Form.Label>
+                                    <Select
+                                        name="phmcEmployeeBingo"
+                                        value={selectedEmployee}
+                                        onChange={handleEmployeeSelect}
+                                        options={filteredEmployeeOptions} // Use filtered options
+                                        isClearable
+                                        placeholder="Select your name..."
+                                        className="react-select-container"
+                                        classNamePrefix="react-select"
+                                        styles={{
+                                            control: (base) => ({ ...base, backgroundColor: '#16202c', color: '#eeeeeeb0', borderColor: '#30363d', '&:hover': { borderColor: '#30363d' } }),
+                                            menu: (base) => ({ ...base, backgroundColor: '#16202c', zIndex: 1000 }),
+                                            option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? 'Grey' : '#16202c', color: '#eeeeeeb0' }),
+                                            singleValue: (base) => ({ ...base, color: '#eeeeeeb0' }),
+                                            input: (base) => ({ ...base, color: '#eeeeeeb0' }),
+                                            placeholder: (base) => ({ ...base, color: '#eeeeeeb0' })
+                                        }}
+                                    />
+                                </Form.Group>
+                            )}
+                            <h5>Recent Activity</h5>
+                            <div className="activity-log" ref={activityLogRef}>
+                                {bingoActivityLog.length > 0 ? (
+                                    bingoActivityLog.map(entry => (
+                                        <div
+                                            key={entry.id}
+                                            className={`activity-item ${entry.id === highlightedMessageId ? 'highlight-new' : ''} ${entry.type === 'bingo' ? 'bingo-message' : ''}`}
+                                        >
+                                            {entry.type === 'bingo' ? (
+                                                <span className="bingo-text">
+                                                    {entry.employee} - {entry.phrase}
+                                                </span>
+                                            ) : (
+                                                <>
+                                                    <strong>{entry.employee}</strong>{' '}
+                                                    {entry.type === 'unmarked' ? (
+                                                        <span className="unmarked-text">unmarked</span>
+                                                    ) : (
+                                                        <span>marked</span>
+                                                    )}{' '}
+                                                    "{entry.phrase}"
+                                                </>
+                                            )}
+                                            <span className="timestamp">
+                                                {entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString() : '...'}
                                             </span>
-                                        ) : (
-                                            <>
-                                                <strong>{entry.employee}</strong>{' '}
-                                                {entry.type === 'unmarked' ? (
-                                                    <span className="unmarked-text">unmarked</span>
-                                                ) : (
-                                                    <span>marked</span>
-                                                )}{' '}
-                                                "{entry.phrase}"
-                                            </>
-                                        )}
-                                        <span className="timestamp">
-                                            {entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString() : '...'}
-                                        </span>
-                                    </div>
-                                ))
-                            ) : (
-                                <p>No activity yet. Be the first to mark a square!</p>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <p>No activity yet. Be the first to mark a square!</p>
+                                )}
+                            </div>
+                            {showNewMessagesIndicator && (
+                                <button className="new-messages-indicator show" onClick={scrollToBottom}>
+                                    New Messages
+                                </button>
                             )}
                         </div>
-                        {showNewMessagesIndicator && (
-                            <button className="new-messages-indicator show" onClick={scrollToBottom}>
-                                New Messages
-                            </button>
-                        )}
                     </div>
-                </div>
+                ) : ( // Show type selection buttons if no type is selected
+                    <div className="bingo-type-selection">
+                        <p>Please select a Bingo type to start:</p>
+                        <div className="bingo-type-buttons">
+                            {BINGO_TYPES.map(type => (
+                                <Button
+                                    key={type.id}
+                                    variant="primary"
+                                    onClick={() => handleSelectBingoType(type)}
+                                    className="bingo-type-button"
+                                >
+                                    {type.name} Bingo
+                                </Button>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </Modal.Body>
             <Modal.Footer>
                 <Button variant="secondary" onClick={onHide}>

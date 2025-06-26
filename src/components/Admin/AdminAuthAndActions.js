@@ -8,6 +8,7 @@ import AddRoleModal from './RoleModal';
 import RenameRoleKeyModal from './RenameRoleKeyModal';
 import WebhookModal from '../WebhookModal';
 import * as Sentry from "@sentry/react";
+import EditBingoPhrasesModal from './EditBingoPhrasesModal'; // NEW: Import the new modal
 
 const recruitmentCategories = {
     physician: { displayName: "Physician Recruitment", path: 'selectOptions/physicianRecruitmentDetails' },
@@ -18,7 +19,11 @@ const recruitmentCategories = {
     coroner: { displayName: "Coroner Recruitment", path: 'selectOptions/coronerPositionDetailsData' },
     saaa: { displayName: "SAAA Recruitment", path: 'selectOptions/saaaPositionDetailsData' },
 };
-
+const BINGO_TYPES = [
+    { id: 'er', name: 'Emergency Room', path: 'ER' },
+    { id: 'ems', name: 'EMS', path: 'EMS' },
+    { id: 'coroner', name: 'Coroner', path: 'Coroner' }
+];
 const requestNotificationPermission = async () => {
     console.log("[Desktop Notify] Requesting permission...");
     if (!("Notification" in window)) {
@@ -126,6 +131,8 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     const [currentRecruitmentData, setCurrentRecruitmentData] = useState({});
     const [isLoadingRecruitmentData, setIsLoadingRecruitmentData] = useState(false);
     const [isUpdatingDb, setIsUpdatingDb] = useState(false);
+    const [selectedAdminBingoType, setSelectedAdminBingoType] = useState(BINGO_TYPES[0].id); // Default to first type
+    const [showEditBingoPhrasesModal, setShowEditBingoPhrasesModal] = useState(false); // NEW: State for phrases modal
 
     const [showRoleModal, setShowRoleModal] = useState(false);
     const [roleToEdit, setRoleToEdit] = useState(null);
@@ -483,7 +490,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", `Status: ${response.status}, Error: ${errorText}`, null, userAgent, timeZone);
                 return false;
             } else {
-                if (showInAppNotification) showInAppNotification('Admin webhook message sent successfully!', 'check-circle');
+                if (showInAppNotification) showInAppNotification('Admin webhook message sent successfully!', "check-circle");
                 setShowAdminCustomWebhookModal(false);
                 sendAdminActionWebhook(currentUser?.email || "Unknown User", "Sent Admin Custom Webhook", "Admin successfully sent a custom webhook to the Admin Action channel.", null, userAgent, timeZone);
                 return true;
@@ -491,7 +498,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
         } catch (error) {
             console.error('Error sending admin custom webhook:', error);
             Sentry.captureException(error, { extra: { context: 'Admin Custom Webhook Submission Fetch (AdminAuthAndActions)' } });
-            if (showInAppNotification) showInAppNotification('A network error occurred sending the admin webhook.', 'error');
+            if (showInAppNotification) showInAppNotification('A network error occurred sending the admin webhook.', "error");
             sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", `Network Error: ${error.message}`, null, userAgent, timeZone);
             return false;
         }
@@ -504,31 +511,34 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
 
 
     const handleClearBingoActivity = async () => {
-        if (!window.confirm("Are you sure you want to clear ALL EMS Bingo activity logs? This action cannot be undone.")) {
+        const selectedType = BINGO_TYPES.find(type => type.id === selectedAdminBingoType);
+        if (!selectedType) return;
+
+        if (!window.confirm(`Are you sure you want to clear ALL ${selectedType.name} Bingo activity logs? This action cannot be undone.`)) {
             return;
         }
 
         setIsUpdatingDb(true);
-        const bingoLogRef = ref(database, 'bingo/activityLog');
+        const bingoLogRef = ref(database, `bingo/logs/${selectedType.path}/activityLog`); // MODIFIED PATH
         const { userAgent, timeZone } = getUserContext();
 
         try {
             await remove(bingoLogRef);
-            showInAppNotification("EMS Bingo activity log has been cleared.", "check-circle");
+            showInAppNotification(`${selectedType.name} Bingo activity log has been cleared.`, "check-circle");
             sendAdminActionWebhook(
                 currentUser.email,
-                "Cleared EMS Bingo Activity",
-                "The entire 'bingo/activityLog' path was deleted from Firebase.",
+                `Cleared ${selectedType.name} Bingo Activity`,
+                `The 'bingo/logs/${selectedType.path}/activityLog' path was deleted from Firebase.`, // MODIFIED PATH
                 "EMS Bingo",
                 userAgent,
                 timeZone
             );
         } catch (dbError) {
             console.error("Error clearing bingo activity log:", dbError);
-            showInAppNotification("Failed to clear bingo activity log.", "error");
+            showInAppNotification(`Failed to clear ${selectedType.name} bingo activity log.`, "error");
             sendAdminActionWebhook(
                 currentUser.email,
-                "Failed to Clear EMS Bingo Activity",
+                `Failed to Clear ${selectedType.name} Bingo Activity`,
                 `Error: ${dbError.message}`,
                 "EMS Bingo",
                 userAgent,
@@ -541,14 +551,17 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
 
     // NEW: Handler to generate a new bingo card
     const handleGenerateNewBingoCard = async () => {
-        if (!window.confirm("Are you sure you want to generate a NEW EMS Bingo card? This will clear the current game and activity log for ALL users.")) {
+        const selectedType = BINGO_TYPES.find(type => type.id === selectedAdminBingoType);
+        if (!selectedType) return;
+
+        if (!window.confirm(`Are you sure you want to generate a NEW ${selectedType.name} Bingo card? This will clear the current game and activity log for ALL users.`)) {
             return;
         }
 
         setIsUpdatingDb(true);
         const masterPhrasesRef = ref(database, 'bingo/phrases');
-        const currentCardRef = ref(database, 'bingo/currentCard');
-        const activityLogRef = ref(database, 'bingo/activityLog');
+        const currentCardRef = ref(database, `bingo/cards/${selectedType.path}/phrases`); // MODIFIED PATH
+        const activityLogRef = ref(database, `bingo/logs/${selectedType.path}/activityLog`); // MODIFIED PATH
         const { userAgent, timeZone } = getUserContext();
 
         try {
@@ -587,11 +600,11 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
             // 3. Clear activity log for a fresh game
             await remove(activityLogRef);
 
-            showInAppNotification("New EMS Bingo card generated and activity log cleared!", "check-circle");
+            showInAppNotification(`New ${selectedType.name} Bingo card generated and activity log cleared!`, "check-circle");
             sendAdminActionWebhook(
                 currentUser.email,
-                "Generated New Bingo Card",
-                "A new card was generated and the activity log cleared for all users.",
+                `Generated New ${selectedType.name} Bingo Card`,
+                `A new card was generated and the activity log cleared for all users.`,
                 "EMS Bingo",
                 userAgent,
                 timeZone
@@ -601,7 +614,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
             showInAppNotification("Failed to generate new bingo card.", "error");
             sendAdminActionWebhook(
                 currentUser.email,
-                "Failed to Generate New Bingo Card",
+                `Failed to Generate New ${selectedType.name} Bingo Card`,
                 `Error: ${dbError.message}`,
                 "EMS Bingo",
                 userAgent,
@@ -626,7 +639,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
          const { userAgent, timeZone } = getUserContext(); // Capture user context
 
         if (!webhookURL) {
-            if (showInAppNotification) showInAppNotification('Coroner Webhook URL (CORONER_DISCORD_UPDATES) not configured.', 'error');
+            if (showInAppNotification) showInAppNotification('Coroner Webhook URL (CORONER_DISCORD_UPDATES) not configured.', "error");
             Sentry.captureMessage("Coroner Webhook URL (CORONER_DISCORD_UPDATES) not configured", "error");
             sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", "Webhook URL not configured.", null, userAgent, timeZone);
             return false;
@@ -644,11 +657,11 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                     level: 'error',
                     extra: { statusText: response.statusText, responseBody: errorText }
                 });
-                if (showInAppNotification) showInAppNotification(`Failed to send Coroner webhook. Status: ${response.status}`, 'error');
+                if (showInAppNotification) showInAppNotification(`Failed to send Coroner webhook. Status: ${response.status}`, "error");
                 sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", `Status: ${response.status}, Error: ${errorText}`, null, userAgent, timeZone);
                 return false;
             } else {
-                if (showInAppNotification) showInAppNotification('Coroner webhook message sent successfully!', 'check-circle');
+                if (showInAppNotification) showInAppNotification('Coroner webhook message sent successfully!', "check-circle");
                 setShowCoronerWebhookModal(false);
                 sendAdminActionWebhook(currentUser?.email || "Unknown User", "Sent Coroner Custom Webhook", "Admin successfully sent a custom webhook to the Coroner Updates channel.", null, userAgent, timeZone);
                 return true;
@@ -656,7 +669,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
         } catch (error) {
             console.error('Error sending Coroner webhook:', error);
             Sentry.captureException(error, { extra: { context: 'Coroner Webhook Submission Fetch' } });
-            if (showInAppNotification) showInAppNotification('A network error occurred sending the Coroner webhook.', 'error');
+            if (showInAppNotification) showInAppNotification('A network error occurred sending the Coroner webhook.', "error");
             sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", `Network Error: ${error.message}`, null, userAgent, timeZone);
             return false;
         }
@@ -739,14 +752,30 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                         </ListGroup>
                     ) : ( <p>No positions loaded for {recruitmentCategories[selectedRecruitmentCategory]?.displayName}.</p> )}
                 </>
-            ) : ( <p>Please select a recruitment option from the dropdown to manage statuses or add roles.</p> )}
+            ) : ( <p></p> )}
+            <hr />
+            <h5>EMS Bingo Management</h5>
+            {/* NEW: Bingo Type Selector for Admin Actions */}
+            <BootstrapForm.Group className="mb-3">
+                <BootstrapForm.Label>Select Bingo Type:</BootstrapForm.Label>
+                <BootstrapForm.Select
+                    value={selectedAdminBingoType}
+                    onChange={(e) => setSelectedAdminBingoType(e.target.value)}
+                    disabled={isUpdatingDb}
+                >
+                    {BINGO_TYPES.map(type => (
+                        <option key={type.id} value={type.id}>{type.name}</option>
+                    ))}
+                </BootstrapForm.Select>
+            </BootstrapForm.Group>
+
             <Button
-                variant="primary" // Changed to primary for generation
+                variant="primary"
                 onClick={handleGenerateNewBingoCard}
                 disabled={isUpdatingDb}
-                className="mt-2 me-2" // Added margin-right
+                className="mt-2 me-2"
             >
-                {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : <><i className="fas fa-sync-alt"></i> Generate New Bingo Card</>}
+                {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : <><i className="fas fa-sync-alt"></i> Generate New Card</>}
             </Button>
             <Button
                 variant="danger"
@@ -754,20 +783,20 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 disabled={isUpdatingDb}
                 className="mt-2"
             >
-                {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : <><i className="fas fa-trash-alt"></i> Clear Bingo Activity Log</>}
+                {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : <><i className="fas fa-trash-alt"></i> Clear Activity Log</>}
             </Button>
-            <p className="text-muted small mt-1">Generating a new card will clear the current game and activity log for all users. Clearing only the log will reset the current game's progress.</p>
+            {/* NEW: Button to edit master bingo phrases */}
+            <Button
+                variant="info"
+                onClick={() => setShowEditBingoPhrasesModal(true)}
+                disabled={isUpdatingDb}
+                className="mt-2 ms-2" // Added margin-left
+            >
+                <i className="fas fa-edit"></i> Edit Master Phrases
+            </Button>
+            <p className="text-muted small mt-1">These actions apply to the selected Bingo type above. "Edit Master Phrases" applies to all types.</p>
             
             <hr />
-            <Button variant="info" onClick={handleOpenAdminCustomWebhookModal} className="mt-3 me-2">
-                <i className="fas fa-bullhorn"></i> ADMIN WEBHOOK
-            </Button>
-            <Button variant="dark" onClick={handleOpenCoronerWebhookModal} className="mt-3 me-2">
-                <i className="fas fa-skull-crossbones"></i> CORONER WEBHOOK
-            </Button>
-
-            <Button variant="warning" onClick={handleLogout} className="mt-3">Logout</Button>
-
             <Button variant="info" onClick={handleOpenAdminCustomWebhookModal} className="mt-3 me-2">
                 <i className="fas fa-bullhorn"></i> ADMIN WEBHOOK
             </Button>
@@ -803,9 +832,9 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 show={showCoronerWebhookModal}
                 onClose={() => setShowCoronerWebhookModal(false)}
                 webhookTitle={coronerWebhookTitle}
-                setWebhookTitle={setCoronerWebhookTitle}
+                setCoronerWebhookTitle={setCoronerWebhookTitle}
                 webhookMessage={coronerWebhookMessage}
-                setWebhookMessage={setCoronerWebhookMessage}
+                setCoronerWebhookMessage={setCoronerWebhookMessage}
                 onSubmit={handleCoronerWebhookSubmit}
                 showNotification={showInAppNotification}
                 commitInfo={commitInfo}
@@ -813,6 +842,15 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 primaryButtonText="Send to Coroner Updates"
                 primaryWebhookUrlIdentifier="REACT_APP_CORONER_DISCORD_UPDATES"
                 showSecondaryButton={false}
+            />
+            {/* NEW: Edit Bingo Phrases Modal */}
+            <EditBingoPhrasesModal
+                show={showEditBingoPhrasesModal}
+                onHide={() => setShowEditBingoPhrasesModal(false)}
+                showNotification={showInAppNotification}
+                commitInfo={commitInfo}
+                sendAdminActionWebhook={sendAdminActionWebhook}
+                adminUserEmail={currentUser?.email}
             />
 
         </div>
