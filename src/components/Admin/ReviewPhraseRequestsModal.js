@@ -5,6 +5,12 @@ import { database } from '../../firebase';
 import { ref, get, update, set } from 'firebase/database';
 import * as Sentry from "@sentry/react";
 
+const BINGO_TYPES = [
+    { id: 'er', name: 'Emergency Room', path: 'ER' },
+    { id: 'ems', name: 'EMS', path: 'EMS' },
+    { id: 'coroner', name: 'Coroner', path: 'Coroner' }
+];
+
 const ReviewPhraseRequestsModal = ({ show, onHide, showNotification, sendAdminActionWebhook, adminUserEmail }) => {
     const [requests, setRequests] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -42,15 +48,33 @@ const ReviewPhraseRequestsModal = ({ show, onHide, showNotification, sendAdminAc
 
     const handleApprove = async (request) => {
         setIsProcessing(request.id);
-        const masterPhrasesRef = ref(database, 'bingo/phrases');
+
+        const bingoTypeObject = BINGO_TYPES.find(type => type.name === request.bingoType);
+
+        if (!bingoTypeObject) {
+            showNotification(`Error: Unknown Bingo Type "${request.bingoType}" for phrase approval.`, 'error');
+            console.error(`Could not find a matching bingo type for name: ${request.bingoType}`);
+            await handleDeny(request, 'Denied (Invalid Type)');
+            setIsProcessing(null);
+            return;
+        }
+
+        const masterPhrasesRef = ref(database, `bingo/phrases/${bingoTypeObject.path}`);
         const requestRef = ref(database, `bingo/phraseRequests/${request.id}`);
 
         try {
             const masterSnapshot = await get(masterPhrasesRef);
-            const currentPhrases = masterSnapshot.exists() && Array.isArray(masterSnapshot.val()) ? masterSnapshot.val() : [];
+            const masterPhrasesData = masterSnapshot.val();
+            const currentPhrases = masterSnapshot.exists()
+                ? (Array.isArray(masterPhrasesData)
+                    ? masterPhrasesData
+                    : (typeof masterPhrasesData === 'object' && masterPhrasesData !== null)
+                        ? Object.values(masterPhrasesData).map(p => (typeof p === 'object' ? p.phrase : p)).filter(Boolean)
+                        : [])
+                : [];
 
             if (currentPhrases.some(p => p.toLowerCase() === request.phrase.toLowerCase())) {
-                showNotification(`Phrase "${request.phrase}" already exists. Denying request.`, 'warning');
+                showNotification(`Phrase "${request.phrase}" already exists in ${bingoTypeObject.name} list. Denying request.`, 'warning');
                 await handleDeny(request, 'Denied (Duplicate)');
                 return;
             }
@@ -60,7 +84,7 @@ const ReviewPhraseRequestsModal = ({ show, onHide, showNotification, sendAdminAc
 
             await update(requestRef, { status: 'approved', processedBy: adminUserEmail, processedAt: new Date().toISOString() });
 
-            showNotification(`Phrase "${request.phrase}" approved and added!`, 'check-circle');
+            showNotification(`Phrase "${request.phrase}" approved and added to ${bingoTypeObject.name} list!`, 'check-circle');
 
             if (sendAdminActionWebhook) {
                 sendAdminActionWebhook(
@@ -87,7 +111,6 @@ const ReviewPhraseRequestsModal = ({ show, onHide, showNotification, sendAdminAc
             await update(requestRef, { status: reason, processedBy: adminUserEmail, processedAt: new Date().toISOString() });
             showNotification(`Request for "${request.phrase}" has been denied.`, 'info-circle');
 
-            // FIX: Corrected the typo from sendAdminActionwebhook to sendAdminActionWebhook
             if (sendAdminActionWebhook) {
                 sendAdminActionWebhook(
                     adminUserEmail,
