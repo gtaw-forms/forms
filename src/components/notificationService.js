@@ -1,4 +1,3 @@
-// src/components/notificationService.js // Corrected path based on your input
 import * as Sentry from "@sentry/react";
 import { ref, get } from 'firebase/database';
 
@@ -64,6 +63,52 @@ export const sendDiscordWebhookInternal = async (webhookUrl, embedData, commitIn
         return false;
     }
 };
+
+// NEW: Webhook for when a player scores a bingo
+export const sendBingoNotification = async ({ scorer, bingoType, lineName, commitInfo }) => {
+    const webhookUrl = process.env.REACT_APP_BINGO_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+    if (!webhookUrl) {
+        console.warn("Bingo webhook URL not configured. Skipping notification.");
+        return;
+    }
+
+    const embedData = {
+        title: "🎉 BINGO! 🎉",
+        description: `**${scorer || 'A player'}** just scored a BINGO!`,
+        color: 0xffd700, // Gold
+        fields: [
+            { name: "Game", value: bingoType || 'Unknown', inline: true },
+            { name: "Line", value: lineName || 'Unknown', inline: true },
+        ],
+        footerText: "PHMC Bingo",
+    };
+
+    await sendDiscordWebhookInternal(webhookUrl, embedData, commitInfo);
+};
+
+// NEW: Webhook for when a player requests a new phrase
+export const sendPhraseRequestNotification = async ({ requester, phrase, bingoType, commitInfo }) => {
+    const webhookUrl = process.env.REACT_APP_BINGO_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+    if (!webhookUrl) {
+        console.warn("Bingo webhook URL not configured. Skipping notification.");
+        return;
+    }
+
+    const embedData = {
+        title: "📝 New Bingo Phrase Request",
+        description: `A new phrase has been requested for review.`,
+        color: 0x7289DA, // Discord Blurple
+        fields: [
+            { name: "Requested Phrase", value: `\`\`\`${phrase || 'N/A'}\`\`\``, inline: false },
+            { name: "Requested For", value: bingoType || 'Unknown Game', inline: true },
+            { name: "Requested By", value: requester || 'Anonymous', inline: true },
+        ],
+        footerText: "PHMC Bingo",
+    };
+
+    await sendDiscordWebhookInternal(webhookUrl, embedData, commitInfo);
+};
+
 
 // --- MODIFIED: General PHMC Recruitment Webhook Sender ---
 const sendPhmcRecruitmentWebhook = async ({

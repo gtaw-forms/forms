@@ -8,7 +8,7 @@ import RenameRoleKeyModal from './RenameRoleKeyModal';
 import WebhookModal from '../WebhookModal';
 import * as Sentry from "@sentry/react";
 import EditBingoPhrasesModal from './EditBingoPhrasesModal';
-import ReviewPhraseRequestsModal from './ReviewPhraseRequestsModal'; // NEW: Import the new modal
+import ReviewPhraseRequestsModal from './ReviewPhraseRequestsModal';
 
 const recruitmentCategories = {
     physician: { displayName: "Physician Recruitment", path: 'selectOptions/physicianRecruitmentDetails' },
@@ -133,7 +133,7 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     const [isUpdatingDb, setIsUpdatingDb] = useState(false);
     const [selectedAdminBingoType, setSelectedAdminBingoType] = useState(BINGO_TYPES[0].id);
     const [showEditBingoPhrasesModal, setShowEditBingoPhrasesModal] = useState(false);
-    const [showReviewPhrasesModal, setShowReviewPhrasesModal] = useState(false); // NEW: State for review modal
+    const [showReviewPhrasesModal, setShowReviewPhrasesModal] = useState(false);
 
     const [showRoleModal, setShowRoleModal] = useState(false);
     const [roleToEdit, setRoleToEdit] = useState(null);
@@ -520,7 +520,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
         }
 
         setIsUpdatingDb(true);
-        const bingoLogRef = ref(database, `bingo/logs/${selectedType.path}/activityLog`); // MODIFIED PATH
+        const bingoLogRef = ref(database, `bingo/logs/${selectedType.path}/activityLog`);
         const { userAgent, timeZone } = getUserContext();
 
         try {
@@ -529,8 +529,8 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
             sendAdminActionWebhook(
                 currentUser.email,
                 `Cleared ${selectedType.name} Bingo Activity`,
-                `The 'bingo/logs/${selectedType.path}/activityLog' path was deleted from Firebase.`, // MODIFIED PATH
-                "EMS Bingo",
+                `The 'bingo/logs/${selectedType.path}/activityLog' path was deleted from Firebase.`,
+                `${selectedType.name} Bingo`,
                 userAgent,
                 timeZone
             );
@@ -541,7 +541,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 currentUser.email,
                 `Failed to Clear ${selectedType.name} Bingo Activity`,
                 `Error: ${dbError.message}`,
-                "EMS Bingo",
+                `${selectedType.name} Bingo`,
                 userAgent,
                 timeZone
             );
@@ -560,42 +560,50 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
         }
 
         setIsUpdatingDb(true);
-        const masterPhrasesRef = ref(database, 'bingo/phrases');
-        const currentCardRef = ref(database, `bingo/cards/${selectedType.path}/phrases`); // MODIFIED PATH
-        const activityLogRef = ref(database, `bingo/logs/${selectedType.path}/activityLog`); // MODIFIED PATH
+        const masterPhrasesRef = ref(database, `bingo/phrases/${selectedType.path}`);
+        const currentCardRef = ref(database, `bingo/cards/${selectedType.path}/phrases`);
+        const activityLogRef = ref(database, `bingo/logs/${selectedType.path}/activityLog`);
         const { userAgent, timeZone } = getUserContext();
 
         try {
             // 1. Fetch master phrases
             const snapshot = await get(masterPhrasesRef);
             if (!snapshot.exists()) {
-                showInAppNotification("Error: Master bingo phrases not found in Firebase. Cannot generate new card.", "error");
+                showInAppNotification(`Error: Master phrases for ${selectedType.name} not found. Cannot generate new card.`, "error");
                 sendAdminActionWebhook(
                     currentUser.email,
-                    "Failed to Generate New Bingo Card",
-                    "Master phrases not found in Firebase.",
-                    "EMS Bingo",
+                    `Failed to Generate New ${selectedType.name} Bingo Card`,
+                    `Master phrases not found in Firebase at 'bingo/phrases/${selectedType.path}'.`,
+                    `${selectedType.name} Bingo`,
                     userAgent,
                     timeZone
                 );
+                setIsUpdatingDb(false);
                 return;
             }
-            const masterPhrases = snapshot.val();
-            if (!Array.isArray(masterPhrases) || masterPhrases.length < 24) {
-                showInAppNotification("Error: Not enough master bingo phrases (need at least 24).", "error");
+            const masterPhrasesData = snapshot.val();
+            const masterPhrases = Array.isArray(masterPhrasesData)
+                ? masterPhrasesData
+                : (typeof masterPhrasesData === 'object' && masterPhrasesData !== null)
+                    ? Object.values(masterPhrasesData).map(p => (typeof p === 'object' ? p.phrase : p)).filter(Boolean)
+                    : [];
+
+            if (masterPhrases.length < 24) {
+                showInAppNotification(`Error: Not enough master phrases for ${selectedType.name} (need at least 24).`, "error");
                 sendAdminActionWebhook(
                     currentUser.email,
-                    "Failed to Generate New Bingo Card",
+                    `Failed to Generate New ${selectedType.name} Bingo Card`,
                     `Not enough master phrases (${masterPhrases.length} found, need 24).`,
-                    "EMS Bingo",
+                    `${selectedType.name} Bingo`,
                     userAgent,
                     timeZone
                 );
+                setIsUpdatingDb(false);
                 return;
             }
 
             // 2. Shuffle and save new card
-            const shuffledPhrases = getShuffledPhrases(masterPhrases).slice(0, 24); // Ensure exactly 24
+            const shuffledPhrases = getShuffledPhrases(masterPhrases).slice(0, 24);
             await set(currentCardRef, shuffledPhrases);
 
             // 3. Clear activity log for a fresh game
@@ -606,7 +614,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 currentUser.email,
                 `Generated New ${selectedType.name} Bingo Card`,
                 `A new card was generated and the activity log cleared for all users.`,
-                "EMS Bingo",
+                `${selectedType.name} Bingo`,
                 userAgent,
                 timeZone
             );
@@ -617,7 +625,52 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 currentUser.email,
                 `Failed to Generate New ${selectedType.name} Bingo Card`,
                 `Error: ${dbError.message}`,
-                "EMS Bingo",
+                `${selectedType.name} Bingo`,
+                userAgent,
+                timeZone
+            );
+        } finally {
+            setIsUpdatingDb(false);
+        }
+    };
+
+    // NEW: Handler to disable a bingo card
+    const handleDisableBingoCard = async () => {
+        const selectedType = BINGO_TYPES.find(type => type.id === selectedAdminBingoType);
+        if (!selectedType) return;
+
+        if (!window.confirm(`Are you sure you want to DISABLE the ${selectedType.name} Bingo card? This will remove the current card and clear all progress. The game will be unavailable until a new card is generated.`)) {
+            return;
+        }
+
+        setIsUpdatingDb(true);
+        // We will remove the entire node for the card type to ensure a clean slate.
+        const cardNodeRef = ref(database, `bingo/cards/${selectedType.path}`);
+        const logNodeRef = ref(database, `bingo/logs/${selectedType.path}`);
+        const { userAgent, timeZone } = getUserContext();
+
+        try {
+            // Remove both the card and the log data for this bingo type.
+            await remove(cardNodeRef);
+            await remove(logNodeRef);
+
+            showInAppNotification(`${selectedType.name} Bingo has been disabled and all data cleared.`, "check-circle");
+            sendAdminActionWebhook(
+                currentUser.email,
+                `Disabled ${selectedType.name} Bingo Card`,
+                `The card and activity log for '${selectedType.name}' were deleted from Firebase.`,
+                `${selectedType.name} Bingo`,
+                userAgent,
+                timeZone
+            );
+        } catch (dbError) {
+            console.error("Error disabling bingo card:", dbError);
+            showInAppNotification(`Failed to disable ${selectedType.name} bingo card.`, "error");
+            sendAdminActionWebhook(
+                currentUser.email,
+                `Failed to Disable ${selectedType.name} Bingo Card`,
+                `Error: ${dbError.message}`,
+                `${selectedType.name} Bingo`,
                 userAgent,
                 timeZone
             );
@@ -698,6 +751,8 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
         );
     }
 
+    const selectedTypeForEdit = BINGO_TYPES.find(type => type.id === selectedAdminBingoType);
+
     return (
         <div>
             <p>Logged in as: {currentUser.email}</p>
@@ -755,7 +810,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 </>
             ) : ( <p></p> )}
             <hr />
-            <h5>EMS Bingo Management</h5>
+            <h5>Bingo Management</h5>
             <BootstrapForm.Group className="mb-3">
                 <BootstrapForm.Label>Select Bingo Type:</BootstrapForm.Label>
                 <BootstrapForm.Select
@@ -786,12 +841,21 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : <><i className="fas fa-trash-alt"></i> Clear Activity Log</>}
             </Button>
             <Button
-                variant="info"
-                onClick={() => setShowEditBingoPhrasesModal(true)}
+                variant="warning"
+                onClick={handleDisableBingoCard}
                 disabled={isUpdatingDb}
                 className="mt-2 me-2"
+                title="This will remove the current card and log, effectively disabling the game until a new card is generated."
             >
-                <i className="fas fa-edit"></i> Edit Master Phrases
+                {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : <><i className="fas fa-power-off"></i> Disable Card</>}
+            </Button>
+            <Button
+                variant="info"
+                onClick={() => setShowEditBingoPhrasesModal(true)}
+                disabled={isUpdatingDb || !selectedAdminBingoType}
+                className="mt-2 me-2"
+            >
+                <i className="fas fa-edit"></i> Edit {selectedTypeForEdit?.name || 'Master'} Phrases
             </Button>
             <Button
                 variant="warning"
@@ -801,7 +865,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
             >
                 <i className="fas fa-inbox"></i> Review Phrase Requests
             </Button>
-            <p className="text-muted small mt-1">"Generate Card" and "Clear Log" apply to the selected Bingo type. Phrase actions apply to the master list.</p>
+            <p className="text-muted small mt-1">"Generate Card" and "Clear Log" apply to the selected Bingo type. Phrase editing is also type-specific.</p>
             
             <hr />
             <Button variant="info" onClick={handleOpenAdminCustomWebhookModal} className="mt-3 me-2">
@@ -857,6 +921,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 commitInfo={commitInfo}
                 sendAdminActionWebhook={sendAdminActionWebhook}
                 adminUserEmail={currentUser?.email}
+                bingoType={selectedTypeForEdit}
             />
             <ReviewPhraseRequestsModal
                 show={showReviewPhrasesModal}

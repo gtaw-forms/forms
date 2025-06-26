@@ -24,6 +24,8 @@ import MissingEmployeeModal from './components/MissingEmployeeModal';
 import SaaaEmployeeModal from './saaa-components/SaaaEmployeeModal'; 
 import RecruitmentStatusDisplay from './components/RecruitmentStatusDisplay'; // Add this import
 // admin
+import { sendBingoNotification, sendPhraseRequestNotification } from './components/notificationService';
+
 import FormImageLink from './components/FormImageLink';
 
 // 
@@ -4561,11 +4563,17 @@ const handleCopyAndNotifyWrapper = async () => {
                 show={showEmsBingoModal}
                 onHide={handleHideEmsBingoModal}
                 phmcGroupedOptions={phmcGroupedOptions}
-                coronerGroupedOptions={coronerGroupedOptions} // <-- NEW: Pass coroner options
+                coronerGroupedOptions={coronerGroupedOptions}
                 currentPhmcEmployee={formData.phmcEmployee}
                 showNotification={showNotification}
-                                setShowMissingEmployeeModal={setShowMissingEmployeeModal} // NEW: Pass the setter
-
+                setShowMissingEmployeeModal={setShowMissingEmployeeModal}
+                isAdmin={formData.isAdminAuthenticated}
+                sendBingoWebhook={({ scorer, bingoType, lineName }) => 
+                    sendBingoNotification({ scorer, bingoType, lineName, commitInfo })
+                }
+                sendPhraseRequestWebhook={({ requester, phrase, bingoType }) => 
+                    sendPhraseRequestNotification({ requester, phrase, bingoType, commitInfo })
+                }
             />
 
 <MissingEmployeeModal
