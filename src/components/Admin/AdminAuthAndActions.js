@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Form as BootstrapForm, Button, Spinner, ListGroup } from 'react-bootstrap';
 import { auth, database } from '../../firebase';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
-import { ref, get, update, remove } from "firebase/database"; 
+import { ref, get, update, remove, set } from "firebase/database"; 
 import AddRoleModal from './RoleModal';
 import RenameRoleKeyModal from './RenameRoleKeyModal';
 import WebhookModal from '../WebhookModal';
@@ -496,6 +496,13 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
             return false;
         }
     };
+    // Bingo Activity Log Functions
+    const getShuffledPhrases = (phrases) => {
+    if (!phrases || phrases.length === 0) return [];
+    return [...phrases].sort(() => 0.5 - Math.random());
+};
+
+
     const handleClearBingoActivity = async () => {
         if (!window.confirm("Are you sure you want to clear ALL EMS Bingo activity logs? This action cannot be undone.")) {
             return;
@@ -503,7 +510,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
 
         setIsUpdatingDb(true);
         const bingoLogRef = ref(database, 'bingo/activityLog');
-        const { userAgent, timeZone } = getUserContext(); // Assuming getUserContext is defined in this file
+        const { userAgent, timeZone } = getUserContext();
 
         try {
             await remove(bingoLogRef);
@@ -522,6 +529,79 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
             sendAdminActionWebhook(
                 currentUser.email,
                 "Failed to Clear EMS Bingo Activity",
+                `Error: ${dbError.message}`,
+                "EMS Bingo",
+                userAgent,
+                timeZone
+            );
+        } finally {
+            setIsUpdatingDb(false);
+        }
+    };
+
+    // NEW: Handler to generate a new bingo card
+    const handleGenerateNewBingoCard = async () => {
+        if (!window.confirm("Are you sure you want to generate a NEW EMS Bingo card? This will clear the current game and activity log for ALL users.")) {
+            return;
+        }
+
+        setIsUpdatingDb(true);
+        const masterPhrasesRef = ref(database, 'bingo/phrases');
+        const currentCardRef = ref(database, 'bingo/currentCard');
+        const activityLogRef = ref(database, 'bingo/activityLog');
+        const { userAgent, timeZone } = getUserContext();
+
+        try {
+            // 1. Fetch master phrases
+            const snapshot = await get(masterPhrasesRef);
+            if (!snapshot.exists()) {
+                showInAppNotification("Error: Master bingo phrases not found in Firebase. Cannot generate new card.", "error");
+                sendAdminActionWebhook(
+                    currentUser.email,
+                    "Failed to Generate New Bingo Card",
+                    "Master phrases not found in Firebase.",
+                    "EMS Bingo",
+                    userAgent,
+                    timeZone
+                );
+                return;
+            }
+            const masterPhrases = snapshot.val();
+            if (!Array.isArray(masterPhrases) || masterPhrases.length < 24) {
+                showInAppNotification("Error: Not enough master bingo phrases (need at least 24).", "error");
+                sendAdminActionWebhook(
+                    currentUser.email,
+                    "Failed to Generate New Bingo Card",
+                    `Not enough master phrases (${masterPhrases.length} found, need 24).`,
+                    "EMS Bingo",
+                    userAgent,
+                    timeZone
+                );
+                return;
+            }
+
+            // 2. Shuffle and save new card
+            const shuffledPhrases = getShuffledPhrases(masterPhrases).slice(0, 24); // Ensure exactly 24
+            await set(currentCardRef, shuffledPhrases);
+
+            // 3. Clear activity log for a fresh game
+            await remove(activityLogRef);
+
+            showInAppNotification("New EMS Bingo card generated and activity log cleared!", "check-circle");
+            sendAdminActionWebhook(
+                currentUser.email,
+                "Generated New Bingo Card",
+                "A new card was generated and the activity log cleared for all users.",
+                "EMS Bingo",
+                userAgent,
+                timeZone
+            );
+        } catch (dbError) {
+            console.error("Error generating new bingo card:", dbError);
+            showInAppNotification("Failed to generate new bingo card.", "error");
+            sendAdminActionWebhook(
+                currentUser.email,
+                "Failed to Generate New Bingo Card",
                 `Error: ${dbError.message}`,
                 "EMS Bingo",
                 userAgent,
@@ -660,7 +740,14 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                     ) : ( <p>No positions loaded for {recruitmentCategories[selectedRecruitmentCategory]?.displayName}.</p> )}
                 </>
             ) : ( <p>Please select a recruitment option from the dropdown to manage statuses or add roles.</p> )}
-            <h5>EMS Bingo Management</h5>
+            <Button
+                variant="primary" // Changed to primary for generation
+                onClick={handleGenerateNewBingoCard}
+                disabled={isUpdatingDb}
+                className="mt-2 me-2" // Added margin-right
+            >
+                {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : <><i className="fas fa-sync-alt"></i> Generate New Bingo Card</>}
+            </Button>
             <Button
                 variant="danger"
                 onClick={handleClearBingoActivity}
@@ -669,7 +756,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
             >
                 {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : <><i className="fas fa-trash-alt"></i> Clear Bingo Activity Log</>}
             </Button>
-            <p className="text-muted small mt-1">This will permanently delete all entries in the 'Recent Activity' sidebar on the EMS Bingo card.</p>
+            <p className="text-muted small mt-1">Generating a new card will clear the current game and activity log for all users. Clearing only the log will reset the current game's progress.</p>
             
             <hr />
             <Button variant="info" onClick={handleOpenAdminCustomWebhookModal} className="mt-3 me-2">

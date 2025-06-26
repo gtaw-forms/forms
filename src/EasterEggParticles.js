@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import Particles from 'react-tsparticles';
-import { loadFull } from 'tsparticles';
+import { Particles } from '@tsparticles/react';
+import { loadAll } from '@tsparticles/all'; // MODIFIED: Import from @tsparticles/all as a named export
 
 const EasterEggImages = () => {
   const [showParticles, setShowParticles] = useState(true);
 
   const particlesInit = async (main) => {
-    await loadFull(main);
+    await loadAll(main);
   };
 
   const particlesLoaded = (container) => {
@@ -21,7 +21,7 @@ const EasterEggImages = () => {
         density: { enable: true, value_area: 800 },
       },
       color: {
-        value: ["#FFD700", "#FF69B4", "#FFA500", "#00FFFF", "#FF00FF"],
+        value: ["#FFD700", "#FF69B4", "#FFA500", "#00FFFF", "#FF00FF", "#00FFFF"],
       },
       opacity: {
         value: 0.7,

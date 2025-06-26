@@ -29,6 +29,8 @@
 .bingo-modal-dialog .modal-header {
     border-bottom: 2px solid #c0392b;
     flex-shrink: 0;
+    justify-content: center;
+    text-align: center;
 }
 
 .bingo-title {
@@ -50,10 +52,9 @@
 
 .bingo-content-wrapper {
     display: flex;
-    gap: 20px;
-    flex-grow: 1;
+    gap: 15px;
     overflow: hidden;
-    padding: 15px; /* This padding is now the primary padding for the content */
+    padding: 9px; /* This padding is now the primary padding for the content */
 }
 
 .bingo-main-section {
@@ -66,13 +67,13 @@
 .bingo-grid {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
-    grid-template-rows: repeat(5, 1fr);
-    gap: 8px; /* Increased from 5px to create more space between squares */
-    background-color: #c0392b;
-    border: 2px solid #c0392b;
-    padding: 8px; /* Increased from 5px to match the new gap */
+    grid-template-rows: repeat(5, auto);
+    gap: 1px; /* A reasonable gap for spacing */
+    background-color: #c0392b; /* Restored theme color */
+    border: 2px solid #c0392b; /* Restored theme color */
+    padding: 1px; /* Match the gap for consistent spacing */
     flex-grow: 1;
-    overflow: hidden;
+    overflow: hidden; 
 }
 
 .bingo-square {
@@ -82,73 +83,68 @@
     align-items: center;
     justify-content: center;
     text-align: center;
-    padding: 5px; /* Reduced from 8px */
-    font-size: 0.7rem; /* Reduced from 0.8rem */
+    padding: 5px;
+    font-size: 0.7rem;
     font-weight: bold;
     color: #acb1cad3;
     aspect-ratio: 1 / 1;
     overflow-wrap: break-word;
     word-break: break-word;
     hyphens: auto;
-    line-height: 1.1; /* Adjusted for smaller font size */
-    transition: background-color 0.2s ease, transform 0.1s ease;
+    line-height: 1.1;
+    transition: background-color 0.2s ease;
     box-sizing: border-box;
     min-width: 0;
     min-height: 0;
+    position: relative; /* Cleaned up duplicate property */
+    overflow: hidden; /* Ensure markers don't spill out */
 }
 
-.bingo-square:not(.free-space):hover {
-    background-color: #30363d;
-    border-color: #484f58;
-    /* The transform property that caused the button to grow has been removed. */
+.bingo-square::after {
+    content: '\2713';
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: transparent; /* The checkmark is invisible by default */
+    text-shadow: none;  /* No shadow by default */
+    transition: color 0.2s ease; /* Optional: a nice fade-in effect */
+}
+
+.bingo-square.marked {
+    /* These styles are now handled by individual markers */
+    background-color: transparent; /* Or keep original square background */
+    border-color: transparent;
+    color: inherit;
 }
 
 .bingo-square.marked::after {
-    content: '\2713';
-    position: absolute;
-    top: 2px;          /* Adjusted for new font size */
-    right: 4px;         /* Adjusted for new font size */
-    font-size: 1.2rem;  /* Reduced from 1.5rem to prevent layout shift */
-    font-weight: bold;  /* Added to maintain visual weight */
-    color: #3fb950;
-    text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+    /* This pseudo-element is no longer used for the checkmark */
+    content: none;
+}
+.bingo-marker {
+    width: 10px; /* Size of the individual colored dot */
+    height: 10px;
+    border-radius: 50%; /* Make it a circle */
+    border: 1px solid rgba(0, 0, 0, 0.3); /* Subtle border for definition */
+    box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); /* Subtle shadow */
+    flex-shrink: 0; /* Prevent markers from shrinking */
 }
 
 /* Responsive adjustments for smaller screens */
-@media (max-width: 768px) {
-    .bingo-content-wrapper {
-        flex-direction: column;
-        padding: 10px;
-    }
-
-    .bingo-main-section, .bingo-sidebar {
-        flex: none;
-        width: 100%;
-        max-height: unset;
-    }
-
-    .bingo-sidebar {
-        margin-top: 20px;
-    }
-
-    .bingo-title {
-        font-size: 1.8rem;
-    }
-
-    .bingo-square {
-        font-size: 0.65rem;
-        padding: 4px;
-    }
-    .bingo-square.free-space span {
-        font-size: 0.8rem;
-    }
-
-    /* Added responsive rule for the checkmark */
-    .bingo-square.marked::after {
-        font-size: 1rem; /* Further reduce checkmark size on mobile */
-        top: 1px;
-        right: 3px;
-    }
+.bingo-markers-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-wrap: wrap; /* Allow markers to wrap */
+    align-content: flex-start; /* Align rows to the top */
+    padding: 1px; /* Increased from 2px to give more space from the edges */
+    gap: 2px; /* Space between individual markers */
+    pointer-events: none; /* Allow clicks to pass through to the square */
 }
 
 .bingo-sidebar {
@@ -277,3 +273,127 @@
         right: 3px;
     }
 }
+.activity-log::-webkit-scrollbar,
+.bingo-sidebar::-webkit-scrollbar { /* Apply to both scrollable areas */
+    width: 10px; /* Width of the vertical scrollbar */
+    height: 10px; /* Height of the horizontal scrollbar (if needed) */
+}
+
+.activity-log::-webkit-scrollbar-track,
+.bingo-sidebar::-webkit-scrollbar-track {
+    background: #0d1117; /* Background of the scrollbar track (match modal bg) */
+    border-radius: 5px; /* Optional: round the corners */
+}
+
+.activity-log::-webkit-scrollbar-thumb,
+.bingo-sidebar::-webkit-scrollbar-thumb {
+    background-color: #30363d; /* Color of the scrollbar thumb (dark grey) */
+    border-radius: 5px; /* Optional: round the corners */
+    border: 2px solid #0d1117; /* Creates padding around thumb, matching track bg */
+}
+
+.activity-log::-webkit-scrollbar-thumb:hover,
+.bingo-sidebar::-webkit-scrollbar-thumb:hover {
+    background-color: #484f58; /* Slightly lighter grey on hover */
+}
+
+/* Basic Firefox scrollbar styling */
+.activity-log,
+.bingo-sidebar {
+    scrollbar-width: thin; /* Or "auto" */
+    scrollbar-color: #30363d #0d1117; /* thumb color track color */
+}
+.activity-item.highlight-new {
+    animation: highlight-fade 3s ease-out forwards;
+}
+
+@keyframes highlight-fade {
+    0% { background-color: #3a506b; /* A subtle blue/grey highlight */ }
+    100% { background-color: #16202c; /* Fade back to original activity-item background */ }
+}
+
+/* New messages indicator bar */
+.new-messages-indicator {
+    position: absolute;
+    bottom: 15px; /* Adjust as needed to be above the footer */
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #007bff; /* A distinct color, e.g., Bootstrap primary blue */
+    color: white;
+    padding: 8px 15px;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    transition: opacity 0.3s ease-in-out;
+    opacity: 0; /* Hidden by default */
+    pointer-events: none; /* Not clickable when hidden */
+    z-index: 10; /* Ensure it's above other content */
+}
+
+.new-messages-indicator.show {
+    opacity: 1;
+    pointer-events: auto; /* Clickable when shown */
+}
+
+/* Ensure the sidebar is positioned relative for the indicator to work */
+.bingo-sidebar {
+    flex: 1;
+    background-color: #010409;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    max-height: 100%;
+    min-height: 0;
+    position: relative; /* Ensure this is set for absolute positioning of indicator */
+}
+.activity-item .unmarked-text {
+    color: #dc3545; /* Red color for unmarked actions */
+    font-weight: bold;
+}
+.bingo-square.free-space {
+    background-color: #010409;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    /* Ensure content is centered within the column */
+    align-items: center; /* This should already be on .bingo-square */
+    justify-content: center; /* This should already be on .bingo-square */
+}
+
+.bingo-square.free-space img {
+    max-width: 60%;
+    height: auto;
+    max-height: 60%;
+}
+.bingo-square.free-space .free-space-text {
+    font-weight: bold;
+    color: #c0392b;
+    font-size: 1rem;
+    text-align: center; /* Ensure text is centered within its own block */
+    /* You can add more styles here if needed, e.g., margin-top, padding */
+}
+.activity-item.bingo-message {
+    background-color: #234228;
+    border-color: #3fb950;
+    color: #a3d8b0;
+    font-weight: bold;
+    text-align: center;
+    padding: 10px;
+    animation: bingo-flash 1s infinite alternate;
+}
+
+.activity-item .bingo-text {
+    font-size: 1.1em;
+    color: #3fb950;
+    text-shadow: 0 0 5px rgba(63, 185, 80, 0.5);
+}
+
+@keyframes bingo-flash {
+    from { background-color: #234228; }
+    to { background-color: #3a506b; }
+}
+
