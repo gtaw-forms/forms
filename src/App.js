@@ -51,6 +51,7 @@ import './App.css';
 import './buttons.css'
 
 import 'react-bootstrap-typeahead/css/Typeahead.css';
+import BingoFireworks from './components/BingoFireworks'; 
 
 // database
 import { database } from './firebase'; // Your Firebase config
@@ -1758,13 +1759,42 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
         setWebhookMessage(''); // Set to empty string
         setShowWebhookModal(true);
     };
+    const originalUrlRef = useRef(null); // <-- NEW: Ref to store the original URL
+
+
+    // MODIFIED: This useEffect now stores the original URL
     useEffect(() => {
-        if (window.location.hash === '#bingo') {
+        const path = window.location.pathname;
+        const hash = window.location.hash;
+
+        if (hash === '#bingo' || path.endsWith('/bingo')) {
             setShowEmsBingoModal(true);
-            // This line removes the #bingo from the URL after opening the modal, which is a nice touch.
-            window.history.pushState("", document.title, window.location.pathname + window.location.search);
         }
     }, []); // Empty dependency array ensures this runs only once on mount
+
+    // MODIFIED: This function now actively cleans the URL on modal close.
+    const handleHideEmsBingoModal = useCallback(() => {
+        setShowEmsBingoModal(false);
+
+        // Create a URL object from the current location to easily manipulate it.
+        const url = new URL(window.location.href);
+
+        // Check and clean the hash.
+        if (url.hash === '#bingo') {
+            url.hash = '';
+        }
+
+        // Check and clean the path.
+        if (url.pathname.endsWith('/bingo')) {
+            // Replace the /bingo part, defaulting to '/' if it's the root path.
+            url.pathname = url.pathname.replace(/\/bingo$/, '') || '/';
+        }
+
+        // Use replaceState to modify the current history entry without adding a new one.
+        // This makes the browser's back button behavior more intuitive for the user.
+        window.history.replaceState({}, document.title, url.href);
+
+    }, []);
 
 const [showCoronerRankModal, setShowCoronerRankModal] = useState(false);
 const uniqueCoronerRanks = [...new Set(coronerListData.map(c => c.rank))].sort();
@@ -4518,9 +4548,10 @@ const handleCopyAndNotifyWrapper = async () => {
 />
             <EmsBingoModal
                 show={showEmsBingoModal}
-                onHide={() => setShowEmsBingoModal(false)}
+                onHide={handleHideEmsBingoModal} // <-- MODIFIED: Use the new cleanup handler
                 phmcGroupedOptions={phmcGroupedOptions} // Pass the grouped PHMC employee options
                 currentPhmcEmployee={formData.phmcEmployee} // Pass the currently selected PHMC employee from the main form
+                showNotification={showNotification}
             />
 
 <MissingEmployeeModal
