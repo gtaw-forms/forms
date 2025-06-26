@@ -5,7 +5,7 @@ import { database } from '../firebase';
 import { ref, push, serverTimestamp } from 'firebase/database';
 import * as Sentry from "@sentry/react";
 
-const PhraseRequestModal = ({ show, onHide, showNotification, selectedEmployee, selectedBingoType }) => {
+const PhraseRequestModal = ({ show, onHide, showNotification, selectedEmployee, selectedBingoType, sendPhraseRequestWebhook }) => {
     const [phraseText, setPhraseText] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState('');
@@ -29,16 +29,29 @@ const PhraseRequestModal = ({ show, onHide, showNotification, selectedEmployee, 
         const phraseRequestsRef = ref(database, 'bingo/phraseRequests');
 
         try {
+            const trimmedPhrase = phraseText.trim();
+            const requesterName = selectedEmployee ? selectedEmployee.value : 'Anonymous';
+            const bingoTypeName = selectedBingoType.name || 'Unknown';
+
             await push(phraseRequestsRef, {
-                phrase: phraseText.trim(),
-                requestedBy: selectedEmployee ? selectedEmployee.value : 'Anonymous',
+                phrase: trimmedPhrase,
+                requestedBy: requesterName,
                 timestamp: serverTimestamp(),
                 status: 'pending',
-                bingoType: selectedBingoType.name || 'Unknown' // Add the bingo type to the request
+                bingoType: bingoTypeName
             });
+
+            // NEW: Call the webhook for the phrase request
+            if (sendPhraseRequestWebhook) {
+                sendPhraseRequestWebhook({
+                    requester: requesterName,
+                    phrase: trimmedPhrase,
+                    bingoType: bingoTypeName,
+                });
+            }
+
             showNotification('Phrase request submitted successfully!', 'check-circle');
             setPhraseText('');
-            // Removed onHide() from here
         } catch (err) {
             console.error("Error submitting phrase request:", err);
             setError("Failed to submit request: " + err.message);
@@ -46,7 +59,6 @@ const PhraseRequestModal = ({ show, onHide, showNotification, selectedEmployee, 
             Sentry.captureException(err, { extra: { context: 'PhraseRequestModal Submit' } });
         } finally {
             setIsSubmitting(false);
-            // Moved onHide() here to ensure it's always called
             onHide(); 
         }
     };

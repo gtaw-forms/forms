@@ -4,10 +4,10 @@ import Select from 'react-select';
 import './EmsBingoModal.css';
 import phmcLogo from '../assets/phmc.png';
 import { database } from '../firebase';
-import { ref, push, onValue, off, serverTimestamp, get, remove } from 'firebase/database';
-import PhraseRequestModal from './PhraseRequestModal'; // NEW: Import PhraseRequestModal
+import { ref, set, onValue, off, serverTimestamp, get, remove, push } from 'firebase/database';
+import PhraseRequestModal from './PhraseRequestModal';
 
-// Function to shuffle an array (still used by admin to generate new card)
+// Function to shuffle an array (used by admin to generate new card)
 const getShuffledPhrases = (phrases) => {
     if (!phrases || phrases.length === 0) return [];
     return [...phrases].sort(() => 0.5 - Math.random());
@@ -65,8 +65,8 @@ const BINGO_LINE_NAMES = [
     "Four Corners"
 ];
 
-// MODIFIED: Add setShowMissingEmployeeModal to props
-const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions, currentPhmcEmployee, showNotification, setShowMissingEmployeeModal }) => {
+// MODIFIED: Add isAdmin, sendBingoWebhook, and sendPhraseRequestWebhook props
+const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions, currentPhmcEmployee, showNotification, setShowMissingEmployeeModal, isAdmin, sendBingoWebhook, sendPhraseRequestWebhook }) => {
     const [phrases, setPhrases] = useState([]);
     const [masterPhraseList, setMasterPhraseList] = useState([]);
     const [isLoadingPhrases, setIsLoadingPhrases] = useState(true);
@@ -88,7 +88,6 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
 
     const announcingBingoLinesRef = useRef(new Set());
 
-    // NEW: State for Phrase Request Modal
     const [showPhraseRequestModal, setShowPhraseRequestModal] = useState(false);
 
     const getEmployeeColor = useCallback((employeeName) => {
@@ -121,22 +120,42 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
         return { newlyCompletedLineIndices, allCurrentlyCompleteLineIndices };
     }, []);
 
-    // Effect to fetch master list of phrases from Firebase
+    // MODIFIED: Effect to fetch master list of phrases from Firebase based on selected type
     useEffect(() => {
-        if (show && masterPhraseList.length === 0) {
-            const phrasesRef = ref(database, 'bingo/phrases');
-            get(phrasesRef).then((snapshot) => {
+        // This effect now fetches the master list of phrases specific to the selected bingo type.
+        // This is crucial for the admin "Generate New Card" feature to pull from the correct pool of phrases.
+        if (show && selectedBingoType) {
+            // We assume the master phrases for each type are stored under a path corresponding to the bingo type's 'path' property.
+            // e.g., 'bingo/phrases/EMS', 'bingo/phrases/Coroner', etc.
+            const masterPhrasesRef = ref(database, `bingo/phrases/${selectedBingoType.path}`);
+            
+            get(masterPhrasesRef).then((snapshot) => {
                 if (snapshot.exists()) {
                     const phrasesFromDb = snapshot.val();
-                    if (Array.isArray(phrasesFromDb)) {
-                        setMasterPhraseList(phrasesFromDb.filter(p => p));
-                    }
+                    
+                    // The data could be an array or an object with keys. We convert it to a simple array of strings.
+                    const phraseArray = Array.isArray(phrasesFromDb)
+                        ? phrasesFromDb
+                        : (typeof phrasesFromDb === 'object' && phrasesFromDb !== null)
+                            ? Object.values(phrasesFromDb).map(p => (typeof p === 'object' ? p.phrase : p)).filter(Boolean)
+                            : [];
+
+                    setMasterPhraseList(phraseArray.filter(p => typeof p === 'string' && p.trim() !== ''));
+                } else {
+                    // If no specific list is found, we clear the master list and log a warning.
+                    // This prevents accidentally generating a card from a stale or incorrect master list.
+                    console.warn(`No master phrase list found for ${selectedBingoType.name} at 'bingo/phrases/${selectedBingoType.path}'. Admin card generation will be disabled.`);
+                    setMasterPhraseList([]);
                 }
             }).catch(error => {
-                console.error("Error fetching master bingo phrases:", error);
+                console.error(`Error fetching master bingo phrases for ${selectedBingoType.name}:`, error);
+                setMasterPhraseList([]);
             });
+        } else if (!selectedBingoType) {
+            // When no bingo type is selected (e.g., on initial view or after backing out), clear the list.
+            setMasterPhraseList([]);
         }
-    }, [show, masterPhraseList.length]);
+    }, [show, selectedBingoType]);
 
     // Listen for the current card layout from Firebase (now type-specific)
     useEffect(() => {
@@ -261,6 +280,7 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
                 const { newlyCompletedLineIndices, allCurrentlyCompleteLineIndices } = checkForBingo(tempMarkedSquares, phrases, prevCompletedLines);
 
                 if (newlyCompletedLineIndices.length > 0) {
+                    const scorer = logEntries[0]?.employee || 'A Player'; // Get the player who made the last move
                     newlyCompletedLineIndices.forEach(lineIndex => {
                         const bingoMessageAlreadyPosted = logEntries.some(entry =>
                             entry.type === 'bingo' && entry.lineIndex === lineIndex
@@ -272,6 +292,16 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
                             announcingBingoLinesRef.current.add(lineIndex);
 
                             const lineName = BINGO_LINE_NAMES[lineIndex] || `Line ${lineIndex + 1}`;
+                            
+                            // NEW: Call the webhook for the bingo score
+                            if (sendBingoWebhook) {
+                                sendBingoWebhook({
+                                    scorer: scorer,
+                                    bingoType: selectedBingoType.name,
+                                    lineName: lineName,
+                                });
+                            }
+
                             push(bingoLogRef, {
                                 employee: "SYSTEM_ADMIN",
                                 phrase: `BINGO!!! (${lineName})`,
@@ -318,7 +348,7 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
                 highlightTimerRef.current = null;
             }
         };
-    }, [show, selectedBingoType, phrases, isLoadingPhrases, getEmployeeColor, checkForBingo]);
+    }, [show, selectedBingoType, phrases, isLoadingPhrases, getEmployeeColor, checkForBingo, sendBingoWebhook]);
     
     // Scroll listener for the "New Messages" indicator
     useEffect(() => {
@@ -348,11 +378,11 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
 
     const handleSquareClick = useCallback(async (index, phrase) => {
         if (!selectedEmployee) {
-            alert('Please select your name from the dropdown before marking a square!');
+            showNotification('Please select your name from the dropdown before marking a square!', 'warning');
             return;
         }
         if (!selectedBingoType) {
-            alert('Please select a Bingo type first!');
+            showNotification('Please select a Bingo type first!', 'warning');
             return;
         }
 
@@ -377,7 +407,7 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
                     });
                 } catch (error) {
                     console.error("Error unmarking square in Firebase:", error);
-                    alert("Failed to unmark square. Please try again.");
+                    showNotification("Failed to unmark square. Please try again.", "error");
                 }
             }
         } else {
@@ -411,14 +441,60 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
                 });
             }
         }
-    }, [selectedEmployee, markedSquaresLocal, bingoActivityLog, getEmployeeColor, selectedBingoType]);
+    }, [selectedEmployee, markedSquaresLocal, bingoActivityLog, getEmployeeColor, selectedBingoType, showNotification]);
+
+    // NEW: Admin function to generate a new card
+    const handleGenerateNewCard = async () => {
+        console.log("[Admin] handleGenerateNewCard initiated.");
+        if (!isAdmin) {
+            console.log("[Admin] User is not admin. Aborting card generation.");
+            showNotification("You are not authorized to perform this action.", "error");
+            return;
+        }
+        if (!selectedBingoType) {
+            console.log("[Admin] No bingo type selected. Aborting card generation.");
+            showNotification("Please select a bingo type to generate a card for.", "warning");
+            return;
+        }
+        if (masterPhraseList.length < 24) {
+            console.log(`[Admin] Not enough phrases in master list for ${selectedBingoType.name}. Found: ${masterPhraseList.length}, Needed: 24. Aborting.`);
+            showNotification(`Not enough phrases in the master list for ${selectedBingoType.name} to generate a new card (found ${masterPhraseList.length}, need 24).`, "error");
+            return;
+        }
+
+        if (!window.confirm(`Are you sure you want to generate a new ${selectedBingoType.name} Bingo card? This will clear the current card and all progress.`)) {
+            console.log("[Admin] User cancelled card generation.");
+            return;
+        }
+
+        console.log(`[Admin] Generating new card for ${selectedBingoType.name}.`);
+        const shuffled = getShuffledPhrases(masterPhraseList);
+        const newCardPhrases = shuffled.slice(0, 24);
+        console.log("[Admin] New card phrases selected:", newCardPhrases);
+
+        const cardPhrasesRef = ref(database, `bingo/cards/${selectedBingoType.path}/phrases`);
+        const logRef = ref(database, `bingo/logs/${selectedBingoType.path}/activityLog`);
+
+        try {
+            console.log("[Admin] Clearing old activity log...");
+            await remove(logRef);
+            console.log("[Admin] Setting new card phrases...");
+            await set(cardPhrasesRef, newCardPhrases);
+            
+            console.log(`[Admin] New ${selectedBingoType.name} Bingo card generated successfully!`);
+            showNotification(`New ${selectedBingoType.name} Bingo card generated successfully!`, 'check-circle');
+        } catch (error) {
+            console.error("[Admin] Error generating new card:", error);
+            showNotification("Failed to generate new card. See console for details.", "error");
+        }
+    };
 
     const renderGrid = () => {
         if (isLoadingPhrases) {
             return <div className="bingo-loading"><Spinner animation="border" /> Loading Bingo Card...</div>;
         }
         if (phrases.length === 0) {
-            return <div className="bingo-loading">FIREBASE_ERROR: TABLE: NULL. Contact Frosty to investigate.</div>;
+            return <div className="bingo-loading">No active bingo card found for this type. An admin needs to generate one.</div>;
         }
 
         const grid = [];
@@ -506,10 +582,9 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
         colorIndexRef.current = 0;
     };
 
-    // NEW: Function to open Missing Employee Modal
     const handleOpenMissingEmployeeModal = () => {
         setShowMissingEmployeeModal(true);
-        onHide(); // Optionally hide the Bingo modal when opening Missing Employee modal
+        onHide();
     };
 
     return (
@@ -562,7 +637,6 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
                                             placeholder: (base) => ({ ...base, color: '#eeeeeeb0' })
                                         }}
                                     />
-                                    {/* NEW: Missing Name link */}
                                     <small className="form-text text-muted mt-1">
                                         <span
                                             onClick={handleOpenMissingEmployeeModal}
@@ -610,6 +684,7 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
                                     New Messages
                                 </button>
                             )}
+                            {/* Removed Admin Controls Section from sidebar */}
                         </div>
                     </div>
                 ) : (
@@ -631,11 +706,26 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
                 )}
             </Modal.Body>
             <Modal.Footer>
-                {/* NEW: Request a Phrase button */}
                 <Button variant="info" onClick={() => setShowPhraseRequestModal(true)} className="me-auto">
                     Request a Phrase
                 </Button>
-                <Button variant="secondary" onClick={onHide}>
+                {/* Re-instated isAdmin check for security */}
+                {isAdmin && selectedBingoType && (
+                    <Button
+                        variant="danger"
+                        onClick={handleGenerateNewCard}
+                        disabled={masterPhraseList.length < 24}
+                        className="ms-2"
+                        title={
+                            masterPhraseList.length < 24
+                                ? `Need ${24 - masterPhraseList.length} more phrases in master list for ${selectedBingoType?.name || 'this Bingo type'}.`
+                                : `Generate a new ${selectedBingoType?.name || 'Bingo'} Card.`
+                        }
+                    >
+                        Generate New {selectedBingoType?.name || 'Bingo'} Card
+                    </Button>
+                )}
+                <Button variant="secondary" onClick={onHide} className="ms-2">
                     Close
                 </Button>
             </Modal.Footer>
@@ -645,8 +735,8 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
                 onHide={() => setShowPhraseRequestModal(false)}
                 showNotification={showNotification}
                 selectedEmployee={selectedEmployee}
-                    selectedBingoType={selectedBingoType} // Pass the selected bingo type
-
+                selectedBingoType={selectedBingoType}
+                sendPhraseRequestWebhook={sendPhraseRequestWebhook}
             />
         </Modal>
     );
