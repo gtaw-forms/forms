@@ -38,29 +38,39 @@
     text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
 }
 
+/* --- NEW/MODIFIED: Styles for the Modal.Body --- */
+.bingo-modal-dialog .modal-body {
+    flex: 1 1 auto; /* Allows the body to grow and shrink, taking available space */
+    overflow: hidden; /* Crucial: ensures content within modal body doesn't overflow it */
+    display: flex; /* Make it a flex container for its direct children */
+    flex-direction: column; /* Stack children vertically (bingo-content-wrapper is its only child) */
+    padding: 0; /* Remove default padding from modal-body, as bingo-content-wrapper has its own */
+}
+/* --- END NEW/MODIFIED --- */
+
 .bingo-content-wrapper {
     display: flex;
     gap: 20px;
     flex-grow: 1;
     overflow: hidden;
-    padding: 15px;
+    padding: 15px; /* This padding is now the primary padding for the content */
 }
 
 .bingo-main-section {
     flex: 3;
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* ADDED: Prevents the grid from overflowing its container */
+    overflow: hidden;
 }
 
 .bingo-grid {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     grid-template-rows: repeat(5, 1fr);
-    gap: 5px;
+    gap: 8px; /* Increased from 5px to create more space between squares */
     background-color: #c0392b;
     border: 2px solid #c0392b;
-    padding: 5px;
+    padding: 8px; /* Increased from 5px to match the new gap */
     flex-grow: 1;
     overflow: hidden;
 }
@@ -72,64 +82,73 @@
     align-items: center;
     justify-content: center;
     text-align: center;
-    padding: 8px;
-    font-size: 0.8rem;
+    padding: 5px; /* Reduced from 8px */
+    font-size: 0.7rem; /* Reduced from 0.8rem */
     font-weight: bold;
     color: #acb1cad3;
     aspect-ratio: 1 / 1;
     overflow-wrap: break-word;
     word-break: break-word;
     hyphens: auto;
-    line-height: 1.2;
+    line-height: 1.1; /* Adjusted for smaller font size */
     transition: background-color 0.2s ease, transform 0.1s ease;
-    
-    /* --- ADDED FIXES FOR GRID ITEM SIZING --- */
     box-sizing: border-box;
     min-width: 0;
     min-height: 0;
-    /* --- END FIXES --- */
 }
 
 .bingo-square:not(.free-space):hover {
     background-color: #30363d;
     border-color: #484f58;
-    transform: scale(1.02);
-}
-
-.bingo-square.free-space {
-    background-color: #010409;
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-}
-
-.bingo-square.free-space img {
-    max-width: 60%;
-    height: auto;
-    max-height: 60%;
-}
-
-.bingo-square.free-space span {
-    font-weight: bold;
-    color: #c0392b;
-    font-size: 1rem;
-}
-
-.bingo-square.marked {
-    background-color: #234228;
-    border-color: #3fb950;
-    color: #a3d8b0;
-    position: relative;
+    /* The transform property that caused the button to grow has been removed. */
 }
 
 .bingo-square.marked::after {
     content: '\2713';
     position: absolute;
-    top: 5px;
-    right: 5px;
-    font-size: 1.5rem;
+    top: 2px;          /* Adjusted for new font size */
+    right: 4px;         /* Adjusted for new font size */
+    font-size: 1.2rem;  /* Reduced from 1.5rem to prevent layout shift */
+    font-weight: bold;  /* Added to maintain visual weight */
     color: #3fb950;
     text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+}
+
+/* Responsive adjustments for smaller screens */
+@media (max-width: 768px) {
+    .bingo-content-wrapper {
+        flex-direction: column;
+        padding: 10px;
+    }
+
+    .bingo-main-section, .bingo-sidebar {
+        flex: none;
+        width: 100%;
+        max-height: unset;
+    }
+
+    .bingo-sidebar {
+        margin-top: 20px;
+    }
+
+    .bingo-title {
+        font-size: 1.8rem;
+    }
+
+    .bingo-square {
+        font-size: 0.65rem;
+        padding: 4px;
+    }
+    .bingo-square.free-space span {
+        font-size: 0.8rem;
+    }
+
+    /* Added responsive rule for the checkmark */
+    .bingo-square.marked::after {
+        font-size: 1rem; /* Further reduce checkmark size on mobile */
+        top: 1px;
+        right: 3px;
+    }
 }
 
 .bingo-sidebar {
@@ -142,7 +161,7 @@
     flex-direction: column;
     overflow-y: auto;
     max-height: 100%;
-    min-height: 0; /* ADDED: Prevents content from expanding the sidebar beyond its container */
+    min-height: 0;
 }
 
 .bingo-sidebar h5 {
@@ -185,7 +204,7 @@
     flex-shrink: 0;
 }
 
-/* Custom styles for react-select (no changes needed here) */
+/* Custom styles for react-select */
 .react-select-container .react-select__control {
     background-color: #16202c !important;
     border-color: #30363d !important;
@@ -249,5 +268,12 @@
     }
     .bingo-square.free-space span {
         font-size: 0.8rem;
+    }
+
+    /* Added responsive rule for the checkmark */
+    .bingo-square.marked::after {
+        font-size: 1rem; /* Further reduce checkmark size on mobile */
+        top: 1px;
+        right: 3px;
     }
 }
