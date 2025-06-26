@@ -38,7 +38,7 @@ const PhraseRequestModal = ({ show, onHide, showNotification, selectedEmployee, 
             });
             showNotification('Phrase request submitted successfully!', 'check-circle');
             setPhraseText('');
-            onHide();
+            // Removed onHide() from here
         } catch (err) {
             console.error("Error submitting phrase request:", err);
             setError("Failed to submit request: " + err.message);
@@ -46,6 +46,8 @@ const PhraseRequestModal = ({ show, onHide, showNotification, selectedEmployee, 
             Sentry.captureException(err, { extra: { context: 'PhraseRequestModal Submit' } });
         } finally {
             setIsSubmitting(false);
+            // Moved onHide() here to ensure it's always called
+            onHide(); 
         }
     };
 

@@ -835,13 +835,13 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 primaryWebhookUrlIdentifier="REACT_APP_PHMC_DISCORD or REACT_APP_DISCORD_WEBHOOK_URL"
                 showSecondaryButton={false}
             />
-                        <WebhookModal
+            <WebhookModal
                 show={showCoronerWebhookModal}
                 onClose={() => setShowCoronerWebhookModal(false)}
                 webhookTitle={coronerWebhookTitle}
-                setCoronerWebhookTitle={setCoronerWebhookTitle}
+                setWebhookTitle={setCoronerWebhookTitle}
                 webhookMessage={coronerWebhookMessage}
-                setCoronerWebhookMessage={setCoronerWebhookMessage}
+                setWebhookMessage={setCoronerWebhookMessage} 
                 onSubmit={handleCoronerWebhookSubmit}
                 showNotification={showInAppNotification}
                 commitInfo={commitInfo}
