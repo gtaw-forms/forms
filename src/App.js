@@ -61,6 +61,11 @@ import { ref, get, set, remove} from 'firebase/database'; // Added set
 import SaaaBusinessCardModal from './saaa-components/SaaaBusinessCardModal';
 
 // Automated Imports from field-data
+
+// Define cache constants at the top level
+const CACHE_KEY = 'phmcFormsAppData';
+const CACHE_EXPIRATION_MS = 60 * 60 * 1000; // 1 hour
+
 function App() {
     const [isMobile, setIsMobile] = useState(false);
     const modalCloseTimer = useRef(null);
@@ -564,108 +569,24 @@ const initialFormData = {
  const CONSULTATION_NOTES_PBC_VERSION = 21;
 
     const [showSaaaEmployeeModal, setShowSaaaEmployeeModal] = useState(false);
-    const [saaaListData, setSaaaListData] = useState([]); // To store SAAA staff list
-
-    useEffect(() => {
-        let isMounted = true;
-        let loadingNotificationId = null;
-
-        const fetchData = async () => {
-            if (!isMounted) return;
-            setIsLoadingData(true);
-            loadingNotificationId = showNotification(
-                "Loading data, please wait!",
-                'spinner fa-spin',
-                0 // Indefinite
-            );
-
-            try {
-                const dbRootRef = ref(database);
-                const snapshot = await get(dbRootRef);
-
-                if (loadingNotificationId && isMounted) {
-                    removeNotification(loadingNotificationId);
-                    loadingNotificationId = null;
-                }
-
-                if (!isMounted) return;
-
-                if (snapshot.exists()) {
-                    const allData = snapshot.val();
-                    setPhmcListData(allData.staff?.phmc || []);
-                    setCoronerListData(allData.staff?.coroner || []);
-                    setSaaaListData(allData.staff?.saaa || []);
-                    setAgencyDataStore(allData.agencies || {});
-                    const fetchedSelectOptions = allData.selectOptions || {};
-                    setSelectOptions(fetchedSelectOptions);
-                    
-                    setPhysicianRecruitmentDetails(fetchedSelectOptions.physicianRecruitmentDetails || {});
-                    setPsychRecruitmentDetails(fetchedSelectOptions.psychPositionDetailsData || {}); // New
-                    setSaaaRecruitmentDetails(fetchedSelectOptions.saaaPositionDetailsData || {});
-
-                    showNotification('Data loaded successfully!', 'check-circle');
-                } else {
-                    showNotification('Initial application data not found on server.', 'error');
-                    setPhmcListData([]);
-                    setCoronerListData([]);
-                    setSaaaListData([]);
-                    setAgencyDataStore({});
-                    setSelectOptions({});
-                    setPhysicianRecruitmentDetails({});
-                    setSaaaRecruitmentStatus({});
-                    setPhysicianRecruitmentDetails({});
-                    setPsychRecruitmentDetails({});
-                    setSaaaRecruitmentDetails({});
-
-                }
-            } catch (error) {
-                if (isMounted) {
-                    if (loadingNotificationId) {
-                        removeNotification(loadingNotificationId);
-                        loadingNotificationId = null;
-                    }
-                    console.error("Error fetching data from Realtime Database:", error);
-                    Sentry.captureException(error, { extra: { context: 'Firebase Data Fetch' } });
-                    showNotification('Failed to load initial application data. Please try again later.', 'error');
-                    setPhysicianRecruitmentDetails({});
-                    setSaaaRecruitmentStatus({}); // Clear SAAA status on error
-                }
-            } finally {
-                if (isMounted) {
-                    setIsLoadingData(false);
-                    if (loadingNotificationId) {
-                        removeNotification(loadingNotificationId);
-                    }
-                }
-            }
-        };
-
-        fetchData();
-
-        return () => {
-            isMounted = false;
-            if (loadingNotificationId) {
-                removeNotification(loadingNotificationId);
-            }
-        };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [showNotification, removeNotification]);
-            const [phmcListData, setPhmcListData] = useState([]);
+    
+    // --- START: Data Fetching and Caching Logic ---
+    const [saaaListData, setSaaaListData] = useState([]);
+    const [phmcListData, setPhmcListData] = useState([]);
     const [coronerListData, setCoronerListData] = useState([]);
     const [agencyDataStore, setAgencyDataStore] = useState({});
-        const [selectOptions, setSelectOptions] = useState({});
-            const [bbCodeVersion, setBbCodeVersion] = useState(() => {
+    const [selectOptions, setSelectOptions] = useState({});
+    const [bbCodeVersion, setBbCodeVersion] = useState(() => {
         const storedVersion = localStorage.getItem('bbCodeVersion');
         return storedVersion ? parseInt(storedVersion, 10) : (formDefinitions[0]?.version || 1);
     });
     const [selectedAgencyGroup, setSelectedAgencyGroup] = useState(null);
     const [showCoronerTips, setShowCoronerTips] = useState(false);
-
-    const [isLoadingData, setIsLoadingData] = useState(true); // Assuming you have this state
+    const [isLoadingData, setIsLoadingData] = useState(true);
     const [showAgencyGroupSelectorModal, setShowAgencyGroupSelectorModal] = useState(false);
     const [hideAgencyGroupSelectorPreference, setHideAgencyGroupSelectorPreference] = useState(false);
     const [physicianRecruitmentDetails, setPhysicianRecruitmentDetails] = useState({});
-    const [psychRecruitmentDetails, setPsychRecruitmentDetails] = useState({}); // New
+    const [psychRecruitmentDetails, setPsychRecruitmentDetails] = useState({});
     const [saaaRecruitmentDetails, setSaaaRecruitmentDetails] = useState({});
     const [adminRecruitmentDetails, setAdminRecruitmentDetails] = useState({});
     const [emsRecruitmentDetails, setEmsRecruitmentDetails] = useState({});
@@ -673,91 +594,134 @@ const initialFormData = {
     const [coronerRecruitmentDetails, setCoronerRecruitmentDetails] = useState({});
     const loadingNotificationIdRef = useRef(null);
 
-    const fetchAllApplicationData = useCallback(async (isInitialLoad = false) => {
-        if (isInitialLoad) {
-            setIsLoadingData(true);
-            if (loadingNotificationIdRef.current) {
-                removeNotification(loadingNotificationIdRef.current);
+    const fetchAllApplicationData = useCallback(async (forceRefresh = false) => {
+        // 1. Check cache first, unless a refresh is forced
+        if (!forceRefresh) {
+            try {
+                const cachedDataString = localStorage.getItem(CACHE_KEY);
+                if (cachedDataString) {
+                    const cachedData = JSON.parse(cachedDataString);
+                    const cacheTimestamp = cachedData.timestamp;
+                    const isCacheFresh = (Date.now() - cacheTimestamp) < CACHE_EXPIRATION_MS;
+
+                    if (isCacheFresh) {
+                        console.log("Loading data from fresh cache.");
+                        const { data } = cachedData;
+                        // Populate state from cache
+                        setPhmcListData(data.staff?.phmc || []);
+                        setCoronerListData(data.staff?.coroner || []);
+                        setSaaaListData(data.staff?.saaa || []);
+                        setAgencyDataStore(data.agencies || {});
+                        const fetchedSelectOptions = data.selectOptions || {};
+                        setSelectOptions(fetchedSelectOptions);
+                        setPhysicianRecruitmentDetails(fetchedSelectOptions.physicianRecruitmentDetails || {});
+                        setPsychRecruitmentDetails(fetchedSelectOptions.psychPositionDetailsData || {});
+                        setSaaaRecruitmentDetails(fetchedSelectOptions.saaaPositionDetailsData || {});
+                        setAdminRecruitmentDetails(fetchedSelectOptions.adminPositionDetailsData || {});
+                        setEmsRecruitmentDetails(fetchedSelectOptions.emsPositionDetailsData || {});
+                        setNurseRecruitmentDetails(fetchedSelectOptions.nursePositionDetailsData || {});
+                        setCoronerRecruitmentDetails(fetchedSelectOptions.coronerPositionDetailsData || {});
+                        
+                        setIsLoadingData(false); // Data is loaded
+                        showNotification('Data loaded from cache!', 'check-circle', 2000);
+                        return; // Exit function
+                    } else {
+                        console.log("Cache is stale. Fetching new data.");
+                    }
+                }
+            } catch (error) {
+                console.error("Error reading from cache, fetching from network:", error);
+                Sentry.captureException(error, { extra: { context: 'LocalStorage Read Fail' } });
             }
-            loadingNotificationIdRef.current = showNotification(
-                "Loading application data...",
-                'spinner fa-spin',
-                0 // Indefinite
-            );
-        } else {
-            showNotification("Refreshing recruitment data...", 'sync-alt', 2000);
         }
+
+        // 2. If cache is stale, non-existent, or refresh is forced, fetch from Firebase
+        setIsLoadingData(true);
+        if (loadingNotificationIdRef.current) {
+            removeNotification(loadingNotificationIdRef.current);
+        }
+        loadingNotificationIdRef.current = showNotification(
+            forceRefresh ? "Refreshing application data..." : "Loading application data...",
+            'spinner fa-spin',
+            0 // Indefinite
+        );
 
         try {
             const dbRootRef = ref(database);
             const snapshot = await get(dbRootRef);
 
-            if (isInitialLoad && loadingNotificationIdRef.current) {
+            if (loadingNotificationIdRef.current) {
                 removeNotification(loadingNotificationIdRef.current);
                 loadingNotificationIdRef.current = null;
             }
 
             if (snapshot.exists()) {
                 const allData = snapshot.val();
+
+                // 3. Update state
                 setPhmcListData(allData.staff?.phmc || []);
                 setCoronerListData(allData.staff?.coroner || []);
                 setSaaaListData(allData.staff?.saaa || []);
                 setAgencyDataStore(allData.agencies || {});
-
                 const fetchedSelectOptions = allData.selectOptions || {};
                 setSelectOptions(fetchedSelectOptions);
-
-                // Update states that RecruitmentStatusDisplay depends on
                 setPhysicianRecruitmentDetails(fetchedSelectOptions.physicianRecruitmentDetails || {});
                 setPsychRecruitmentDetails(fetchedSelectOptions.psychPositionDetailsData || {});
                 setSaaaRecruitmentDetails(fetchedSelectOptions.saaaPositionDetailsData || {});
-                // Update new states
                 setAdminRecruitmentDetails(fetchedSelectOptions.adminPositionDetailsData || {});
                 setEmsRecruitmentDetails(fetchedSelectOptions.emsPositionDetailsData || {});
                 setNurseRecruitmentDetails(fetchedSelectOptions.nursePositionDetailsData || {});
                 setCoronerRecruitmentDetails(fetchedSelectOptions.coronerPositionDetailsData || {});
 
-
-                if (isInitialLoad) {
-                    showNotification('Application data loaded successfully!', 'check-circle');
+                // 4. Update cache
+                try {
+                    const dataToCache = {
+                        timestamp: Date.now(),
+                        data: allData
+                    };
+                    localStorage.setItem(CACHE_KEY, JSON.stringify(dataToCache));
+                    console.log("Data fetched from Firebase and cached.");
+                } catch (cacheError) {
+                    console.error("Failed to write to cache:", cacheError);
+                    Sentry.captureException(cacheError, { extra: { context: 'LocalStorage Write Fail' } });
+                    showNotification('Data loaded, but failed to cache for next time.', 'warning');
                 }
+
+                showNotification('Application data loaded successfully!', 'check-circle');
             } else {
                 showNotification('Initial application data not found on server.', 'error');
                 // Reset all relevant states
                 setPhmcListData([]); setCoronerListData([]); setSaaaListData([]);
                 setAgencyDataStore({}); setSelectOptions({});
                 setPhysicianRecruitmentDetails({}); setPsychRecruitmentDetails({}); setSaaaRecruitmentDetails({});
-                // Reset new states
                 setAdminRecruitmentDetails({}); setEmsRecruitmentDetails({}); setNurseRecruitmentDetails({}); setCoronerRecruitmentDetails({});
             }
         } catch (error) {
             console.error("Error fetching data from Realtime Database:", error);
             Sentry.captureException(error, { extra: { context: 'Firebase Data Fetch (fetchAllApplicationData)' } });
-            if (isInitialLoad && loadingNotificationIdRef.current) {
+            if (loadingNotificationIdRef.current) {
                 removeNotification(loadingNotificationIdRef.current);
                 loadingNotificationIdRef.current = null;
             }
             showNotification('Failed to load application data. Please try again later.', 'error');
         } finally {
-            if (isInitialLoad) {
-                setIsLoadingData(false);
-                if (loadingNotificationIdRef.current) {
-                    removeNotification(loadingNotificationIdRef.current);
-                    loadingNotificationIdRef.current = null;
-                }
+            setIsLoadingData(false);
+            if (loadingNotificationIdRef.current) {
+                removeNotification(loadingNotificationIdRef.current);
+                loadingNotificationIdRef.current = null;
             }
         }
     }, [
         showNotification, removeNotification, setIsLoadingData,
         setPhmcListData, setCoronerListData, setSaaaListData, setAgencyDataStore,
         setSelectOptions, setPhysicianRecruitmentDetails, setPsychRecruitmentDetails, setSaaaRecruitmentDetails,
-        // Add new state setters to dependency array
         setAdminRecruitmentDetails, setEmsRecruitmentDetails, setNurseRecruitmentDetails, setCoronerRecruitmentDetails
     ]);
 
     useEffect(() => {
-        fetchAllApplicationData(true);
+        fetchAllApplicationData(false); // On initial load, try to use cache.
     }, [fetchAllApplicationData]);
+    // --- END: Data Fetching and Caching Logic ---
 
     const saaaGroupedOptions = useMemo(() => {
         if (!saaaListData || saaaListData.length === 0) return [];
@@ -823,7 +787,6 @@ const initialFormData = {
                 if (!currentSaaaStaff.find(s => s.name === newSaaaEmployee.name)) {
                     const updatedSaaaStaff = [...currentSaaaStaff, newSaaaEmployee];
                     await set(saaaListRef, updatedSaaaStaff);
-                    setSaaaListData(updatedSaaaStaff); // Update local state
                     firebaseUpdateSuccessful = true;
                 } else {
                     showNotification(`SAAA Employee ${newSaaaEmployee.name} already exists.`, 'warning');
@@ -868,7 +831,6 @@ const initialFormData = {
                 currentSaaaStaff = currentSaaaStaff.filter(s => !staffToRemove.includes(s.name));
                 if (currentSaaaStaff.length < initialCount) {
                     await set(saaaListRef, currentSaaaStaff);
-                    setSaaaListData(currentSaaaStaff); 
                     firebaseUpdateSuccessful = true;
                 } else {
                     showNotification('No matching SAAA staff found in database to remove.', 'warning');
@@ -882,7 +844,12 @@ const initialFormData = {
             }
         }
 
-        if (firebaseUpdateSuccessful || (!isAddMode && staffToRemove.length > 0 && authorizedBy?.trim())) {
+        // --- Force data refresh if DB was updated ---
+        if (firebaseUpdateSuccessful) {
+            await fetchAllApplicationData(true); // This will clear the cache and fetch new data
+        }
+
+        if (firebaseUpdateSuccessful || (!isAddMode && staffToRemove.length === 0 && authorizedBy?.trim())) {
             try {
                 const response = await fetch(webhookURL, {
                     method: 'POST',
@@ -974,66 +941,7 @@ const getBBCodeContent = () => {
         return `BBCode generation for form "${formName}" is not implemented.`;
     }
 };
-    useEffect(() => {
-        const fetchData = async () => {
-            setIsLoadingData(true);
-            // Show indefinite loading notification
-            loadingNotificationIdRef.current = showNotification(
-                "Loading data, please wait!",
-                'spinner fa-spin', // Font Awesome spinner icon with spin animation
-                0 // Indefinite duration
-            );
-
-            try {
-                const dbRootRef = ref(database);
-                const snapshot = await get(dbRootRef);
-
-                // Remove loading notification once data attempt is complete (before specific success/error)
-                if (loadingNotificationIdRef.current) {
-                    removeNotification(loadingNotificationIdRef.current);
-                    loadingNotificationIdRef.current = null;
-                }
-
-                if (snapshot.exists()) {
-                    const allData = snapshot.val();
-                    console.log("Data fetched from Realtime DB:", allData);
-
-                    setPhmcListData(allData.staff?.phmc || []);
-                    setCoronerListData(allData.staff?.coroner || []);
-                    setAgencyDataStore(allData.agencies || {});
-                    setSelectOptions(allData.selectOptions || {});
-                } else {
-                    console.warn("No data available in Realtime Database.");
-                    showNotification('Initial application data not found on server.', 'error');
-                    setPhmcListData([]);
-                    setCoronerListData([]);
-                    setAgencyDataStore({});
-                    setSelectOptions({});
-                }
-            } catch (error) {
-                console.error("Error fetching data from Realtime Database:", error);
-                Sentry.captureException(error, { extra: { context: 'Firebase Data Fetch' }});
-                // Ensure loading notification is removed even if an error occurs before it's naturally removed
-                if (loadingNotificationIdRef.current) {
-                    removeNotification(loadingNotificationIdRef.current);
-                    loadingNotificationIdRef.current = null;
-                }
-                showNotification('Failed to load initial application data. Please try again later.', 'error');
-            } finally {
-                setIsLoadingData(false);
-                // Ensure the loading notification is cleared if it hasn't been already
-                // (e.g., if an error happened very early or if snapshot.exists() was false)
-                if (loadingNotificationIdRef.current) {
-                    removeNotification(loadingNotificationIdRef.current);
-                    loadingNotificationIdRef.current = null;
-                }
-            }
-        };
-
-        fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Keep dependencies as they were if showNotification/removeNotification are stable
-
+    
     const [formData, setFormData] = useState(initialFormData);
 
     const [saaaRecruitmentStatus, setSaaaRecruitmentStatus] = useState({}); // New state for SAAA
@@ -1573,6 +1481,8 @@ const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
                     setShowMissingEmployeeModal(false);
 
                     // --- START Firebase Database Update ---
+                    let dbUpdated = false; // Flag to check if we need to refresh data
+
                     if (isJohnDoe) { // Add Coroner
                         const newCoroner = {
                             name: missingEmployeeData.coronerName,
@@ -1590,7 +1500,7 @@ const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
                                 const updatedCoroners = [...currentCoroners, newCoroner];
                                 await set(coronerListRef, updatedCoroners);
                                 showNotification(`Coroner ${newCoroner.name} added to database.`, 'check-circle');
-                                setCoronerListData(updatedCoroners); // Update local state
+                                dbUpdated = true;
                             } else {
                                 showNotification(`Coroner ${newCoroner.name} already exists in database.`, 'warning');
                             }
@@ -1644,7 +1554,7 @@ const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
                                 const updatedPhmcStaff = [...currentPhmcStaff, newPhmcStaff];
                                 await set(phmcListRef, updatedPhmcStaff);
                                 showNotification(`PHMC Staff ${newPhmcStaff.name} added to database.`, 'check-circle');
-                                setPhmcListData(updatedPhmcStaff); // Update local state
+                                dbUpdated = true;
                             } else {
                                 showNotification(`PHMC Staff ${newPhmcStaff.name} already exists in database.`, 'warning');
                             }
@@ -1666,7 +1576,6 @@ const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
                                 currentCoroners = currentCoroners.filter(c => !staffNamesToRemove.includes(c.name));
                                 if (currentCoroners.length < initialCoronerCount) {
                                     await set(coronerListRef, currentCoroners);
-                                    setCoronerListData(currentCoroners);
                                     coronerListUpdated = true;
                                 }
 
@@ -1677,12 +1586,12 @@ const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
                                 currentPhmcStaff = currentPhmcStaff.filter(p => !staffNamesToRemove.includes(p.name));
                                 if (currentPhmcStaff.length < initialPhmcCount) {
                                     await set(phmcListRef, currentPhmcStaff);
-                                    setPhmcListData(currentPhmcStaff);
                                     phmcListUpdated = true;
                                 }
 
                                 if (coronerListUpdated || phmcListUpdated) {
                                     showNotification(`Selected staff removed from database.`, 'check-circle');
+                                    dbUpdated = true;
                                 } else {
                                     showNotification(`No matching staff found in database to remove.`, 'warning');
                                 }
@@ -1694,6 +1603,11 @@ const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
                         }
                     }
                     // --- END Firebase Database Update ---
+
+                    // --- Force data refresh if DB was updated ---
+                    if (dbUpdated) {
+                        await fetchAllApplicationData(true);
+                    }
 
                     setMissingEmployeeData({
                         coronerName: '', coronerDiscord: '', coronerRank: '', coronerPHNumber: '',
@@ -3846,7 +3760,6 @@ const handleCopyAndNotifyWrapper = async () => {
                 formData,
                 bbCodeVersion,
                 selectedAgencyGroup,
-                getBBCodeContent,
                 getFormDefinition,
                 saveReport,
                 showNotification,
@@ -4534,11 +4447,21 @@ const handleCopyAndNotifyWrapper = async () => {
                     </form>
                 </div>
                 <div className="output-container">
-                                <div className="floating-admin-button-container">
+                <div className="floating-admin-button-container">
+                <Button
+                    type="button"
+                    variant="warning"
+                    className="changelog-button"
+                    onClick={() => setShowEmsBingoModal(true)}
+                    title="Open Bingo Night!"
+                >
+                    <i className="fas fa-trophy"></i>
+                    Bingo Night!
+                </Button>
                 <Button
                     type="button"
                     variant="danger"
-                    className="changelog-button" // You can keep this or use a new class for specific floating styles
+                    className="changelog-button"
                     onClick={handleAdminPanelClick}
                     title="Open Admin Control Panel"
                 >
