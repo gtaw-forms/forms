@@ -64,7 +64,7 @@ import SaaaBusinessCardModal from './saaa-components/SaaaBusinessCardModal';
 
 // Define cache constants at the top level
 const CACHE_KEY = 'phmcFormsAppData';
-const CACHE_EXPIRATION_MS = 60 * 60 * 1000; // 1 hour
+const CACHE_EXPIRATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 function App() {
     const [isMobile, setIsMobile] = useState(false);
