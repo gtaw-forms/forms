@@ -1,59 +1,125 @@
 // functions/index.js
-const functions = require("firebase-functions");
-const admin = require("firebase-admin");
 
-// Initialize Firebase Admin SDK.
-// This should be done once at the top level of your functions/index.js file.
+// Use ESM 'import' syntax for all modules
+import { onSchedule } from "firebase-functions/v2/scheduler";
+import { setGlobalOptions } from "firebase-functions/v2";
+import * as functions from "firebase-functions"; // Use 'import * as' for the v1 SDK
+import admin from "firebase-admin";
+import fetch from "node-fetch";
+
+// Initialize Firebase Admin SDK
 if (admin.apps.length === 0) {
     admin.initializeApp();
 }
+const db = admin.database();
 
-/**
- * Callable function to set an admin custom claim on a user.
- * @param {object} data - The data passed to the function.
- * @param {string} data.email - The email of the user to make an admin.
- * @param {object} context - The context of the function call.
- * @param {object} context.auth - Authentication information about the caller.
- */
-exports.setAdminRole = functions.https.onCall(async (data, context) => {
-    // --- IMPORTANT SECURITY CHECK ---
-    // This function should ONLY be callable by an already authenticated admin.
-    // For initial setup, you might temporarily disable this check or call it from a trusted environment.
-    // In a production scenario, you'd verify context.auth.token.admin === true here.
-    // For now, let's assume you're calling this from a secure environment or will add that check later.
-    /*
-    if (!context.auth || !context.auth.token.admin) {
-        console.error("Unauthorized attempt to call setAdminRole by UID:", context.auth ? context.auth.uid : "No Auth");
-        throw new functions.https.HttpsError(
-            "permission-denied",
-            "You must be an admin to set admin roles."
-        );
+// Set global options for all v2 functions in this file
+setGlobalOptions({ region: "us-central1" }); // Or your preferred region
+
+// --- Helper Functions ---
+
+const getShuffledPhrases = (phrases) => {
+    if (!Array.isArray(phrases) || phrases.length === 0) return [];
+    const array = [...phrases];
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
     }
-    */
-    // --- END SECURITY CHECK ---
+    return array;
+};
 
-    const email = data.email;
-    if (!email) {
-        throw new functions.https.HttpsError(
-            "invalid-argument",
-            "The function must be called with an 'email' argument."
-        );
+const sendWebhook = async (payload) => {
+    const webhookURL = functions.config().webhooks?.admin_action;
+    if (!webhookURL) {
+        console.warn("Webhook URL not found in config. Run: firebase functions:config:set webhooks.admin_action=\"YOUR_URL\"");
+        return;
     }
-
     try {
-        const user = await admin.auth().getUserByEmail(email);
-        await admin.auth().setCustomUserClaims(user.uid, { admin: true });
-        console.log(`Successfully set admin role for ${email} (UID: ${user.uid})`);
-        return { message: `Success! ${email} has been made an admin.` };
+        await fetch(webhookURL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
     } catch (error) {
-        console.error("Error setting admin role:", error);
-        let errorCode = 'internal';
-        if (error.code === 'auth/user-not-found') {
-            errorCode = 'not-found';
-        }
-        throw new functions.https.HttpsError(
-            errorCode,
-            `Unable to set admin role for ${email}. Reason: ${error.message}`
-        );
+        console.error("Error sending webhook from Cloud Function:", error);
     }
+};
+
+// --- Scheduled Cloud Function (v2) ---
+
+// Use ESM 'export' syntax instead of 'exports.scheduledBingoReset ='
+export const scheduledBingoReset = onSchedule({
+    schedule: "every day 09:00",
+    timeZone: "UTC",
+}, async (event) => {
+    console.log(`Running daily scheduled bingo reset. Event ID: ${event.id}`);
+
+    const BINGO_TYPES = [
+        { id: 'er', name: 'Emergency Room', path: 'ER' },
+        { id: 'ems', name: 'EMS', path: 'EMS' },
+        { id: 'coroner', name: 'Coroner', path: 'Coroner' }
+    ];
+
+    const results = { success: [], noCard: [], notEnoughPhrases: [], errors: [] };
+
+    await db.ref('bingo/meta').update({ lastAutoRegenTimestamp: admin.database.ServerValue.TIMESTAMP });
+
+    await Promise.all(BINGO_TYPES.map(async (bingoType) => {
+        const cardPhrasesRef = db.ref(`bingo/cards/${bingoType.path}/phrases`);
+        const masterPhrasesRef = db.ref(`bingo/phrases/${bingoType.path}`);
+        const activityLogRef = db.ref(`bingo/logs/${bingoType.path}/activityLog`);
+
+        try {
+            const cardSnapshot = await cardPhrasesRef.once('value');
+            if (!cardSnapshot.exists()) {
+                results.noCard.push(bingoType.name);
+                return;
+            }
+
+            const masterSnapshot = await masterPhrasesRef.once('value');
+            if (!masterSnapshot.exists()) {
+                results.notEnoughPhrases.push(`${bingoType.name} (no master list)`);
+                return;
+            }
+
+            const masterPhrasesData = masterSnapshot.val();
+            const masterPhrases = Array.isArray(masterPhrasesData) ? masterPhrasesData.filter(Boolean) : [];
+
+            if (masterPhrases.length < 24) {
+                results.notEnoughPhrases.push(`${bingoType.name} (${masterPhrases.length}/24)`);
+                return;
+            }
+
+            const shuffledPhrases = getShuffledPhrases(masterPhrases).slice(0, 24);
+            await cardPhrasesRef.set(shuffledPhrases);
+            await activityLogRef.remove();
+            results.success.push(bingoType.name);
+
+        } catch (error) {
+            console.error(`Error processing ${bingoType.name}:`, error);
+            results.errors.push(`${bingoType.name}: ${error.message}`);
+        }
+    }));
+
+    let details = '';
+    if (results.success.length > 0) details += `✅ Regenerated: ${results.success.join(', ')}\n`;
+    if (results.noCard.length > 0) details += `➖ Skipped (Disabled): ${results.noCard.join(', ')}\n`;
+    if (results.notEnoughPhrases.length > 0) details += `⚠️ Skipped (Not Enough Phrases): ${results.notEnoughPhrases.join(', ')}\n`;
+    if (results.errors.length > 0) details += `❌ Errors: ${results.errors.join(', ')}\n`;
+
+    const embed = {
+        title: "Automatic Daily Bingo Reset",
+        color: 0x1E90FF,
+        fields: [
+            { name: "Status", value: "Completed", inline: true },
+            { name: "Timestamp", value: new Date(event.timestamp).toUTCString(), inline: true },
+            { name: "Details", value: `\`\`\`\n${details.trim() || "No actions taken."}\n\`\`\``, inline: false },
+        ],
+        footer: { text: "PHMC Forms - Scheduled Cloud Function (v2)" }
+    };
+
+    await sendWebhook({ embeds: [embed] });
+
+    console.log('Daily scheduled bingo reset finished successfully.');
+    return null;
 });
