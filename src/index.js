@@ -1,25 +1,23 @@
-// src/index.js
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
+// --- MODIFICATION START ---
+// 1. Use `import` to make functions available in this file.
+// 2. Use the modern `getClient` instead of the deprecated `getCurrentHub`.
+import { init, getClient } from "@sentry/react";
+// --- MODIFICATION END ---
 import * as Sentry from "@sentry/react";
 
-// --- START: Fallback Error Reporting ---
-
-// A lightweight, Sentry-independent webhook sender.
-// It includes a simple queue and rate-limiting to prevent spamming Discord.
+// --- START: Fallback Error Reporting (This logic is excellent, no changes needed) ---
 const fallbackWebhookQueue = [];
 let isProcessingFallbackQueue = false;
 
 const processFallbackQueue = async (webhookURL) => {
     if (isProcessingFallbackQueue || fallbackWebhookQueue.length === 0) return;
     isProcessingFallbackQueue = true;
-
     const payload = fallbackWebhookQueue.shift();
-
     try {
         await fetch(webhookURL, {
             method: 'POST',
@@ -27,32 +25,27 @@ const processFallbackQueue = async (webhookURL) => {
             body: JSON.stringify(payload)
         });
     } catch (e) {
-        // At this point, even our fallback failed. Log it to the console.
         console.error("CRITICAL: Failed to send fallback error webhook.", e);
     } finally {
-        // Wait a moment before processing the next item to avoid Discord rate limits
         setTimeout(() => {
             isProcessingFallbackQueue = false;
-            // Check if there's more in the queue
             if (fallbackWebhookQueue.length > 0) {
                 processFallbackQueue(webhookURL);
             }
-        }, 2000); // 2-second delay
+        }, 2000);
     }
 };
 
 const sendFallbackErrorWebhook = (errorDetails) => {
-    // Use your primary or a specific fallback webhook URL
     const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL; 
     if (!webhookURL) {
         console.error("Fallback Webhook: URL is not configured. Cannot send error report.");
         return;
     }
-
     const embed = {
         title: "🚨 Sentry Blocked - Fallback Error Report 🚨",
-        description: "An error occurred, but Sentry's SDK failed to initialize (likely blocked by an ad-blocker or network issue). This is a fallback report.",
-        color: 0xFFA500, // Orange for warning
+        description: "An error occurred, but Sentry's SDK seems to be blocked. This is a fallback report.",
+        color: 0xFFA500, // Orange
         fields: [
             { name: "Error Message", value: `\`\`\`${String(errorDetails.message).substring(0, 1000)}\`\`\``, inline: false },
             { name: "Source File", value: errorDetails.source || "N/A", inline: true },
@@ -63,44 +56,63 @@ const sendFallbackErrorWebhook = (errorDetails) => {
         timestamp: new Date().toISOString(),
         footer: { text: "PHMC Forms - Fallback Error Handler" }
     };
-
     fallbackWebhookQueue.push({ embeds: [embed] });
     processFallbackQueue(webhookURL);
 };
-
 // --- END: Fallback Error Reporting ---
 
 
-try {
-  Sentry.init({
-    dsn: "https://5dfa5683e8dc9adbc7f30e44757995c7@o4509126124765184.ingest.de.sentry.io/4509126125813840",
-    // If you implement tunneling, add the tunnel property here.
-    // tunnel: "/sentry-tunnel",
-  });
-  console.log("Sentry initialized successfully.");
-} catch (error) {
-    console.error("Sentry initialization failed. This may be due to an ad-blocker or network issue. Setting up fallback error reporting.", error);
+// 1. Initialize Sentry.
+// The `init` function is now correctly in scope and can be called.
+init({
+  dsn: "https://5dfa5683e8dc9adbc7f30e44757995c7@o4509126124765184.ingest.de.sentry.io/4509126125813840",
+  sendDefaultPii: true,
+  integrations: [
+    Sentry.replayIntegration()
+  ],
+  // Session Replay
+  replaysSessionSampleRate: 0.1, // This sets the sample rate at 10%. You may want to change it to 100% while in development and then sample at a lower rate in production.
+  replaysOnErrorSampleRate: 1.0 // If you're not already sampling the entire session, change the sample rate to 100% when sampling sessions where errors occur.
+});
+console.log("Sentry has been initialized. Now checking connectivity.");
+
+// 2. Asynchronously check if Sentry is actually able to send data.
+(async () => {
+    // Wait a moment for Sentry's client to be fully available after init.
+    await new Promise(resolve => setTimeout(resolve, 100));
     
-    // Sentry is blocked or failed to load. Set up our own global error handler.
-    window.onerror = (message, source, lineno, colno, errorObject) => {
-        // You can add checks here to avoid reporting certain trivial errors
-        if (typeof message === 'string' && message.includes("ResizeObserver loop limit exceeded")) {
-            return true; // Don't report this common, non-critical browser error
-        }
+    // --- MODIFICATION START ---
+    // Use the modern `getClient()` function, which is the direct replacement for `getCurrentHub().getClient()`.
+    const client = getClient();
+    // --- MODIFICATION END ---
 
-        sendFallbackErrorWebhook({
-            message: message,
-            source: source,
-            lineno: lineno,
-            colno: colno,
-            error: errorObject
-        });
+    if (!client || !client.getDsn()) {
+        console.error("Sentry client or DSN not found. Setting up fallback error reporting immediately.");
+        window.onerror = (message, source, lineno, colno, errorObject) => {
+            sendFallbackErrorWebhook({ message, source, lineno, colno, error: errorObject });
+            return false;
+        };
+        return;
+    }
 
-        // Return false to allow the default browser error handling to continue.
-        // Return true to suppress the error from being shown in the browser console.
-        return false;
-    };
-}
+    const dsn = client.getDsn();
+    const ingestUrl = `${dsn.protocol}://${dsn.host}/api/${dsn.projectId}/envelope/`;
+
+    try {
+        await fetch(ingestUrl, { method: 'HEAD', mode: 'no-cors' });
+        console.log("Sentry connectivity check successful. Fallback is not needed.");
+    } catch (error) {
+        console.warn("Sentry connectivity check failed. Setting up fallback error reporting.", error);
+        
+        window.onerror = (message, source, lineno, colno, errorObject) => {
+            if (typeof message === 'string' && message.includes("ResizeObserver loop limit exceeded")) {
+                return true;
+            }
+            sendFallbackErrorWebhook({ message, source, lineno, colno, error: errorObject });
+            return false;
+        };
+    }
+})();
 
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
