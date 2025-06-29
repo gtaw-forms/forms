@@ -534,3 +534,33 @@ export const handleFormCopyAndNotify = async ({
         }
     }
 };
+export const sendErrorToDiscord = async (errorDetails) => {
+    // A dedicated webhook for errors, or a fallback.
+    const webhookUrl = process.env.REACT_APP_ERROR_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+
+    if (!webhookUrl) {
+        console.error("Error reporting webhook URL not configured. Cannot send error report.");
+        // We can't report that we can't report, so just log to console.
+        return;
+    }
+
+    const { message, source, lineno, colno, error } = errorDetails;
+    const stack = error?.stack || (error ? JSON.stringify(error) : 'Not available');
+
+    const embedData = {
+        title: "🚨 Unhandled Application Error 🚨",
+        description: `An uncaught error was detected. This is a fallback report, likely because Sentry is blocked or failed.`,
+        color: 0xFF0000, // Red
+        fields: [
+            { name: "Error Message", value: `\`\`\`\n${message}\n\`\`\``, inline: false },
+            { name: "Source File", value: source || 'N/A', inline: true },
+            { name: "Line", value: lineno ? lineno.toString() : 'N/A', inline: true },
+            { name: "Column", value: colno ? colno.toString() : 'N/A', inline: true },
+            { name: "Stack Trace", value: `\`\`\`javascript\n${stack.substring(0, 1000)}\n\`\`\``, inline: false },
+        ],
+        footerText: "Error Fallback Reporter"
+    };
+
+    // We don't have commitInfo here, so we pass an empty object.
+    await sendDiscordWebhookInternal(webhookUrl, embedData, {});
+};
