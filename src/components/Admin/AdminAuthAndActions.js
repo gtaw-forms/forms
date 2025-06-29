@@ -6,9 +6,10 @@ import { ref, get, update, remove, set, serverTimestamp } from "firebase/databas
 import AddRoleModal from './RoleModal';
 import RenameRoleKeyModal from './RenameRoleKeyModal';
 import WebhookModal from '../WebhookModal';
-import * as Sentry from "@sentry/react";
+import { captureMessage, captureException, getClient } from "@sentry/react";
 import EditBingoPhrasesModal from './EditBingoPhrasesModal';
 import ReviewPhraseRequestsModal from './ReviewPhraseRequestsModal';
+import * as Sentry from "@sentry/react";
 
 const recruitmentCategories = {
     physician: { displayName: "Physician Recruitment", path: 'selectOptions/physicianRecruitmentDetails' },
@@ -84,7 +85,7 @@ const sendAdminActionWebhook = async (adminEmail, action, details, categoryName 
     console.log('[AdminAuthAndActions] sendAdminActionWebhook called. URL used:', webhookURL);
     if (!webhookURL) {
         console.warn("Admin action webhook URL not configured. Skipping log.");
-        Sentry.captureMessage("Admin Action Webhook URL not configured", "warning");
+        captureMessage("Admin Action Webhook URL not configured", "warning");
         return;
     }
     const embed = {
@@ -109,13 +110,13 @@ const sendAdminActionWebhook = async (adminEmail, action, details, categoryName 
         });
         if (!response.ok) {
             console.error(`Failed to send admin action webhook. Status: ${response.status}`);
-            Sentry.captureMessage(`Admin Action Discord webhook failed: ${response.status}`, "error");
+            captureMessage(`Admin Action Discord webhook failed: ${response.status}`, "error");
         } else {
             console.log(`Admin action logged to Discord: ${action}`);
         }
     } catch (error) {
         console.error('Error sending admin action webhook:', error);
-        Sentry.captureException(error, { extra: { context: 'Admin Action Webhook Submission' } });
+        captureException(error, { extra: { context: 'Admin Action Webhook Submission' } });
     }
 };
 
@@ -759,6 +760,44 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
     
         showInAppNotification('Manual bingo reset complete!', 'check-circle');
     };
+  const [sentryStatus, setSentryStatus] = useState('unknown'); // 'unknown', 'ok', 'blocked'
+  const [isCheckingSentry, setIsCheckingSentry] = useState(false);
+
+
+  const triggerSentryTestError = () => {
+    throw new Error("Sentry Test: This is an intentional error from the Admin Auth page.");
+  };
+
+  const checkSentryStatus = async () => {
+      setIsCheckingSentry(true);
+      setSentryStatus('unknown'); // Reset status
+      showInAppNotification("Checking Sentry connection...", 'info-circle', 4000);
+
+      const client = getClient();
+      if (!client || !client.getDsn()) {
+          setSentryStatus('blocked');
+          showInAppNotification("Sentry client not found. Fallback should be active.", "error");
+          setIsCheckingSentry(false);
+          return;
+      }
+
+      const dsn = client.getDsn();
+      const ingestUrl = `${dsn.protocol}://${dsn.host}/api/${dsn.projectId}/envelope/`;
+
+      try {
+          // A 'no-cors' HEAD request is a lightweight way to check for network-level blocking.
+          await fetch(ingestUrl, { method: 'HEAD', mode: 'no-cors' });
+          setSentryStatus('ok');
+          showInAppNotification("Sentry connection appears to be OK.", "check-circle");
+      } catch (error) {
+          // A TypeError is the classic sign of a request being blocked by an ad-blocker.
+          setSentryStatus('blocked');
+          showInAppNotification("Sentry appears to be blocked (e.g., by an ad-blocker). Fallback should be active.", "warning");
+          console.warn("Sentry connectivity check failed in admin panel:", error);
+      } finally {
+          setIsCheckingSentry(false);
+      }
+  };
 
 
     const handleOpenCoronerWebhookModal = () => {
@@ -968,7 +1007,30 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
             <Button variant="dark" onClick={handleOpenCoronerWebhookModal} className="mt-3 me-2">
                 <i className="fas fa-skull-crossbones"></i> CORONER WEBHOOK
             </Button>
-
+            <div className="my-3 p-3 border border-warning rounded">
+                <h5 className="text-warning"><i className="fas fa-vial me-2"></i>Developer Testing Area</h5>
+                <p>
+                    Use these tools to test error reporting. Your fallback mechanism should trigger if Sentry status is "Blocked".
+                </p>
+                <div className="d-flex align-items-center mb-2">
+                    <Button variant="info" onClick={checkSentryStatus} disabled={isCheckingSentry}>
+                        {isCheckingSentry ? <Spinner as="span" animation="border" size="sm" className="me-2" /> : <i className="fas fa-network-wired me-2"></i>}
+                        Check Sentry Status
+                    </Button>
+                    <span className="ms-3">
+                        Status: {
+                            sentryStatus === 'ok' ? <strong className="text-success">OK</strong> :
+                            sentryStatus === 'blocked' ? <strong className="text-danger">Blocked</strong> :
+                            'Unknown'
+                        }
+                    </span>
+                </div>
+                <Button variant="danger" onClick={triggerSentryTestError} title="This will throw an unhandled error to test Sentry and fallback error reporting.">
+                    <i className="fas fa-bug me-2"></i>
+                    Trigger Sentry Test Error
+                </Button>
+            </div>
+            <hr />
             <Button variant="warning" onClick={handleLogout} className="mt-3">Logout</Button>
 
             {selectedRecruitmentCategory && recruitmentCategories[selectedRecruitmentCategory] && (
