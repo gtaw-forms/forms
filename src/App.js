@@ -2456,79 +2456,91 @@ const saveReport = async () => {
 const [isLoadingUserReports, setIsLoadingUserReports] = useState(false);
     const [preselectedEmployeeType, setPreselectedEmployeeType] = useState(null);
 
-    const loadUserSavedReports = useCallback(async (userId) => {
-        if (!userId) {
-            setSavedReports([]);
-            setSelectedUserForSavedReports(null);
-            return;
-        }
+const loadUserSavedReports = useCallback(async (userId) => {
+    if (!userId) {
+        setSavedReports([]);
+        setSelectedUserForSavedReports(null);
+        return;
+    }
 
-        setIsLoadingUserReports(true);
-        setSelectedUserForSavedReports(userId);
-        showNotification(`Loading reports for ${userId}...`, 'info-circle', 0);
+    setIsLoadingUserReports(true);
+    setSelectedUserForSavedReports(userId);
+    // --- MODIFICATION START ---
+    // 1. Store the ID of the indefinite loading notification
+    const loadingNotifId = showNotification(`Loading reports for ${userId}...`, 'info-circle', 0);
+    // --- MODIFICATION END ---
 
-        const sanitizedUserId = userId.replace(/[.#$[\]/]/g, '_');
-        const userReportsPath = `savedReports/${sanitizedUserId}`;
-        const reportsRef = ref(database, userReportsPath);
+    const sanitizedUserId = userId.replace(/[.#$[\]/]/g, '_');
+    const userReportsPath = `savedReports/${sanitizedUserId}`;
+    const reportsRef = ref(database, userReportsPath);
 
-        try {
-            const snapshot = await get(reportsRef);
-            if (snapshot.exists()) {
-                const reportsData = snapshot.val();
-                const validReports = [];
-                const now = Date.now();
-                const thirtyOneDays = 31 * 24 * 60 * 60 * 1000;
-                let expiredCount = 0;
-                const deletionPromises = [];
+    try {
+        const snapshot = await get(reportsRef);
+        // --- MODIFICATION START ---
+        // 2. Remove the loading notification as soon as we have a result (success or failure)
+        removeNotification(loadingNotifId);
+        // --- MODIFICATION END ---
 
-                for (const reportKey in reportsData) {
-                    const report = reportsData[reportKey];
-                    if (report.timestamp && (now - report.timestamp < thirtyOneDays)) {
-                        validReports.push({
-                            key: reportKey,
-                            originalKey: report.originalKey,
-                            bbCodeVersion: report.bbCodeVersion,
-                            timestamp: report.timestamp,
-                            authorName: report.authorName,
-                            bbCode: report.bbCode,
-                        });
-                    } else {
-                        console.log(`Report "${report.originalKey || reportKey}" for user ${userId} is expired. Deleting.`);
-                        const reportToDeletePath = `${userReportsPath}/${reportKey}`;
-                        deletionPromises.push(remove(ref(database, reportToDeletePath)));
-                        expiredCount++;
-                    }
-                }
+        if (snapshot.exists()) {
+            const reportsData = snapshot.val();
+            const validReports = [];
+            const now = Date.now();
+            const thirtyOneDays = 31 * 24 * 60 * 60 * 1000;
+            let expiredCount = 0;
+            const deletionPromises = [];
 
-                if (deletionPromises.length > 0) {
-                    await Promise.all(deletionPromises);
-                    if (expiredCount > 0) {
-                        showNotification(`${expiredCount} expired report(s) for ${userId} were automatically deleted.`, 'trash', 5000);
-                    }
-                }
-
-                validReports.sort((a, b) => b.timestamp - a.timestamp);
-                setSavedReports(validReports);
-
-                if (validReports.length > 0) {
-                    showNotification(`Loaded ${validReports.length} report(s) for ${userId}.`, 'check-circle');
+            for (const reportKey in reportsData) {
+                const report = reportsData[reportKey];
+                if (report.timestamp && (now - report.timestamp < thirtyOneDays)) {
+                    validReports.push({
+                        key: reportKey,
+                        originalKey: report.originalKey,
+                        bbCodeVersion: report.bbCodeVersion,
+                        timestamp: report.timestamp,
+                        authorName: report.authorName,
+                        bbCode: report.bbCode,
+                    });
                 } else {
-                    showNotification(`No active reports found for ${userId}.`, 'info-circle');
+                    console.log(`Report "${report.originalKey || reportKey}" for user ${userId} is expired. Deleting.`);
+                    const reportToDeletePath = `${userReportsPath}/${reportKey}`;
+                    deletionPromises.push(remove(ref(database, reportToDeletePath)));
+                    expiredCount++;
                 }
-
-            } else {
-                setSavedReports([]);
-                showNotification(`No reports found for ${userId}.`, 'info-circle');
             }
-        } catch (error) {
-            console.error(`Error loading reports for user ${userId}:`, error);
-            Sentry.captureException(error, { extra: { context: 'loadUserSavedReports', userId } });
-            showNotification(`Failed to load reports for ${userId}.`, 'error');
+
+            if (deletionPromises.length > 0) {
+                await Promise.all(deletionPromises);
+                if (expiredCount > 0) {
+                    showNotification(`${expiredCount} expired report(s) for ${userId} were automatically deleted.`, 'trash', 5000);
+                }
+            }
+
+            validReports.sort((a, b) => b.timestamp - a.timestamp);
+            setSavedReports(validReports);
+
+            if (validReports.length > 0) {
+                showNotification(`Loaded ${validReports.length} report(s) for ${userId}.`, 'check-circle');
+            } else {
+                showNotification(`No active reports found for ${userId}.`, 'info-circle');
+            }
+
+        } else {
             setSavedReports([]);
-        } finally {
-            setIsLoadingUserReports(false);
+            showNotification(`No reports found for ${userId}.`, 'info-circle');
         }
-    }, [showNotification, removeNotification, setSavedReports, setSelectedUserForSavedReports, setIsLoadingUserReports, database]); // Add all necessary dependencies
+    } catch (error) {
+        // --- MODIFICATION START ---
+        // 3. Also remove the loading notification on error
+        removeNotification(loadingNotifId);
+        // --- MODIFICATION END ---
+        console.error(`Error loading reports for user ${userId}:`, error);
+        Sentry.captureException(error, { extra: { context: 'loadUserSavedReports', userId } });
+        showNotification(`Failed to load reports for ${userId}.`, 'error');
+        setSavedReports([]);
+    } finally {
+        setIsLoadingUserReports(false);
+    }
+}, [showNotification, removeNotification, setSavedReports, setSelectedUserForSavedReports, setIsLoadingUserReports, database]);
 
     const pendingReportAttachmentCallback = useRef(null); // Use ref for callback to avoid re-renders
 const [reportSelectionFilter, setReportSelectionFilter] = useState(null); // Array of bbCodeVersions to filter by
@@ -2724,38 +2736,69 @@ const handleReportSelectedForAttachment = useCallback(async (reportFirebaseKey, 
         clearTimeout(modalCloseTimer.current);
     }
 
+    // Show a loading notification for this specific attachment
+    const loadingNotifId = showNotification(`Attaching report...`, 'info-circle', 0);
+
     const result = await loadReportForUser(reportFirebaseKey, userId, true);
+
+    // Remove the loading notification once done
+    removeNotification(loadingNotifId);
 
     if (result.success && pendingReportAttachmentCallback.current) {
         const reportData = result.reportData;
+        const loadedFormData = reportData.data || {};
         const loadedVersion = reportData.bbCodeVersion;
 
-        // Specific handling for loading a v1 Death Report into the v2 Coroner Email form.
-        if (loadedVersion === 1 && bbCodeVersion === 2) {
-            setFormData(prev => {
-                const currentDeathReportIsEmpty = !prev.deathReport || prev.deathReport.trim() === '';
-                
-                if (currentDeathReportIsEmpty) {
-                    // If the main death report field is empty, this is the first report.
-                    showNotification(`Loaded report for ${reportData.originalKey} into main Death Report field.`, 'upload');
-                    return {
-                        ...prev,
-                        deathReport: reportData.bbCode,
-                    };
-                } else {
-                    // If the main field is already filled, append this as an additional report.
-                    showNotification(`Added report for ${reportData.originalKey} as an additional report.`, 'plus-circle');
-                    return {
-                        ...prev,
-                        additionalReports: [...prev.additionalReports, reportData.bbCode],
-                    };
-                }
-            });
-        }
+        // --- MODIFICATION START: Generalized Field Population ---
+        setFormData(prev => {
+            const newState = { ...prev };
 
-        // The pending callback handles other cases, like attaching reports to SicknessEmail.
-        // For CoronerEmail, the callback is a no-op, which is correct since we handled the logic above.
-        pendingReportAttachmentCallback.current(result.reportData);
+            // Define common fields to populate from the loaded report.
+            const fieldsToUpdate = {
+                decedentName: loadedFormData.decedentName,
+                decedentOOC: loadedFormData.decedentOOC,
+                requestingOfficer: loadedFormData.requestingOfficer,
+                // Add other common fields here if needed in the future
+            };
+
+            // Special merging logic for Coroner Email (v2)
+            if (bbCodeVersion === 2) {
+                // If there's already a name, append the new one.
+                newState.decedentName = prev.decedentName && fieldsToUpdate.decedentName
+                    ? `${prev.decedentName}, ${fieldsToUpdate.decedentName}`
+                    : fieldsToUpdate.decedentName || prev.decedentName;
+
+                newState.decedentOOC = prev.decedentOOC && fieldsToUpdate.decedentOOC
+                    ? `${prev.decedentOOC}, ${fieldsToUpdate.decedentOOC}`
+                    : fieldsToUpdate.decedentOOC || prev.decedentOOC;
+                
+                // Officer name usually gets replaced by the most recent one.
+                newState.requestingOfficer = fieldsToUpdate.requestingOfficer || prev.requestingOfficer;
+            } else {
+                // For other forms (like Sickness Email), just overwrite with the new data.
+                newState.decedentName = fieldsToUpdate.decedentName || prev.decedentName;
+                newState.decedentOOC = fieldsToUpdate.decedentOOC || prev.decedentOOC;
+                newState.requestingOfficer = fieldsToUpdate.requestingOfficer || prev.requestingOfficer;
+            }
+            
+            // This part handles the specific logic for Coroner Email's report fields
+            if (loadedVersion === 1 && bbCodeVersion === 2) {
+                const currentDeathReportIsEmpty = !prev.deathReport || prev.deathReport.trim() === '';
+                if (currentDeathReportIsEmpty) {
+                    newState.deathReport = reportData.bbCode;
+                } else {
+                    newState.additionalReports = [...(prev.additionalReports || []), reportData.bbCode];
+                }
+            }
+
+            return newState;
+        });
+        // --- MODIFICATION END ---
+
+        // The pending callback now primarily handles form-specific fields like 'attachedReportSummary'
+        pendingReportAttachmentCallback.current(reportData);
+        
+        showNotification(`Report "${reportData.originalKey}" attached successfully.`, 'check-circle');
 
     } else {
         if (!result.success) {
@@ -2773,9 +2816,9 @@ const handleReportSelectedForAttachment = useCallback(async (reportFirebaseKey, 
         setReportSelectionFilter(null);
         setPreselectedEmployeeType(null);
         setShowSavedReports(false);
-    }, 5000); // <--- INCREASED THIS VALUE TO 1000ms
+    }, 1000); // 1-second delay
 
-}, [loadReportForUser, bbCodeVersion, showNotification, setFormData, formData.deathReport, formData.additionalReports]);
+}, [loadReportForUser, bbCodeVersion, showNotification, removeNotification, setFormData]);
 
 // New function to be passed to SicknessEmail to trigger the modal
 const onAttachReportSummaryRequest = useCallback((callback) => {
@@ -3760,6 +3803,7 @@ const handleCopyAndNotifyWrapper = async () => {
                 formData,
                 bbCodeVersion,
                 selectedAgencyGroup,
+                getBBCodeContent, 
                 getFormDefinition,
                 saveReport,
                 showNotification,
@@ -4711,8 +4755,8 @@ const handleCopyAndNotifyWrapper = async () => {
     currentCoronerEmployee={formData.coronerEmployee}
     currentPhmcEmployee={formData.phmcEmployee}
     filterByBbCodeVersions={reportSelectionFilter} // Pass the filter
-    onReportSelectedForAttachment={handleReportSelectedForAttachment} // New prop for attachment flow
-                    preselectedEmployeeType={preselectedEmployeeType} 
+    onReportSelectedForAttachment={pendingReportAttachmentCallback.current ? handleReportSelectedForAttachment : null}
+    preselectedEmployeeType={preselectedEmployeeType}
 
 />
             <WebhookModal

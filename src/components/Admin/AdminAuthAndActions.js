@@ -134,7 +134,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     const [selectedAdminBingoType, setSelectedAdminBingoType] = useState(BINGO_TYPES[0].id);
     const [showEditBingoPhrasesModal, setShowEditBingoPhrasesModal] = useState(false);
     const [showReviewPhrasesModal, setShowReviewPhrasesModal] = useState(false);
-    const [timeUntilReset, setTimeUntilReset] = useState('');
 
     const [showRoleModal, setShowRoleModal] = useState(false);
     const [roleToEdit, setRoleToEdit] = useState(null);
@@ -680,11 +679,16 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
         }
     };
 
-    const handleAutoGenerateAllBingoCards = useCallback(async () => {
+    const handleManualResetAllBingoCards = async () => {
+        if (!window.confirm("Are you sure you want to manually reset all active Bingo cards? This will clear their current progress.")) {
+            return;
+        }
+
         const metaRef = ref(database, 'bingo/meta');
-        await update(metaRef, { lastAutoRegenTimestamp: serverTimestamp() });
+        // We can still update the timestamp to log this manual reset
+        await update(metaRef, { lastManualRegenTimestamp: serverTimestamp() });
     
-        showInAppNotification('Automatic daily bingo reset initiated...', 'sync-alt', 5000);
+        showInAppNotification('Manual daily bingo reset initiated...', 'sync-alt', 5000);
     
         const results = {
             success: [],
@@ -693,6 +697,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
             errors: [],
         };
     
+        // This Promise.all logic is perfect and remains the same
         await Promise.all(BINGO_TYPES.map(async (bingoType) => {
             const cardPhrasesRef = ref(database, `bingo/cards/${bingoType.path}/phrases`);
             
@@ -711,7 +716,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
             
             const masterPhrasesData = masterSnapshot.val();
             const masterPhrases = Array.isArray(masterPhrasesData)
-                ? masterPhrasesData
+                ? masterPhrasesData.filter(Boolean)
                 : (typeof masterPhrasesData === 'object' && masterPhrasesData !== null)
                     ? Object.values(masterPhrasesData).map(p => (typeof p === 'object' ? p.phrase : p)).filter(Boolean)
                     : [];
@@ -730,11 +735,12 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 
                 results.success.push(bingoType.name);
             } catch (error) {
-                console.error(`Error auto-regenerating ${bingoType.name} card:`, error);
+                console.error(`Error manually regenerating ${bingoType.name} card:`, error);
                 results.errors.push(`${bingoType.name}: ${error.message}`);
             }
         }));
     
+        // --- MODIFICATION FOR MANUAL ACTION ---
         const { userAgent, timeZone } = getUserContext();
         let details = '';
         if (results.success.length > 0) details += `✅ Regenerated: ${results.success.join(', ')}\n`;
@@ -743,88 +749,17 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
         if (results.errors.length > 0) details += `❌ Errors: ${results.errors.join(', ')}\n`;
     
         sendAdminActionWebhook(
-            "SYSTEM_AUTO", "Automatic Daily Bingo Reset", details.trim(),
-            "Bingo Management", userAgent, timeZone
+            currentUser.email, // Use the logged-in admin's email
+            "Manual Bingo Reset", // Change action text
+            details.trim(),
+            "Bingo Management",
+            userAgent,
+            timeZone
         );
     
-        showInAppNotification('Automatic daily bingo reset complete!', 'check-circle');
-    }, [showInAppNotification]);
+        showInAppNotification('Manual bingo reset complete!', 'check-circle');
+    };
 
-    const runAutoRegenCheck = useCallback(async () => {
-        console.log("[BINGO AUTO-RESET] Checking if regeneration is needed...");
-        
-        const now = new Date();
-        let lastResetTarget = new Date(now);
-        lastResetTarget.setUTCHours(9, 0, 0, 0);
-
-        if (now.getUTCHours() < 9) {
-            lastResetTarget.setUTCDate(now.getUTCDate() - 1);
-        }
-
-        const metaRef = ref(database, 'bingo/meta/lastAutoRegenTimestamp');
-        const snapshot = await get(metaRef);
-        const lastRegenTimestamp = snapshot.val() || 0;
-
-        if (lastRegenTimestamp < lastResetTarget.getTime()) {
-            console.log("[BINGO AUTO-RESET] Regeneration required. Running job...");
-            handleAutoGenerateAllBingoCards();
-        } else {
-            console.log("[BINGO AUTO-RESET] Regeneration not required for this cycle.");
-        }
-    }, [handleAutoGenerateAllBingoCards]);
-
-    useEffect(() => {
-        if (!currentUser) return;
-
-        let timerInterval;
-        let scheduleTimeout;
-        let dailyInterval;
-
-        const scheduleNextCheck = () => {
-            const now = new Date();
-            let nextRunTime = new Date(now);
-            nextRunTime.setUTCHours(9, 0, 5, 0); // Run at 9:00:05 UTC
-
-            if (now.getTime() >= nextRunTime.getTime()) {
-                nextRunTime.setUTCDate(now.getUTCDate() + 1);
-            }
-            
-            const delay = nextRunTime.getTime() - now.getTime();
-            
-            console.log(`[BINGO AUTO-RESET] Next check scheduled in ${Math.round(delay / 1000 / 60)} minutes.`);
-
-            scheduleTimeout = setTimeout(() => {
-                runAutoRegenCheck();
-                // After the first run, set a 24-hour interval for subsequent checks
-                dailyInterval = setInterval(runAutoRegenCheck, 24 * 60 * 60 * 1000);
-            }, delay);
-        };
-
-        scheduleNextCheck();
-
-        timerInterval = setInterval(() => {
-            const now = new Date();
-            let nextResetTime = new Date(now);
-            nextResetTime.setUTCHours(9, 0, 0, 0);
-
-            if (now.getTime() >= nextResetTime.getTime()) {
-                nextResetTime.setUTCDate(now.getUTCDate() + 1);
-            }
-
-            const diff = nextResetTime.getTime() - now.getTime();
-            const hours = Math.floor(diff / (1000 * 60 * 60));
-            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-            const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-            setTimeUntilReset(`${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`);
-        }, 1000);
-
-        return () => {
-            clearInterval(timerInterval);
-            clearTimeout(scheduleTimeout);
-            clearInterval(dailyInterval);
-        };
-
-    }, [currentUser, runAutoRegenCheck]);
 
     const handleOpenCoronerWebhookModal = () => {
         setCoronerWebhookTitle('');
@@ -971,8 +906,17 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 </BootstrapForm.Select>
             </BootstrapForm.Group>
             <p className="text-info small mt-1">
-                Next automatic reset in: <strong>{timeUntilReset || 'Calculating...'}</strong> (at 09:00 UTC)
+                The daily reset now runs automatically on the server at 09:00 UTC.
             </p>
+            <Button
+                variant="secondary"
+                onClick={handleManualResetAllBingoCards}
+                disabled={isUpdatingDb}
+                className="mt-2 me-2"
+                title="Manually run the daily reset for all active bingo cards."
+            >
+                {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : <><i className="fas fa-bomb"></i> Reset All Cards</>}
+            </Button>
 
             <Button
                 variant="primary"
