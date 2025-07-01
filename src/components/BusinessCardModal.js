@@ -3,7 +3,7 @@ import { Form, Button } from 'react-bootstrap';
 // import domtoimage from 'dom-to-image'; // No longer needed for image generation
 import * as Sentry from "@sentry/react";
 import BusinessCardImage from '../assets/business-card.png';
-// import './BusinessCardModal.css'; // Ensure this is imported if LufgaMedium font is defined here
+import { copyToClipboard } from './notificationService'; // <-- NEW IMPORT
 
 const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
     const [name, setName] = useState('');
@@ -274,32 +274,7 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
             const debugInfo = captureDebugDetails();
             sendDiscordWebhook(name, rank, phoneNumber, link, debugInfo);
 
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(link)
-                    .then(() => {
-                        showNotification('Imgur link copied to clipboard!', 'clipboard');
-                    })
-                    .catch(err => {
-                        console.error('Failed to copy Imgur link to clipboard:', err);
-                        Sentry.captureException(err, {
-                            extra: {
-                                message: 'Clipboard writeText failed (Business Card).',
-                                imgurLink: link,
-                                userAgent: navigator.userAgent,
-                            }
-                        });
-                        let userMessage = 'Failed to copy Imgur link automatically.';
-                        if (err.name === 'NotAllowedError') userMessage += ' Please grant clipboard permission.';
-                        else if (err.message.includes('focused')) userMessage += ' Please ensure this window is focused.';
-                        else userMessage += ' Please copy the link manually.';
-                        showNotification(userMessage, 'error');
-                    });
-            } else {
-                const clipboardWarning = 'Clipboard API not available for Business Card.';
-                console.warn(clipboardWarning);
-                Sentry.captureMessage(clipboardWarning, { level: 'warning' });
-                showNotification('Clipboard API not available. Please copy the link manually.', 'warning');
-            }
+            await copyToClipboard(link, showNotification, 'Imgur link copied to clipboard!');
         } catch (error) {
             console.error('Error in Business Card handleSave:', error);
             let errorContext = 'Error generating business card';

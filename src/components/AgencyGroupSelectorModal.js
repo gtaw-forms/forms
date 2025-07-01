@@ -105,6 +105,7 @@ const AgencyGroupSelectorModal = ({
     emsRecruitmentDetails,
     nurseRecruitmentDetails,
     coronerRecruitmentDetails,
+    onShowCctvRequest
 }) => {
     if (!show) {
         return null;
@@ -306,6 +307,22 @@ const AgencyGroupSelectorModal = ({
                                 </span>
                             )}
                         </Button>
+{/*                                             <Button
+                        variant="outline-light"
+                        style={{
+                            ...baseButtonStyle,
+                            borderColor: '#007bff', // Blue for LEO
+                            color: '#007bff'
+                        }}
+                        onClick={onShowCctvRequest} // Use the new handler from props
+                        className="agency-group-button-leo"
+                        onMouseOver={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0, 123, 255, 0.1)'; }}
+                        onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                    >
+                        <i className="fas fa-shield-alt" style={{...imageStyle, fontSize: '40px'}}></i>
+                        Law Enforcement Section
+                    </Button>
+ */}
                 </div>
                 <div style={checkboxContainerStyle}>
                     <Form.Check

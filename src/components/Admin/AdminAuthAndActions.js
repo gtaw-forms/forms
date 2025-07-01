@@ -10,6 +10,7 @@ import { captureMessage, captureException, getClient } from "@sentry/react";
 import EditBingoPhrasesModal from './EditBingoPhrasesModal';
 import ReviewPhraseRequestsModal from './ReviewPhraseRequestsModal';
 import * as Sentry from "@sentry/react";
+import CctvRequestWebhookModal from './CctvRequestWebhookModal'; // Import the new modal
 
 const recruitmentCategories = {
     physician: { displayName: "Physician Recruitment", path: 'selectOptions/physicianRecruitmentDetails' },
@@ -150,9 +151,64 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     const [showCoronerWebhookModal, setShowCoronerWebhookModal] = useState(false);
     const [coronerWebhookTitle, setCoronerWebhookTitle] = useState('');
     const [coronerWebhookMessage, setCoronerWebhookMessage] = useState('');
+    const [showCctvWebhookModal, setShowCctvWebhookModal] = useState(false);
 
     const prevUserUidRef = useRef(null);
 
+    const handleCctvWebhookSubmit = async (cctvData) => {
+        const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL; // Using the general dev webhook for this test
+        const { userAgent, timeZone } = getUserContext();
+
+        if (!webhookURL) {
+            if (showInAppNotification) showInAppNotification('Webhook URL (REACT_APP_DISCORD_WEBHOOK_URL) not configured.', 'error');
+            Sentry.captureMessage("CCTV Test Webhook URL not configured", "error");
+            return false; // Indicate failure
+        }
+
+        const embed = {
+            title: "📹 CCTV Footage Request (Test)",
+            color: 0x5865F2, // Discord Blurple
+            fields: [
+                { name: "Requesting Officer Rank", value: cctvData.rank || "N/A", inline: true },
+                { name: "Requesting Officer", value: cctvData.officer || "N/A", inline: true },
+                { name: "Officer Phone Number", value: cctvData.officerPH || "N/A", inline: true },
+                { name: "Requesting Department", value: cctvData.department || "N/A", inline: true },
+                ...(cctvData.discordUsername ? [{ name: "Discord Username", value: cctvData.discordUsername, inline: true }] : []),
+                { name: "Date/Time of Incident", value: cctvData.incidentDateTime || "N/A", inline: true },
+                { name: "Reason for Request", value: cctvData.requestReason || "N/A", inline: true },
+                { name: "CCTV Location", value: cctvData.location || "N/A", inline: false },
+                { name: "Description of Events", value: `\`\`\`${cctvData.description || "N/A"}\`\`\``, inline: false },
+                ...(cctvData.oocNotes ? [{ name: "OOC Notes", value: `\`\`\`${cctvData.oocNotes}\`\`\``, inline: false }] : []),
+            ],
+            timestamp: new Date().toISOString(),
+            footer: { text: "PHMC Forms - CCTV Test Webhook" }
+        };
+
+        try {
+            const response = await fetch(webhookURL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ embeds: [embed] })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`Failed to send CCTV test webhook. Status: ${response.status}`, errorText);
+                Sentry.captureMessage(`CCTV Test Webhook failed: ${response.status}`, { level: 'error', extra: { responseBody: errorText } });
+                if (showInAppNotification) showInAppNotification(`Failed to send test webhook. Status: ${response.status}`, 'error');
+                return false;
+            } else {
+                if (showInAppNotification) showInAppNotification('CCTV Test Webhook sent successfully!', "check-circle");
+                sendAdminActionWebhook(currentUser?.email, "Sent CCTV Test Webhook", `Sent a test webhook for a CCTV request to the dev channel.`, "Developer Testing", userAgent, timeZone);
+                return true;
+            }
+        } catch (error) {
+            console.error('Error sending CCTV test webhook:', error);
+            Sentry.captureException(error, { extra: { context: 'CCTV Test Webhook Submission' } });
+            if (showInAppNotification) showInAppNotification('A network error occurred sending the test webhook.', "error");
+            return false;
+        }
+    };
 
     useEffect(() => {
         const updatePermissionStatus = () => {
@@ -1029,6 +1085,11 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                     <i className="fas fa-bug me-2"></i>
                     Trigger Sentry Test Error
                 </Button>
+                                    <Button variant="secondary" onClick={() => setShowCctvWebhookModal(true)} title="Send a test webhook simulating a CCTV request.">
+                        <i className="fas fa-video me-2"></i>
+                        CCTV Request Test
+                    </Button>
+
             </div>
             <hr />
             <Button variant="warning" onClick={handleLogout} className="mt-3">Logout</Button>
@@ -1085,6 +1146,12 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 showNotification={showInAppNotification}
                 sendAdminActionWebhook={sendAdminActionWebhook}
                 adminUserEmail={currentUser?.email}
+            />
+            <CctvRequestWebhookModal
+                show={showCctvWebhookModal}
+                onHide={() => setShowCctvWebhookModal(false)}
+                onSubmit={handleCctvWebhookSubmit}
+                showNotification={showInAppNotification}
             />
 
         </div>

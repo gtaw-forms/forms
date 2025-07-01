@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom'; // Import ReactDOM for portals
 import { Button, Form } from 'react-bootstrap';
 import Select from 'react-select'; // Still needed for the internal logic of selectedEmployee
-
+import { copyToClipboard } from './notificationService'; 
 // --- Styles (These are now directly applied to the custom modal structure) ---
 const modalStyle = {
     position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
@@ -284,23 +284,17 @@ const SavedReportsModal = ({
             }
         }
         if (combinedBbCode) {
-            try {
-                await navigator.clipboard.writeText(combinedBbCode);
-                showNotification(`BBCode for ${copyCount} report(s) copied!`, 'clipboard');
-            } catch (err) {
-                showNotification('Failed to copy combined BBCode.', 'error');
-            }
+            await copyToClipboard(combinedBbCode, showNotification, `BBCode for ${copyCount} report(s) copied!`);
         } else {
             showNotification('No valid BBCode found in selected reports.', 'warning');
         }
     };
 
-    const handleCopyBBCode = (reportKey) => {
+    const handleCopyBBCode = async (reportKey) => {
         const report = sortedReports.find(r => r.key === reportKey);
         if (report && report.bbCode) {
-            navigator.clipboard.writeText(report.bbCode)
-                .then(() => showNotification('BBCode copied!', 'clipboard'))
-                .catch(() => showNotification('Failed to copy BBCode.', 'error'));
+            // --- MODIFICATION: Use the helper function ---
+            await copyToClipboard(report.bbCode, showNotification, 'BBCode copied!');
         } else {
             showNotification('No BBCode found for this report.', 'warning');
         }

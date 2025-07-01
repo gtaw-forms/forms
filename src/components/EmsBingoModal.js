@@ -6,6 +6,7 @@ import phmcLogo from '../assets/phmc.png';
 import { database } from '../firebase';
 import { ref, set, onValue, off, serverTimestamp, get, remove, push } from 'firebase/database';
 import PhraseRequestModal from './PhraseRequestModal';
+import emsBingoBackground from '../assets/EMMafia_Pride.png';
 
 // Function to shuffle an array (used by admin to generate new card)
 const getShuffledPhrases = (phrases) => {
@@ -89,6 +90,7 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
     const announcingBingoLinesRef = useRef(new Set());
 
     const [showPhraseRequestModal, setShowPhraseRequestModal] = useState(false);
+    const isEmsBingoActive = selectedBingoType?.id === 'ems';
 
     const getEmployeeColor = useCallback((employeeName) => {
         if (!employeeColorMapRef.current.has(employeeName)) {
@@ -604,7 +606,7 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
                     {selectedBingoType ? `${selectedBingoType.name} Bingo!` : "Select Bingo Type"}
                 </Modal.Title>
             </Modal.Header>
-            <Modal.Body>
+            <Modal.Body className={isEmsBingoActive ? 'ems-bingo-body-background' : ''}>
                 {selectedBingoType ? (
                     <div className="bingo-content-wrapper">
                         <div className="bingo-main-section">

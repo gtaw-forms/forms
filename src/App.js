@@ -23,13 +23,13 @@ import SwitchableFormsModal from './components/SwitchableFormsModal';
 import MissingEmployeeModal from './components/MissingEmployeeModal';
 import SaaaEmployeeModal from './saaa-components/SaaaEmployeeModal'; 
 import RecruitmentStatusDisplay from './components/RecruitmentStatusDisplay'; // Add this import
-// admin
+import CctvRequestWebhookModal from './components/Admin/CctvRequestWebhookModal'; // Add this import
 import { sendBingoNotification, sendPhraseRequestNotification } from './components/notificationService';
 
 import FormImageLink from './components/FormImageLink';
 
 // 
-import { handleFormCopyAndNotify, handlePhmcRecruitmentCopyAndNotify } from './components/notificationService'; // Add the new import
+import { copyToClipboard, handleFormCopyAndNotify, handlePhmcRecruitmentCopyAndNotify } from './components/notificationService'; // Add copyToClipboard
 
 import FlightSchoolTipsModal from './saaa-components/FlightSchoolTipsModal';
 import saaaLogo from './assets/saaa-button.png'; 
@@ -593,6 +593,11 @@ const initialFormData = {
     const [nurseRecruitmentDetails, setNurseRecruitmentDetails] = useState({});
     const [coronerRecruitmentDetails, setCoronerRecruitmentDetails] = useState({});
     const loadingNotificationIdRef = useRef(null);
+    const [showCctvRequestModal, setShowCctvRequestModal] = useState(false); // --- MODIFICATION: Add new state
+    const handleShowCctvRequestModal = () => {
+        setShowAgencyGroupSelectorModal(false); // Close the group selector
+        setShowCctvRequestModal(true);
+    };
 
     const fetchAllApplicationData = useCallback(async (forceRefresh = false) => {
         // 1. Check cache first, unless a refresh is forced
@@ -2263,9 +2268,8 @@ const [selectedUserForSavedReports, setSelectedUserForSavedReports] = useState(n
 
 const saveReport = async () => {
     let key = '';
-    const bbCodeContent = getBBCodeContent(); // Correctly called here
-
-    const currentAuthor = getCurrentReportAuthor(formData); // Assumes getCurrentReportAuthor is defined elsewhere
+    const bbCodeContent = getBBCodeContent();
+    const currentAuthor = getCurrentReportAuthor(formData);
 
     // --- Validation logic to determine the key ---
     if (bbCodeVersion === 1) { // Death Report
@@ -2330,21 +2334,6 @@ const saveReport = async () => {
     }
     // --- MODIFICATION FOR PHMC RECRUITMENT ---
     else if (getFormDefinition(bbCodeVersion)?.group === 'PHMC Recruitment') {
-        const definition = getFormDefinition(bbCodeVersion);
-        const formName = definition ? definition.name : `Form v${bbCodeVersion}`;
-        if (bbCodeContent && navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(bbCodeContent).then(() => {
-                showNotification(`BBCode for "${formName}" copied to clipboard!`, 'clipboard', 7000);
-            }).catch(err => {
-                console.error(`Failed to copy BBCode for "${formName}": `, err);
-                Sentry.captureException(err, { extra: { context: 'PHMC Recruitment Clipboard Copy Fail', formName: formName } });
-                showNotification(`Failed to copy BBCode for "${formName}" to clipboard.`, 'exclamation-triangle', 10000);
-            });
-        } else if (!bbCodeContent) {
-             showNotification(`Could not generate BBCode for "${formName}" to copy.`, 'error', 10000);
-        } else {
-            showNotification(`Clipboard API not available. BBCode for "${formName}" not copied.`, 'exclamation-triangle', 10000);
-        }
         return false; // Prevent Firebase saving for PHMC Recruitment forms
     }
     // --- END MODIFICATION ---
@@ -2352,19 +2341,6 @@ const saveReport = async () => {
         const definition = getFormDefinition(bbCodeVersion); // Get current form definition
 
         if (definition && definition.group === 'SAAA') {
-            if (bbCodeContent && navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(bbCodeContent).then(() => {
-                    showNotification(`Copied to clipboard! `, 'clipboard', 7000);
-                }).catch(err => {
-                    console.error('Failed to copy SAAA form BBCode: ', err);
-                    Sentry.captureException(err, { extra: { context: 'SAAA Form Clipboard Copy Fail', formName: definition.name } });
-                    showNotification(`Failed to copy BBCode for "${definition.name}" to clipboard. Saving not defined.`, 'exclamation-triangle', 10000);
-                });
-            } else if (!bbCodeContent) {
-                 showNotification(`Could not generate BBCode for "${definition.name}" to copy. Saving not defined.`, 'error', 10000);
-            } else {
-                showNotification(`Clipboard API not available. BBCode for "${definition.name}" not copied. Saving not defined.`, 'exclamation-triangle', 10000);
-            }
             return false; // Prevent Firebase saving for SAAA forms
         }
 
@@ -2437,19 +2413,15 @@ const saveReport = async () => {
     const reportPath = `savedReports/${sanitizedAuthorId}/${sanitizedKey}`;
 
     try {
-        const reportRef = ref(database, reportPath);
+        const reportRef = ref(database, `savedReports/${currentAuthor.replace(/[.#$[\]/]/g, '_')}/${key.replace(/[.#$[\]/]/g, '_')}`);
         await set(reportRef, reportDataToSave);
         showNotification(`Report "${key}" saved for ${currentAuthor} to Firebase!`, 'save');
-
-        if (selectedUserForSavedReports === currentAuthor) {
-             loadUserSavedReports(currentAuthor);
-        }
         return true; // Indicate success
 
     } catch (error) {
         console.error("Error saving report to Firebase:", error);
-        Sentry.captureException(error, { extra: { context: 'Firebase set report', path: reportPath } });
-        showNotification('Failed to save report to Firebase. Copying will be skipped.', 'error');
+        Sentry.captureException(error, { extra: { context: 'Firebase set report' } });
+        showNotification('Failed to save report to Firebase.', 'error');
         return false; // Indicate failure
     }
 };
@@ -2758,7 +2730,7 @@ const handleReportSelectedForAttachment = useCallback(async (reportFirebaseKey, 
                 decedentName: loadedFormData.decedentName,
                 decedentOOC: loadedFormData.decedentOOC,
                 requestingOfficer: loadedFormData.requestingOfficer,
-                // Add other common fields here if needed in the future
+                department: loadedFormData.department, // Added department
             };
 
             // Special merging logic for Coroner Email (v2)
@@ -2772,13 +2744,16 @@ const handleReportSelectedForAttachment = useCallback(async (reportFirebaseKey, 
                     ? `${prev.decedentOOC}, ${fieldsToUpdate.decedentOOC}`
                     : fieldsToUpdate.decedentOOC || prev.decedentOOC;
                 
-                // Officer name usually gets replaced by the most recent one.
+                // Officer name and department usually get replaced by the most recent one.
                 newState.requestingOfficer = fieldsToUpdate.requestingOfficer || prev.requestingOfficer;
+                newState.department = fieldsToUpdate.department || prev.department; // Added department logic
             } else {
                 // For other forms (like Sickness Email), just overwrite with the new data.
                 newState.decedentName = fieldsToUpdate.decedentName || prev.decedentName;
                 newState.decedentOOC = fieldsToUpdate.decedentOOC || prev.decedentOOC;
                 newState.requestingOfficer = fieldsToUpdate.requestingOfficer || prev.requestingOfficer;
+                                newState.department = fieldsToUpdate.department || prev.department; // Added department logic
+
             }
             
             // This part handles the specific logic for Coroner Email's report fields
@@ -2971,6 +2946,75 @@ const filterFormData = (formData, bbCodeVersion) => {
 
     return filteredData;
 };
+    const handleCctvWebhookSubmit = async (cctvData) => {
+        // Log the submission attempt to Sentry for tracking and abuse monitoring
+        Sentry.captureMessage('CCTV Request Submitted', {
+            level: 'info', // Use 'info' level for tracking events, not errors
+            extra: {
+                officer: cctvData.officer,
+                department: cctvData.department,
+                location: cctvData.location,
+                reason: cctvData.requestReason,
+                // Add user context if available from another form field
+                submitter: formData.coronerEmployee || formData.phmcEmployee || 'Unknown App User'
+            },
+            tags: {
+                webhook_type: 'cctv_request',
+                environment: process.env.NODE_ENV
+            }
+        });
+
+        // IMPORTANT: Add this new environment variable to your .env file
+        const webhookURL = process.env.REACT_APP_LEO_WEBHOOK_URL;
+
+        if (!webhookURL) {
+            showNotification('LEO Webhook URL is not configured.', 'error');
+            Sentry.captureMessage('LEO Webhook URL (REACT_APP_LEO_WEBHOOK_URL) not configured.', 'error');
+            return false; // Indicate failure
+        }
+
+        const embed = {
+            title: "📹 CCTV Footage Request",
+            color: 0x007bff, // Blue for LEO
+            fields: [
+                { name: "Requesting Officer Rank", value: cctvData.rank || "N/A", inline: true },
+                { name: "Requesting Officer", value: cctvData.officer || "N/A", inline: true },
+                { name: "Officer Phone Number", value: cctvData.officerPH || "N/A", inline: true },
+                { name: "Requesting Department", value: cctvData.department || "N/A", inline: true },
+                ...(cctvData.discordUsername ? [{ name: "Discord Username", value: cctvData.discordUsername, inline: true }] : []),
+                { name: "Date/Time of Incident", value: cctvData.incidentDateTime || "N/A", inline: true },
+                { name: "Reason for Request", value: cctvData.requestReason || "N/A", inline: false },
+                { name: "CCTV Location", value: cctvData.location || "N/A", inline: false },
+                { name: "Description of Events", value: `\`\`\`${cctvData.description || "N/A"}\`\`\``, inline: false },
+                ...(cctvData.oocNotes ? [{ name: "OOC Notes", value: `\`\`\`${cctvData.oocNotes}\`\`\``, inline: false }] : []),
+            ],
+            timestamp: new Date().toISOString(),
+            footer: { text: `PHMC Forms - v${commitInfo.sha || 'N/A'}` }
+        };
+
+        try {
+            const response = await fetch(webhookURL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ embeds: [embed] })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                Sentry.captureMessage(`CCTV Webhook failed: ${response.status}`, { level: 'error', extra: { responseBody: errorText } });
+                showNotification(`Failed to send request. Status: ${response.status}`, 'error');
+                return false;
+            } else {
+                showNotification('CCTV Request sent successfully!', "check-circle");
+                setShowCctvRequestModal(false); // Close modal on success
+                return true;
+            }
+        } catch (error) {
+            Sentry.captureException(error, { extra: { context: 'CCTV Webhook Submission' } });
+            showNotification('A network error occurred while sending the request.', "error");
+            return false;
+        }
+    };
 
 // switching agency logic
 
@@ -3916,9 +3960,17 @@ const handleCopyAndNotifyWrapper = async () => {
                     handleFormSelect={handleAgencySelect} // This now triggers the opt-in logic
     nurseRecruitmentDetails={selectOptions.nursePositionDetailsData || {}}
     coronerRecruitmentDetails={selectOptions.coronerPositionDetailsData || {}}
+                    onShowCctvRequest={handleShowCctvRequestModal} // --- MODIFICATION: Pass new handler
+
             />
 
-            
+                        <CctvRequestWebhookModal
+                show={showCctvRequestModal}
+                onHide={() => setShowCctvRequestModal(false)}
+                onSubmit={handleCctvWebhookSubmit}
+                showNotification={showNotification}
+            />
+
             <EasterEggModal
                 show={showEasterEggModal}
                 type={easterEggType} // Pass the type ('normal' or 'rare')
@@ -4891,18 +4943,8 @@ versionsWithTitleSection.includes(bbCodeVersion) && (
                                 className="changelog-button"
                                 onClick={() => {
                                     const title = generateTitle();
-                                    if (navigator.clipboard && navigator.clipboard.writeText) {
-                                        navigator.clipboard.writeText(title).then(() => {
-                                            showNotification('Title copied to clipboard!', 'check-circle');
-                                        }).catch(err => {
-                                            console.error('Failed to copy: ', err);
-                                            showNotification('Failed to copy title to clipboard!', 'exclamation-triangle');
-                                        });
-                                    } else {
-                                        console.warn("Clipboard API not available");
-                                        showNotification('Clipboard API not available!', 'exclamation-triangle');
-                                    }
-                                }}
+                                copyToClipboard(title, showNotification, 'Title copied to clipboard!');
+                            }}
                             >
                                 <i className="fas fa-copy"></i>
                                 Copy Title
