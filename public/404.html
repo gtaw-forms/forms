@@ -2,29 +2,37 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <title>Page Not Found</title>
+    <title>Redirecting...</title>
     <script type="text/javascript">
-        // Single Page Apps for GitHub Pages
-        // MIT License
-        // https://github.com/rafgraph/spa-github-pages
-        // This script redirects all 404s to the root index.html with the original path as a query parameter.
-        // Your React app's router should then read this query parameter and handle the route.
+        // This script redirects all 404s to the root of the single-page app,
+        // passing the originally requested path as a query parameter.
 
-        // Get the current path (e.g., /forms/bingo)
-        var path = window.location.pathname;
+        // The base path of your application on GitHub Pages.
+        // For a URL like https://gtaw-forms.github.io/forms/, this is '/forms/'.
+        const basePath = '/forms/';
 
-        // IMPORTANT: Adjust this 'basename' to match your GitHub Pages deployment path.
-        // If your app is at https://yourusername.github.io/your-repo-name/, then basename is '/your-repo-name/'.
-        // If your app is at https://yourdomain.com/ (custom domain at root), then basename is '/'.
-        // Based on your package.json homepage, it should be '/forms/'.
-        var basename = '/forms/'; 
+        // The path that was originally requested by the user (e.g., /forms/cctv).
+        const requestedPath = window.location.pathname;
 
-      window.location.replace(
-        basePath + '?p=' + path + window.location.search + window.location.hash
-      );
+        // The original search query and hash from the URL, to be preserved.
+        const originalSearch = window.location.search;
+        const originalHash = window.location.hash;
+
+        // Construct the new URL. We redirect to the base path and pass the
+        // original path in the 'p' parameter. Your App.js is already configured
+        // to read this parameter on load.
+        // Example result: /forms/?p=%2Fforms%2Fcctv
+        const redirectUrl = basePath +
+                            '?p=' + encodeURIComponent(requestedPath) +
+                            originalSearch +
+                            originalHash;
+
+        // Perform the redirect. This replaces the current history entry, so the
+        // user won't get stuck in a back-button loop with the 404 page.
+        window.location.replace(redirectUrl);
     </script>
 </head>
 <body>
-    If you are not redirected automatically, follow this <a href="/">link to the homepage</a>.
+    <p>If you are not being redirected, please <a href="/forms/">click here to go to the homepage</a>.</p>
 </body>
 </html>
