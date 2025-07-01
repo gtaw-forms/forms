@@ -1683,25 +1683,36 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
     const originalUrlRef = useRef(null); // <-- NEW: Ref to store the original URL
 
 
-    // MODIFIED: This useEffect now stores the original URL
     useEffect(() => {
-        // This effect runs once on component mount to handle deep linking (e.g., /cctv, /bingo)
+        // --- DEBUGGING START ---
+        console.log("Routing useEffect triggered on page load.");
         const urlParams = new URLSearchParams(window.location.search);
-        const redirectedPath = urlParams.get('p'); // This comes from our 404.html redirect
+        const redirectedPath = urlParams.get('p');
         const currentPath = window.location.pathname;
         const hash = window.location.hash;
 
+        console.log("Initial Path:", currentPath);
+        console.log("Redirected Path (from 'p' param):", redirectedPath);
+        console.log("URL Hash:", hash);
+        // --- DEBUGGING END ---
+
         // Determine the target path from either the direct URL or the redirected parameter
         const targetPath = redirectedPath || currentPath;
+        console.log("Final Target Path for routing:", targetPath); // --- DEBUGGING ---
 
         if (hash === '#bingo' || targetPath.endsWith('/bingo')) {
+            console.log("Bingo route detected. Opening Bingo modal."); // --- DEBUGGING ---
             setShowEmsBingoModal(true);
         } else if (targetPath.endsWith('/cctv')) {
+            console.log("CCTV route detected. Opening CCTV modal."); // --- DEBUGGING ---
             handleShowCctvRequestModal();
+        } else {
+            console.log("No specific route detected. Showing default view."); // --- DEBUGGING ---
         }
 
         // If we were redirected from the 404 page, clean up the URL for a better user experience
         if (redirectedPath) {
+            console.log("Cleaning up the URL by removing the 'p' parameter."); // --- DEBUGGING ---
             const newUrl = new URL(window.location.href);
             newUrl.searchParams.delete('p');
             // Use replaceState to change the URL without adding to the browser's history
