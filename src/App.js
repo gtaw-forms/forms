@@ -957,30 +957,73 @@ const getBBCodeContent = () => {
     const [notifications, setNotifications] = useState([]);
     const resultNotificationIdRef = useRef(null);  // For timed result messages
     const [showUpdateNotification, setShowUpdateNotification] = useState(false); // New state for notification visibility
-    const [commitInfo, setCommitInfo] = useState({ sha: '', date: null });
+    const [commitInfo, setCommitInfo] = useState({ sha: '', date: null, error: null });
     const { imageSource: deathReportImage, className: deathReportClass } = SeasonalEvents({ imageType: 'deathReport' });
     const { imageSource: civilianPaperworkImage, className: civilianPaperworkClass } = SeasonalEvents({ imageType: 'civilianPaperwork' });
 
 
     useEffect(() => {
-        fetch('https://api.github.com/repos/GTAW-PHMC/forms/commits/gh-pages')
-            .then(response => response.json())
-            .then(data => {
-                const commitDate = new Date(data.commit.author.date);
-                setCommitInfo({
-                    sha: data.sha.substring(0, 7),
-                    date: commitDate.toLocaleString('en-US', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        timeZoneName: 'short'
-                    })
+        const GITHUB_COMMIT_CACHE_KEY = 'githubCommitInfo';
+        const GITHUB_COMMIT_CACHE_EXPIRATION_MS = 15 * 60 * 1000; // Cache for 15 minutes
+
+        const fetchCommit = () => {
+            // 1. Try to load from cache first
+            try {
+                const cachedCommitDataString = localStorage.getItem(GITHUB_COMMIT_CACHE_KEY);
+                if (cachedCommitDataString) {
+                    const cachedData = JSON.parse(cachedCommitDataString);
+                    const isCacheFresh = (Date.now() - cachedData.timestamp) < GITHUB_COMMIT_CACHE_EXPIRATION_MS;
+                    if (isCacheFresh) {
+                        setCommitInfo(cachedData.info);
+                        return; // Exit if fresh data is found in cache
+                    }
+                }
+            } catch (e) {
+                console.error("Error reading commit info from cache:", e);
+            }
+
+            // 2. If cache is stale or doesn't exist, fetch from API
+            fetch('https://api.github.com/repos/GTAW-PHMC/forms/commits/gh-pages')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`GitHub API responded with status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    const commitDate = new Date(data.commit.author.date);
+                    const newCommitInfo = {
+                        sha: data.sha.substring(0, 7),
+                        date: commitDate.toLocaleString('en-US', {
+                            year: 'numeric', month: 'long', day: 'numeric',
+                            hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
+                        }),
+                        error: null // Clear any previous error on success
+                    };
+                    setCommitInfo(newCommitInfo);
+
+                    // 3. Cache the new data
+                    try {
+                        localStorage.setItem(GITHUB_COMMIT_CACHE_KEY, JSON.stringify({
+                            timestamp: Date.now(),
+                            info: newCommitInfo
+                        }));
+                    } catch (e) {
+                        console.error("Error writing commit info to cache:", e);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching commit:', error);
+                    // 4. On failure, set an error message but keep old data if it exists
+                    setCommitInfo(prev => ({
+                        ...prev,
+                        error: 'Could not fetch latest update information.'
+                    }));
                 });
-            })
-            .catch(error => console.error('Error fetching commit:', error));
-    }, []);
+        };
+
+        fetchCommit();
+    }, []); // This effect runs once on mount
 
 // Switch Form Handling Logic
     const [showPHMCModal, setShowPHMCModal] = useState(false); // This state will now control the generic SwitchableFormsModal
@@ -1684,39 +1727,35 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
 
 
     useEffect(() => {
-        // --- DEBUGGING START ---
-        console.log("Routing useEffect triggered on page load.");
-        const urlParams = new URLSearchParams(window.location.search);
-        const redirectedPath = urlParams.get('p');
+        // Check for a redirect from the 404 page via sessionStorage
+        const redirectPath = sessionStorage.getItem('redirectPath');
+        if (redirectPath) {
+            sessionStorage.removeItem('redirectPath'); // Clear it after use
+
+            // Use history.replaceState to update the URL in the address bar
+            // without reloading the page. This makes the URL look correct to the user.
+            window.history.replaceState(null, '', redirectPath);
+        }
+
+        // Now, use the current URL's pathname for routing logic.
+        // After the replaceState, window.location.pathname will be the path we want.
         const currentPath = window.location.pathname;
         const hash = window.location.hash;
 
-        console.log("Initial Path:", currentPath);
-        console.log("Redirected Path (from 'p' param):", redirectedPath);
-        console.log("URL Hash:", hash);
+        // --- DEBUGGING START ---
+        console.log("Routing useEffect triggered.");
+        console.log("Path for routing:", currentPath);
+        console.log("Hash for routing:", hash);
         // --- DEBUGGING END ---
 
-        // Determine the target path from either the direct URL or the redirected parameter
-        const targetPath = redirectedPath || currentPath;
-        console.log("Final Target Path for routing:", targetPath); // --- DEBUGGING ---
-
-        if (hash === '#bingo' || targetPath.endsWith('/bingo')) {
-            console.log("Bingo route detected. Opening Bingo modal."); // --- DEBUGGING ---
+        if (hash === '#bingo' || currentPath.endsWith('/bingo')) {
+            console.log("Bingo route detected. Opening Bingo modal.");
             setShowEmsBingoModal(true);
-        } else if (targetPath.endsWith('/cctv')) {
-            console.log("CCTV route detected. Opening CCTV modal."); // --- DEBUGGING ---
+        } else if (currentPath.endsWith('/cctv')) {
+            console.log("CCTV route detected. Opening CCTV modal.");
             handleShowCctvRequestModal();
         } else {
-            console.log("No specific route detected. Showing default view."); // --- DEBUGGING ---
-        }
-
-        // If we were redirected from the 404 page, clean up the URL for a better user experience
-        if (redirectedPath) {
-            console.log("Cleaning up the URL by removing the 'p' parameter."); // --- DEBUGGING ---
-            const newUrl = new URL(window.location.href);
-            newUrl.searchParams.delete('p');
-            // Use replaceState to change the URL without adding to the browser's history
-            window.history.replaceState({}, document.title, newUrl.href);
+            console.log("No specific route detected.");
         }
     }, []); // Empty dependency array ensures this runs only once on initial load
     const handleHideEmsBingoModal = useCallback(() => {
