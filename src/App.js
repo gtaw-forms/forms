@@ -2995,8 +2995,7 @@ const filterFormData = (formData, bbCodeVersion) => {
             }
         });
 
-        // IMPORTANT: Add this new environment variable to your .env file
-        const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+        const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL || process.env.REACT_APP_LEO_WEBHOOK_URL;
 
         if (!webhookURL) {
             showNotification('LEO Webhook URL is not configured.', 'error');
@@ -3015,7 +3014,7 @@ const filterFormData = (formData, bbCodeVersion) => {
                 ...(cctvData.discordUsername ? [{ name: "Discord Username", value: cctvData.discordUsername, inline: true }] : []),
                 { name: "Date/Time of Incident", value: cctvData.incidentDateTime || "N/A", inline: true },
                 { name: "Reason for Request", value: cctvData.requestReason || "N/A", inline: false },
-                { name: "CCTV Location", value: cctvData.location || "N/A", inline: false },
+                { name: "CCTV Location", value: cctvData.location || "N/A", inline: true },
                 { name: "Description of Events", value: `\`\`\`${cctvData.description || "N/A"}\`\`\``, inline: false },
                 ...(cctvData.oocNotes ? [{ name: "OOC Notes", value: `\`\`\`${cctvData.oocNotes}\`\`\``, inline: false }] : []),
             ],
