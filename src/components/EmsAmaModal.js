@@ -3,6 +3,7 @@ import { Form, Button } from 'react-bootstrap';
 // import domtoimage from 'dom-to-image'; // No longer needed
 import * as Sentry from "@sentry/react";
 import EMSAMAImage from '../assets/EMSAMA.png';
+import { copyToClipboard } from './notificationService'; // <-- NEW IMPORT
 
 import './EmsAmaModal.css'; // Ensure this CSS defines 'LufgaBold' if used, or use a fallback
 
@@ -281,28 +282,7 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
             showNotification(`AMA Form Saved & Uploaded: ${link}`, 'save');
             sendDiscordWebhook(patientSignature, date, guardianSignature, paramedicSignature, link);
 
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(link)
-                    .then(() => {
-                        showNotification('Imgur link copied to clipboard!', 'clipboard');
-                    })
-                    .catch(err => {
-                        console.error('Failed to copy Imgur link to clipboard (AMA):', err);
-                        Sentry.captureException(err, {
-                            extra: { message: 'Clipboard writeText failed for AMA form.', imgurLink: link, userAgent: navigator.userAgent }
-                        });
-                        let userMessage = 'Failed to copy Imgur link automatically.';
-                        if (err.name === 'NotAllowedError') userMessage += ' Please grant clipboard permission.';
-                        else if (err.message.includes('focused')) userMessage += ' Please ensure this window is focused.';
-                        else userMessage += ' Please copy the link manually.';
-                        showNotification(userMessage, 'error');
-                    });
-            } else {
-                const clipboardWarning = 'Clipboard API not available for AMA form.';
-                console.warn(clipboardWarning);
-                Sentry.captureMessage(clipboardWarning, { level: 'warning' });
-                showNotification('Clipboard API not available. Please copy the link manually.', 'warning');
-            }
+            await copyToClipboard(link, showNotification, 'Imgur link copied to clipboard!');
         } catch (error) {
             console.error('Error in AMA handleSave:', error);
             let errorContext = 'Error generating AMA form';
@@ -321,8 +301,6 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
     }, [
         patientSignature, date, guardianSignature, paramedicSignature,
         showNotification, uploadToImgur, sendDiscordWebhook, commitInfo,
-        // Removed isPreviewVisible from dependencies as canvas generation is independent
-        // Add overlay style objects if they were to become dynamic state/props
         patientSignatureOverlayStyle, dateOverlayStyle, guardianSignatureOverlayStyle, paramedicSignatureOverlayStyle
     ]);
 
