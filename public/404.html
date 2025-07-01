@@ -5,31 +5,14 @@
     <title>Redirecting...</title>
     <script type="text/javascript">
         // This script redirects all 404s to the root of the single-page app,
-        // passing the originally requested path as a query parameter.
+        // passing the originally requested path via sessionStorage.
 
-        // The base path of your application on GitHub Pages.
-        // For a URL like https://gtaw-forms.github.io/forms/, this is '/forms/'.
-        const basePath = '/forms/';
+        // Store the path the user tried to access (e.g., /forms/cctv).
+        sessionStorage.setItem('redirectPath', window.location.pathname);
 
-        // The path that was originally requested by the user (e.g., /forms/cctv).
-        const requestedPath = window.location.pathname;
-
-        // The original search query and hash from the URL, to be preserved.
-        const originalSearch = window.location.search;
-        const originalHash = window.location.hash;
-
-        // Construct the new URL. We redirect to the base path and pass the
-        // original path in the 'p' parameter. Your App.js is already configured
-        // to read this parameter on load.
-        // Example result: /forms/?p=%2Fforms%2Fcctv
-        const redirectUrl = basePath +
-                            '?p=' + encodeURIComponent(requestedPath) +
-                            originalSearch +
-                            originalHash;
-
-        // Perform the redirect. This replaces the current history entry, so the
-        // user won't get stuck in a back-button loop with the 404 page.
-        window.location.replace(redirectUrl);
+        // Redirect to the absolute base path of the application.
+        // For gtaw-forms.github.io/forms/, this is '/forms/'.
+        window.location.replace('/forms/');
     </script>
 </head>
 <body>
