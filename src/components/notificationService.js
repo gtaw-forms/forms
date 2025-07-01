@@ -1,7 +1,42 @@
 import * as Sentry from "@sentry/react";
 import { ref, get } from 'firebase/database';
 
-// Helper function to send a generic Discord webhook
+export const copyToClipboard = async (text, showNotification, successMessage) => {
+    // Check if the clipboard API is available at all.
+    if (!navigator.clipboard) {
+        showNotification('Clipboard API not available in this browser.', 'error');
+        Sentry.captureMessage('Clipboard API not available.');
+        return false;
+    }
+
+    // The Clipboard API is only available in secure contexts (HTTPS or localhost).
+    if (!window.isSecureContext) {
+        showNotification('Clipboard access is only available on secure sites (HTTPS).', 'error');
+        Sentry.captureMessage('Attempted to use clipboard in a non-secure context.');
+        return false;
+    }
+
+    try {
+        await navigator.clipboard.writeText(text);
+        showNotification(successMessage, 'clipboard');
+        return true;
+    } catch (err) {
+        console.error('Failed to copy text: ', err);
+        Sentry.captureException(err, { extra: { context: 'copyToClipboard helper' } });
+        
+        let userMessage = 'Failed to copy text automatically.';
+        // Provide more specific user guidance based on the error.
+        if (err.name === 'NotAllowedError') {
+            userMessage = 'Clipboard permission was denied. Please keep the webpage in focus and try again.';
+        } else if (err.message.includes('Document is not focused')) {
+            userMessage = 'Could not copy. Please click on the page and try the copy button again.';
+        } else {
+            userMessage += ' Please try again or copy manually.';
+        }
+        showNotification(userMessage, 'error');
+        return false;
+    }
+};
 export const sendDiscordWebhookInternal = async (webhookUrl, embedData, commitInfo = {}, contextMessage = "") => { // Added export
     if (!webhookUrl) {
         console.error("Discord webhook URL not provided to sendDiscordWebhookInternal.");
@@ -193,13 +228,9 @@ export const handlePhmcRecruitmentCopyAndNotify = async ({
         return;
     }
 
-    try {
-        if (!navigator.clipboard || !navigator.clipboard.writeText) {
-            throw new Error("Clipboard API not available");
-        }
-        await navigator.clipboard.writeText(bbCodeToCopy);
-        showNotification(`${formName} BBCode copied to clipboard!`, 'clipboard');
+    const copied = await copyToClipboard(bbCodeToCopy, showNotification, `${formName} BBCode copied to clipboard!`);
 
+    if (copied) {
         const discordWebhookUrl = process.env.REACT_APP_PHMC_RECRUITMENT_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
         if (discordWebhookUrl) {
@@ -215,15 +246,6 @@ export const handlePhmcRecruitmentCopyAndNotify = async ({
             console.warn(`Discord webhook URL for ${formName} not set, skipping notification.`);
             showNotification("BBCode copied, but Discord notification for recruitment not configured.", 'warning');
         }
-
-    } catch (error) {
-        console.error(`Error during ${formName} copy or webhook: `, error);
-        Sentry.captureException(error, { extra: { context: `handlePhmcRecruitmentCopyAndNotify for ${formName}` } });
-        let userMessage = `Failed to copy ${formName} BBCode.`;
-        if (error.message === "Clipboard API not available") {
-            userMessage = "Clipboard API not available! BBCode not copied.";
-        }
-        showNotification(userMessage, 'exclamation-triangle');
     }
 };
 
@@ -369,64 +391,102 @@ export const handleFormCopyAndNotify = async ({
     commitInfo,
     database,
 }) => {
+    // --- Step 1: Generate BBCode ---
     const bbCodeToCopy = getBBCodeContent();
     const definition = getFormDefinition(bbCodeVersion);
     const versionName = definition ? definition.name : "Unknown Form";
 
     if (!bbCodeToCopy) {
-        showNotification(`Failed to generate BBCode for ${versionName}. Please check form data. Copying and saving skipped.`, 'error');
-        Sentry.captureMessage(`getBBCodeContent returned null/undefined for bbCodeVersion: ${bbCodeVersion} in handleFormCopyAndNotify`, 'error');
+        showNotification(`Failed to generate BBCode for ${versionName}. Please check form data.`, 'error');
+        Sentry.captureMessage(`getBBCodeContent returned null/undefined for bbCodeVersion: ${bbCodeVersion}`, 'error');
         return;
     }
 
-    const canProceedAfterSaveAttempt = await saveReport();
+    // --- Step 2: Save Report to Firebase (if applicable) ---
+    // The saveReport function should return `true` on success, and `false` if saving is not applicable (e.g., SAAA forms) or fails.
+    const saveSuccessful = await saveReport();
 
-    if (!canProceedAfterSaveAttempt) {
-        if (selectedAgencyGroup === 'PHMC Recruitment') {
-            console.log("PHMC Recruitment form: Processed (copied to clipboard, no Firebase save). Generic webhook skipped.");
-            return;
-        } else if (selectedAgencyGroup !== 'SAAA') {
-            console.log("Report saving failed for non-SAAA, non-PHMC Recruitment form, or validation error occurred. Webhook and further copy skipped.");
-            return;
-        }
+    // For standard forms (PHMC, Coroner), if saving fails, we stop the entire process.
+    if (selectedAgencyGroup !== 'SAAA' && !saveSuccessful) {
+        showNotification('Report failed to save to Firebase. Copying and webhook notification will be skipped.', 'error');
+        return;
     }
 
-    const {
-        decedentName, decedentOOC,
-    } = formData;
+    // --- Step 3: Copy BBCode to Clipboard ---
+    // SAAA forms don't save to Firebase, but they do need to be copied.
+    const copySuccessful = await copyToClipboard(bbCodeToCopy, showNotification, `${versionName} copied to clipboard!`);
 
-    let firebaseSavedCount = 0;
+    if (!copySuccessful) {
+        // If copy fails, we stop the process. The user has already been notified by copyToClipboard.
+        // We might add a small extra notification for context.
+        showNotification('BBCode could not be copied. Webhook notification will be skipped.', 'warning');
+        return;
+    }
+
+    // --- Step 4: Send Discord Webhook Notification ---
+    // This part runs if the previous steps were successful.
     try {
-        const allReportsRef = ref(database, 'savedReports');
-        const snapshot = await get(allReportsRef);
-        if (snapshot.exists()) {
-            const usersData = snapshot.val();
-            for (const userId in usersData) {
-                if (typeof usersData[userId] === 'object' && usersData[userId] !== null) {
-                    firebaseSavedCount += Object.keys(usersData[userId]).length;
+        let discordWebhookUrl;
+        if (selectedAgencyGroup === 'SAAA') {
+            discordWebhookUrl = process.env.REACT_APP_SAAA_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+        } else {
+            discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+        }
+
+        if (discordWebhookUrl) {
+            const { decedentName, decedentOOC } = formData;
+            const currentIdentifier = selectedAgencyGroup === 'SAAA'
+                ? `${formData.registrantFullName || formData.ceoFullName || formData.patientFirstName || 'SAAA_Form'}_${Date.now()}`
+                : `${decedentName || ''}|${decedentOOC || ''}`;
+
+            // Prevent spamming webhooks for the same PHMC/Coroner report
+            if (currentIdentifier && currentIdentifier === lastWebhookIdentifier && selectedAgencyGroup !== 'SAAA') {
+                console.log('Duplicate PHMC/Coroner report copy detected, skipping webhook.');
+                return;
+            }
+
+            // Get total saved reports count for context
+            let firebaseSavedCount = 0;
+            try {
+                const allReportsRef = ref(database, 'savedReports');
+                const snapshot = await get(allReportsRef);
+                if (snapshot.exists()) {
+                    const usersData = snapshot.val();
+                    firebaseSavedCount = Object.values(usersData).reduce((total, userReports) => total + Object.keys(userReports).length, 0);
                 }
+            } catch (error) {
+                console.error("Error fetching total saved reports count from Firebase:", error);
+                Sentry.captureException(error, { extra: { context: 'Firebase Total Saved Reports Count' } });
             }
-        }
-    } catch (error) {
-        console.error("Error fetching total saved reports count from Firebase:", error);
-        Sentry.captureException(error, { extra: { context: 'Firebase Total Saved Reports Count in Service' } });
-        firebaseSavedCount = 0;
-    }
 
-    try {
-        if (selectedAgencyGroup !== 'SAAA') {
-            if (!navigator.clipboard || !navigator.clipboard.writeText) {
-                throw new Error("Clipboard API not available");
+            let webhookActionMessage = "BBCode Copied";
+            if (saveSuccessful && selectedAgencyGroup !== 'SAAA') {
+                webhookActionMessage = "BBCode Copied & Report Saved to Firebase";
             }
-            await navigator.clipboard.writeText(bbCodeToCopy);
-            showNotification(`${versionName} copied to clipboard!`, 'check-circle');
 
+            await sendFormInteractionWebhookInternal({
+                webhookUrl: discordWebhookUrl,
+                formData,
+                versionName,
+                selectedAgencyGroup,
+                statusTitle: "Someone has used your generator!",
+                statusColor: 0x00FF00,
+                actionMessage: webhookActionMessage,
+                commitInfo,
+                firebaseSavedCount,
+            });
+
+            if (selectedAgencyGroup !== 'SAAA') {
+                setLastWebhookIdentifier(currentIdentifier);
+            }
+
+            // Special handling for Death Report to prompt for Coroner Email
             if (bbCodeVersion === 1 && formData.showRequestingOfficerInput === true) {
                 const buttonJSX = (
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
-                            handleAgencySelect(2);
+                            handleAgencySelect(2); // Switch to Coroner Email form
                         }}
                         style={{ marginLeft: '10px', cursor: 'pointer', padding: '0.25rem 0.5rem', fontSize: '0.875rem', border: '1px solid #0dcaf0', background: '#0dcaf0', color: 'white', borderRadius: '0.25rem' }}
                     >
@@ -434,104 +494,18 @@ export const handleFormCopyAndNotify = async ({
                     </button>
                 );
                 showNotification(
-                    <>
-                        A Coroner Email was requested for this report. {buttonJSX}
-                    </>,
+                    <>A Coroner Email was requested for this report. {buttonJSX}</>,
                     'info-circle',
                     15000
                 );
             }
-        }
-
-        let discordWebhookUrl;
-        if (selectedAgencyGroup === 'SAAA') {
-            discordWebhookUrl = process.env.REACT_APP_SAAA_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-            if (!process.env.REACT_APP_SAAA_DISCORD_WEBHOOK_URL && process.env.REACT_APP_DISCORD_WEBHOOK_URL) {
-                console.warn("SAAA specific webhook URL (REACT_APP_SAAA_DISCORD_WEBHOOK_URL) not set, using default PHMC/Coroner webhook URL.");
-            }
-        } else {
-            discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-        }
-
-        if (discordWebhookUrl) {
-            const currentIdentifier = selectedAgencyGroup === 'SAAA'
-                ? `${formData.registrantFullName || formData.ceoFullName || formData.patientFirstName || 'SAAA_Form'}_${Date.now()}`
-                : `${decedentName || ''}|${decedentOOC || ''}`;
-
-            if (currentIdentifier && currentIdentifier === lastWebhookIdentifier && selectedAgencyGroup !== 'SAAA') {
-                console.log('Duplicate PHMC/Coroner report copy detected, skipping webhook.');
-            } else {
-                let webhookActionMessage = "BBCode Copied";
-                if (canProceedAfterSaveAttempt && selectedAgencyGroup !== 'SAAA') {
-                    webhookActionMessage = "BBCode Copied & Report Save Processed";
-                }
-
-                await sendFormInteractionWebhookInternal({ // Use the renamed internal function
-                    webhookUrl: discordWebhookUrl,
-                    formData,
-                    versionName,
-                    selectedAgencyGroup,
-                    statusTitle: "Someone has used your generator!",
-                    statusColor: 0x00FF00,
-                    actionMessage: webhookActionMessage,
-                    commitInfo,
-                    firebaseSavedCount,
-                });
-                if (selectedAgencyGroup !== 'SAAA') {
-                    setLastWebhookIdentifier(currentIdentifier);
-                }
-            }
         } else {
             console.warn(`Discord webhook URL not set for ${selectedAgencyGroup || 'default'} group, skipping notification.`);
         }
-
     } catch (error) {
-        console.error('Error during copy or webhook in service: ', error);
-        Sentry.captureException(error, { extra: { context: 'handleFormCopyAndNotify Service', errorName: error.name, errorMessage: error.message } });
-
-        const saveStatusMessage = (selectedAgencyGroup === 'SAAA')
-            ? "SAAA form processed (no server save)."
-            : (canProceedAfterSaveAttempt ? "Report saving process was run." : "Report saving failed or was skipped.");
-
-        let copyFailUserMessage = `An error occurred. ${saveStatusMessage}`;
-        if (error.message === "Clipboard API not available") {
-            copyFailUserMessage = `Clipboard API not available! BBCode not copied. ${saveStatusMessage}`;
-        } else if (selectedAgencyGroup !== 'SAAA') {
-            copyFailUserMessage = `Failed to copy BBCode! ${saveStatusMessage}`;
-        } else {
-            copyFailUserMessage = `Error after BBCode copy. ${saveStatusMessage}`;
-        }
-        showNotification(copyFailUserMessage, 'exclamation-triangle');
-
-        let failureWebhookUrl;
-        if (selectedAgencyGroup === 'SAAA') {
-            failureWebhookUrl = process.env.REACT_APP_SAAA_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-        } else {
-            failureWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-        }
-
-        if (failureWebhookUrl) {
-            let failureActionMessage = `Error during processing. ${saveStatusMessage}`;
-            if (error.message === "Clipboard API not available") {
-                failureActionMessage = `Clipboard API unavailable. ${saveStatusMessage}`;
-            } else if (selectedAgencyGroup !== 'SAAA') {
-                failureActionMessage = `BBCode could not be copied. ${saveStatusMessage}`;
-            } else {
-                failureActionMessage = `Error after BBCode copy. ${saveStatusMessage}`;
-            }
-
-                await sendFormInteractionWebhookInternal({ // Use the renamed internal function
-                    webhookUrl: failureWebhookUrl,
-                    formData,
-                    versionName,
-                    selectedAgencyGroup,
-                    statusTitle: `Processing Failed (...)`,
-                    statusColor: 0xFF0000,
-                    actionMessage: failureActionMessage,
-                    commitInfo,
-                    errorMessage: error.message,
-                });
-        }
+        console.error('Error during webhook notification in service: ', error);
+        Sentry.captureException(error, { extra: { context: 'handleFormCopyAndNotify Webhook Error', errorName: error.name, errorMessage: error.message } });
+        showNotification('Report processed, but failed to send Discord notification.', 'warning');
     }
 };
 export const sendErrorToDiscord = async (errorDetails) => {
