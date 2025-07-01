@@ -595,7 +595,7 @@ const initialFormData = {
     const loadingNotificationIdRef = useRef(null);
     const [showCctvRequestModal, setShowCctvRequestModal] = useState(false); // --- MODIFICATION: Add new state
     const handleShowCctvRequestModal = () => {
-        setShowAgencyGroupSelectorModal(false); // Close the group selector
+        setShowAgencyGroupSelectorModal(false); // Hide the main selector if it's open
         setShowCctvRequestModal(true);
     };
 
@@ -1685,30 +1685,29 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
 
     // MODIFIED: This useEffect now stores the original URL
     useEffect(() => {
+        // This effect runs once on component mount to handle deep linking (e.g., /cctv, /bingo)
         const urlParams = new URLSearchParams(window.location.search);
-        const redirectedPath = urlParams.get('p'); // Get the original path from the 'p' query param
-
+        const redirectedPath = urlParams.get('p'); // This comes from our 404.html redirect
         const currentPath = window.location.pathname;
         const hash = window.location.hash;
 
-        // Check for #bingo hash
-        if (hash === '#bingo') {
+        // Determine the target path from either the direct URL or the redirected parameter
+        const targetPath = redirectedPath || currentPath;
+
+        if (hash === '#bingo' || targetPath.endsWith('/bingo')) {
             setShowEmsBingoModal(true);
-        } 
-        // Check if the current path ends with /bingo OR if we were redirected from a /bingo path
-        else if (currentPath.endsWith('/bingo') || (redirectedPath && redirectedPath.endsWith('/bingo'))) {
-            setShowEmsBingoModal(true);
+        } else if (targetPath.endsWith('/cctv')) {
+            handleShowCctvRequestModal();
         }
 
-        // Clean up the URL after the modal is opened, regardless of how it was opened.
-        // This prevents the 'p' parameter from lingering in the URL.
+        // If we were redirected from the 404 page, clean up the URL for a better user experience
         if (redirectedPath) {
             const newUrl = new URL(window.location.href);
-            newUrl.searchParams.delete('p'); // Remove the 'p' parameter
-            window.history.replaceState({}, document.title, newUrl.href); // Update URL without adding to history
+            newUrl.searchParams.delete('p');
+            // Use replaceState to change the URL without adding to the browser's history
+            window.history.replaceState({}, document.title, newUrl.href);
         }
-
-    }, []); // Empty dependency array ensures this runs only once on mount
+    }, []); // Empty dependency array ensures this runs only once on initial load
     const handleHideEmsBingoModal = useCallback(() => {
         setShowEmsBingoModal(false);
 
@@ -1732,8 +1731,8 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
 
     const handleHideCctvRequestModal = useCallback(() => {
         setShowCctvRequestModal(false);
+        // When the modal is closed, remove '/cctv' from the URL if it's there
         const url = new URL(window.location.href);
-        // Clean up the path if it ends with /cctv
         if (url.pathname.endsWith('/cctv')) {
             url.pathname = url.pathname.replace(/\/cctv$/, '') || '/';
             window.history.replaceState({}, document.title, url.href);
@@ -3036,7 +3035,7 @@ const filterFormData = (formData, bbCodeVersion) => {
                 return false;
             } else {
                 showNotification('CCTV Request sent successfully!', "check-circle");
-                setShowCctvRequestModal(false); // Close modal on success
+                handleHideCctvRequestModal(); // Use the new handler to close modal and clean URL
                 return true;
             }
         } catch (error) {
@@ -3994,9 +3993,9 @@ const handleCopyAndNotifyWrapper = async () => {
 
             />
 
-                        <CctvRequestWebhookModal
+            <CctvRequestWebhookModal
                 show={showCctvRequestModal}
-                onHide={handleHideCctvRequestModal} // Use the new handler
+                onHide={handleHideCctvRequestModal} // Ensure this uses the new handler
                 onSubmit={handleCctvWebhookSubmit}
                 showNotification={showNotification}
             />
