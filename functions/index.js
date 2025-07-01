@@ -1,9 +1,5 @@
-// functions/index.js
-
-// Use ESM 'import' syntax for all modules
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { setGlobalOptions } from "firebase-functions/v2";
-import * as functions from "firebase-functions"; // Use 'import * as' for the v1 SDK
 import admin from "firebase-admin";
 import fetch from "node-fetch";
 
@@ -29,9 +25,11 @@ const getShuffledPhrases = (phrases) => {
 };
 
 const sendWebhook = async (payload) => {
-    const webhookURL = functions.config().webhooks?.admin_action;
+    // --- MODIFICATION: Use process.env to access the secret/environment variable
+    const webhookURL = process.env.ADMIN_ACTION_WEBHOOK_URL;
     if (!webhookURL) {
-        console.warn("Webhook URL not found in config. Run: firebase functions:config:set webhooks.admin_action=\"YOUR_URL\"");
+        // --- MODIFICATION: Updated warning message
+        console.warn("Webhook URL not found. Please set the ADMIN_ACTION_WEBHOOK_URL secret for this function.");
         return;
     }
     try {
@@ -51,6 +49,8 @@ const sendWebhook = async (payload) => {
 export const scheduledBingoReset = onSchedule({
     schedule: "every day 09:00",
     timeZone: "UTC",
+    // --- MODIFICATION: Add the 'secrets' option to grant access to the webhook URL
+    secrets: ["ADMIN_ACTION_WEBHOOK_URL"],
 }, async (event) => {
     console.log(`Running daily scheduled bingo reset. Event ID: ${event.id}`);
 
@@ -83,7 +83,12 @@ export const scheduledBingoReset = onSchedule({
             }
 
             const masterPhrasesData = masterSnapshot.val();
-            const masterPhrases = Array.isArray(masterPhrasesData) ? masterPhrasesData.filter(Boolean) : [];
+            // --- IMPROVEMENT: More robustly handle object-or-array data structures from Firebase.
+            const masterPhrases = Array.isArray(masterPhrasesData)
+                ? masterPhrasesData.filter(Boolean)
+                : (typeof masterPhrasesData === 'object' && masterPhrasesData !== null)
+                    ? Object.values(masterPhrasesData).map(p => (typeof p === 'object' ? p.phrase : p)).filter(Boolean)
+                    : [];
 
             if (masterPhrases.length < 24) {
                 results.notEnoughPhrases.push(`${bingoType.name} (${masterPhrases.length}/24)`);

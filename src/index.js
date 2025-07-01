@@ -3,21 +3,31 @@ import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
-// --- MODIFICATION START ---
-// 1. Use `import` to make functions available in this file.
-// 2. Use the modern `getClient` instead of the deprecated `getCurrentHub`.
 import { init, getClient } from "@sentry/react";
 // --- MODIFICATION END ---
 import * as Sentry from "@sentry/react";
 
 // --- START: Fallback Error Reporting (This logic is excellent, no changes needed) ---
-const fallbackWebhookQueue = [];
-let isProcessingFallbackQueue = false;
+const discordErrorWebhookQueue = [];
+let isProcessingDiscordQueue = false;
+let isSentryBlocked = false; // Flag to track if Sentry connectivity failed
 
-const processFallbackQueue = async (webhookURL) => {
-    if (isProcessingFallbackQueue || fallbackWebhookQueue.length === 0) return;
-    isProcessingFallbackQueue = true;
-    const payload = fallbackWebhookQueue.shift();
+/**
+ * Processes the queue of Discord error messages one by one with a delay.
+ * This acts as a rate-limiter to prevent spamming the webhook.
+ */
+const processDiscordErrorQueue = async () => {
+    if (isProcessingDiscordQueue || discordErrorWebhookQueue.length === 0) return;
+
+    const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+    if (!webhookURL) {
+        console.error("Discord Error Webhook: URL is not configured. Cannot process queue.");
+        discordErrorWebhookQueue.length = 0; // Clear queue if no URL
+        return;
+    }
+
+    isProcessingDiscordQueue = true;
+    const payload = discordErrorWebhookQueue.shift();
     try {
         await fetch(webhookURL, {
             method: 'POST',
@@ -25,28 +35,27 @@ const processFallbackQueue = async (webhookURL) => {
             body: JSON.stringify(payload)
         });
     } catch (e) {
-        console.error("CRITICAL: Failed to send fallback error webhook.", e);
+        console.error("CRITICAL: Failed to send Discord error webhook.", e);
     } finally {
+        // Rate limit: wait 2 seconds before processing the next item.
         setTimeout(() => {
-            isProcessingFallbackQueue = false;
-            if (fallbackWebhookQueue.length > 0) {
-                processFallbackQueue(webhookURL);
-            }
+            isProcessingDiscordQueue = false;
+            processDiscordErrorQueue(); // Process next item
         }, 2000);
     }
 };
 
-const sendFallbackErrorWebhook = (errorDetails) => {
-    const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL; 
-    if (!webhookURL) {
-        console.error("Fallback Webhook: URL is not configured. Cannot send error report.");
-        return;
-    }
+/**
+ * Creates and queues a Discord embed for an unhandled error.
+ * @param {object} errorDetails - Details about the caught error.
+ */
+const sendDiscordErrorWebhook = (errorDetails) => {
     const embed = {
-        title: "🚨 Sentry Blocked - Fallback Error Report 🚨",
-        description: "An error occurred, but Sentry's SDK seems to be blocked. This is a fallback report.",
-        color: 0xFFA500, // Orange
+        title: "🚨 Unhandled Application Error 🚨",
+        description: "An unhandled error was caught by the global error handler.",
+        color: isSentryBlocked ? 0xFFA500 : 0xDE354C, // Orange if Sentry is blocked, Red otherwise
         fields: [
+            { name: "Sentry Status", value: isSentryBlocked ? "⚠️ Blocked / Unreachable" : "✅ Active", inline: false },
             { name: "Error Message", value: `\`\`\`${String(errorDetails.message).substring(0, 1000)}\`\`\``, inline: false },
             { name: "Source File", value: errorDetails.source || "N/A", inline: true },
             { name: "Line", value: errorDetails.lineno || "N/A", inline: true },
@@ -54,16 +63,13 @@ const sendFallbackErrorWebhook = (errorDetails) => {
             { name: "User Agent", value: `\`\`\`${navigator.userAgent}\`\`\``, inline: false },
         ],
         timestamp: new Date().toISOString(),
-        footer: { text: "PHMC Forms - Fallback Error Handler" }
+        footer: { text: "PHMC Forms - Global Error Handler" }
     };
-    fallbackWebhookQueue.push({ embeds: [embed] });
-    processFallbackQueue(webhookURL);
+    discordErrorWebhookQueue.push({ embeds: [embed] });
+    processDiscordErrorQueue(); // Start processing the queue if it's not already running
 };
-// --- END: Fallback Error Reporting ---
 
 
-// 1. Initialize Sentry.
-// The `init` function is now correctly in scope and can be called.
 init({
   dsn: "https://5dfa5683e8dc9adbc7f30e44757995c7@o4509126124765184.ingest.de.sentry.io/4509126125813840",
   sendDefaultPii: true,
@@ -71,27 +77,37 @@ init({
     Sentry.replayIntegration()
   ],
   // Session Replay
-  replaysSessionSampleRate: 0.1, // This sets the sample rate at 10%. You may want to change it to 100% while in development and then sample at a lower rate in production.
-  replaysOnErrorSampleRate: 1.0 // If you're not already sampling the entire session, change the sample rate to 100% when sampling sessions where errors occur.
+  replaysSessionSampleRate: 0.1,
+  replaysOnErrorSampleRate: 1.0
 });
-console.log("Sentry has been initialized. Now checking connectivity.");
+console.log("Sentry has been initialized.");
 
-// 2. Asynchronously check if Sentry is actually able to send data.
+// --- Global Error Handling Setup ---
+// This custom handler will report errors to Discord and then allow Sentry's default handler to run.
+window.onerror = (message, source, lineno, colno, errorObject) => {
+    // Ignore common, non-critical errors that can create a lot of noise.
+    if (typeof message === 'string' && message.includes("ResizeObserver loop limit exceeded")) {
+        return true; // Suppress this error from being processed further.
+    }
+
+    // Queue the error for reporting to Discord.
+    sendDiscordErrorWebhook({ message, source, lineno, colno, error: errorObject });
+
+    // Return false to ensure the error is still processed by other handlers (like Sentry's)
+    // and the default browser console output.
+    return false;
+};
+
+// 2. Asynchronously check Sentry connectivity to provide more context in Discord alerts.
 (async () => {
     // Wait a moment for Sentry's client to be fully available after init.
     await new Promise(resolve => setTimeout(resolve, 100));
     
-    // --- MODIFICATION START ---
-    // Use the modern `getClient()` function, which is the direct replacement for `getCurrentHub().getClient()`.
     const client = getClient();
-    // --- MODIFICATION END ---
 
     if (!client || !client.getDsn()) {
-        console.error("Sentry client or DSN not found. Setting up fallback error reporting immediately.");
-        window.onerror = (message, source, lineno, colno, errorObject) => {
-            sendFallbackErrorWebhook({ message, source, lineno, colno, error: errorObject });
-            return false;
-        };
+        console.error("Sentry client or DSN not found. Sentry reporting will fail.");
+        isSentryBlocked = true; // Set the flag
         return;
     }
 
@@ -99,18 +115,14 @@ console.log("Sentry has been initialized. Now checking connectivity.");
     const ingestUrl = `${dsn.protocol}://${dsn.host}/api/${dsn.projectId}/envelope/`;
 
     try {
+        // We use 'no-cors' because we don't need the response, just to see if the request can be made.
+        // A successful request (even if opaque) suggests no network-level blocking (e.g., ad-blockers).
         await fetch(ingestUrl, { method: 'HEAD', mode: 'no-cors' });
-        console.log("Sentry connectivity check successful. Fallback is not needed.");
+        console.log("Sentry connectivity check successful. Discord reports will show Sentry as 'Active'.");
+        isSentryBlocked = false;
     } catch (error) {
-        console.warn("Sentry connectivity check failed. Setting up fallback error reporting.", error);
-        
-        window.onerror = (message, source, lineno, colno, errorObject) => {
-            if (typeof message === 'string' && message.includes("ResizeObserver loop limit exceeded")) {
-                return true;
-            }
-            sendFallbackErrorWebhook({ message, source, lineno, colno, error: errorObject });
-            return false;
-        };
+        console.warn("Sentry connectivity check failed. Sentry may be blocked. Discord reports will reflect this.", error);
+        isSentryBlocked = true; // Set the flag
     }
 })();
 
