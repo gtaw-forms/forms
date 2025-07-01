@@ -1728,6 +1728,37 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
 
     }, []);
 
+    
+
+    const handleHideCctvRequestModal = useCallback(() => {
+        setShowCctvRequestModal(false);
+        const url = new URL(window.location.href);
+        // Clean up the path if it ends with /cctv
+        if (url.pathname.endsWith('/cctv')) {
+            url.pathname = url.pathname.replace(/\/cctv$/, '') || '/';
+            window.history.replaceState({}, document.title, url.href);
+        }
+    }, []);
+
+    useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const redirectedPath = urlParams.get('p');
+        const currentPath = window.location.pathname;
+        const hash = window.location.hash;
+
+        if (hash === '#bingo' || currentPath.endsWith('/bingo') || (redirectedPath && redirectedPath.endsWith('/bingo'))) {
+            setShowEmsBingoModal(true);
+        } else if (currentPath.endsWith('/cctv') || (redirectedPath && redirectedPath.endsWith('/cctv'))) {
+            handleShowCctvRequestModal();
+        }
+
+        if (redirectedPath) {
+            const newUrl = new URL(window.location.href);
+            newUrl.searchParams.delete('p');
+            window.history.replaceState({}, document.title, newUrl.href);
+        }
+    }, []); // This effect runs once on initial load
+
 const [showCoronerRankModal, setShowCoronerRankModal] = useState(false);
 const uniqueCoronerRanks = [...new Set(coronerListData.map(c => c.rank))].sort();
 const handleCoronerRankSubmit = async ({ selectedEmployee, newRank }) => { // Accept the object
@@ -2965,7 +2996,7 @@ const filterFormData = (formData, bbCodeVersion) => {
         });
 
         // IMPORTANT: Add this new environment variable to your .env file
-        const webhookURL = process.env.REACT_APP_LEO_WEBHOOK_URL;
+        const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
         if (!webhookURL) {
             showNotification('LEO Webhook URL is not configured.', 'error');
@@ -3966,7 +3997,7 @@ const handleCopyAndNotifyWrapper = async () => {
 
                         <CctvRequestWebhookModal
                 show={showCctvRequestModal}
-                onHide={() => setShowCctvRequestModal(false)}
+                onHide={handleHideCctvRequestModal} // Use the new handler
                 onSubmit={handleCctvWebhookSubmit}
                 showNotification={showNotification}
             />
