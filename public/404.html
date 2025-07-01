@@ -19,15 +19,9 @@
         // Based on your package.json homepage, it should be '/forms/'.
         var basename = '/forms/'; 
 
-        // Construct the new URL to redirect to: /forms/index.html?p=/forms/bingo
-        var redirectUrl = basename + 'index.html?p=' + encodeURIComponent(path);
-
-        // Replace the current history entry with the redirect URL.
-        // This prevents the original 404 URL from being in the browser history.
-        window.history.replaceState(null, null, redirectUrl);
-
-        // Redirect to the new URL.
-        window.location.replace(redirectUrl);
+      window.location.replace(
+        basePath + '?p=' + path + window.location.search + window.location.hash
+      );
     </script>
 </head>
 <body>

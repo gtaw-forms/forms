@@ -1,4 +1,3 @@
-// src/components/Admin/CctvRequestWebhookModal.js
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { Modal, Button, Form, Spinner } from 'react-bootstrap';
@@ -93,11 +92,11 @@ const CctvRequestWebhookModal = ({ show, onHide, onSubmit, showNotification }) =
         <div style={modalOverlayStyle} onClick={onHide}>
             <div style={modalContentStyle} onClick={e => e.stopPropagation()}>
                 <div style={modalHeaderStyle}>
-                    <h5 style={modalTitleStyle}>CCTV Request (Test Webhook)</h5>
+                    <h5 style={modalTitleStyle}>CCTV Request </h5>
                     <button onClick={onHide} style={closeButtonStyle} aria-label="Close modal">&times;</button>
                 </div>
                 <div style={modalBodyStyle}>
-                    <p className="text-muted small">This form is sent directly to PHMC Supervisors to request CCTV Footage. It will be handled within the next 24 hours and you'll be contacted via Cell Phone or Departmental.</p>
+                    <p className="text-muted small">This form is sent directly to PHMC Supervisors to request CCTV Footage. It will be handled within the next 24 hours and you'll be contacted via Cell Phone or Departmental. (( Abuse of this form will be reported to Legal Faction Management )) </p>
                     <Form>
                         {/* --- MODIFICATION START: Reorganized form layout --- */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
@@ -157,7 +156,7 @@ const CctvRequestWebhookModal = ({ show, onHide, onSubmit, showNotification }) =
                 <div style={modalFooterStyle}>
                     <Button variant="secondary" onClick={onHide} disabled={isSubmitting}>Cancel</Button>
                     <Button variant="primary" onClick={handleSubmit} disabled={isSubmitting} style={{ marginLeft: '10px' }}>
-                        {isSubmitting ? <Spinner as="span" animation="border" size="sm" /> : 'Send Test Webhook'}
+                        {isSubmitting ? <Spinner as="span" animation="border" size="sm" /> : 'Send CCTV Request'}
                     </Button>
                 </div>
             </div>
