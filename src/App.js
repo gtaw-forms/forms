@@ -53,7 +53,6 @@ import './App.css';
 import './buttons.css'
 
 import 'react-bootstrap-typeahead/css/Typeahead.css';
-import BingoFireworks from './components/BingoFireworks'; 
 
 // database
 import { database } from './firebase'; // Your Firebase config
@@ -72,277 +71,115 @@ function App() {
     const [showEmsBingoModal, setShowEmsBingoModal] = useState(false);
 
 const initialFormData = {
+    // Core user state to preserve
+    phmcEmployee: '',
+    coronerEmployee: '',
+    coronerBadge: '',
     coronerRank: 'Forensic Attendant',
-    placeOfDeath: '',
-    evidenceLockerID: '',
-    evidenceLocker: '',
+    coronerDiscord: '',
+    coronerPHNumber: '50056',
+    lastName: '',
+    phmcRank: '',
+
+    // Common form fields
     department: '',
     dateTime: '',
-    phmcEmployeeLastName: '',  
-    serialNumber: '',
-    decedentName: '',
-    phmcEmployee: '', // This will be preserved in clearForm
-    pronouncedTimeOfDeath: '',
-    synopsis: '',
-    probableCauseOfDeath: '',
-    mannerOfDeath: '',
-    typeOfDeath: '',
-    coronerEmployee: '', // This will be preserved in clearForm
-    MedicalRecordsRelease: [],
-    payNow: false,
-    paymentProofPhotos: '',
-    PurposeMedicalInformationReleaseFormat: '',
-    PurposeMedicalInformationRelease: '',
-    lab: [''],
-    extraStaff: [],
-    decedentOOC: '',
-    scenePhotos: '',
-    patientMedInfoFormatOther: '',
-    patientZIP: '',
-    lastName: '', // This will be preserved in clearForm (related to phmcEmployee)
-    bloodOxy: '',
-    coronerBadge: '', // This will be preserved in clearForm
-    additionalImages: '',
-    requestingOfficer: '',
-    coronerDiscord: '', // This will be preserved in clearForm
-    coronerPHNumber: '50056',
-    deathReport: '',
-    additionalReports: [],
-    showAdditionalReports: false,
-    internalReport: '',
-    internalAdditionalReports: '',
-    policeNotification: '',
-    treatmentLocation: '',
-    moreDeathReports: [''],
-    patientAllergies: '',
-    surgeryComplications: '',
-    surgeryProcedures: '',
-    drugType: '',
-    postDrugtype: '',
-    surgicalSummery: '',
-    surgeryTime: '',
-    medicalComplications: '',
-    treatmentProcedures: '',
-    medType: '',
-    postTreatment: '',
-    medicalSummary: '',
-    evalTime: '',
-    patientPH: '',
-    patientBPM: '',
-    patientBMI: '',
-    patientTemperature: '',
-    patientCareer: '',
-    patientHeight: '',
-    patientWeight: '',
-    patientpulse: '',
-    patientOxi: '',
-    patientImpairments: '',
-    patientPastDiseases: '',
-    patientAssessment: '',
-    appointmentDate: '',
-    PatientMedicalRecord: '',
-    PatientName: '', // This is the one to keep if it's the primary patient name field
-    patientChewing: '',
-    patientPriority: '',
-    patientMedicine: '',
-    patientNewMedicine: '',
-    patientTreatment: '',
-    patientDiagnosis: '',
-    patientPrescription: '',
     date: '',
-    patientRace: '',
-    race: '',
-    patientMedicalRecord: '',
-    patientGender: '',
-    patientDateOfBirth: '',
-    patientMedicalHistory: '',
-    patientEmail: '',
+    decedentName: '',
+    decedentOOC: '',
+    synopsis: '',
+    scenePhotos: '',
+    additionalImages: '',
+    patientID: '',
+    patientName: '',
     patientAddress: '',
+    patientRace: '',
+    patientGender: '',
+    patientPH: '',
+    patientDiscord: '',
     patientEmergencyContact: '',
     patientEmergencyContactNumber: '',
     patientEmergencyContactRelation: '',
-    patientBloodType: '',
-    patientChronicDiseases: '',
-    patientBP: '',
-    SubmitDate: new Date().toISOString().split('T')[0],
-    patientResperation: '',
-    patientConsultation: '',
-    patientPerscription: '',
-    patientCondition: '',
-    patientNotes: '',
-    patientBaggageofParents: '',
-    oneFetus: false,
-    twoFetuses: false,
-    threeFetuses: false,
-    fourFetuses: false,
-    patientContractions: '',
-    patientBleeding: '',
-    patientDiscomfort: '',
-    patientFatter: '',
-    patientBabyGender: '',
-        attachedReportSummary: '', // New field for the attached report BBCode
-    patientKnowBabyGender: '',
-    patientUltraSummary: '',
-    patientWellWomanExam: '',
-    patientInjuryMechanism: '',
-    patientLastWellWomanExam: '',
-    patientPapResults: '',
-    patientSTI: '',
-    patientSTIResults: '',
-    patientBloodAnalysis: '',
-    patientBloodAnalysisResults: '',
-    patientUrine: '',
-    patientUrineResults: '',
-    patientPap: '',
-    patientDateofPregnancy: '',
-    patientFetalMeasurements: '',
-    patientCurrentMedicine: '',
-    patientAdditionalPregnancy: '',
-    patientJobTasks: '',
-    patientLivingHabits: '',
-    patientPreHealth: '',
-    patientPregProblems: '',
-    patientPartnerName: '',
-    patientPartnerPH: '',
-    patientPartnerDiscord: '',
-    caseOpen: false,
-    caseClosed: false,
-    violenceToSelf: false,
-    violenceToOthers: false,
-    LowRisk: false,
-    noRisk: true,
-    HighRisk: false,
-    MediumRisk: false,
-    patientFileCreation: '',
-    patientVisitReason: '',
-    patientSurgicalHistory: '',
-    patientMedHistory: '',
-    patientPsychDiagnoses: '',
-    patientEvalFile: '',
-    patientMedicalFile: '',
-    patientSubstance: '',
-    patientTrauma: ``,
-    showRequestingOfficerInput: false,
-    patientEdu: ``,
-    patientDev: ``,
-    patientLegal: ``,
-    patientSpiritual: ``,
-    patientMale: false,
-    patientFemale: false,
-    patientFormYes: false,
-    patientFormNo: false,
-    patientFormYes2: false,
-    patientFormNo2: false,
-    patientConsent: '',
-    patientConsentOption: '',
-    patientConsentNo: '',
-    patientConsentYes: '',
-    patientComplicationOptions: '',
-    complications: '',
-    patientComplaint: '',
-    triageNoPain: false,
-    triageNormalPain: false,
-    triageMildPain: false,
-    triageSeverePain: false,
-    triageCriticalPain: false,
-    patientTempNormal: false,
-    patientTempHigh: false,
-    patientTempLow: false,
-    patientHeartRateNormal: false,
-    patientHeartRateBradycardia: false,
-    patientHeartRateTachycardia: false,
-    patientBreathingNormal: false,
-    patientBreathingSlow: false,
-    patientBreathingFast: false,
-    patientBreathingObstructed: false,
-    patientBloodPressureNormal: false,
-    patientBloodPressureHypotension: false,
-    patientBloodPressureHypertension: false,
-    assignedDepartment: '',
-    departmentLarge: '',
-    patientChiefComplaint: '',
-    patientID: '',
-    rank: '', 
-    patientProcedure: '',
-    patientPhoneType: '',
-    patientPhoneMobile: '',
-    patientPhoneHome: '',
-    patientPhoneWork: '',
-    patientPhoneOther: '',
-    patientGenderMale: '',
-    patientGenderFemale: '',
-    PurposeAttorney: '',
-    PurposePersonal: '',
-    patientAdvise: '',
-    drugList: '',
-    PurposeFurtherCare  : '',
-    PurposeOther: '',
-    CarePurposeMedicalInformationRelease: '',
-    patientMedInfoReleaseOther: '',
-    MedicalRecordsReleaseOther: '',
-    StupidDateFrom: '',
-    StupidDateTo: '',
-    patientFirstName: '',
-    patientMiddleName: '',
+    patientEmergencyContactDiscord: '',
     patientTitle: '',
-    patientComplicationsYes: '',
-    patientComplicationsNo: '',
+    patientAllergies: '',
+    patientCurrentMedicine: '',
+    patientChronicDiseases: '',
+    patientNotes: '',
+    patientDateOfBirth: '',
+    patientBloodType: '',
+    patientChiefComplaint: '',
+    patientProcedure: '',
+    patientDiagnosis: '',
+    patientSecondaryDiagnosis: '',
+    patientMedicine: '',
+    admission: '',
+    followup: '',
+    SubmitDate: new Date().toISOString().split('T')[0],
+
+    // Form-specific fields
+    placeOfDeath: '',
+    evidenceLockerID: '',
+    evidenceLocker: '',
+    pronouncedTimeOfDeath: '',
+    mannerOfDeath: '',
+    typeOfDeath: '',
+    showRequestingOfficerInput: false,
+    requestingOfficer: '',
+    deathReport: '',
+    additionalReports: [],
+    autopsyDate: '',
+    autopsyTime: '',
+    autopsyDeathCauses: [''],
+    autopsyAnatomicSummaryItems: [''],
+    autopsyAlbumUrl: '',
+    autopsyPhotosUnavailable: false,
+    autopsyDiagramMarkers: [],
+    autopsyDiagramImgurUrl: '',
+    externalExamination: '',
+    RadiologyResult: '',
+    deathType: '',
+    causeOfDeath: '',
+    extraStaff: [],
+    patientSummaryConsultation: '',
+    patientSummary: '',
+    surgeryProcedures: '',
+    patientConsentOption: '',
+    patientComplicationOptions: '',
     procedureGoodOptions: '',
-    procedureGoodYes: '',
-    procedureGoodNo: '',
+    patientHeight: '',
+    patientWeight: '',
     BodyMassIndex: '',
-    phmcRank: '', 
     temperature: '',
     heartRate: '',
+    breathing: '',
     bloodPressure: '',
-    careerRisks: '',
     patientJob: '',
-    patientcareerNo: '',
+    patientJobRisks: '',
     patientAllergiesRisk: '',
     patientMedicineRegular: '',
     patientOther: '',
     predisposition: '',
-    breathing: '',
-    patientTherapy: '',
-    patientFamily: '',
-    patientGentic: '',
-    patientFamSocial: '',
-    patientMental: '',
-    maritalStatus: '',
-    numberChildren: '',
-    financialStatus: '',
-    dnr: '',
-    dnrOrder: '',
-    attorney: '',
-    patientSupport: '',
-    patientHarm: '',
-    patientFam: '',
-    patientGenetic: '',
-    patientReligion: '',
-    patientSmoker: '',
-    patientAlcohol: '',
-    patientDrugs: '',
-    patientExercise: '',
-    patientDiet: '',
-    patientSleep: '',
-    patientSexLife: '',
-    patientJobRisks: '',
-    patientHazards: '',
-    attorneyName: '',
-    attorneyPH: '',
-    attorneyRelation: '',
-    dnrOther: '',
-    patientEmergencyContactDiscord: '',
-    patientSecondaryDiagnosis: '',
+    patientCareer: '',
+    patientImpairments: '',
     patientTriggers: '',
     patientStress: '',
+    patientFamily: '',
+    patientMedicalRecord: '',
+    patientVisitReason: '',
     patientSymptoms: '',
+    patientDrugs: '',
     patientDrugsUsage: '',
-    patientTreatmentMedicine: '',
+    patientMental: '',
+    patientFam: '',
+    patientLegal: '',
+    patientRelationship: '',
+    patientFindings: '',
+    patientTreatmentPlan: '',
     patientSafety: '',
     patientFollowUp: '',
-    patientTreatmentPlan: '',
-    patientRelationship: '',
+    patientTreatmentMedicine: '',
+    patientTherapy: '',
     patientRiskAssessment: '',
     Speech: '',
     Behavior: '',
@@ -354,25 +191,69 @@ const initialFormData = {
     ThoughtContent: '',
     Insight: '',
     Cognition: '',
-    admission: '',
-    followup: '',
-    sono: '',
-    pupils: '',
-    lungs: '',
     painLevel: '',
-    wounds: '',
     findings: '',
-    patientFindings:'',
-    paletoClinicDepartment: '',
+    lungs: '',
+    pupils: '',
+    wounds: '',
     ecg: '',
-    autopsyDeathCauses: [''],
-    autopsyAnatomicSummaryItems: [''],
-    autopsyAlbumUrl: '',
-    autopsyPhotosUnavailable: false,
-    autopsyDate: '',
-    autopsyTime: '',
-    externalExamination: '',
-        patientContactNumber: '',
+    sono: '',
+    lab: [],
+    bloodOxy: '',
+    assignedDepartment: '',
+    departmentLarge: '',
+    paletoClinicDepartment: '',
+    MedicalRecordsRelease: [],
+    payNow: false,
+    paymentProofPhotos: '',
+    PurposeMedicalInformationReleaseFormat: '',
+    CarePurposeMedicalInformationRelease: '',
+    patientMedInfoReleaseOther: '',
+    MedicalRecordsReleaseOther: '',
+    patientMedInfoFormatOther: '',
+    StupidDateFrom: '',
+    StupidDateTo: '',
+    patientFirstName: '',
+    patientMiddleName: '',
+    patientLastName: '',
+    patientEmail: '',
+    patientPhoneType: '',
+    patientZIP: '',
+    dnr: '',
+    dnrOrder: '',
+    attorney: '',
+    dnrOther: '',
+    attorneyName: '',
+    attorneyRelation: '',
+    attorneyPH: '',
+    maritalStatus: '',
+    numberChildren: '',
+    financialStatus: '',
+    patientSupport: '',
+    patientHarm: '',
+    patientGenetic: '',
+    patientReligion: '',
+    patientSmoker: '',
+    patientAlcohol: '',
+    patientDiet: '',
+    patientSleep: '',
+    patientSexLife: '',
+    patientHazards: '',
+    prescriptionImage: '',
+    attachedReportSummary: '',
+    emailPurpose: '',
+    emailRecipient: '',
+    dateOfVisit: '',
+    sicknessStartDate: '',
+    sicknessEndDate: '',
+    reasonForSickness: '',
+    illnessCondition: '',
+    confirmationPurpose: '',
+    phmcEmployeeSignatureImage: '',
+
+    // SAAA Fields
+    saaaJobSelection: '',
+    patientContactNumber: '',
     patientDOB: '',
     patientBirth: '',
     healthImpairments: '',
@@ -402,21 +283,40 @@ const initialFormData = {
     oocOtherFactionInfo: '',
     oocFactionBans: '',
     oocOtherCharacters: '',
+    adminRecordLink: '',
+    inGameStatsLink: '',
     charBackground: '',
-    ackAuthorize: false, // For the checkbox
-    Imaging: [],
-    XrayResults: [],
-    ctResults: [],
-    mriResults: [],
-    ultrasoundResults: [],
+    ackAuthorize: false,
+    registrantFullName: '',
+    registrantContactNumbers: '',
+    registrantResidentialAddress: '',
+    heliportAddresses: '',
+    heliportNumPads: 0,
+    heliportPhotoLinks: '',
+    heliportLayoutPlanLinks: '',
+    companyName: '',
+    contactNumber: '',
+    companyAddress: '',
+    ceoFullName: '',
+    chiefPilots: '',
+    staffList: '',
+    registrantDateOfBirth: '',
+    registrantPlaceOfBirth: '',
+    aircraftType: '',
+    aircraftModel: '',
+    aircraftDateOfPurchase: '',
+    aircraftImageLink: '',
+    requestedCallsign: '',
+    regFullName: '',
+    regContactNumber: '',
+    regPosition: '',
+    trainingPlanLink: '',
+    chiefPilotFullName: '',
+    chiefPilotContactNumber: '',
+
+    // Recruitment Fields
     recruitmentPosition: '',
     applicantTitleAndFullName: '',
-    genderMale: false,
-    genderFemale: false,
-    genderOther: false,
-    applicantGenderOtherText: '',
-    applicantDOBAndPlace: '',
-    applicantAddress: '',
     applicantContactDetails: '',
     locationPHMC: false,
     locationPBC: false,
@@ -442,11 +342,13 @@ const initialFormData = {
     oocMedicalExperience: '',
     oocAdminRecordLink: '',
     oocStatsLink: '',
-    saaaJobSelection: '',
-    emailPurpose: '',
-    emailRecipient: '',
-    patientName: '', // This is the primary patient name field
 
+    // Imaging Fields
+    Imaging: [],
+    XrayResults: [],
+    ctResults: [],
+    mriResults: [],
+    ultrasoundResults: [],
 };
 
     const handleAdminPanelClick = () => {
@@ -560,7 +462,6 @@ const initialFormData = {
             localStorage.removeItem(field);
             localStorage.removeItem(`${field}_timestamp`);
         });
-        setParsedBBCode('');
         setLastWebhookIdentifier(null);
         showNotification('Form cleared! Employee selections preserved.', 'check-circle');
     };
@@ -948,9 +849,6 @@ const getBBCodeContent = () => {
 };
     
     const [formData, setFormData] = useState(initialFormData);
-
-    const [saaaRecruitmentStatus, setSaaaRecruitmentStatus] = useState({}); // New state for SAAA
-
     const [isUploading, setIsUploading] = useState(false);
     const [isJohnDoe, setIsJohnDoe] = useState(false);
     const [isJaneDoe, setIsJaneDoe] = useState(false);
@@ -1723,7 +1621,6 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
         setWebhookMessage(''); // Set to empty string
         setShowWebhookModal(true);
     };
-    const originalUrlRef = useRef(null); // <-- NEW: Ref to store the original URL
 
 
     useEffect(() => {
@@ -2154,11 +2051,12 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
     }, [coronerListData]);
 
 
-    // Keep this function as is
     const handleDoeChange = (type) => (e) => {
-        if (e.target.checked) {
-            setIsRemoveStaff(false); // <-- Add this line to turn off removal mode
-            // Clear removal-specific fields when switching back to add
+        const isChecked = e.target.checked;
+
+        // This part resets other modal states when a 'Doe' option is selected.
+        if (isChecked) {
+            setIsRemoveStaff(false);
             setMissingEmployeeData(prev => ({
                 ...prev,
                 staffToRemove: [],
@@ -2166,21 +2064,26 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 authorizedBy: '',
             }));
         }
+
         if (type === 'john') {
-            setIsJohnDoe(e.target.checked);
-            setIsJaneDoe(false);
-            if (e.target.checked) {
-                setFormData(prev => ({ ...prev, decedentName: 'John Doe' })); // This seems unrelated to the modal, but keeping it as per original code
-            } else if (formData.decedentName === 'John Doe') {
-                setFormData(prev => ({ ...prev, decedentName: '' })); // This seems unrelated to the modal
+            setIsJohnDoe(isChecked);
+            if (isChecked) {
+                setIsJaneDoe(false); 
+                setFormData(prev => ({ ...prev, decedentName: 'John Doe' }));
+            } else {
+                if (formData.decedentName === 'John Doe') {
+                    setFormData(prev => ({ ...prev, decedentName: '' }));
+                }
             }
         } else if (type === 'jane') {
-            setIsJaneDoe(e.target.checked);
-            setIsJohnDoe(false);
-            if (e.target.checked) {
-                setFormData(prev => ({ ...prev, decedentName: 'Jane Doe' })); // This seems unrelated to the modal
-            } else if (formData.decedentName === 'Jane Doe') {
-                setFormData(prev => ({ ...prev, decedentName: '' }));
+            setIsJaneDoe(isChecked);
+            if (isChecked) {
+                setIsJohnDoe(false); // Uncheck the other 'Doe'
+                setFormData(prev => ({ ...prev, decedentName: 'Jane Doe' }));
+            } else {
+                if (formData.decedentName === 'Jane Doe') {
+                    setFormData(prev => ({ ...prev, decedentName: '' }));
+                }
             }
         }
     };
@@ -2748,7 +2651,6 @@ const loadReportForUser = async (reportFirebaseKey, userId, returnOnly = false) 
                         };
                         return finalDataToSet;
                     });
-                    setParsedBBCode(''); // Clear parsed BBCode as it's now directly in formData
                     showNotification(notificationMessage, 'plus-circle');
                 } else {
                     // This else block will also benefit from the universal conversion
@@ -2759,7 +2661,6 @@ const loadReportForUser = async (reportFirebaseKey, userId, returnOnly = false) 
                         phmcEmployee: loadedFormData.phmcEmployee || prev.phmcEmployee,
                     }));
                     setBbCodeVersion(loadedVersion);
-                    setParsedBBCode(loadedBbCode); // This will now be the modified BBCode
                     showNotification(`Report "${reportData.originalKey || reportFirebaseKey}" loaded.`, 'upload');
                 }
                 setShowSavedReports(false); // Close modal if directly loading
@@ -3029,13 +2930,12 @@ const filterFormData = (formData, bbCodeVersion) => {
     const handleCctvWebhookSubmit = async (cctvData) => {
         // Log the submission attempt to Sentry for tracking and abuse monitoring
         Sentry.captureMessage('CCTV Request Submitted', {
-            level: 'info', // Use 'info' level for tracking events, not errors
+            level: 'info',
             extra: {
                 officer: cctvData.officer,
                 department: cctvData.department,
                 location: cctvData.location,
                 reason: cctvData.requestReason,
-                // Add user context if available from another form field
                 submitter: formData.coronerEmployee || formData.phmcEmployee || 'Unknown App User'
             },
             tags: {
@@ -3044,12 +2944,14 @@ const filterFormData = (formData, bbCodeVersion) => {
             }
         });
 
-        const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL || process.env.REACT_APP_LEO_WEBHOOK_URL;
+        // --- MODIFICATION START: Send to multiple webhooks ---
+        const devWebhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+        const leoWebhookURL = process.env.REACT_APP_LEO_WEBHOOK_URL;
 
-        if (!webhookURL) {
-            showNotification('LEO Webhook URL is not configured.', 'error');
-            Sentry.captureMessage('LEO Webhook URL (REACT_APP_LEO_WEBHOOK_URL) not configured.', 'error');
-            return false; // Indicate failure
+        if (!devWebhookURL && !leoWebhookURL) {
+            showNotification('No CCTV webhook URLs are configured.', 'error');
+            Sentry.captureMessage('Neither DEV nor LEO webhook URLs are configured for CCTV.', 'error');
+            return false;
         }
 
         const embed = {
@@ -3063,7 +2965,7 @@ const filterFormData = (formData, bbCodeVersion) => {
                 ...(cctvData.discordUsername ? [{ name: "Discord Username", value: cctvData.discordUsername, inline: true }] : []),
                 { name: "Date/Time of Incident", value: cctvData.incidentDateTime || "N/A", inline: true },
                 { name: "Reason for Request", value: cctvData.requestReason || "N/A", inline: false },
-                { name: "CCTV Location", value: cctvData.location || "N/A", inline: true },
+                { name: "CCTV Location", value: cctvData.location || "N/A", inline: false },
                 { name: "Description of Events", value: `\`\`\`${cctvData.description || "N/A"}\`\`\``, inline: false },
                 ...(cctvData.oocNotes ? [{ name: "OOC Notes", value: `\`\`\`${cctvData.oocNotes}\`\`\``, inline: false }] : []),
             ],
@@ -3071,28 +2973,59 @@ const filterFormData = (formData, bbCodeVersion) => {
             footer: { text: `PHMC Forms - v${commitInfo.sha || 'N/A'}` }
         };
 
-        try {
-            const response = await fetch(webhookURL, {
+        const payload = JSON.stringify({
+            username: "CCTV Bot",
+            content: "New CCTV Request! Supervisor Alert: <@&860257102324301864> | Leadership Alert: <@&860257063182925874>",
+            embeds: [embed]
+        });
+        const webhookTargets = [];
+        if (devWebhookURL) webhookTargets.push({ name: 'Dev', url: devWebhookURL });
+        if (leoWebhookURL) webhookTargets.push({ name: 'LEO', url: leoWebhookURL });
+
+        const sendPromises = webhookTargets.map(target =>
+            fetch(target.url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ embeds: [embed] })
-            });
+                body: payload
+            }).then(async response => {
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Request to ${target.name} failed with status ${response.status}: ${errorText}`);
+                }
+                return { name: target.name, status: 'fulfilled' };
+            })
+        );
 
-            if (!response.ok) {
-                const errorText = await response.text();
-                Sentry.captureMessage(`CCTV Webhook failed: ${response.status}`, { level: 'error', extra: { responseBody: errorText } });
-                showNotification(`Failed to send request. Status: ${response.status}`, 'error');
-                return false;
+        const results = await Promise.allSettled(sendPromises);
+        let successfulSends = 0;
+
+        results.forEach((result, index) => {
+            const targetName = webhookTargets[index].name;
+            if (result.status === 'fulfilled') {
+                console.log(`Successfully sent CCTV webhook to ${targetName}.`);
+                successfulSends++;
             } else {
-                showNotification('CCTV Request sent successfully!', "check-circle");
-                handleHideCctvRequestModal(); // Use the new handler to close modal and clean URL
-                return true;
+                console.error(`Failed to send CCTV webhook to ${targetName}:`, result.reason.message);
+                Sentry.captureMessage(`CCTV Webhook to ${targetName} failed`, {
+                    level: 'error',
+                    extra: { reason: result.reason.message }
+                });
             }
-        } catch (error) {
-            Sentry.captureException(error, { extra: { context: 'CCTV Webhook Submission' } });
-            showNotification('A network error occurred while sending the request.', "error");
+        });
+
+        if (successfulSends === webhookTargets.length) {
+            showNotification('CCTV Request sent successfully!', "check-circle");
+            handleHideCctvRequestModal();
+            return true;
+        } else if (successfulSends > 0) {
+            showNotification('CCTV Request sent, but some destinations failed.', "warning");
+            handleHideCctvRequestModal();
+            return true;
+        } else {
+            showNotification('Failed to send CCTV request to any destination.', "error");
             return false;
         }
+        // --- MODIFICATION END ---
     };
 
 // switching agency logic
@@ -3166,7 +3099,6 @@ const filterFormData = (formData, bbCodeVersion) => {
         }
     };
 
-    // ... (keep existing useEffects for commit info, image upload, data fetching, etc.)
 const [showAgencySelector, setShowAgencySelector] = useState(false);
 const [hideAgencySelector, setHideAgencySelector] = useState(false); // For the "don't show again" checkbox in AgencySelector
 const toggleAgencySelector = () => {
@@ -3227,34 +3159,7 @@ const toggleAgencySelector = () => {
             showNotification(`Selected form version ${version} is not defined.`, 'error');
         }
     };
-        const reSyncSelectedAgencyGroup = useCallback(() => {
-        const definition = getFormDefinition(bbCodeVersion);
-        if (definition) {
-            // Only update if the current selectedAgencyGroup is different from the form's actual group
-            if (selectedAgencyGroup !== definition.group) {
-                setSelectedAgencyGroup(definition.group);
-                localStorage.setItem('selectedAgencyGroup', definition.group);
-            }
-        } else {
-            // If no valid form definition for the current bbCodeVersion, reset selectedAgencyGroup
-            if (selectedAgencyGroup !== null) {
-                setSelectedAgencyGroup(null);
-                localStorage.removeItem('selectedAgencyGroup');
-            }
-        }
-    }, [bbCodeVersion, selectedAgencyGroup, setSelectedAgencyGroup]); // Add all dependencies
 
-    // Handler for closing the SwitchableFormsModal (e.g., PHMC Recruitment forms list)
-    const handleCloseSwitchableModal = useCallback(() => {
-        setShowPHMCModal(false);
-        reSyncSelectedAgencyGroup(); // Re-sync after modal closes
-    }, [setShowPHMCModal, reSyncSelectedAgencyGroup]);
-
-    // Handler for closing the AgencySelector modal (e.g., PHMC or SAAA forms list)
-    const handleCloseAgencySelector = useCallback(() => {
-        setShowAgencySelector(false);
-        reSyncSelectedAgencyGroup(); // Re-sync after modal closes
-    }, [setShowAgencySelector, reSyncSelectedAgencyGroup]);
 
     const handleSelectAgencyGroup = (group) => {
         // Set selectedAgencyGroup immediately to provide feedback (e.g., show RecruitmentStatusDisplay)
@@ -3405,18 +3310,6 @@ const toggleAgencySelector = () => {
         const [showBBCode, setShowBBCode] = useState(false);
 
 
-    //  BBCode generation logic
-{showBBCode && (
-    <>
-        <h2>Generated BBCode</h2>
-        <div className="bbcode-output">
-            <pre>
-                {getBBCodeContent() || 'No BBCode generated for this form type.'}
-            </pre>
-        </div>
-    </>
-)}
-   
 // Coroner Titles
 const DEFAULT_NOTIFICATION_DURATION = 3000; // default 3 seconds
 
@@ -3465,8 +3358,6 @@ const toggleEmsAmaModal = () => {
     });
 };
     // Add new state
-    const [parsedBBCode, setParsedBBCode] = useState('');
-    // update Switch logic
     const parseBBCode = () => {
         let deathReportBbCode = generateDeathReport(formData);
 
@@ -3478,7 +3369,6 @@ const toggleEmsAmaModal = () => {
 
         deathReportBbCode = deathReportBbCode.replace(/\[bold\]/g, '[b]').replace(/\[\/bold\]/g, '[/b]');
 
-        setParsedBBCode(deathReportBbCode);
 
         setFormData(prev => ({
             ...prev,

@@ -13,7 +13,6 @@ const BasicPatientFile = ({
     return (
         <>
                                                         
-        <Form.Group className="mb-3">
         <Form.Label>Patient ID, leave blank if unsure</Form.Label>
         <Form.Control
                     type="text"
@@ -24,7 +23,7 @@ const BasicPatientFile = ({
                     className={`form-control ${!formData.patientID ? 'is-invalid' : ''}`}
 
                 />
-        <Form.Label>Title / Patient Name Name  / Date of Birth</Form.Label>
+        <Form.Label>Title / Patient Name  / Date of Birth</Form.Label>
             <div style={{ display: 'flex', gap: '10px' }}>
             <Form.Select
             name="patientTitle"
@@ -95,7 +94,6 @@ const BasicPatientFile = ({
 
             </div>
 
-        </Form.Group>
             <div className="input-group">                                                               
          <Form.Control
                     type="text"

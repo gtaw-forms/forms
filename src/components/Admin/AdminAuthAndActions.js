@@ -320,9 +320,23 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
         const { userAgent, timeZone } = getUserContext(); // Capture user context
         try {
             await signInWithEmailAndPassword(auth, email, password);
+            // onAuthStateChanged will handle the success case
         } catch (err) {
             setError(err.message || "Failed to login.");
             setIsLoadingAuth(false);
+
+            Sentry.captureException(err, {
+                level: 'warning',
+                extra: {
+                    email: email, // Log the email that was used for the attempt.
+                    context: 'Admin Login Attempt'
+                },
+                tags: {
+                    login_result: 'failure'
+                }
+            });
+            // --- MODIFICATION END ---
+
             sendAdminActionWebhook(email, "Admin Login Failed", `Attempted login with email: ${email}. Error: ${err.message}`, null, userAgent, timeZone);
             if (showInAppNotification) showInAppNotification(`Login failed: ${err.message}`, "error");
         }
