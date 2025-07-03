@@ -5,8 +5,7 @@ import { database } from '../firebase';
 import { ref, push, serverTimestamp } from 'firebase/database';
 import * as Sentry from "@sentry/react";
 
-// --- MODIFICATION: Add customPlayerName to props ---
-const PhraseRequestModal = ({ show, onHide, showNotification, selectedEmployee, customPlayerName, selectedBingoType, sendPhraseRequestWebhook }) => {
+const PhraseRequestModal = ({ show, onHide, showNotification, selectedEmployee, selectedBingoType, sendPhraseRequestWebhook }) => {
     const [phraseText, setPhraseText] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState('');
@@ -19,6 +18,7 @@ const PhraseRequestModal = ({ show, onHide, showNotification, selectedEmployee, 
             return;
         }
 
+        // Check if a bingo type is selected before allowing a request
         if (!selectedBingoType) {
             setError('You must be in a specific Bingo game (e.g., EMS, Coroner) to request a phrase.');
             showNotification('Please select a Bingo type first.', 'warning');
@@ -30,8 +30,7 @@ const PhraseRequestModal = ({ show, onHide, showNotification, selectedEmployee, 
 
         try {
             const trimmedPhrase = phraseText.trim();
-            // --- MODIFICATION: Determine requester name from either Select, text input, or fallback ---
-            const requesterName = selectedEmployee?.value || customPlayerName?.trim() || 'Anonymous';
+            const requesterName = selectedEmployee ? selectedEmployee.value : 'Anonymous';
             const bingoTypeName = selectedBingoType.name || 'Unknown';
 
             await push(phraseRequestsRef, {
@@ -42,6 +41,7 @@ const PhraseRequestModal = ({ show, onHide, showNotification, selectedEmployee, 
                 bingoType: bingoTypeName
             });
 
+            // NEW: Call the webhook for the phrase request
             if (sendPhraseRequestWebhook) {
                 sendPhraseRequestWebhook({
                     requester: requesterName,
