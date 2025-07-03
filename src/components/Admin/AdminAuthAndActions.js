@@ -1,16 +1,24 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Form as BootstrapForm, Button, Spinner, ListGroup } from 'react-bootstrap';
+// --- MODIFICATION: Add Card, Row, Col, Alert, Badge ---
+import { Form as BootstrapForm, Button, Spinner, ListGroup, Card, Row, Col, Alert, Badge } from 'react-bootstrap';
 import { auth, database } from '../../firebase';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
-import { ref, get, update, remove, set, serverTimestamp } from "firebase/database"; 
+// --- MODIFICATION: Add onValue, off, push ---
+import { ref, get, update, remove, set, serverTimestamp, onValue, off, push } from "firebase/database"; 
 import AddRoleModal from './RoleModal';
 import RenameRoleKeyModal from './RenameRoleKeyModal';
 import WebhookModal from '../WebhookModal';
 import { captureMessage, captureException, getClient } from "@sentry/react";
-import EditBingoPhrasesModal from './EditBingoPhrasesModal';
-import ReviewPhraseRequestsModal from './ReviewPhraseRequestsModal';
+// --- MODIFICATION: Remove old modal imports ---
+ import EditBingoPhrasesModal from './EditBingoPhrasesModal';
+ import ReviewPhraseRequestsModal from './ReviewPhraseRequestsModal';
 import * as Sentry from "@sentry/react";
-import CctvRequestWebhookModal from './CctvRequestWebhookModal'; // Import the new modal
+import CctvRequestWebhookModal from './CctvRequestWebhookModal';
+
+    // --- EXISTING useEffect hooks for auth, recruitment data, etc. remain the same ---
+    // ...
+
+    // --- NEW: useEffect to fetch master phrases for the selected bingo type ---
 
 const recruitmentCategories = {
     physician: { displayName: "Physician Recruitment", path: 'selectOptions/physicianRecruitmentDetails' },
@@ -24,7 +32,8 @@ const recruitmentCategories = {
 const BINGO_TYPES = [
     { id: 'er', name: 'Emergency Room', path: 'ER' },
     { id: 'ems', name: 'EMS', path: 'EMS' },
-    { id: 'coroner', name: 'Coroner', path: 'Coroner' }
+    { id: 'coroner', name: 'Coroner', path: 'Coroner' },
+    { id: 'helldivers', name: 'Helldivers', path: 'Helldivers' }
 ];
 const requestNotificationPermission = async () => {
     console.log("[Desktop Notify] Requesting permission...");
@@ -133,7 +142,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     const [currentRecruitmentData, setCurrentRecruitmentData] = useState({});
     const [isLoadingRecruitmentData, setIsLoadingRecruitmentData] = useState(false);
     const [isUpdatingDb, setIsUpdatingDb] = useState(false);
-    const [selectedAdminBingoType, setSelectedAdminBingoType] = useState(BINGO_TYPES[0].id);
     const [showEditBingoPhrasesModal, setShowEditBingoPhrasesModal] = useState(false);
     const [showReviewPhrasesModal, setShowReviewPhrasesModal] = useState(false);
 
@@ -152,6 +160,13 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     const [coronerWebhookTitle, setCoronerWebhookTitle] = useState('');
     const [coronerWebhookMessage, setCoronerWebhookMessage] = useState('');
     const [showCctvWebhookModal, setShowCctvWebhookModal] = useState(false);
+    const [selectedAdminBingoType, setSelectedAdminBingoType] = useState(null);
+    const [masterPhrases, setMasterPhrases] = useState([]);
+    const [isLoadingPhrases, setIsLoadingPhrases] = useState(false);
+    const [newPhrase, setNewPhrase] = useState('');
+    const [phraseRequests, setPhraseRequests] = useState([]);
+    const [isLoadingRequests, setIsLoadingRequests] = useState(true);
+    const [isProcessingRequest, setIsProcessingRequest] = useState(null); // For approve/deny spinner
 
     const prevUserUidRef = useRef(null);
 
@@ -236,6 +251,34 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
             }
         };
     }, []);
+    useEffect(() => {
+        if (!currentUser || !selectedAdminBingoType) {
+            setMasterPhrases([]);
+            return;
+        }
+        setIsLoadingPhrases(true);
+        const phrasesRef = ref(database, `bingo/phrases/${selectedAdminBingoType.path}`);
+        const unsubscribe = onValue(phrasesRef, (snapshot) => {
+            if (snapshot.exists()) {
+                const phrasesFromDb = snapshot.val();
+                const phraseArray = Array.isArray(phrasesFromDb)
+                    ? phrasesFromDb.map((phrase, index) => ({ id: index.toString(), phrase }))
+                    : Object.keys(phrasesFromDb).map(key => ({
+                        id: key,
+                        phrase: typeof phrasesFromDb[key] === 'object' ? phrasesFromDb[key].phrase : phrasesFromDb[key]
+                    }));
+                setMasterPhrases(phraseArray.filter(p => p.phrase));
+            } else {
+                setMasterPhrases([]);
+            }
+            setIsLoadingPhrases(false);
+        }, (error) => {
+            Sentry.captureException(error, { extra: { context: 'AdminAuth - Fetch Master Phrases' } });
+            showInAppNotification(`Error fetching phrases for ${selectedAdminBingoType.name}.`, 'error');
+            setIsLoadingPhrases(false);
+        });
+        return () => off(phrasesRef, 'value', unsubscribe);
+    }, [currentUser, selectedAdminBingoType, showInAppNotification]);
 
     const fetchRecruitmentDataForCategory = useCallback(async (categoryKey) => {
         if (!categoryKey || !recruitmentCategories[categoryKey]) {
