@@ -57,9 +57,9 @@ export const scheduledBingoReset = onSchedule({
     const BINGO_TYPES = [
         { id: 'er', name: 'Emergency Room', path: 'ER' },
         { id: 'ems', name: 'EMS', path: 'EMS' },
-        { id: 'coroner', name: 'Coroner', path: 'Coroner' },
-        { id: 'helldivers', name: 'Helldivers', path: 'Helldivers' }
+        { id: 'coroner', name: 'Coroner', path: 'Coroner' }
     ];
+
     const results = { success: [], noCard: [], notEnoughPhrases: [], errors: [] };
 
     await db.ref('bingo/meta').update({ lastAutoRegenTimestamp: admin.database.ServerValue.TIMESTAMP });
