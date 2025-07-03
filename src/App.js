@@ -4176,7 +4176,7 @@ const handleCopyAndNotifyWrapper = async () => {
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 2.6.1b -  </h3>
+                                    <h3>Changelog - Version 2.6.2d -  </h3>
                                     <Button
                                         className="close"
                                         variant='secondary'
