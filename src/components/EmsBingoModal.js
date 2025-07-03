@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Modal, Button, Form, Spinner } from 'react-bootstrap';
+// --- MODIFICATION: Import Image component ---
+import { Modal, Button, Form, Spinner, Image } from 'react-bootstrap';
 import Select from 'react-select';
 import './EmsBingoModal.css';
 import phmcLogo from '../assets/phmc.png';
@@ -7,6 +8,9 @@ import { database } from '../firebase';
 import { ref, set, onValue, off, serverTimestamp, get, remove, push } from 'firebase/database';
 import PhraseRequestModal from './PhraseRequestModal';
 import emsBingoBackground from '../assets/EMMafia_Pride.png';
+// --- NEW: Import Helldivers assets ---
+import helldiversHeader from '../assets/helldivers-header.png';
+import helldiversFreeSpace from '../assets/helldivers-free-space.png';
 
 // Function to shuffle an array (used by admin to generate new card)
 const getShuffledPhrases = (phrases) => {
@@ -51,7 +55,16 @@ const BINGO_TYPES = [
         path: 'Coroner',
         employeeGroup: 'Coroner',
         employeeFilter: [] // No specific filter needed, use all coronerGroupedOptions
+    },
+        {
+        id: 'helldivers',
+        name: 'Helldivers',
+        path: 'Helldivers',
+        employeeGroup: 'Custom', // New group type for custom input
+        headerImage: helldiversHeader,
+        freeSpaceImage: helldiversFreeSpace
     }
+
 ];
 
 const BINGO_LINES = [
@@ -194,7 +207,8 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
     // Effect to set up selected employee when modal is shown or type changes
     useEffect(() => {
         if (show && selectedBingoType) {
-            if (currentPhmcEmployee && phmcGroupedOptions && selectedBingoType.employeeGroup === 'PHMC') {
+            // --- MODIFICATION: Only pre-fill if not a custom input type ---
+            if (currentPhmcEmployee && phmcGroupedOptions && selectedBingoType.employeeGroup !== 'Custom') {
                 const employeeOption = phmcGroupedOptions.flatMap(group => group.options)
                                                         .find(option => option.value === currentPhmcEmployee);
                 if (employeeOption) {
@@ -378,9 +392,19 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
         }
     };
 
+    const [customPlayerName, setCustomPlayerName] = useState('');
+
     const handleSquareClick = useCallback(async (index, phrase) => {
-        if (!selectedEmployee) {
-            showNotification('Please select your name from the dropdown before marking a square!', 'warning');
+        // --- MODIFIED: Determine player name from either Select or text input ---
+        const employeeName = selectedBingoType?.employeeGroup === 'Custom'
+            ? customPlayerName.trim()
+            : selectedEmployee?.value;
+
+        if (!employeeName) {
+            const message = selectedBingoType?.employeeGroup === 'Custom'
+                ? 'Please enter your name before marking a square!'
+                : 'Please select your name from the dropdown before marking a square!';
+            showNotification(message, 'warning');
             return;
         }
         if (!selectedBingoType) {
@@ -388,9 +412,7 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
             return;
         }
 
-        const employeeName = selectedEmployee.value;
         const bingoLogRef = ref(database, `bingo/logs/${selectedBingoType.path}/activityLog`);
-
         const isMarkedByThisEmployee = markedSquaresLocal.has(index) && markedSquaresLocal.get(index).has(employeeName);
 
         if (isMarkedByThisEmployee) {
@@ -522,10 +544,15 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
                     title={hoverTitle}
                 >
                     {isFreeSpace ? (
-                        <>
-                            <img src={phmcLogo} alt="Free Space" />
-                            <div className="free-space-text">{currentPhrase}</div>
-                        </>
+                        // --- MODIFIED: Conditionally render free space image ---
+                        selectedBingoType.freeSpaceImage ? (
+                            <Image src={selectedBingoType.freeSpaceImage} alt="Free Space" className="free-space-custom-image" />
+                        ) : (
+                            <>
+                                <Image src={phmcLogo} alt="Free Space" />
+                                <div className="free-space-text">{currentPhrase}</div>
+                            </>
+                        )
                     ) : (
                         <>
                             {currentPhrase}
@@ -549,14 +576,11 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
         return grid;
     };
 
-    const handleEmployeeSelect = (option) => {
-        setSelectedEmployee(option);
-    };
-        const filteredEmployeeOptions = useMemo(() => {
+    const filteredEmployeeOptions = useMemo(() => {
         if (!selectedBingoType) return [];
 
         if (selectedBingoType.employeeGroup === 'PHMC') {
-            if (selectedBingoType.employeeFilter.length > 0) {
+            if (selectedBingoType.employeeFilter && selectedBingoType.employeeFilter.length > 0) {
                 return phmcGroupedOptions.filter(group => selectedBingoType.employeeFilter.includes(group.label));
             }
             return phmcGroupedOptions;
@@ -565,9 +589,14 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
         }
         return [];
     }, [selectedBingoType, phmcGroupedOptions, coronerGroupedOptions]);
+    const handleEmployeeSelect = (option) => {
+        setSelectedEmployee(option);
+    };
 
     const handleSelectBingoType = (type) => {
         setSelectedBingoType(type);
+        // --- NEW: Reset custom name when switching types ---
+        setCustomPlayerName('');
     };
 
     const handleBackToSelection = () => {
@@ -578,6 +607,7 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
         setSelectedEmployee(null);
         setCompletedBingoLines(new Set());
         setLastSeenLogId(null);
+                setCustomPlayerName(''); // Reset custom name when going back
         setShowNewMessagesIndicator(false);
         announcingBingoLinesRef.current.clear();
         employeeColorMapRef.current.clear();
@@ -588,6 +618,9 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
         setShowMissingEmployeeModal(true);
         onHide();
     };
+    const currentPlayerName = selectedBingoType?.employeeGroup === 'Custom'
+        ? customPlayerName
+        : selectedEmployee?.value;
 
     return (
         <Modal show={show} onHide={onHide} size="xl" centered dialogClassName="bingo-modal-dialog">
@@ -615,12 +648,25 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
                             </div>
                         </div>
                         <div className="bingo-sidebar">
-                            {selectedEmployee && (
-                                <h5 className="welcome-message">Welcome {selectedEmployee.value}!</h5>
+                            {currentPlayerName && (
+                                <h5 className="welcome-message">Welcome {currentPlayerName}!</h5>
                             )}
-                            {!selectedEmployee && (
+                            {selectedBingoType.employeeGroup === 'Custom' ? (
                                 <Form.Group className="mb-3">
-                                    <Form.Label>Select Your Name to Play:</Form.Label>
+                                    <Form.Label>Enter Your Name to Play:</Form.Label>
+                                    <Form.Control
+                                        type="text"
+                                        value={customPlayerName}
+                                        onChange={(e) => setCustomPlayerName(e.target.value)}
+                                        placeholder="Enter your name..."
+                                        className="bingo-custom-name-input"
+                                        maxLength="50"
+                                    />
+                                </Form.Group>
+                            ) : (
+                                !selectedEmployee && (
+                                    <Form.Group className="mb-3">
+                                        <Form.Label>Select Your Name to Play:</Form.Label>
                                     <Select
                                         name="phmcEmployeeBingo"
                                         value={selectedEmployee}
@@ -648,6 +694,7 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
                                         </span>
                                     </small>
                                 </Form.Group>
+                                )
                             )}
                             <h5>Recent Activity</h5>
                             <div className="activity-log" ref={activityLogRef}>
@@ -739,6 +786,8 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
                 selectedEmployee={selectedEmployee}
                 selectedBingoType={selectedBingoType}
                 sendPhraseRequestWebhook={sendPhraseRequestWebhook}
+                                customPlayerName={customPlayerName} // --- NEW: Pass custom name
+
             />
         </Modal>
     );
