@@ -55,9 +55,9 @@ const BINGO_TYPES = [
 ];
 
 const BINGO_LINES = [
-    [0, 1, 2, 3, 4], [5, 6, 7, 8, 9], [10, 11, 12, 13, 14], [15, 16, 17, 18, 19], [20, 21, 22, 23, 24],
-    [0, 5, 10, 15, 20], [1, 6, 11, 16, 21], [2, 7, 12, 17, 22], [3, 8, 13, 18, 23], [4, 9, 14, 19, 24],
-    [0, 4, 20, 24]
+    [0, 1, 2, 3, 4], [5, 6, 7, 8, 9], [10, 11, 12, 13, 14], [15, 16, 17, 18, 19], [20, 21, 22, 23, 24], // Rows
+    [0, 5, 10, 15, 20], [1, 6, 11, 16, 21], [2, 7, 12, 17, 22], [3, 8, 13, 18, 23], [4, 9, 14, 19, 24], // Columns
+    [0, 6, 12, 18, 24], [4, 8, 12, 16, 20]  // Diagonals
 ];
 
 const BINGO_LINE_NAMES = [
@@ -101,11 +101,11 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
         return employeeColorMapRef.current.get(employeeName);
     }, []);
 
-    const checkForBingo = useCallback((currentMarkedSquares, currentPhrases, previouslyCompletedLines) => {
-        if (currentPhrases.length === 0) return { newlyCompletedLineIndices: [], allCurrentlyCompleteLineIndices: new Set() };
+const checkForBingo = useCallback((currentMarkedSquares, currentPhrases, previouslyCompletedLines) => {
+    if (currentPhrases.length === 0) return { newlyCompletedLineIndices: [], allCurrentlyCompleteLineIndices: new Set() };
 
-        const allCurrentlyCompleteLineIndices = new Set();
-        const newlyCompletedLineIndices = [];
+    const allCurrentlyCompleteLineIndices = new Set();
+    const newlyCompletedLineIndices = [];
 
         BINGO_LINES.forEach((line, lineIndex) => {
             const isLineComplete = line.every(index =>
@@ -119,8 +119,8 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
             }
         });
 
-        return { newlyCompletedLineIndices, allCurrentlyCompleteLineIndices };
-    }, []);
+    return { newlyCompletedLineIndices, allCurrentlyCompleteLineIndices };
+}, []);
 
     // MODIFIED: Effect to fetch master list of phrases from Firebase based on selected type
     useEffect(() => {
@@ -160,49 +160,67 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
     }, [show, selectedBingoType]);
 
     // Listen for the current card layout from Firebase (now type-specific)
-    useEffect(() => {
-        if (!show || !selectedBingoType) return;
+useEffect(() => {
+    if (!show || !selectedBingoType) return;
 
-        setIsLoadingPhrases(true);
-        const currentCardRef = ref(database, `bingo/cards/${selectedBingoType.path}/phrases`);
-        const unsubscribeCard = onValue(currentCardRef, (snapshot) => {
-            const cardPhrases = snapshot.val();
-            if (cardPhrases && Array.isArray(cardPhrases) && cardPhrases.length === 24) {
-                setPhrases(cardPhrases);
-                setMarkedSquaresLocal(new Map([[12, new Map([['Free Space', '#FFFFFF']])]]));
-                setLastSeenLogId(null);
-                setShowNewMessagesIndicator(false);
-                setCompletedBingoLines(new Set());
-                showNotification(`New ${selectedBingoType.name} Bingo card loaded!`, "info-circle");
-            } else {
-                setPhrases([]);
-                showNotification(`No active ${selectedBingoType.name} Bingo card. Admin needs to generate one.`, "warning");
-            }
-            setIsLoadingPhrases(false);
-        }, (error) => {
-            console.error("Error listening to current bingo card:", error);
-            setIsLoadingPhrases(false);
+    setIsLoadingPhrases(true);
+    const currentCardRef = ref(database, `bingo/cards/${selectedBingoType.path}/phrases`);
+
+    get(currentCardRef).then((snapshot) => { // ADDED: get here
+        const cardPhrases = snapshot.val();
+        if (cardPhrases && Array.isArray(cardPhrases) && cardPhrases.length === 24) {
+            setPhrases(cardPhrases);
+            setMarkedSquaresLocal(new Map([[12, new Map([['Free Space', '#FFFFFF']])]]));
+            setLastSeenLogId(null);
+            setShowNewMessagesIndicator(false);
+            setCompletedBingoLines(new Set());
+            showNotification(`New ${selectedBingoType.name} Bingo card loaded!`, "info-circle");
+        } else {
             setPhrases([]);
-            showNotification("Error loading Bingo card. Please try again.", "error");
-        });
+            showNotification(`No active ${selectedBingoType.name} Bingo card. Admin needs to generate one.`, "warning");
+        }
+        setIsLoadingPhrases(false);
+    }).catch((error) => {
+        console.error("Error listening to current bingo card:", error);
+        setIsLoadingPhrases(false);
+        setPhrases([]);
+        showNotification("Error loading Bingo card. Please try again.", "error");
+    });
 
-        return () => {
-            off(currentCardRef, 'value', unsubscribeCard);
-        };
-    }, [show, selectedBingoType, showNotification]);
+    return () => {
+        off(currentCardRef, 'value');
+    };
+}, [show, selectedBingoType, showNotification]);
 
     // Effect to set up selected employee when modal is shown or type changes
     useEffect(() => {
         if (show && selectedBingoType) {
-            if (currentPhmcEmployee && phmcGroupedOptions && selectedBingoType.employeeGroup === 'PHMC') {
-                const employeeOption = phmcGroupedOptions.flatMap(group => group.options)
-                                                        .find(option => option.value === currentPhmcEmployee);
-                if (employeeOption) {
-                    setSelectedEmployee(employeeOption);
-                }
-            } else {
-                setSelectedEmployee(null);
+            let initialEmployee = null;
+            let storedEmployee = null;
+
+            if (selectedBingoType.id === 'er' || selectedBingoType.id === 'ems') {
+                storedEmployee = localStorage.getItem('phmcEmployee');
+            } else if (selectedBingoType.id === 'coroner') {
+                storedEmployee = localStorage.getItem('coronerEmployee');
             }
+
+            console.log("Value pulled from localStorage:", storedEmployee); // Debug log
+
+            if (storedEmployee && phmcGroupedOptions && selectedBingoType.employeeGroup === 'PHMC') {
+                const employeeOption = phmcGroupedOptions.flatMap(group => group.options)
+                    .find(option => option.value === storedEmployee);
+                if (employeeOption) {
+                    initialEmployee = employeeOption;
+                }
+            } else if (storedEmployee && coronerGroupedOptions && selectedBingoType.employeeGroup === 'Coroner') {
+                const employeeOption = coronerGroupedOptions.flatMap(group => group.options)
+                    .find(option => option.value === storedEmployee);
+                if (employeeOption) {
+                    initialEmployee = employeeOption;
+                }
+            }
+            setSelectedEmployee(initialEmployee);
+
         } else if (!show) {
             setSelectedEmployee(null);
             setLastSeenLogId(null);
@@ -212,145 +230,159 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
             setCompletedBingoLines(new Set());
             setSelectedBingoType(null);
         }
-    }, [show, selectedBingoType, currentPhmcEmployee, phmcGroupedOptions]);
+    }, [show, selectedBingoType, phmcGroupedOptions, coronerGroupedOptions]);
 
     // Effect to listen for Firebase activity log updates and sync marked squares
-    useEffect(() => {
-        if (!show || !selectedBingoType || phrases.length === 0 || isLoadingPhrases) {
-            return;
-        }
+useEffect(() => {
+    if (!show || !selectedBingoType || phrases.length === 0 || isLoadingPhrases) {
+        return;
+    }
 
-        const bingoLogRef = ref(database, `bingo/logs/${selectedBingoType.path}/activityLog`);
-        const unsubscribeLog = onValue(bingoLogRef, (snapshot) => {
-            const data = snapshot.val();
-            const tempMarkedSquares = new Map();
-            tempMarkedSquares.set(12, new Map([['Free Space', '#FFFFFF']]));
+    const bingoLogRef = ref(database, `bingo/logs/${selectedBingoType.path}/activityLog`);
+    const unsubscribeLog = onValue(bingoLogRef, (snapshot) => {
+        const data = snapshot.val();
+        const tempMarkedSquares = new Map();
+        tempMarkedSquares.set(12, new Map([['Free Space', '#FFFFFF']]));
 
-            let currentLatestMessageId = null;
-            let logEntries = [];
+        let currentLatestMessageId = null;
+        let logEntries = [];
 
-            if (data) {
-                logEntries = Object.keys(data).map(key => ({ id: key, ...data[key] }))
-                                              .sort((a, b) => b.timestamp - a.timestamp);
-                
-                setBingoActivityLog(logEntries.slice(0, 20));
+        if (data) {
+            logEntries = Object.keys(data).map(key => ({ id: key, ...data[key] }))
+                                          .sort((a, b) => b.timestamp - a.timestamp);
 
-                if (logEntries.length > 0) {
-                    currentLatestMessageId = logEntries[0].id;
-                }
+            setBingoActivityLog(logEntries.slice(0, 20));
 
-                const phraseToIndexMap = new Map(phrases.map((p, i) => [p, i]));
-                const activeMarkers = new Map();
-                const reversedLogEntries = [...logEntries].reverse();
-
-                reversedLogEntries.forEach(entry => {
-                    const phraseIndex = phraseToIndexMap.get(entry.phrase);
-                    if (phraseIndex === undefined) return;
-
-                    const gridIndex = phraseIndex < 12 ? phraseIndex : phraseIndex + 1;
-                    if (gridIndex === 12) return;
-
-                    if (!activeMarkers.has(gridIndex)) {
-                        activeMarkers.set(gridIndex, new Map());
-                    }
-                    const squareMarkers = activeMarkers.get(gridIndex);
-
-                    if (entry.type === 'marked') {
-                        squareMarkers.set(entry.employee, true);
-                    } else if (entry.type === 'unmarked') {
-                        squareMarkers.delete(entry.employee);
-                    }
-                });
-
-                activeMarkers.forEach((employeesMap, gridIndex) => {
-                    if (employeesMap.size > 0) {
-                        const squareMarkedBy = new Map();
-                        employeesMap.forEach((_, employeeName) => {
-                            squareMarkedBy.set(employeeName, getEmployeeColor(employeeName));
-                        });
-                        tempMarkedSquares.set(gridIndex, squareMarkedBy);
-                    }
-                });
-                
-            } else {
-                setBingoActivityLog([]);
+            if (logEntries.length > 0) {
+                currentLatestMessageId = logEntries[0].id;
             }
 
-            setMarkedSquaresLocal(tempMarkedSquares);
+            const phraseToIndexMap = new Map(phrases.map((p, i) => [p, i]));
+            const activeMarkers = new Map();
+            const reversedLogEntries = [...logEntries].reverse();
 
-            setCompletedBingoLines(prevCompletedLines => {
-                const { newlyCompletedLineIndices, allCurrentlyCompleteLineIndices } = checkForBingo(tempMarkedSquares, phrases, prevCompletedLines);
+            reversedLogEntries.forEach(entry => {
+                const phraseIndex = phraseToIndexMap.get(entry.phrase);
+                if (phraseIndex === undefined) return;
 
-                if (newlyCompletedLineIndices.length > 0) {
-                    const scorer = logEntries[0]?.employee || 'A Player'; // Get the player who made the last move
-                    newlyCompletedLineIndices.forEach(lineIndex => {
-                        const bingoMessageAlreadyPosted = logEntries.some(entry =>
-                            entry.type === 'bingo' && entry.lineIndex === lineIndex
-                        );
+                const gridIndex = phraseIndex < 12 ? phraseIndex : phraseIndex + 1;
+                if (gridIndex === 12) return;
 
-                        const isAlreadyAnnouncing = announcingBingoLinesRef.current.has(lineIndex);
-
-                        if (!bingoMessageAlreadyPosted && !isAlreadyAnnouncing) {
-                            announcingBingoLinesRef.current.add(lineIndex);
-
-                            const lineName = BINGO_LINE_NAMES[lineIndex] || `Line ${lineIndex + 1}`;
-                            
-                            // NEW: Call the webhook for the bingo score
-                            if (sendBingoWebhook) {
-                                sendBingoWebhook({
-                                    scorer: scorer,
-                                    bingoType: selectedBingoType.name,
-                                    lineName: lineName,
-                                });
-                            }
-
-                            push(bingoLogRef, {
-                                employee: "SYSTEM_ADMIN",
-                                phrase: `BINGO!!! (${lineName})`,
-                                timestamp: serverTimestamp(),
-                                type: 'bingo',
-                                lineIndex: lineIndex
-                            }).catch(error => {
-                                console.error("Error writing bingo message to Firebase:", error);
-                            }).finally(() => {
-                                announcingBingoLinesRef.current.delete(lineIndex);
-                            });
-                        }
-                    });
+                if (!activeMarkers.has(gridIndex)) {
+                    activeMarkers.set(gridIndex, new Map());
                 }
-                
-                return allCurrentlyCompleteLineIndices;
+                const squareMarkers = activeMarkers.get(gridIndex);
+
+                if (entry.type === 'marked') {
+                    squareMarkers.set(entry.employee, true);
+                } else if (entry.type === 'unmarked') {
+                    squareMarkers.delete(entry.employee);
+                }
             });
 
-            if (currentLatestMessageId && lastSeenLogId && currentLatestMessageId !== lastSeenLogId) {
-                setHighlightedMessageId(currentLatestMessageId);
-                
-                if (highlightTimerRef.current) {
-                    clearTimeout(highlightTimerRef.current);
+            activeMarkers.forEach((employeesMap, gridIndex) => {
+                if (employeesMap.size > 0) {
+                    const squareMarkedBy = new Map();
+                    employeesMap.forEach((_, employeeName) => {
+                        squareMarkedBy.set(employeeName, getEmployeeColor(employeeName));
+                    });
+                    tempMarkedSquares.set(gridIndex, squareMarkedBy);
                 }
-                highlightTimerRef.current = setTimeout(() => {
-                    setHighlightedMessageId(null);
-                    highlightTimerRef.current = null;
-                }, 3000);
+            });
 
-                if (activityLogRef.current) {
-                    const { scrollHeight, scrollTop, clientHeight } = activityLogRef.current;
-                    if (scrollHeight - scrollTop > clientHeight + 5) {
-                        setShowNewMessagesIndicator(true);
-                    }
+        } else {
+            setBingoActivityLog([]);
+        }
+
+        setMarkedSquaresLocal(tempMarkedSquares);
+
+        //  *MODIFIED SECTION*
+        setCompletedBingoLines(prevCompletedLines => {
+            const { newlyCompletedLineIndices, allCurrentlyCompleteLineIndices } = checkForBingo(tempMarkedSquares, phrases, prevCompletedLines);
+
+            // Convert the sets to arrays for comparison
+            const newlyCompletedLineIndicesArray = Array.from(newlyCompletedLineIndices);
+
+            // Filter out bingo messages where line is no longer complete
+            const filteredLogEntries = logEntries.filter(entry => {
+                if (entry.type === 'bingo') {
+                    const lineIndex = entry.lineIndex;
+                    return allCurrentlyCompleteLineIndices.has(lineIndex);
                 }
-            }
-            setLastSeenLogId(currentLatestMessageId);
+                return true;
+            });
+
+            setBingoActivityLog(filteredLogEntries.slice(0, 20)); // Set the filtered log entries
+
+            const scorer = logEntries[0]?.employee || 'A Player'; // Get the player who made the last move
+            newlyCompletedLineIndicesArray.forEach(lineIndex => {
+                const bingoMessageAlreadyPosted = logEntries.some(entry =>
+                    entry.type === 'bingo' && entry.lineIndex === lineIndex
+                );
+
+                const isAlreadyAnnouncing = announcingBingoLinesRef.current.has(lineIndex);
+
+                if (!bingoMessageAlreadyPosted && !isAlreadyAnnouncing) {
+                    announcingBingoLinesRef.current.add(lineIndex);
+
+                    const lineName = BINGO_LINE_NAMES[lineIndex] || `Line ${lineIndex + 1}`;
+
+                    // NEW: Call the webhook for the bingo score
+                    if (sendBingoWebhook) {
+                        sendBingoWebhook({
+                            scorer: scorer,
+                            bingoType: selectedBingoType.name,
+                            lineName: lineName,
+                        });
+                    }
+
+                    push(bingoLogRef, {
+                        employee: "SYSTEM_ADMIN",
+                        phrase: `BINGO!!! (${lineName}) - Scorer: ${selectedEmployee?.value || 'A Player'}`,
+                        timestamp: serverTimestamp(),
+                        type: 'bingo',
+                        lineIndex: lineIndex
+                    }).catch(error => {
+                        console.error("Error writing bingo message to Firebase:", error);
+                    }).finally(() => {
+                        announcingBingoLinesRef.current.delete(lineIndex);
+                    });
+                }
+            });
+
+            return allCurrentlyCompleteLineIndices;
         });
 
-        return () => {
-            off(bingoLogRef, 'value', unsubscribeLog);
+        if (currentLatestMessageId && lastSeenLogId && currentLatestMessageId !== lastSeenLogId) {
+            setHighlightedMessageId(currentLatestMessageId);
+
             if (highlightTimerRef.current) {
                 clearTimeout(highlightTimerRef.current);
-                highlightTimerRef.current = null;
             }
-        };
-    }, [show, selectedBingoType, phrases, isLoadingPhrases, getEmployeeColor, checkForBingo, sendBingoWebhook]);
+            highlightTimerRef.current = setTimeout(() => {
+                setHighlightedMessageId(null);
+                highlightTimerRef.current = null;
+            }, 3000);
+
+            if (activityLogRef.current) {
+                const { scrollHeight, scrollTop, clientHeight } = activityLogRef.current;
+                 // MODIFIED: Check if already at the top before showing the indicator
+                if (scrollTop > 5) {
+                    setShowNewMessagesIndicator(true);
+                }
+            }
+        }
+        setLastSeenLogId(currentLatestMessageId);
+    });
+
+    return () => {
+        off(bingoLogRef, 'value', unsubscribeLog);
+        if (highlightTimerRef.current) {
+            clearTimeout(highlightTimerRef.current);
+            highlightTimerRef.current = null;
+        }
+    };
+}, [show, selectedBingoType, phrases, isLoadingPhrases, getEmployeeColor, checkForBingo, sendBingoWebhook]);
     
     // Scroll listener for the "New Messages" indicator
     useEffect(() => {
@@ -373,7 +405,7 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
 
     const scrollToBottom = () => {
         if (activityLogRef.current) {
-            activityLogRef.current.scrollTop = activityLogRef.current.scrollHeight;
+            activityLogRef.current.scrollTop = 0; // Changed from scrollHeight to 0
             setShowNewMessagesIndicator(false);
         }
     };
@@ -552,8 +584,17 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
     const handleEmployeeSelect = (option) => {
         setSelectedEmployee(option);
     };
-        const filteredEmployeeOptions = useMemo(() => {
+    const [formData, setFormData] = useState({});
+
+    const filteredEmployeeOptions = useMemo(() => {
         if (!selectedBingoType) return [];
+
+        let employeeValue = null;
+        if (selectedBingoType.employeeGroup === 'PHMC') {
+            employeeValue = formData.phmcEmployee;
+        } else if (selectedBingoType.employeeGroup === 'Coroner') {
+            employeeValue = formData.coronerEmployee;
+        }
 
         if (selectedBingoType.employeeGroup === 'PHMC') {
             if (selectedBingoType.employeeFilter.length > 0) {
@@ -564,7 +605,7 @@ const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions
             return coronerGroupedOptions;
         }
         return [];
-    }, [selectedBingoType, phmcGroupedOptions, coronerGroupedOptions]);
+    }, [selectedBingoType, phmcGroupedOptions, coronerGroupedOptions, formData.phmcEmployee, formData.coronerEmployee]);
 
     const handleSelectBingoType = (type) => {
         setSelectedBingoType(type);
