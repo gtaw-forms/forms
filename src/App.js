@@ -499,72 +499,23 @@ const initialFormData = {
         setShowAgencyGroupSelectorModal(false); // Hide the main selector if it's open
         setShowCctvRequestModal(true);
     };
+    const [isFirebaseOkay, setIsFirebaseOkay] = useState(true); // add this
+const fetchAllApplicationData = useCallback(async () => {
+    try {
+        const dbRootRef = ref(database); // Get a reference to the database root
+        const heartbeatRef = ref(dbRootRef, '.info/connected'); // Use dbRootRef
+        const snapshot = await get(heartbeatRef);
+        const isFirebaseOkay = snapshot.exists() && snapshot.val() === true;
 
-    const fetchAllApplicationData = useCallback(async (forceRefresh = false) => {
-        // 1. Check cache first, unless a refresh is forced
-        if (!forceRefresh) {
-            try {
-                const cachedDataString = localStorage.getItem(CACHE_KEY);
-                if (cachedDataString) {
-                    const cachedData = JSON.parse(cachedDataString);
-                    const cacheTimestamp = cachedData.timestamp;
-                    const isCacheFresh = (Date.now() - cacheTimestamp) < CACHE_EXPIRATION_MS;
-
-                    if (isCacheFresh) {
-                        console.log("Loading data from fresh cache.");
-                        const { data } = cachedData;
-                        // Populate state from cache
-                        setPhmcListData(data.staff?.phmc || []);
-                        setCoronerListData(data.staff?.coroner || []);
-                        setSaaaListData(data.staff?.saaa || []);
-                        setAgencyDataStore(data.agencies || {});
-                        const fetchedSelectOptions = data.selectOptions || {};
-                        setSelectOptions(fetchedSelectOptions);
-                        setPhysicianRecruitmentDetails(fetchedSelectOptions.physicianRecruitmentDetails || {});
-                        setPsychRecruitmentDetails(fetchedSelectOptions.psychPositionDetailsData || {});
-                        setSaaaRecruitmentDetails(fetchedSelectOptions.saaaPositionDetailsData || {});
-                        setAdminRecruitmentDetails(fetchedSelectOptions.adminPositionDetailsData || {});
-                        setEmsRecruitmentDetails(fetchedSelectOptions.emsPositionDetailsData || {});
-                        setNurseRecruitmentDetails(fetchedSelectOptions.nursePositionDetailsData || {});
-                        setCoronerRecruitmentDetails(fetchedSelectOptions.coronerPositionDetailsData || {});
-                        
-                        setIsLoadingData(false); // Data is loaded
-                        showNotification('Data loaded from cache!', 'check-circle', 2000);
-                        return; // Exit function
-                    } else {
-                        console.log("Cache is stale. Fetching new data.");
-                    }
-                }
-            } catch (error) {
-                console.error("Error reading from cache, fetching from network:", error);
-                Sentry.captureException(error, { extra: { context: 'LocalStorage Read Fail' } });
-            }
-        }
-
-        // 2. If cache is stale, non-existent, or refresh is forced, fetch from Firebase
-        setIsLoadingData(true);
-        if (loadingNotificationIdRef.current) {
-            removeNotification(loadingNotificationIdRef.current);
-        }
-        loadingNotificationIdRef.current = showNotification(
-            forceRefresh ? "Refreshing application data..." : "Loading application data...",
-            'spinner fa-spin',
-            0 // Indefinite
-        );
-
-        try {
+        if (isFirebaseOkay) {
+            showNotification("Data Loaded!", 'check-circle', 2000);
+            // Fetch data if Firebase is available
             const dbRootRef = ref(database);
             const snapshot = await get(dbRootRef);
-
-            if (loadingNotificationIdRef.current) {
-                removeNotification(loadingNotificationIdRef.current);
-                loadingNotificationIdRef.current = null;
-            }
 
             if (snapshot.exists()) {
                 const allData = snapshot.val();
 
-                // 3. Update state
                 setPhmcListData(allData.staff?.phmc || []);
                 setCoronerListData(allData.staff?.coroner || []);
                 setSaaaListData(allData.staff?.saaa || []);
@@ -578,56 +529,31 @@ const initialFormData = {
                 setEmsRecruitmentDetails(fetchedSelectOptions.emsPositionDetailsData || {});
                 setNurseRecruitmentDetails(fetchedSelectOptions.nursePositionDetailsData || {});
                 setCoronerRecruitmentDetails(fetchedSelectOptions.coronerPositionDetailsData || {});
-
-                // 4. Update cache
-                try {
-                    const dataToCache = {
-                        timestamp: Date.now(),
-                        data: allData
-                    };
-                    localStorage.setItem(CACHE_KEY, JSON.stringify(dataToCache));
-                    console.log("Data fetched from Firebase and cached.");
-                } catch (cacheError) {
-                    console.error("Failed to write to cache:", cacheError);
-                    Sentry.captureException(cacheError, { extra: { context: 'LocalStorage Write Fail' } });
-                    showNotification('Data loaded, but failed to cache for next time.', 'warning');
-                }
-
-                showNotification('Application data loaded successfully!', 'check-circle');
             } else {
                 showNotification('Initial application data not found on server.', 'error');
-                // Reset all relevant states
-                setPhmcListData([]); setCoronerListData([]); setSaaaListData([]);
-                setAgencyDataStore({}); setSelectOptions({});
-                setPhysicianRecruitmentDetails({}); setPsychRecruitmentDetails({}); setSaaaRecruitmentDetails({});
-                setAdminRecruitmentDetails({}); setEmsRecruitmentDetails({}); setNurseRecruitmentDetails({}); setCoronerRecruitmentDetails({});
             }
-        } catch (error) {
-            console.error("Error fetching data from Realtime Database:", error);
-            Sentry.captureException(error, { extra: { context: 'Firebase Data Fetch (fetchAllApplicationData)' } });
-            if (loadingNotificationIdRef.current) {
-                removeNotification(loadingNotificationIdRef.current);
-                loadingNotificationIdRef.current = null;
-            }
-            showNotification('Failed to load application data. Please try again later.', 'error');
-        } finally {
-            setIsLoadingData(false);
-            if (loadingNotificationIdRef.current) {
-                removeNotification(loadingNotificationIdRef.current);
-                loadingNotificationIdRef.current = null;
-            }
+        } else {
+            showNotification("An error has happened, contact the maintainer", 'error');
+            console.warn("Firebase heartbeat check failed: connection not active.");
         }
-    }, [
-        showNotification, removeNotification, setIsLoadingData,
-        setPhmcListData, setCoronerListData, setSaaaListData, setAgencyDataStore,
-        setSelectOptions, setPhysicianRecruitmentDetails, setPsychRecruitmentDetails, setSaaaRecruitmentDetails,
-        setAdminRecruitmentDetails, setEmsRecruitmentDetails, setNurseRecruitmentDetails, setCoronerRecruitmentDetails
-    ]);
+    } catch (heartbeatError) {
+        showNotification("An error has happened, contact the maintainer", 'error');
+        console.error("Firebase heartbeat check error:", heartbeatError);
+    } finally {
+        setIsLoadingData(false);
+    }
+}, [
+    showNotification, database, setPhmcListData, setCoronerListData, setSaaaListData,
+    setAgencyDataStore, setSelectOptions, setPhysicianRecruitmentDetails,
+    setPsychRecruitmentDetails, setSaaaRecruitmentDetails, setAdminRecruitmentDetails,
+    setEmsRecruitmentDetails, setNurseRecruitmentDetails, setCoronerRecruitmentDetails
+]);
 
-    useEffect(() => {
-        fetchAllApplicationData(false); // On initial load, try to use cache.
-    }, [fetchAllApplicationData]);
-    // --- END: Data Fetching and Caching Logic ---
+useEffect(() => {
+    fetchAllApplicationData();
+}, [fetchAllApplicationData]);
+
+
 
     const saaaGroupedOptions = useMemo(() => {
         if (!saaaListData || saaaListData.length === 0) return [];

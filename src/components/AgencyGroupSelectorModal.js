@@ -4,35 +4,6 @@ import { Button, Form, Image } from 'react-bootstrap';
 import phmcLogo from '../assets/phmc.png';
 import saaLogo from '../assets/saaa.png'; // Assuming SAAA logo is still relevant or can be a generic dev icon
 
-// Helper function to process recruitment data for the button
-const getRecruitmentSummary = (recruitmentSources) => {
-    const summaries = [];
-    let totalOpen = 0;
-    let totalClosed = 0;
-    let hasData = false;
-
-    for (const groupName in recruitmentSources) {
-        const details = recruitmentSources[groupName];
-        if (details && typeof details === 'object' && Object.keys(details).length > 0) {
-            hasData = true;
-            let openCount = 0;
-            let closedCount = 0;
-            Object.values(details).forEach(position => {
-                if (position.status === "OPEN") openCount++;
-                if (position.status === "CLOSED") closedCount++;
-            });
-            if (openCount > 0 || closedCount > 0) { // Only add if there are positions
-                summaries.push(`${groupName} (${openCount}O/${closedCount}C)`);
-            }
-            totalOpen += openCount;
-            totalClosed += closedCount;
-        }
-    }
-
-    if (!hasData || summaries.length === 0) {
-        return "Recruitment (Status N/A)";
-    }
-};
 const getRecruitmentSummaryData = (recruitmentSources) => {
     const groupSummaries = [];
     let overallTotalOpen = 0;
