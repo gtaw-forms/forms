@@ -1,4 +1,3 @@
-// c:\Users\cross\Documents\GitHub\phmc-forms\src\phmc-civilian-fields\Ems.js
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Form, Button, InputGroup, Spinner } from 'react-bootstrap'; // Added InputGroup and Spinner
 
@@ -41,15 +40,13 @@ const emsFormFields = [
     'emsLicenseLink', 'emsPartTimeReason', // For OtherEMS
     'applicantMotivationLetter', // For Paramedic/EMT
     'oocUcpName', 'oocForumName', 'oocDiscord', 'oocTimezone',
-    'oocMedicalExperience', // For Paramedic/EMT
-    'oocAdminRecordLink', 'oocStatsLink', 'charBackground',
+    'oocMedicalExperience', 'oocAdminRecordLink', 'oocStatsLink', 'charBackground',
     'oocOtherCharLicenseProof', 'dfpSanFireLink', 'dfpPhmcLink', 'dfpLegalFactionLink' // For OtherEMS
 ];
 
 
 const EMSFields = ({
     formData,
-    handleChange,
     setFormData,
     selectOptions,
     handleImageUpload, // Added prop
@@ -72,38 +69,51 @@ const EMSFields = ({
         oocInfo: true, 
     });
 
-    // --- START localStorage Logic ---
+    // useRef to keep track of the initial load to prevent localStorage overrides on first render
+    const initialLoad = useRef(true);
+
     useEffect(() => {
-        try {
-            const savedDataString = localStorage.getItem(LOCAL_STORAGE_KEY_EMS);
-            if (savedDataString) {
-                const savedData = JSON.parse(savedDataString);
-                if (savedData && savedData.data && savedData.timestamp) {
-                    if (Date.now() - savedData.timestamp < EXPIRY_DURATION_MS) {
-                        const relevantSavedData = {};
-                        emsFormFields.forEach(field => {
-                            if (savedData.data.hasOwnProperty(field)) {
-                                relevantSavedData[field] = savedData.data[field];
-                            }
-                        });
-                        setFormData(prev => ({ ...prev, ...relevantSavedData }));
-                    } else {
-                        localStorage.removeItem(LOCAL_STORAGE_KEY_EMS);
+        if (initialLoad.current) {
+            try {
+                const savedDataString = localStorage.getItem(LOCAL_STORAGE_KEY_EMS);
+                if (savedDataString) {
+                    const savedData = JSON.parse(savedDataString);
+                    if (savedData && savedData.data && savedData.timestamp) {
+                        if (Date.now() - savedData.timestamp < EXPIRY_DURATION_MS) {
+                            // Only load data if it's fresh
+                            setFormData(prevFormData => {
+                                const relevantSavedData = {};
+                                emsFormFields.forEach(field => {
+                                    if (savedData.data.hasOwnProperty(field) && !prevFormData.hasOwnProperty(field)) {
+                                        relevantSavedData[field] = savedData.data[field];
+                                    }
+                                });
+                                return { ...prevFormData, ...relevantSavedData };
+                            });
+                        } else {
+                            localStorage.removeItem(LOCAL_STORAGE_KEY_EMS);
+                        }
                     }
                 }
+            } catch (error) {
+                console.error("Error loading EMS form data from localStorage:", error);
+                localStorage.removeItem(LOCAL_STORAGE_KEY_EMS);
+            } finally {
+                initialLoad.current = false;
             }
-        } catch (error) {
-            console.error("Error loading EMS form data from localStorage:", error);
-            localStorage.removeItem(LOCAL_STORAGE_KEY_EMS);
         }
     }, [setFormData]);
 
-    useEffect(() => {
+    const [hasInteracted, setHasInteracted] = useState(false);
+
+    // Consolidated local storage saving logic
+    const saveFormDataToLocalStorage = useCallback(() => {
         try {
             const dataToSave = {};
             emsFormFields.forEach(field => {
                 if (formData.hasOwnProperty(field)) {
                     dataToSave[field] = formData[field];
+                    console.log(`Saving field '${field}' to localStorage with value:`, formData[field]);
                 }
             });
             const emsDataWithTimestamp = {
@@ -111,12 +121,26 @@ const EMSFields = ({
                 timestamp: Date.now()
             };
             localStorage.setItem(LOCAL_STORAGE_KEY_EMS, JSON.stringify(emsDataWithTimestamp));
+            console.log('EMS form data saved to localStorage:', emsDataWithTimestamp);
+            const retrievedData = localStorage.getItem(LOCAL_STORAGE_KEY_EMS);
+            console.log('Data immediately after saving:', retrievedData);
         } catch (error) {
             console.error("Error saving EMS form data to localStorage:", error);
         }
     }, [formData]);
-    // --- END localStorage Logic ---
 
+    // Use useEffect to save form data when hasInteracted changes
+    useEffect(() => {
+        if (hasInteracted) {
+            saveFormDataToLocalStorage();
+        }
+    }, [hasInteracted, formData, saveFormDataToLocalStorage]);
+
+    // General onChange handler for form fields
+    const handleChange = (e) => {
+        setFormData({ ...formData, [e.target.name]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
+        setHasInteracted(true); // Track that the user has interacted
+    };
 
     const toggleSection = (sectionName) => {
         setOpenSections(prev => ({ ...prev, [sectionName]: !prev[sectionName] }));
@@ -154,7 +178,6 @@ const EMSFields = ({
             { label: '4.9 Provide your character\'s background story:', name: 'charBackground', type: 'textarea', rows: 5 }
         ]
     };
-
     return (
         <>
             {/* ... (Personal Information - Section 1, Educational Background - Section 2 remain the same) ... */}
