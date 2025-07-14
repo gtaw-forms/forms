@@ -499,46 +499,37 @@ const initialFormData = {
         setShowAgencyGroupSelectorModal(false); // Hide the main selector if it's open
         setShowCctvRequestModal(true);
     };
-    const [isFirebaseOkay, setIsFirebaseOkay] = useState(true); // add this
 const fetchAllApplicationData = useCallback(async () => {
     try {
-        const dbRootRef = ref(database); // Get a reference to the database root
-        const heartbeatRef = ref(dbRootRef, '.info/connected'); // Use dbRootRef
-        const snapshot = await get(heartbeatRef);
-        const isFirebaseOkay = snapshot.exists() && snapshot.val() === true;
+        showNotification("Data Loading...", 'spinner fa-spin', 0); // Show loading indicator
+        const dbRootRef = ref(database);
+        const snapshot = await get(dbRootRef);
 
-        if (isFirebaseOkay) {
+        if (snapshot.exists()) {
+            const allData = snapshot.val();
+
+            setPhmcListData(allData.staff?.phmc || []);
+            setCoronerListData(allData.staff?.coroner || []);
+            setSaaaListData(allData.staff?.saaa || []);
+            setAgencyDataStore(allData.agencies || {});
+            const fetchedSelectOptions = allData.selectOptions || {};
+            setSelectOptions(fetchedSelectOptions);
+            setPhysicianRecruitmentDetails(fetchedSelectOptions.physicianRecruitmentDetails || {});
+            setPsychRecruitmentDetails(fetchedSelectOptions.psychPositionDetailsData || {});
+            setSaaaRecruitmentDetails(fetchedSelectOptions.saaaPositionDetailsData || {});
+            setAdminRecruitmentDetails(fetchedSelectOptions.adminPositionDetailsData || {});
+            setEmsRecruitmentDetails(fetchedSelectOptions.emsPositionDetailsData || {});
+            setNurseRecruitmentDetails(fetchedSelectOptions.nursePositionDetailsData || {});
+            setCoronerRecruitmentDetails(fetchedSelectOptions.coronerPositionDetailsData || {});
             showNotification("Data Loaded!", 'check-circle', 2000);
-            // Fetch data if Firebase is available
-            const dbRootRef = ref(database);
-            const snapshot = await get(dbRootRef);
-
-            if (snapshot.exists()) {
-                const allData = snapshot.val();
-
-                setPhmcListData(allData.staff?.phmc || []);
-                setCoronerListData(allData.staff?.coroner || []);
-                setSaaaListData(allData.staff?.saaa || []);
-                setAgencyDataStore(allData.agencies || {});
-                const fetchedSelectOptions = allData.selectOptions || {};
-                setSelectOptions(fetchedSelectOptions);
-                setPhysicianRecruitmentDetails(fetchedSelectOptions.physicianRecruitmentDetails || {});
-                setPsychRecruitmentDetails(fetchedSelectOptions.psychPositionDetailsData || {});
-                setSaaaRecruitmentDetails(fetchedSelectOptions.saaaPositionDetailsData || {});
-                setAdminRecruitmentDetails(fetchedSelectOptions.adminPositionDetailsData || {});
-                setEmsRecruitmentDetails(fetchedSelectOptions.emsPositionDetailsData || {});
-                setNurseRecruitmentDetails(fetchedSelectOptions.nursePositionDetailsData || {});
-                setCoronerRecruitmentDetails(fetchedSelectOptions.coronerPositionDetailsData || {});
-            } else {
-                showNotification('Initial application data not found on server.', 'error');
-            }
         } else {
-            showNotification("An error has happened, contact the maintainer", 'error');
-            console.warn("Firebase heartbeat check failed: connection not active.");
+            showNotification('Initial application data not found on server.', 'error');
+            // Handle case where data structure is missing but connection exists
         }
-    } catch (heartbeatError) {
+    } catch (error) {
         showNotification("An error has happened, contact the maintainer", 'error');
-        console.error("Firebase heartbeat check error:", heartbeatError);
+        console.error("Error fetching data from Realtime Database:", error);
+        // Handle the error appropriately, e.g., log it, show a user-friendly message, etc.
     } finally {
         setIsLoadingData(false);
     }
