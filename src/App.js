@@ -25,6 +25,7 @@ import SaaaEmployeeModal from './saaa-components/SaaaEmployeeModal';
 import RecruitmentStatusDisplay from './components/RecruitmentStatusDisplay'; // Add this import
 import CctvRequestWebhookModal from './components/Admin/CctvRequestWebhookModal'; // Add this import
 import { sendBingoNotification, sendPhraseRequestNotification } from './components/notificationService';
+import EMSFields from './phmc-civilian-fields/Ems'; // Assuming Ems.js only exports the JSX structure
 
 import FormImageLink from './components/FormImageLink';
 
@@ -59,7 +60,6 @@ import { database } from './firebase'; // Your Firebase config
 import { ref, get, set, remove} from 'firebase/database'; // Added set
 import SaaaBusinessCardModal from './saaa-components/SaaaBusinessCardModal';
 
-// Automated Imports from field-data
 
 // Define cache constants at the top level
 const CACHE_KEY = 'phmcFormsAppData';
@@ -316,7 +316,6 @@ const initialFormData = {
 
     // Recruitment Fields
     recruitmentPosition: '',
-    applicantTitleAndFullName: '',
     applicantContactDetails: '',
     locationPHMC: false,
     locationPBC: false,
@@ -342,6 +341,48 @@ const initialFormData = {
     oocMedicalExperience: '',
     oocAdminRecordLink: '',
     oocStatsLink: '',
+        recruitmentPosition: '',
+        applicantTitleAndFullName: '',
+        genderMale: '',
+        genderFemale: '',
+        genderOther: '',
+        applicantGenderOtherText: '',
+        applicantDOBAndPlace: '',
+        applicantAddress: '',
+        applicantContactDetails: '',
+        applicantMedicalConditions: '',
+        citizenUS: '',
+        citizenPermanent: '',
+        citizenNone: '',
+        eduHighSchool: '',
+        eduCertificate: '',
+        eduDiploma: '',
+        eduAssociate: '',
+        eduBachelor: '',
+        eduMaster: '',
+        eduDoctorate: '',
+        applicantSchoolName: '',
+        applicantEnrollmentTerm: '',
+        applicantMajor: '',
+        applicantLanguages: '',
+        applicantPrevEmployment: '',
+        applicantPrevDuties: '',
+        applicantPrevDismissalReason: '',
+        emsLicenseLink: '',
+        emsPartTimeReason: '',
+        applicantMotivationLetter: '',
+        oocUcpName: '',
+        oocForumName: '',
+        oocAdminRecordLink: '',
+        oocDiscord: '',
+        oocTimezone: '',
+        oocMedicalExperience: '',
+        oocStatsLink: '',
+        charBackground: '',
+        oocOtherCharLicenseProof: '',
+        dfpSanFireLink: '',
+        dfpPhmcLink: '',
+        dfpLegalFactionLink: '',
 
     // Imaging Fields
     Imaging: [],
@@ -349,6 +390,7 @@ const initialFormData = {
     ctResults: [],
     mriResults: [],
     ultrasoundResults: [],
+
 };
 
     const handleAdminPanelClick = () => {
@@ -494,57 +536,92 @@ const initialFormData = {
     const [nurseRecruitmentDetails, setNurseRecruitmentDetails] = useState({});
     const [coronerRecruitmentDetails, setCoronerRecruitmentDetails] = useState({});
     const loadingNotificationIdRef = useRef(null);
+        const [loading, setLoading] = useState(true); // Add a loading state
+
     const [showCctvRequestModal, setShowCctvRequestModal] = useState(false); // --- MODIFICATION: Add new state
     const handleShowCctvRequestModal = () => {
         setShowAgencyGroupSelectorModal(false); // Hide the main selector if it's open
         setShowCctvRequestModal(true);
     };
-const fetchAllApplicationData = useCallback(async () => {
-    try {
-        showNotification("Data Loading...", 'spinner fa-spin', 0); // Show loading indicator
-        const dbRootRef = ref(database);
-        const snapshot = await get(dbRootRef);
 
-        if (snapshot.exists()) {
-            const allData = snapshot.val();
+    useEffect(() => {
+        const loadData = async () => {
+            try {
+                showNotification("Data Loading...", 'spinner fa-spin', 0);
 
-            setPhmcListData(allData.staff?.phmc || []);
-            setCoronerListData(allData.staff?.coroner || []);
-            setSaaaListData(allData.staff?.saaa || []);
-            setAgencyDataStore(allData.agencies || {});
-            const fetchedSelectOptions = allData.selectOptions || {};
-            setSelectOptions(fetchedSelectOptions);
-            setPhysicianRecruitmentDetails(fetchedSelectOptions.physicianRecruitmentDetails || {});
-            setPsychRecruitmentDetails(fetchedSelectOptions.psychPositionDetailsData || {});
-            setSaaaRecruitmentDetails(fetchedSelectOptions.saaaPositionDetailsData || {});
-            setAdminRecruitmentDetails(fetchedSelectOptions.adminPositionDetailsData || {});
-            setEmsRecruitmentDetails(fetchedSelectOptions.emsPositionDetailsData || {});
-            setNurseRecruitmentDetails(fetchedSelectOptions.nursePositionDetailsData || {});
-            setCoronerRecruitmentDetails(fetchedSelectOptions.coronerPositionDetailsData || {});
-            showNotification("Data Loaded!", 'check-circle', 2000);
-        } else {
-            showNotification('Initial application data not found on server.', 'error');
-            // Handle case where data structure is missing but connection exists
-        }
-    } catch (error) {
-        showNotification("An error has happened, contact the maintainer", 'error');
-        console.error("Error fetching data from Realtime Database:", error);
-        // Handle the error appropriately, e.g., log it, show a user-friendly message, etc.
-    } finally {
-        setIsLoadingData(false);
-    }
-}, [
-    showNotification, database, setPhmcListData, setCoronerListData, setSaaaListData,
-    setAgencyDataStore, setSelectOptions, setPhysicianRecruitmentDetails,
-    setPsychRecruitmentDetails, setSaaaRecruitmentDetails, setAdminRecruitmentDetails,
-    setEmsRecruitmentDetails, setNurseRecruitmentDetails, setCoronerRecruitmentDetails
-]);
+                // Load formData from localStorage FIRST
+                let initialLoadFormData = {};
+                const fieldsToLoadFromLS = [
+                    'phmcEmployee', 'phmcEmployeeLastName', 'phmcRank',
+                    'coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord', 'coronerPHNumber',
+                    'pronouncedTimeOfDeath', 'department', 'dateTime', 'placeOfDeath', 'mannerOfDeath',
+                    'recruitmentPosition', 'applicantTitleAndFullName' // Also add these fields to load from LS
+                ];
 
-useEffect(() => {
-    fetchAllApplicationData();
-}, [fetchAllApplicationData]);
+                fieldsToLoadFromLS.forEach(field => {
+                    const value = localStorage.getItem(field);
+                    if (value !== null) {
+                        initialLoadFormData[field] = value;
+                    }
+                });
 
+                // Log the data right before calling setFormData
+                console.log("About to set formData with:", initialLoadFormData);
 
+                // Initialize state with localStorage values
+                setFormData(prevFormData => ({
+                    ...prevFormData,
+                    ...initialLoadFormData,
+                }));
+
+                const dbRootRef = ref(database);
+                const snapshot = await get(dbRootRef);
+
+                if (snapshot.exists()) {
+                    const allData = snapshot.val();
+                    setPhmcListData(allData.staff?.phmc || []);
+                    setCoronerListData(allData.staff?.coroner || []);
+                    setSaaaListData(allData.staff?.saaa || []);
+                    setAgencyDataStore(allData.agencies || {});
+                    let fetchedSelectOptions = allData.selectOptions || {};
+                    setSelectOptions(allData.selectOptions || {});
+
+                    setSelectOptions(fetchedSelectOptions);
+                    setPhysicianRecruitmentDetails(fetchedSelectOptions.physicianRecruitmentDetails || {});
+                    setPsychRecruitmentDetails(fetchedSelectOptions.psychPositionDetailsData || {});
+                    setSaaaRecruitmentDetails(fetchedSelectOptions.saaaPositionDetailsData || {});
+                    setAdminRecruitmentDetails(fetchedSelectOptions.adminPositionDetailsData || {});
+                    setEmsRecruitmentDetails(fetchedSelectOptions.emsPositionDetailsData || {});
+                    setNurseRecruitmentDetails(fetchedSelectOptions.nursePositionDetailsData || {});
+                    setCoronerRecruitmentDetails(fetchedSelectOptions.coronerPositionDetailsData || {});
+
+                    // Merge Firebase data on top of localStorage data
+                    setFormData(prevFormData => ({
+                        ...prevFormData,
+                        phmcEmployee: prevFormData.phmcEmployee, // load all details
+                        coronerEmployee: prevFormData.coronerEmployee, // Ensure coroner data is re set by load
+                    }));
+
+                    showNotification("Data Loaded!", 'check-circle', 2000);
+                } else {
+                    showNotification('Initial application data not found on server.', 'error');
+                }
+            } catch (error) {
+                showNotification("An error has happened, contact the maintainer", 'error');
+                console.error("Error fetching data from Realtime Database:", error);
+            } finally {
+                setIsLoadingData(false);
+                setLoading(false);
+            }
+        };
+
+        loadData();
+    }, [
+        showNotification, database, setPhmcListData, setCoronerListData, setSaaaListData,
+        setAgencyDataStore, setSelectOptions, setPhysicianRecruitmentDetails,
+        setPsychRecruitmentDetails, setSaaaRecruitmentDetails, setAdminRecruitmentDetails,
+        setEmsRecruitmentDetails, setNurseRecruitmentDetails, setCoronerRecruitmentDetails
+    ]);
 
     const saaaGroupedOptions = useMemo(() => {
         if (!saaaListData || saaaListData.length === 0) return [];
@@ -668,11 +745,11 @@ useEffect(() => {
         }
 
         // --- Force data refresh if DB was updated ---
-        if (firebaseUpdateSuccessful) {
+/*         if (firebaseUpdateSuccessful) {
             await fetchAllApplicationData(true); // This will clear the cache and fetch new data
         }
 
-        if (firebaseUpdateSuccessful || (!isAddMode && staffToRemove.length === 0 && authorizedBy?.trim())) {
+ */        if (firebaseUpdateSuccessful || (!isAddMode && staffToRemove.length === 0 && authorizedBy?.trim())) {
             try {
                 const response = await fetch(webhookURL, {
                     method: 'POST',
@@ -764,8 +841,16 @@ const getBBCodeContent = () => {
         return `BBCode generation for form "${formName}" is not implemented.`;
     }
 };
-    
-    const [formData, setFormData] = useState(initialFormData);
+        const initialLoadFormData = () => {
+        const storedData = localStorage.getItem('formData');
+        return storedData ? JSON.parse(storedData) : initialFormData;
+    };
+
+    const [formData, setFormData] = useState(initialLoadFormData);
+        useEffect(() => {
+        localStorage.setItem('formData', JSON.stringify(formData));
+    }, [formData]);
+
     const [isUploading, setIsUploading] = useState(false);
     const [isJohnDoe, setIsJohnDoe] = useState(false);
     const [isJaneDoe, setIsJaneDoe] = useState(false);
@@ -775,6 +860,9 @@ const getBBCodeContent = () => {
     const [commitInfo, setCommitInfo] = useState({ sha: '', date: null, error: null });
     const { imageSource: deathReportImage, className: deathReportClass } = SeasonalEvents({ imageType: 'deathReport' });
     const { imageSource: civilianPaperworkImage, className: civilianPaperworkClass } = SeasonalEvents({ imageType: 'civilianPaperwork' });
+  const updateFormData = useCallback((newData) => {
+    setFormData(prev => ({ ...prev, ...newData }));
+  }, []);
 
 
     useEffect(() => {
@@ -1468,10 +1556,10 @@ const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
                     // --- END Firebase Database Update ---
 
                     // --- Force data refresh if DB was updated ---
-                    if (dbUpdated) {
+/*                     if (dbUpdated) {
                         await fetchAllApplicationData(true);
                     }
-
+ */
                     setMissingEmployeeData({
                         coronerName: '', coronerDiscord: '', coronerRank: '', coronerPHNumber: '',
                         coronerEmployee: '', coronerBadge: '', phmcEmployee: '',
@@ -1556,11 +1644,6 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
         const currentPath = window.location.pathname;
         const hash = window.location.hash;
 
-        // --- DEBUGGING START ---
-        console.log("Routing useEffect triggered.");
-        console.log("Path for routing:", currentPath);
-        console.log("Hash for routing:", hash);
-        // --- DEBUGGING END ---
 
         if (hash === '#bingo' || currentPath.endsWith('/bingo')) {
             console.log("Bingo route detected. Opening Bingo modal.");
@@ -1568,8 +1651,6 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
         } else if (currentPath.endsWith('/cctv')) {
             console.log("CCTV route detected. Opening CCTV modal.");
             handleShowCctvRequestModal();
-        } else {
-            console.log("No specific route detected.");
         }
     }, []); // Empty dependency array ensures this runs only once on initial load
     const handleHideEmsBingoModal = useCallback(() => {
@@ -2947,6 +3028,7 @@ const filterFormData = (formData, bbCodeVersion) => {
 
 // switching agency logic
 
+// Automated Imports from field-data
 
     // Effect to manage initial agency group selection
     useEffect(() => {
@@ -3620,23 +3702,29 @@ useEffect(() => {
             lsKeysToRemove.forEach(key => localStorage.removeItem(key));
         }
     };
-    const handleChange = (e) => {
-        const { name, value, type, checked } = e.target;
-        const valToSet = type === 'checkbox' ? checked : value;
-        const timestamp = Date.now().toString();
+const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    const valToSet = type === 'checkbox' ? checked : value;
+    const timestamp = Date.now().toString();
 
-        setFormData(prevFormData => ({
-            ...prevFormData,
-            [name]: valToSet
-        }));
+    setFormData(prevFormData => ({
+        ...prevFormData,
+        [name]: valToSet
+    }));
+    console.log(`[handleChange] name=${name}, value=${valToSet}`);
 
-        // Update localStorage for fields that need it
-        const fiveDayExpiryFields = ['phmcEmployee', 'coronerEmployee', 'department', /* other fields */];
-        if (fiveDayExpiryFields.includes(name)) {
-             localStorage.setItem(name, valToSet);
-             localStorage.setItem(`${name}_timestamp`, timestamp);
+    // Update localStorage for fields that need it
+    const fiveDayExpiryFields = ['phmcEmployee', 'coronerEmployee', 'department', 'recruitmentPosition', 'applicantTitleAndFullName'];
+    if (fiveDayExpiryFields.includes(name)) {
+        try {
+            localStorage.setItem(name, valToSet);
+            localStorage.setItem(`${name}_timestamp`, timestamp);
+            console.log(`[localStorage] Saved ${name} with value ${valToSet}`); // Success log
+        } catch (error) {
+            console.error(`[localStorage] Error saving ${name} to localStorage:`, error); // Error log
         }
-    };
+    }
+};
 
 
     const removeReport = (indexToRemove) => {
@@ -3834,6 +3922,7 @@ const handleCopyAndNotifyWrapper = async () => {
         };
                                 
         return (
+            
         <div className="App">
             <AgencyGroupSelectorModal
                 show={showAgencyGroupSelectorModal && !selectedAgencyGroup}
@@ -4286,16 +4375,14 @@ const handleCopyAndNotifyWrapper = async () => {
             */}
         </div>
                             <form>
-                                
+
                                 {FieldComponent ? (
                                     <FieldComponent
                                         formData={formData}
                                         handleChange={handleChange}
-                                        setFormData={setFormData}
                                         commitInfo={commitInfo}
                                         // Pass all necessary props from App.js state and selectOptions
-                                        // Example for DeathReport:
-                                        typeOfDeathOptions={selectOptions.typeOfDeathOptions || []}
+setFormData={updateFormData}                                        typeOfDeathOptions={selectOptions.typeOfDeathOptions || []}
                                         mannerOfDeathOptions={selectOptions.mannerOfDeathOptions || []}
                                         requestingAgencyOptions={selectOptions.requestingAgenciesOptions || []}
                                         // Pass other props like phmcGroupedOptions, coronerGroupedOptions, etc.
@@ -4697,6 +4784,7 @@ const handleCopyAndNotifyWrapper = async () => {
     preselectedEmployeeType={preselectedEmployeeType}
 
 />
+
             <WebhookModal
                 show={showWebhookModal}
                 onClose={() => setShowWebhookModal(false)}
