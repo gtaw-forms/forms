@@ -6,7 +6,7 @@ import { Form, Button, InputGroup } from 'react-bootstrap';
 const CollapsibleHeader = ({ title, isOpen, onToggle, sectionId }) => (
     <Button
         variant="link"
-        onClick={onToggle}
+        onClick={onToggle} // Keep the existing onToggle function
         aria-expanded={isOpen}
         aria-controls={`collapse-${sectionId}`}
         style={{
@@ -33,84 +33,21 @@ const PatientAdvanced = ({
     handleChange,
     handleImageUpload,
     isUploading,
-    setFormData, // Needed for onPaste
-    patientTitleOptions, // Already correctly passed
-    patientBloodType, // Already correctly passed
-    selectOptions // <--- NEW: Destructure selectOptions here
+    setFormData,
+    patientTitleOptions,
+    patientBloodType,
+    selectOptions
 }) => {
-    // MODIFIED: Set all sections to be open by default
     const [isGeneralInfoOpen, setIsGeneralInfoOpen] = useState(true);
     const [isContactInfoOpen, setIsContactInfoOpen] = useState(true);
     const [isMedicalHistoryOpen, setIsMedicalHistoryOpen] = useState(true);
     const [isAdvancedDirectivesOpen, setIsAdvancedDirectivesOpen] = useState(true);
-    const [activeSection, setActiveSection] = useState('general-info'); // NEW: Track the active form section
+    const [activeSection, setActiveSection] = useState('general-info');
 
-    // <--- NEW: Destructure the specific option arrays from selectOptions --->
     const dnrOptions = selectOptions.dnr || [];
     const attorneyOptions = selectOptions.attorney || [];
     const dnrOrderOptions = selectOptions.dnrOrder || [];
-    // --- END NEW ---
 
-    // MODIFIED: useEffect to auto-close completed sections only when the user moves to a new section.
-    useEffect(() => {
-        console.log(`Checking if ${activeSection} can be toggled:`);
-        
-        // Check and close General Info if it's complete and not the active section
-        if (activeSection !== 'general-info') {
-            const isGeneralInfoComplete =
-                formData.patientTitle &&
-                formData.patientName &&
-                formData.patientDateOfBirth &&
-                formData.patientAddress &&
-                formData.patientGender &&
-                formData.patientRace;
-            if (isGeneralInfoComplete && isGeneralInfoOpen) {
-                setIsGeneralInfoOpen(false);
-            }
-        }
-
-        // Check and close Contact Info if it's complete and not the active section
-        if (activeSection !== 'contact-info') {
-            const isContactInfoComplete =
-                formData.patientPH &&
-                formData.patientDiscord &&
-                formData.patientEmergencyContact &&
-                formData.patientEmergencyContactRelation &&
-                formData.patientEmergencyContactNumber &&
-                formData.patientEmergencyContactDiscord;
-            if (isContactInfoComplete && isContactInfoOpen) {
-                setIsContactInfoOpen(false);
-            }
-        }
-
-        // Check and close Medical History if it's complete and not the active section
-        if (activeSection !== 'medical-history') {
-            const isMedicalHistoryComplete =
-                formData.patientBloodType &&
-                formData.patientAllergies &&
-                formData.patientCurrentMedicine &&
-                formData.patientChronicDiseases &&
-                formData.patientNotes;
-            if (isMedicalHistoryComplete && isMedicalHistoryOpen) {
-                setIsMedicalHistoryOpen(false);
-            }
-        }
-
-        // Check and close Advanced Directives if it's complete and not the active section
-        if (activeSection !== 'advanced-directives') {
-            const isDnrOtherComplete = formData.dnr !== 'other' || (formData.dnr === 'other' && formData.dnrOther);
-            const isAttorneyComplete = formData.attorney !== 'Yes' || (formData.attorney === 'Yes' && formData.attorneyName && formData.attorneyRelation && formData.attorneyPH);
-            const isAdvancedDirectivesComplete =
-                formData.dnr &&
-                formData.attorney &&
-                formData.dnrOrder &&
-                isDnrOtherComplete &&
-                isAttorneyComplete;
-            if (isAdvancedDirectivesComplete && isAdvancedDirectivesOpen) {
-                setIsAdvancedDirectivesOpen(false);
-            }
-        }
-    }, [activeSection, formData, isGeneralInfoOpen, isContactInfoOpen, isMedicalHistoryOpen, isAdvancedDirectivesOpen]);
 
     return (
         <>
@@ -124,7 +61,10 @@ const PatientAdvanced = ({
             {isGeneralInfoOpen && (
                 <div id="collapse-general-info" onFocusCapture={() => setActiveSection('general-info')}>
                     <Form.Group className="mb-3">
-                        <Form.Label>Patient ID, leave blank if unsure</Form.Label>
+                                                <Form.Label>Patient ID, leave blank if unsure</Form.Label>
+
+                                                <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}> {/* Added marginTop */}
+
                         <Form.Control
                             type="text"
                             name="patientID"
@@ -133,8 +73,10 @@ const PatientAdvanced = ({
                             placeholder="Patient ID  (Optional)"
                             className={`form-control ${!formData.patientID ? 'is-invalid' : ''}`}
                         />
+                        </div>
                         <Form.Label>Title / Patient Name Name / Date of Birth</Form.Label>
-                        <div style={{ display: 'flex', gap: '10px' }}>
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}> {/* Added marginTop */}
+
                             <Form.Select
                                 name="patientTitle"
                                 value={formData.patientTitle}
@@ -166,7 +108,7 @@ const PatientAdvanced = ({
                                 className={`form-control ${!formData.patientDateOfBirth ? 'is-invalid' : ''}`}
                             />
                         </div>
-                        <div style={{ display: 'flex', gap: '10px' }}>
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}> {/* Added marginTop */}
                             <Form.Control
                                 type="text"
                                 name="patientAddress"
@@ -229,7 +171,7 @@ const PatientAdvanced = ({
                         />
                     </div>
                     <Form.Label>Emergency Contact Information </Form.Label>
-                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}> {/* Added marginTop */}
                         <Form.Control
                             type="text"
                             name="patientEmergencyContact"
@@ -281,7 +223,7 @@ const PatientAdvanced = ({
             />
             {isMedicalHistoryOpen && (
                 <div id="collapse-medical-history" onFocusCapture={() => setActiveSection('medical-history')}>
-                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}> {/* Added marginTop */}
                         <Form.Select
                             name="patientBloodType"
                             value={formData.patientBloodType || ""}
@@ -347,7 +289,7 @@ const PatientAdvanced = ({
             />
             {isAdvancedDirectivesOpen && (
                 <div id="collapse-advanced-directives" onFocusCapture={() => setActiveSection('advanced-directives')}>
-                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}> {/* Added marginTop */}
                         <Form.Select
                             name="dnr"
                             value={formData.dnr}
