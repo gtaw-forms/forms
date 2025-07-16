@@ -3,7 +3,7 @@ const generateEMS = (formData) => {
         // Section 1: Personal Information
         recruitmentPosition,
         applicantTitleAndFullName,
-        applicantGenderOtherText, // Used if genderOther is true
+        applicantGenderOtherText,
         applicantDOBAndPlace,
         applicantAddress,
         applicantContactDetails,
@@ -50,7 +50,8 @@ const generateEMS = (formData) => {
         eduDoctorate,
 
         // EMS specific position details from formData
-        positionDetailsData, // MODIFIED: Changed from emsPositionDetailsData
+        //positionDetailsData, // MODIFIED: Changed from emsPositionDetailsData
+        selectOptions,
 
         // Fields for non-Paramedic/non-EMT EMS (original structure for Section 3)
         emsLicenseLink,
@@ -60,25 +61,27 @@ const generateEMS = (formData) => {
     } = formData;
 
     // Use EMS-specific position details
-    const positionDetailsMap = positionDetailsData || {}; // MODIFIED: Use the corrected variable
+    const positionDetailsMap = selectOptions?.emsPositionDetailsData || {};
+    console.log("DEBUG: positionDetailsMap in generateEMS.js:", positionDetailsMap);
 
     let dynamicDisplayPosition = "Position (Please Select)";
     let dynamicJobPostingUrl = "https://phmc.gta.world/viewforum.php?f=168";
 
     if (recruitmentPosition && Object.keys(positionDetailsMap).length > 0) {
-        const selectedPositionKey = recruitmentPosition;
+        const selectedPositionKey = recruitmentPosition.toUpperCase();
         if (positionDetailsMap[selectedPositionKey]) {
+            console.log(`positionDetailsMap[${selectedPositionKey}]`, positionDetailsMap[selectedPositionKey]);
             dynamicDisplayPosition = positionDetailsMap[selectedPositionKey].displayName || selectedPositionKey;
             dynamicJobPostingUrl = positionDetailsMap[selectedPositionKey].url || dynamicJobPostingUrl;
         } else {
             dynamicDisplayPosition = selectedPositionKey;
             // This console.warn will now correctly reference the data source name
-            console.warn(`EMS Position "${selectedPositionKey}" not found in positionDetailsData. Using default URL.`);
+            console.warn(`EMS Position "${selectedPositionKey}" not found in positionDetailsMap. Using default URL.`);
         }
     } else if (recruitmentPosition) {
         dynamicDisplayPosition = recruitmentPosition;
         // This console.warn will now correctly reference the data source name
-        console.warn(`positionDetailsData is empty or not provided. Using default URL for "${recruitmentPosition}".`);
+        console.warn(`positionDetailsMap is empty or not provided. Using default URL for "${recruitmentPosition}".`);
     }
 
     const eduCheck = (field) => field ? 'c' : '';
@@ -89,14 +92,14 @@ const generateEMS = (formData) => {
 
     const commonSections3And4 = `[divbox=na][list=none][b][size=110][color=#FF0000]3[/color].  Employment History[/size][/b][/list]
 [hr][/hr]
-[list=none][b][color=#FF0000]3.1[/color] Previous Employment:[/b] [i]${formData.applicantPrevEmployment || 'ROLE at COMPANY between DD/MMM/YYYY to DD/MMM/YYYY'}[/i]
-[b][color=#FF0000]3.2[/color] Duties:[/b] [i]${formData.applicantPrevDuties || 'ANSWER'}[/i]
-[b][color=#FF0000]3.3[/color] Reason for Dismissal:[/b] [i]${formData.applicantPrevDismissalReason || 'ANSWER'}[/i][/list]
+[list=none][b][color=#FF0000]3.1[/color] Previous Employment:[/b] [i]${applicantPrevEmployment || 'ROLE at COMPANY between DD/MMM/YYYY to DD/MMM/YYYY'}[/i]
+[b][color=#FF0000]3.2[/color] Duties:[/b] [i]${applicantPrevDuties || 'ANSWER'}[/i]
+[b][color=#FF0000]3.3[/color] Reason for Dismissal:[/b] [i]${applicantPrevDismissalReason || 'ANSWER'}[/i][/list]
 [br][/br][/divbox]
 [divbox=na][list=none][b][size=110][color=#FF0000]4[/color].  Motivational Letter[/size][/b][/list]
 [hr][/hr]
 [list=none][b][color=#FF0000]4.1[/color] Submit your motivational letter, describing why you wish to join us, why we should choose you rather than someone else, and why the qualities required from this job correspond to you :[/b] i[/i]
-[quote][i]${formData.applicantMotivationLetter || 'ANSWER HERE'}[/i][/quote][/list]
+[quote][i]${applicantMotivationLetter || 'ANSWER HERE'}[/i][/quote][/list]
 [br][/br][/divbox]`;
 
     if (recruitmentPosition === "Paramedic") {

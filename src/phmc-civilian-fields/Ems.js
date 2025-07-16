@@ -29,8 +29,10 @@ const CollapsibleHeader = ({ title, isOpen, onToggle, sectionId }) => (
 
 const EMSFields = ({ formData, handleChange, setFormData, selectOptions
 }) => {
-    // Use emsPositionDetailsData from selectOptions for position dropdown
     const positionDetails = selectOptions?.emsPositionDetailsData || {};
+        console.log("EMSFields: selectOptions prop:", selectOptions);
+    console.log("EMSFields: positionDetails (emsPositionDetailsData):", positionDetails);
+
     const selectedRole = formData.recruitmentPosition || '';
 
     const isParamedic = selectedRole === 'Paramedic';
@@ -46,84 +48,10 @@ const EMSFields = ({ formData, handleChange, setFormData, selectOptions
         oocInfo: true,
     });
     // List of fields used in this component
-const relevantFields = useMemo(() => [
-        'recruitmentPosition',
-        'applicantTitleAndFullName',
-        'genderMale',
-        'genderFemale',
-        'genderOther',
-        'applicantGenderOtherText',
-        'applicantDOBAndPlace',
-        'applicantAddress',
-        'applicantContactDetails',
-        'applicantMedicalConditions',
-        'citizenUS',
-        'citizenPermanent',
-        'citizenNone',
-        'eduHighSchool',
-        'eduCertificate',
-        'eduDiploma',
-        'eduAssociate',
-        'eduBachelor',
-        'eduMaster',
-        'eduDoctorate',
-        'applicantSchoolName',
-        'applicantEnrollmentTerm',
-        'applicantMajor',
-        'applicantLanguages',
-        'applicantPrevEmployment',
-        'applicantPrevDuties',
-        'applicantPrevDismissalReason',
-        'emsLicenseLink',
-        'emsPartTimeReason',
-        'applicantMotivationLetter',
-        'oocUcpName',
-        'oocForumName',
-        'oocAdminRecordLink',
-        'oocDiscord',
-        'oocTimezone',
-        'oocMedicalExperience',
-        'oocStatsLink',
-        'charBackground',
-        'oocOtherCharLicenseProof',
-        'dfpSanFireLink',
-        'dfpPhmcLink',
-        'dfpLegalFactionLink'
-], []);
-    // Load form data from localStorage on component mount
 
     const toggleSection = (sectionName) => {
         setOpenSections(prev => ({ ...prev, [sectionName]: !prev[sectionName] }));
     };
-    useEffect(() => {
-        const loadData = () => {
-            const loadedData = {};
-            relevantFields.forEach(field => {
-                const savedValue = localStorage.getItem(field);
-                if (savedValue !== null) {
-                    loadedData[field] = savedValue;
-                    console.log(`[loadData] Successfully loaded ${field} from localStorage with value: ${savedValue}`);
-                } else {
-                    console.log(`[loadData] ${field} not found in localStorage.`);
-                }
-            });
-
-        if (Object.keys(loadedData).length > 0) {
-            // Mapping logic here
-            if (loadedData.recruitmentPosition === "EMT Trainee") {
-                loadedData.recruitmentPosition = "emtTrainee"; // Assuming "emtTrainee" is the correct key
-            }
-            // Add mappings for other potential values if needed
-            setFormData(loadedData);
-            console.log("Loaded data (after mapping):", loadedData);
-            console.log("positionDetails:", positionDetails);
-        } else {
-            console.log("[loadData] No data loaded from localStorage to update the form.");
-        }
-        };
-
-        loadData();
-    }, [relevantFields, setFormData]); // Now setFormData is a stable function reference
 
     return (
         <>

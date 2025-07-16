@@ -28,20 +28,6 @@ const CollapsibleHeader = ({ title, isOpen, onToggle, sectionId }) => (
     </Button>
 );
 
-const LOCAL_STORAGE_KEY_CORONER = 'coronerApplicationFormData';
-const EXPIRY_DURATION_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
-
-const coronerFormFields = [
-    'recruitmentPosition', 'applicantTitleAndFullName', 'genderMale', 'genderFemale', 'genderOther',
-    'applicantGenderOtherText', 'applicantDOBAndPlace', 'applicantAddress', 'applicantContactDetails',
-    'applicantMedicalConditions', 'citizenUS', 'citizenPermanent', 'citizenNone',
-    'eduHighSchool', 'eduCertificate', 'eduDiploma', 'eduAssociate', 'eduBachelor', 'eduMaster', 'eduDoctorate',
-    'applicantSchoolName', 'applicantEnrollmentTerm', 'applicantMajor', 'applicantLanguages',
-    'applicantPrevEmployment', 'applicantPrevDuties', 'applicantPrevDismissalReason',
-    'applicantMotivationLetter', 'oocUcpName', 'oocForumName', 'oocDiscord', 'oocTimezone',
-    'oocMedicalExperience', 'oocAdminRecordLink', 'oocStatsLink', 'charBackground'
-];
-
 
 const CoronerFields = ({
     formData,
@@ -73,48 +59,6 @@ const CoronerFields = ({
         });
     }, [openSections]); 
 
-    useEffect(() => {
-        try {
-            const savedDataString = localStorage.getItem(LOCAL_STORAGE_KEY_CORONER);
-            if (savedDataString) {
-                const savedData = JSON.parse(savedDataString);
-                if (savedData && savedData.data && savedData.timestamp) {
-                    if (Date.now() - savedData.timestamp < EXPIRY_DURATION_MS) {
-                        const relevantSavedData = {};
-                        coronerFormFields.forEach(field => {
-                            if (savedData.data.hasOwnProperty(field)) {
-                                relevantSavedData[field] = savedData.data[field];
-                            }
-                        });
-                        setFormData(prev => ({ ...prev, ...relevantSavedData }));
-                    } else {
-                        localStorage.removeItem(LOCAL_STORAGE_KEY_CORONER);
-                    }
-                }
-            }
-        } catch (error) {
-            console.error("Error loading coroner form data from localStorage:", error);
-            localStorage.removeItem(LOCAL_STORAGE_KEY_CORONER);
-        }
-    }, [setFormData]);
-
-    useEffect(() => {
-        try {
-            const dataToSave = {};
-            coronerFormFields.forEach(field => {
-                if (formData.hasOwnProperty(field)) {
-                    dataToSave[field] = formData[field];
-                }
-            });
-            const coronerDataWithTimestamp = {
-                data: dataToSave,
-                timestamp: Date.now()
-            };
-            localStorage.setItem(LOCAL_STORAGE_KEY_CORONER, JSON.stringify(coronerDataWithTimestamp));
-        } catch (error) {
-            console.error("Error saving coroner form data to localStorage:", error);
-        }
-    }, [formData]);
 
     const checkFieldsCompletion = useCallback((fieldsToCheck) => {
         for (const field of fieldsToCheck) {

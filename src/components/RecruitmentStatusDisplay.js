@@ -10,7 +10,6 @@ const RecruitmentStatusDisplay = ({
     emsRecruitmentDetails,
     nurseRecruitmentDetails,
     coronerRecruitmentDetails,
-    saaaRecruitmentDetails,
 }) => {
     useEffect(() => {
     }, [selectedAgencyGroup, bbCodeVersion]);
@@ -40,15 +39,6 @@ const RecruitmentStatusDisplay = ({
             // then this component should not display anything for this group.
             return null;
         }
-
-    } else if (selectedAgencyGroup === 'SAAA') {
-        mainTitle = "SAAA Recruitment Status";
-        sectionsToShow.push({
-            title: "SAAA Careers",
-            data: saaaRecruitmentDetails,
-            groupFilter: "SAAA",
-            isActive: true, // SAAA always shows its section if group is SAAA
-        });
     } else {
         // Not PHMC Recruitment or SAAA group, so component is not active.
         return null;

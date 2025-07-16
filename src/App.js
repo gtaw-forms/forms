@@ -21,19 +21,15 @@ import EasterEggModal from './components/EasterEggModal';
 import EmsAmaModal from './components/EmsAmaModal';
 import SwitchableFormsModal from './components/SwitchableFormsModal'; 
 import MissingEmployeeModal from './components/MissingEmployeeModal';
-import SaaaEmployeeModal from './saaa-components/SaaaEmployeeModal'; 
 import RecruitmentStatusDisplay from './components/RecruitmentStatusDisplay'; // Add this import
 import CctvRequestWebhookModal from './components/Admin/CctvRequestWebhookModal'; // Add this import
 import { sendBingoNotification, sendPhraseRequestNotification } from './components/notificationService';
-import EMSFields from './phmc-civilian-fields/Ems'; // Assuming Ems.js only exports the JSX structure
 
 import FormImageLink from './components/FormImageLink';
 
 // 
 import { copyToClipboard, handleFormCopyAndNotify, handlePhmcRecruitmentCopyAndNotify } from './components/notificationService'; // Add copyToClipboard
 
-import FlightSchoolTipsModal from './saaa-components/FlightSchoolTipsModal';
-import saaaLogo from './assets/saaa-button.png'; 
 import {
     generateDeathReport,
 } from './phmc-bbcode-generators'; 
@@ -58,7 +54,6 @@ import 'react-bootstrap-typeahead/css/Typeahead.css';
 // database
 import { database } from './firebase'; // Your Firebase config
 import { ref, get, set, remove} from 'firebase/database'; // Added set
-import SaaaBusinessCardModal from './saaa-components/SaaaBusinessCardModal';
 
 
 // Define cache constants at the top level
@@ -251,68 +246,6 @@ const initialFormData = {
     confirmationPurpose: '',
     phmcEmployeeSignatureImage: '',
 
-    // SAAA Fields
-    saaaJobSelection: '',
-    patientContactNumber: '',
-    patientDOB: '',
-    patientBirth: '',
-    healthImpairments: '',
-    healthStandingIssues: '',
-    eduHighSchoolName: '',
-    eduHighSchoolYear: '',
-    eduCollegeName: '',
-    eduCollegeYear: '',
-    eduCollegeDegree: '',
-    empGovExperience: '',
-    empPrev1Name: '',
-    empPrev1Period: '',
-    empPrev1Rank: '',
-    empPrev1Reason: '',
-    empPrev2Name: '',
-    empPrev2Period: '',
-    empPrev2Rank: '',
-    empPrev2Reason: '',
-    licCitizenship: '',
-    licPilotLicense: '',
-    oocUcpName: '',
-    oocDiscord: '',
-    oocForumName: '',
-    oocTimezone: '',
-    oocGtawPlaytime: '',
-    oocEnglishProficiency: '',
-    oocOtherFactionInfo: '',
-    oocFactionBans: '',
-    oocOtherCharacters: '',
-    adminRecordLink: '',
-    inGameStatsLink: '',
-    charBackground: '',
-    ackAuthorize: false,
-    registrantFullName: '',
-    registrantContactNumbers: '',
-    registrantResidentialAddress: '',
-    heliportAddresses: '',
-    heliportNumPads: 0,
-    heliportPhotoLinks: '',
-    heliportLayoutPlanLinks: '',
-    companyName: '',
-    contactNumber: '',
-    companyAddress: '',
-    ceoFullName: '',
-    chiefPilots: '',
-    staffList: '',
-    registrantDateOfBirth: '',
-    registrantPlaceOfBirth: '',
-    aircraftType: '',
-    aircraftModel: '',
-    aircraftDateOfPurchase: '',
-    aircraftImageLink: '',
-    requestedCallsign: '',
-    regFullName: '',
-    regContactNumber: '',
-    regPosition: '',
-    trainingPlanLink: '',
-    chiefPilotFullName: '',
-    chiefPilotContactNumber: '',
 
     // Recruitment Fields
     recruitmentPosition: '',
@@ -427,9 +360,7 @@ const initialFormData = {
             .map(def => def.version),
     []); // Empty dependency array means this runs only once.
 
-    const [saaaFormCompletionNotified, setSaaaFormCompletionNotified] = useState(false);
 
-    const [showFlightSchoolTipsModal, setShowFlightSchoolTipsModal] = useState(false);
 
     const removeNotification = useCallback((idToRemove) => {
         setNotifications(prevNotifications =>
@@ -511,10 +442,8 @@ const initialFormData = {
  const CONSULTATION_NOTES_PHMC_VERSION = 20;
  const CONSULTATION_NOTES_PBC_VERSION = 21;
 
-    const [showSaaaEmployeeModal, setShowSaaaEmployeeModal] = useState(false);
     
     // --- START: Data Fetching and Caching Logic ---
-    const [saaaListData, setSaaaListData] = useState([]);
     const [phmcListData, setPhmcListData] = useState([]);
     const [coronerListData, setCoronerListData] = useState([]);
     const [agencyDataStore, setAgencyDataStore] = useState({});
@@ -530,7 +459,6 @@ const initialFormData = {
     const [hideAgencyGroupSelectorPreference, setHideAgencyGroupSelectorPreference] = useState(false);
     const [physicianRecruitmentDetails, setPhysicianRecruitmentDetails] = useState({});
     const [psychRecruitmentDetails, setPsychRecruitmentDetails] = useState({});
-    const [saaaRecruitmentDetails, setSaaaRecruitmentDetails] = useState({});
     const [adminRecruitmentDetails, setAdminRecruitmentDetails] = useState({});
     const [emsRecruitmentDetails, setEmsRecruitmentDetails] = useState({});
     const [nurseRecruitmentDetails, setNurseRecruitmentDetails] = useState({});
@@ -579,21 +507,26 @@ const initialFormData = {
 
                 if (snapshot.exists()) {
                     const allData = snapshot.val();
+                    let fetchedSelectOptions = allData.selectOptions || {};
+
+                    console.log("All data from Firebase:", allData);
+                    console.log("Fetched selectOptions:", fetchedSelectOptions);
+                    console.log("EMS Position Details Data:", fetchedSelectOptions.emsPositionDetailsData);
+
+
                     setPhmcListData(allData.staff?.phmc || []);
                     setCoronerListData(allData.staff?.coroner || []);
-                    setSaaaListData(allData.staff?.saaa || []);
                     setAgencyDataStore(allData.agencies || {});
-                    let fetchedSelectOptions = allData.selectOptions || {};
                     setSelectOptions(allData.selectOptions || {});
 
                     setSelectOptions(fetchedSelectOptions);
                     setPhysicianRecruitmentDetails(fetchedSelectOptions.physicianRecruitmentDetails || {});
                     setPsychRecruitmentDetails(fetchedSelectOptions.psychPositionDetailsData || {});
-                    setSaaaRecruitmentDetails(fetchedSelectOptions.saaaPositionDetailsData || {});
                     setAdminRecruitmentDetails(fetchedSelectOptions.adminPositionDetailsData || {});
                     setEmsRecruitmentDetails(fetchedSelectOptions.emsPositionDetailsData || {});
                     setNurseRecruitmentDetails(fetchedSelectOptions.nursePositionDetailsData || {});
                     setCoronerRecruitmentDetails(fetchedSelectOptions.coronerPositionDetailsData || {});
+                console.log("emsRecruitmentDetails state:", emsRecruitmentDetails);
 
                     // Merge Firebase data on top of localStorage data
                     setFormData(prevFormData => ({
@@ -617,164 +550,12 @@ const initialFormData = {
 
         loadData();
     }, [
-        showNotification, database, setPhmcListData, setCoronerListData, setSaaaListData,
+        showNotification, database, setPhmcListData, setCoronerListData, 
         setAgencyDataStore, setSelectOptions, setPhysicianRecruitmentDetails,
-        setPsychRecruitmentDetails, setSaaaRecruitmentDetails, setAdminRecruitmentDetails,
+        setPsychRecruitmentDetails, setAdminRecruitmentDetails,
         setEmsRecruitmentDetails, setNurseRecruitmentDetails, setCoronerRecruitmentDetails
     ]);
 
-    const saaaGroupedOptions = useMemo(() => {
-        if (!saaaListData || saaaListData.length === 0) return [];
-        // Assuming SAAA staff have 'name' and 'rank' properties
-        // You might want to group them by rank or have a single group
-        return [{
-            label: 'SAAA Employees',
-            options: saaaListData.map(emp => ({
-                value: emp.name, // Or a unique ID
-                label: `${emp.name} (${emp.rank || 'N/A'})`
-            })).sort((a, b) => a.label.localeCompare(b.label))
-        }];
-    }, [saaaListData]);
-    const handleSaaaEmployeeSubmit = async (isAddMode, saaaData) => {
-        const webhookURL = process.env.REACT_APP_SAAA_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL; // Use SAAA specific or fallback
-        const { employeeName, employeeRank, employeePhoneNumber, requester, staffToRemove, authorizedBy } = saaaData;
-
-        if (!webhookURL) {
-            showNotification('Configuration error: SAAA Webhook URL missing.', 'exclamation-triangle');
-            Sentry.captureMessage('SAAA Webhook URL missing for employee management.', 'error');
-            return;
-        }
-
-        let embedData = {};
-        let requestActionTitle = '';
-        let firebaseUpdateSuccessful = false;
-
-        if (isAddMode) {
-            requestActionTitle = '➕ New SAAA Employee Addition Request';
-            // Adjust validation: requester is only required if there are SAAA employees to select from
-            if (!employeeName?.trim() || !employeeRank?.trim() || (saaaListData.length > 0 && !requester?.trim())) {
-                let missingFieldsMsg = 'Please fill in Employee Name and Rank.';
-                if (saaaListData.length > 0 && !requester?.trim()) {
-                    missingFieldsMsg = 'Please fill in Employee Name, Rank, and Requester for adding SAAA staff.';
-                }
-                showNotification(missingFieldsMsg, 'warning');
-                return;
-            }
-            embedData = {
-                title: requestActionTitle,
-                color: 0x007bff, // SAAA theme color (e.g., blue)
-                fields: [
-                    // Conditionally add requester field
-                    ...(requester?.trim() ? [{ name: "Requested By", value: requester, inline: false }] : [{ name: "Requested By", value: "N/A (No SAAA staff in system)", inline: false }]),
-                    { name: "Name to Add", value: employeeName, inline: true },
-                    { name: "Rank/Position", value: employeeRank, inline: true },
-                    ...(employeePhoneNumber?.trim() ? [{ name: "Phone Number", value: employeePhoneNumber, inline: true }] : []),
-                ],
-                timestamp: new Date().toISOString(),
-                footer: { text: `Submitted via Forms Tool - v${commitInfo.sha || 'N/A'}` }
-            };
-
-            // Firebase Add Logic
-            const newSaaaEmployee = {
-                name: employeeName.trim(),
-                rank: employeeRank.trim(),
-                phoneNumber: employeePhoneNumber?.trim() || '',
-            };
-            try {
-                const saaaListRef = ref(database, 'staff/saaa');
-                const snapshot = await get(saaaListRef);
-                const currentSaaaStaff = snapshot.exists() ? snapshot.val() : [];
-                if (!currentSaaaStaff.find(s => s.name === newSaaaEmployee.name)) {
-                    const updatedSaaaStaff = [...currentSaaaStaff, newSaaaEmployee];
-                    await set(saaaListRef, updatedSaaaStaff);
-                    firebaseUpdateSuccessful = true;
-                } else {
-                    showNotification(`SAAA Employee ${newSaaaEmployee.name} already exists.`, 'warning');
-                    return; 
-                }
-            } catch (dbError) {
-                console.error("Error adding SAAA employee to Firebase:", dbError);
-                Sentry.captureException(dbError, { extra: { context: 'Firebase Add SAAA Employee' } });
-                showNotification('Failed to update SAAA database.', 'error');
-                return; 
-            }
-
-        } else { // Remove Mode
-            requestActionTitle = '➖ SAAA Staff Removal Request';
-            // For remove mode, if saaaListData is empty, staffToRemove will also be empty.
-            // The existing validation for staffToRemove and authorizedBy should still apply.
-            if (!staffToRemove || staffToRemove.length === 0) {
-                showNotification('Please select at least one SAAA staff member to remove.', 'warning');
-                return;
-            }
-            if (!authorizedBy?.trim()) {
-                showNotification('Please enter your name in the "Authorized By" field.', 'warning');
-                return;
-            }
-            embedData = {
-                title: requestActionTitle,
-                color: 0xdc3545, 
-                fields: [
-                    { name: "Authorized By", value: authorizedBy, inline: false },
-                    { name: `Staff to Remove (${staffToRemove.length})`, value: staffToRemove.join('\n') || "None selected", inline: false },
-                ],
-                timestamp: new Date().toISOString(),
-                footer: { text: `Submitted via Forms Tool - v${commitInfo.sha || 'N/A'}` }
-            };
-
-            // Firebase Remove Logic
-            try {
-                const saaaListRef = ref(database, 'staff/saaa');
-                const snapshot = await get(saaaListRef);
-                let currentSaaaStaff = snapshot.exists() ? snapshot.val() : [];
-                const initialCount = currentSaaaStaff.length;
-                currentSaaaStaff = currentSaaaStaff.filter(s => !staffToRemove.includes(s.name));
-                if (currentSaaaStaff.length < initialCount) {
-                    await set(saaaListRef, currentSaaaStaff);
-                    firebaseUpdateSuccessful = true;
-                } else {
-                    showNotification('No matching SAAA staff found in database to remove.', 'warning');
-                    return; 
-                }
-            } catch (dbError) {
-                console.error("Error removing SAAA staff from Firebase:", dbError);
-                Sentry.captureException(dbError, { extra: { context: 'Firebase Remove SAAA Staff' } });
-                showNotification('Failed to update SAAA database for removal.', 'error');
-                return; 
-            }
-        }
-
-        // --- Force data refresh if DB was updated ---
-/*         if (firebaseUpdateSuccessful) {
-            await fetchAllApplicationData(true); // This will clear the cache and fetch new data
-        }
-
- */        if (firebaseUpdateSuccessful || (!isAddMode && staffToRemove.length === 0 && authorizedBy?.trim())) {
-            try {
-                const response = await fetch(webhookURL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        content: `New SAAA Employee Management Request: ${requestActionTitle}`,
-                        embeds: [embedData]
-                    }),
-                });
-                if (!response.ok) {
-                    console.error(`Failed to send SAAA employee management webhook. Status: ${response.status}`);
-                    Sentry.captureMessage(`SAAA Discord webhook failed: ${response.status}`, { level: 'error' });
-                    showNotification(`Database updated, but failed to send Discord notification. Status: ${response.status}`, 'warning');
-                } else {
-                    showNotification(`SAAA Employee request processed and notification sent!`, 'check-circle');
-                }
-            } catch (error) {
-                console.error('Error sending SAAA employee management webhook:', error);
-                Sentry.captureException(error, { extra: { context: 'SAAA Employee Webhook Submission' } });
-                showNotification('Database updated, but a network error occurred sending Discord notification.', 'warning');
-            }
-        }
-        
-        setShowSaaaEmployeeModal(false);
-    };
 
     useEffect(() => {
         const handleResize = () => {
@@ -822,11 +603,7 @@ const getBBCodeContent = () => {
                 } else if (definition.titleKey === "phmcEMSApplication") { // EMS (55)
                     specificPositionData = selectOptions.emsPositionDetailsData || {};
                 }
-            } else if (definition.group === "SAAA") { // SAAA Forms
-                // saaaRecruitmentDetails is a dedicated state variable
-                specificPositionData = saaaRecruitmentDetails || {};
-            }
-            // Add other conditions for other groups if they need specific data passed this way
+            } // Closing brace moved outside the 'if' block
 
             const generatorArgs = {
                 ...formData,
@@ -937,74 +714,6 @@ const getBBCodeContent = () => {
         setSwitchableFormsList(formsArray);
         setShowPHMCModal(true); // Use the existing state to show/hide the modal
     };
-    // useEffect for SAAA form completion notification
-    useEffect(() => {
-        if (selectedAgencyGroup === 'SAAA') {
-            const definition = getFormDefinition(bbCodeVersion);
-            if (definition && definition.requiredFields && definition.requiredFields.length > 0) {
-                let allFieldsValid = true;
-                for (const fieldName of definition.requiredFields) {
-                    const value = formData[fieldName];
-                    let fieldIsInvalid = false;
-
-                    // Specific check for specOtherText in Airline form (version 33)
-                    if (bbCodeVersion === 33 && fieldName === 'specOtherText') {
-                        if (formData.specOther && (typeof value === 'string' && !value.trim())) {
-                            fieldIsInvalid = true;
-                        }
-                        // If formData.specOther is false, specOtherText is not considered for this check
-                    } else if (typeof value === 'string' && !value.trim()) {
-                        fieldIsInvalid = true;
-                    } else if (typeof value === 'boolean' && !value) { // For checkboxes like ackAuthorize
-                        fieldIsInvalid = true;
-                    } else if (value === undefined || value === null) { // Catches uninitialized fields
-                        fieldIsInvalid = true;
-                    } else if (typeof value === 'number' && fieldName === 'heliportNumPads' && value < 1) { // Example for number field with min value
-                        fieldIsInvalid = true;
-                    }
-                    // Add more specific checks if other field types have unique "empty" or "invalid" states
-
-                    if (fieldIsInvalid) {
-                        allFieldsValid = false;
-                        break;
-                    }
-                }
-                 // Additional check for Airline form's specOtherText if specOther is true,
-                 // even if specOtherText is not in the main requiredFields list (or if it is, this ensures the conditionality)
-                if (bbCodeVersion === 33 && formData.specOther && (typeof formData.specOtherText !== 'string' || !formData.specOtherText.trim())) {
-                    allFieldsValid = false;
-                }
-
-
-                if (allFieldsValid) {
-                    if (!saaaFormCompletionNotified) {
-                        showNotification("Form Completed!", 'check-circle', 5000);
-                        setSaaaFormCompletionNotified(true);
-                    }
-                } else {
-                    // If any field becomes invalid again, reset the notification state
-                    if (saaaFormCompletionNotified) {
-                        setSaaaFormCompletionNotified(false);
-                    }
-                }
-            } else {
-                 // If no required fields defined for this SAAA form or no definition found
-                if (saaaFormCompletionNotified) {
-                    setSaaaFormCompletionNotified(false);
-                }
-            }
-        } else {
-            // If not an SAAA form, reset the notification state
-            if (saaaFormCompletionNotified) {
-                setSaaaFormCompletionNotified(false);
-            }
-        }
-    }, [formData, bbCodeVersion, selectedAgencyGroup, showNotification, saaaFormCompletionNotified]); // removeNotification is stable due to useCallback
-
-    // Reset SAAA form completion notification state when form or group changes
-    useEffect(() => {
-        setSaaaFormCompletionNotified(false);
-    }, [bbCodeVersion, selectedAgencyGroup]);
 
     // Define form lists for each switchable group
     const coronerFormsSubGroup = [
@@ -2321,9 +2030,6 @@ const saveReport = async () => {
     else { // Default handler for any other bbCodeVersion (includes SAAA)
         const definition = getFormDefinition(bbCodeVersion); // Get current form definition
 
-        if (definition && definition.group === 'SAAA') {
-            return false; // Prevent Firebase saving for SAAA forms
-        }
 
         // Existing generic key generation for non-SAAA, non-PHMC Recruitment forms
         const formName = versionNames[bbCodeVersion] || `FormV${bbCodeVersion}`;
@@ -2899,9 +2605,6 @@ const toggleSavedReports = useCallback((filterVersions = null, employeeType = nu
             } else if (definition?.titleKey === "phmcCoronerRecruitmentApplication" && selectOptions?.coronerPositionDetailsData) {
                 data = selectOptions.coronerPositionDetailsData[positionKey];
             }
-        } else if (selectedAgencyGroup === 'SAAA' && selectOptions?.saaaPositionDetailsData) {
-            // This part remains for SAAA if you have a similar button for it
-            data = selectOptions.saaaPositionDetailsData[positionKey];
         }
 
         if (data) {
@@ -3265,13 +2968,6 @@ const toggleAgencySelector = () => {
         } else if (bbCodeVersion === 8) { // Death Certificate
             const { decedentOOC } = formData;
             return `[Death Certificate] -  ${decedentOOC || 'N/A'}`;
-        } else if (bbCodeVersion === 30) { // SAAA Job Selection
-            const { saaaJobSelection, patientFirstName, patientLastName } = formData;
-            let positionDisplay = saaaJobSelection || "N/A";
-            if (saaaJobSelection && selectOptions?.saaaPositionDetailsData?.[saaaJobSelection]) {
-                positionDisplay = selectOptions.saaaPositionDetailsData[saaaJobSelection].shortCode || saaaJobSelection;
-            }
-            return `[${positionDisplay}] - ${patientFirstName || ''} ${patientLastName || ''}`.trim();
         }
         // --- Fallback for other forms ---
         else {
@@ -3982,10 +3678,6 @@ const handleCopyAndNotifyWrapper = async () => {
             show={showCoronerTips}
             onClose={() => setShowCoronerTips(false)}
         />
-            <FlightSchoolTipsModal
-                show={showFlightSchoolTipsModal}
-                onHide={() => setShowFlightSchoolTipsModal(false)}
-            />
 
                     {showAgencySelector && ( // Only show if a group is selected
                         <AgencySelector
@@ -3997,7 +3689,6 @@ const handleCopyAndNotifyWrapper = async () => {
                             setHideAgencySelector={setHideAgencySelector}
                             selectedAgencyGroup={selectedAgencyGroup} // Pass current group
                             formDefinitions={formDefinitions} // Pass all definitions
-                                    saaaRecruitmentDetails={saaaRecruitmentDetails} // <<< Add this prop
 
                         />
                         
@@ -4028,17 +3719,6 @@ const handleCopyAndNotifyWrapper = async () => {
                     </Button>
 
         <div className="floating-tools-container">
-                        {selectedAgencyGroup === 'SAAA' && (
-                <Button
-                    variant="info" // Or SAAA theme color
-                    className="changelog-button" // Or a new class
-                    onClick={() => setShowSaaaEmployeeModal(true)}
-                    title="Manage SAAA Employees"
-                >
-                    <i className="fas fa-users-cog"></i> {/* Example Icon */}
-                    Manage SAAA Staff
-                </Button>
-            )}
             {selectedAgencyGroup === 'PHMC' && (
                 <Button
                     variant="info" // Or PHMC theme color
@@ -4196,9 +3876,7 @@ const handleCopyAndNotifyWrapper = async () => {
     <ul>
         <li><strong>Added:</strong>
             <ul>
-                <li>Sick Notes have been added to the Generator, this covers both `Sick Notes` and `Illness Confirmation`.</li>
-                <li>Employees can import reports from either: ER Protocol or General Consultation. (Feedback welcome for more form support)</li>
-                <li>OPTIONAL: Employees can enclose report's for the Patient's Employer (Requires patient confirmation)</li>
+                <li>Restructured the way Forms are saved to localStorage.</li>
             </ul>
         </li>
         <li><strong>Updated:</strong>
@@ -4207,14 +3885,15 @@ const handleCopyAndNotifyWrapper = async () => {
                 <li>Autopsy Modal has had a number of bug fixes and optimizations.</li>
             </ul>
         </li>
-        <li><strong>Terms of Service:</strong>
+        <li><strong>Fixed:</strong>
             <ul>
-                <li>Privacy Policy has been updated to cover Google Firebase.</li>
+                <li>Civilian Forms now properly save data.</li>
+                <li>Hot fixes across the application.</li>
             </ul>
         </li>
-        <li><strong>Admin Panel:</strong>
+        <li><strong>Removed:</strong>
             <ul>
-                <li>Admin Panel now has a 'Go Back' button for people that get lost.</li>
+                <li>SAAA Forms</li>
             </ul>
         </li>
     </ul>
@@ -4237,16 +3916,6 @@ const handleCopyAndNotifyWrapper = async () => {
                             PHMC
                         </Button>
                     )}
-                    {selectedAgencyGroup === 'SAAA' && (
-                        <Button
-                            type="button"
-                            variant="info" // Or an SAAA specific variant if you have one
-                            className="changelog-button"
-                            onClick={() => window.open('https://saaa.gta.world/', '_blank')}
-                        >
-                            SAAA
-                        </Button>
-                    )}
                         <Button
                             className="changelog-button"
                             variant='secondary'
@@ -4265,17 +3934,6 @@ const handleCopyAndNotifyWrapper = async () => {
                             >
                                 <i className="fa fa-laptop"></i>
                                 <span>Coroner Forms</span>
-                            </Button>
-                        )}
-                        {bbCodeVersion === 31 && ( // Changed FLIGHT_SCHOOL_FORM_VERSION to 31
-                            <Button
-                                className="changelog-button" // Or a more specific class
-                                variant='info' // Or any other variant
-                                onClick={() => setShowFlightSchoolTipsModal(true)}
-                                style={{ marginLeft: '10px' }} // Example style
-                            >
-                                <i className="fas fa-info-circle"></i>
-                                <span>Flight School Regs</span>
                             </Button>
                         )}
 
@@ -4467,7 +4125,6 @@ setFormData={updateFormData}                                        typeOfDeathO
                                         selectOptions={selectOptions} // Make sure this is passed
                                         physicianRecruitmentDetails={physicianRecruitmentDetails}
                                         psychRecruitmentDetails={psychRecruitmentDetails}
-                                        saaaRecruitmentDetails={saaaRecruitmentDetails}
                         adminRecruitmentDetails={adminRecruitmentDetails}
                         emsRecruitmentDetails={emsRecruitmentDetails}
                         nurseRecruitmentDetails={nurseRecruitmentDetails}
@@ -4547,7 +4204,6 @@ setFormData={updateFormData}                                        typeOfDeathO
     adminRecruitmentDetails={selectOptions.adminPositionDetailsData || {}} // Assuming admin data is in selectOptions
     emsRecruitmentDetails={selectOptions.emsPositionDetailsData || {}}     // Assuming EMS data is in selectOptions
     nurseRecruitmentDetails={selectOptions.nursePositionDetailsData || {}} // Assuming Nurse data is in selectOptions
-    saaaRecruitmentDetails={saaaRecruitmentDetails}
     coronerRecruitmentDetails={selectOptions.coronerPositionDetailsData || {}}
     // Pass other recruitment details objects as props when you add them
 />
@@ -4588,14 +4244,6 @@ setFormData={updateFormData}                                        typeOfDeathO
     combinedStaffOptions={combinedStaffOptions}
     handleMissingEmployeeSubmit={handleMissingEmployeeSubmit}
 />
-            <SaaaEmployeeModal
-                show={showSaaaEmployeeModal}
-                onHide={() => setShowSaaaEmployeeModal(false)}
-                saaaGroupedOptions={saaaGroupedOptions}
-                handleSaaaEmployeeSubmit={handleSaaaEmployeeSubmit}
-                showNotification={showNotification}
-                // commitInfo={commitInfo} // Pass if needed
-            />
             {showFeatureRequestModal && (
                 <div className="modal-overlay">
                     <div className="modal">
@@ -4709,14 +4357,6 @@ setFormData={updateFormData}                                        typeOfDeathO
                     {selectedAgencyGroup === 'PHMC' && (
                         <BusinessCardModal
                             show={showBusinessCard}
-                            onHide={() => setShowBusinessCard(false)}
-                            showNotification={showNotification}
-                            commitInfo={commitInfo}
-                        />
-                    )}
-                    {selectedAgencyGroup === 'SAAA' && (
-                        <SaaaBusinessCardModal
-                            show={showBusinessCard} // Assuming SAAA card also uses showBusinessCard state
                             onHide={() => setShowBusinessCard(false)}
                             showNotification={showNotification}
                             commitInfo={commitInfo}
@@ -4943,7 +4583,6 @@ versionsWithTitleSection.includes(bbCodeVersion) && (
     civilianPaperworkClass={civilianPaperworkClass}
     deathReportImage={deathReportImage}
     civilianPaperworkImage={civilianPaperworkImage}
-    saaaLogo={saaaLogo} // Make sure saaaLogo is imported and available in App.js scope
 />
 
                 </div>
