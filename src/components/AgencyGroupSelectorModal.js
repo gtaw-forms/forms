@@ -2,7 +2,6 @@
 import React from 'react'; // Removed useEffect as it's not needed for this change
 import { Button, Form, Image } from 'react-bootstrap';
 import phmcLogo from '../assets/phmc.png';
-import saaLogo from '../assets/saaa.png'; // Assuming SAAA logo is still relevant or can be a generic dev icon
 
 const getRecruitmentSummaryData = (recruitmentSources) => {
     const groupSummaries = [];
@@ -204,18 +203,6 @@ const AgencyGroupSelectorModal = ({
                         >
                             <Image src={phmcLogo} alt="PHMC Logo" style={imageStyle} />
                             PHMC Forms
-                        </Button>
-                        <Button
-                            variant="outline-light"
-                            // MODIFICATION: Adjust flex properties for side-by-side layout
-                            style={{...baseButtonStyle, flex: '1 1 0', minWidth: '0', marginBottom: '0'}}
-                            onClick={() => onSelectGroup('SAAA')}
-                            className="agency-group-button-saaa" // Removed flex-sm-fill
-                            onMouseOver={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'; }}
-                            onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                        >
-                            <Image src={saaLogo} alt="SAAA Logo" style={imageStyle} />
-                            SAAA Forms
                         </Button>
                     </div>
 

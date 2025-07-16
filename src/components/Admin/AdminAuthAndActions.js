@@ -19,7 +19,6 @@ const recruitmentCategories = {
     nursing: { displayName: "Nursing Recruitment", path: 'selectOptions/nursePositionDetailsData' },
     ems: { displayName: "EMS Recruitment", path: 'selectOptions/emsPositionDetailsData' },
     coroner: { displayName: "Coroner Recruitment", path: 'selectOptions/coronerPositionDetailsData' },
-    saaa: { displayName: "SAAA Recruitment", path: 'selectOptions/saaaPositionDetailsData' },
 };
 const BINGO_TYPES = [
     { id: 'er', name: 'Emergency Room', path: 'ER' },
