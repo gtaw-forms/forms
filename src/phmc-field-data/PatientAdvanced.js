@@ -1,3 +1,4 @@
+// src/main.js
 import React, { useState, useEffect } from 'react';
 import { Form, Button, InputGroup } from 'react-bootstrap';
 
@@ -44,7 +45,7 @@ const PatientAdvanced = ({
     const [isAdvancedDirectivesOpen, setIsAdvancedDirectivesOpen] = useState(true);
     const [activeSection, setActiveSection] = useState('general-info'); // NEW: Track the active form section
 
-    // <--- NEW: Destructure the specific option arrays from selectOptions ---
+    // <--- NEW: Destructure the specific option arrays from selectOptions --->
     const dnrOptions = selectOptions.dnr || [];
     const attorneyOptions = selectOptions.attorney || [];
     const dnrOrderOptions = selectOptions.dnrOrder || [];
@@ -52,6 +53,8 @@ const PatientAdvanced = ({
 
     // MODIFIED: useEffect to auto-close completed sections only when the user moves to a new section.
     useEffect(() => {
+        console.log(`Checking if ${activeSection} can be toggled:`);
+        
         // Check and close General Info if it's complete and not the active section
         if (activeSection !== 'general-info') {
             const isGeneralInfoComplete =
@@ -108,7 +111,6 @@ const PatientAdvanced = ({
             }
         }
     }, [activeSection, formData, isGeneralInfoOpen, isContactInfoOpen, isMedicalHistoryOpen, isAdvancedDirectivesOpen]);
-
 
     return (
         <>
@@ -414,7 +416,7 @@ const PatientAdvanced = ({
                                     onChange={handleChange}
                                     placeholder="Attorney Relation"
                                     required
-                                    className="form-control"
+                                    className={`form-control ${!formData.attorneyRelation ? 'is-invalid' : ''}`}
                                 />
                                 <Form.Control
                                     type="text"
