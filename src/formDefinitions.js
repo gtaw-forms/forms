@@ -17,11 +17,6 @@ import {
 import generatePhysician from './phmc-recruitment-generators/generatePhysician'; // Make sure this path is correct
 import PhysicianFields from './phmc-civilian-fields/Physician'; // Path to your new component
 
-import generateEntryJob from './saaa-form-generators/generateEntryJob'; // SAAA generator
-import generateFlightSchool from './saaa-form-generators/generateFlightSchool'; // SAAA generator
-import generateAircraftReg from './saaa-form-generators/generateAircraftReg'; // SAAA generator
-import generateAirline from './saaa-form-generators/generateAirline';
-import generateHeliport from './saaa-form-generators/generateHeliport'; // SAAA generator
 import AdminAuthAndActions from './components/Admin/AdminAuthAndActions'; // New component
 // Import your icons
 import corpse from './assets/corpse.png';
@@ -35,11 +30,6 @@ import empathy from './assets/empathy.png';
 import paperwork from './assets/paperwork.png';
 import psychology from './assets/psychology.png';
 import application from './assets/application.png'; // Assuming this is for SAAA or generic
-import EntryJob from './saaa-field-data/EntryJob';
-import FlightSchool from './saaa-field-data/FlightSchool';
-import AircraftRegistration from './saaa-field-data/AircraftRegistration';
-import Airline from './saaa-field-data/Airline';
-import Heliport from './saaa-field-data/Heliport'; 
 import generatePsych from './phmc-recruitment-generators/generatePsych'; // New Psych generator
 import PsychFields from './phmc-civilian-fields/Psych'; // New Psych field component
 import AdminFields  from './phmc-civilian-fields/Admin';
@@ -121,85 +111,6 @@ export const formDefinitions = [
     // Add isHiddenInSelector: true to the PBC version
     { version: 29, name: "Psychological Evaluation (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generatePsychEvalPBC, FieldComponent: Shrink, titleKey: "psychEvalPBC", sortOrder: 32, isHiddenInSelector: true },
     { version: 35, name: "Medical Sickness Email", group: "PHMC", icon: emailIcon, generator: generateSicknessEmail, FieldComponent: SicknessEmail, titleKey: "sicknessEmail", sortOrder: 33, isHiddenInSelector: true }, // No FieldComponent for this one
-    // SAAA Forms
-    {
-        version: 30,
-        name: "SAAA Entry Level Employment",
-        group: "SAAA",
-        icon: application,
-        generator: generateEntryJob,
-        FieldComponent: EntryJob,
-        titleKey: "saaaEntryJob",
-        sortOrder: 100,
-        hasCustomTitle: true,
-        requiredFields: [
-            'patientTitle', 'patientFirstName', 'patientLastName', 'patientContactNumber', 'patientDOB', 'patientBirth',
-            'healthImpairments', 'healthStandingIssues', 'eduHighSchoolName', 'eduHighSchoolYear',
-            'empGovExperience', 'licCitizenship', 'licPilotLicense', 'oocUcpName', 'oocDiscord',
-            'oocForumName', 'oocTimezone', 'oocGtawPlaytime', 'oocEnglishProficiency',
-            'oocOtherFactionInfo', 'oocFactionBans', 'oocOtherCharacters', 'adminRecordLink',
-            'inGameStatsLink', 'charBackground', 'ackAuthorize'
-        ]
-    },
-    {
-        version: 31,
-        name: "SAAA Flight School Application",
-        group: "SAAA",
-        icon: application,
-        generator: generateFlightSchool,
-        FieldComponent: FlightSchool,
-        titleKey: "saaaFlightSchool",
-        sortOrder: 101,
-        requiredFields: [
-            'regFullName', 'regContactNumber', 'regPosition', 'companyName', 'companyAddress',
-            'chiefPilotFullName', 'chiefPilotContactNumber', 'trainingPlanLink'
-        ]
-    },
-    {
-        version: 32,
-        name: "SAAA Aircraft Registration",
-        group: "SAAA",
-        icon: application,
-        generator: generateAircraftReg,
-        FieldComponent: AircraftRegistration,
-        titleKey: "saaaAircraftReg",
-        sortOrder: 102,
-        requiredFields: [
-            'registrantFirstName', 'registrantLastName', 'registrantDateOfBirth', 'registrantPlaceOfBirth',
-            'registrantAddress', 'registrantContactNumber', 'aircraftType', 'aircraftModel',
-            'aircraftDateOfPurchase', 'aircraftImageLink', 'requestedCallsign'
-        ]
-    },
-    {
-        version: 33,
-        name: "SAAA Airline / Agency Operation Permit",
-        group: "SAAA",
-        icon: application,
-        generator: generateAirline,
-        FieldComponent: Airline,
-        titleKey: "saaaAirlinePermit",
-        sortOrder: 103,
-        requiredFields: [
-            'companyName', 'contactNumber', 'companyAddress', 'ceoFullName',
-            'chiefPilots', 'staffList', 'ackAuthorize',
-        ]
-    },
-    {
-        version: 34,
-        name: "SAAA Heliport Registration",
-        group: "SAAA",
-        icon: application,
-        generator: generateHeliport,
-        FieldComponent: Heliport,
-        titleKey: "saaaHeliportReg",
-        sortOrder: 104,
-        requiredFields: [
-            'registrantFullName', 'registrantContactNumbers', 'registrantResidentialAddress',
-            'heliportAddresses', 'heliportNumPads', 'heliportPhotoLinks',
-            'heliportLayoutPlanLinks', 'ackAuthorize'
-        ]
-        
-    },
     {
         version: 50,
         name: "Physician Careers",
