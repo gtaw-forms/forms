@@ -474,8 +474,9 @@ const initialFormData = {
 
     useEffect(() => {
         const loadData = async () => {
-            try {
-                showNotification("Data Loading...", 'spinner fa-spin', 0);
+    let loadingNotificationId; // Declare a variable to store the notification ID
+    try {
+        loadingNotificationId = showNotification("Data Loading...", 'spinner fa-spin', 0); // Store the ID
 
                 // Load formData from localStorage FIRST
                 let initialLoadFormData = {};
@@ -542,10 +543,13 @@ const initialFormData = {
             } catch (error) {
                 showNotification("An error has happened, contact the maintainer", 'error');
                 console.error("Error fetching data from Realtime Database:", error);
-            } finally {
-                setIsLoadingData(false);
-                setLoading(false);
-            }
+    } finally {
+        setIsLoadingData(false);
+        setLoading(false);
+        if (loadingNotificationId) {
+            removeNotification(loadingNotificationId); // Remove the notification
+        }
+    }
         };
 
         loadData();
