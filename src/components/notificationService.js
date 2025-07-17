@@ -99,24 +99,38 @@ export const sendDiscordWebhookInternal = async (webhookUrl, embedData, commitIn
     }
 };
 
-// NEW: Webhook for when a player scores a bingo
-export const sendBingoNotification = async ({ scorer, bingoType, lineName, commitInfo }) => {
+export const sendBingoNotification = async ({ scorer, bingoType, phrase, lineName, commitInfo, marked }) => {
     const webhookUrl = process.env.REACT_APP_BINGO_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
     if (!webhookUrl) {
         console.warn("Bingo webhook URL not configured. Skipping notification.");
         return;
     }
 
-    const embedData = {
-        title: "🎉 BINGO! 🎉",
-        description: `**${scorer || 'A player'}** just scored a BINGO!`,
-        color: 0xffd700, // Gold
-        fields: [
-            { name: "Game", value: bingoType || 'Unknown', inline: true },
-            { name: "Line", value: lineName || 'Unknown', inline: true },
-        ],
-        footerText: "PHMC Bingo",
-    };
+    let embedData = {};
+    if (marked) {
+        embedData = {
+            title: `📍 Marker Placed by ${scorer || 'A player'}`,
+            description: `A marker was placed on the bingo board.`,
+            color: 0x3498db, // Blue
+            fields: [
+                { name: "Game", value: bingoType || 'Unknown', inline: true },
+                { name: "Phrase", value: phrase || 'Unknown', inline: true },
+            ],
+            footerText: "PHMC Bingo - Marker Placed",
+        };
+    } else { // Original Bingo! functionality
+        embedData = {
+            title: "🎉 BINGO! 🎉",
+            description: `**${scorer || 'A player'}** just scored a BINGO!`,
+            color: 0xffd700, // Gold
+            fields: [
+                { name: "Game", value: bingoType || 'Unknown', inline: true },
+                { name: "Line", value: lineName || 'Unknown', inline: true },
+            ],
+            footerText: "PHMC Bingo - BINGO!",
+        };
+    }
+
 
     await sendDiscordWebhookInternal(webhookUrl, embedData, commitInfo);
 };
