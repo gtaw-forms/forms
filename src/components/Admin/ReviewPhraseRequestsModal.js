@@ -130,8 +130,12 @@ const ReviewPhraseRequestsModal = ({ show, onHide, showNotification, sendAdminAc
                 }
             }
 
-            const updatedPhrases = [...currentPhrases, ...phrasesToApprove];
-            await set(masterPhrasesRef, updatedPhrases);
+
+        let updatedPhrases = [...currentPhrases, ...phrasesToApprove];
+        updatedPhrases = updatedPhrases.filter(phrase => phrase !== undefined && phrase !== null && phrase !== ""); // CRITICAL FIX
+
+        await set(masterPhrasesRef, updatedPhrases);
+
 
             await update(requestRef, { status: 'approved', processedBy: adminUserEmail, processedAt: new Date().toISOString() });
 
