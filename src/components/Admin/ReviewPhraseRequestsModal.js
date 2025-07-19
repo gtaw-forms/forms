@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, ListGroup, Spinner } from 'react-bootstrap';
 import { database } from '../../firebase';
-import { ref, get, update, set } from 'firebase/database';
+import { ref, get, update, set, remove } from 'firebase/database'; // Import remove
 import * as Sentry from "@sentry/react";
 
 const BINGO_TYPES = [
@@ -23,10 +23,19 @@ const ReviewPhraseRequestsModal = ({ show, onHide, showNotification, sendAdminAc
             const snapshot = await get(requestsRef);
             if (snapshot.exists()) {
                 const data = snapshot.val();
-                const pendingRequests = Object.entries(data)
+                let pendingRequests = Object.entries(data)
                     .map(([key, value]) => ({ id: key, ...value }))
                     .filter(req => req.status === 'pending')
                     .sort((a, b) => a.timestamp - b.timestamp);
+
+                // Schedule deletion for processed requests
+                Object.entries(data).forEach(([key, value]) => {
+                    const request = { id: key, ...value };
+                    if (request.status !== 'pending' && request.processedAt) {
+                        scheduleDeletion(request);
+                    }
+                });
+
                 setRequests(pendingRequests);
             } else {
                 setRequests([]);
@@ -39,6 +48,42 @@ const ReviewPhraseRequestsModal = ({ show, onHide, showNotification, sendAdminAc
             setIsLoading(false);
         }
     }, [showNotification]);
+
+    const scheduleDeletion = (request) => {
+        const processedAt = new Date(request.processedAt);
+        const now = new Date();
+        const timeDiff = now.getTime() - processedAt.getTime();
+        const daysDiff = Math.floor(timeDiff / (1000 * 3600 * 24));
+
+        let delay = 0;
+        if (request.status.startsWith('Denied')) {
+            delay = (2 - daysDiff) * (1000 * 3600 * 24); // 2 days for denied
+        } else if (request.status === 'approved') {
+            delay = (1 - daysDiff) * (1000 * 3600 * 24); // 1 day for approved
+        }
+
+        if (delay > 0) {
+            setTimeout(() => {
+                deleteRequest(request.id);
+            }, delay);
+        } else if (delay <= 0 && (request.status.startsWith('Denied') && daysDiff >= 2) || (request.status === 'approved' && daysDiff >= 1)) {
+            deleteRequest(request.id);
+        }
+    };
+
+    const deleteRequest = async (requestId) => {
+        const requestRef = ref(database, `bingo/phraseRequests/${requestId}`);
+        try {
+            await remove(requestRef);
+            console.log(`Deleted request ${requestId}`);
+            // Optionally, refresh the requests list after deletion
+            fetchRequests();
+        } catch (error) {
+            console.error(`Error deleting request ${requestId}:`, error);
+            Sentry.captureException(error, { extra: { context: 'ReviewPhraseRequestsModal Delete' } });
+        }
+    };
+
 
     useEffect(() => {
         if (show) {

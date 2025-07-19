@@ -11,7 +11,6 @@ import Footer from './components/Footer';
 import SeasonalEvents from './components/SeasonalEvents';
 import HeaderInfo from './components/HeaderInfo';
 import Snowfall from 'react-snowfall'; 
-import EasterEggImages from './EasterEggParticles'; 
 import * as Sentry from "@sentry/react";
 import WebhookModal from './components/WebhookModal'; 
 import CoronerRankModal from './components/CoronerRankModal'; 
@@ -56,9 +55,6 @@ import { database } from './firebase'; // Your Firebase config
 import { ref, get, set, remove} from 'firebase/database'; // Added set
 
 
-// Define cache constants at the top level
-const CACHE_KEY = 'phmcFormsAppData';
-const CACHE_EXPIRATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 function App() {
     const [isMobile, setIsMobile] = useState(false);
@@ -3641,7 +3637,7 @@ const handleCopyAndNotifyWrapper = async () => {
                     setEasterEggType(null); // Reset type on hide
                 }}
             />
-{season === "Christmas" && <Snowfall images={EasterEggImages} snowflakeCount={75} />}
+{season === "Christmas" && <Snowfall snowflakeCount={75} />}
 
 {showUpdateNotification && (
                 <Notification
