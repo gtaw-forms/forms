@@ -73,24 +73,31 @@ const ReviewPhraseRequestsModal = ({ show, onHide, showNotification, sendAdminAc
                         : [])
                 : [];
 
-            if (currentPhrases.some(p => p.toLowerCase() === request.phrase.toLowerCase())) {
-                showNotification(`Phrase "${request.phrase}" already exists in ${bingoTypeObject.name} list. Denying request.`, 'warning');
-                await handleDeny(request, 'Denied (Duplicate)');
-                return;
+            // Split the phrase into multiple phrases by line breaks
+            const phrasesToApprove = request.phrase.split('\n').map(phrase => phrase.trim()).filter(phrase => phrase);
+
+            // Check for duplicates before adding any phrases
+            for (const phrase of phrasesToApprove) {
+                if (currentPhrases.some(p => p.toLowerCase() === phrase.toLowerCase())) {
+                    showNotification(`Phrase "${phrase}" already exists in ${bingoTypeObject.name} list. Denying request.`, 'warning');
+                    await handleDeny(request, 'Denied (Duplicate)');
+                    return;
+                }
             }
 
-            const updatedPhrases = [...currentPhrases, request.phrase];
+            const updatedPhrases = [...currentPhrases, ...phrasesToApprove];
             await set(masterPhrasesRef, updatedPhrases);
 
             await update(requestRef, { status: 'approved', processedBy: adminUserEmail, processedAt: new Date().toISOString() });
 
-            showNotification(`Phrase "${request.phrase}" approved and added to ${bingoTypeObject.name} list!`, 'check-circle');
+            showNotification(`Phrase(s) added to ${bingoTypeObject.name} list!`, 'check-circle');
 
             if (sendAdminActionWebhook) {
+                const phraseList = phrasesToApprove.map(phrase => `"${phrase}"`).join('\n'); // Create a list of phrases
                 sendAdminActionWebhook(
                     adminUserEmail,
                     "Approved Bingo Phrase Request",
-                    `Phrase: "${request.phrase}"\nRequested by: ${request.requestedBy}\nFor Bingo: ${request.bingoType || 'General'}`,
+                    `Phrases:\n${phraseList}\nRequested by: ${request.requestedBy}\nFor Bingo: ${request.bingoType || 'General'}`,
                     "Bingo Phrase Requests"
                 );
             }
@@ -109,7 +116,7 @@ const ReviewPhraseRequestsModal = ({ show, onHide, showNotification, sendAdminAc
         const requestRef = ref(database, `bingo/phraseRequests/${request.id}`);
         try {
             await update(requestRef, { status: reason, processedBy: adminUserEmail, processedAt: new Date().toISOString() });
-            showNotification(`Request for "${request.phrase}" has been denied.`, 'info-circle');
+            showNotification(`Request for phrase(s) has been denied.`, 'info-circle');
 
             if (sendAdminActionWebhook) {
                 sendAdminActionWebhook(
@@ -134,7 +141,7 @@ const ReviewPhraseRequestsModal = ({ show, onHide, showNotification, sendAdminAc
             <Modal.Header closeButton closeVariant="white">
                 <Modal.Title>Review Pending Bingo Phrases</Modal.Title>
             </Modal.Header>
-            <Modal.Body>
+            <Modal.Body style={{ overflowY: 'auto' }}> {/* ADDED SCROLL BAR */}
                 {isLoading ? (
                     <div className="text-center"><Spinner animation="border" /> Loading requests...</div>
                 ) : requests.length > 0 ? (
@@ -142,7 +149,12 @@ const ReviewPhraseRequestsModal = ({ show, onHide, showNotification, sendAdminAc
                         {requests.map(req => (
                             <ListGroup.Item key={req.id} className="d-flex justify-content-between align-items-center bg-transparent text-light">
                                 <div>
-                                    <p className="mb-0"><strong>Phrase:</strong> "{req.phrase}"</p>
+                                    <p className="mb-0"><strong>Phrase(s):</strong></p>
+                                    {req.phrase.split('\n').map((phrase, index) => (
+                                        <p key={index} className="mb-1">
+                                            "{phrase.trim()}"
+                                        </p>
+                                    ))}
                                     {req.bingoType && (
                                         <p className="mb-1" style={{ color: '#0dcaf0' }}>
                                             <small>For: <strong>{req.bingoType} Bingo</strong></small>
