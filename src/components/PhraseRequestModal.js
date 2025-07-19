@@ -43,11 +43,6 @@ const PhraseRequestModal = ({ show, onHide, showNotification, selectedEmployee, 
 
             // NEW: Call the webhook for the phrase request
             if (sendPhraseRequestWebhook) {
-                console.log("[PhraseRequestModal] Sending Phrase Request Webhook with data:", {
-                    requester: requesterName,
-                    phrase: trimmedPhrase,
-                    bingoType: bingoTypeName,
-                });
 
                 sendPhraseRequestWebhook({
                     requester: requesterName,
@@ -55,7 +50,6 @@ const PhraseRequestModal = ({ show, onHide, showNotification, selectedEmployee, 
                     bingoType: bingoTypeName,
                 });
 
-                console.log("[PhraseRequestModal] Phrase Request Webhook sent.");
             }
 
             showNotification('Phrase request submitted successfully!', 'check-circle');
