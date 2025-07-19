@@ -43,24 +43,66 @@ const sendWebhook = async (payload) => {
     }
 };
 
+const scheduleDeletion = async (request) => {
+    const requestId = request.id;
+    const processedAt = new Date(request.processedAt);
+    const now = new Date();
+    const timeDiff = now.getTime() - processedAt.getTime();
+    const daysDiff = Math.floor(timeDiff / (1000 * 3600 * 24));
+
+    let isDeletable = false;
+
+    if (request.status.startsWith('Denied') && daysDiff >= 2) {
+        isDeletable = true;
+    } else if (request.status === 'approved' && daysDiff >= 1) {
+        isDeletable = true;
+    }
+
+    if (isDeletable) {
+        const requestRef = db.ref(`bingo/phraseRequests/${requestId}`);
+        try {
+            await requestRef.remove();
+            console.log(`Successfully deleted request ${requestId}`);
+
+             const embed = {
+                 title: "Bingo Phrase Request Deleted (Scheduled)",
+                 description: `Request ID: ${requestId} automatically deleted.`,
+                 fields: [
+                     { name: "Status", value: request.status, inline: true },
+                     { name: "Requested By", value: request.requestedBy, inline: true },
+                     { name: "Phrase", value: request.phrase, inline: false },
+                 ],
+                 timestamp: new Date().toISOString(),
+                 footer: { text: "PHMC Forms - Scheduled Cleanup" }
+             };
+             await sendWebhook({ embeds: [embed] });
+
+        } catch (error) {
+            console.error(`Error deleting request ${requestId}:`, error);
+            // Consider logging this error to Sentry
+        }
+    }
+};
+
 // --- Scheduled Cloud Function (v2) ---
 
-// Use ESM 'export' syntax instead of 'exports.scheduledBingoReset ='
-export const scheduledBingoReset = onSchedule({
+// Use ESM 'export' syntax instead of 'exports.dailyTaskHandler ='
+export const dailyTaskHandler = onSchedule({
     schedule: "every day 09:00",
     timeZone: "UTC",
     // --- MODIFICATION: Add the 'secrets' option to grant access to the webhook URL
     secrets: ["ADMIN_ACTION_WEBHOOK_URL"],
 }, async (event) => {
-    console.log(`Running daily scheduled bingo reset. Event ID: ${event.id}`);
+    console.log(`Running daily task handler. Event ID: ${event.id}`);
 
+    // --- Bingo Reset Logic ---
     const BINGO_TYPES = [
         { id: 'er', name: 'Emergency Room', path: 'ER' },
         { id: 'ems', name: 'EMS', path: 'EMS' },
         { id: 'coroner', name: 'Coroner', path: 'Coroner' }
     ];
 
-    const results = { success: [], noCard: [], notEnoughPhrases: [], errors: [] };
+    const bingoResults = { success: [], noCard: [], notEnoughPhrases: [], errors: [] };
 
     await db.ref('bingo/meta').update({ lastAutoRegenTimestamp: admin.database.ServerValue.TIMESTAMP });
 
@@ -72,13 +114,13 @@ export const scheduledBingoReset = onSchedule({
         try {
             const cardSnapshot = await cardPhrasesRef.once('value');
             if (!cardSnapshot.exists()) {
-                results.noCard.push(bingoType.name);
+                bingoResults.noCard.push(bingoType.name);
                 return;
             }
 
             const masterSnapshot = await masterPhrasesRef.once('value');
             if (!masterSnapshot.exists()) {
-                results.notEnoughPhrases.push(`${bingoType.name} (no master list)`);
+                bingoResults.notEnoughPhrases.push(`${bingoType.name} (no master list)`);
                 return;
             }
 
@@ -91,40 +133,74 @@ export const scheduledBingoReset = onSchedule({
                     : [];
 
             if (masterPhrases.length < 24) {
-                results.notEnoughPhrases.push(`${bingoType.name} (${masterPhrases.length}/24)`);
+                bingoResults.notEnoughPhrases.push(`${bingoType.name} (${masterPhrases.length}/24)`);
                 return;
             }
 
             const shuffledPhrases = getShuffledPhrases(masterPhrases).slice(0, 24);
             await cardPhrasesRef.set(shuffledPhrases);
             await activityLogRef.remove();
-            results.success.push(bingoType.name);
+            bingoResults.success.push(bingoType.name);
 
         } catch (error) {
             console.error(`Error processing ${bingoType.name}:`, error);
-            results.errors.push(`${bingoType.name}: ${error.message}`);
+            bingoResults.errors.push(`${bingoType.name}: ${error.message}`);
         }
     }));
 
-    let details = '';
-    if (results.success.length > 0) details += `✅ Regenerated: ${results.success.join(', ')}\n`;
-    if (results.noCard.length > 0) details += `➖ Skipped (Disabled): ${results.noCard.join(', ')}\n`;
-    if (results.notEnoughPhrases.length > 0) details += `⚠️ Skipped (Not Enough Phrases): ${results.notEnoughPhrases.join(', ')}\n`;
-    if (results.errors.length > 0) details += `❌ Errors: ${results.errors.join(', ')}\n`;
+    let bingoDetails = '';
+    if (bingoResults.success.length > 0) bingoDetails += `✅ Regenerated: ${bingoResults.success.join(', ')}\n`;
+    if (bingoResults.noCard.length > 0) bingoDetails += `➖ Skipped (Disabled): ${bingoResults.noCard.join(', ')}\n`;
+    if (bingoResults.notEnoughPhrases.length > 0) bingoDetails += `⚠️ Skipped (Not Enough Phrases): ${bingoResults.notEnoughPhrases.join(', ')}\n`;
+    if (bingoResults.errors.length > 0) bingoDetails += `❌ Errors: ${bingoResults.errors.join(', ')}\n`;
+
+    // --- Phrase Request Deletion Logic ---
+       const requestsRef = db.ref('bingo/phraseRequests');
+    let deletionDetails = '';
+       try {
+           const snapshot = await requestsRef.once('value');
+           if (snapshot.exists()) {
+               const requests = snapshot.val();
+               let deletionCount = 0;
+
+               // Collect deletion promises
+               const deletionPromises = Object.entries(requests)
+                   .map(([key, value]) => {
+                       const request = { id: key, ...value };
+                       if (request.status !== 'pending' && request.processedAt) {
+                           return scheduleDeletion(request).then(() => {
+                               deletionCount++; // Increment only on successful deletion
+                           });
+                       }
+                       return null;
+                   })
+                   .filter(Boolean);
+
+               await Promise.all(deletionPromises);
+               deletionDetails = `✅ Successfully deleted ${deletionCount} phrase requests.\n`;
+
+           } else {
+               deletionDetails = '➖ No phrase requests found to delete.\n';
+           }
+       } catch (error) {
+           console.error('Error during deletion scheduling:', error);
+           deletionDetails = `❌ Error during phrase request deletion: ${error.message}\n`;
+       }
 
     const embed = {
-        title: "Automatic Daily Bingo Reset",
+        title: "Daily Task Handler",
         color: 0x1E90FF,
         fields: [
-            { name: "Status", value: "Completed", inline: true },
-            { name: "Timestamp", value: new Date(event.timestamp).toUTCString(), inline: true },
-            { name: "Details", value: `\`\`\`\n${details.trim() || "No actions taken."}\n\`\`\``, inline: false },
+            { name: "Bingo Reset Status", value: `\`\`\`\n${bingoDetails.trim() || "No bingo actions taken."}\n\`\`\``, inline: false },
+            { name: "Phrase Request Deletion", value: `\`\`\`\n${deletionDetails.trim() || "No phrase request actions taken."}\n\`\`\``, inline: false },
         ],
+        timestamp: new Date(event.timestamp).toUTCString(),
         footer: { text: "PHMC Forms - Scheduled Cloud Function (v2)" }
     };
 
     await sendWebhook({ embeds: [embed] });
 
-    console.log('Daily scheduled bingo reset finished successfully.');
+    console.log('Daily task handler finished successfully.');
+
     return null;
 });
