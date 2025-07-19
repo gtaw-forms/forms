@@ -74,10 +74,26 @@ const ReviewPhraseRequestsModal = ({ show, onHide, showNotification, sendAdminAc
     const deleteRequest = async (requestId) => {
         const requestRef = ref(database, `bingo/phraseRequests/${requestId}`);
         try {
+            // 1. Get the request data BEFORE deleting it (for webhook info)
+            const snapshot = await get(requestRef);
+            const requestData = snapshot.val();  // Store the data to use in the webhook
+
+            // 2. Delete the request
             await remove(requestRef);
             console.log(`Deleted request ${requestId}`);
-            // Optionally, refresh the requests list after deletion
-            fetchRequests();
+
+            // 3. Send the webhook notification AFTER successful deletion
+            if (sendAdminActionWebhook && requestData) { // Check if webhook function exists and we have data
+                sendAdminActionWebhook(
+                    adminUserEmail,
+                    "Scheduled Bingo Phrase Request Deleted", // New Action Name
+                    `Request ID: ${requestId}\nPhrase: "${requestData.phrase}"\nStatus: ${requestData.status}\nRequested by: ${requestData.requestedBy}\nBingo Type: ${requestData.bingoType || 'General'}`,
+                    "Bingo Phrase Requests (Cleanup)" // New Category or adjust as needed
+                );
+            }
+
+            // 4. Optionally, refresh the requests list after deletion
+            fetchRequests(); 
         } catch (error) {
             console.error(`Error deleting request ${requestId}:`, error);
             Sentry.captureException(error, { extra: { context: 'ReviewPhraseRequestsModal Delete' } });
