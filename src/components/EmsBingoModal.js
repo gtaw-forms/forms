@@ -204,7 +204,6 @@ useEffect(() => {
                 storedEmployee = localStorage.getItem('coronerEmployee');
             }
 
-            console.log("Value pulled from localStorage:", storedEmployee); // Debug log
 
             if (storedEmployee && phmcGroupedOptions && selectedBingoType.employeeGroup === 'PHMC') {
                 const employeeOption = phmcGroupedOptions.flatMap(group => group.options)

@@ -1,4 +1,4 @@
-import { departmentFullName } from '../data'; 
+import { departmentFullName } from '../data';
 
 const generateDeathReport = (formData) => {
     const {
@@ -17,9 +17,7 @@ const generateDeathReport = (formData) => {
         typeOfDeath,
         scenePhotos,
         additionalImages,
-        evidenceLocker,
         evidenceLockerID,
-        morgueStatus // Make sure morgueStatus is included if used
     } = formData;
 
     // --- Input Validation (Optional but Recommended) ---
@@ -44,29 +42,23 @@ const generateDeathReport = (formData) => {
         : '[i]No additional images provided.[/i]'; // Provide fallback text
 
     // --- Evidence Locker Logic ---
-    const evidenceAdded = evidenceLocker === 'true'; // Checkbox value is a string 'true'
-    let evidenceLockerListItems = '[*] N/A';
-    if (evidenceAdded && evidenceLockerID && evidenceLockerID.trim() !== '') {
-        evidenceLockerListItems = evidenceLockerID
-            .split(',')
-            .map(item => item.trim())
-            .filter(item => item) // Ensure no empty strings after split/trim
-            .map(item => `[*] ${item}`)
-            .join('\n');
-        // Handle case where split/trim results in empty array
-        if (!evidenceLockerListItems) {
-             evidenceLockerListItems = '[*] N/A (Invalid ID format provided)';
-        }
-    } else if (evidenceAdded) {
-        evidenceLockerListItems = '[*] N/A (No Evidence Locker ID provided)';
+    let evidenceLockerText = 'No';
+    let evidenceLockerListItems = '[list][*] N/A[/list]';
+
+    // Check if evidenceLockerID has a value, indicating evidence submission
+    if (evidenceLockerID && evidenceLockerID.trim() !== '') {
+        evidenceLockerText = 'Yes';
+        evidenceLockerListItems = `[list][*] ${evidenceLockerID.trim()} - ${decedentName} (( ${decedentOOC} ))[/list]`;
     }
 
+/*     // --- Debug Logs ---
+    console.log("[generateDeathReport] Evidence Locker Values:", {
+        evidenceLockerID,
+        evidenceLockerText,
+        evidenceLockerListItems
+    });
+ */
     // --- Morgue Status Message ---
-    // Ensure morgueStatus is checked correctly (it might be boolean or string 'true'/'false')
-    const morgueStatusMessage = morgueStatus === 'true' || morgueStatus === true
-     ? '[bold][color=red]The Morgue Screen Photo is currently unavailable. [/color][/bold]\n'
-     : '';
-
 
     // --- BBCode Template ---
     // Use template literals for better readability
@@ -83,7 +75,7 @@ The ${coronerRank || 'Coroner'}, [bold]${coronerEmployee || 'Unknown Coroner'}[/
 
 Based on the information gathered from the scene investigation and the decedent's medical history (if available), the probable cause of death was determined to be [bold]${probableCauseOfDeath || 'Undetermined'}[/bold]. The manner of death was classified as [bold]${mannerOfDeath || 'Undetermined'}[/bold].
 [/divbox]
-[divbox=transparent][center][bold]B. PHOTOGRAPHIC DOCUMENTARY RECORD[/bold][/center]
+[divbox=transparent][center][bold]B. PHOTOGRAPHIC DOCUMENTARY RECORD[/center][/divbox]
 [hr][/hr]
 [center][size=85][bold][u]SCENE PHOTOGRAPHY[/u][/bold][/size][/center]
 ${scenePhotosBBCode}
@@ -98,8 +90,7 @@ In conclusion, I hope that this report provides the necessary information requir
 
 I certify that the information contained in this report is true and accurate to the best of my knowledge and belief. I have reviewed the report and ensured that all information included is complete and accurate. [/size][/divbox]
 
-[divbox=transparent]
-[center][bold]D. PRIVACY AND CONFIDENTIALITY[/bold][/center]
+[divbox=transparent][center][bold]D. PRIVACY AND CONFIDENTIALITY[/bold][/center]
 [hr][/hr]
 [center][size=85]This document from the Forensic Medicine and Pathology Department of Pillbox Hill Medical Center certifies the authenticity of the information contained within. Any unauthorized distribution or use of this information is in violation of the Health Insurance Portability and Accountability Act (HIPAA), as well as state and federal privacy laws, including but not limited to the San Andreas Confidentiality of Medical Information Act (CMIA) and the San Andreas Information Practices Act (IPA).
 
@@ -112,14 +103,12 @@ This document is provided for official purposes only and is not to be construed 
 This section clarifies whether or not if the player was character killed or player killed.
 In this case the player was; ${typeOfDeath || 'Unknown'}
 Player OOC Name: ${decedentOOC || 'Unknown'}
-${morgueStatusMessage}Morgue screen, cinjuries, cdna links:
+Morgue screen, cinjuries, cdna links: 
 [size=85][u] THESE IMAGES ARE [bold]OUT OF CHARACTER[/bold] FOR INTERNAL RECORDS, DO NOT USE THESE AS EVIDENCE. [/u][/size]
 ${additionalImagesBBCode}
 
-${coronerRank || 'Coroner'} ${coronerEmployee || 'Unknown Coroner'} has added something to the evidence locker: ${evidenceAdded ? 'Yes' : 'No'}
-[list]
+${coronerRank || 'Coroner'} ${coronerEmployee || 'Unknown Coroner'} has added something to the evidence locker: ${evidenceLockerText}
 ${evidenceLockerListItems}
-[/list]
 
 [/divbox]
 `;

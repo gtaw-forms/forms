@@ -75,7 +75,6 @@ const initialFormData = {
     coronerPHNumber: '50056',
     lastName: '',
     phmcRank: '',
-
     // Common form fields
     department: '',
     dateTime: '',
@@ -245,7 +244,6 @@ const initialFormData = {
     illnessCondition: '',
     confirmationPurpose: '',
     phmcEmployeeSignatureImage: '',
-
 
     // Recruitment Fields
     recruitmentPosition: '',
@@ -495,7 +493,6 @@ const initialFormData = {
                 });
 
                 // Log the data right before calling setFormData
-                console.log("About to set formData with:", initialLoadFormData);
 
                 // Initialize state with localStorage values
                 setFormData(prevFormData => ({
@@ -510,9 +507,6 @@ const initialFormData = {
                     const allData = snapshot.val();
                     let fetchedSelectOptions = allData.selectOptions || {};
 
-                    console.log("All data from Firebase:", allData);
-                    console.log("Fetched selectOptions:", fetchedSelectOptions);
-                    console.log("EMS Position Details Data:", fetchedSelectOptions.emsPositionDetailsData);
 
 
                     setPhmcListData(allData.staff?.phmc || []);
@@ -527,7 +521,6 @@ const initialFormData = {
                     setEmsRecruitmentDetails(fetchedSelectOptions.emsPositionDetailsData || {});
                     setNurseRecruitmentDetails(fetchedSelectOptions.nursePositionDetailsData || {});
                     setCoronerRecruitmentDetails(fetchedSelectOptions.coronerPositionDetailsData || {});
-                console.log("emsRecruitmentDetails state:", emsRecruitmentDetails);
 
                     // Merge Firebase data on top of localStorage data
                     setFormData(prevFormData => ({
@@ -628,8 +621,9 @@ const getBBCodeContent = () => {
     };
 
     const [formData, setFormData] = useState(initialLoadFormData);
-        useEffect(() => {
-        localStorage.setItem('formData', JSON.stringify(formData));
+    useEffect(() => {
+        const { evidenceLockerID, ...formDataToPersist } = formData; // Exclude evidenceLocker
+        localStorage.setItem('formData', JSON.stringify(formDataToPersist));
     }, [formData]);
 
     const [isUploading, setIsUploading] = useState(false);
@@ -882,10 +876,8 @@ const phmcRecruitmentFormsSubGroup = formDefinitions.filter(
 // Inside src/App.js
 
 const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
-    console.log('[Autopsy Photos] Starting individual image upload process...');
     const files = event.target.files;
     if (!files || files.length === 0) {
-        console.log('[Autopsy Photos] No files selected.');
         showNotification('No files selected for autopsy photos.', 'warning');
         return;
     }
@@ -894,7 +886,6 @@ const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
 
     setIsUploading(true);
     indefiniteNotificationId = showNotification('Processing autopsy photos, please wait...', 'info-circle', 0);
-    console.log('[Autopsy Photos] UI notification shown, isUploading set to true.');
 
     const imgurAccessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
 
@@ -911,10 +902,8 @@ const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
     const uploadedImageLinks = [];
 
     try {
-        console.log(`[Autopsy Photos] Starting to upload ${files.length} image(s) individually.`);
         
         for (const file of files) {
-            console.log(`[Autopsy Photos] Preparing to upload image: "${file.name}"`);
             await new Promise(resolve => setTimeout(resolve, delayBetweenIndividualImageUploads));
             
             const imageFormData = new FormData();
@@ -927,7 +916,6 @@ const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
                 body: imageFormData,
             });
             const imageData = await imageUploadResponse.json();
-            console.log(`[Autopsy Photos] Raw image upload response for "${file.name}":`, imageData);
 
             if (imageData.success && imageData.data.link) {
                 uploadedImageLinks.push(imageData.data.link); // Collect direct image links
@@ -3411,7 +3399,6 @@ const handleChange = (e) => {
         ...prevFormData,
         [name]: valToSet
     }));
-    console.log(`[handleChange] name=${name}, value=${valToSet}`);
 
     // Update localStorage for fields that need it
     const fiveDayExpiryFields = ['phmcEmployee', 'coronerEmployee', 'department', 'recruitmentPosition', 'applicantTitleAndFullName'];

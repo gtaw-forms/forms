@@ -43,11 +43,19 @@ const PhraseRequestModal = ({ show, onHide, showNotification, selectedEmployee, 
 
             // NEW: Call the webhook for the phrase request
             if (sendPhraseRequestWebhook) {
+                console.log("[PhraseRequestModal] Sending Phrase Request Webhook with data:", {
+                    requester: requesterName,
+                    phrase: trimmedPhrase,
+                    bingoType: bingoTypeName,
+                });
+
                 sendPhraseRequestWebhook({
                     requester: requesterName,
                     phrase: trimmedPhrase,
                     bingoType: bingoTypeName,
                 });
+
+                console.log("[PhraseRequestModal] Phrase Request Webhook sent.");
             }
 
             showNotification('Phrase request submitted successfully!', 'check-circle');
@@ -59,7 +67,7 @@ const PhraseRequestModal = ({ show, onHide, showNotification, selectedEmployee, 
             Sentry.captureException(err, { extra: { context: 'PhraseRequestModal Submit' } });
         } finally {
             setIsSubmitting(false);
-            onHide(); 
+            onHide();
         }
     };
 
@@ -82,24 +90,24 @@ const PhraseRequestModal = ({ show, onHide, showNotification, selectedEmployee, 
                 <Modal.Title>Request a New Bingo Phrase</Modal.Title>
             </Modal.Header>
             <Modal.Body>
-                    <Form.Group className="mb-3">
-                        <Form.Label>Your Phrase Idea:</Form.Label>
-                        <Form.Control
-                            as="textarea"
-                            rows={3}
-                            value={phraseText}
-                            onChange={(e) => setPhraseText(e.target.value)}
-                            placeholder="Enter your phrase idea here (e.g., 'Patient asks for a ride to the store')"
-                            disabled={isSubmitting}
-                            className="bingo-phrases-textarea"
-                        />
-                        <Form.Text className="text-muted">
-                            This phrase will be reviewed by an admin before being added to the master list.
-                            {selectedBingoType && ` It will be considered for the ${selectedBingoType.name} Bingo.`}
-                        </Form.Text>
-                    </Form.Group>
-                    {error && <p className="text-danger">{error}</p>}
-                </Modal.Body>
+                <Form.Group className="mb-3">
+                    <Form.Label>Your Phrase Idea:</Form.Label>
+                    <Form.Control
+                        as="textarea"
+                        rows={3}
+                        value={phraseText}
+                        onChange={(e) => setPhraseText(e.target.value)}
+                        placeholder="Enter your phrase idea here (e.g., 'Patient asks for a ride to the store')"
+                        disabled={isSubmitting}
+                        className="bingo-phrases-textarea"
+                    />
+                    <Form.Text className="text-muted">
+                        This phrase will be reviewed by an admin before being added to the master list.
+                        {selectedBingoType && ` It will be considered for the ${selectedBingoType.name} Bingo.`}
+                    </Form.Text>
+                </Form.Group>
+                {error && <p className="text-danger">{error}</p>}
+            </Modal.Body>
             <Modal.Footer>
                 <Button variant="secondary" onClick={onHide} disabled={isSubmitting}>
                     Cancel

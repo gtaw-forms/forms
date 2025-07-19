@@ -1,5 +1,5 @@
 // src/field-data/deathReport.js
-import React from 'react';
+import React, { useState, useEffect} from 'react'; // Import useEffect
 import { Form, Button, InputGroup } from 'react-bootstrap';
 import Select from 'react-select';
 
@@ -17,12 +17,37 @@ const DeathReport = ({
     currentUtcTime,
     isUploading,
     handleImageUpload,
-    // --- Add these props to destructuring ---
     typeOfDeathOptions,
     mannerOfDeathOptions,
     requestingAgencyOptions
-    // formData.showRequestingOfficerInput is used directly from formData
 }) => {
+
+    // Function to generate the Evidence Locker ID
+    const generateEvidenceLockerID = () => {
+        const today = new Date();
+        const day = String(today.getDate()).padStart(2, '0');
+        const month = String(today.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
+        const year = today.getFullYear().toString().slice(2, 4); // Get last 2 digits of year
+        const baseID = `EV-${year}${month}${day}-`;
+        // Append whatever the user types
+        return baseID;
+    };
+    const [evidenceLockerChecked, setEvidenceLockerChecked] = useState(formData.evidenceLocker === 'true');
+
+    const setGeneratedEvidenceLockerID = () => {
+        setFormData(prev => ({
+            ...prev,
+            evidenceLockerID: generateEvidenceLockerID()
+        }));
+    };
+useEffect(() => {
+        setFormData(prev => ({
+            ...prev,
+            evidenceLockerID: '',
+            evidenceLocker: 'false'
+        }));
+    }, [setFormData]);
+
     return (
         <>
             <p>The Coroner Report Generated needs to be filled out fully, you can upload images locally or link pictures. </p>
@@ -150,7 +175,6 @@ const DeathReport = ({
             )}
             </div>
 
-
             <div className="radio-inline-container">
                 <span className="radio-text">Decedent Name:</span>
                 <div className="radio-button-group">
@@ -205,12 +229,35 @@ const DeathReport = ({
                 type="checkbox"
                 id="evidenceLocker"
                 label="       I have submitted evidence to the evidence locker"
-                checked={formData.evidenceLocker === 'true'}
-                onChange={(e) => setFormData(prev => ({ ...prev, evidenceLocker: e.target.checked.toString(), evidenceLockerID: e.target.checked ? prev.evidenceLockerID : '' }))}
+                checked={evidenceLockerChecked}
+                onChange={(e) => {
+                    setEvidenceLockerChecked(e.target.checked);
+                    setFormData(prev => ({
+                        ...prev,
+                        evidenceLocker: e.target.checked.toString(),
+                    }));
+
+                    if (e.target.checked) {
+                        setGeneratedEvidenceLockerID();
+                    } else {
+                        setFormData(prev => ({
+                            ...prev,
+                            evidenceLockerID: ''
+                        }));
+                    }
+                }}
             />
-            {formData.evidenceLocker === 'true' && ( <span className="helper-text">Please use commas (,) to seperate multiple items!</span> )}
-            {formData.evidenceLocker === 'true' && (
-                <Form.Control type="text" name="evidenceLockerID" value={formData.evidenceLockerID} onChange={handleChange} placeholder="Enter Evidence Locker Submission ID" required className={`form-control ${!formData.evidenceLockerID ? 'is-invalid' : ''}`} />
+
+            {evidenceLockerChecked && (
+                <Form.Control
+                    type="text"
+                    name="evidenceLockerID"
+                    value={formData.evidenceLockerID || generateEvidenceLockerID()}
+                    onChange={handleChange}
+                    placeholder={generateEvidenceLockerID() + " Your Submission Number Here"}
+                    required
+                    className={`form-control ${!formData.evidenceLockerID ? 'is-invalid' : ''}`}
+                />
             )}
             <label></label>
 
@@ -303,14 +350,7 @@ const DeathReport = ({
                     </Button>
                 </div>
                 <span className="helper-text">This supports clipboard uploading, ctrl + V! | Hosted by Imgur! - <a href="https://imgur.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a></span>
-                <label>Morgue Bugs:</label>
-                <Form.Check
-                    type="checkbox"
-                    id="morgueStatus"
-                    label="       Tick if Morgue Screen is unavailable / broken / inaccesssable"
-                    checked={formData.morgueStatus === 'true'}
-                    onChange={(e) => setFormData(prev => ({ ...prev, morgueStatus: e.target.checked.toString() }))}
-                />
+                <label>This field has been temporarily disabled</label>
             </Form.Group>
         </>
     );

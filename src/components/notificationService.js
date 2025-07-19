@@ -143,15 +143,23 @@ export const sendPhraseRequestNotification = async ({ requester, phrase, bingoTy
         return;
     }
 
+    const phraseLines = phrase.split('\n'); // Split the phrase into multiple phrases
+    let embedFields = [];
+
+    // Add each line of the phrase as a separate field
+    phraseLines.forEach((line, index) => {
+        embedFields.push({ name: `Phrase Line ${index + 1}`, value: `\`\`\`${line || 'N/A'}\`\`\``, inline: false });
+    });
+
+    // Add requester and bingoType fields
+    embedFields.push({ name: "Requested For", value: bingoType || 'Unknown Game', inline: true });
+    embedFields.push({ name: "Requested By", value: requester || 'Anonymous', inline: true });
+
     const embedData = {
         title: "📝 New Bingo Phrase Request",
         description: `A new phrase has been requested for review.`,
         color: 0x7289DA, // Discord Blurple
-        fields: [
-            { name: "Requested Phrase", value: `\`\`\`${phrase || 'N/A'}\`\`\``, inline: false },
-            { name: "Requested For", value: bingoType || 'Unknown Game', inline: true },
-            { name: "Requested By", value: requester || 'Anonymous', inline: true },
-        ],
+        fields: embedFields,
         footerText: "PHMC Bingo",
     };
 
