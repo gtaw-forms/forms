@@ -18,6 +18,7 @@ const generateDeathReport = (formData) => {
         scenePhotos,
         additionalImages,
         evidenceLockerID,
+        morgueStatus,
     } = formData;
 
     // --- Input Validation (Optional but Recommended) ---
@@ -50,6 +51,10 @@ const generateDeathReport = (formData) => {
         evidenceLockerText = 'Yes';
         evidenceLockerListItems = `[list][*] ${evidenceLockerID.trim()} - ${decedentName} (( ${decedentOOC} ))[/list]`;
     }
+    const morgueStatusMessage = morgueStatus === 'true' || morgueStatus === true
+     ? '[bold][color=red]The Morgue Screen Photo is currently unavailable. [/color][/bold]\n'
+     : '';
+
 
 /*     // --- Debug Logs ---
     console.log("[generateDeathReport] Evidence Locker Values:", {
@@ -103,7 +108,7 @@ This document is provided for official purposes only and is not to be construed 
 This section clarifies whether or not if the player was character killed or player killed.
 In this case the player was; ${typeOfDeath || 'Unknown'}
 Player OOC Name: ${decedentOOC || 'Unknown'}
-Morgue screen, cinjuries, cdna links: 
+Morgue screen, cinjuries, cdna links: ${morgueStatusMessage || 'No issues reported.'}
 [size=85][u] THESE IMAGES ARE [bold]OUT OF CHARACTER[/bold] FOR INTERNAL RECORDS, DO NOT USE THESE AS EVIDENCE. [/u][/size]
 ${additionalImagesBBCode}
 
