@@ -698,6 +698,56 @@ const getBBCodeContent = () => {
 
         fetchCommit();
     }, []); // This effect runs once on mount
+const formGroups = {
+    coroner: {
+        versions: [1, 2, 4, 8],
+        name: "Coroner Forms",
+        subGroup: "coronerFormsSubGroup",
+        icon: "fa fa-laptop" // Assuming an icon for the group
+    },
+    physicalEval: {
+        versions: [6, 7],
+        name: "Physical Evaluation",
+        subGroup: "physicalEvalFormsSubGroup",
+        icon: "fas fa-exchange-alt"
+    },
+    psychEval: {
+        versions: [28, 29],
+        name: "Psychological Evaluation",
+        subGroup: "psychEvalFormsSubGroup",
+        icon: "fas fa-exchange-alt"
+    },
+    generalConsult: {
+        versions: [20, 21],
+        name: "General Consultation",
+        subGroup: "generalConsultFormsSubGroup",
+        icon: "fas fa-exchange-alt"
+    },
+    commentaryNote: {
+        versions: [22, 23],
+        name: "Commentary Note",
+        subGroup: "commentaryNoteFormsSubGroup",
+        icon: "fas fa-exchange-alt"
+    },
+    mentalHealth: {
+        versions: [14, 16],
+        name: "Mental Health",
+        subGroup: "mentalHealthFormsSubGroup",
+        icon: "fas fa-exchange-alt"
+    },
+    civilian: {
+        versions: [3, 24, 25],
+        name: "Civilian Hospital Forms",
+        subGroup: "civilianFormsSubGroup",
+        icon: "fas fa-exchange-alt"
+    },
+    email: {
+        versions: [27, 35],
+        name: "Email Form",
+        subGroup: "phmcInternalEmails",
+        icon: "fas fa-exchange-alt"
+    }
+};
 
 // Switch Form Handling Logic
     const [showPHMCModal, setShowPHMCModal] = useState(false); // This state will now control the generic SwitchableFormsModal
@@ -709,42 +759,6 @@ const getBBCodeContent = () => {
         setShowPHMCModal(true); // Use the existing state to show/hide the modal
     };
 
-    // Define form lists for each switchable group
-    const coronerFormsSubGroup = [
-        { version: 1, name: "Decedent Services", icon: corpse },
-        { version: 2, name: "Email Generator", icon: email },
-        { version: 4, name: "Autopsy Report", icon: corpse },
-        { version: 8, name: "Death Certificate", icon: PHMCLogo }
-    ];
-    const physicalEvalFormsSubGroup = [
-        { version: 6, name: "Physical Evaluation PHMC", icon: PHMCLogo },
-        { version: 7, name: "Physical Evaluation PBC", icon: phmcpaletobay }
-    ];
-    const psychEvalFormsSubGroup = [
-        { version: 28, name: "Psychological Evaluation | PHMC", icon: PHMCLogo },
-        { version: 29, name: "Psychological Evaluation | PBC", icon: phmcpaletobay }
-    ];
-    const generalConsultFormsSubGroup = [
-        { version: 20, name: "General Consultation | PHMC", icon: PHMCLogo },
-        { version: 21, name: "General Consultation | PBC", icon: phmcpaletobay }
-    ];
-    const commentaryNoteFormsSubGroup = [
-        { version: 22, name: "Commentary Note | PHMC", icon: PHMCLogo },
-        { version: 23, name: "Commentary Note | PBC", icon: phmcpaletobay }
-    ];
-    const mentalHealthFormsSubGroup = [
-        { version: 14, name: "Mental Health - PHMC", icon: PHMCLogo },
-        { version: 16, name: "Mental Health | PBC", icon: phmcpaletobay }
-    ];
-    const civilianFormsSubGroup = [
-        { version: 24, name: "Medical Record Release", icon: Civilian },
-        { version: 25, name: "Basic Patient File", icon: nurse }, // Assuming nurse icon for basic
-        { version: 3, name: "Detailed Patient File", icon: nurse } // Assuming nurse icon for advanced
-    ];
-        const phmcInternalEmails = [
-        { version: 24, name: "Internal Email", icon: Civilian },
-        { version: 35, name: "Sick Note", icon: nurse }, // Assuming nurse icon for basic
-    ];
 
 // --- 
     const handleImageUpload = async (event, fieldName) => {
@@ -3759,7 +3773,7 @@ const handleCopyAndNotifyWrapper = async () => {
                                     }}
                                 >
                                     <i className="fas fa-users"></i>
-                                    Change Agency Group
+                                    Switch Form Type
                                 </Button>
 
         </div>
@@ -3913,89 +3927,22 @@ const handleCopyAndNotifyWrapper = async () => {
                             Select {selectedAgencyGroup || "Agency"} Form
                         </Button>
 
-                        {(bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 4 || bbCodeVersion === 8) && (
-                            <Button
-                                className="changelog-button"
-                                variant='secondary'
-                                onClick={() => openSwitchableModal("Coroner Forms", coronerFormsSubGroup)}
-                            >
-                                <i className="fa fa-laptop"></i>
-                                <span>Coroner Forms</span>
-                            </Button>
-                        )}
-
-                        {(bbCodeVersion === 6 || bbCodeVersion === 7) && (
-                            <Button
-                                className="changelog-button"
-                                variant='secondary'
-                                onClick={() => openSwitchableModal("Select Physical Evaluation Form", physicalEvalFormsSubGroup)}
-                            >
-                                <i className="fas fa-exchange-alt"></i>
-                                <span>Switch Physical Evaluation Forms</span>
-                            </Button>
-                        )}
-                        {(bbCodeVersion === 28 || bbCodeVersion === 29) && (
-                            <Button
-                                className="changelog-button"
-                                variant='secondary'
-                                onClick={() => openSwitchableModal("Select Psychological Evaluation Form", psychEvalFormsSubGroup)}
-                            >
-                                <i className="fas fa-exchange-alt"></i>
-                                <span>Switch Psychological Evaluation Form</span>
-                            </Button>
-                        )}
-
-                        {(bbCodeVersion === 20 || bbCodeVersion === 21) && (
-                            <Button
-                                className="changelog-button"
-                                variant='secondary'
-                                onClick={() => openSwitchableModal("Select General Consultation Form", generalConsultFormsSubGroup)}
-                            >
-                                <i className="fas fa-exchange-alt"></i> {/* Added icon for consistency */}
-                                <span>Switch General Consultation Forms</span>
-                            </Button>
-                        )}
-
-                        {(bbCodeVersion === 22 || bbCodeVersion === 23) && (
-                            <Button
-                                className="changelog-button"
-                                variant='secondary'
-                                onClick={() => openSwitchableModal("Select Commentary Note Form", commentaryNoteFormsSubGroup)}
-                            >
-                                <i className="fas fa-exchange-alt"></i> {/* Added icon */}
-                                <span>Switch Commentary Note Form</span>
-                            </Button>
-                        )}
-                        {(bbCodeVersion === 14 || bbCodeVersion === 16) && (
-                            <Button
-                                className="changelog-button"
-                                variant='secondary'
-                                onClick={() => openSwitchableModal("Select Mental Health Form", mentalHealthFormsSubGroup)}
-                            >
-                                <i className="fas fa-exchange-alt"></i> {/* Added icon */}
-                                <span>Switch Mental Health Form</span>
-                            </Button>
-                        )}
-                        {(bbCodeVersion === 3 || bbCodeVersion === 24 || bbCodeVersion === 25) && (
-                            <Button
-                                className="changelog-button"
-                                variant='secondary' // Added variant for consistency
-                                onClick={() => openSwitchableModal("Select Civilian Forms", civilianFormsSubGroup)}
-                            >
-                                <i className="fas fa-exchange-alt"></i>
-                                <span>Change Civilian Hospital Forms</span>
-                            </Button>
-                        )}
-                        {(bbCodeVersion === 27 || bbCodeVersion === 35 ) && (
-                            <Button
-                                className="changelog-button"
-                                variant='secondary' // Added variant for consistency
-                                onClick={() => openSwitchableModal("Select Email Form", phmcInternalEmails)}
-                            >
-                                <i className="fas fa-exchange-alt"></i>
-                                <span>Change Email Forms</span>
-                            </Button>
-                        )}
+{Object.entries(formGroups).map(([key, group]) => (
+    group.versions.includes(bbCodeVersion) && (
+        <Button
+            className="changelog-button"
+            variant='secondary'
+            onClick={() => openSwitchableModal(
+                `Select ${group.name} Form`, 
+                eval(group.subGroup) // Use eval cautiously, or refactor how subgroups are accessed
+            )}
+            key={key} // Add a key for React's list rendering
+        >
+            <i className={group.icon}></i>
+            <span>{`Change ${group.name} Form`}</span>
+        </Button>
+    )
+))}
 
                     </div>
         <div className="notification-container">

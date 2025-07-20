@@ -43,7 +43,7 @@ const generateDeathReport = (formData) => {
 
     // --- Evidence Locker Logic ---
     let evidenceLockerText = 'No';
-    let evidenceLockerListItems = '[list][*] N/A[/list]';
+    let evidenceLockerListItems = '';
 
     // Check if evidenceLockerID has a value, indicating evidence submission
     if (evidenceLockerID && evidenceLockerID.trim() !== '') {
@@ -75,7 +75,7 @@ The ${coronerRank || 'Coroner'}, [bold]${coronerEmployee || 'Unknown Coroner'}[/
 
 Based on the information gathered from the scene investigation and the decedent's medical history (if available), the probable cause of death was determined to be [bold]${probableCauseOfDeath || 'Undetermined'}[/bold]. The manner of death was classified as [bold]${mannerOfDeath || 'Undetermined'}[/bold].
 [/divbox]
-[divbox=transparent][center][bold]B. PHOTOGRAPHIC DOCUMENTARY RECORD[/center][/divbox]
+[divbox=transparent][center][bold]B. PHOTOGRAPHIC DOCUMENTARY RECORD[/center]
 [hr][/hr]
 [center][size=85][bold][u]SCENE PHOTOGRAPHY[/u][/bold][/size][/center]
 ${scenePhotosBBCode}
