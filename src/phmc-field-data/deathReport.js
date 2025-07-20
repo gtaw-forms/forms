@@ -350,8 +350,14 @@ useEffect(() => {
                     </Button>
                 </div>
                 <span className="helper-text">This supports clipboard uploading, ctrl + V! | Hosted by Imgur! - <a href="https://imgur.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a></span>
-                <label>This field has been temporarily disabled</label>
-            </Form.Group>
+                <label>Morgue Bugs:</label>
+                <Form.Check
+                    type="checkbox"
+                    id="morgueStatus"
+                    label="       Tick if Morgue Screen is unavailable / broken / inaccesssable"
+                    checked={formData.morgueStatus === 'true'}
+                    onChange={(e) => setFormData(prev => ({ ...prev, morgueStatus: e.target.checked.toString() }))}
+                />            </Form.Group>
         </>
     );
 };
