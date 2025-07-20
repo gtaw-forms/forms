@@ -114,7 +114,6 @@ const EmergencyForm = ({
         CTScan: { options: ctResults || [], formDataKey: 'ctResults', label: 'CT Scan Results' },
         MRI: { options: mriResults || [], formDataKey: 'mriResults', label: 'MRI Results' },
         Ultrasound: { options: ultrasoundResults || [], formDataKey: 'ultrasoundResults', label: 'Ultrasound Results' },
-        // Add 'Other' here if it has specific results, otherwise it's handled by general logic
     }), [XrayResults, ctResults, mriResults, ultrasoundResults]);
 
     const groupedImagingResultsOptions = useMemo(() => {
@@ -134,7 +133,8 @@ const EmergencyForm = ({
     }, [formData.Imaging, imagingOptionsMapping]);
 
     const selectedImagingResultsValue = useMemo(() => {
-        let selectedValues = [];
+        const selectedValues = [];
+
         if (formData.Imaging && !formData.Imaging.includes('NoneRequired')) {
             formData.Imaging.forEach(imagingType => {
                 const mapping = imagingOptionsMapping[imagingType];
@@ -143,38 +143,43 @@ const EmergencyForm = ({
                     resultsForType.forEach(resultValue => {
                         const option = mapping.options.find(opt => opt.value === resultValue);
                         if (option) {
-                            selectedValues.push({ ...option, imagingType: imagingType, originalFormDataKey: mapping.formDataKey });
+                            selectedValues.push({
+                                ...option,
+                                imagingType: imagingType,
+                                originalFormDataKey: mapping.formDataKey
+                            });
                         }
                     });
                 }
             });
         }
+        console.log("selectedImagingResultsValue (useMemo):", selectedValues);
         return selectedValues;
     }, [formData, imagingOptionsMapping]);
 
-    const handleImagingResultsChange = (selectedOptions) => {
-        const newFormDataSlice = {};
-        // Initialize all relevant formData keys to empty arrays
-        Object.values(imagingOptionsMapping).forEach(mapping => {
-            newFormDataSlice[mapping.formDataKey] = [];
+ const handleImagingResultsChange = (selectedOptions) => {
+     console.log("handleImagingResultsChange called with:", selectedOptions);
+
+         const newFormDataSlice = {};
+     // Initialize all relevant formData keys to empty arrays
+     Object.values(imagingOptionsMapping).forEach(mapping => {
+         newFormDataSlice[mapping.formDataKey] = [];
+     });
+
+    if (selectedOptions && selectedOptions.length > 0 && !selectedOptions.some(opt => opt.value === 'NoneRequired')) {
+        selectedOptions.forEach(option => {
+            const { originalFormDataKey, value } = option;
+            if (originalFormDataKey && newFormDataSlice[originalFormDataKey]) {
+                newFormDataSlice[originalFormDataKey].push(value);
+            }
         });
+    }
 
-        if (selectedOptions && selectedOptions.length > 0) {
-            selectedOptions.forEach(option => {
-                const { originalFormDataKey, value } = option;
-                if (originalFormDataKey && newFormDataSlice[originalFormDataKey]) {
-                    newFormDataSlice[originalFormDataKey].push(value);
-                }
-            });
-        }
-
-        setFormData(prev => ({
-            ...prev,
-            ...newFormDataSlice
-        }));
-    };
-
-
+    setFormData(prev => ({
+        ...prev,
+        ...newFormDataSlice
+    }));
+};
     return (
         <>
             {/* ... (Your existing form fields up to the Findings section) ... */}
@@ -339,51 +344,47 @@ const EmergencyForm = ({
 
 
             {/* Imaging Type Select */}
-            <Form.Label style={{ marginTop: '0.5rem' }}>Imaging Performed</Form.Label>
-            <Select
-                isMulti
-                name="Imaging"
-                value={(Imaging || []).filter(option =>
-                    formData.Imaging?.includes(option.value)
-                )}
-                onChange={(selectedOptions) => {
-                    const newImagingSelectionValues = selectedOptions ? selectedOptions.map(option => option.value) : [];
-                    let updatedFormDataSlice = { Imaging: [] }; // Initialize with Imaging key
+            <Form.Label style={{ marginTop: '0.5rem' }}>Imaging PerformedAAAAAAAAAAA</Form.Label>
+<Select
+    isMulti
+    name="Imaging"
+    value={(Imaging || []).filter(option =>
+        formData.Imaging?.includes(option.value)
+    )}
+    onChange={(selectedOptions) => {
+        console.log("Imaging Select onChange:", selectedOptions);
+        const newImagingSelectionValues = selectedOptions ? selectedOptions.map(option => option.value) : [];
+        let updatedFormDataSlice = { Imaging: [] };
 
-                    if (newImagingSelectionValues.includes('NoneRequired')) {
-                        // If "None Required" is selected, it's the only one that should be active.
-                        updatedFormDataSlice.Imaging = ['NoneRequired'];
-                        // Clear all specific imaging results
-                        Object.values(imagingOptionsMapping).forEach(mapping => {
-                            updatedFormDataSlice[mapping.formDataKey] = [];
-                        });
-                    } else {
-                        // If other options are selected, "None Required" should not be.
-                        updatedFormDataSlice.Imaging = newImagingSelectionValues.filter(val => val !== 'NoneRequired');
-
-                        // Clear results for imaging types that were previously selected but are now deselected
-                        const oldImagingSelectionValues = formData.Imaging || [];
-                        oldImagingSelectionValues.forEach(type => {
-                            if (type !== 'NoneRequired' && !updatedFormDataSlice.Imaging.includes(type)) {
-                                const mapping = imagingOptionsMapping[type];
-                                if (mapping) {
-                                    // Ensure we only clear if it's not already being cleared by "NoneRequired" logic
-                                    // (though this specific check might be redundant given the structure)
-                                    if (!updatedFormDataSlice.hasOwnProperty(mapping.formDataKey)) {
-                                         updatedFormDataSlice[mapping.formDataKey] = [];
-                                    }
-                                }
-                            }
-                        });
+        if (newImagingSelectionValues.includes('NoneRequired')) {
+            updatedFormDataSlice.Imaging = ['NoneRequired'];
+            Object.values(imagingOptionsMapping).forEach(mapping => {
+                updatedFormDataSlice[mapping.formDataKey] = [];
+            });
+        } else {
+            updatedFormDataSlice.Imaging = newImagingSelectionValues.filter(val => val !== 'NoneRequired');
+            const oldImagingSelectionValues = formData.Imaging || [];
+            oldImagingSelectionValues.forEach(type => {
+                if (type !== 'NoneRequired' && !updatedFormDataSlice.Imaging.includes(type)) {
+                    const mapping = imagingOptionsMapping[type];
+                    console.log(`Mapping for type "${type}":`, mapping); // <---- ADD THIS LOG
+                    if (mapping) {
+                        if (!updatedFormDataSlice.hasOwnProperty(mapping.formDataKey)) {
+                             updatedFormDataSlice[mapping.formDataKey] = [];
+                        }
                     }
-                    setFormData(prev => ({ ...prev, ...updatedFormDataSlice }));
-                }}
-                options={Imaging || []}
-                className={`form-control p-0 ${(!formData.Imaging || formData.Imaging.length === 0) && !(formData.Imaging?.includes('NoneRequired')) ? 'is-invalid' : ''}`}
-                classNamePrefix="react-select"
-                placeholder="Select Imaging Type(s)... (Multi-select)"
-                styles={customSelectStyles}
-            />
+                }
+            });
+        }
+        console.log("Imaging Select onChange - updatedFormDataSlice:", updatedFormDataSlice);
+        setFormData(prev => ({ ...prev, ...updatedFormDataSlice }));
+    }}
+    options={Imaging || []}
+    className={`form-control p-0 ${(!formData.Imaging || formData.Imaging.length === 0) && !(formData.Imaging?.includes('NoneRequired')) ? 'is-invalid' : ''}`}
+    classNamePrefix="react-select"
+    placeholder="Select Imaging Type(s)... (Multi-select)"
+    styles={customSelectStyles}
+/>
             <Form.Label></Form.Label>
 
             {/* Single Merged Imaging Results Select - Conditionally Rendered */}
@@ -400,7 +401,6 @@ const EmergencyForm = ({
                         classNamePrefix="react-select"
                         placeholder="Select Imaging Result(s)..."
                         styles={customSelectStyles}
-                        // isDisabled={formData.Imaging?.includes('NoneRequired')} // Alternative to conditional rendering
                     />
                 </>
             )}
