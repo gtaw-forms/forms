@@ -617,10 +617,11 @@ const getBBCodeContent = () => {
     };
 
     const [formData, setFormData] = useState(initialLoadFormData);
-    useEffect(() => {
+        useEffect(() => {
         const { evidenceLockerID, ...formDataToPersist } = formData; // Exclude evidenceLocker
         localStorage.setItem('formData', JSON.stringify(formDataToPersist));
     }, [formData]);
+
 
     const [isUploading, setIsUploading] = useState(false);
     const [isJohnDoe, setIsJohnDoe] = useState(false);
@@ -631,9 +632,6 @@ const getBBCodeContent = () => {
     const [commitInfo, setCommitInfo] = useState({ sha: '', date: null, error: null });
     const { imageSource: deathReportImage, className: deathReportClass } = SeasonalEvents({ imageType: 'deathReport' });
     const { imageSource: civilianPaperworkImage, className: civilianPaperworkClass } = SeasonalEvents({ imageType: 'civilianPaperwork' });
-  const updateFormData = useCallback((newData) => {
-    setFormData(prev => ({ ...prev, ...newData }));
-  }, []);
 
 
     useEffect(() => {
@@ -4025,7 +4023,7 @@ const handleCopyAndNotifyWrapper = async () => {
                                         handleChange={handleChange}
                                         commitInfo={commitInfo}
                                         // Pass all necessary props from App.js state and selectOptions
-setFormData={updateFormData}                                        typeOfDeathOptions={selectOptions.typeOfDeathOptions || []}
+setFormData={setFormData}                                        typeOfDeathOptions={selectOptions.typeOfDeathOptions || []}
                                         mannerOfDeathOptions={selectOptions.mannerOfDeathOptions || []}
                                         requestingAgencyOptions={selectOptions.requestingAgenciesOptions || []}
                                         // Pass other props like phmcGroupedOptions, coronerGroupedOptions, etc.
