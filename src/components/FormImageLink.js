@@ -66,36 +66,15 @@ const FormImageLink = ({
             linkTitle = "Easter Bunny goes bounce bounce";
             shouldRender = true;
             break;
-        case 30:
-            linkHref = "https://saaa.gta.world/posting.php?mode=post&f=71";
-            imgSrc = saaaLogo;
-            imgAlt = "Entry Recruitment Form";
+            case 26: // This handles both bbCodeVersion 3 and 25
+            linkHref = "https://phmc.gta.world/posting.php?mode=post&f=221";
+            imgSrc = civilianPaperworkImage;
+            imgAlt = "Update Medical Records";
+            linkClass = civilianPaperworkClass;
+            linkTitle = "Easter Bunny goes bounce bounce";
             shouldRender = true;
             break;
-        case 31:
-            linkHref = "https://saaa.gta.world/posting.php?mode=post&f=28";
-            imgSrc = saaaLogo;
-            imgAlt = "Flight School Application Form";
-            shouldRender = true;
-            break;
-        case 32:
-            linkHref = "https://saaa.gta.world/posting.php?mode=post&f=7";
-            imgSrc = saaaLogo;
-            imgAlt = "Aircraft Registration Form";
-            shouldRender = true;
-            break;
-        case 33:
-            linkHref = "https://saaa.gta.world/posting.php?mode=post&f=112";
-            imgSrc = saaaLogo;
-            imgAlt = "Airline Companies Registration";
-            shouldRender = true;
-            break;
-        case 34:
-            linkHref = "https://saaa.gta.world/posting.php?mode=post&f=216";
-            imgSrc = saaaLogo;
-            imgAlt = "Heliport Registration Form";
-            shouldRender = true;
-            break;
+
         case 35:
             linkHref = "https://phmc.gta.world/ucp.php?i=pm&mode=compose";
             imgSrc = civilianPaperworkImage;
