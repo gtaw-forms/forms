@@ -14,13 +14,16 @@ admin.initializeApp({
 const db = admin.database();
 
 // Define or import all your selectOption arrays here
-// ... (other selectOption arrays remain the same) ...
 
-const PurposeMedicalInformationRelease = [
-    { value: 'Further Treatment', label: 'Further Treatment / Continued Care' },
-    { value: 'Personal', label: 'Personal Use' },
-    { value: 'Attorney', label: 'Attorney Client' },
-    { value: 'Other', label: 'Other' },
+const UpdateMedicalFile = [
+    { value: 'GeneralInformation', label: 'Update General Information' },
+    { value: 'EmergencyContact', label: 'Update Emergency Contact' },
+    { value: 'Medical History', label: 'Update Medical History' },
+    { value: 'MentalHealth', label: 'Update Mental Health ' },
+    { value: 'FamilyHistory', label: 'Update Family History' },
+    { value: 'SocialInformation', label: 'Update Social Information' },
+    { value: 'Lifestyle', label: 'Update Lifestyle Information' },
+    { value: 'AdvancedDirectives', label: 'Update Advanced Directives' },
 ];
 const PurposeMedicalInformationReleaseFormat = [
     { value: 'CopyofRecords', label: 'Copy of Record Pickup' },
@@ -28,6 +31,13 @@ const PurposeMedicalInformationReleaseFormat = [
     { value: 'ElectronicRelease', label: 'Electronical Release' },
     { value: 'Other', label: 'Other' },
 ];
+const PurposeMedicalInformationRelease = [
+    { value: 'Further Treatment', label: 'Further Treatment / Continued Care' },
+    { value: 'Personal Use', label: 'Personal' },
+    { value: 'Attorney', label: 'Attorney Client' },
+    { value: 'Other', label: 'Other' },
+];
+
 const patientBloodType = [
     { value: 'A+', label: 'A+' },
     { value: 'A-', label: 'A-' },
@@ -106,6 +116,14 @@ const patientTitle = [
     { value: 'Ms', label: 'Ms' },
     { value: 'Other', label: 'Other' }
 ];
+const patientTitleNew = [
+    { value: 'Mstr', label: 'Master (Child <18 Y/O)' },
+    { value: 'Mr', label: 'Mr' },
+    { value: 'Mrs', label: 'Mrs' },
+    { value: 'Ms', label: 'Ms' },
+    { value: 'Other', label: 'Other' }
+];
+
 const patientPhone = [
     { value: 'Mobile', label: 'Mobile' },
     { value: 'Home', label: 'Home' },
@@ -724,69 +742,6 @@ const coronerRecruitmentPositions = Object.keys(coronerPositionDetailsData).map(
     value: key, label: coronerPositionDetailsData[key].displayName
 }));
 
-// SAAA Careers
-const saaaPositionDetailsData = {
-    "Air Traffic Controller": {
-        displayName: "Air Traffic Controller",
-        group: "SAAA",
-        shortCode: "ATC", // Added shortCode
-        url: "https://saaa.gta.world/viewtopic.php?f=71&t=YOUR_ATC_TOPIC_ID",
-        status: "OPEN"
-    },
-    "Aviation Safety Investigator": {
-        displayName: "Aviation Safety Investigator",
-        group: "SAAA",
-        shortCode: "ASI", // Added shortCode
-        url: "https://saaa.gta.world/viewtopic.php?f=28&t=YOUR_INSTRUCTOR_TOPIC_ID",
-        status: "OPEN"
-    },
-    "Airoprt Operations Officer": {
-        displayName: "Airoprt Operations Officer",
-        group: "SAAA",
-        shortCode: "AOO", // Added shortCode
-        url: "https://saaa.gta.world/viewtopic.php?f=71&t=YOUR_GROUND_CREW_TOPIC_ID",
-        status: "OPEN"
-    },
-        "Head Flight Instructor": {
-        displayName: "Head Flight Instructor",
-        group: "SAAA",
-        shortCode: "FI", // Added shortCode
-        url: "https://saaa.gta.world/viewtopic.php?f=71&t=YOUR_GROUND_CREW_TOPIC_ID",
-        status: "OPEN"
-    },
-    "Flight Instructor": {
-        displayName: "Flight Instructor",
-        group: "SAAA",
-        shortCode: "FI", // Added shortCode
-        url: "https://saaa.gta.world/viewtopic.php?f=71&t=YOUR_GROUND_CREW_TOPIC_ID",
-        status: "OPEN"
-    },
-    "Technician": {
-        displayName: "Technician",
-        group: "SAAA",
-        shortCode: "TECH", // Added shortCode
-        url: "https://saaa.gta.world/viewtopic.php?f=71&t=YOUR_GROUND_CREW_TOPIC_ID",
-        status: "CLOSED"
-    },
-    "Legal Advisor": {
-        displayName: "Legal Advisor",
-        group: "SAAA",
-        shortCode: "LC", // Added shortCode
-        url: "https://saaa.gta.world/viewtopic.php?f=71&t=YOUR_GROUND_CREW_TOPIC_ID",
-        status: "OPEN "
-    },
-    "Paralegal": {
-        displayName: "Paralegal",
-        group: "SAAA",
-        shortCode: "PL", // Added shortCode
-        url: "https://saaa.gta.world/viewtopic.php?f=71&t=YOUR_GROUND_CREW_TOPIC_ID",
-        status: "CLOSED"
-    },
-};
-const saaaRecruitmentPositions = Object.keys(saaaPositionDetailsData).map(key => ({
-    value: key, label: saaaPositionDetailsData[key].displayName
-}));
-
 const selectOptionsData = {
     PurposeMedicalInformationRelease,
     PurposeMedicalInformationReleaseFormat,
@@ -851,8 +806,6 @@ const selectOptionsData = {
     ultrasoundResults,
     physicianRecruitmentDetails,
     physicianRecruitmentPositions,
-    saaaPositionDetailsData,
-    saaaRecruitmentPositions,
     psychPositionDetailsData,
     psychRecruitmentPositions,
     adminPositionDetailsData,
@@ -863,6 +816,8 @@ const selectOptionsData = {
     emsRecruitmentPositions, // Added EMS positions
     coronerPositionDetailsData, // Added Coroner details
     coronerRecruitmentPositions, // Added Coroner positions
+    UpdateMedicalFile,
+    patientTitleNew,
 };
 
 async function migrateToRealtimeDB() {

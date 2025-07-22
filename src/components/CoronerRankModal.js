@@ -1,4 +1,3 @@
-// filepath: src/components/CoronerRankModal.js
 import React, { useState, useEffect } from 'react';
 import { Button, Form } from 'react-bootstrap';
 import Select from 'react-select';
@@ -80,6 +79,9 @@ const reactSelectStyles = {
         ...base,
         color: '#6c757d' 
     }),
+        group: (base) => ({ ...base, paddingTop: 8, paddingBottom: 8 }),
+    groupHeading: (base) => ({ ...base, color: '#6c757d', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.75rem', marginBottom: 4 })
+
 };
 // --- End Styles ---
 
@@ -88,86 +90,99 @@ const CoronerRankModal = ({
     onClose,
     onSubmit, // This will be used for the webhook notification from App.js
     coronerList = [],
+    phmcList = [], // New prop for hospital staff list
     setCoronerListData, // New prop to update App.js state
+    setPhmcListData,
     showNotification   // New prop for showing notifications
 }) => {
     const [selectedEmployeeName, setSelectedEmployeeName] = useState('');
     const [newRank, setNewRank] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [employeeType, setEmployeeType] = useState('coroner'); // 'coroner' or 'hospitalStaff'
 
     useEffect(() => {
         if (show) {
             // Reset state when modal becomes visible
-            if (coronerList.length > 0 && !selectedEmployeeName) {
-                 // Optionally pre-select if desired, or leave empty
-                // setSelectedEmployeeName(coronerList[0].name);
-            } else if (coronerList.length === 0) {
-                setSelectedEmployeeName('');
-            }
+            setSelectedEmployeeName('');
             setNewRank('');
             setIsSubmitting(false);
         }
-    }, [show, coronerList, selectedEmployeeName]);
+    }, [show]);
 
     const handleSubmit = async () => {
         const trimmedNewRank = newRank.trim();
 
         if (!selectedEmployeeName) {
-            showNotification('Please select a coroner employee.', 'warning');
+            showNotification('Please select an employee.', 'warning');
             return;
         }
 
-        // If newRank is empty, just trigger the onSubmit for potential webhook (e.g., "employee selected")
-        // and close. No DB update.
         if (!trimmedNewRank) {
             if (onSubmit) {
-                onSubmit({ selectedEmployee: selectedEmployeeName, newRank: '' });
+                onSubmit({ selectedEmployee: selectedEmployeeName, newRank: '', employeeType: employeeType });
             }
             onClose();
             return;
         }
 
         setIsSubmitting(true);
-        const coronerListRef = ref(database, 'staff/coroner');
+        let listRef;
+        let currentList;
+        let updateFunction;
+
+        if (employeeType === 'coroner') {
+            listRef = ref(database, 'staff/coroner');
+            currentList = coronerList;
+            updateFunction = setCoronerListData;
+        } else {
+            listRef = ref(database, 'staff/phmc');
+            currentList = phmcList;
+            updateFunction = setPhmcListData;
+        }
 
         try {
-            const snapshot = await get(coronerListRef);
+            const snapshot = await get(listRef);
             if (snapshot.exists()) {
-                let currentCoroners = snapshot.val();
-                let coronerFound = false;
+                let currentStaff = snapshot.val();
+                let employeeFound = false;
 
-                const updatedCoroners = currentCoroners.map(coroner => {
-                    if (coroner.name === selectedEmployeeName) {
-                        coronerFound = true;
-                        return { ...coroner, rank: trimmedNewRank, category: trimmedNewRank }; // Update rank and category
+                const updatedStaff = currentStaff.map(employee => {
+                    if (employee.name === selectedEmployeeName) {
+                        employeeFound = true;
+                        // Ensure both 'rank' and 'category' are updated for coroners
+                        if (employeeType === 'coroner') {
+                            return { ...employee, rank: trimmedNewRank, category: trimmedNewRank };
+                        } else { // Hospital Staff, Ensure 'rank' is updated, as well as 'category'
+                            return { ...employee, rank: trimmedNewRank, category: trimmedNewRank };
+                        }
                     }
-                    return coroner;
+                    return employee;
                 });
 
-                if (!coronerFound) {
-                    showNotification(`Coroner "${selectedEmployeeName}" not found in the database.`, 'error');
-                    Sentry.captureMessage(`CoronerRankModal: Attempted to update non-existent coroner "${selectedEmployeeName}"`);
+                if (!employeeFound) {
+                    showNotification(`Employee "${selectedEmployeeName}" not found in the database.`, 'error');
+                    Sentry.captureMessage(`CoronerRankModal: Attempted to update non-existent employee "${selectedEmployeeName}"`);
                     setIsSubmitting(false);
                     return;
                 }
 
-                await set(coronerListRef, updatedCoroners);
-                setCoronerListData(updatedCoroners); // Update state in App.js
+                await set(listRef, updatedStaff);
+                updateFunction(updatedStaff); // Update state in App.js
                 showNotification(`Rank for ${selectedEmployeeName} updated to "${trimmedNewRank}" in the database.`, 'check-circle');
 
                 if (onSubmit) { // Trigger webhook via App.js's handler
-                    onSubmit({ selectedEmployee: selectedEmployeeName, newRank: trimmedNewRank });
+                    onSubmit({ selectedEmployee: selectedEmployeeName, newRank: trimmedNewRank, employeeType: employeeType });
                 }
                 onClose();
 
             } else {
-                showNotification('No coroner data found in the database.', 'error');
+                showNotification('No employee data found in the database.', 'error');
                 Sentry.captureMessage("CoronerRankModal: staff/coroner path does not exist in Firebase.");
             }
         } catch (error) {
-            console.error("Error updating coroner rank in Firebase:", error);
-            Sentry.captureException(error, { extra: { context: 'CoronerRankModal Firebase Update', selectedEmployeeName, newRank } });
-            showNotification('Failed to update coroner rank in database. Please try again.', 'error');
+            console.error("Error updating employee rank in Firebase:", error);
+            Sentry.captureException(error, { extra: { context: 'CoronerRankModal Firebase Update', selectedEmployeeName, newRank, employeeType } });
+            showNotification('Failed to update employee rank in database. Please try again.', 'error');
         } finally {
             setIsSubmitting(false);
         }
@@ -182,9 +197,9 @@ const CoronerRankModal = ({
         setNewRank(e.target.value);
     };
 
-    const employeeOptions = coronerList.map(emp => ({
+    const employeeOptions = (employeeType === 'coroner' ? coronerList : phmcList).map(emp => ({
         value: emp.name,
-        label: `${emp.name} (${emp.rank || 'Rank Missing'})`
+        label: `${emp.name} (${emp.rank || emp.category || 'Rank Missing'})`
     }));
 
     if (!show) {
@@ -195,7 +210,7 @@ const CoronerRankModal = ({
         <div style={modalOverlayStyle} onClick={onClose}>
             <div style={modalContentStyle} onClick={e => e.stopPropagation()}>
                 <div style={modalHeaderStyle}>
-                    <h5 style={modalTitleStyle}>Update Coroner Rank</h5>
+                    <h5 style={modalTitleStyle}>Update Employee Rank</h5>
                     <button onClick={onClose} style={closeButtonStyle} aria-label="Close modal">
                         &times;
                     </button>
@@ -203,8 +218,33 @@ const CoronerRankModal = ({
 
                 <div style={modalBodyStyle}>
                     <Form>
+                         <Form.Group controlId="employeeTypeRadios" className="mb-3">
+                            <Form.Label style={formLabelStyle}>Select Employee Type</Form.Label>
+                            <div key={`inline-radio`} className="mb-3">
+                                <Form.Check
+                                    inline
+                                    label="Coroner"
+                                    name="employeeType"
+                                    type="radio"
+                                    id={`coroner-radio`}
+                                    value="coroner"
+                                    checked={employeeType === 'coroner'}
+                                    onChange={() => setEmployeeType('coroner')}
+                                />
+                                <Form.Check
+                                    inline
+                                    label="Hospital Staff"
+                                    name="employeeType"
+                                    type="radio"
+                                    id={`hospitalStaff-radio`}
+                                    value="hospitalStaff"
+                                    checked={employeeType === 'hospitalStaff'}
+                                    onChange={() => setEmployeeType('hospitalStaff')}
+                                />
+                            </div>
+                        </Form.Group>
                         <Form.Group controlId="coronerEmployeeSelect" className="mb-3">
-                            <Form.Label style={formLabelStyle}>Pick Coroner</Form.Label>
+                            <Form.Label style={formLabelStyle}>Select Employee</Form.Label>
                             <Select
                                 name="coronerEmployeeSelect"
                                 aria-label="Select Coroner Employee"
@@ -214,23 +254,28 @@ const CoronerRankModal = ({
                                 styles={reactSelectStyles}
                                 isDisabled={employeeOptions.length === 0 || isSubmitting}
                                 isClearable
-                                placeholder="Search or select coroner employee..."
+                                placeholder="Search or select employee..."
                                 classNamePrefix="react-select"
                             />
+                            {employeeOptions.length === 0 && (
+                                <Form.Text className="text-muted">
+                                    No employees found for selected type.  Please add employee to form first.
+                                </Form.Text>
+                            )}
                         </Form.Group>
 
                         <div className="text-center my-2" style={{ color: '#6c757d' }}></div>
 
                         <Form.Group controlId="newCoronerRankInput" className="mb-3">
-                        <Form.Label style={formLabelStyle}>Enter Updated Rank for Selected Coroner</Form.Label>
-                        <Form.Control
-                            type="text"
-                            placeholder="Enter updated rank name..."
-                            value={newRank}
-                            onChange={handleNewRankChange}
-                            style={formControlStyle}
-                            disabled={!selectedEmployeeName || isSubmitting}
-                        />
+                            <Form.Label style={formLabelStyle}>Enter Updated Rank</Form.Label>
+                            <Form.Control
+                                type="text"
+                                placeholder="Enter updated rank name..."
+                                value={newRank}
+                                onChange={handleNewRankChange}
+                                style={formControlStyle}
+                                disabled={!selectedEmployeeName || isSubmitting}
+                            />
                         </Form.Group>
                     </Form>
                 </div>

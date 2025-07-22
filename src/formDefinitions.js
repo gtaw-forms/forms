@@ -2,7 +2,7 @@
 import {
     CommNotePHMC, CommNotePBC, DeathReport, CoronerEmail, PatientAdvanced, MentalHealth,
     EmailInternal, Surgical, PhysEval, EmergencyForm, GeneralConsult,
-    MedicalRelease, BasicPatientFile, Shrink, Autopsy, Certificate
+    MedicalRelease, BasicPatientFile, Shrink, Autopsy, Certificate, MedicalUpdate
 } from './phmc-field-data'; // Assuming all field components are here for now
 
 import {
@@ -12,7 +12,7 @@ import {
     generateEmergencyProtocol, generateCommentaryNotePHMC, generateCommentaryNotePBC,
     generateMedicalRecordRelease, generateBasicPatientFile, generateEmailPHMCEmail,
     generateConsultationNotesPBC, generatePsychEvalPHMC, generatePsychEvalPBC,
-    generateAutopsy, generateCertificate
+    generateAutopsy, generateCertificate, generateMedicalFileUpdate,
 } from './phmc-bbcode-generators'; // Assuming all PHMC generators are here
 import generatePhysician from './phmc-recruitment-generators/generatePhysician'; // Make sure this path is correct
 import PhysicianFields from './phmc-civilian-fields/Physician'; // Path to your new component
@@ -82,10 +82,10 @@ export const generateAdminView = (viewData) => {
 
 export const formDefinitions = [
     // Civilian Forms First
-    { version: 3, name: "[Civilian] Patient File - Advanced", group: "PHMC", icon: Civilian, generator: generateAdvancedPatientFile, FieldComponent: PatientAdvanced, titleKey: "patientFileAdvanced", sortOrder: 3, hasCustomTitle: true },
+    { version: 3, name: "[Civilian] Patient File Advanced", group: "PHMC", icon: Civilian, generator: generateAdvancedPatientFile, FieldComponent: PatientAdvanced, titleKey: "patientFileAdvanced", sortOrder: 3, hasCustomTitle: true, isHiddenInSelector: true},
     { version: 24, name: "[Civilian] Medical Release Form", group: "PHMC", icon: Civilian, generator: generateMedicalRecordRelease, FieldComponent: MedicalRelease, titleKey: "medicalRelease", sortOrder: 1, hasCustomTitle: true },
-    { version: 25, name: "[Civilian] Patient File - Basic", group: "PHMC", icon: Civilian, generator: generateBasicPatientFile, FieldComponent: BasicPatientFile, titleKey: "patientFileBasic", sortOrder: 2, hasCustomTitle: true },
-
+    { version: 25, name: "[Civilian] Patient Files", group: "PHMC", icon: Civilian, generator: generateBasicPatientFile, FieldComponent: BasicPatientFile, titleKey: "patientFileBasic", sortOrder: 2, hasCustomTitle: true },
+    { version: 26, name: "[Civilian] Update Medical Records", group: "PHMC", icon: Civilian, generator: generateMedicalFileUpdate, FieldComponent: MedicalUpdate, titleKey: "patientUpdateMedical", sortOrder: 2, hasCustomTitle: true, isHiddenInSelector: true },
     // PHMC Forms (Forensic Services next, then others)
     { version: 1, name: "Forensic Services ", group: "PHMC", icon: corpse, generator: generateDeathReport, FieldComponent: DeathReport, titleKey: "deathReport", sortOrder: 10, hasCustomTitle: true },
     { version: 4, name: "Autopsy Report", group: "PHMC", icon: corpse /* Placeholder */, generator: generateAutopsy, FieldComponent: Autopsy, titleKey: "autopsyReport", sortOrder: 11, isHiddenInSelector: true, hasCustomTitle: true },
