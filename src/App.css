@@ -160,6 +160,7 @@ select {
     background-color: #16202c;
     color: #eeeeeeb0;
     border: 1px solid #30363d;
+    flex-grow: 1; 
 }
 
     .form-control:focus {

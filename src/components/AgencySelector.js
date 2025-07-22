@@ -41,69 +41,17 @@ const subFormListStyle = {
 const subFormListItemStyle = {
     // No specific style needed
 };
-
+// Related Form Mapping
 const phmcSubFormMap = {
     1: [2, 4, 8],
     6: [7],
     14: [16],
     20: [21],
     22: [23],
+    24: [26],
+    25: [3], 
     28: [29],
     27: [35],
-};
-
-const getSaaaRecruitmentButtonProps = (
-    saaaDetails,
-    baseStyle,
-    baseText
-) => {
-    let overallRecruitmentOpen = false;
-    let openPositionDetails = [];
-    let closedPositionDetails = [];
-    let allPositionsStatusMessages = [];
-    const statusKnown = saaaDetails && typeof saaaDetails === 'object' && Object.keys(saaaDetails).length > 0;
-    if (statusKnown) {
-        Object.values(saaaDetails).forEach(position => {
-            if (position.status === "OPEN") {
-                overallRecruitmentOpen = true;
-                openPositionDetails.push(position.displayName);
-            } else if (position.status === "CLOSED") {
-                closedPositionDetails.push(position.displayName);
-            }
-            allPositionsStatusMessages.push(`${position.displayName}: ${position.status || 'N/A'}`);
-        });
-    }
-    let buttonText = baseText;
-    let buttonTitle = `SAAA Recruitment Status`;
-    let dynamicStyle = { ...baseStyle };
-    dynamicStyle.height = 'auto';
-    dynamicStyle.minHeight = baseStyle.height || '8rem'; // Will use the updated baseStyle.height
-    dynamicStyle.justifyContent = 'flex-start';
-    dynamicStyle.paddingTop = '0.75rem';
-    dynamicStyle.paddingBottom = '0.75rem';
-    dynamicStyle.width = '100%';
-    if (!statusKnown) {
-        buttonText += " - Status Unknown";
-        buttonTitle = `SAAA Recruitment status could not be loaded or is not configured.`;
-        dynamicStyle.color = '#6c757d';
-        dynamicStyle.borderColor = '#6c757d';
-    } else if (overallRecruitmentOpen) {
-        buttonText += ` - Open (${openPositionDetails.length})`;
-        buttonTitle = `Open Positions for SAAA Recruitment: ${openPositionDetails.join(', ') || 'None'}\n\nAll Statuses:\n${allPositionsStatusMessages.join('\n')}`;
-        dynamicStyle.color = '#28a745';
-        dynamicStyle.borderColor = '#28a745';
-    } else {
-        buttonText += " - Closed";
-        buttonTitle = `All SAAA Recruitment positions are currently closed or no open positions are listed.\n\nAll Statuses:\n${allPositionsStatusMessages.join('\n')}`;
-        dynamicStyle.color = '#dc3545';
-        dynamicStyle.borderColor = '#dc3545';
-    }
-    dynamicStyle.backgroundColor = 'transparent';
-    return {
-        text: buttonText, title: buttonTitle, style: dynamicStyle,
-        openPositions: openPositionDetails, closedPositions: closedPositionDetails,
-        overallOpen: overallRecruitmentOpen, statusKnown: statusKnown, isRecruitmentForm: true,
-    };
 };
 
 
@@ -116,7 +64,6 @@ const AgencySelector = ({
     setHideAgencySelector,
     selectedAgencyGroup,
     formDefinitions,
-    saaaRecruitmentDetails
 }) => {
     if (!showAgencySelector || !selectedAgencyGroup) {
         return null;
@@ -125,10 +72,6 @@ const AgencySelector = ({
     const availableForms = formDefinitions
         .filter(form => form.group === selectedAgencyGroup && !form.name.includes('(PBC)') && !form.isHiddenInSelector)
         .sort((a, b) => {
-            if (selectedAgencyGroup === 'SAAA') {
-                if (a.titleKey === "saaaEntryJob" && b.titleKey !== "saaaEntryJob") return -1;
-                if (a.titleKey !== "saaaEntryJob" && b.titleKey === "saaaEntryJob") return 1;
-            }
             const orderA = a.sortOrder !== undefined ? a.sortOrder : Infinity;
             const orderB = b.sortOrder !== undefined ? b.sortOrder : Infinity;
             if (orderA !== orderB) return orderA - orderB;
@@ -215,7 +158,6 @@ const AgencySelector = ({
                 />
                 <span className="text-break" style={{ marginBottom: '0.5rem' }}>{formSpecificButtonProps.text}</span> {/* Added margin-bottom */}
 
-                {/* SAAA Recruitment Info */}
                 {formSpecificButtonProps.isRecruitmentForm && formSpecificButtonProps.statusKnown && (
                     <>
                         {formSpecificButtonProps.openPositions.length > 0 && (
@@ -290,56 +232,6 @@ const AgencySelector = ({
                         </Form.Select>
                     ) : (
                         <>
-                            {selectedAgencyGroup === 'SAAA' ? (
-                                <div>
-                                    {(() => {
-                                        const saaaEntryJobForm = availableForms.find(form => form.titleKey === "saaaEntryJob");
-                                        if (saaaEntryJobForm) {
-                                            let buttonDisplayProps = {
-                                                text: saaaEntryJobForm.name,
-                                                title: saaaEntryJobForm.name,
-                                                style: { ...formButtonStyleBase }, // Start with the (taller) base style
-                                                openPositions: [], closedPositions: [],
-                                                isRecruitmentForm: false, overallOpen: false, statusKnown: true,
-                                                subForms: [],
-                                            };
-                                            const recruitmentProps = getSaaaRecruitmentButtonProps(
-                                                saaaRecruitmentDetails,
-                                                formButtonStyleBase, // Pass the new taller base style
-                                                saaaEntryJobForm.name
-                                            );
-                                            // getSaaaRecruitmentButtonProps already sets height to 'auto' and minHeight
-                                            buttonDisplayProps = { ...buttonDisplayProps, ...recruitmentProps };
-
-                                            return (
-                                                <div style={{ ...gridItemStyleBase, flex: '1 0 100%', marginBottom: '0.75rem' }}>
-                                                    {renderFormButtonElement(saaaEntryJobForm, buttonDisplayProps)}
-                                                </div>
-                                            );
-                                        }
-                                        return null;
-                                    })()}
-                                    <div style={gridContainerStyle}>
-                                        {availableForms
-                                            .filter(form => form.titleKey !== "saaaEntryJob")
-                                            .map(form => {
-                                                let buttonDisplayProps = {
-                                                    text: form.name, title: form.name,
-                                                    style: { ...formButtonStyleBase }, // Use the new taller base style
-                                                    openPositions: [], closedPositions: [],
-                                                    isRecruitmentForm: false, overallOpen: false, statusKnown: true,
-                                                    subForms: [],
-                                                };
-                                                let currentGridItemStyle = { ...gridItemStyleBase, flex: '1 0 23%' };
-                                                return (
-                                                    <div key={form.version} style={currentGridItemStyle}>
-                                                        {renderFormButtonElement(form, buttonDisplayProps)}
-                                                    </div>
-                                                );
-                                            })}
-                                    </div>
-                                </div>
-                            ) : ( // PHMC and other groups
                                 <div style={gridContainerStyle}>
                                     {availableForms.map(form => {
                                         let buttonDisplayProps = {
@@ -377,7 +269,6 @@ const AgencySelector = ({
                                         );
                                     })}
                                 </div>
-                            )}
                         </>
                     )}
                     <div className="mt-4">
