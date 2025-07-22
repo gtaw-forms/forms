@@ -43,6 +43,7 @@ import PHMCLogo from './assets/phmc.png'
 import corpse from './assets/corpse.png'
 import phmcpaletobay from './assets/phmcpaletobaylogo.png'
 import './assets/fonts/Poppins-Medium.ttf';
+import { sendMissingEmployeeNotification } from './components/notificationService';
 
 // css fun
 import './App.css';
@@ -53,6 +54,7 @@ import 'react-bootstrap-typeahead/css/Typeahead.css';
 // database
 import { database } from './firebase'; // Your Firebase config
 import { ref, get, set, remove} from 'firebase/database'; // Added set
+import { phmcList } from './data';
 
 
 
@@ -92,6 +94,7 @@ const initialFormData = {
     patientEmergencyContactRelation: '',
     patientEmergencyContactDiscord: '',
     patientTitle: '',
+    patientTitleOptions: '',
     patientAllergies: '',
     patientCurrentMedicine: '',
     patientChronicDiseases: '',
@@ -266,6 +269,7 @@ const initialFormData = {
     applicantPrevDismissalReason: '',
     applicantMotivationLetter: '',
     oocMedicalExperience: '',
+    UpdateMedicalFile: [],
     oocAdminRecordLink: '',
     oocStatsLink: '',
         recruitmentPosition: '',
@@ -317,6 +321,15 @@ const initialFormData = {
     ctResults: [],
     mriResults: [],
     ultrasoundResults: [],
+        patientTitleNew: '',
+    patientNameNew: '',
+    patientDateOfBirthNew: '',
+    patientAddressNew: '',
+    patientPHNew: '',
+    patientDiscordNew: '',
+    patientGenderNew: '',
+    patientRaceNew: '',
+
 
 };
 
@@ -466,72 +479,69 @@ const initialFormData = {
         setShowCctvRequestModal(true);
     };
 
-    useEffect(() => {
-        const loadData = async () => {
+const loadData = async () => {
     let loadingNotificationId; // Declare a variable to store the notification ID
     try {
         loadingNotificationId = showNotification("Data Loading...", 'spinner fa-spin', 0); // Store the ID
 
-                // Load formData from localStorage FIRST
-                let initialLoadFormData = {};
-                const fieldsToLoadFromLS = [
-                    'phmcEmployee', 'phmcEmployeeLastName', 'phmcRank',
-                    'coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord', 'coronerPHNumber',
-                    'pronouncedTimeOfDeath', 'department', 'dateTime', 'placeOfDeath', 'mannerOfDeath',
-                    'recruitmentPosition', 'applicantTitleAndFullName' // Also add these fields to load from LS
-                ];
+        // Load formData from localStorage FIRST
+        let initialLoadFormData = {};
+        const fieldsToLoadFromLS = [
+            'phmcEmployee', 'phmcEmployeeLastName', 'phmcRank',
+            'coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord', 'coronerPHNumber',
+            'pronouncedTimeOfDeath', 'department', 'dateTime', 'placeOfDeath', 'mannerOfDeath',
+            'recruitmentPosition', 'applicantTitleAndFullName' // Also add these fields to load from LS
+        ];
 
-                fieldsToLoadFromLS.forEach(field => {
-                    const value = localStorage.getItem(field);
-                    if (value !== null) {
-                        initialLoadFormData[field] = value;
-                    }
-                });
+        fieldsToLoadFromLS.forEach(field => {
+            const value = localStorage.getItem(field);
+            if (value !== null) {
+                initialLoadFormData[field] = value;
+            }
+        });
 
-                // Log the data right before calling setFormData
+        // Log the data right before calling setFormData
 
-                // Initialize state with localStorage values
-                setFormData(prevFormData => ({
-                    ...prevFormData,
-                    ...initialLoadFormData,
-                }));
+        // Initialize state with localStorage values
+        setFormData(prevFormData => ({
+            ...prevFormData,
+            ...initialLoadFormData,
+        }));
 
-                const dbRootRef = ref(database);
-                const snapshot = await get(dbRootRef);
+        const dbRootRef = ref(database);
+        const snapshot = await get(dbRootRef);
 
-                if (snapshot.exists()) {
-                    const allData = snapshot.val();
-                    let fetchedSelectOptions = allData.selectOptions || {};
+        if (snapshot.exists()) {
+            const allData = snapshot.val();
+            let fetchedSelectOptions = allData.selectOptions || {};
 
+            setPhmcListData(allData.staff?.phmc || []);
+            setCoronerListData(allData.staff?.coroner || []);
+            setAgencyDataStore(allData.agencies || {});
+            setSelectOptions(allData.selectOptions || {});
 
+            setSelectOptions(fetchedSelectOptions);
+            setPhysicianRecruitmentDetails(fetchedSelectOptions.physicianRecruitmentDetails || {});
+            setPsychRecruitmentDetails(fetchedSelectOptions.psychPositionDetailsData || {});
+            setAdminRecruitmentDetails(fetchedSelectOptions.adminPositionDetailsData || {});
+            setEmsRecruitmentDetails(fetchedSelectOptions.emsPositionDetailsData || {});
+            setNurseRecruitmentDetails(fetchedSelectOptions.nursePositionDetailsData || {});
+            setCoronerRecruitmentDetails(fetchedSelectOptions.coronerPositionDetailsData || {});
 
-                    setPhmcListData(allData.staff?.phmc || []);
-                    setCoronerListData(allData.staff?.coroner || []);
-                    setAgencyDataStore(allData.agencies || {});
-                    setSelectOptions(allData.selectOptions || {});
+            // Merge Firebase data on top of localStorage data
+            setFormData(prevFormData => ({
+                ...prevFormData,
+                phmcEmployee: prevFormData.phmcEmployee, // load all details
+                coronerEmployee: prevFormData.coronerEmployee, // Ensure coroner data is re set by load
+            }));
 
-                    setSelectOptions(fetchedSelectOptions);
-                    setPhysicianRecruitmentDetails(fetchedSelectOptions.physicianRecruitmentDetails || {});
-                    setPsychRecruitmentDetails(fetchedSelectOptions.psychPositionDetailsData || {});
-                    setAdminRecruitmentDetails(fetchedSelectOptions.adminPositionDetailsData || {});
-                    setEmsRecruitmentDetails(fetchedSelectOptions.emsPositionDetailsData || {});
-                    setNurseRecruitmentDetails(fetchedSelectOptions.nursePositionDetailsData || {});
-                    setCoronerRecruitmentDetails(fetchedSelectOptions.coronerPositionDetailsData || {});
-
-                    // Merge Firebase data on top of localStorage data
-                    setFormData(prevFormData => ({
-                        ...prevFormData,
-                        phmcEmployee: prevFormData.phmcEmployee, // load all details
-                        coronerEmployee: prevFormData.coronerEmployee, // Ensure coroner data is re set by load
-                    }));
-
-                    showNotification("Data Loaded!", 'check-circle', 2000);
-                } else {
-                    showNotification('Initial application data not found on server.', 'error');
-                }
-            } catch (error) {
-                showNotification("An error has happened, contact the maintainer", 'error');
-                console.error("Error fetching data from Realtime Database:", error);
+            showNotification("Data Loaded!", 'check-circle', 2000);
+        } else {
+            showNotification('Initial application data not found on server.', 'error');
+        }
+    } catch (error) {
+        showNotification("An error has happened, contact the maintainer", 'error');
+        console.error("Error fetching data from Realtime Database:", error);
     } finally {
         setIsLoadingData(false);
         setLoading(false);
@@ -539,15 +549,15 @@ const initialFormData = {
             removeNotification(loadingNotificationId); // Remove the notification
         }
     }
-        };
-
-        loadData();
-    }, [
-        showNotification, database, setPhmcListData, setCoronerListData, 
-        setAgencyDataStore, setSelectOptions, setPhysicianRecruitmentDetails,
-        setPsychRecruitmentDetails, setAdminRecruitmentDetails,
-        setEmsRecruitmentDetails, setNurseRecruitmentDetails, setCoronerRecruitmentDetails
-    ]);
+};
+useEffect(() => {
+    loadData();
+}, [
+    showNotification, database, setPhmcListData, setCoronerListData,
+    setAgencyDataStore, setSelectOptions, setPhysicianRecruitmentDetails,
+    setPsychRecruitmentDetails, setAdminRecruitmentDetails,
+    setEmsRecruitmentDetails, setNurseRecruitmentDetails, setCoronerRecruitmentDetails
+]);
 
 
     useEffect(() => {
@@ -725,23 +735,24 @@ const getBBCodeContent = () => {
     const civilianFormsSubGroup = [
         { version: 24, name: "Medical Record Release", icon: Civilian },
         { version: 25, name: "Basic Patient File", icon: nurse }, // Assuming nurse icon for basic
-        { version: 3, name: "Detailed Patient File", icon: nurse } // Assuming nurse icon for advanced
+        { version: 3, name: "Detailed Patient File", icon: nurse }, // Assuming nurse icon for advanced
+        { version: 26, name: "Update Medical Records", icon: Civilian}, 
     ];
-        const phmcInternalEmails = [
-        { version: 24, name: "Internal Email", icon: Civilian },
-        { version: 35, name: "Sick Note", icon: nurse }, // Assuming nurse icon for basic
+    const phmcInternalEmails = [
+    { version: 24, name: "Internal Email", icon: Civilian },
+    { version: 35, name: "Sick Note", icon: nurse }, // Assuming nurse icon for basic
     ];
 
 // Switch Form Handling Logic
     const [showPHMCModal, setShowPHMCModal] = useState(false); // This state will now control the generic SwitchableFormsModal
     const [switchableModalTitle, setSwitchableModalTitle] = useState('');
     const [switchableFormsList, setSwitchableFormsList] = useState([]);
-    const openSwitchableModal = (title, formsArray) => {
+ const openSwitchableModal = (title, formsArray) => {
         setSwitchableModalTitle(title);
         setSwitchableFormsList(formsArray);
         setShowPHMCModal(true); // Use the existing state to show/hide the modal
+        console.log('SwitchableFormsModal: openSwitchableModal called, show = true');
     };
-
 
 // --- 
     const handleImageUpload = async (event, fieldName) => {
@@ -851,7 +862,6 @@ const phmcRecruitmentFormsSubGroup = formDefinitions.filter(
     const [showFeatureRequestModal, setShowFeatureRequestModal] = useState(false);
     const [featureRequest, setFeatureRequest] = useState('');
     const [discordName, setDiscordName] = useState('');
-    const [showMissingEmployeeModal, setShowMissingEmployeeModal] = useState(false);
     const [isRemoveStaff, setIsRemoveStaff] = useState(false); 
     const [missingEmployeeData, setMissingEmployeeData] = useState({
         coronerName: '',
@@ -951,325 +961,38 @@ const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
         console.log('[Autopsy Photos] Process finished. isUploading set to false, indefinite notification removed.');
     }
 };
+    const [staffToRemove, setStaffToRemove] = useState([]);
+    const [authorizedBy, setAuthorizedBy] = useState('');
 
-    const handleMissingEmployeeSubmit = async () => {
-        const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmployeeName, newRank, staffToRemove, authorizedBy, missingEmployeeData, updatedStaff) => {
+    await sendMissingEmployeeNotification(
+        actionType,
+        employeeType,
+        selectedEmployeeName,
+        newRank,
+        coronerListData, // Pass coronerListData
+        phmcList,    
+        staffToRemove,
+        authorizedBy,
+        {
+            ...missingEmployeeData,
+            coronerEmployee: formData.coronerEmployee,
+            phmcEmployee: formData.phmcEmployee,
+        },
+        commitInfo,
+        showNotification,
+    );
 
-        if (!webhookURL) {
-            console.error('Discord webhook URL not configured for employee management.');
-            Sentry.captureMessage('Discord webhook URL is missing for employee management submission.', 'error');
-            showNotification('Configuration error: Unable to submit request. Please contact the administrator.', 'exclamation-triangle');
-            return;
-        }
+    // Trigger refresh after any action involving MissingEmployeeModal
+    if (actionType === 'updateRank') {
+        showNotification("Refreshing staff data...", 'info-circle', 2000);
+    }
+    await loadData(); // Call the main data loading function to refresh data
 
-        let embedData = {};
-        let submissionValid = false;
-        let successMessage = '';
-        let requestActionTitle = '';
-
-        if (isJohnDoe || isJaneDoe) {
-            const isCoronerRequest = isJohnDoe;
-            requestActionTitle = `➕ Missing ${isCoronerRequest ? 'Coroner' : 'Hospital Staff'} Addition Request`;
-            let requiredFields = [];
-
-            if (isCoronerRequest) {
-                requiredFields = ['coronerName', 'coronerDiscord', 'coronerRank', 'coronerBadge', 'coronerEmployee'];
-            } else { // isJaneDoe (addPhmc)
-                requiredFields = ['coronerName', 'employeeLastName', 'coronerRank', 'phmcEmployee'];
-            }
-
-            const emptyFields = requiredFields.filter(key => !missingEmployeeData[key]?.trim());
-            if (emptyFields.length > 0) {
-                showNotification(`Please fill in all required fields for adding staff. Missing: ${emptyFields.join(', ')}`, 'exclamation-circle');
-                return;
-            }
-
-            const requester = isCoronerRequest ? missingEmployeeData.coronerEmployee : missingEmployeeData.phmcEmployee;
-
-            embedData = {
-                title: requestActionTitle,
-                color: isCoronerRequest ? 0x8B0000 : 0x00008B,
-                fields: [
-                    { name: "Requested By", value: requester || "Unknown", inline: false },
-                    { name: "Name to Add", value: missingEmployeeData.coronerName || "N/A", inline: true },
-                    { name: isCoronerRequest ? "Discord Tag" : "Department/Discord", value: missingEmployeeData.coronerDiscord || "N/A", inline: true },
-                    { name: "Rank/Position", value: missingEmployeeData.coronerRank || "N/A", inline: true },
-                ],
-                timestamp: new Date().toISOString(),
-                footer: { text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}` }
-            };
-
-            let dataJsEntry = '';
-            let parsedLastNameForEmbed = "N/A";
-
-            if (isCoronerRequest) {
-                if (missingEmployeeData.coronerBadge?.trim()) {
-                    embedData.fields.push({ name: "Badge", value: missingEmployeeData.coronerBadge, inline: true });
-                }
-                dataJsEntry = `{ name: '${missingEmployeeData.coronerName || 'MISSING_NAME'}', badge: '${missingEmployeeData.coronerBadge || 'MISSING_BADGE'}', phNumber: '${missingEmployeeData.coronerPHNumber || ''}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', discord: '${missingEmployeeData.coronerDiscord || 'MISSING_DISCORD'}', category: '${missingEmployeeData.coronerRank || 'MISSING_CATEGORY'}' },`;
-            } else { // isJaneDoe (add hospital staff)
-                const rawFirstNameInput = missingEmployeeData.coronerName || "";
-                const rawLastNameInput = missingEmployeeData.employeeLastName || "";
-                let calculatedFullName;
-                let parsedLastName = "";
-                const trimmedFirstName = rawFirstNameInput.trim();
-                const trimmedRawLastName = rawLastNameInput.trim();
-                if (trimmedRawLastName) {
-                    const lastNameWords = trimmedRawLastName.split(' ');
-                    parsedLastName = lastNameWords[lastNameWords.length - 1];
-                }
-                if (trimmedFirstName && parsedLastName) {
-                    if (trimmedFirstName.toLowerCase().endsWith(parsedLastName.toLowerCase()) && trimmedFirstName.includes(' ')) {
-                        calculatedFullName = trimmedFirstName;
-                    } else if (trimmedFirstName.toLowerCase() === parsedLastName.toLowerCase()) {
-                        calculatedFullName = parsedLastName;
-                    } else {
-                        calculatedFullName = `${trimmedFirstName} ${parsedLastName}`;
-                    }
-                } else if (trimmedFirstName) {
-                    calculatedFullName = trimmedFirstName;
-                } else if (parsedLastName) {
-                    calculatedFullName = parsedLastName;
-                } else {
-                    calculatedFullName = 'MISSING_FULL_NAME';
-                }
-                if (calculatedFullName.trim() === '' && calculatedFullName !== 'MISSING_FULL_NAME') {
-                     calculatedFullName = 'MISSING_FULL_NAME';
-                }
-                const finalLastNameForEntry = parsedLastName || 'MISSING_LAST_NAME';
-                parsedLastNameForEmbed = parsedLastName || "N/A";
-                dataJsEntry = `{ name: '${calculatedFullName}', lastName: '${finalLastNameForEntry}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', category: '${missingEmployeeData.coronerRank || 'MISSING_CATEGORY'}' },`;
-            }
-            embedData.fields.push({ name: "Last Name", value: parsedLastNameForEmbed, inline: true });
-            if (missingEmployeeData.coronerPHNumber?.trim()) {
-                embedData.fields.push({ name: "Phone Number", value: missingEmployeeData.coronerPHNumber, inline: true });
-            }
-            embedData.fields.push({ name: "Google Firebase Debug String: ", value: `\`\`\`javascript\n${dataJsEntry}\n\`\`\``, inline: false });
-
-            submissionValid = true;
-
-        } else if (isRemoveStaff) {
-            requestActionTitle = "➖ Staff Removal Request";
-            if (!missingEmployeeData.staffToRemove || missingEmployeeData.staffToRemove.length === 0) {
-                showNotification('Please select at least one staff member to remove.', 'warning');
-                return;
-            }
-            if (!missingEmployeeData.authorizedBy?.trim()) {
-                showNotification('Please enter your name in the "Authorized By" field.', 'warning');
-                return;
-            }
-            const removedStaffDataStrings = [];
-            for (const staffNameToRemove of missingEmployeeData.staffToRemove) {
-                const coronerData = coronerListData.find(c => c.name === staffNameToRemove);
-                if (coronerData) {
-                    removedStaffDataStrings.push(
-                        `Coroner: { name: '${coronerData.name}', badge: '${coronerData.badge}', phNumber: '${coronerData.phNumber || ''}', rank: '${coronerData.rank}', discord: '${coronerData.discord}', category: '${coronerData.category}' }`
-                    );
-                    continue; // Move to next staff member if found in coroners
-                }
-
-                const phmcData = phmcListData.find(p => p.name === staffNameToRemove);
-                if (phmcData) {
-                    removedStaffDataStrings.push(
-                        `PHMC: { name: '${phmcData.name}', lastName: '${phmcData.lastName}', rank: '${phmcData.rank || phmcData.category}', category: '${phmcData.category}',  }`
-                    );
-                }
-            }
-
-            embedData = {
-                title: requestActionTitle,
-                color: 0xFFA500,
-                fields: [
-                    { name: "Authorized By", value: missingEmployeeData.authorizedBy, inline: false },
-                    {
-                        name: `Staff to Remove (${missingEmployeeData.staffToRemove.length})`,
-                        value: missingEmployeeData.staffToRemove.join('\n') || "None selected",
-                        inline: false
-                    },
-                    ...(removedStaffDataStrings.length > 0 ? [{
-                        name: "Data of Removed Staff (for restoration)",
-                        value: `\`\`\`javascript\n${removedStaffDataStrings.join('\n')}\n\`\`\``,
-                        inline: false
-                    }] : [])
-
-                ],
-                timestamp: new Date().toISOString(),
-                footer: { text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}` }
-            };
-            submissionValid = true;
-            successMessage = 'Processed! Any abuse of the forms will be reported to PHMC Leadership';
-        } else {
-            showNotification('Please select an action (Add Coroner, Add Staff, or Remove Staff).', 'warning');
-            return;
-        }
-
-        if (submissionValid) {
-            try {
-                const response = await fetch(webhookURL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        content: `New Employee Management Request: ${requestActionTitle}`,
-                        embeds: [embedData]
-                    }),
-                });
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error(`Failed to send message to Discord webhook. Status: ${response.status} ${response.statusText}`, errorText);
-                    Sentry.captureMessage(`Discord webhook failed for employee management: ${response.status}`, {
-                        level: 'error',
-                        extra: { statusText: response.statusText, responseBody: errorText, requestType: requestActionTitle }
-                    });
-                    showNotification(`Failed to submit request. Status: ${response.status}`, 'exclamation-triangle');
-                } else {
-                    setShowMissingEmployeeModal(false);
-
-                    // --- START Firebase Database Update ---
-                    let dbUpdated = false; // Flag to check if we need to refresh data
-
-                    if (isJohnDoe) { // Add Coroner
-                        const newCoroner = {
-                            name: missingEmployeeData.coronerName,
-                            badge: missingEmployeeData.coronerBadge,
-                            phNumber: missingEmployeeData.coronerPHNumber || '',
-                            rank: missingEmployeeData.coronerRank,
-                            discord: missingEmployeeData.coronerDiscord,
-                            category: missingEmployeeData.coronerRank // Or a more specific category if available
-                        };
-                        try {
-                            const coronerListRef = ref(database, 'staff/coroner');
-                            const snapshot = await get(coronerListRef);
-                            const currentCoroners = snapshot.exists() ? snapshot.val() : [];
-                            if (!currentCoroners.find(c => c.name === newCoroner.name)) {
-                                const updatedCoroners = [...currentCoroners, newCoroner];
-                                await set(coronerListRef, updatedCoroners);
-                                showNotification(`Coroner ${newCoroner.name} added to database.`, 'check-circle');
-                                dbUpdated = true;
-                            } else {
-                                showNotification(`Coroner ${newCoroner.name} already exists in database.`, 'warning');
-                            }
-                        } catch (dbError) {
-                            console.error("Error adding coroner to Firebase:", dbError);
-                            Sentry.captureException(dbError, { extra: { context: 'Firebase Add Coroner' } });
-                            showNotification('Failed to update database for coroner.', 'error');
-                        }
-                    } else if (isJaneDoe) { // Add PHMC Staff
-                        const rawFirstNameInput = missingEmployeeData.coronerName || "";
-                        const rawLastNameInput = missingEmployeeData.employeeLastName || "";
-                        let calculatedFullName;
-                        let parsedLastName = "";
-                        const trimmedFirstName = rawFirstNameInput.trim();
-                        const trimmedRawLastName = rawLastNameInput.trim();
-                        if (trimmedRawLastName) {
-                            const lastNameWords = trimmedRawLastName.split(' ');
-                            parsedLastName = lastNameWords[lastNameWords.length - 1];
-                        }
-                        if (trimmedFirstName && parsedLastName) {
-                            if (trimmedFirstName.toLowerCase().endsWith(parsedLastName.toLowerCase()) && trimmedFirstName.includes(' ')) {
-                                calculatedFullName = trimmedFirstName;
-                            } else if (trimmedFirstName.toLowerCase() === parsedLastName.toLowerCase()) {
-                                calculatedFullName = parsedLastName;
-                            } else {
-                                calculatedFullName = `${trimmedFirstName} ${parsedLastName}`;
-                            }
-                        } else if (trimmedFirstName) {
-                            calculatedFullName = trimmedFirstName;
-                        } else if (parsedLastName) {
-                            calculatedFullName = parsedLastName;
-                        } else {
-                            calculatedFullName = 'MISSING_FULL_NAME';
-                        }
-                        if (calculatedFullName.trim() === '' && calculatedFullName !== 'MISSING_FULL_NAME') {
-                             calculatedFullName = 'MISSING_FULL_NAME';
-                        }
-                        const finalLastNameForEntry = parsedLastName || 'MISSING_LAST_NAME';
-
-                        const newPhmcStaff = {
-                            name: calculatedFullName,
-                            lastName: finalLastNameForEntry,
-                            rank: missingEmployeeData.coronerRank,
-                            category: missingEmployeeData.coronerRank,
-                        };
-                        try {
-                            const phmcListRef = ref(database, 'staff/phmc');
-                            const snapshot = await get(phmcListRef);
-                            const currentPhmcStaff = snapshot.exists() ? snapshot.val() : [];
-                            if (!currentPhmcStaff.find(p => p.name === newPhmcStaff.name)) {
-                                const updatedPhmcStaff = [...currentPhmcStaff, newPhmcStaff];
-                                await set(phmcListRef, updatedPhmcStaff);
-                                showNotification(`PHMC Staff ${newPhmcStaff.name} added to database.`, 'check-circle');
-                                dbUpdated = true;
-                            } else {
-                                showNotification(`PHMC Staff ${newPhmcStaff.name} already exists in database.`, 'warning');
-                            }
-                        } catch (dbError) {
-                            console.error("Error adding PHMC staff to Firebase:", dbError);
-                            Sentry.captureException(dbError, { extra: { context: 'Firebase Add PHMC Staff' } });
-                            showNotification('Failed to update database for PHMC staff.', 'error');
-                        }
-                    } else if (isRemoveStaff) {
-                        const staffNamesToRemove = missingEmployeeData.staffToRemove || [];
-                        if (staffNamesToRemove.length > 0) {
-                            let coronerListUpdated = false;
-                            let phmcListUpdated = false;
-                            try {
-                                const coronerListRef = ref(database, 'staff/coroner');
-                                const coronerSnapshot = await get(coronerListRef);
-                                let currentCoroners = coronerSnapshot.exists() ? coronerSnapshot.val() : [];
-                                const initialCoronerCount = currentCoroners.length;
-                                currentCoroners = currentCoroners.filter(c => !staffNamesToRemove.includes(c.name));
-                                if (currentCoroners.length < initialCoronerCount) {
-                                    await set(coronerListRef, currentCoroners);
-                                    coronerListUpdated = true;
-                                }
-
-                                const phmcListRef = ref(database, 'staff/phmc');
-                                const phmcSnapshot = await get(phmcListRef);
-                                let currentPhmcStaff = phmcSnapshot.exists() ? phmcSnapshot.val() : [];
-                                const initialPhmcCount = currentPhmcStaff.length;
-                                currentPhmcStaff = currentPhmcStaff.filter(p => !staffNamesToRemove.includes(p.name));
-                                if (currentPhmcStaff.length < initialPhmcCount) {
-                                    await set(phmcListRef, currentPhmcStaff);
-                                    phmcListUpdated = true;
-                                }
-
-                                if (coronerListUpdated || phmcListUpdated) {
-                                    showNotification(`Selected staff removed from database.`, 'check-circle');
-                                    dbUpdated = true;
-                                } else {
-                                    showNotification(`No matching staff found in database to remove.`, 'warning');
-                                }
-                            } catch (dbError) {
-                                console.error("Error removing staff from Firebase:", dbError);
-                                Sentry.captureException(dbError, { extra: { context: 'Firebase Remove Staff' } });
-                                showNotification('Failed to update database for staff removal.', 'error');
-                            }
-                        }
-                    }
-                    // --- END Firebase Database Update ---
-
-                    // --- Force data refresh if DB was updated ---
-/*                     if (dbUpdated) {
-                        await fetchAllApplicationData(true);
-                    }
- */
-                    setMissingEmployeeData({
-                        coronerName: '', coronerDiscord: '', coronerRank: '', coronerPHNumber: '',
-                        coronerEmployee: '', coronerBadge: '', phmcEmployee: '',
-                        staffToRemove: [], authorizedBy: '', employeeLastName: '',
-                    });
-                    setIsJohnDoe(false);
-                    setIsJaneDoe(false);
-                    setIsRemoveStaff(false);
-                }
-            } catch (error) {
-                console.error('Error submitting employee management request:', error);
-                Sentry.captureException(error, { extra: { context: 'Employee Management Submission Fetch', requestType: requestActionTitle } });
-                showNotification('A network error occurred. Please try again.', 'exclamation-triangle');
-            }
-        }
-    };
+    if (actionType === 'updateRank') {
+        showNotification("Staff data refreshed.", 'check-circle', 3000);
+    }
+};
 const [showWebhookModal, setShowWebhookModal] = useState(false);
 const [webhookMessage, setWebhookMessage] = useState('');
 const [webhookTitle, setWebhookTitle] = useState(''); // <-- New state for title
@@ -1349,6 +1072,7 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
     }, []); // Empty dependency array ensures this runs only once on initial load
     const handleHideEmsBingoModal = useCallback(() => {
         setShowEmsBingoModal(false);
+        console.log('EmsBingoModal: onHide called, show = false');
 
         const url = new URL(window.location.href);
 
@@ -1469,6 +1193,8 @@ const handleCoronerRankSubmit = async ({ selectedEmployee, newRank }) => { // Ac
             // Use submittedValue for notification consistency if needed, or customize
             const notificationValue = newRank ? `${selectedEmployee} -> ${newRank}` : selectedEmployee;
             setShowCoronerRankModal(false); // Close modal on success
+                    console.log('CoronerRankModal: onClose called, show = false');
+
         }
     } catch (error) {
         console.error('Error sending coroner rank embed:', error);
@@ -2540,6 +2266,8 @@ const toggleSavedReports = useCallback((filterVersions = null, employeeType = nu
         setPreselectedEmployeeType(null);
         setReportSelectionFilter(null);
         pendingReportAttachmentCallback.current = null; // Clear the callback when closing
+                    console.log('SavedReportsModal: onClose called, show = false');
+
         return;
     }
 
@@ -2784,6 +2512,7 @@ const filterFormData = (formData, bbCodeVersion) => {
         } else {
             localStorage.removeItem('hideAgencyGroupSelectorPreference');
         }
+        console.log('AgencyGroupSelectorModal: onHideSelectorPreference called, show = false');
     };
 
 const [showAgencySelector, setShowAgencySelector] = useState(false);
@@ -2947,9 +2676,12 @@ const toggleAgencySelector = () => {
         } else if (bbCodeVersion === 24) { // Medical Release Records
             const { patientFirstName,  patientLastName } = formData;
             return `[RELEASE REQUEST] ${patientFirstName || ''} ${patientLastName || ''} `.trim();
-        } else if (bbCodeVersion === 25 || bbCodeVersion === 26) { // Patient File - Basic
+        } else if (bbCodeVersion === 25) { // Patient File - Basic
             const { patientName } = formData;
             return `[Medical Information Registration] -  ${patientName || 'N/A'}`;
+    } else if (bbCodeVersion === 26) { // Update Medical Records
+            const { patientName } = formData;
+            return `[Medical Information Update] -  ${patientName || 'N/A'}`;
         } else if (bbCodeVersion === 8) { // Death Certificate
             const { decedentOOC } = formData;
             return `[Death Certificate] -  ${decedentOOC || 'N/A'}`;
@@ -3454,6 +3186,7 @@ const handleChange = (e) => {
         23: "Commentary Note (PBC)",
         24: "Medical Release Records",
         25: "Patient File - Basic",
+        26: "Medical Record Update",
         27: "Email Forms",
         28: "Psychological Evaluation PHMC",
         29: "Psychological Evaluation PBC",
@@ -3514,10 +3247,11 @@ const handleCopyAndNotifyWrapper = async () => {
             });
         }
     };
+    const [showMissingEmployeeModal, setShowMissingEmployeeModal] = useState(false);
 
     // handling updates and refresh 
     const initialCommitSha = useRef(null); // Ref to store the initial commit SHA
-    
+
     useEffect(() => {
         const fetchCommit = () => {
             fetch('https://api.github.com/repos/GTAW-PHMC/forms/commits/gh-pages')
@@ -3650,17 +3384,12 @@ const handleCopyAndNotifyWrapper = async () => {
                     onDismiss={() => setShowUpdateNotification(false)} // Allow dismissing
                 />
             )}
-                    <CoronerRankModal
-    show={showCoronerRankModal}
-    onClose={() => setShowCoronerRankModal(false)}
-    onSubmit={handleCoronerRankSubmit}
-    coronerList={coronerListData} 
-    setCoronerListData={setCoronerListData}
-    showNotification={showNotification}    
-                    />
         <CoronerTipsModal
             show={showCoronerTips}
-            onClose={() => setShowCoronerTips(false)}
+            onClose={() => {
+                setShowCoronerTips(false);
+                console.log('CoronerTipsModal: onClose called, show = false');
+            }}
         />
 
                     {showAgencySelector && ( // Only show if a group is selected
@@ -3703,7 +3432,7 @@ const handleCopyAndNotifyWrapper = async () => {
                     </Button>
 
         <div className="floating-tools-container">
-            {selectedAgencyGroup === 'PHMC' && (
+                        {selectedAgencyGroup === 'PHMC' && (
                 <Button
                     variant="info" // Or PHMC theme color
                     className="changelog-button" // Or a new class
@@ -3714,6 +3443,7 @@ const handleCopyAndNotifyWrapper = async () => {
                     Manage PHMC Staff
                 </Button>
             )}
+
             <Button
                 variant="light"
                 className="floating-tool-button"
@@ -3846,7 +3576,7 @@ const handleCopyAndNotifyWrapper = async () => {
                         <div className="modal-overlay">
                             <div className="modal">
                                 <div className="modal-header">
-                                    <h3>Changelog - Version 2.6.2e -  </h3>
+                                    <h3>Changelog - Version 2.7.0 </h3>
                                     <Button
                                         className="close"
                                         variant='secondary'
@@ -3860,24 +3590,21 @@ const handleCopyAndNotifyWrapper = async () => {
     <ul>
         <li><strong>Added:</strong>
             <ul>
-                <li>Restructured the way Forms are saved to localStorage.</li>
+                <li>A new form - Update Medical Records.</li>
+                <li>Overhauled the Missing Employee Modal to cover Hospital Employees  </li>
             </ul>
         </li>
         <li><strong>Updated:</strong>
             <ul>
-                <li>Advanced Patient Files now support dropdowns.</li>
-                <li>Autopsy Modal has had a number of bug fixes and optimizations.</li>
+                <li>Cleaned up the Form Selector.</li>
+                <li>Refactored Notification Dispatching to be more efficient.</li>
+                <li>Updated the Admin Panel to parse BBCode and Markdown correctly.</li>
+                
             </ul>
         </li>
-        <li><strong>Fixed:</strong>
+        <li><strong>Temporarily disabled:</strong>
             <ul>
-                <li>Civilian Forms now properly save data.</li>
-                <li>Hot fixes across the application.</li>
-            </ul>
-        </li>
-        <li><strong>Removed:</strong>
-            <ul>
-                <li>SAAA Forms</li>
+                <li>Patient File Advanced - while I resolve issues with fields not appearing.</li>
             </ul>
         </li>
     </ul>
@@ -3973,7 +3700,7 @@ const handleCopyAndNotifyWrapper = async () => {
                                 <span>Switch Mental Health Form</span>
                             </Button>
                         )}
-                        {(bbCodeVersion === 3 || bbCodeVersion === 24 || bbCodeVersion === 25) && (
+                        {(bbCodeVersion === 3 || bbCodeVersion === 24 || bbCodeVersion === 25 || bbCodeVersion === 26) && (
                             <Button
                                 className="changelog-button"
                                 variant='secondary' // Added variant for consistency
@@ -4029,8 +3756,8 @@ setFormData={setFormData}                                        typeOfDeathOpti
                                         // Pass other props like phmcGroupedOptions, coronerGroupedOptions, etc.
                                         phmcGroupedOptions={phmcGroupedOptions}
                                         coronerGroupedOptions={coronerGroupedOptions}
-                                        setShowMissingEmployeeModal={setShowMissingEmployeeModal}
                                         setShowCoronerRankModal={setShowCoronerRankModal}
+                                        setShowMissingEmployeeModal={setShowMissingEmployeeModal}
                                         handleSelectChange={handleSelectChange}
                                         isUploading={isUploading}
                                         handleImageUpload={handleImageUpload}
@@ -4095,17 +3822,26 @@ setFormData={setFormData}                                        typeOfDeathOpti
                                         parseBBCode={parseBBCode}
                                         toggleSavedReports={toggleSavedReports}
                                         // For DeathReport specific
+                                        dnr={selectOptions.dnr || []}
+                                        attorney={selectOptions.attorney || []}
+                                        dnrOrder={selectOptions.dnrOrder || []}
                                         isJohnDoe={isJohnDoe}
                                         isJaneDoe={isJaneDoe}
                                         handleDoeChange={handleDoeChange}
                                         currentUtcTime={currentUtcTime}
+                                        UpdateMedicalFile={selectOptions.UpdateMedicalFile || []}
                                         Imaging={selectOptions.Imaging || []}
+                                        patientTitleNew={selectOptions.patientTitleNew || []}
                                         XrayResults={selectOptions.XrayResults || []}
                                         ctResults={selectOptions.ctResults || []}
                                         mriResults={selectOptions.mriResults || []}
                                         ultrasoundResults={selectOptions.ultrasoundResults || []}
                                         patientBloodType={selectOptions.patientBloodType || []} 
-                                        selectOptions={selectOptions} // Make sure this is passed
+                                        selectOptions={selectOptions} 
+                                        maritalStatus={selectOptions.maritalStatus || []}
+                                        numberChildren={selectOptions.numberChildren || []}
+                                        financialStatus={selectOptions.financialStatus || []}
+                                        
                                         physicianRecruitmentDetails={physicianRecruitmentDetails}
                                         psychRecruitmentDetails={psychRecruitmentDetails}
                         adminRecruitmentDetails={adminRecruitmentDetails}
@@ -4206,28 +3942,44 @@ setFormData={setFormData}                                        typeOfDeathOpti
                     sendPhraseRequestNotification({ requester, phrase, bingoType, commitInfo })
                 }
             />
+                    <CoronerRankModal
+    show={showCoronerRankModal}
+    onClose={() => setShowCoronerRankModal(false)}
+    onSubmit={handleCoronerRankSubmit}
+    coronerList={coronerListData} 
+    phmcList={phmcListData}
+    setCoronerListData={setCoronerListData}
+    showNotification={showNotification}    
+                    />
 
 <MissingEmployeeModal
     show={showMissingEmployeeModal}
     onHide={() => {
         setShowMissingEmployeeModal(false);
-        setIsJohnDoe(false); // Reset state on close
-        setIsJaneDoe(false); // Reset state on close
-        setIsRemoveStaff(false); // Reset state on close
+        setIsJohnDoe(false);
+        setIsJaneDoe(false);
+        setIsRemoveStaff(false);
+        console.log('MissingEmployeeModal: onHide called, show = false');
     }}
     isJohnDoe={isJohnDoe}
+    setCoronerListData={setCoronerListData}
     isJaneDoe={isJaneDoe}
+    coronerList={coronerListData}
+    phmcList={phmcListData}
     isRemoveStaff={isRemoveStaff}
     handleDoeChange={handleDoeChange}
-    handleRemoveStaffChange={handleRemoveStaffChange}
+    handleRemoveStaffChange={(selectedOptions) => {
+        setStaffToRemove(selectedOptions ? selectedOptions.map(option => option.value) : []);
+    }}
     missingEmployeeData={missingEmployeeData}
-    handleMissingEmployeeChange={handleMissingEmployeeChange}
+    handleMissingEmployeeChange={(e) => {
+        setMissingEmployeeData({ ...missingEmployeeData, [e.target.name]: e.target.value });
+    }}
     phmcGroupedOptions={phmcGroupedOptions}
     coronerGroupedOptions={coronerGroupedOptions}
-    combinedStaffOptions={combinedStaffOptions}
+    employeeOptions={combinedStaffOptions}
     handleMissingEmployeeSubmit={handleMissingEmployeeSubmit}
-/>
-            {showFeatureRequestModal && (
+/>            {showFeatureRequestModal && (
                 <div className="modal-overlay">
                     <div className="modal">
                         <Modal.Header>
