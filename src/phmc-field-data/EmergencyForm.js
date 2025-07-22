@@ -344,7 +344,7 @@ const EmergencyForm = ({
 
 
             {/* Imaging Type Select */}
-            <Form.Label style={{ marginTop: '0.5rem' }}>Imaging PerformedAAAAAAAAAAA</Form.Label>
+            <Form.Label style={{ marginTop: '0.5rem' }}>Imaging Performed</Form.Label>
 <Select
     isMulti
     name="Imaging"
