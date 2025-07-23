@@ -139,11 +139,11 @@ const MissingEmployeeModal = ({
         setAuthorizedBy(e.target.value);
     };
 
-    const handleInputChange = (e) => {
+ const handleInputChange = (e) => {
         setMissingEmployeeData({ ...missingEmployeeData, [e.target.name]: e.target.value });
     };
 
-const handleSubmit = async () => {
+    const handleSubmit = async () => {
     setIsLoading(true);
     let listRef;
 
@@ -160,6 +160,11 @@ const handleSubmit = async () => {
             return; // Stop further execution
         }
 
+        let combinedName = missingEmployeeData.coronerName; // Start with the first name
+        if (missingEmployeeData.employeeLastName && !missingEmployeeData.coronerName.includes(missingEmployeeData.employeeLastName)) {
+            combinedName += ` ${missingEmployeeData.employeeLastName}`; // Add last name only if it's not already there
+        }
+
         const newStaffMember = isCoroner ? {
             name: missingEmployeeData.coronerName,
             discord: missingEmployeeData.coronerDiscord,
@@ -168,7 +173,7 @@ const handleSubmit = async () => {
             phNumber: missingEmployeeData.coronerPHNumber || "",
             category: missingEmployeeData.coronerRank, // Consistent with CoronerRankModal
         } : {
-            name: missingEmployeeData.coronerName,
+            name: combinedName, // Use the combined name
             lastName: missingEmployeeData.employeeLastName,
             rank: missingEmployeeData.coronerRank,
             category: missingEmployeeData.coronerRank, // Consistent with CoronerRankModal
@@ -196,6 +201,68 @@ const handleSubmit = async () => {
 
         } catch (error) {
             console.error(`Error adding staff member to Firebase:`, error);
+        } finally {
+            setIsLoading(false);
+        }
+} else if (actionType === 'updateName') {
+        if (!selectedEmployeeName) {
+            console.error('No employee selected for name update.');
+            setIsLoading(false);
+            return;
+        }
+
+        let listRef;
+
+        if (employeeType === 'coroner') {
+            listRef = ref(database, 'staff/coroner');
+        } else if (employeeType === 'hospitalStaff') {
+            listRef = ref(database, 'staff/phmc');
+        }
+
+        try {
+            const snapshot = await get(listRef);
+            if (snapshot.exists()) {
+                let currentStaff = snapshot.val();
+                let employeeFound = false;
+
+                const updatedStaff = currentStaff.map(employee => {
+                    if (employee.name === selectedEmployeeName) {
+                        employeeFound = true;
+                        // update name based on employee type
+                        if (employeeType === 'coroner') {
+                            employee.name = missingEmployeeData.coronerName;
+                            // employee.discord = missingEmployeeData.coronerDiscord; //Discord isn't supposed to be updated here.
+                        } else {
+                            employee.name = missingEmployeeData.coronerName; // First name
+                            employee.lastName = missingEmployeeData.employeeLastName; // Last name
+                        }
+                        return employee;
+                    }
+                    return employee;
+                });
+
+                if (!employeeFound) {
+                    console.error(`Employee "${selectedEmployeeName}" not found in the database.`);
+                    setIsLoading(false);
+                    return;
+                }
+
+                await set(listRef, updatedStaff);
+                // Update local state or trigger a refresh if needed
+                handleMissingEmployeeSubmit(actionType, employeeType, selectedEmployeeName, newRank, staffToRemove, authorizedBy, missingEmployeeData, updatedStaff);
+                setMissingEmployeeData({
+                    coronerName: '',
+                    coronerDiscord: '',
+                    employeeLastName: '',
+                    coronerRank: '',
+                    coronerPHNumber: '',
+                    coronerBadge: '',
+                });
+            } else {
+                console.error('No employee data found in the database.');
+            }
+        } catch (error) {
+            console.error("Error updating employee name in Firebase:", error);
         } finally {
             setIsLoading(false);
         }
@@ -390,6 +457,17 @@ const combinedStaffOptions = useMemo(() => {
                                     />
                                     <Form.Check
                                         inline
+                                        label="Update Name"
+                                        name="actionType"
+                                        type="radio"
+                                        id={`updateName-radio`}
+                                        value="updateName"
+                                        checked={actionType === 'updateName'}
+                                        onChange={() => handleActionTypeChange('updateName')}
+                                    />
+
+                                    <Form.Check
+                                        inline
                                         label="Update Rank"
                                         name="actionType"
                                         type="radio"
@@ -546,34 +624,130 @@ const combinedStaffOptions = useMemo(() => {
                                     <span className="helper-text" style={{ color: '#6c757d', display: 'block', marginTop: '5px' }}> (Only authorized personnel should submit removal requests.)</span>
                                 </>
                             )}
+{actionType === 'updateName' && (
+    <>
 
-                            {actionType === 'updateRank' && (
-                                <>
-                                    <Form.Group controlId="coronerEmployeeSelect" className="mb-3">
-                                        <Form.Label style={formLabelStyle}>Select Employee</Form.Label>
-                                        <Select
-                                            name="coronerEmployeeSelect"
-                                            options={employeeOptions}
-                                            value={employeeOptions.find(option => option.value === selectedEmployeeName)}
-                                            onChange={handleSelectChange}
-                                            isClearable
-                                            placeholder="Search or select employee..."
-                                            styles={reactSelectStyles}
-                                        />
-                                    </Form.Group>
-                                    <Form.Group controlId="newCoronerRankInput" className="mb-3">
-                                        <Form.Label style={formLabelStyle}>Enter Updated Rank</Form.Label>
-                                        <Form.Control
-                                            type="text"
-                                            placeholder="Enter updated rank name..."
-                                            value={newRank}
-                                            onChange={handleNewRankChange}
-                                            disabled={!selectedEmployeeName}
-                                            style={formControlStyle}
-                                        />
-                                    </Form.Group>
-                                </>
-                            )}
+        <Form.Group controlId="employeeTypeRadios" className="mb-3">
+            <Form.Label style={formLabelStyle}>Select Employee Type:</Form.Label>
+            <div key={`inline-radio-employee`} className="mb-3">
+                <Form.Check
+                    inline
+                    label="Coroner"
+                    name="employeeType"
+                    type="radio"
+                    id={`coroner-radio`}
+                    value="coroner"
+                    checked={employeeType === 'coroner'}
+                    onChange={() => handleEmployeeTypeChange('coroner')}
+                />
+                <Form.Check
+                    inline
+                    label="Hospital Staff"
+                    name="employeeType"
+                    type="radio"
+                    id={`hospitalStaff-radio`}
+                    value="hospitalStaff"
+                    checked={employeeType === 'hospitalStaff'}
+                    onChange={() => handleEmployeeTypeChange('hospitalStaff')}
+                />
+            </div>
+        </Form.Group>
+        <Form.Group controlId="coronerEmployeeSelect" className="mb-3">
+            <Form.Label style={formLabelStyle}>Select Employee</Form.Label>
+            <Select
+                name="coronerEmployeeSelect"
+                options={employeeOptions}
+                value={employeeOptions.find(option => option.value === selectedEmployeeName)}
+                onChange={handleSelectChange}
+                isClearable
+                placeholder="Search or select employee..."
+                styles={reactSelectStyles}
+            />
+        </Form.Group>
+
+        {employeeType === 'coroner' ? (
+            <Form.Group controlId="newCoronerNameInput" className="mb-3">
+                <Form.Label style={formLabelStyle}>Enter Updated Coroner Name</Form.Label>
+                <Form.Control
+                    type="text"
+                    placeholder="Enter updated coroner name..."
+                    value={missingEmployeeData.coronerName}
+                    onChange={handleInputChange}
+                    name="coronerName"
+                    disabled={!selectedEmployeeName}
+                    style={formControlStyle}
+                />
+            </Form.Group>
+        ) : (
+            <>
+                <Form.Group controlId="newHospitalFirstNameInput" className="mb-3">
+                    <Form.Label style={formLabelStyle}>Enter Updated First Name</Form.Label>
+                    <Form.Control
+                        type="text"
+                        placeholder="Enter updated first name..."
+                        value={missingEmployeeData.coronerName}
+                        onChange={handleInputChange}
+                        name="coronerName"
+                        disabled={!selectedEmployeeName}
+                        style={formControlStyle}
+                    />
+                </Form.Group>
+                <Form.Group controlId="newHospitalLastNameInput" className="mb-3">
+                    <Form.Label style={formLabelStyle}>Enter Updated Last Name</Form.Label>
+                    <Form.Control
+                        type="text"
+                        placeholder="Enter updated last name..."
+                        value={missingEmployeeData.employeeLastName}
+                        onChange={handleInputChange}
+                        name="employeeLastName"
+                        disabled={!selectedEmployeeName}
+                        style={formControlStyle}
+                    />
+                </Form.Group>
+            </>
+        )}
+    </>
+)}
+
+                    {actionType === 'updateRank' && (
+                        <>
+                            <Form.Group controlId="coronerEmployeeSelect" className="mb-3">
+                                <Form.Label style={formLabelStyle}>Select Employee</Form.Label>
+                                <Select
+                                    name="coronerEmployeeSelect"
+                                    options={employeeOptions}
+                                    value={employeeOptions.find(option => option.value === selectedEmployeeName)}
+                                    onChange={handleSelectChange}
+                                    isClearable
+                                    placeholder="Search or select employee..."
+                                    styles={reactSelectStyles}
+                                />
+                            </Form.Group>
+
+                            <Form.Group controlId="newCoronerRankInput" className="mb-3">
+                                <Form.Label style={formLabelStyle}>Enter Updated Rank</Form.Label>
+                                {employeeType === 'coroner' ? (
+                                    <Form.Control
+                                        type="text"
+                                        placeholder="Enter updated rank name..."
+                                        value={newRank}
+                                        onChange={handleNewRankChange}
+                                        disabled={!selectedEmployeeName}
+                                        style={formControlStyle}
+                                    />
+                                ) : (
+                                    <Form.Control
+                                        type="text"
+                                        placeholder="Enter updated position name..."
+                                        value={newRank}
+                                        onChange={handleNewRankChange}
+                                        disabled={!selectedEmployeeName}
+                                        style={formControlStyle}
+                                    />
+                                )}
+                            </Form.Group>
+                        </>
+                    )}
                         </Form>
                     </div>
                     <div style={modalFooterStyle}>
