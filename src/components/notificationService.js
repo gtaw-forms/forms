@@ -163,7 +163,7 @@ export const sendMissingEmployeeNotification = async (
     let successMessage = '';
     let requestActionTitle = '';
 
-    if (actionType === 'addCoroner' || actionType === 'addPhmc') {
+   if (actionType === 'addCoroner' || actionType === 'addPhmc') {
         const isCoronerRequest = actionType === 'addCoroner';
         requestActionTitle = `⬆️ Missing ${
             isCoronerRequest ? 'Coroner' : 'Hospital Staff'
@@ -247,7 +247,7 @@ export const sendMissingEmployeeNotification = async (
         });
 
         submissionValid = true;
-     } else if (actionType === 'removeStaff') {
+    } else if (actionType === 'removeStaff') {
         requestActionTitle = '⬆️ Staff Removal Request';
         if (!staffToRemove || staffToRemove.length === 0) {
             showNotification('Please select at least one staff member to remove.', 'warning');
@@ -264,7 +264,7 @@ export const sendMissingEmployeeNotification = async (
         // --- NEW: Construct Firebase Debug String ---
         const debugData = staffToRemove.map(name => {
             // Assuming staffToRemove contains names, and you have access to coronerList & phmcList
-            let staffMember = coronerList.find(c => c.name === name); 
+            let staffMember = coronerList.find(c => c.name === name);
             if (!staffMember) {
                 staffMember = phmcList.find(p => p.name === name);
             }
@@ -293,7 +293,37 @@ export const sendMissingEmployeeNotification = async (
         submissionValid = true;
         successMessage =
             'Processed! Any abuse of the forms will be reported to PHMC Leadership';
-    
+
+    } else if (actionType === 'updateName') {
+        requestActionTitle = '⬆️ Employee Name Update Request';
+
+        if (!selectedEmployeeName) {
+            showNotification('Please select an employee to update.', 'warning');
+            return;
+        }
+
+        let updatedNameValue;
+        if (employeeType === 'coroner') {
+            updatedNameValue = missingEmployeeData.coronerName;
+        } else {
+            updatedNameValue = `${missingEmployeeData.coronerName} ${missingEmployeeData.employeeLastName}`;
+        }
+
+        embedData = {
+            title: requestActionTitle,
+            color: 0x007bff,
+            fields: [
+                { name: 'Employee Name', value: selectedEmployeeName, inline: true },
+                { name: 'Employee Type', value: employeeType, inline: true },
+                { name: 'Updated Name', value: updatedNameValue, inline: true },
+            ],
+            timestamp: new Date().toISOString(),
+            footer: {
+                text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}`,
+            },
+        };
+        submissionValid = true;
+        successMessage = `Name updated.`;
     } else if (actionType === 'updateRank') {
         requestActionTitle = '⬆️ Employee Rank Update Request';
 
@@ -328,12 +358,12 @@ export const sendMissingEmployeeNotification = async (
         const message = `New Employee Management Request: ${requestActionTitle}`;
         const payload = { content: message, embeds: [embedData] };
 
-    const success = await sendDiscordWebhookInternal(
-        webhookURL,
-        embedData, // Assuming embedData already has the correct structure for sendDiscordWebhookInternal
-        commitInfo, // Include commitInfo for footer
-        `Employee Management: ${requestActionTitle}` // Optional context message, could be the title
-    );
+        const success = await sendDiscordWebhookInternal(
+            webhookURL,
+            embedData, // Assuming embedData already has the correct structure for sendDiscordWebhookInternal
+            commitInfo, // Include commitInfo for footer
+            `Employee Management: ${requestActionTitle}` // Optional context message, could be the title
+        );
 
         if (success) {
             showNotification(successMessage, 'check-circle');
