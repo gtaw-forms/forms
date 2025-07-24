@@ -296,7 +296,7 @@ useEffect(() => {
         setMarkedSquaresLocal(tempMarkedSquares);
 
         //  *MODIFIED SECTION*
-        setCompletedBingoLines(prevCompletedLines => {
+setCompletedBingoLines(prevCompletedLines => {
             const { newlyCompletedLineIndices, allCurrentlyCompleteLineIndices } = checkForBingo(tempMarkedSquares, phrases, prevCompletedLines);
 
             // Convert the sets to arrays for comparison
@@ -313,7 +313,7 @@ useEffect(() => {
 
             setBingoActivityLog(filteredLogEntries.slice(0, 20)); // Set the filtered log entries
 
-            const scorer = logEntries[0]?.employee || 'A Player'; // Get the player who made the last move
+            const scorer = selectedEmployee?.value || 'A Player'; // Get the player who made the last move
             newlyCompletedLineIndicesArray.forEach(lineIndex => {
                 const bingoMessageAlreadyPosted = logEntries.some(entry =>
                     entry.type === 'bingo' && entry.lineIndex === lineIndex
@@ -337,7 +337,7 @@ useEffect(() => {
 
                     push(bingoLogRef, {
                         employee: "SYSTEM_ADMIN",
-                        phrase: `BINGO!!! (${lineName}) - Scorer: ${selectedEmployee?.value || 'A Player'}`,
+                        phrase: `BINGO!!! (${lineName}) - Scorer: ${scorer}`,
                         timestamp: serverTimestamp(),
                         type: 'bingo',
                         lineIndex: lineIndex
