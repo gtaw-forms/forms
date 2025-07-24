@@ -147,6 +147,18 @@ export const sendMissingEmployeeNotification = async (
     commitInfo,
     showNotification,
 ) => {
+    console.log('Inside sendMissingEmployeeNotification - actionType:', actionType);
+    console.log('Inside sendMissingEmployeeNotification - employeeType:', employeeType);
+    console.log('Inside sendMissingEmployeeNotification - selectedEmployeeName:', selectedEmployeeName);
+    console.log('Inside sendMissingEmployeeNotification - newRank:', newRank);
+    console.log('Inside sendMissingEmployeeNotification - coronerList:', coronerList);
+    console.log('Inside sendMissingEmployeeNotification - phmcList:', phmcList);
+    console.log('Inside sendMissingEmployeeNotification - staffToRemove:', staffToRemove);
+    console.log('Inside sendMissingEmployeeNotification - authorizedBy:', authorizedBy);
+    console.log('Inside sendMissingEmployeeNotification - missingEmployeeData:', missingEmployeeData);
+    console.log('Inside sendMissingEmployeeNotification - commitInfo:', commitInfo);
+    console.log('Inside sendMissingEmployeeNotification - showNotification:', showNotification);
+
     const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
     if (!webhookURL) {
@@ -163,8 +175,8 @@ export const sendMissingEmployeeNotification = async (
     let successMessage = '';
     let requestActionTitle = '';
 
-   if (actionType === 'addCoroner' || actionType === 'addPhmc') {
-        const isCoronerRequest = actionType === 'addCoroner';
+    if (actionType === 'addEmployee') {
+        const isCoronerRequest = employeeType === 'coroner';
         requestActionTitle = `⬆️ Missing ${
             isCoronerRequest ? 'Coroner' : 'Hospital Staff'
         } Addition Request`;
@@ -261,9 +273,7 @@ export const sendMissingEmployeeNotification = async (
             return;
         }
 
-        // --- NEW: Construct Firebase Debug String ---
         const debugData = staffToRemove.map(name => {
-            // Assuming staffToRemove contains names, and you have access to coronerList & phmcList
             let staffMember = coronerList.find(c => c.name === name);
             if (!staffMember) {
                 staffMember = phmcList.find(p => p.name === name);
@@ -294,19 +304,63 @@ export const sendMissingEmployeeNotification = async (
         successMessage =
             'Processed! Any abuse of the forms will be reported to PHMC Leadership';
 
-    } else if (actionType === 'updateName') {
-        requestActionTitle = '⬆️ Employee Name Update Request';
+  } else if (actionType === 'editUser') {
+        requestActionTitle = '⬆️ Employee Information Update Request';
 
         if (!selectedEmployeeName) {
             showNotification('Please select an employee to update.', 'warning');
             return;
         }
 
-        let updatedNameValue;
-        if (employeeType === 'coroner') {
-            updatedNameValue = missingEmployeeData.coronerName;
-        } else {
-            updatedNameValue = `${missingEmployeeData.coronerName} ${missingEmployeeData.employeeLastName}`;
+        let updatedFields = [];
+        let firebaseDebugString = '';
+        let originalData;
+
+        // Determine the correct Firebase reference based on employeeType
+        if (employeeType === 'hospitalStaff') {
+    originalData = phmcList.find(emp => emp.name === selectedEmployeeName);
+    console.log("selectedEmployeeName:", selectedEmployeeName); // Log the value
+    console.log("originalData:", originalData); // Log the result to see if it's undefined
+
+            if (missingEmployeeData.coronerName !== originalData?.name) {
+                updatedFields.push({ name: 'First Name', value: `\`${originalData?.name || 'N/A'}\` -> \`${missingEmployeeData.coronerName}\``, inline: false });
+            }
+            if (missingEmployeeData.employeeLastName !== originalData?.lastName) {
+                updatedFields.push({ name: 'Last Name', value: `\`${originalData?.lastName || 'N/A'}\` -> \`${missingEmployeeData.employeeLastName}\``, inline: false });
+            }
+            if (missingEmployeeData.coronerRank !== originalData?.rank) {
+                updatedFields.push({ name: 'Rank', value: `\`${originalData?.rank || 'N/A'}\` -> \`${missingEmployeeData.coronerRank}\``, inline: false });
+            }
+
+            firebaseDebugString = `\`\`\`javascript\n{ name: '${missingEmployeeData.coronerName || 'MISSING_NAME'}', lastName: '${missingEmployeeData.employeeLastName || 'MISSING_LAST_NAME'}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}' }\n\`\`\``;
+        }
+else {
+
+             originalData = coronerList.find(emp => emp.name === selectedEmployeeName);
+
+            if (missingEmployeeData.coronerName !== originalData?.name) {
+                updatedFields.push({ name: 'Name', value: `\`${originalData?.name || 'N/A'}\` -> \`${missingEmployeeData.coronerName}\``, inline: false });
+            }
+            if (missingEmployeeData.coronerDiscord !== originalData?.discord) {
+                updatedFields.push({ name: 'Discord', value: `\`${originalData?.discord || 'N/A'}\` -> \`${missingEmployeeData.coronerDiscord}\``, inline: false });
+            }
+            if (missingEmployeeData.coronerRank !== originalData?.rank) {
+                updatedFields.push({ name: 'Rank', value: `\`${originalData?.rank || 'N/A'}\` -> \`${missingEmployeeData.coronerRank}\``, inline: false });
+            }
+            if (missingEmployeeData.coronerBadge !== originalData?.badge) {
+                updatedFields.push({ name: 'Badge', value: `\`${originalData?.badge || 'N/A'}\` -> \`${missingEmployeeData.coronerBadge}\``, inline: false });
+            }
+            if (missingEmployeeData.coronerPHNumber !== originalData?.phNumber) {
+                updatedFields.push({ name: 'PH Number', value: `\`${originalData?.phNumber || 'N/A'}\` -> \`${missingEmployeeData.coronerPHNumber}\``, inline: false });
+            }
+
+            firebaseDebugString = `\`\`\`javascript\n{ name: '${missingEmployeeData.coronerName || 'MISSING_NAME'}', discord: '${missingEmployeeData.coronerDiscord || 'MISSING_DISCORD'}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', badge: '${missingEmployeeData.coronerBadge || 'MISSING_BADGE'}', phNumber: '${missingEmployeeData.coronerPHNumber || 'MISSING_PHNUMBER'}' }\n\`\`\``;
+        }
+
+        if (updatedFields.length === 0) {
+            showNotification('No changes detected.', 'info');
+            submissionValid = false;
+            return;
         }
 
         embedData = {
@@ -315,43 +369,17 @@ export const sendMissingEmployeeNotification = async (
             fields: [
                 { name: 'Employee Name', value: selectedEmployeeName, inline: true },
                 { name: 'Employee Type', value: employeeType, inline: true },
-                { name: 'Updated Name', value: updatedNameValue, inline: true },
+                ...updatedFields,
+                { name: 'Firebase Debug String', value: firebaseDebugString, inline: false }
             ],
             timestamp: new Date().toISOString(),
             footer: {
                 text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}`,
             },
         };
+
         submissionValid = true;
-        successMessage = `Name updated.`;
-    } else if (actionType === 'updateRank') {
-        requestActionTitle = '⬆️ Employee Rank Update Request';
-
-        if (!selectedEmployeeName) {
-            showNotification('Please select an employee to update.', 'warning');
-            return;
-        }
-
-        if (!newRank?.trim()) {
-            showNotification('Please enter a new rank.', 'warning');
-            return;
-        }
-
-        embedData = {
-            title: requestActionTitle,
-            color: 0x007bff,
-            fields: [
-                { name: 'Employee Name', value: selectedEmployeeName, inline: true },
-                { name: 'Employee Type', value: employeeType, inline: true },
-                { name: 'New Rank', value: newRank, inline: true },
-            ],
-            timestamp: new Date().toISOString(),
-            footer: {
-                text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}`,
-            },
-        };
-        submissionValid = true;
-        successMessage = `Rank updated.`;
+        successMessage = `Successfully updated information for ${selectedEmployeeName}.`;
     }
 
     if (submissionValid) {

@@ -1,9 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Form, Button } from 'react-bootstrap';
 import Select from 'react-select';
 import { database } from '../firebase'; // Corrected path
 import { ref, get, set } from 'firebase/database';
-
 // --- Styles ---
 const modalOverlayStyle = {
     position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
@@ -89,8 +88,9 @@ const MissingEmployeeModal = ({
     onHide,
     phmcList,
     handleMissingEmployeeSubmit,
-    coronerListData,
+    showNotification,
     coronerList,
+    isLoadingData
 }) => {
     const [actionType, setActionType] = useState('addCoroner');
     const [employeeType, setEmployeeType] = useState('coroner');
@@ -99,6 +99,7 @@ const MissingEmployeeModal = ({
     const [staffToRemove, setStaffToRemove] = useState([]);
     const [authorizedBy, setAuthorizedBy] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [refreshData, setRefreshData] = useState(false); //refresh data
 
     const [missingEmployeeData, setMissingEmployeeData] = useState({
         coronerName: '',
@@ -142,14 +143,54 @@ const MissingEmployeeModal = ({
  const handleInputChange = (e) => {
         setMissingEmployeeData({ ...missingEmployeeData, [e.target.name]: e.target.value });
     };
+useEffect(() => {
+        if (actionType === 'editUser' && selectedEmployeeName) {
+            setIsLoading(true);
+            let listRef;
 
-    const handleSubmit = async () => {
+            if (employeeType === 'coroner') {
+                listRef = ref(database, 'staff/coroner');
+            } else if (employeeType === 'hospitalStaff') {
+                listRef = ref(database, 'staff/phmc');
+            }
+
+            get(listRef)
+                .then((snapshot) => {
+                    if (snapshot.exists()) {
+                        const staffList = snapshot.val();
+                        const employeeData = staffList.find(emp => emp.name === selectedEmployeeName);
+
+                        if (employeeData) {
+                            setMissingEmployeeData({
+                                coronerName: employeeData.name || '',
+                                coronerDiscord: employeeData.discord || '',
+                                employeeLastName: employeeData.lastName || '',
+                                coronerRank: employeeData.rank || '',
+                                coronerPHNumber: employeeData.phNumber || '',
+                                coronerBadge: employeeData.badge || '',
+                            });
+                        } else {
+                            showNotification('Employee data not found.', 'warning');
+                        }
+                    } else {
+                        showNotification('No employee data available.', 'warning');
+                    }
+                })
+                .catch((error) => {
+                    console.error("Error fetching employee data:", error);
+                    showNotification(`Failed to fetch employee data: ${error.message}`, 'error');
+                })
+                .finally(() => {
+                    setIsLoading(false);
+                });
+        }
+    }, [actionType, selectedEmployeeName, employeeType, showNotification, refreshData]);
+
+  const handleSubmit = async () => {
     setIsLoading(true);
     let listRef;
-
-    if (actionType === 'addCoroner' || actionType === 'addPhmc') {
-        const isCoroner = actionType === 'addCoroner';
-        const requiredFields = isCoroner
+ if (actionType === 'addEmployee') {
+        const requiredFields = employeeType === 'coroner'
             ? ['coronerName', 'coronerDiscord', 'coronerRank', 'coronerBadge']
             : ['coronerName', 'employeeLastName', 'coronerRank'];
         
@@ -157,6 +198,7 @@ const MissingEmployeeModal = ({
         if (emptyFields.length > 0) {
             console.error(`Missing required fields: ${emptyFields.join(', ')}`);
             setIsLoading(false);
+            showNotification(`Please fill in all required fields: ${emptyFields.join(', ')}`, 'warning');
             return; // Stop further execution
         }
 
@@ -165,7 +207,7 @@ const MissingEmployeeModal = ({
             combinedName += ` ${missingEmployeeData.employeeLastName}`; // Add last name only if it's not already there
         }
 
-        const newStaffMember = isCoroner ? {
+        const newStaffMember = employeeType === 'coroner' ? {
             name: missingEmployeeData.coronerName,
             discord: missingEmployeeData.coronerDiscord,
             rank: missingEmployeeData.coronerRank,
@@ -179,7 +221,7 @@ const MissingEmployeeModal = ({
             category: missingEmployeeData.coronerRank, // Consistent with CoronerRankModal
         };
 
-        listRef = ref(database, isCoroner ? 'staff/coroner' : 'staff/phmc');
+        listRef = ref(database, employeeType === 'coroner' ? 'staff/coroner' : 'staff/phmc');
 
         try {
             const snapshot = await get(listRef);
@@ -190,6 +232,7 @@ const MissingEmployeeModal = ({
             if (isDuplicate) {
                 console.error(`Staff member with name "${newStaffMember.name}" already exists.`);
                 setIsLoading(false);
+                 showNotification(`Staff member with name "${newStaffMember.name}" already exists.`, 'warning');
                 return;
             }
 
@@ -198,16 +241,28 @@ const MissingEmployeeModal = ({
 
             // Update local state or trigger a refresh if needed
             handleMissingEmployeeSubmit(actionType, employeeType, selectedEmployeeName, newRank, staffToRemove, authorizedBy, missingEmployeeData, updatedStaff);
-
+            showNotification(`Successfully added ${newStaffMember.name} to the ${employeeType === 'coroner' ? 'coroner' : 'hospital staff'} list.`, 'success');
+                setRefreshData(!refreshData);
         } catch (error) {
             console.error(`Error adding staff member to Firebase:`, error);
+            showNotification(`Error adding staff member: ${error.message}`, 'error');
         } finally {
             setIsLoading(false);
+            setMissingEmployeeData({
+                coronerName: '',
+                coronerDiscord: '',
+                employeeLastName: '',
+                coronerRank: '',
+                coronerPHNumber: '',
+                coronerBadge: '',
+            });
         }
-} else if (actionType === 'updateName') {
+    }
+ else if (actionType === 'editUser') {
         if (!selectedEmployeeName) {
-            console.error('No employee selected for name update.');
+            console.error('No employee selected for edit.');
             setIsLoading(false);
+            showNotification('No employee selected for edit.', 'warning');
             return;
         }
 
@@ -231,10 +286,14 @@ const MissingEmployeeModal = ({
                         // update name based on employee type
                         if (employeeType === 'coroner') {
                             employee.name = missingEmployeeData.coronerName;
-                            // employee.discord = missingEmployeeData.coronerDiscord; //Discord isn't supposed to be updated here.
+                            employee.discord = missingEmployeeData.coronerDiscord;
+                            employee.rank = missingEmployeeData.coronerRank;
+                            employee.badge = missingEmployeeData.coronerBadge;
+                            employee.phNumber = missingEmployeeData.coronerPHNumber;
                         } else {
                             employee.name = missingEmployeeData.coronerName; // First name
                             employee.lastName = missingEmployeeData.employeeLastName; // Last name
+                            employee.rank = missingEmployeeData.coronerRank;
                         }
                         return employee;
                     }
@@ -244,25 +303,30 @@ const MissingEmployeeModal = ({
                 if (!employeeFound) {
                     console.error(`Employee "${selectedEmployeeName}" not found in the database.`);
                     setIsLoading(false);
+                    showNotification(`Employee "${selectedEmployeeName}" not found in the database.`, 'error');
                     return;
                 }
 
                 await set(listRef, updatedStaff);
-                // Update local state or trigger a refresh if needed
-                handleMissingEmployeeSubmit(actionType, employeeType, selectedEmployeeName, newRank, staffToRemove, authorizedBy, missingEmployeeData, updatedStaff);
-                setMissingEmployeeData({
-                    coronerName: '',
-                    coronerDiscord: '',
-                    employeeLastName: '',
-                    coronerRank: '',
-                    coronerPHNumber: '',
-                    coronerBadge: '',
-                });
+
+                // Filter to get only the updated employee
+                const updatedEmployee = updatedStaff.find(emp => emp.name === selectedEmployeeName);
+
+                // Log the updated employee data
+                console.log('Updated Employee Data:', updatedEmployee);
+
+                await handleMissingEmployeeSubmit(actionType, employeeType, selectedEmployeeName, newRank, staffToRemove, authorizedBy, missingEmployeeData, updatedEmployee);
+                showNotification(`Successfully updated information for ${selectedEmployeeName}.`, 'success');
+                setSelectedEmployeeName(''); // Clear the selected employee name
+                setRefreshData(!refreshData);
+
             } else {
                 console.error('No employee data found in the database.');
+                showNotification('No employee data found in the database.', 'error');
             }
         } catch (error) {
-            console.error("Error updating employee name in Firebase:", error);
+            console.error("Error updating employee information in Firebase:", error);
+            showNotification(`Error updating employee information: ${error.message}`, 'error');
         } finally {
             setIsLoading(false);
         }
@@ -271,12 +335,14 @@ const MissingEmployeeModal = ({
         if (!staffToRemove || staffToRemove.length === 0) {
             console.error('No staff members selected for removal.');
             setIsLoading(false);
+            showNotification('No staff members selected for removal.', 'warning');
             return;
         }
 
         if (!authorizedBy?.trim()) {
             console.error('Authorization is required for staff removal.');
             setIsLoading(false);
+            showNotification('Authorization is required for staff removal.', 'warning');
             return;
         }
 
@@ -298,23 +364,27 @@ const MissingEmployeeModal = ({
                     coroner: updatedCoronerStaff,
                     phmc: updatedPhmcStaff,
                 });
+                showNotification(`Successfully removed ${staffToRemove.length} staff member(s).`, 'success');
 
             } else {
                 console.error('No staff data found in the database.');
+                showNotification('No staff data found in the database.', 'error');
             }
         } catch (error) {
             console.error('Error removing staff members from Firebase:', error);
+            showNotification(`Error removing staff members: ${error.message}`, 'error');
         } finally {
             setIsLoading(false);
         }
 
-    } else if (actionType === 'updateRank') {
+} else if (actionType === 'updateRank') {
         if (!selectedEmployeeName || !newRank) {
             // Handle cases where employee or rank is not selected/entered
             setIsLoading(false);
+            showNotification('Please select an employee and enter a new rank.', 'warning');
             return;
         }
-        
+
         const trimmedNewRank = newRank.trim();
 
         if (employeeType === 'coroner') {
@@ -333,7 +403,8 @@ const MissingEmployeeModal = ({
                     if (employee.name === selectedEmployeeName) {
                         employeeFound = true;
                         // Update both 'rank' and 'category' to ensure consistency
-                        return { ...employee, rank: trimmedNewRank, category: trimmedNewRank };
+                       const newStaffMember =  { ...employee, rank: trimmedNewRank, category: trimmedNewRank };
+                        return newStaffMember;
                     }
                     return employee;
                 });
@@ -341,24 +412,23 @@ const MissingEmployeeModal = ({
                 if (!employeeFound) {
                     console.error(`Employee "${selectedEmployeeName}" not found in the database.`);
                     setIsLoading(false);
+                    showNotification(`Employee "${selectedEmployeeName}" not found in the database.`, 'error');
                     return;
                 }
 
                 await set(listRef, updatedStaff);
-                 // Update state in App.js if you have a mechanism to pass this data back
-                handleMissingEmployeeSubmit(actionType, employeeType, selectedEmployeeName, newRank, staffToRemove, authorizedBy, missingEmployeeData, updatedStaff);
-                
-            } else {
-                console.error('No employee data found in the database.');
+            handleMissingEmployeeSubmit(actionType, employeeType, selectedEmployeeName, newRank, staffToRemove, authorizedBy, missingEmployeeData, updatedStaff);
+            showNotification(`Successfully added ${selectedEmployeeName} to the ${employeeType === 'coroner' ? 'coroner' : 'hospital staff'} list.`, 'success');
+                setRefreshData(!refreshData);
+
+
             }
         } catch (error) {
             console.error("Error updating employee rank in Firebase:", error);
+            showNotification(`Error updating employee rank: ${error.message}`, 'error');
         } finally {
             setIsLoading(false);
         }
-    } else {
-        handleMissingEmployeeSubmit(actionType, employeeType, selectedEmployeeName, newRank, staffToRemove, authorizedBy, missingEmployeeData);
-        setIsLoading(false);
     }
 };
 
@@ -427,24 +497,25 @@ const combinedStaffOptions = useMemo(() => {
                                 <div key={`inline-radio`} className="mb-3">
                                     <Form.Check
                                         inline
-                                        label="Add Coroner"
+                                        label="Add Employee"
                                         name="actionType"
                                         type="radio"
-                                        id={`addCoroner-radio`}
-                                        value="addCoroner"
-                                        checked={actionType === 'addCoroner'}
-                                        onChange={() => handleActionTypeChange('addCoroner')}
+                                        id={`addEmployee-radio`}
+                                        value="addEmployee"
+                                        checked={actionType === 'addEmployee'}
+                                        onChange={() => handleActionTypeChange('addEmployee')}
                                     />
-                                    <Form.Check
+                                <Form.Check
                                         inline
-                                        label="Add Hospital Staff"
+                                        label="Change Employee Details"
                                         name="actionType"
                                         type="radio"
-                                        id={`addPhmc-radio`}
-                                        value="addPhmc"
-                                        checked={actionType === 'addPhmc'}
-                                        onChange={() => handleActionTypeChange('addPhmc')}
+                                        id={`editUser-radio`}
+                                        value="editUser"
+                                        checked={actionType === 'editUser'}
+                                        onChange={() => handleActionTypeChange('editUser')}
                                     />
+
                                     <Form.Check
                                         inline
                                         label="Remove Staff"
@@ -455,31 +526,10 @@ const combinedStaffOptions = useMemo(() => {
                                         checked={actionType === 'removeStaff'}
                                         onChange={() => handleActionTypeChange('removeStaff')}
                                     />
-                                    <Form.Check
-                                        inline
-                                        label="Update Name"
-                                        name="actionType"
-                                        type="radio"
-                                        id={`updateName-radio`}
-                                        value="updateName"
-                                        checked={actionType === 'updateName'}
-                                        onChange={() => handleActionTypeChange('updateName')}
-                                    />
-
-                                    <Form.Check
-                                        inline
-                                        label="Update Rank"
-                                        name="actionType"
-                                        type="radio"
-                                        id={`updateRank-radio`}
-                                        value="updateRank"
-                                        checked={actionType === 'updateRank'}
-                                        onChange={() => handleActionTypeChange('updateRank')}
-                                    />
                                 </div>
                             </Form.Group>
 
-                            {(actionType === 'addCoroner' || actionType === 'addPhmc' || actionType === 'updateRank') && (
+                            {(actionType === 'addEmployee' || actionType === 'updateRank') && (
                                 <Form.Group controlId="employeeTypeRadios" className="mb-3">
                                     <Form.Label style={formLabelStyle}>Select Employee Type:</Form.Label>
                                     <div key={`inline-radio-employee`} className="mb-3">
@@ -507,7 +557,7 @@ const combinedStaffOptions = useMemo(() => {
                                 </Form.Group>
                             )}
 
-                            {(actionType === 'addCoroner' || actionType === 'addPhmc') && (
+                            {(actionType === 'addEmployee') && (
                                 <>
                                     {employeeType === 'coroner' && (
                                         <>
@@ -624,9 +674,8 @@ const combinedStaffOptions = useMemo(() => {
                                     <span className="helper-text" style={{ color: '#6c757d', display: 'block', marginTop: '5px' }}> (Only authorized personnel should submit removal requests.)</span>
                                 </>
                             )}
-{actionType === 'updateName' && (
+{actionType === 'editUser' && (
     <>
-
         <Form.Group controlId="employeeTypeRadios" className="mb-3">
             <Form.Label style={formLabelStyle}>Select Employee Type:</Form.Label>
             <div key={`inline-radio-employee`} className="mb-3">
@@ -666,18 +715,68 @@ const combinedStaffOptions = useMemo(() => {
         </Form.Group>
 
         {employeeType === 'coroner' ? (
-            <Form.Group controlId="newCoronerNameInput" className="mb-3">
-                <Form.Label style={formLabelStyle}>Enter Updated Coroner Name</Form.Label>
-                <Form.Control
-                    type="text"
-                    placeholder="Enter updated coroner name..."
-                    value={missingEmployeeData.coronerName}
-                    onChange={handleInputChange}
-                    name="coronerName"
-                    disabled={!selectedEmployeeName}
-                    style={formControlStyle}
-                />
-            </Form.Group>
+            <>
+                <Form.Group controlId="newCoronerNameInput" className="mb-3">
+                    <Form.Label style={formLabelStyle}>Enter Updated Coroner Name</Form.Label>
+                    <Form.Control
+                        type="text"
+                        placeholder="Enter updated coroner name..."
+                        value={missingEmployeeData.coronerName}
+                        onChange={handleInputChange}
+                        name="coronerName"
+                        disabled={!selectedEmployeeName}
+                        style={formControlStyle}
+                    />
+                </Form.Group>
+                <Form.Group controlId="newCoronerDiscordInput" className="mb-3">
+                    <Form.Label style={formLabelStyle}>Enter Updated Coroner Discord</Form.Label>
+                    <Form.Control
+                        type="text"
+                        placeholder="Enter updated coroner discord..."
+                        value={missingEmployeeData.coronerDiscord}
+                        onChange={handleInputChange}
+                        name="coronerDiscord"
+                        disabled={!selectedEmployeeName}
+                        style={formControlStyle}
+                    />
+                </Form.Group>
+                <Form.Group controlId="newCoronerRankInput" className="mb-3">
+                    <Form.Label style={formLabelStyle}>Enter Updated Coroner Rank</Form.Label>
+                    <Form.Control
+                        type="text"
+                        placeholder="Enter updated coroner rank..."
+                        value={missingEmployeeData.coronerRank}
+                        onChange={handleInputChange}
+                        name="coronerRank"
+                        disabled={!selectedEmployeeName}
+                        style={formControlStyle}
+                    />
+                </Form.Group>
+                <Form.Group controlId="newCoronerBadgeInput" className="mb-3">
+                    <Form.Label style={formLabelStyle}>Enter Updated Coroner Badge</Form.Label>
+                    <Form.Control
+                        type="text"
+                        placeholder="Enter updated coroner badge..."
+                        value={missingEmployeeData.coronerBadge}
+                        onChange={handleInputChange}
+                        name="coronerBadge"
+                        disabled={!selectedEmployeeName}
+                        style={formControlStyle}
+                    />
+                </Form.Group>
+                <Form.Group controlId="newCoronerPHNumberInput" className="mb-3">
+                    <Form.Label style={formLabelStyle}>Enter Updated Coroner PH Number</Form.Label>
+                    <Form.Control
+                        type="text"
+                        placeholder="Enter updated coroner ph number..."
+                        value={missingEmployeeData.coronerPHNumber}
+                        onChange={handleInputChange}
+                        name="coronerPHNumber"
+                        disabled={!selectedEmployeeName}
+                        style={formControlStyle}
+                    />
+                </Form.Group>
+            </>
         ) : (
             <>
                 <Form.Group controlId="newHospitalFirstNameInput" className="mb-3">
@@ -700,6 +799,18 @@ const combinedStaffOptions = useMemo(() => {
                         value={missingEmployeeData.employeeLastName}
                         onChange={handleInputChange}
                         name="employeeLastName"
+                        disabled={!selectedEmployeeName}
+                        style={formControlStyle}
+                    />
+                </Form.Group>
+                <Form.Group controlId="newHospitalRankInput" className="mb-3">
+                    <Form.Label style={formLabelStyle}>Enter Updated Rank</Form.Label>
+                    <Form.Control
+                        type="text"
+                        placeholder="Enter updated rank..."
+                        value={missingEmployeeData.coronerRank}
+                        onChange={handleInputChange}
+                        name="coronerRank"
                         disabled={!selectedEmployeeName}
                         style={formControlStyle}
                     />

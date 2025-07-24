@@ -153,7 +153,6 @@ const EmergencyForm = ({
                 }
             });
         }
-        console.log("selectedImagingResultsValue (useMemo):", selectedValues);
         return selectedValues;
     }, [formData, imagingOptionsMapping]);
 

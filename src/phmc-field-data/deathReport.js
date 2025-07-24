@@ -8,7 +8,6 @@ const DeathReport = ({
     handleChange,
     handleSelectChange,
     setShowMissingEmployeeModal,
-    setShowCoronerRankModal,
     coronerGroupedOptions,
     handleDoeChange,
     setFormData,
@@ -65,20 +64,6 @@ useEffect(() => {
                 >
                     <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i>
                     Missing Name?
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setShowCoronerRankModal(true)}
-                    className="close-button"
-                    style={{
-                        padding: '0.25rem 0.5rem',
-                        fontSize: '0.8rem',
-                        lineHeight: '1.2'
-                    }}
-                    title="Update Coroner Rank"
-                >
-                    <i className="fas fa-user-md" style={{ marginRight: '5px' }}></i>
-                    Update Coroner Rank
                 </button>
             </div>
             <Select

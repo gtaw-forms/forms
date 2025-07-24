@@ -490,7 +490,6 @@ const loadData = async () => {
             'phmcEmployee', 'phmcEmployeeLastName', 'phmcRank',
             'coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord', 'coronerPHNumber',
             'pronouncedTimeOfDeath', 'department', 'dateTime', 'placeOfDeath', 'mannerOfDeath',
-            'recruitmentPosition', 'applicantTitleAndFullName' // Also add these fields to load from LS
         ];
 
         fieldsToLoadFromLS.forEach(field => {
@@ -509,13 +508,17 @@ const loadData = async () => {
         }));
 
         const dbRootRef = ref(database);
+        console.log("About to fetch data from Firebase..."); // ADDED: Before get
         const snapshot = await get(dbRootRef);
+        console.log("Data fetched from Firebase:", snapshot.val()); // ADDED: After get
 
         if (snapshot.exists()) {
             const allData = snapshot.val();
             let fetchedSelectOptions = allData.selectOptions || {};
 
+            console.log("PHMC data from Firebase:", allData.staff?.phmc); // ADDED
             setPhmcListData(allData.staff?.phmc || []);
+            console.log("Coroner data from Firebase:", allData.staff?.coroner); // ADDED
             setCoronerListData(allData.staff?.coroner || []);
             setAgencyDataStore(allData.agencies || {});
             setSelectOptions(allData.selectOptions || {});
@@ -553,7 +556,7 @@ const loadData = async () => {
 useEffect(() => {
     loadData();
 }, [
-    showNotification, database, setPhmcListData, setCoronerListData,
+    showNotification, setPhmcListData, setCoronerListData,
     setAgencyDataStore, setSelectOptions, setPhysicianRecruitmentDetails,
     setPsychRecruitmentDetails, setAdminRecruitmentDetails,
     setEmsRecruitmentDetails, setNurseRecruitmentDetails, setCoronerRecruitmentDetails
@@ -751,7 +754,6 @@ const getBBCodeContent = () => {
         setSwitchableModalTitle(title);
         setSwitchableFormsList(formsArray);
         setShowPHMCModal(true); // Use the existing state to show/hide the modal
-        console.log('SwitchableFormsModal: openSwitchableModal called, show = true');
     };
 
 // --- 
@@ -971,16 +973,13 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
         selectedEmployeeName,
         newRank,
         coronerListData, // Pass coronerListData
-        phmcList,    
+        phmcList,
         staffToRemove,
         authorizedBy,
-        {
-            ...missingEmployeeData,
-            coronerEmployee: formData.coronerEmployee,
-            phmcEmployee: formData.phmcEmployee,
-        },
+        missingEmployeeData,
         commitInfo,
         showNotification,
+        database, // should be LAST
     );
 
     // Trigger refresh after any action involving MissingEmployeeModal
@@ -1072,7 +1071,6 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
     }, []); // Empty dependency array ensures this runs only once on initial load
     const handleHideEmsBingoModal = useCallback(() => {
         setShowEmsBingoModal(false);
-        console.log('EmsBingoModal: onHide called, show = false');
 
         const url = new URL(window.location.href);
 
@@ -1121,87 +1119,7 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
         }
     }, []); // This effect runs once on initial load
 
-const [showCoronerRankModal, setShowCoronerRankModal] = useState(false);
 const uniqueCoronerRanks = [...new Set(coronerListData.map(c => c.rank))].sort();
-const handleCoronerRankSubmit = async ({ selectedEmployee, newRank }) => { // Accept the object
-    const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-
-    if (!webhookURL) {
-        console.error('Discord webhook URL not configured.');
-        Sentry.captureMessage('Discord webhook URL is missing for Coroner Rank submission.', 'error');
-        showNotification('Configuration error: Unable to send rank.', 'exclamation-triangle');
-        return;
-    }
-
-    // Determine the description and fields based on what was submitted
-    let description = '';
-    const fields = [];
-
-    if (newRank && selectedEmployee) {
-        // Case: Updating rank for a selected employee
-        description = `**${selectedEmployee}** has updated their rank`;
-        fields.push({ name: "Selected Coroner", value: selectedEmployee, inline: true });
-        fields.push({ name: "New Rank Submitted", value: `**${newRank}**`, inline: true });
-    } else if (selectedEmployee) {
-        // Case: Only an employee was selected (no new rank entered) - Less likely with current modal logic, but handle it
-        description = `Coroner **${selectedEmployee}** was selected.`;
-        fields.push({ name: "Selected Coroner", value: selectedEmployee, inline: false });
-    } else {
-        // Should not happen if modal validation works, but handle as fallback
-        console.warn("handleCoronerRankSubmit called without selectedEmployee or newRank.");
-        showNotification('No information submitted.', 'warning');
-        return;
-    }
-
-    // --- Construct Embed Payload ---
-    const embed = {
-        title: "Coroner Rank Update Request", // More specific title
-        description: description,
-        content: `A Coroner has updated their rank! Details here`,
-        color: 0x8B0000, // Dark Red (Coroner theme)
-        fields: fields, // Use the dynamically created fields array
-        timestamp: new Date().toISOString(),
-        footer: {
-            text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}`
-        }
-    };
-
-    // --- Construct Full Payload ---
-    const payload = {
-        username: "PHMC", // Use standard PHMC username
-        avatar_url: phmcLogoUrl, // Use standard PHMC logo
-        embeds: [embed] // Send the embed
-    };
-    // --- End Payload Construction ---
-
-    try {
-        const response = await fetch(webhookURL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`Failed to send coroner rank embed. Status: ${response.status} ${response.statusText}`, errorText);
-            Sentry.captureMessage(`Coroner Rank webhook failed: ${response.status}`, {
-                level: 'error',
-                extra: { statusText: response.statusText, responseBody: errorText }
-            });
-            showNotification(`Failed to send rank info. Status: ${response.status}`, 'exclamation-triangle');
-        } else {
-            // Use submittedValue for notification consistency if needed, or customize
-            const notificationValue = newRank ? `${selectedEmployee} -> ${newRank}` : selectedEmployee;
-            setShowCoronerRankModal(false); // Close modal on success
-                    console.log('CoronerRankModal: onClose called, show = false');
-
-        }
-    } catch (error) {
-        console.error('Error sending coroner rank embed:', error);
-        Sentry.captureException(error, { extra: { context: 'Coroner Rank Submission Fetch' } });
-        showNotification('A network error occurred submitting the rank info.', 'exclamation-triangle');
-    }
-};
 
 const handlePhmcWebhookSubmit = async (payload) => { // Receive payload from modal
     if (!payload) return; // Should not happen if modal validates, but good check
@@ -2266,7 +2184,6 @@ const toggleSavedReports = useCallback((filterVersions = null, employeeType = nu
         setPreselectedEmployeeType(null);
         setReportSelectionFilter(null);
         pendingReportAttachmentCallback.current = null; // Clear the callback when closing
-                    console.log('SavedReportsModal: onClose called, show = false');
 
         return;
     }
@@ -2512,7 +2429,6 @@ const filterFormData = (formData, bbCodeVersion) => {
         } else {
             localStorage.removeItem('hideAgencyGroupSelectorPreference');
         }
-        console.log('AgencyGroupSelectorModal: onHideSelectorPreference called, show = false');
     };
 
 const [showAgencySelector, setShowAgencySelector] = useState(false);
@@ -3334,7 +3250,7 @@ const handleCopyAndNotifyWrapper = async () => {
                 setFillPhoneChecked(false); // Reset checkbox state on error
             }
         };
-                                
+                       
         return (
             
         <div className="App">
@@ -3388,7 +3304,6 @@ const handleCopyAndNotifyWrapper = async () => {
             show={showCoronerTips}
             onClose={() => {
                 setShowCoronerTips(false);
-                console.log('CoronerTipsModal: onClose called, show = false');
             }}
         />
 
@@ -3756,7 +3671,6 @@ setFormData={setFormData}                                        typeOfDeathOpti
                                         // Pass other props like phmcGroupedOptions, coronerGroupedOptions, etc.
                                         phmcGroupedOptions={phmcGroupedOptions}
                                         coronerGroupedOptions={coronerGroupedOptions}
-                                        setShowCoronerRankModal={setShowCoronerRankModal}
                                         setShowMissingEmployeeModal={setShowMissingEmployeeModal}
                                         handleSelectChange={handleSelectChange}
                                         isUploading={isUploading}
@@ -3942,15 +3856,6 @@ setFormData={setFormData}                                        typeOfDeathOpti
                     sendPhraseRequestNotification({ requester, phrase, bingoType, commitInfo })
                 }
             />
-                    <CoronerRankModal
-    show={showCoronerRankModal}
-    onClose={() => setShowCoronerRankModal(false)}
-    onSubmit={handleCoronerRankSubmit}
-    coronerList={coronerListData} 
-    phmcList={phmcListData}
-    setCoronerListData={setCoronerListData}
-    showNotification={showNotification}    
-                    />
 
 <MissingEmployeeModal
     show={showMissingEmployeeModal}
@@ -3959,7 +3864,6 @@ setFormData={setFormData}                                        typeOfDeathOpti
         setIsJohnDoe(false);
         setIsJaneDoe(false);
         setIsRemoveStaff(false);
-        console.log('MissingEmployeeModal: onHide called, show = false');
     }}
     isJohnDoe={isJohnDoe}
     setCoronerListData={setCoronerListData}
@@ -3967,6 +3871,7 @@ setFormData={setFormData}                                        typeOfDeathOpti
     coronerList={coronerListData}
     phmcList={phmcListData}
     isRemoveStaff={isRemoveStaff}
+    showNotification={showNotification}
     handleDoeChange={handleDoeChange}
     handleRemoveStaffChange={(selectedOptions) => {
         setStaffToRemove(selectedOptions ? selectedOptions.map(option => option.value) : []);
