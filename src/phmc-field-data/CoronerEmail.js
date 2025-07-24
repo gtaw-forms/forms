@@ -7,7 +7,6 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
     handleChange,
     handleSelectChange, // Added this prop
     setShowMissingEmployeeModal,
-    setShowCoronerRankModal, // Added this prop
     coronerGroupedOptions,
     handleFillCoronerPhone,
     fillPhoneChecked,
@@ -34,20 +33,6 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
                                     >
                                         <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i> {/* Changed icon */}
                                         Missing Name?
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowCoronerRankModal(true)} // <-- Open CoronerRankModal
-                                        className="close-button" // Keep class or change if needed
-                                        style={{
-                                            padding: '0.25rem 0.5rem',
-                                            fontSize: '0.8rem',
-                                            lineHeight: '1.2'
-                                        }}
-                                        title="Select or Add Coroner Rank" // <-- Update title
-                                    >
-                                        <i className="fas fa-user-md" style={{ marginRight: '5px' }}></i> {/* <-- Update icon */}
-                                        Update Coroner Rank {/* <-- Update text */}
                                     </button>
 
                                 </div>
