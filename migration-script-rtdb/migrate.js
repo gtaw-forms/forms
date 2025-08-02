@@ -114,6 +114,7 @@ const patientTitle = [
     { value: 'Mr', label: 'Mr' },
     { value: 'Mrs', label: 'Mrs' },
     { value: 'Ms', label: 'Ms' },
+     {value: 'Miss', label: 'Miss' },
     { value: 'Other', label: 'Other' }
 ];
 const patientTitleNew = [

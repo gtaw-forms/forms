@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/react";
-import { ref, get } from 'firebase/database';
+import { ref, get, set} from 'firebase/database';
+import getRelevantFields from './RevelantFields';
 
 export const copyToClipboard = async (text, showNotification, successMessage) => {
     // Check if the clipboard API is available at all.
@@ -661,6 +662,18 @@ const sendFormInteractionWebhookInternal = async ({
     }
 };
 
+const filterFormData = (formData, bbCodeVersion) => {
+    const relevantFields = getRelevantFields(bbCodeVersion);
+    const filteredData = {};
+
+    relevantFields.forEach(field => {
+        if (formData.hasOwnProperty(field)) {
+            filteredData[field] = formData[field];
+        }
+    });
+
+    return filteredData;
+};
 
 export const handleFormCopyAndNotify = async ({
     formData,
@@ -689,17 +702,50 @@ export const handleFormCopyAndNotify = async ({
     }
 
     // --- Step 2: Save Report to Firebase (if applicable) ---
-    // The saveReport function should return `true` on success, and `false` if saving is not applicable (e.g., SAAA forms) or fails.
-    const saveSuccessful = await saveReport();
+    let saveSuccessful = false;
+    let savingAsCivilian = false; // Flag to track if saving as CIVILIAN
 
-    // For standard forms (PHMC, Coroner), if saving fails, we stop the entire process.
-    if (selectedAgencyGroup !== 'SAAA' && !saveSuccessful) {
+    if ([3, 24, 25, 26].includes(bbCodeVersion)) { // Civilian Forms
+        savingAsCivilian = true;
+
+        const bbCodeContent = getBBCodeContent();
+
+const key = `[CIVILIAN-REPORT] - ${formData.patientName || ''} ${formData.patientFirstName || ''} ${formData.patientLastName || ''} - ${new Date().toISOString()}`; // unique key for the report
+        const sanitizedKey = key.replace(/[.#$[\]/]/g, '_');
+
+        const reportDataToSave = {
+            bbCodeVersion: bbCodeVersion,
+            data: filterFormData(formData, bbCodeVersion),
+            bbCode: bbCodeContent,
+            timestamp: Date.now(),
+            originalKey: key,
+            authorName: 'CIVILIAN'
+        };
+
+        try {
+            const reportRef = ref(database, `savedReports/CIVILIAN/${sanitizedKey}`);
+            await set(reportRef, reportDataToSave);
+            //showNotification(`Report "${key}" saved for CIVILIAN to Firebase!`, 'save');
+            saveSuccessful = true;
+
+        } catch (error) {
+            console.error("Error saving Civilian report to Firebase:", error);
+            Sentry.captureException(error, { extra: { context: 'Firebase set report' } });
+            //showNotification('Failed to save Civilian report to Firebase.', 'error');
+            saveSuccessful = false;
+        }
+
+    } else {
+        // Use the original saveReport function for other forms
+        saveSuccessful = await saveReport();
+    }
+
+    if (!saveSuccessful && !savingAsCivilian) {
         showNotification('Report failed to save to Firebase. Copying and webhook notification will be skipped.', 'error');
         return;
     }
 
     // --- Step 3: Copy BBCode to Clipboard ---
-    // SAAA forms don't save to Firebase, but they do need to be copied.
     const copySuccessful = await copyToClipboard(bbCodeToCopy, showNotification, `${versionName} copied to clipboard!`);
 
     if (!copySuccessful) {
@@ -713,20 +759,14 @@ export const handleFormCopyAndNotify = async ({
     // This part runs if the previous steps were successful.
     try {
         let discordWebhookUrl;
-        if (selectedAgencyGroup === 'SAAA') {
-            discordWebhookUrl = process.env.REACT_APP_SAAA_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-        } else {
             discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
-        }
 
         if (discordWebhookUrl) {
             const { decedentName, decedentOOC } = formData;
-            const currentIdentifier = selectedAgencyGroup === 'SAAA'
-                ? `${formData.registrantFullName || formData.ceoFullName || formData.patientFirstName || 'SAAA_Form'}_${Date.now()}`
-                : `${decedentName || ''}|${decedentOOC || ''}`;
+            const currentIdentifier =  `${decedentName || ''}|${decedentOOC || ''}`;
 
             // Prevent spamming webhooks for the same PHMC/Coroner report
-            if (currentIdentifier && currentIdentifier === lastWebhookIdentifier && selectedAgencyGroup !== 'SAAA') {
+            if (currentIdentifier && currentIdentifier === lastWebhookIdentifier) {
                 console.log('Duplicate PHMC/Coroner report copy detected, skipping webhook.');
                 return;
             }
@@ -746,7 +786,7 @@ export const handleFormCopyAndNotify = async ({
             }
 
             let webhookActionMessage = "BBCode Copied";
-            if (saveSuccessful && selectedAgencyGroup !== 'SAAA') {
+            if (saveSuccessful) {
                 webhookActionMessage = "BBCode Copied & Report Saved to Firebase";
             }
 
@@ -762,9 +802,7 @@ export const handleFormCopyAndNotify = async ({
                 firebaseSavedCount,
             });
 
-            if (selectedAgencyGroup !== 'SAAA') {
-                setLastWebhookIdentifier(currentIdentifier);
-            }
+            setLastWebhookIdentifier(currentIdentifier);
 
             // Special handling for Death Report to prompt for Coroner Email
             if (bbCodeVersion === 1 && formData.showRequestingOfficerInput === true) {
