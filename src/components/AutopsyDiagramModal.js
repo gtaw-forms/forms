@@ -97,15 +97,17 @@ const loadImage = (src) => {
 
 // Helper function to group and label markers
 const getGroupedLabeledMarkers = (markers) => {
-    const labeledMarkers = markers.filter(m => m.label && m.label.trim() !== '');
-    const grouped = labeledMarkers.reduce((acc, marker) => {
-        const labelKey = marker.label.trim().toUpperCase(); // Group by trimmed uppercase label
-        if (!acc[labelKey]) {
-            acc[labelKey] = [];
-        }
-        acc[labelKey].push(marker);
-        return acc;
-    }, {});
+  const labeledMarkers = markers.filter(m => m.label && m.label.trim() !== '');
+  const grouped = labeledMarkers.reduce((acc, marker) => {
+    const labelKey = marker.label.trim().toUpperCase(); // Group by trimmed uppercase label
+    const markerTypeKey = `${marker.type}-${labelKey}`; // Use a unique label that includes type
+
+    if (!acc[markerTypeKey]) {
+      acc[markerTypeKey] = []; // Group by the generated marker type key instead of labelKey directly
+    }
+    acc[markerTypeKey].push(marker);
+    return acc;
+  }, {});
 
     const result = [];
     // Sort groups alphabetically by label key
@@ -115,7 +117,7 @@ const getGroupedLabeledMarkers = (markers) => {
         grouped[labelKey].forEach((marker, index) => {
             const prefix = String.fromCharCode(65 + index); // A, B, C... within the group
             result.push({
-                ...marker,
+              ...marker,
                 displayLabel: `${prefix}-${marker.label.trim()}`
             });
         });
@@ -123,6 +125,7 @@ const getGroupedLabeledMarkers = (markers) => {
 
     return result;
 };
+
 
 
 const AutopsyDiagramModal = ({

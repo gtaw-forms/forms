@@ -11,6 +11,7 @@ import EditBingoPhrasesModal from './EditBingoPhrasesModal';
 import ReviewPhraseRequestsModal from './ReviewPhraseRequestsModal';
 import * as Sentry from "@sentry/react";
 import CctvRequestWebhookModal from './CctvRequestWebhookModal'; // Import the new modal
+import MarkdownBBCodeModal from '../MarkdownBBCodeModal';
 
 const recruitmentCategories = {
     physician: { displayName: "Physician Recruitment", path: 'selectOptions/physicianRecruitmentDetails' },
@@ -121,7 +122,7 @@ const sendAdminActionWebhook = async (adminEmail, action, details, categoryName 
 };
 
 
-const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAppNotification, commitInfo }) => {
+const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNotification: showInAppNotification, commitInfo }) => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
@@ -876,6 +877,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
         const { userAgent, timeZone } = getUserContext(); // Capture user context
         sendAdminActionWebhook(currentUser?.email || "Unknown User", "Opened Coroner Webhook Modal", "Admin opened the modal to send a custom webhook to the Coroner Updates channel.", null, userAgent, timeZone);
     };
+    const [showMarkdownModal, setShowMarkdownModal] = useState(false);
 
     const handleCoronerWebhookSubmit = async (payloadFromModal) => {
         const webhookURLIdentifier = "REACT_APP_CORONER_DISCORD_UPDATES";
@@ -1105,6 +1107,13 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
 
             </div>
             <hr />
+                    <Button onClick={() => setShowMarkdownModal(true)}>Open Markdown Converter</Button>
+        <MarkdownBBCodeModal
+            show={showMarkdownModal}
+            onHide={() => setShowMarkdownModal(false)}
+            showNotification={showNotification}
+        />
+
             <Button variant="warning" onClick={handleLogout} className="mt-3">Logout</Button>
 
             {selectedRecruitmentCategory && recruitmentCategories[selectedRecruitmentCategory] && (
