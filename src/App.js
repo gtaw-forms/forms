@@ -508,17 +508,13 @@ const loadData = async () => {
         }));
 
         const dbRootRef = ref(database);
-        console.log("About to fetch data from Firebase..."); // ADDED: Before get
         const snapshot = await get(dbRootRef);
-        console.log("Data fetched from Firebase:", snapshot.val()); // ADDED: After get
 
         if (snapshot.exists()) {
             const allData = snapshot.val();
             let fetchedSelectOptions = allData.selectOptions || {};
 
-            console.log("PHMC data from Firebase:", allData.staff?.phmc); // ADDED
             setPhmcListData(allData.staff?.phmc || []);
-            console.log("Coroner data from Firebase:", allData.staff?.coroner); // ADDED
             setCoronerListData(allData.staff?.coroner || []);
             setAgencyDataStore(allData.agencies || {});
             setSelectOptions(allData.selectOptions || {});
@@ -4055,16 +4051,14 @@ setFormData={setFormData}                                        typeOfDeathOpti
     onEmployeeSelect={loadUserSavedReports}
     employeeOptions={combinedStaffOptions}
     isLoadingReports={isLoadingUserReports}
-    loadReportForUser={loadReportForUser} // This is the original load function for direct form loading
+    loadReportForUser={loadReportForUser}
     deleteReportForUser={deleteReportForUser}
     currentCoronerEmployee={formData.coronerEmployee}
     currentPhmcEmployee={formData.phmcEmployee}
-    filterByBbCodeVersions={reportSelectionFilter} // Pass the filter
+    filterByBbCodeVersions={reportSelectionFilter}
     onReportSelectedForAttachment={pendingReportAttachmentCallback.current ? handleReportSelectedForAttachment : null}
     preselectedEmployeeType={preselectedEmployeeType}
-
 />
-
             <WebhookModal
                 show={showWebhookModal}
                 onClose={() => setShowWebhookModal(false)}
