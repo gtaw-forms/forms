@@ -1,9 +1,9 @@
-import ReactDOM from 'react-dom'; // Import ReactDOM for Portals
+import ReactDOM from 'react-dom';
 import React, { useState, useEffect } from 'react';
 import { Button, Form, InputGroup } from 'react-bootstrap';
 import * as Sentry from "@sentry/react";
 
-// --- Styles (Keep existing styles) ---
+// --- Styles (unchanged) ---
 const modalOverlayStyle = {
     position: 'fixed',
     top: 0,
@@ -82,6 +82,7 @@ const formLabelStyle = {
     marginBottom: '8px',
     display: 'block',
 };
+
 const imagePreviewStyle = {
     maxWidth: '100px',
     maxHeight: '100px',
@@ -90,6 +91,7 @@ const imagePreviewStyle = {
     border: '1px solid #30363d',
     borderRadius: '4px',
 };
+
 const clearImageButtonStyle = {
     padding: '2px 6px',
     fontSize: '0.8em',
@@ -99,12 +101,14 @@ const clearImageButtonStyle = {
     borderRadius: '3px',
     cursor: 'pointer',
 };
+
 const imagePreviewContainerStyle = {
     display: 'flex',
     flexWrap: 'wrap',
     gap: '10px',
     marginTop: '10px',
 };
+
 const urlPreviewStyle = {
     display: 'flex',
     alignItems: 'center',
@@ -116,33 +120,38 @@ const urlPreviewStyle = {
     fontSize: '0.9em',
     maxWidth: '250px',
 };
+
 const urlIconStyle = {
     color: '#8b949e',
 };
+
 const urlTextStyle = {
     color: '#c9d1d9',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
 };
+
 const confirmationDialogStyle = {
     position: 'absolute',
     top: '50%',
     left: '50%',
     transform: 'translate(-50%, -50%)',
-    backgroundColor: '#161b22', // Slightly different background
+    backgroundColor: '#161b22',
     padding: '20px',
     borderRadius: '8px',
     border: '1px solid #444c56',
-    zIndex: 1060, // Above modal content
+    zIndex: 1060,
     textAlign: 'center',
     boxShadow: '0 0 15px rgba(0,0,0,0.5)',
 };
+
 const confirmationTextStyle = {
     marginBottom: '15px',
     fontSize: '1.1em',
     color: '#e6edf3',
 };
+
 const confirmationButtonsStyle = {
     display: 'flex',
     justifyContent: 'center',
@@ -158,6 +167,18 @@ const LS_WEBHOOK_MESSAGE_TIMESTAMP = 'webhookModal_message_timestamp';
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const FORM_GENERATOR_URL = "https://gtaw-forms.github.io/forms/";
 
+const isImageUrl = (url) => {
+    return /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(url);
+};
+
+const isVideoUrl = (url) => {
+    return /\.(mp4)$/i.test(url);
+};
+
+const isVideoFile = (file) => {
+    return file.type.startsWith('video/');
+};
+
 const WebhookModal = ({
     show,
     onClose,
@@ -165,28 +186,28 @@ const WebhookModal = ({
     setWebhookTitle,
     webhookMessage,
     setWebhookMessage,
-    onSubmit, // Renamed from handleWebhookSubmit for clarity in App.js
-    onSubmitPhmc, // Renamed from handlePhmcWebhookSubmit for clarity in App.js
+    onSubmit,
+    onSubmitPhmc,
     showNotification,
     commitInfo,
-    modalHeaderText = "Send Webhook Embed", // More generic default
-    // --- MODIFICATION START: New props for button customization ---
+    modalHeaderText = "Send Webhook Embed",
     primaryButtonText = "Send to Primary Hook",
-    primaryWebhookUrlIdentifier = "N/A", // To display which REACT_APP_ variable is used
+    primaryWebhookUrlIdentifier = "N/A",
     secondaryButtonText = "Send to Secondary Hook",
-    secondaryWebhookUrlIdentifier = "N/A", // To display which REACT_APP_ variable is used
-    showSecondaryButton = true // Prop to control visibility of the second button
-    // --- MODIFICATION END ---
+    secondaryWebhookUrlIdentifier = "N/A",
+    showSecondaryButton = true,
 }) => {
     const [mediaUrls, setMediaUrls] = useState([]);
     const [isUploading, setIsUploading] = useState(false);
     const [urlInput, setUrlInput] = useState('');
+    const [showConfirmation, setShowConfirmation] = useState(false);
+    const [confirmationAction, setConfirmationAction] = useState(null);
     const phmcLogoUrl = 'https://i.imgur.com/QMaz0OC.png';
 
     useEffect(() => {
         if (show) {
-                setShowConfirmation(false);
-                setConfirmationAction(null);
+            setShowConfirmation(false);
+            setConfirmationAction(null);
 
             const savedTitle = localStorage.getItem(LS_WEBHOOK_TITLE_CONTENT);
             const savedTitleTs = localStorage.getItem(LS_WEBHOOK_TITLE_TIMESTAMP);
@@ -222,16 +243,39 @@ const WebhookModal = ({
         }
     }, [webhookMessage, show]);
 
-    const [showConfirmation, setShowConfirmation] = useState(false);
-    const [confirmationAction, setConfirmationAction] = useState(null); // { type: 'primary' | 'secondary', payload: object, identifier: string }
+    const uploadSingleMediaToImgur = async (file) => {
+        const imgurAccessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
+        const imgurAlbumId = process.env.REACT_APP_IMGUR_ALBUM_ID;
+        if (!imgurAccessToken || !imgurAlbumId) {
+            throw new Error("Imgur API credentials not configured.");
+        }
+        if (isVideoFile(file) && file.size > 200 * 1024 * 1024) {
+            throw new Error("Video file exceeds Imgur's 200 MB limit.");
+        }
+        const formData = new FormData();
+        formData.append('image', file);
+        formData.append('album', imgurAlbumId);
+        formData.append('type', 'file');
+        const response = await fetch('https://api.imgur.com/3/image', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${imgurAccessToken}` },
+            body: formData,
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.data.error || 'Unknown Imgur error');
+        }
+        return data.data.link;
+    };
 
-    const handleImageUpload = async (event) => {
+    const handleMediaUpload = async (event) => {
         const files = event.target.files;
         if (!files || files.length === 0) return;
         setIsUploading(true);
         const uploadPromises = [];
         for (let i = 0; i < files.length; i++) {
-            uploadPromises.push(uploadSingleImageToImgur(files[i]));
+            const file = files[i];
+            uploadPromises.push(uploadSingleMediaToImgur(file));
         }
         try {
             const results = await Promise.allSettled(uploadPromises);
@@ -244,58 +288,35 @@ const WebhookModal = ({
                 } else {
                     failedCount++;
                     if (!firstErrorMessage) firstErrorMessage = result.reason.message;
-                    console.error('Imgur upload failed:', result.reason.message);
-                    Sentry.captureMessage(`Imgur upload failed in WebhookModal: ${result.reason.message}`, "error");
+                    console.error('Upload failed:', result.reason.message);
+                    Sentry.captureMessage(`Upload failed in WebhookModal: ${result.reason.message}`, "error");
                 }
             });
             setMediaUrls(prevUrls => [...prevUrls, ...successfulUrls]);
             if (successfulUrls.length > 0) {
-                showNotification(`${successfulUrls.length} image(s) uploaded successfully!`, 'check-circle');
+                showNotification(`${successfulUrls.length} file(s) uploaded successfully!`, 'check-circle');
             }
             if (failedCount > 0) {
-                showNotification(`${failedCount} image(s) failed to upload. Error: ${firstErrorMessage}`, 'exclamation-circle');
+                showNotification(`${failedCount} file(s) failed to upload. Error: ${firstErrorMessage}`, 'exclamation-circle');
             }
         } catch (error) {
             console.error('General upload process error:', error);
-            Sentry.captureException(error, { extra: { context: 'WebhookModal Multi-Image Upload Process' } });
+            Sentry.captureException(error, { extra: { context: 'WebhookModal Multi-File Upload Process' } });
             showNotification('An unexpected error occurred during upload.', 'exclamation-circle');
         } finally {
             setIsUploading(false);
             event.target.value = null;
         }
     };
-    const uploadSingleImageToImgur = async (file) => {
-        const imgurAccessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
-        const imgurAlbumId = process.env.REACT_APP_IMGUR_ALBUM_ID;
-        if (!imgurAccessToken || !imgurAlbumId) {
-            throw new Error("Imgur API credentials not configured.");
-        }
-        const formData = new FormData();
-        formData.append('image', file);
-        formData.append('album', imgurAlbumId);
-        const response = await fetch('https://api.imgur.com/3/image', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${imgurAccessToken}` },
-            body: formData,
-        });
-        const data = await response.json();
-        if (!data.success) {
-            throw new Error(data.data.error || 'Unknown Imgur error');
-        }
-        return data.data.link;
-    };
+
     const handleAddUrl = () => {
         const urlToAdd = urlInput.trim();
         if (!urlToAdd) {
             showNotification('Please enter a URL.', 'warning');
             return;
         }
-        if (!urlToAdd.startsWith('http://') && !urlToAdd.startsWith('https://')) {
-            showNotification('Invalid URL format. Must start with http:// or https://', 'warning');
-            return;
-        }
-        if (mediaUrls.includes(urlToAdd)) {
-            showNotification('This URL has already been added.', 'info-circle');
+        if (!isImageUrl(urlToAdd) && !isVideoUrl(urlToAdd)) {
+            showNotification('URL must be an image (jpg, png, etc.) or a video (mp4).', 'warning');
             return;
         }
         setMediaUrls(prevUrls => [...prevUrls, urlToAdd]);
@@ -305,107 +326,112 @@ const WebhookModal = ({
 
     const clearMedia = () => {
         setMediaUrls([]);
-    };
-    const isImageUrl = (url) => {
-        return /\.(jpg|jpeg|png|gif)$/i.test(url) || url.includes('imgur.com');
-    };
-    const isStreamableUrl = (url) => {
-        return url.includes('streamable.com');
+        showNotification('All media cleared.', 'trash');
     };
 
-    const prepareWebhookDataInternal = () => {
-        const title = webhookTitle.trim();
-        const message = webhookMessage.trim();
-        if (!title && !message && mediaUrls.length === 0) {
-            showNotification('Please enter a title, message, or add media (image/URL).', 'warning');
-            return null;
+    const buildWebhookPayload = () => {
+        // Split mediaUrls into video URLs and image URLs
+        const videoUrls = mediaUrls.filter(url => isVideoUrl(url)).map(url => `<${url}>`);
+        const imageUrls = mediaUrls.filter(url => isImageUrl(url));
+
+        // Build embed description with message only (exclude URLs)
+        const descriptionParts = [];
+        if (webhookMessage) {
+            descriptionParts.push(webhookMessage);
         }
-        if (title.length > 256) {
-            showNotification('Embed title cannot exceed 256 characters.', 'warning');
-            return null;
-        }
-        let description = message || '';
-        let firstImageUrlForEmbed = null;
-        for (const url of mediaUrls) {
-            if (isImageUrl(url)) {
-                firstImageUrlForEmbed = url;
-                break;
-            }
-        }
-        const footerText = `PHMC Form Generator - v${commitInfo?.sha || 'N/A'} `;
-        if (description.length > 4096) {
-            showNotification('Embed body (message content) cannot exceed 4096 characters.', 'warning');
-            return null;
-        }
-        const embedFields = [];
-        if (FORM_GENERATOR_URL) {
-            embedFields.push({ name: "Form Generator Link", value: FORM_GENERATOR_URL, inline: false });
-        }
+
         const embed = {
-            title: title || "PHMC Form Generator Notification",
-            url: FORM_GENERATOR_URL,
-            description: description.trim() || undefined,
-            color: 0x7289DA,
+            title: webhookTitle || 'Untitled',
+            description: descriptionParts.join('\n') || 'No content provided.',
+            color: 0x00ff00,
             timestamp: new Date().toISOString(),
-            image: firstImageUrlForEmbed ? { url: firstImageUrlForEmbed } : undefined,
-            fields: embedFields,
-            footer: {
-                text: footerText
-            }
+            footer: { text: `Sent via ${FORM_GENERATOR_URL}` },
         };
-        if (!message && !title && mediaUrls.length > 0) {
-             embed.description = `Media submitted via PHMC Form Generator - v${commitInfo?.sha || 'N/A'}`;
-             embed.description += '\n\n**Media:**\n';
-             mediaUrls.forEach((url, index) => {
-                 const type = isStreamableUrl(url) ? 'Video' : isImageUrl(url) ? 'Image' : 'Link';
-                 embed.description += `- ${type} ${index + 1}: ${url}\n`;
-             });
-             if (embed.description.length > 4096) {
-                showNotification('Embed body (including media links) cannot exceed 4096 characters.', 'warning');
-                return null;
-             }
+
+        // Add image to embed if an image URL is available
+        if (imageUrls.length > 0) {
+            embed.image = { url: imageUrls[0] };
         }
+
+        // Add PHMC logo as thumbnail for secondary webhook
+        if (confirmationAction?.type === 'secondary') {
+            embed.thumbnail = { url: phmcLogoUrl };
+        }
+
         const payload = {
-            username: "PHMC",
-            avatar_url: phmcLogoUrl,
+            content: videoUrls.length > 0 ? videoUrls.join('\n') : undefined,
             embeds: [embed],
         };
+
+        // Validate payload
+        if (embed.title === 'Untitled' && embed.description === 'No content provided.' && !embed.image && !payload.content) {
+            throw new Error('Cannot send an empty webhook.');
+        }
+
         return payload;
     };
 
     const handlePrimarySubmit = () => {
-        const payload = prepareWebhookDataInternal();
-        if (payload && onSubmit) {
-            setConfirmationAction({ type: 'primary', payload, identifier: primaryWebhookUrlIdentifier });
+        try {
+            const payload = buildWebhookPayload();
+            setConfirmationAction({
+                type: 'primary',
+                payload,
+                identifier: primaryWebhookUrlIdentifier,
+            });
             setShowConfirmation(true);
+        } catch (error) {
+            showNotification(error.message, 'warning');
         }
     };
 
     const handleSecondarySubmit = () => {
-        const payload = prepareWebhookDataInternal();
-        if (payload && onSubmitPhmc) {
-            setConfirmationAction({ type: 'secondary', payload, identifier: secondaryWebhookUrlIdentifier });
+        try {
+            const payload = buildWebhookPayload();
+            setConfirmationAction({
+                type: 'secondary',
+                payload,
+                identifier: secondaryWebhookUrlIdentifier,
+            });
             setShowConfirmation(true);
+        } catch (error) {
+            showNotification(error.message, 'warning');
         }
     };
 
-    const executeConfirmedSend = () => {
-        if (!confirmationAction) return;
-
-        if (confirmationAction.type === 'primary' && onSubmit) {
-            onSubmit(confirmationAction.payload);
-        } else if (confirmationAction.type === 'secondary' && onSubmitPhmc) {
-            onSubmitPhmc(confirmationAction.payload);
+    const executeConfirmedSend = async () => {
+        const { type, payload, identifier } = confirmationAction;
+        const webhookUrl = type === 'primary'
+            ? process.env[primaryWebhookUrlIdentifier]
+            : process.env[secondaryWebhookUrlIdentifier];
+        try {
+            const response = await fetch(webhookUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`Failed to send ${type} webhook embed. Status: ${response.status} ${JSON.stringify(errorData)}`);
+            }
+            showNotification('Webhook sent successfully!', 'check-circle');
+            setMediaUrls([]);
+            setWebhookTitle('');
+            setWebhookMessage('');
+        } catch (error) {
+            console.error('Webhook send error:', error);
+            Sentry.captureException(error, { extra: { context: `WebhookModal ${type} Send`, identifier } });
+            showNotification(error.message, 'exclamation-circle');
         }
         setShowConfirmation(false);
         setConfirmationAction(null);
-        // Parent component's onSubmit/onSubmitPhmc should handle closing the main modal if successful
     };
 
     const cancelSend = () => {
         setShowConfirmation(false);
         setConfirmationAction(null);
     };
+
     if (!show) {
         return null;
     }
@@ -413,11 +439,9 @@ const WebhookModal = ({
     const titlePlaceholder = "Major Update / Minor Update / Hotfix";
     const messagePlaceholder = `- Added: \n- Fixed: \n- Updated: `;
 
-    // --- MODIFICATION START: Define the modal's JSX content ---
     const modalDialogContent = (
-        <div style={modalOverlayStyle} onClick={showConfirmation ? undefined : onClose}> {/* Prevent closing overlay if confirmation is up */}
+        <div style={modalOverlayStyle} onClick={showConfirmation ? undefined : onClose}>
             <div style={modalContentStyle} onClick={e => e.stopPropagation()}>
-                {/* --- MODIFICATION START: Confirmation Dialog --- */}
                 {showConfirmation && confirmationAction && (
                     <div style={confirmationDialogStyle}>
                         <p style={confirmationTextStyle}>
@@ -431,17 +455,13 @@ const WebhookModal = ({
                         </div>
                     </div>
                 )}
-                {/* --- MODIFICATION END --- */}
-
-                {/* Modal Header, Body, Footer (conditionally disabled if confirmation is shown) */}
-                <fieldset disabled={showConfirmation}> {/* Disable form fields when confirmation is active */}
+                <fieldset disabled={showConfirmation}>
                     <div style={modalHeaderStyle}>
                         <h5 style={modalTitleStyle}>{modalHeaderText}</h5>
                         <button onClick={onClose} style={closeButtonStyle} aria-label="Close modal">
                             &times;
                         </button>
                     </div>
-
                     <div style={modalBodyStyle}>
                         <Form>
                             <Form.Group controlId="webhookEmbedTitle" className="mb-3">
@@ -465,15 +485,15 @@ const WebhookModal = ({
                                     style={formControlStyle}
                                 />
                                 <Form.Text style={{ color: '#6c757d', fontSize: '0.85em' }}>
-                                    Supports basic Markdown. Media links will be appended automatically if only media is provided.
+                                    Supports basic Markdown. Videos (mp4) and images appear as embedded previews.
                                 </Form.Text>
                             </Form.Group>
                             <Form.Group controlId="webhookUrlInput" className="mb-3">
-                                <Form.Label style={formLabelStyle}>Add Media URL (Image or Streamable)</Form.Label>
+                                <Form.Label style={formLabelStyle}>Add Media URL (Image or Video)</Form.Label>
                                 <InputGroup>
                                     <Form.Control
                                         type="url"
-                                        placeholder="Paste Image or Streamable URL..."
+                                        placeholder="Paste Image or Video URL (jpg, png, mp4)..."
                                         value={urlInput}
                                         onChange={(e) => setUrlInput(e.target.value)}
                                         style={formControlStyle}
@@ -484,28 +504,28 @@ const WebhookModal = ({
                                     </Button>
                                 </InputGroup>
                             </Form.Group>
-                            <Form.Group controlId="webhookImageUpload" className="mb-3">
-                                <Form.Label style={formLabelStyle}>Upload Image(s)</Form.Label>
+                            <Form.Group controlId="webhookMediaUpload" className="mb-3">
+                                <Form.Label style={formLabelStyle}>Upload Image(s) or Video(s)</Form.Label>
                                 <InputGroup>
                                     <Button
                                         variant="success"
                                         disabled={isUploading}
-                                        onClick={() => document.getElementById('webhook-image-input').click()}
+                                        onClick={() => document.getElementById('webhook-media-input').click()}
                                     >
                                         <i className={`fas ${isUploading ? 'fa-spinner fa-spin' : 'fa-upload'}`}></i>
-                                        {isUploading ? ' Uploading...' : ' Upload Image(s)'}
+                                        {isUploading ? ' Uploading...' : ' Upload Media'}
                                     </Button>
                                     <input
-                                        id="webhook-image-input"
+                                        id="webhook-media-input"
                                         type="file"
-                                        accept="image/*"
+                                        accept="image/*,video/mp4"
                                         multiple
                                         style={{ display: 'none' }}
-                                        onChange={handleImageUpload}
+                                        onChange={handleMediaUpload}
                                     />
                                 </InputGroup>
                                 <Form.Text style={{ color: '#6c757d', fontSize: '0.85em' }}>
-                                    Upload one or more images. Hosted by Imgur.
+                                    Upload images or videos (mp4, max 200 MB, 60s) to Imgur. Videos and images appear as embedded previews.
                                 </Form.Text>
                             </Form.Group>
                             {mediaUrls.length > 0 && (
@@ -516,10 +536,10 @@ const WebhookModal = ({
                                             <div key={index} style={{ position: 'relative' }}>
                                                 {isImageUrl(url) ? (
                                                     <img src={url} alt={`Preview ${index + 1}`} style={imagePreviewStyle} title={url} />
-                                                ) : isStreamableUrl(url) ? (
+                                                ) : isVideoUrl(url) ? (
                                                     <div style={urlPreviewStyle} title={url}>
                                                         <i className="fas fa-video" style={urlIconStyle}></i>
-                                                        <span style={urlTextStyle}>Streamable Link</span>
+                                                        <span style={urlTextStyle}>Video Link</span>
                                                     </div>
                                                 ) : (
                                                     <div style={urlPreviewStyle} title={url}>
@@ -569,4 +589,5 @@ const WebhookModal = ({
         document.getElementById('modal-root')
     );
 };
+
 export default WebhookModal;
