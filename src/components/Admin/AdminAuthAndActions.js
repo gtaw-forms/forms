@@ -1073,7 +1073,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
             
             <hr />
             <Button variant="info" onClick={handleOpenAdminCustomWebhookModal} className="mt-3 me-2">
-                <i className="fas fa-bullhorn"></i> PHMC WEBHOOK
+                <i className="fas fa-bullhorn"></i> ADMIN WEBHOOK
             </Button>
             <Button variant="dark" onClick={handleOpenCoronerWebhookModal} className="mt-3 me-2">
                 <i className="fas fa-skull-crossbones"></i> CORONER WEBHOOK

@@ -262,7 +262,7 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
                             })}
                             className="email-button"
                         >
-                            <i className="fas fa-save"></i> Attach Paperwork (Death Reports)
+                            <i className="fas fa-save"></i> Show Saved Reports
                         </Button>
 
                     </div>
