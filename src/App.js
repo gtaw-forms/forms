@@ -1749,10 +1749,7 @@ const loadUserSavedReports = useCallback(async (userId) => {
 
     setIsLoadingUserReports(true);
     setSelectedUserForSavedReports(userId);
-    // --- MODIFICATION START ---
-    // 1. Store the ID of the indefinite loading notification
     const loadingNotifId = showNotification(`Loading reports for ${userId}...`, 'info-circle', 0);
-    // --- MODIFICATION END ---
 
     const sanitizedUserId = userId.replace(/[.#$[\]/]/g, '_');
     const userReportsPath = `savedReports/${sanitizedUserId}`;
@@ -1760,43 +1757,21 @@ const loadUserSavedReports = useCallback(async (userId) => {
 
     try {
         const snapshot = await get(reportsRef);
-        // --- MODIFICATION START ---
-        // 2. Remove the loading notification as soon as we have a result (success or failure)
         removeNotification(loadingNotifId);
-        // --- MODIFICATION END ---
 
         if (snapshot.exists()) {
             const reportsData = snapshot.val();
             const validReports = [];
-            const now = Date.now();
-            const thirtyOneDays = 31 * 24 * 60 * 60 * 1000;
-            let expiredCount = 0;
-            const deletionPromises = [];
-
             for (const reportKey in reportsData) {
                 const report = reportsData[reportKey];
-                if (report.timestamp && (now - report.timestamp < thirtyOneDays)) {
-                    validReports.push({
-                        key: reportKey,
-                        originalKey: report.originalKey,
-                        bbCodeVersion: report.bbCodeVersion,
-                        timestamp: report.timestamp,
-                        authorName: report.authorName,
-                        bbCode: report.bbCode,
-                    });
-                } else {
-                    console.log(`Report "${report.originalKey || reportKey}" for user ${userId} is expired. Deleting.`);
-                    const reportToDeletePath = `${userReportsPath}/${reportKey}`;
-                    deletionPromises.push(remove(ref(database, reportToDeletePath)));
-                    expiredCount++;
-                }
-            }
-
-            if (deletionPromises.length > 0) {
-                await Promise.all(deletionPromises);
-                if (expiredCount > 0) {
-                    showNotification(`${expiredCount} expired report(s) for ${userId} were automatically deleted.`, 'trash', 5000);
-                }
+                validReports.push({
+                    key: reportKey,
+                    originalKey: report.originalKey,
+                    bbCodeVersion: report.bbCodeVersion,
+                    timestamp: report.timestamp,
+                    authorName: report.authorName,
+                    bbCode: report.bbCode,
+                });
             }
 
             validReports.sort((a, b) => b.timestamp - a.timestamp);
@@ -1813,10 +1788,7 @@ const loadUserSavedReports = useCallback(async (userId) => {
             showNotification(`No reports found for ${userId}.`, 'info-circle');
         }
     } catch (error) {
-        // --- MODIFICATION START ---
-        // 3. Also remove the loading notification on error
         removeNotification(loadingNotifId);
-        // --- MODIFICATION END ---
         console.error(`Error loading reports for user ${userId}:`, error);
         Sentry.captureException(error, { extra: { context: 'loadUserSavedReports', userId } });
         showNotification(`Failed to load reports for ${userId}.`, 'error');
