@@ -43,7 +43,15 @@
         dnrOther,
         paymentProofPhotos
         } = formData;
-        const scenePhotosBBCode = paymentProofPhotos.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
+
+        // Payment/Exempt logic
+        let paymentSection = '';
+        if (formData.isExempt === true || formData.isExempt === 'true') {
+            paymentSection = 'I am exempt from paying this service in accordance with the PHMC policies.';
+        } else {
+            paymentSection = `[url=${paymentProofPhotos}]Proof Of Payment [/url]`;
+        }
+        const scenePhotosBBCode = paymentProofPhotos ? paymentProofPhotos.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n') : '';
 
         let bbCode = `[table][tr][td][center][br][/br][br][/br][b]Patient Information[/b]
 
@@ -127,10 +135,10 @@ Date: ${date}[/divbox]
 I, ${patientName}, upon submitting this form, consent to the sharing of my medical information among healthcare professionals within Pillbox Hill Medical Center for the purpose of providing comprehensive and coordinated healthcare services. I acknowledge that this information may be used for diagnosis, treatment, and other healthcare-related activities in accordance with applicable laws and regulations, including the Health Insurance Portability and Accountability Act (HIPAA).
 
 I, ${patientName}, retain the right to revoke this consent at any time by notifying Pillbox Hill Medical Center in writing. However, I also understand that revoking consent may limit the ability of healthcare professionals to provide me with optimal and coordinated care.[/list][/divbox]
-[divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Payment[/b][/color][/size][/center][/divboxcolor]
-[table][tr][td] Please attach an unedited confirmation of your payment, unless you are exempt. [size=70](see question 14 in the FAQ thread on how to pay)[/size][/td][td]
-[url=${paymentProofPhotos}]Proof Of Payment [/url]
-[/table]`
+    [divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Payment[/b][/color][/size][/center][/divboxcolor]
+    [table][tr][td] Please attach an unedited confirmation of your payment, unless you are exempt. [size=70](see question 14 in the FAQ thread on how to pay)[/size][/td][td]
+    ${paymentSection}
+    [/table]`
             return bbCode;
             };
 
