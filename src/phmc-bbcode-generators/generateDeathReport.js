@@ -108,7 +108,7 @@ This document is provided for official purposes only and is not to be construed 
 This section clarifies whether or not if the player was character killed or player killed.
 In this case the player was; ${typeOfDeath || 'Unknown'}
 Player OOC Name: ${decedentOOC || 'Unknown'}
-Morgue screen, cinjuries, cdna links: ${morgueStatusMessage || 'No issues reported.'}
+Morgue screen, cinjuries, cdna links: ${morgueStatusMessage || ''}
 [size=85][u] THESE IMAGES ARE [bold]OUT OF CHARACTER[/bold] FOR INTERNAL RECORDS, DO NOT USE THESE AS EVIDENCE. [/u][/size]
 ${additionalImagesBBCode}
 
