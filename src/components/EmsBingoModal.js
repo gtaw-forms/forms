@@ -326,12 +326,15 @@ setCompletedBingoLines(prevCompletedLines => {
 
                     const lineName = BINGO_LINE_NAMES[lineIndex] || `Line ${lineIndex + 1}`;
 
-                    // NEW: Call the webhook for the bingo score
+                    // Call the webhook for the bingo score (BINGO event)
                     if (sendBingoWebhook) {
                         sendBingoWebhook({
                             scorer: scorer,
                             bingoType: selectedBingoType.name,
                             lineName: lineName,
+                            marked: false, // BINGO event
+                            phrase: '', // Not relevant for BINGO event
+                            commitInfo: window.commitInfo || {}
                         });
                     }
 
@@ -452,6 +455,18 @@ setCompletedBingoLines(prevCompletedLines => {
                 newMap.get(index).set(employeeName, getEmployeeColor(employeeName));
                 return newMap;
             });
+
+            // Send Discord webhook for marker placement
+            if (sendBingoWebhook) {
+                sendBingoWebhook({
+                    scorer: employeeName,
+                    bingoType: selectedBingoType.name,
+                    phrase: phrase,
+                    marked: true,
+                    lineName: '', // Not relevant for marker placement
+                    commitInfo: window.commitInfo || {}
+                });
+            }
 
             try {
                 await push(bingoLogRef, {
