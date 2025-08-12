@@ -15,11 +15,11 @@ const generateBasicPatientFile = (formData) => {
         patientCurrentMedicine,
         patientChronicDiseases,
         patientNotes,
-        scenePhotos,
-        date,
+        paymentProofPhotos,
+        patientDateOfBirth  ,
         patientID,
     } = formData;
-    const scenePhotosBBCode = scenePhotos.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
+    const scenePhotosBBCode = paymentProofPhotos.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
 
     let bbCode = `[table][tr][td][center][br][/br][br][/br][b]Patient Information[/b]
 
@@ -32,7 +32,7 @@ ${patientName}
 [b][size=150]BASIC PATIENT INFORMATION[/size][/center][/table]
 [divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]General Information[/b][/color][/size][/center][/divboxcolor]
 [table][tr][td] Title: ${patientTitle}[/td][td] Full Name: ${patientName}
-[tr][td] Date of Birth: ${date} [/td][td] Home Address: ${patientAddress}
+[tr][td] Date of Birth: ${patientDateOfBirth}  [/td][td] Home Address: ${patientAddress}
 [tr][td] Gender Identity: ${patientGender} [/td][td] Ethnicity: ${patientRace}
 [tr][td] Phone Number: ${patientPH} [/td][td] (( Discord ID: ${patientDiscord}))
 [/table]
@@ -51,7 +51,7 @@ ${patientName}
 
 [divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Payment[/b][/color][/size][/center][/divboxcolor]
 [table][tr][td] Please attach an unedited confirmation of your payment, unless you are exempt. [size=70](see question 14 in the FAQ thread on how to pay)[/size][/td][td]
-[url=${scenePhotos}]Proof Of Payment [/url]
+[url=${paymentProofPhotos}]Proof Of Payment [/url]
 [/table]
 
 `

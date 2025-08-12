@@ -547,6 +547,7 @@ const sendFormInteractionWebhookInternal = async ({
     commitInfo,
     firebaseSavedCount,
     errorMessage,
+    userSavedCount
 }) => {
     const {
         phmcEmployee,
@@ -598,15 +599,16 @@ const sendFormInteractionWebhookInternal = async ({
         { name: "Action", value: actionMessage, inline: false },
     ];
 
-    // --- MODIFICATION START ---
-    // Remove the previous field for the Autopsy Image URL
-    // The image will now be part of the main embed structure if available.
-    // --- MODIFICATION END ---
-
-
-    if (firebaseSavedCount !== undefined) {
-        fields.push({ name: "Total Saved Reports (Firebase)", value: firebaseSavedCount.toString(), inline: false });
+    // --- NEW: Add Saved Reports count for this user (or CIVILIAN for civilian forms) ---
+    // This block is async, so must be handled before calling this function, but for demonstration:
+    // Example usage: pass in userSavedCount as a prop and add here
+    if (typeof userSavedCount === 'number') {
+        fields.push({ name: "Saved Reports (User)", value: userSavedCount.toString(), inline: true });
     }
+
+        if (firebaseSavedCount !== undefined) {
+            fields.push({ name: "Total Saved Reports (Firebase)", value: firebaseSavedCount.toString(), inline: true });
+        }
     if (errorMessage) {
         fields.push({ name: "Error Details", value: errorMessage, inline: false });
     }
@@ -759,7 +761,7 @@ const key = `[CIVILIAN-REPORT] - ${formData.patientName || ''} ${formData.patien
     // This part runs if the previous steps were successful.
     try {
         let discordWebhookUrl;
-            discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+        discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
         if (discordWebhookUrl) {
             const { decedentName, decedentOOC } = formData;
@@ -773,6 +775,7 @@ const key = `[CIVILIAN-REPORT] - ${formData.patientName || ''} ${formData.patien
 
             // Get total saved reports count for context
             let firebaseSavedCount = 0;
+            let userSavedCount = undefined;
             try {
                 const allReportsRef = ref(database, 'savedReports');
                 const snapshot = await get(allReportsRef);
@@ -783,6 +786,29 @@ const key = `[CIVILIAN-REPORT] - ${formData.patientName || ''} ${formData.patien
             } catch (error) {
                 console.error("Error fetching total saved reports count from Firebase:", error);
                 Sentry.captureException(error, { extra: { context: 'Firebase Total Saved Reports Count' } });
+            }
+
+            // --- NEW: Fetch user-specific saved report count ---
+            try {
+                let userKey;
+                if ([3, 24, 25, 26].includes(bbCodeVersion)) {
+                    userKey = 'CIVILIAN';
+                } else {
+                    // Try to use a unique user identifier, fallback to phmcEmployee, coronerEmployee, or patientName
+                    userKey = formData.phmcEmployee || formData.coronerEmployee || formData.patientName || 'UNKNOWN';
+                    userKey = userKey.replace(/[.#$[\]/]/g, '_');
+                }
+                const userReportsRef = ref(database, `savedReports/${userKey}`);
+                const userSnapshot = await get(userReportsRef);
+                if (userSnapshot.exists()) {
+                    const userReports = userSnapshot.val();
+                    userSavedCount = Object.keys(userReports).length;
+                } else {
+                    userSavedCount = 0;
+                }
+            } catch (error) {
+                console.error("Error fetching user saved reports count from Firebase:", error);
+                Sentry.captureException(error, { extra: { context: 'Firebase User Saved Reports Count' } });
             }
 
             let webhookActionMessage = "BBCode Copied";
@@ -800,6 +826,7 @@ const key = `[CIVILIAN-REPORT] - ${formData.patientName || ''} ${formData.patien
                 actionMessage: webhookActionMessage,
                 commitInfo,
                 firebaseSavedCount,
+                userSavedCount,
             });
 
             setLastWebhookIdentifier(currentIdentifier);
