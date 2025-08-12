@@ -171,7 +171,7 @@ select {
     }
 
     .form-control::placeholder {
-        color: #eeeeeeb0;
+        color: #eeeeeeb0 !important;
     }
 
 /* Bootstrap Input Group Overrides */
@@ -653,10 +653,11 @@ input[type="checkbox"] {
 .is-invalid::placeholder {
     color: #eeeeeeb0 !important;
     opacity: 1; /* Required for Firefox */
+
 }
 
 .is-invalid,
-.is-invalid:focus {
+    .is-invalid:focus {
     color:  #acb1cad3 !important;
 }    .form-select:focus {
         background-color: #16202c;
@@ -664,6 +665,11 @@ input[type="checkbox"] {
         border-color: #16202c;
         box-shadow: 0 0 0 0.25rem rgba(147, 151, 155, 0.25);
     }
+
+        .form-select:hover {
+            background-color: #16202c;
+            color: #eeeeeeb0;
+        }
 
     .form-select option {
         background-color: #16202c;
