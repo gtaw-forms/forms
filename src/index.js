@@ -74,13 +74,14 @@ init({
   dsn: "https://5dfa5683e8dc9adbc7f30e44757995c7@o4509126124765184.ingest.de.sentry.io/4509126125813840",
   sendDefaultPii: true,
   integrations: [
-    Sentry.replayIntegration()
+    Sentry.replayIntegration(),
   ],
-  // Session Replay
+  // These options should be at the root, not inside integrations:
+  maskAllText: false,
+  blockAllMedia: false,
   replaysSessionSampleRate: 0.1,
-  replaysOnErrorSampleRate: 1.0
-});
-console.log("Sentry has been initialized.");
+  replaysOnErrorSampleRate: 1.0,
+});console.log("Sentry has been initialized.");
 
 // --- Global Error Handling Setup ---
 // This custom handler will report errors to Discord and then allow Sentry's default handler to run.

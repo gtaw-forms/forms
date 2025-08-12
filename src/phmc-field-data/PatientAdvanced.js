@@ -49,14 +49,17 @@ const PatientAdvanced = ({
     const [isMedicalHistoryOpen, setIsMedicalHistoryOpen] = useState(true);
     const [isAdvancedDirectivesOpen, setIsAdvancedDirectivesOpen] = useState(true);
     const [isPaymentInfoOpen, setIsPaymentInfoOpen] = useState(true);
-    const [setActiveSection] = useState('general-info');
-    const calculateCost = () => {
-    if (formData.UpdateMedicalFile && formData.UpdateMedicalFile.length > 0) {
-      return 2000; // Fixed price for "Update Medical File" service
-    }
-    return 2000;
-  };
-    const approximateCost = calculateCost();
+const [activeSection, setActiveSection] = useState('general-info');
+        const isPayNow = formData.payNow === true || formData.payNow === 'true';
+        const isExempt = formData.isExempt === true || formData.isExempt === 'true';
+        const calculateCost = () => {
+            if (isExempt) return 0;
+            if (formData.UpdateMedicalFile && formData.UpdateMedicalFile.length > 0) {
+                return 2000;
+            }
+            return 2000;
+        };
+        const approximateCost = calculateCost();
 
 
     const dnrOptions = selectOptions.dnr || [];
@@ -671,31 +674,46 @@ const PatientAdvanced = ({
             />
             {isPaymentInfoOpen && (
                 <div id="collapse-payment-info" onFocusCapture={() => setActiveSection('payment-info')}>
-            {approximateCost > 0 && (
-                <Form.Label style={{ marginTop: '5px', color: '#28a745', fontWeight: 'bold' }}>
-                    This service will cost ${approximateCost.toLocaleString()}.
-                </Form.Label>
-            )}
-            {approximateCost > 0 && (
-                <Form.Group className="mb-3" style={{ marginTop: '15px' }}>
-                    <Form.Check
-                        type="checkbox"
-                        id="payNowCheckbox"
-                        label=" Pay Now?"
-                        checked={formData.payNow === true || formData.payNow === 'true'}
-                        onChange={(e) => {
-                            setFormData(prev => ({
-                                ...prev,
-                                payNow: e.target.checked,
-                            }));
-                        }}
-                    />
 
-                    <span className="helper-text">
-                        Tick this box if you wish to provide proof of payment now. Routing: <a href="https://banking.gta.world/transfer" target="_blank" rel="noopener noreferrer">020000062</a>. Please login to Fleeca prior to payment.
-                    </span>
-
-                </Form.Group>
+            <Form.Label style={{ marginTop: '5px', color: '#28a745', fontWeight: 'bold' }}>
+                This service will cost ${approximateCost.toLocaleString()}.
+            </Form.Label>
+            <Form.Group className="mb-3" style={{ marginTop: '15px', display: 'flex', alignItems: 'center', gap: '2rem' }}>
+                <Form.Check
+                    type="radio"
+                    id="payNowRadio"
+                    label="Pay Now?"
+                    name="paymentOption"
+                    checked={isPayNow}
+                    onChange={() => {
+                        setFormData(prev => ({
+                            ...prev,
+                            payNow: true,
+                            isExempt: false,
+                        }));
+                    }}
+                    style={{ marginRight: '1rem' }}
+                />
+                <Form.Check
+                    type="radio"
+                    id="exemptRadio"
+                    label="I am exempt"
+                    name="paymentOption"
+                    checked={isExempt}
+                    onChange={() => {
+                        setFormData(prev => ({
+                            ...prev,
+                            payNow: false,
+                            isExempt: true,
+                            paymentProofPhotos: '',
+                        }));
+                    }}
+                />
+            </Form.Group>
+            {isPayNow && approximateCost > 0 && (
+                <span className="helper-text">
+                    Tick this box if you wish to provide proof of payment now. Routing: <a href="https://banking.gta.world/transfer" target="_blank" rel="noopener noreferrer">020000062</a>. Please login to Fleeca prior to payment.
+                </span>
             )}
                  
             {(formData.payNow === true || formData.payNow === 'true') && approximateCost > 0 && (
