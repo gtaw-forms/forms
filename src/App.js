@@ -109,7 +109,7 @@ const initialFormData = {
     admission: '',
     followup: '',
     SubmitDate: new Date().toISOString().split('T')[0],
-
+    patientExercise: '',
     // Form-specific fields
     placeOfDeath: '',
     evidenceLockerID: '',
@@ -268,6 +268,7 @@ const initialFormData = {
     applicantPrevDuties: '',
     applicantPrevDismissalReason: '',
     applicantMotivationLetter: '',
+    exemptCheckbox: false,
     oocMedicalExperience: '',
     UpdateMedicalFile: [],
     oocAdminRecordLink: '',

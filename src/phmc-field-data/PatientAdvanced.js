@@ -1,5 +1,4 @@
-// src/main.js
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Form, Button, InputGroup } from 'react-bootstrap';
 
 // Helper component for collapsible section headers - Copied from Nursing.js
@@ -36,13 +35,29 @@ const PatientAdvanced = ({
     setFormData,
     patientTitleOptions,
     patientBloodType,
+    maritalStatus,
+    numberChildren,
+    financialStatus,
     selectOptions
 }) => {
     const [isGeneralInfoOpen, setIsGeneralInfoOpen] = useState(true);
     const [isContactInfoOpen, setIsContactInfoOpen] = useState(true);
+    const [isMentalHealthOpen, setIsMentalHealthOpen] = useState(true);
+    const [isFamilyHistoryOpen, setIsFamilyHistoryOpen] = useState(true);
+    const [isSocialHistoryOpen, setIsSocialHistoryOpen] = useState(true);
+    const [isLifestyleOpen, setIsLifestyleOpen] = useState(true);
     const [isMedicalHistoryOpen, setIsMedicalHistoryOpen] = useState(true);
     const [isAdvancedDirectivesOpen, setIsAdvancedDirectivesOpen] = useState(true);
-    const [activeSection, setActiveSection] = useState('general-info');
+    const [isPaymentInfoOpen, setIsPaymentInfoOpen] = useState(true);
+    const [setActiveSection] = useState('general-info');
+    const calculateCost = () => {
+    if (formData.UpdateMedicalFile && formData.UpdateMedicalFile.length > 0) {
+      return 2000; // Fixed price for "Update Medical File" service
+    }
+    return 2000;
+  };
+    const approximateCost = calculateCost();
+
 
     const dnrOptions = selectOptions.dnr || [];
     const attorneyOptions = selectOptions.attorney || [];
@@ -50,27 +65,27 @@ const PatientAdvanced = ({
 
 
     return (
+        
+
+
+
         <>
             {/* --- 1. General Information --- */}
             <CollapsibleHeader
-                title="1. General Information"
+                title="General Information"
                 isOpen={isGeneralInfoOpen}
                 onToggle={() => setIsGeneralInfoOpen(!isGeneralInfoOpen)}
                 sectionId="general-info"
             />
             {isGeneralInfoOpen && (
                 <div id="collapse-general-info" onFocusCapture={() => setActiveSection('general-info')}>
-                    <Form.Group className="mb-3">
-                                                <Form.Label>Patient ID, leave blank if unsure</Form.Label>
-
-                                                <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}> {/* Added marginTop */}
-
+                    <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}> {/* Added marginTop */}
                         <Form.Control
                             type="text"
                             name="patientID"
                             value={formData.patientID}
                             onChange={handleChange}
-                            placeholder="Patient ID  (Optional)"
+                            placeholder="Patient ID  (Optional leave blank if unsure)"
                             className={`form-control ${!formData.patientID ? 'is-invalid' : ''}`}
                         />
                         </div>
@@ -108,7 +123,7 @@ const PatientAdvanced = ({
                                 className={`form-control ${!formData.patientDateOfBirth ? 'is-invalid' : ''}`}
                             />
                         </div>
-                        <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}> {/* Added marginTop */}
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}> 
                             <Form.Control
                                 type="text"
                                 name="patientAddress"
@@ -137,20 +152,7 @@ const PatientAdvanced = ({
                                 className={`form-control ${!formData.patientRace ? 'is-invalid' : ''}`}
                             />
                         </div>
-                    </Form.Group>
-                </div>
-            )}
-
-            {/* --- 2. Contact Information --- */}
-            <CollapsibleHeader
-                title="2. Contact Information"
-                isOpen={isContactInfoOpen}
-                onToggle={() => setIsContactInfoOpen(!isContactInfoOpen)}
-                sectionId="contact-info"
-            />
-            {isContactInfoOpen && (
-                <div id="collapse-contact-info" onFocusCapture={() => setActiveSection('contact-info')}>
-                    <div className="input-group">
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}> 
                         <Form.Control
                             type="text"
                             name="patientPH"
@@ -170,7 +172,19 @@ const PatientAdvanced = ({
                             className={`form-control ${!formData.patientDiscord ? 'is-invalid' : ''}`}
                         />
                     </div>
-                    <Form.Label>Emergency Contact Information </Form.Label>
+
+                </div>
+            )}
+
+            {/* --- Emergency Contact Information --- */}
+            <CollapsibleHeader
+                title="Emergency Contact Information"
+                isOpen={isContactInfoOpen}
+                onToggle={() => setIsContactInfoOpen(!isContactInfoOpen)}
+                sectionId="contact-info"
+            />
+            {isContactInfoOpen && (
+                <div id="collapse-contact-info" onFocusCapture={() => setActiveSection('contact-info')}>
                         <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}> {/* Added marginTop */}
                         <Form.Control
                             type="text"
@@ -216,7 +230,7 @@ const PatientAdvanced = ({
 
             {/* --- 3. Medical History --- */}
             <CollapsibleHeader
-                title="3. Medical History"
+                title="Medical History"
                 isOpen={isMedicalHistoryOpen}
                 onToggle={() => setIsMedicalHistoryOpen(!isMedicalHistoryOpen)}
                 sectionId="medical-history"
@@ -279,10 +293,283 @@ const PatientAdvanced = ({
                     </div>
                 </div>
             )}
-
-            {/* --- 4. Advanced Directives --- */}
+            {/* --- 3. Mental Health History --- */}
             <CollapsibleHeader
-                title="4. Advanced Directives"
+                title="Mental Health History"
+                isOpen={isMentalHealthOpen}
+                onToggle={() => setIsMentalHealthOpen(!isMentalHealthOpen)}
+                sectionId="mental-health"
+            />
+            {isMentalHealthOpen && (
+                <div id="collapse-mental-health" onFocusCapture={() => setActiveSection('mental-health')}>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <Form.Control
+                            type="text"
+                            name="patientMental"
+                            value={formData.patientMental}
+                            onChange={handleChange}
+                            placeholder="Patient Mental Health History"
+                            required
+                            className={`form-control ${!formData.patientMental ? 'is-invalid' : ''}`}
+                        />
+                        <Form.Control
+                            type="text"
+                            name="patientTherapy"
+                            value={formData.patientTherapy}
+                            onChange={handleChange}
+                            placeholder="Patient Therapy History"
+                            required
+                            className={`form-control ${!formData.patientTherapy ? 'is-invalid' : ''}`}
+                        />
+                        <Form.Control
+                            type="text"
+                            name="patientTriggers"
+                            value={formData.patientTriggers}
+                            onChange={handleChange}
+                            placeholder="Patient Triggers or Phobias"
+                            required
+                            className={`form-control ${!formData.patientTriggers ? 'is-invalid' : ''}`}
+                        />
+
+                    </div>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <Form.Control
+                            type="text"
+                            name="patientSupport"
+                            value={formData.patientSupport}
+                            onChange={handleChange}
+                            placeholder="Patient Support and Coping Mechanisms"
+                            required
+                            className={`form-control ${!formData.patientSupport ? 'is-invalid' : ''}`}
+                        />
+                        <Form.Control
+                            type="text"
+                            name="patientHarm"
+                            value={formData.patientHarm}
+                            onChange={handleChange}
+                            placeholder="Patient Self-Harm or Harm to Others"
+                            required
+                            className={`form-control ${!formData.patientHarm ? 'is-invalid' : ''}`}
+                        />
+                    </div>
+                </div>
+            )}
+            {/* ---  Family Health History --- */}
+            <CollapsibleHeader
+                title="Family Health History"
+                isOpen={isFamilyHistoryOpen}
+                onToggle={() => setIsFamilyHistoryOpen(!isFamilyHistoryOpen)}
+                sectionId="family-history"
+            />
+            {isFamilyHistoryOpen && (
+                <div id="collapse-family-health" onFocusCapture={() => setActiveSection('family-history')}>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <Form.Control
+                            type="text"
+                            name="patientFam"
+                            value={formData.patientFam}
+                            onChange={handleChange}
+                            placeholder="Patient Immediate Family Members"
+                            required
+                            className={`form-control ${!formData.patientFam ? 'is-invalid' : ''}`}
+                        />
+                        <Form.Control
+                            type="text"
+                            name="patientGenetic"
+                            value={formData.patientGenetic}
+                            onChange={handleChange}
+                            placeholder="Patient Genetic Conditions or Disorders"
+                            required
+                            className={`form-control ${!formData.patientGenetic ? 'is-invalid' : ''}`}
+                        />
+                        <Form.Control
+                            type="text"
+                            name="patientFamSocial"
+                            value={formData.patientFamSocial}
+                            onChange={handleChange}
+                            placeholder="Family medical history and lifestyle (e.g. chronic conditions, genetic disorders, smoking, alcohol use), etc"
+                            required
+                            className={`form-control ${!formData.patientFamSocial ? 'is-invalid' : ''}`}
+                        />
+
+                    </div>
+                </div>
+            )}
+            {/* --- Social Information --- */}
+            <CollapsibleHeader
+                title="Social Information"
+                isOpen={isSocialHistoryOpen}
+                onToggle={() => setIsSocialHistoryOpen(!isSocialHistoryOpen)}
+                sectionId="social-information"
+            />
+            {isSocialHistoryOpen && (
+                <div id="collapse-social-information" onFocusCapture={() => setActiveSection('social-information')}>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <Form.Select
+                            name="maritalStatus"
+                            value={formData.maritalStatus || ""}
+                            onChange={handleChange}
+                            required
+                            className={`form-control ${!formData.maritalStatus ? 'is-invalid' : ''}`}
+                        >
+                            <option value="" disabled>Patient Marital Status</option>
+                            {maritalStatus.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                        </Form.Select>
+                        <Form.Select
+                            name="numberChildren"
+                            value={formData.numberChildren || ""}
+                            onChange={handleChange}
+                            required
+                            className={`form-control ${!formData.numberChildren ? 'is-invalid' : ''}`}
+                        >
+                            <option value="" disabled>Number of Children</option>
+                            {numberChildren.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                        </Form.Select>
+                    </div>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <Form.Control
+                                type="text"
+                                name="patientReligion"
+                                value={formData.patientReligion}
+                                onChange={handleChange}
+                                placeholder="Patient Cultural or Religious Considerations"
+                                required
+                            className={`form-control ${!formData.patientReligion ? 'is-invalid' : ''}`}
+                            />
+                        <Form.Select
+                            name="financialStatus"
+                            value={formData.financialStatus || ""}
+                            onChange={handleChange}
+                            required
+                            className={`form-control ${!formData.financialStatus ? 'is-invalid' : ''}`}
+                        >
+                            <option value="" disabled>Number of Children</option>
+                            {financialStatus.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                        </Form.Select>
+                    </div>
+
+                </div>
+            )}
+            {/* ---  Lifestyle Information --- */}
+            <CollapsibleHeader
+                title="Lifestyle Information"
+                isOpen={isLifestyleOpen}
+                onToggle={() => setIsLifestyleOpen(!isLifestyleOpen)}
+                sectionId="Lifestyle-Information"
+            />
+            {isLifestyleOpen && (
+                <div id="collapse-Lifestyle-Information" onFocusCapture={() => setActiveSection('Lifestyle-Information')}>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <Form.Control
+                            type="text"
+                            name="patientSmoker"
+                            value={formData.patientSmoker}
+                            onChange={handleChange}
+                            placeholder="Patient Smoking Status"
+                            required
+                            className={`form-control ${!formData.patientSmoker ? 'is-invalid' : ''}`}
+                        />
+                        <Form.Control
+                            type="text"
+                            name="patientAlcohol"
+                            value={formData.patientAlcohol}
+                            onChange={handleChange}
+                            placeholder="Patient Alcohol Consumption"
+                            required
+                            className={`form-control ${!formData.patientAlcohol ? 'is-invalid' : ''}`}
+                        />
+                        <Form.Control
+                            type="text"
+                            name="patientDrugs"
+                            value={formData.patientDrugs}
+                            onChange={handleChange}
+                            placeholder="Patient drug usage or other substance use"
+                            required
+                            className={`form-control ${!formData.patientDrugs ? 'is-invalid' : ''}`}
+                        />
+                    </div>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <Form.Control
+                            type="text"
+                            name="patientExercise"
+                            value={formData.patientExercise}
+                            onChange={handleChange}
+                            placeholder="Patient Exercise Habits"
+                            required
+                            className={`form-control ${!formData.patientExercise ? 'is-invalid' : ''}`}
+                        />
+                        <Form.Control
+                            type="text"
+                            name="patientDiet"
+                            value={formData.patientDiet}
+                            onChange={handleChange}
+                            placeholder="Patient Dietary Habits"
+                            required
+                            className={`form-control ${!formData.patientDiet ? 'is-invalid' : ''}`}
+                        />
+                        <Form.Control
+                            type="text"
+                            name="patientSleep"
+                            value={formData.patientSleep}
+                            onChange={handleChange}
+                            placeholder="Patient Sleep Patterns"
+                            required
+                            className={`form-control ${!formData.patientSleep ? 'is-invalid' : ''}`}
+                        />
+                    </div>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <Form.Control
+                            type="text"
+                            name="patientSexLife"
+                            value={formData.patientSexLife}
+                            onChange={handleChange}
+                            placeholder="Patient Sexual Health (EG. Pregnancy, STIs, etc)"
+                            required
+                            className={`form-control ${!formData.patientSexLife ? 'is-invalid' : ''}`}
+                        />
+                        <Form.Control
+                            type="text"
+                            name="patientJobRisks"
+                            value={formData.patientJobRisks}
+                            onChange={handleChange}
+                            placeholder="Patient Job Risks or Occupational Hazards"
+                            required
+                            className={`form-control ${!formData.patientJobRisks ? 'is-invalid' : ''}`}
+                        />
+                        <Form.Control
+                            type="text"
+                            name="patientHazards"
+                            value={formData.patientHazards}
+                            onChange={handleChange}
+                            placeholder="Patient Environmental Hazards or Exposures"
+                            required
+                            className={`form-control ${!formData.patientHazards ? 'is-invalid' : ''}`}
+                        />
+                    </div>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                    <Form.Control
+                        type="text"
+                        name="patientOther"
+                        value={formData.patientOther}
+                        onChange={handleChange}
+                        placeholder="Other information & preferences"
+                        required
+                        className={`form-control ${!formData.patientOther ? 'is-invalid' : ''}`}
+                    />
+                </div>
+
+                </div>
+            )}
+
+            {/* ---  Advanced Directives --- */}
+            <CollapsibleHeader
+                title="Advanced Directives"
                 isOpen={isAdvancedDirectivesOpen}
                 onToggle={() => setIsAdvancedDirectivesOpen(!isAdvancedDirectivesOpen)}
                 sectionId="advanced-directives"
@@ -376,79 +663,114 @@ const PatientAdvanced = ({
             )}
 
             {/* --- 5. Payment Information --- */}
-            <div onFocusCapture={() => setActiveSection('payment-info')}>
-                <Form.Label>Date and Proof of Payment </Form.Label>
-                <span className="helper-text"> 14) How do I pay the $2,000 registration fee? <br></br> To pay your $2,000 registration fee, please log into the banking website and navigate to the "Payment" section. Select your preferred payment method (e.g., credit card, debit card), insert our routing number (020000062), enter the required payment details, review the transaction, and confirm your payment. (( Type /transfer 2000 020000062 )) <br></br>If you are a minor or a low-income citizen, please state it in your registration as you are exempt from the payment. </span>
-                <Form.Control
-                    type="date"
-                    name="date"
-                    value={formData.date}
-                    onChange={handleChange}
-                    placeholder="Date"
-                    required
-                    className={`form-control ${!formData.date ? 'is-invalid' : ''}`}
-                />
-                <InputGroup>
-                    <Form.Control
-                        as="textarea"
-                        rows="2"
-                        name="scenePhotos" // Assuming this field is for payment proof image URL
-                        value={formData.scenePhotos}
-                        onChange={handleChange}
-                        placeholder="Paste image URL here or Upload"
-                        required
-                        className="form-control"
-                        onPaste={(e) => {
-                            const clipboardData = e.clipboardData || window.clipboardData;
-                            const pastedData = clipboardData.getData('text');
-                            const items = clipboardData.items;
-                            let hasImageItem = false;
-                            const urlRegex = /(https?:\/\/[^\s]+)/g;
-                            const containsUrl = urlRegex.test(pastedData);
-
-                            for (let i = 0; i < items.length; i++) {
-                                if (items[i].type.indexOf('image') !== -1) {
-                                    hasImageItem = true;
-                                    const file = items[i].getAsFile();
-                                    handleImageUpload({ target: { files: [file] } }, 'scenePhotos');
-                                    e.preventDefault();
-                                    break;
-                                }
-                            }
-                            if (containsUrl && !hasImageItem) {
-                                const currentValue = formData.scenePhotos || '';
-                                const cursorPos = e.target.selectionStart;
-                                const separator = currentValue && currentValue.trim().length > 0 ? ', ' : '';
-                                const newValue = currentValue.slice(0, cursorPos) +
-                                    (cursorPos > 0 ? separator : '') +
-                                    pastedData +
-                                    currentValue.slice(cursorPos);
-                                setFormData(prev => ({ ...prev, scenePhotos: newValue }));
-                                e.preventDefault();
-                            } else {
-                                console.log('No URL detected or image item present for payment proof');
-                            }
+                        <CollapsibleHeader
+                title="Payment Information"
+                isOpen={isPaymentInfoOpen}
+                onToggle={() => setIsPaymentInfoOpen(!isPaymentInfoOpen)}
+                sectionId="payment-info"
+            />
+            {isPaymentInfoOpen && (
+                <div id="collapse-payment-info" onFocusCapture={() => setActiveSection('payment-info')}>
+            {approximateCost > 0 && (
+                <Form.Label style={{ marginTop: '5px', color: '#28a745', fontWeight: 'bold' }}>
+                    This service will cost ${approximateCost.toLocaleString()}.
+                </Form.Label>
+            )}
+            {approximateCost > 0 && (
+                <Form.Group className="mb-3" style={{ marginTop: '15px' }}>
+                    <Form.Check
+                        type="checkbox"
+                        id="payNowCheckbox"
+                        label=" Pay Now?"
+                        checked={formData.payNow === true || formData.payNow === 'true'}
+                        onChange={(e) => {
+                            setFormData(prev => ({
+                                ...prev,
+                                payNow: e.target.checked,
+                            }));
                         }}
                     />
-                    <Button
-                        variant="success"
-                        disabled={isUploading}
-                        onClick={() => {
-                            const input = document.createElement('input');
-                            input.type = 'file';
-                            input.accept = 'image/*';
-                            input.multiple = true; // Allow multiple if needed, or set to false
-                            input.onchange = (e) => handleImageUpload(e, 'scenePhotos');
-                            input.click();
-                        }}
-                    >
-                        <i className={`fas ${isUploading ? 'fa-spinner fa-spin' : 'fa-upload'}`}></i>
-                        {isUploading ? 'Uploading...' : 'Upload Image'}
-                    </Button>
-                </InputGroup>
+
+                    <span className="helper-text">
+                        Tick this box if you wish to provide proof of payment now. Routing: <a href="https://banking.gta.world/transfer" target="_blank" rel="noopener noreferrer">020000062</a>. Please login to Fleeca prior to payment.
+                    </span>
+
+                </Form.Group>
+            )}
+                 
+            {(formData.payNow === true || formData.payNow === 'true') && approximateCost > 0 && (
+                <Form.Group className="mb-3 upload-container">
+                    <Form.Label>Proof of Payment Image Upload</Form.Label>
+                    <InputGroup>
+                        <Form.Control
+                            as="textarea"
+                            rows={2}
+                            name="paymentProofPhotos"
+                            value={formData.paymentProofPhotos || ''}
+                            onChange={handleChange}
+                            placeholder="Paste image URL or Upload"
+                            required
+                            className={`form-control ${!formData.paymentProofPhotos ? 'is-invalid' : ''}`}
+                            onPaste={(e) => {
+                                const clipboardData = e.clipboardData || window.clipboardData;
+                                const pastedData = clipboardData.getData('text');
+                                const items = clipboardData.items;
+                                let hasImageItem = false;
+                                const urlRegex = /(https?:\/\/[^\s]+)/g;
+                                const containsUrl = urlRegex.test(pastedData);
+
+                                for (let i = 0; i < items.length; i++) {
+                                    if (items[i].type.indexOf('image') !== -1) {
+                                        hasImageItem = true;
+                                        const file = items[i].getAsFile();
+                                        handleImageUpload({ target: { files: [file] } }, 'paymentProofPhotos');
+                                        e.preventDefault();
+                                        break;
+                                    }
+                                }
+                                if (containsUrl && !hasImageItem) {
+                                    const currentValue = formData.paymentProofPhotos || '';
+                                    const cursorPos = e.target.selectionStart;
+                                    const separator = currentValue && currentValue.trim().length > 0 ? ', ' : '';
+                                    const newValue = currentValue.slice(0, cursorPos) +
+                                        (cursorPos > 0 ? separator : '') +
+                                        pastedData +
+                                        currentValue.slice(cursorPos);
+                                    setFormData(prev => ({ ...prev, paymentProofPhotos: newValue }));
+                                    e.preventDefault();
+                                }
+                            }}
+                        />
+                        <Button
+                            variant="success"
+                            disabled={isUploading}
+                            onClick={() => {
+                                const input = document.createElement('input');
+                                input.type = 'file';
+                                input.accept = 'image/*';
+                                input.multiple = true;
+                                input.onchange = (e) => handleImageUpload(e, 'paymentProofPhotos');
+                                input.click();
+                            }}
+                        >
+                            <i className={`fas ${isUploading ? 'fa-spinner fa-spin' : 'fa-upload'}`}></i>
+                            {isUploading ? ' Uploading...' : ' Upload Image(s)'}
+                        </Button>
+                    </InputGroup>
+                    <span className="helper-text">
+                        Upload proof of payment. Supports clipboard pasting (Ctrl+V). Hosted by Imgur.
+                    </span>
+                </Form.Group>
+            )}
             </div>
+            )}
+
         </>
     );
 };
+
+
+
+
 
 export default PatientAdvanced;
