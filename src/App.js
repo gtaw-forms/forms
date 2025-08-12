@@ -3818,8 +3818,8 @@ setFormData={setFormData}                                        typeOfDeathOpti
                 showNotification={showNotification}
                 setShowMissingEmployeeModal={setShowMissingEmployeeModal}
                 isAdmin={formData.isAdminAuthenticated}
-                sendBingoWebhook={({ scorer, bingoType, lineName }) => 
-                    sendBingoNotification({ scorer, bingoType, lineName, commitInfo })
+                sendBingoWebhook={({ scorer, bingoType, phrase, lineName, marked, commitInfo: ci }) => 
+                    sendBingoNotification({ scorer, bingoType, phrase, lineName, marked, commitInfo: ci || commitInfo })
                 }
                 sendPhraseRequestWebhook={({ requester, phrase, bingoType }) => 
                     sendPhraseRequestNotification({ requester, phrase, bingoType, commitInfo })
