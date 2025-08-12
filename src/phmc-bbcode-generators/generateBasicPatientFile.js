@@ -19,6 +19,14 @@ const generateBasicPatientFile = (formData) => {
         patientDateOfBirth  ,
         patientID,
     } = formData;
+            // Payment/Exempt logic
+        let paymentSection = '';
+        if (formData.isExempt === true || formData.isExempt === 'true') {
+            paymentSection = 'I am exempt from paying this service in accordance with the PHMC policies.';
+        } else {
+            paymentSection = `[url=${paymentProofPhotos}]Proof Of Payment [/url]`;
+        }
+
     const scenePhotosBBCode = paymentProofPhotos.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
 
     let bbCode = `[table][tr][td][center][br][/br][br][/br][b]Patient Information[/b]
@@ -51,7 +59,7 @@ ${patientName}
 
 [divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Payment[/b][/color][/size][/center][/divboxcolor]
 [table][tr][td] Please attach an unedited confirmation of your payment, unless you are exempt. [size=70](see question 14 in the FAQ thread on how to pay)[/size][/td][td]
-[url=${paymentProofPhotos}]Proof Of Payment [/url]
+    ${paymentSection}
 [/table]
 
 `
