@@ -151,12 +151,7 @@ useEffect(() => {
             </Form.Select>
             {formData.showRequestingOfficerInput && (
                     <Form.Control
-                        type="text"
-                        name="requestingOfficer"
-                        value={formData.requestingOfficer || ''}
-                        onChange={handleChange}
-                        placeholder="e.g: Officer John Doe, LSPD"
-                    />
+                        type="text" name="requestingOfficer" value={formData.requestingOfficer || ''} onChange={handleChange} placeholder="e.g: Officer John Doe, LSPD"/>
             )}
             </div>
 
@@ -171,6 +166,7 @@ useEffect(() => {
                 <Form.Control type="text" name="decedentName" value={formData.decedentName} onChange={handleChange} placeholder="Decedent's IC name" required className={`form-control ${!formData.decedentName ? 'is-invalid' : ''}`} />
                 <Form.Control type="text" name="decedentOOC" value={formData.decedentOOC} onChange={handleChange} placeholder="Decedent's OOC name" required className={`form-control ${!formData.decedentOOC ? 'is-invalid' : ''}`} />
             </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
 
             <Form.Select
                 name="typeOfDeath"
@@ -194,6 +190,8 @@ useEffect(() => {
                 required
                 className={`form-control ${!formData.placeOfDeath ? 'is-invalid' : ''}`}
             />
+</div>            <div style={{ display: 'flex', gap: '10px' }}>
+
             <Form.Select
                 name="mannerOfDeath"
                 value={formData.mannerOfDeath}
@@ -202,12 +200,12 @@ useEffect(() => {
                 className={`form-control ${!formData.mannerOfDeath ? 'is-invalid' : ''}`}
             >
                 <option value="" disabled>Select Manner of Death</option>
-                {/* --- Updated to use mannerOfDeathOptions --- */}
                 {mannerOfDeathOptions.map((option) => (
                     <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
             </Form.Select>
-
+            <Form.Control type="text" name="probableCauseOfDeath" value={formData.probableCauseOfDeath} onChange={handleChange} placeholder="Probable cause of death" required className={`form-control ${!formData.probableCauseOfDeath ? 'is-invalid' : ''}`} />
+</div>
             <Form.Control as="textarea" name="synopsis" value={formData.synopsis} onChange={handleChange} rows="4" placeholder="Brief Summary" required className={`form-control ${!formData.synopsis ? 'is-invalid' : ''}`} />
             <label>Evidence Locker Submission:</label>
             <Form.Check
@@ -245,8 +243,6 @@ useEffect(() => {
                 />
             )}
             <label></label>
-
-            <Form.Control type="text" name="probableCauseOfDeath" value={formData.probableCauseOfDeath} onChange={handleChange} placeholder="Probable cause of death" required className={`form-control ${!formData.probableCauseOfDeath ? 'is-invalid' : ''}`} />
 
             <Form.Group className="mb-3 upload-container">
                 <InputGroup>
@@ -342,7 +338,8 @@ useEffect(() => {
                     label="       Tick if Morgue Screen is unavailable / broken / inaccesssable"
                     checked={formData.morgueStatus === 'true'}
                     onChange={(e) => setFormData(prev => ({ ...prev, morgueStatus: e.target.checked.toString() }))}
-                />            </Form.Group>
+                />        
+                    </Form.Group>
         </>
     );
 };

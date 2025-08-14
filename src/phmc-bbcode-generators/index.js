@@ -21,3 +21,4 @@ export { default as generateAutopsy } from './generateAutopsy';
 export { default as generateSicknessEmail } from './generateSicknessEmail';
 export { default as generateCertificate } from './generateCertificate';
 export { default as generateMedicalFileUpdate } from './generateMedicalFileUpdate';
+export { default as generateMassFatality } from './generateMassFatality'; // Added new generator for Mass Fatality Report

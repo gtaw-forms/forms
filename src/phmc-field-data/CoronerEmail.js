@@ -1,6 +1,77 @@
 import React from 'react';
 import { Form, Button } from 'react-bootstrap';
 import Select from 'react-select';
+const customSelectStyles = {
+    control: (base, state) => ({
+        ...base,
+        minHeight: '38px',
+        backgroundColor: '#16202c',
+        color: '#eeeeeeb0',
+        borderColor: state.isFocused ? '#86b7fe' : '#30363d',
+        boxShadow: state.isFocused ? '0 0 0 0.25rem rgba(13, 110, 253, 0.25)' : null,
+        '&:hover': {
+            borderColor: '#86b7fe'
+        }
+    }),
+    menu: (base) => ({
+        ...base,
+        backgroundColor: '#16202c',
+        zIndex: 1000,
+        border: '1px solid #30363d',
+        borderRadius: '0.375rem'
+    }),
+    option: (base, state) => ({
+        ...base,
+        backgroundColor: state.isFocused ? '#30363d' : '#16202c',
+        color: '#eeeeeeb0',
+        padding: '0.5rem 1rem',
+        '&:hover': {
+            backgroundColor: '#30363d'
+        }
+    }),
+    multiValue: (base) => ({
+        ...base,
+        backgroundColor: '#30363d',
+        color: '#eeeeeeb0'
+    }),
+    multiValueLabel: (base) => ({
+        ...base,
+        color: '#eeeeeeb0'
+    }),
+    multiValueRemove: (base) => ({
+        ...base,
+        color: '#6c757d',
+        '&:hover': {
+            backgroundColor: '#dc3545',
+            color: '#fff'
+        }
+    }),
+    input: (base) => ({
+        ...base,
+        color: '#eeeeeeb0'
+    }),
+    placeholder: (base) => ({
+        ...base,
+        color: '#6c757d'
+    }),
+    singleValue: (base) => ({
+        ...base,
+        color: '#eeeeeeb0'
+    }),
+    group: (base) => ({
+        ...base,
+        paddingTop: 8,
+        paddingBottom: 8
+    }),
+    groupHeading: (base) => ({
+        ...base,
+        color: '#6c757d',
+        fontWeight: 600,
+        textTransform: 'uppercase',
+        fontSize: '0.75rem',
+        marginBottom: 4
+    })
+};
 
 const CoronerEmail = ({ // Renamed component to follow PascalCase convention
     formData,
@@ -36,7 +107,7 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
                                     </button>
 
                                 </div>
-                                                               <Select
+                            <Select
                                     name="coronerEmployee"
                                     value={coronerGroupedOptions
                                         .flatMap(group => group.options)
@@ -46,52 +117,7 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
                                     isClearable
                                     placeholder="Search or select coroner..."
                                     className={`form-control ${!formData.coronerEmployee ? 'is-invalid' : ''}`}
-                                    styles={{
-                                        control: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#6c757d',
-                                            '&:hover': {
-                                                borderColor: '#eeeeeeb0'
-                                            }
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            backgroundColor: '#16202c',
-                                            zIndex: 1000
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: '#eeeeeeb0'
-                                        }),
-                                        group: (base) => ({
-                                            ...base,
-                                            paddingTop: 8,
-                                            paddingBottom: 8
-                                        }),
-                                        groupHeading: (base) => ({
-                                            ...base,
-                                            color: '#6c757d',
-                                            fontWeight: 600,
-                                            textTransform: 'uppercase',
-                                            fontSize: '0.75rem',
-                                            marginBottom: 4
-                                        })
-                                    }}
+                                styles={customSelectStyles}
                                 />
                                 <Form.Label></Form.Label>
                                 <div style={{ display: 'flex', gap: '10px' }}>
@@ -199,13 +225,13 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
                                     </div>
 
                                 <Form.Group className="mb-3">
-                                    <Form.Label>Paste Death Report BBCode:</Form.Label>
+                                    <Form.Label>Paste Form BBCode:</Form.Label>
                                     <Form.Control
                                         as="textarea"
                                         name="deathReport"
                                         value={formData.deathReport}
                                         onChange={handleChange}
-                                        placeholder="Paste Death Report"
+                                        placeholder="Paste Paperwork (Death Report, Mass Fatality) BBCode here"
                                         rows="2"
                                         className={`form-control ${!formData.deathReport ? 'is-invalid' : ''}`}
 
@@ -250,19 +276,16 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
                         </Button>
                         <Button
                             variant="info"
-                            onClick={() => toggleSavedReports([1], 'Coroner', (reportData) => {
-                                // This callback will be executed by handleReportSelectedForAttachment
+                            onClick={() => toggleSavedReports([1, 11], 'Coroner', (reportData) => {
+                                // this magical bullshit is a callback which is handled in the app.js under LoadSavedReport
+                                // It allows the app to do something after the report is selected and loaded.
+                                // In this case, it will update the formData with the selected report data
+                                // and then call the post-processing callback
                                 // after it has processed the report.
-                                // For CoronerEmail, the main form update (deathReport/additionalReports)
-                                // is already handled by the specific logic inside handleReportSelectedForAttachment
-                                // (the bbCodeVersion 1 to 2 conversion).
-                                // So, this callback can be a no-op or just log for debugging.
-                                console.log("CoronerEmail attachment post-processing callback executed:", reportData);
-                                // If you needed to do something *additional* here, you would add it.
                             })}
                             className="email-button"
                         >
-                            <i className="fas fa-save"></i> Attach Paperwork (Death Reports)
+                            <i className="fas fa-save"></i> Attach Paperwork (Death Reports, Mass Fatality)
                         </Button>
 
                     </div>

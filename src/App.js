@@ -92,6 +92,7 @@ const initialFormData = {
     patientEmergencyContact: '',
     patientEmergencyContactNumber: '',
     patientEmergencyContactRelation: '',
+    decedents: [],
     patientEmergencyContactDiscord: '',
     patientTitle: '',
     patientTitleOptions: '',
@@ -711,7 +712,8 @@ const getBBCodeContent = () => {
         { version: 1, name: "Decedent Services", icon: corpse },
         { version: 2, name: "Email Generator", icon: email },
         { version: 4, name: "Autopsy Report", icon: corpse },
-        { version: 8, name: "Death Certificate", icon: PHMCLogo }
+        { version: 8, name: "Death Certificate", icon: PHMCLogo },
+        { version: 11, name: "Mass Fatality Report", icon: corpse },
     ];
     const physicalEvalFormsSubGroup = [
         { version: 6, name: "Physical Evaluation PHMC", icon: PHMCLogo },
@@ -777,7 +779,7 @@ const getBBCodeContent = () => {
                 const response = await fetch('https://api.imgur.com/3/image', {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${imgurAccessToken}`, // Use access token
+                        'Authorization': `Bearer ${imgurAccessToken}`,
                     },
                     body: formData,
                 });
@@ -800,15 +802,31 @@ const getBBCodeContent = () => {
             }
     
             if (uploadedUrls.length > 0) {
-                const currentValue = formData[fieldName];
-                const newValue = currentValue
-                    ? `${currentValue}, ${uploadedUrls.join(', ')}`
-                    : uploadedUrls.join(', ');
-    
-                setFormData(prev => ({
-                    ...prev,
-                    [fieldName]: newValue
-                }));
+                const newUrlString = uploadedUrls.join(', ');
+
+                if (fieldName.includes('-')) {
+                    const [key, indexStr] = fieldName.split('-');
+                    const index = parseInt(indexStr, 10);
+
+                    setFormData(prev => {
+                        const newDecedents = [...prev.decedents];
+                        const currentDecedent = newDecedents[index];
+                        const currentValue = currentDecedent[key] || '';
+                        const newValue = currentValue ? `${currentValue}, ${newUrlString}` : newUrlString;
+                        newDecedents[index] = { ...currentDecedent, [key]: newValue };
+
+                        return { ...prev, decedents: newDecedents };
+                    });
+
+                } else {
+                    const currentValue = formData[fieldName] || '';
+                    const newValue = currentValue ? `${currentValue}, ${newUrlString}` : newUrlString;
+        
+                    setFormData(prev => ({
+                        ...prev,
+                        [fieldName]: newValue
+                    }));
+                }
                 showNotification(`${uploadedUrls.length} image(s) uploaded successfully!`, 'check-circle');
             }
         } catch (error) {
@@ -1555,7 +1573,7 @@ const [selectedUserForSavedReports, setSelectedUserForSavedReports] = useState(n
 
     const getCurrentReportAuthor = useCallback((formData) => {
         // Define which bbCodeVersions are primarily Coroner forms
-        const coronerFormVersions = [1, 2, 4, 8, 18];
+        const coronerFormVersions = [1, 2, 4, 8, 11, 18];
         // Define which bbCodeVersions are primarily PHMC forms
         const phmcFormVersions = [
             5, 6, 7, 9, 10, 12, 13, 14, 16, 19, 20, 21, 22, 23, 27, 28, 29, 35 // Added Sickness Email
@@ -1654,6 +1672,20 @@ const saveReport = async () => {
         return false; // Prevent Firebase saving for PHMC Recruitment forms
     }
     // --- END MODIFICATION ---
+    else if (bbCodeVersion === 11) { // Mass Fatality Report
+        const { decedents, dateTime } = formData;
+        if (!decedents || decedents.length === 0) {
+            showNotification(`Please add at least one decedent to the report.`, 'exclamation-circle');
+            return false;
+        }
+        const firstDecedent = decedents[0];
+        if (!firstDecedent.decedentName || !dateTime) {
+            showNotification(`The first decedent must have a name and the main date/time must be set.`, 'exclamation-circle');
+            return false;
+        }
+        const decedentNames = decedents.map(d => d.decedentName).filter(name => name).join(', ');
+        key = `[Mass Fatality Report] - ${decedentNames} - ${(dateTime && dateTime.split('T')[0]) || 'No Date'}`;
+    }
     else { // Default handler for any other bbCodeVersion (includes SAAA)
         const definition = getFormDefinition(bbCodeVersion); // Get current form definition
 
@@ -1914,18 +1946,27 @@ const loadReportForUser = async (reportFirebaseKey, userId, returnOnly = false) 
             });
             // --- End Employee Sync Logic ---
 
-            if (!returnOnly) { // Only set state if not in 'returnOnly' mode
-                if (bbCodeVersion === 2 && loadedVersion === 1) {
-                    // This block now uses the already modified loadedBbCode
+            if (!returnOnly) {
+                if (loadedVersion === 11) {
+                    // Mass Fatality Report: set decedents array and other relevant fields
+                    setFormData(prev => ({
+                        ...prev,
+                        ...loadedFormData,
+                        decedents: Array.isArray(loadedFormData.decedents) ? loadedFormData.decedents : [],
+                        coronerEmployee: loadedFormData.coronerEmployee || prev.coronerEmployee,
+                        phmcEmployee: loadedFormData.phmcEmployee || prev.phmcEmployee,
+                    }));
+                    setBbCodeVersion(loadedVersion);
+                    showNotification(`Mass Fatality Report loaded.`, 'upload');
+                } else if (bbCodeVersion === 2 && loadedVersion === 1) {
+                    // ...existing code for v2 loading v1...
                     const currentDeathReportIsEmpty = !formData.deathReport || formData.deathReport.trim() === '';
                     let notificationMessage = '';
-
                     setFormData(prevFormData => {
                         let updatedName = prevFormData.decedentName || '';
                         let updatedOoc = prevFormData.decedentOOC || '';
                         let updatedDeathReport = prevFormData.deathReport || '';
                         let updatedAdditionalReports = prevFormData.additionalReports || [];
-
                         if (prevFormData.decedentName && loadedFormData.decedentName) {
                             updatedName = `${prevFormData.decedentName}, ${loadedFormData.decedentName}`;
                         } else {
@@ -1936,12 +1977,11 @@ const loadReportForUser = async (reportFirebaseKey, userId, returnOnly = false) 
                         } else {
                             updatedOoc = loadedFormData.decedentOOC || prevFormData.decedentOOC || '';
                         }
-
                         if (currentDeathReportIsEmpty) {
-                            updatedDeathReport = loadedBbCode; // Use the universally modified BBCode
+                            updatedDeathReport = loadedBbCode;
                             notificationMessage = `Loaded report for ${loadedFormData.decedentName || reportData.originalKey} into main Death Report field.`;
                         } else {
-                            updatedAdditionalReports = [...updatedAdditionalReports, loadedBbCode]; // Use the universally modified BBCode
+                            updatedAdditionalReports = [...updatedAdditionalReports, loadedBbCode];
                             notificationMessage = `Added report for ${loadedFormData.decedentName || reportData.originalKey} as an additional report.`;
                         }
                         const finalDataToSet = {
@@ -1956,7 +1996,6 @@ const loadReportForUser = async (reportFirebaseKey, userId, returnOnly = false) 
                     });
                     showNotification(notificationMessage, 'plus-circle');
                 } else {
-                    // This else block will also benefit from the universal conversion
                     setFormData(prev => ({
                         ...prev,
                         ...loadedFormData,
@@ -1966,7 +2005,7 @@ const loadReportForUser = async (reportFirebaseKey, userId, returnOnly = false) 
                     setBbCodeVersion(loadedVersion);
                     showNotification(`Report "${reportData.originalKey || reportFirebaseKey}" loaded.`, 'upload');
                 }
-                setShowSavedReports(false); // Close modal if directly loading
+                setShowSavedReports(false);
             }
             // Always return the processed data, regardless of `returnOnly`
             return { success: true, reportData: { ...reportData, data: loadedFormData, bbCode: loadedBbCode } };
@@ -2007,50 +2046,56 @@ const handleReportSelectedForAttachment = useCallback(async (reportFirebaseKey, 
 
         // --- MODIFICATION START: Generalized Field Population ---
         setFormData(prev => {
-            const newState = { ...prev };
-
-            // Define common fields to populate from the loaded report.
-            const fieldsToUpdate = {
-                decedentName: loadedFormData.decedentName,
-                decedentOOC: loadedFormData.decedentOOC,
-                requestingOfficer: loadedFormData.requestingOfficer,
-                department: loadedFormData.department, // Added department
-            };
-
-            // Special merging logic for Coroner Email (v2)
-            if (bbCodeVersion === 2) {
-                // If there's already a name, append the new one.
-                newState.decedentName = prev.decedentName && fieldsToUpdate.decedentName
-                    ? `${prev.decedentName}, ${fieldsToUpdate.decedentName}`
-                    : fieldsToUpdate.decedentName || prev.decedentName;
-
-                newState.decedentOOC = prev.decedentOOC && fieldsToUpdate.decedentOOC
-                    ? `${prev.decedentOOC}, ${fieldsToUpdate.decedentOOC}`
-                    : fieldsToUpdate.decedentOOC || prev.decedentOOC;
-                
-                // Officer name and department usually get replaced by the most recent one.
-                newState.requestingOfficer = fieldsToUpdate.requestingOfficer || prev.requestingOfficer;
-                newState.department = fieldsToUpdate.department || prev.department; // Added department logic
-            } else {
-                // For other forms (like Sickness Email), just overwrite with the new data.
-                newState.decedentName = fieldsToUpdate.decedentName || prev.decedentName;
-                newState.decedentOOC = fieldsToUpdate.decedentOOC || prev.decedentOOC;
-                newState.requestingOfficer = fieldsToUpdate.requestingOfficer || prev.requestingOfficer;
-                                newState.department = fieldsToUpdate.department || prev.department; // Added department logic
-
-            }
-            
-            // This part handles the specific logic for Coroner Email's report fields
-            if (loadedVersion === 1 && bbCodeVersion === 2) {
+            // Mass Fatality Report (bbCodeVersion 11): attach BBCode to deathReport and merge decedents
+            if (loadedVersion === 11) {
                 const currentDeathReportIsEmpty = !prev.deathReport || prev.deathReport.trim() === '';
+                let newState = { ...prev };
                 if (currentDeathReportIsEmpty) {
                     newState.deathReport = reportData.bbCode;
                 } else {
                     newState.additionalReports = [...(prev.additionalReports || []), reportData.bbCode];
                 }
+                // Merge decedents array if present
+                if (Array.isArray(loadedFormData.decedents)) {
+                    newState.decedents = [...(prev.decedents || []), ...loadedFormData.decedents];
+                }
+                return newState;
             }
-
-            return newState;
+            // ...existing code...
+            const fieldsToUpdate = {
+                decedentName: loadedFormData.decedentName,
+                decedentOOC: loadedFormData.decedentOOC,
+                requestingOfficer: loadedFormData.requestingOfficer,
+                department: loadedFormData.department,
+            };
+            if (bbCodeVersion === 2) {
+                // If there's already a name, append the new one.
+                let newState = { ...prev };
+                newState.decedentName = prev.decedentName && fieldsToUpdate.decedentName
+                    ? `${prev.decedentName}, ${fieldsToUpdate.decedentName}`
+                    : fieldsToUpdate.decedentName || prev.decedentName;
+                newState.decedentOOC = prev.decedentOOC && fieldsToUpdate.decedentOOC
+                    ? `${prev.decedentOOC}, ${fieldsToUpdate.decedentOOC}`
+                    : fieldsToUpdate.decedentOOC || prev.decedentOOC;
+                newState.requestingOfficer = fieldsToUpdate.requestingOfficer || prev.requestingOfficer;
+                newState.department = fieldsToUpdate.department || prev.department;
+                if (loadedVersion === 1 && bbCodeVersion === 2) {
+                    const currentDeathReportIsEmpty = !prev.deathReport || prev.deathReport.trim() === '';
+                    if (currentDeathReportIsEmpty) {
+                        newState.deathReport = reportData.bbCode;
+                    } else {
+                        newState.additionalReports = [...(prev.additionalReports || []), reportData.bbCode];
+                    }
+                }
+                return newState;
+            } else {
+                let newState = { ...prev };
+                newState.decedentName = fieldsToUpdate.decedentName || prev.decedentName;
+                newState.decedentOOC = fieldsToUpdate.decedentOOC || prev.decedentOOC;
+                newState.requestingOfficer = fieldsToUpdate.requestingOfficer || prev.requestingOfficer;
+                newState.department = fieldsToUpdate.department || prev.department;
+                return newState;
+            }
         });
         // --- MODIFICATION END ---
 
@@ -2571,7 +2616,20 @@ const toggleAgencySelector = () => {
         } else if (bbCodeVersion === 8) { // Death Certificate
             const { decedentOOC } = formData;
             return `[Death Certificate] -  ${decedentOOC || 'N/A'}`;
-        }
+        } else if (bbCodeVersion === 11) { // Mass Fatality Report
+            const { decedents, dateTime } = formData;
+            let date = 'No Date';
+            if (dateTime) {
+                const datePart = dateTime.split('T')[0];
+                const [year, month, day] = datePart.split('-');
+                date = `${month}/${day}/${year}`;
+            }
+            if (decedents && decedents.length > 0) {
+                const decedentNames = decedents.map(d => d.decedentName).filter(name => name).join(', ');
+                return `[Mass Fatality Report] - ${decedentNames || 'N/A'} - ${date}`;
+            }
+            return `[Mass Fatality Report] - N/A - ${date}`;
+        } 
         // --- Fallback for other forms ---
         else {
             const formName = definition ? definition.name : `Form v${bbCodeVersion}`;
@@ -3060,6 +3118,7 @@ const handleChange = (e) => {
         8: "Death Certificate",
         9: "Obs Main File",
         10: "Obs Follow Up",
+        11: "Mass Fatality Report",
         12: "Gynecology - Main File",
         13: "Gynecology - Add Reply",
         14: "Mental Health - PHMC",
@@ -3522,7 +3581,7 @@ const handleCopyAndNotifyWrapper = async () => {
                             Select {selectedAgencyGroup || "Agency"} Form
                         </Button>
 
-                        {(bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 4 || bbCodeVersion === 8) && (
+                        {(bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 4 || bbCodeVersion === 8 || bbCodeVersion === 11 ) && (
                             <Button
                                 className="changelog-button"
                                 variant='secondary'
