@@ -5,7 +5,7 @@ const getRelevantFields = (bbCodeVersion) => {
                 'coronerRank', 'placeOfDeath', 'department', 'dateTime', 'coronerEmployee',
                 'coronerBadge', 'decedentName', 'decedentOOC', 'pronouncedTimeOfDeath',
                 'synopsis', 'probableCauseOfDeath', 'mannerOfDeath', 'typeOfDeath',
-                'scenePhotos', 'additionalImages'
+                'scenePhotos', 'additionalImages', 'requestingOfficer',
             ];
         case 2: // Email Generator
             return [
@@ -96,6 +96,13 @@ const getRelevantFields = (bbCodeVersion) => {
                 'patientOxi', 'patientDateofPregnancy', 'patientFetalMeasurements', 'patientBloodAnalysis',
                 'patientBloodAnalysisResults', 'patientUrine', 'patientUrineResults', 'date',
                 'patientUltraSummary', 'phmcSignature'
+            ];
+        case 11: // Mass Fatality Report
+            return [
+                'decedents', 'coronerRank', 'placeOfDeath', 'department', 'dateTime',
+                'coronerEmployee', 'coronerBadge', 'synopsis', 'requestingOfficer',
+
+
             ];
         case 12: // Gynecology - Main File
             return [

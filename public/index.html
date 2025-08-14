@@ -25,6 +25,11 @@
       Learn how to configure a non-root public URL by running `npm run build`.
     -->
     <title>GTAW Form Generators </title>
+    <script>
+      if (window.location.hostname === "localhost" || window.location.hostname.startsWith("192.")) {
+        document.title = "DEV:PHMC";
+      }
+    </script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
