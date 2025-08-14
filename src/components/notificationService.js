@@ -567,15 +567,6 @@ const sendFormInteractionWebhookInternal = async ({
 
     let userValue = 'Unknown User';
 
-    if (selectedAgencyGroup === 'SAAA') {
-        if (registrantFullName) {
-            userValue = `SAAA Registrant: ${registrantFullName}`;
-        } else if (ceoFullName) {
-            userValue = `SAAA CEO: ${ceoFullName}`;
-        } else if (patientFirstName || patientLastName) {
-            userValue = `SAAA Applicant: ${patientFirstName || ''} ${patientLastName || ''}`.trim();
-        }
-    } else {
         if (coronerEmployee) {
             userValue = `${coronerRank || 'Coroner'} ${coronerEmployee}`;
         } else if (phmcEmployee) {
@@ -585,7 +576,7 @@ const sendFormInteractionWebhookInternal = async ({
         } else if (patientName) {
             userValue = patientName;
         }
-    }
+    
 
     const primaryIdentifier = patientName || decedentName || patientID || registrantFullName || ceoFullName || (selectedAgencyGroup === 'SAAA' ? (formData.aircraftType || formData.companyName || 'SAAA Record') : 'N/A');
 
@@ -599,9 +590,6 @@ const sendFormInteractionWebhookInternal = async ({
         { name: "Action", value: actionMessage, inline: false },
     ];
 
-    // --- NEW: Add Saved Reports count for this user (or CIVILIAN for civilian forms) ---
-    // This block is async, so must be handled before calling this function, but for demonstration:
-    // Example usage: pass in userSavedCount as a prop and add here
     if (typeof userSavedCount === 'number') {
         fields.push({ name: "Saved Reports (User)", value: userSavedCount.toString(), inline: true });
     }
@@ -764,8 +752,14 @@ const key = `[CIVILIAN-REPORT] - ${formData.patientName || ''} ${formData.patien
         discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
 
         if (discordWebhookUrl) {
-            const { decedentName, decedentOOC } = formData;
-            const currentIdentifier =  `${decedentName || ''}|${decedentOOC || ''}`;
+            let currentIdentifier;
+            if (bbCodeVersion === 11) {
+                const { decedents } = formData;
+                currentIdentifier = decedents.map(d => `${d.decedentName || ''}|${d.decedentOOC || ''}`).join(',');
+            } else {
+                const { decedentName, decedentOOC } = formData;
+                currentIdentifier =  `${decedentName || ''}|${decedentOOC || ''}`;
+            }
 
             // Prevent spamming webhooks for the same PHMC/Coroner report
             if (currentIdentifier && currentIdentifier === lastWebhookIdentifier) {
@@ -794,10 +788,14 @@ const key = `[CIVILIAN-REPORT] - ${formData.patientName || ''} ${formData.patien
                 if ([3, 24, 25, 26].includes(bbCodeVersion)) {
                     userKey = 'CIVILIAN';
                 } else {
-                    // Try to use a unique user identifier, fallback to phmcEmployee, coronerEmployee, or patientName
-                    userKey = formData.phmcEmployee || formData.coronerEmployee || formData.patientName || 'UNKNOWN';
-                    userKey = userKey.replace(/[.#$[\]/]/g, '_');
+                    const coronerFormVersions = [1, 2, 4, 8, 11, 18];
+                    if (coronerFormVersions.includes(bbCodeVersion)) {
+                        userKey = formData.coronerEmployee || 'UNKNOWN';
+                    } else {
+                        userKey = formData.phmcEmployee || formData.patientName || 'UNKNOWN';
+                    }
                 }
+                userKey = userKey.replace(/[.#$[\]/]/g, '_');
                 const userReportsRef = ref(database, `savedReports/${userKey}`);
                 const userSnapshot = await get(userReportsRef);
                 if (userSnapshot.exists()) {

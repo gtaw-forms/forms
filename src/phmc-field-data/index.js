@@ -17,3 +17,4 @@ export { default as Shrink } from './Shrink'; // Removed .js extension for consi
 export { default as Autopsy } from './Autopsy'; // Removed .js extension for consistency
 export { default as Certificate } from './Certificate'; // <--- ADD THIS LINE
 export { default as MedicalUpdate } from './MedicalUpdate';
+export { default as MassFatality } from './MassFatality'; // <--- ADD THIS LINE

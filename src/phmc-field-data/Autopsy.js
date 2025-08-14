@@ -2,10 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Form, Button, InputGroup } from 'react-bootstrap';
 import Select from 'react-select';
 import AutopsyDiagramModal from '../components/AutopsyDiagramModal';
-// Assuming sendDiscordWebhookInternal is available and can be imported
-// If it's not directly exportable or you prefer, you can define a similar function here
-// For this example, let's assume it's part of a service you can import:
-import { sendDiscordWebhookInternal } from '../components/notificationService'; // Adjust path if necessary
 
 const Autopsy = ({
     formData,

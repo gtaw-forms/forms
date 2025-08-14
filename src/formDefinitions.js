@@ -2,7 +2,7 @@
 import {
     CommNotePHMC, CommNotePBC, DeathReport, CoronerEmail, PatientAdvanced, MentalHealth,
     EmailInternal, Surgical, PhysEval, EmergencyForm, GeneralConsult,
-    MedicalRelease, BasicPatientFile, Shrink, Autopsy, Certificate, MedicalUpdate
+    MedicalRelease, BasicPatientFile, Shrink, Autopsy, Certificate, MedicalUpdate, MassFatality,
 } from './phmc-field-data'; // Assuming all field components are here for now
 
 import {
@@ -12,7 +12,7 @@ import {
     generateEmergencyProtocol, generateCommentaryNotePHMC, generateCommentaryNotePBC,
     generateMedicalRecordRelease, generateBasicPatientFile, generateEmailPHMCEmail,
     generateConsultationNotesPBC, generatePsychEvalPHMC, generatePsychEvalPBC,
-    generateAutopsy, generateCertificate, generateMedicalFileUpdate,
+    generateAutopsy, generateCertificate, generateMedicalFileUpdate, generateMassFatality,
 } from './phmc-bbcode-generators'; // Assuming all PHMC generators are here
 import generatePhysician from './phmc-recruitment-generators/generatePhysician'; // Make sure this path is correct
 import PhysicianFields from './phmc-civilian-fields/Physician'; // Path to your new component
@@ -42,6 +42,7 @@ import generateEMS from './phmc-recruitment-generators/generateEMS';
 import Ems from './phmc-civilian-fields/Ems';
 import SicknessEmail, { default as SicknessEmailFields } from './phmc-field-data/SicknessEmail'; // Import the new field component
 import { default as generateSicknessEmail } from './phmc-bbcode-generators/generateSicknessEmail'; // Import the new generator
+import { version } from 'react';
 
 export const generateAdminView = (viewData) => {
     if (!viewData.isAdminAuthenticated) {
@@ -93,7 +94,7 @@ export const formDefinitions = [
     { version: 8, name: "Certificate of Death", group: "PHMC", icon: corpse, generator: generateCertificate, FieldComponent: Certificate, titleKey: "certificateOfDeath", sortOrder: 13, isHiddenInSelector: true, hasCustomTitle: true },
     { version: 5, name: "Surgical Ops", group: "PHMC", icon: surgeon, generator: generateSurgicalOps, FieldComponent: Surgical, titleKey: "surgicalOps", sortOrder: 20 },
     { version: 6, name: "Physical Evaluation", group: "PHMC", icon: nurse, generator: generatePhysEvalInternalMed, FieldComponent: PhysEval, titleKey: "physEvalPHMC", sortOrder: 21 },
-
+    { version: 11, name: "Mass Fatality Report", group: "PHMC", icon: corpse, generator: generateMassFatality, FieldComponent: MassFatality, titleKey: "massFatalityReport", sortOrder: 14, isHiddenInSelector: true, hasCustomTitle: true },
     // Add isHiddenInSelector: true to the PBC version
     { version: 7, name: "Physical Evaluation (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generatePhysEvalInternalMedPBC, FieldComponent: PhysEval, titleKey: "physEvalPBC", sortOrder: 22, isHiddenInSelector: true },
     { version: 14, name: "Mental Health", group: "PHMC", icon: psychology, generator: generateMentalHealthPHMC, FieldComponent: MentalHealth, titleKey: "mentalHealthPHMC", sortOrder: 23 },
