@@ -1,4 +1,3 @@
-// src/components/AutopsyDiagramModal.js
 import React, { useState, useRef, useEffect, useCallback } from 'react'; // Added useCallback
 import { Button, OverlayTrigger, Tooltip, Form } from 'react-bootstrap'; // Added Form
 import malebodySilhouette from '../assets/male-body-silhouette.jpg';
@@ -97,28 +96,26 @@ const loadImage = (src) => {
 
 // Helper function to group and label markers
 const getGroupedLabeledMarkers = (markers) => {
-  const labeledMarkers = markers.filter(m => m.label && m.label.trim() !== '');
-  const grouped = labeledMarkers.reduce((acc, marker) => {
-    const labelKey = marker.label.trim().toUpperCase(); // Group by trimmed uppercase label
-    const markerTypeKey = `${marker.type}-${labelKey}`; // Use a unique label that includes type
+    const labeledMarkers = markers.filter(m => m.label && m.label.trim() !== '');
+    const grouped = labeledMarkers.reduce((acc, marker) => {
+        const labelKey = marker.label.trim().toUpperCase();
+        const groupKey = `${marker.type}-${labelKey}`; // Group by type and label
 
-    if (!acc[markerTypeKey]) {
-      acc[markerTypeKey] = []; // Group by the generated marker type key instead of labelKey directly
-    }
-    acc[markerTypeKey].push(marker);
-    return acc;
-  }, {});
+        if (!acc[groupKey]) {
+            acc[groupKey] = [];
+        }
+        acc[groupKey].push(marker);
+        return acc;
+    }, {});
 
     const result = [];
-    // Sort groups alphabetically by label key
-    Object.keys(grouped).sort().forEach(labelKey => {
-        // Sort markers within each group (e.g., by placement order using id)
-        grouped[labelKey].sort((a, b) => a.id.localeCompare(b.id)); // Sort by ID (timestamp + random)
-        grouped[labelKey].forEach((marker, index) => {
-            const prefix = String.fromCharCode(65 + index); // A, B, C... within the group
+    Object.keys(grouped).sort().forEach(groupKey => {
+        grouped[groupKey].sort((a, b) => a.id.localeCompare(b.id));
+        grouped[groupKey].forEach((marker, index) => {
+            const prefix = String.fromCharCode(65 + index); // A, B, C...
             result.push({
-              ...marker,
-                displayLabel: `${prefix}-${marker.label.trim()}`
+                ...marker,
+                displayLabel: `${marker.label.trim()}-${prefix}`
             });
         });
     });
@@ -138,7 +135,8 @@ const AutopsyDiagramModal = ({
 }) => {
     const [markers, setMarkers] = useState([]);
     const [selectedMarkerType, setSelectedMarkerType] = useState('circle');
-    const [editingMarkerId, setEditingMarkerId] = useState(null); // State to track which marker label is being edited
+    const [editingMarkerId, setEditingMarkerId] = useState(null);
+    const [draggingMarker, setDraggingMarker] = useState(null); // { id, initialX, initialY, startMouseX, startMouseY, imgWidth, imgHeight }
     const imageRef = useRef(null);
     const imageContainerRef = useRef(null);
     const prevShowRef = useRef(show);
@@ -146,6 +144,7 @@ const AutopsyDiagramModal = ({
     const [bodyImage, setBodyImage] = useState(null);
     const [isProcessingImage, setIsProcessingImage] = useState(false);
     const [selectedSilhouetteType, setSelectedSilhouetteType] = useState('male'); // 'male' or 'female'
+    const wasDragging = useRef(false);
 
     const IMGUR_CLIENT_ID = process.env.REACT_APP_IMGUR_CLIENT_ID;
 
@@ -155,97 +154,95 @@ const AutopsyDiagramModal = ({
             .then(img => setBodyImage(img))
             .catch(err => {
                 console.error(`Failed to load ${selectedSilhouetteType} body silhouette:`, err);
-                // Fallback to male silhouette if female fails or vice-versa, or show error
                 if (selectedSilhouetteType === 'female') {
                     loadImage(malebodySilhouette).then(setBodyImage).catch(e => console.error("Fallback to male silhouette also failed:", e));
                 }
             });
-    }, [selectedSilhouetteType]); // Re-run when selectedSilhouetteType changes
+    }, [selectedSilhouetteType]);
 
     useEffect(() => {
         if (show && !prevShowRef.current) {
-            // When modal opens, load initial markers and ensure they have label/labelSide properties
             setMarkers(initialMarkers.map(marker => ({
                 ...marker,
-                label: marker.label || '', // Ensure label exists
-                labelSide: marker.labelSide || 'right' // Ensure labelSide exists
+                label: marker.label || '',
+                labelSide: marker.labelSide || 'right',
             })));
-            setEditingMarkerId(null); // Reset editing state
+            setEditingMarkerId(null);
         }
         prevShowRef.current = show;
     }, [show, initialMarkers]);
 
     const handleImageClick = (event) => {
+        if (editingMarkerId || draggingMarker) {
+            setEditingMarkerId(null);
+            return;
+        }
+
         const imgElement = imageRef.current;
         const containerElement = imageContainerRef.current;
+        if (!containerElement || !imgElement || !imgElement.complete || !bodyImage) return;
 
-        if (!imgElement || !imgElement.complete || !containerElement) {
-            return;
-        }
-        if (imgElement.naturalWidth === 0 || imgElement.naturalHeight === 0) {
-            return;
-        }
-
+        // Check if the click was on the actual image, not letterboxing.
         const imgRect = imgElement.getBoundingClientRect();
-        const containerRect = containerElement.getBoundingClientRect();
-        const clickXInImgElement = event.clientX - imgRect.left;
-        const clickYInImgElement = event.clientY - imgRect.top;
-        const imgElementBoxWidth = imgRect.width;
-        const imgElementBoxHeight = imgRect.height;
-        const naturalWidth = imgElement.naturalWidth;
-        const naturalHeight = imgElement.naturalHeight;
-        const imgElementBoxAspectRatio = imgElementBoxWidth / imgElementBoxHeight;
+        const naturalWidth = bodyImage.naturalWidth;
+        const naturalHeight = bodyImage.naturalHeight;
         const naturalAspectRatio = naturalWidth / naturalHeight;
-        let renderedImageContentWidth, renderedImageContentHeight;
+        const elementAspectRatio = imgRect.width / imgRect.height;
 
-        if (naturalAspectRatio > imgElementBoxAspectRatio) {
-            renderedImageContentWidth = imgElementBoxWidth;
-            renderedImageContentHeight = imgElementBoxWidth / naturalAspectRatio;
+        let renderedWidth = imgRect.width;
+        let renderedHeight = imgRect.height;
+        let renderedContentOffsetX = 0;
+        let renderedContentOffsetY = 0;
+
+        if (naturalAspectRatio > elementAspectRatio) {
+            renderedHeight = imgRect.width / naturalAspectRatio;
+            renderedContentOffsetY = (imgRect.height - renderedHeight) / 2;
         } else {
-            renderedImageContentHeight = imgElementBoxHeight;
-            renderedImageContentWidth = imgElementBoxHeight * naturalAspectRatio;
+            renderedWidth = imgRect.height * naturalAspectRatio;
+            renderedContentOffsetX = (imgRect.width - renderedWidth) / 2;
         }
 
-        const internalOffsetX = (imgElementBoxWidth - renderedImageContentWidth) / 2;
-        const internalOffsetY = (imgElementBoxHeight - renderedImageContentHeight) / 2;
+        const clickXInImg = event.nativeEvent.offsetX;
+        const clickYInImg = event.nativeEvent.offsetY;
 
-        if (
-            clickXInImgElement >= internalOffsetX &&
-            clickXInImgElement <= internalOffsetX + renderedImageContentWidth &&
-            clickYInImgElement >= internalOffsetY &&
-            clickYInImgElement <= internalOffsetY + renderedImageContentHeight
-        ) {
-            const clickAbsoluteXInContainer = (imgRect.left - containerRect.left) + clickXInImgElement;
-            const clickAbsoluteYInContainer = (imgRect.top - containerRect.top) + clickYInImgElement;
-            const markerXPercent = containerRect.width > 0 ? (clickAbsoluteXInContainer / containerRect.width) * 100 : 0;
-            const markerYPercent = containerRect.height > 0 ? (clickAbsoluteYInContainer / containerRect.height) * 100 : 0;
-            const finalX = Math.max(0, Math.min(100, markerXPercent));
-            const finalY = Math.max(0, Math.min(100, markerYPercent));
+        const clickXInImageContent = clickXInImg - renderedContentOffsetX;
+        const clickYInImageContent = clickYInImg - renderedContentOffsetY;
 
-            const newMarker = {
-                x: finalX,
-                y: finalY,
-                type: selectedMarkerType,
-                id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
-                label: '', // New markers start with an empty label
-                labelSide: 'right',
-            };
-            setMarkers(prevMarkers => [...prevMarkers, newMarker]);
-            setEditingMarkerId(newMarker.id); // Immediately start editing the label of the new marker
+        if (clickXInImageContent < 0 || clickXInImageContent > renderedWidth || clickYInImageContent < 0 || clickYInImageContent > renderedHeight) {
+            return; // Click was on the letterbox, so ignore it
         }
+
+        // Now calculate the percentage relative to the container
+        const containerRect = containerElement.getBoundingClientRect();
+        const clickXInContainer = (imgRect.left - containerRect.left) + clickXInImg;
+        const clickYInContainer = (imgRect.top - containerRect.top) + clickYInImg;
+
+        let markerXPercent = (clickXInContainer / containerRect.width) * 100;
+        let markerYPercent = (clickYInContainer / containerRect.height) * 100;
+
+
+        const newMarker = {
+            x: markerXPercent,
+            y: markerYPercent,
+            type: selectedMarkerType,
+            id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
+            label: '',
+            // Default the label to the left side if the marker is on the right 20% of the image
+            labelSide: markerXPercent > 80 ? 'left' : 'right',
+        };
+        setMarkers(prevMarkers => [...prevMarkers, newMarker]);
+        setEditingMarkerId(newMarker.id);
     };
 
     const handleToggleLastMarkerLabelSide = () => {
         setMarkers(prevMarkers => {
             if (prevMarkers.length === 0) return prevMarkers;
-            // Find the last marker that has a label
             const lastLabeledMarkerIndex = prevMarkers.slice().reverse().findIndex(m => m.label && m.label.trim() !== '');
 
             if (lastLabeledMarkerIndex === -1) {
                  if (showNotification) showNotification("No labeled marker to toggle side for. Add a label first.", "info");
                 return prevMarkers;
             }
-            // Adjust index for the original array
             const originalIndex = prevMarkers.length - 1 - lastLabeledMarkerIndex;
 
             return prevMarkers.map((marker, index) => {
@@ -271,55 +268,11 @@ const AutopsyDiagramModal = ({
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(sourceImage, 0, 0, canvas.width, canvas.height);
 
-        const displayedImgElement = imageRef.current;
-        const containerElement = imageContainerRef.current;
-
-        if (!displayedImgElement || !containerElement) {
-            console.error("DOM elements for coordinate transformation not found in drawDiagramOnCanvas");
-            return canvas;
-        }
-
-        const containerRect = containerElement.getBoundingClientRect();
-        const displayedImgRect = displayedImgElement.getBoundingClientRect();
-        const naturalWidth = sourceImage.naturalWidth;
-        const naturalHeight = sourceImage.naturalHeight;
-        const displayedImgBoxWidth = displayedImgRect.width;
-        const displayedImgBoxHeight = displayedImgRect.height;
-        const naturalAspectRatio = naturalWidth / naturalHeight;
-        const displayedImgBoxAspectRatio = displayedImgBoxWidth > 0 ? displayedImgBoxWidth / displayedImgBoxHeight : naturalAspectRatio;
-
-        let visualContentW, visualContentH;
-        if (naturalAspectRatio > displayedImgBoxAspectRatio) {
-            visualContentW = displayedImgBoxWidth;
-            visualContentH = displayedImgBoxWidth / naturalAspectRatio;
-        } else {
-            visualContentH = displayedImgBoxHeight;
-            visualContentW = displayedImgBoxHeight * naturalAspectRatio;
-        }
-
-        const visualContentOffsetXInDisplayedImg = (displayedImgBoxWidth - visualContentW) / 2;
-        const visualContentOffsetYInDisplayedImg = (displayedImgBoxHeight - visualContentH) / 2;
-        const visualContentScreenX = displayedImgRect.left + visualContentOffsetXInDisplayedImg;
-        const visualContentScreenY = displayedImgRect.top + visualContentOffsetYInDisplayedImg;
-
-        // Use the helper to get markers with grouped display labels
         const markersToDraw = getGroupedLabeledMarkers(markers);
 
-
-        markers.forEach(marker => { // Iterate through original markers to draw symbols
-             const markerScreenX = containerRect.left + (marker.x / 100) * containerRect.width;
-            const markerScreenY = containerRect.top + (marker.y / 100) * containerRect.height;
-            const markerX_RelativeToVisual = markerScreenX - visualContentScreenX;
-            const markerY_RelativeToVisual = markerScreenY - visualContentScreenY;
-
-            let percX_onVisual = visualContentW > 0 ? (markerX_RelativeToVisual / visualContentW) * 100 : 0;
-            let percY_onVisual = visualContentH > 0 ? (markerY_RelativeToVisual / visualContentH) * 100 : 0;
-
-            percX_onVisual = Math.max(0, Math.min(100, percX_onVisual));
-            percY_onVisual = Math.max(0, Math.min(100, percY_onVisual));
-
-            const canvasDrawX = (percX_onVisual / 100) * canvas.width;
-            const canvasDrawY = (percY_onVisual / 100) * canvas.height;
+        markers.forEach(marker => {
+            const canvasDrawX = (marker.x / 100) * canvas.width;
+            const canvasDrawY = (marker.y / 100) * canvas.height;
 
             if (marker.type === 'circle') {
                 ctx.beginPath();
@@ -331,7 +284,7 @@ const AutopsyDiagramModal = ({
                 ctx.stroke();
             } else if (marker.type === 'cross') {
                 ctx.beginPath();
-                ctx.strokeStyle = 'blue';
+                ctx.strokeStyle = 'red';
                 ctx.lineWidth = 5;
                 const crossSize = 15;
                 ctx.moveTo(canvasDrawX - crossSize, canvasDrawY - crossSize);
@@ -342,57 +295,45 @@ const AutopsyDiagramModal = ({
             }
         });
 
-        // Draw labels separately using the grouped list
         markersToDraw.forEach(marker => {
-             const markerScreenX = containerRect.left + (marker.x / 100) * containerRect.width;
-            const markerScreenY = containerRect.top + (marker.y / 100) * containerRect.height;
-            const markerX_RelativeToVisual = markerScreenX - visualContentScreenX;
-            const markerY_RelativeToVisual = markerScreenY - visualContentScreenY;
-
-            let percX_onVisual = visualContentW > 0 ? (markerX_RelativeToVisual / visualContentW) * 100 : 0;
-            let percY_onVisual = visualContentH > 0 ? (markerY_RelativeToVisual / visualContentH) * 100 : 0;
-
-            percX_onVisual = Math.max(0, Math.min(100, percX_onVisual));
-            percY_onVisual = Math.max(0, Math.min(100, percY_onVisual));
-
-            const canvasDrawX = (percX_onVisual / 100) * canvas.width;
-            const canvasDrawY = (percY_onVisual / 100) * canvas.height;
-
-            const labelToDraw = marker.displayLabel; // Use the displayLabel from the grouped list
+            const canvasDrawX = (marker.x / 100) * canvas.width;
+            const canvasDrawY = (marker.y / 100) * canvas.height;
+            const labelToDraw = marker.displayLabel;
 
             if (labelToDraw) {
-                const labelFontSize = 20; // Adjust font size as needed for canvas
-                ctx.font = `${labelFontSize}px Arial`; // Use a standard font for canvas
+                const labelFontSize = 20;
+                ctx.font = `${labelFontSize}px Arial`;
                 const textMetrics = ctx.measureText(labelToDraw);
                 const textWidth = textMetrics.width;
-                const textHeight = labelFontSize; // Approximation
+                const textHeight = labelFontSize;
                 const padding = 4;
                 const labelBgWidth = textWidth + (padding * 2);
                 const labelBgHeight = textHeight + (padding * 2);
-                const labelTextY = canvasDrawY; // Center text vertically on the marker Y
-                const labelBgY = canvasDrawY - (textHeight / 2) - padding; // Position background based on text height
 
-                let labelBgX, labelTextX;
+                let labelTextX, labelBgX;
+                const baseOffset = 18;
                 if (marker.labelSide === 'right') {
-                    labelTextX = canvasDrawX + 18; // Offset from marker center
+                    labelTextX = canvasDrawX + baseOffset;
                     labelBgX = labelTextX - padding;
                     ctx.textAlign = 'left';
                 } else {
-                    labelTextX = canvasDrawX - 18; // Offset from marker center
-                    labelBgX = labelTextX - textWidth - padding; // Position background to the left of text
+                    labelTextX = canvasDrawX - baseOffset;
+                    labelBgX = labelTextX - textWidth - padding;
                     ctx.textAlign = 'right';
                 }
+                const labelTextY = canvasDrawY;
+                const labelBgY = labelTextY - (textHeight / 2) - padding;
 
-                ctx.fillStyle = 'rgba(50, 50, 50, 0.7)'; // Background color for label
+                ctx.fillStyle = 'rgba(50, 50, 50, 0.7)';
                 ctx.fillRect(labelBgX, labelBgY, labelBgWidth, labelBgHeight);
 
-                ctx.fillStyle = '#FFFFFF'; // Text color
-                ctx.textBaseline = 'middle'; // Align text vertically to the middle
+                ctx.fillStyle = '#FFFFFF';
+                ctx.textBaseline = 'middle';
                 ctx.fillText(labelToDraw, labelTextX, labelTextY);
             }
         });
         return canvas;
-    }, [markers, bodyImage]); // Add markers and bodyImage to dependencies
+    }, [markers, bodyImage]);
 
     const handleCopyToClipboard = useCallback(async () => {
         setIsProcessingImage(true);
@@ -401,9 +342,7 @@ const AutopsyDiagramModal = ({
             canvas.toBlob(async (blob) => {
                 if (blob) {
                     try {
-                        await navigator.clipboard.write([
-                            new ClipboardItem({ [blob.type]: blob })
-                        ]);
+                        await navigator.clipboard.write([ new ClipboardItem({ [blob.type]: blob }) ]);
                         if (showNotification) showNotification('Diagram copied to clipboard!', 'check-circle');
                     } catch (err) {
                         console.error('Failed to copy diagram:', err);
@@ -420,7 +359,7 @@ const AutopsyDiagramModal = ({
             if (showNotification) showNotification('Clipboard API not available or canvas drawing failed.', 'exclamation-triangle');
             setIsProcessingImage(false);
         }
-    }, [drawDiagramOnCanvas, showNotification]); // Add dependencies
+    }, [drawDiagramOnCanvas, showNotification]);
 
     const handleUploadToImgur = useCallback(async () => {
         if (!IMGUR_CLIENT_ID) {
@@ -458,23 +397,23 @@ const AutopsyDiagramModal = ({
             if (showNotification) showNotification('Error during Imgur upload. See console.', 'exclamation-triangle');
         }
         setIsProcessingImage(false);
-    }, [drawDiagramOnCanvas, showNotification, onDiagramImgurUpload, IMGUR_CLIENT_ID]); // Add dependencies
+    }, [drawDiagramOnCanvas, showNotification, onDiagramImgurUpload, IMGUR_CLIENT_ID]);
 
     const handleAddLabelToLastMarker = (labelText) => {
         setMarkers(prevMarkers => {
             if (prevMarkers.length === 0) return prevMarkers;
             const lastMarkerIndex = prevMarkers.length - 1;
             return prevMarkers.map((marker, index) =>
-                index === lastMarkerIndex ? { ...marker, label: labelText.substring(0, 9) } : marker // Apply label and limit length
+                index === lastMarkerIndex ? { ...marker, label: labelText.substring(0, 9) } : marker
             );
         });
-        setEditingMarkerId(null); // Stop editing after applying a predefined label
+        setEditingMarkerId(null);
     };
 
     const handleRemoveMarker = (markerIdToRemove) => {
         setMarkers(prevMarkers => prevMarkers.filter(marker => marker.id !== markerIdToRemove));
         if (editingMarkerId === markerIdToRemove) {
-            setEditingMarkerId(null); // Stop editing if the edited marker is removed
+            setEditingMarkerId(null);
         }
     };
 
@@ -483,7 +422,7 @@ const AutopsyDiagramModal = ({
             const lastMarkerId = markers[markers.length - 1].id;
             setMarkers(prev => prev.slice(0, -1));
             if (editingMarkerId === lastMarkerId) {
-                setEditingMarkerId(null); // Stop editing if the undone marker was being edited
+                setEditingMarkerId(null);
             }
         }
     };
@@ -491,7 +430,7 @@ const AutopsyDiagramModal = ({
     const handleClearAllMarkers = () => {
         if (markers.length > 0) {
             setMarkers([]);
-            setEditingMarkerId(null); // Stop editing
+            setEditingMarkerId(null);
         }
     };
 
@@ -504,14 +443,100 @@ const AutopsyDiagramModal = ({
 
     const handleLabelInputChange = (markerId, value) => {
         setMarkers(prevMarkers => prevMarkers.map(marker =>
-            marker.id === markerId ? { ...marker, label: value.substring(0, 9) } : marker // Update label and limit length
+            marker.id === markerId ? { ...marker, label: value.substring(0, 9) } : marker
         ));
     };
 
     const handleLabelInputBlur = () => {
-        // Stop editing when the input loses focus
         setEditingMarkerId(null);
     };
+
+    const handleMarkerMouseDown = (e, markerId) => {
+        e.preventDefault();
+        e.stopPropagation();
+        wasDragging.current = false;
+
+        const marker = markers.find(m => m.id === markerId);
+        const imgElement = imageRef.current;
+
+        if (!marker || !imgElement || !bodyImage) return;
+
+        const imgRect = imgElement.getBoundingClientRect();
+        const naturalWidth = bodyImage.naturalWidth;
+        const naturalHeight = bodyImage.naturalHeight;
+        const naturalAspectRatio = naturalWidth / naturalHeight;
+        const elementAspectRatio = imgRect.width / imgRect.height;
+
+        let renderedWidth = imgRect.width;
+        let renderedHeight = imgRect.height;
+
+        if (naturalAspectRatio > elementAspectRatio) {
+            renderedHeight = imgRect.width / naturalAspectRatio;
+        } else {
+            renderedWidth = imgRect.height * naturalAspectRatio;
+        }
+
+        setDraggingMarker({
+            id: markerId,
+            initialX: marker.x,
+            initialY: marker.y,
+            startMouseX: e.clientX,
+            startMouseY: e.clientY,
+            imgWidth: renderedWidth, // Use rendered width
+            imgHeight: renderedHeight, // Use rendered height
+        });
+    };
+
+    useEffect(() => {
+        const handleMouseMove = (e) => {
+            if (!draggingMarker) return;
+            wasDragging.current = true;
+
+            const deltaX = e.clientX - draggingMarker.startMouseX;
+            const deltaY = e.clientY - draggingMarker.startMouseY;
+
+            const deltaPercentX = (deltaX / draggingMarker.imgWidth) * 100;
+            const deltaPercentY = (deltaY / draggingMarker.imgHeight) * 100;
+
+            let newX = draggingMarker.initialX + deltaPercentX;
+            let newY = draggingMarker.initialY + deltaPercentY;
+            console.log(`Dragging: Initial Coords (%): X=${newX}, Y=${newY}`);
+
+            // Clamp values to keep the entire marker inside the image bounds.
+            const markerPixelRadius = 10; // Half of the marker's approx pixel size (e.g., 20px)
+            const paddingX = (markerPixelRadius / draggingMarker.imgWidth) * 100;
+            const paddingY = (markerPixelRadius / draggingMarker.imgHeight) * 100;
+
+            newX = Math.max(paddingX, Math.min(100 - paddingX, newX));
+            newY = Math.max(paddingY, Math.min(100 - paddingY, newY));
+            console.log(`Dragging: Clamped Coords (%): X=${newX}, Y=${newY}`);
+
+            setMarkers(currentMarkers =>
+                currentMarkers.map(m =>
+                    m.id === draggingMarker.id
+                        ? { ...m, x: newX, y: newY }
+                        : m
+                )
+            );
+        };
+
+        const handleMouseUp = () => {
+            setDraggingMarker(null);
+        };
+
+        if (draggingMarker) {
+            window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('mouseup', handleMouseUp);
+        } else {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        }
+
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [draggingMarker, markers, bodyImage]); // Add bodyImage to dependency array
 
     const renderMarker = (marker) => {
         const anchorPointStyle = {
@@ -519,11 +544,11 @@ const AutopsyDiagramModal = ({
             left: `${marker.x}%`,
             top: `${marker.y}%`,
             zIndex: 10,
+            cursor: draggingMarker && draggingMarker.id === marker.id ? 'grabbing' : 'grab',
         };
         const symbolBaseStyle = {
             position: 'absolute',
             transform: 'translate(-50%, -50%)',
-            cursor: 'pointer',
         };
         const circleSymbolStyle = {
             ...symbolBaseStyle,
@@ -532,7 +557,7 @@ const AutopsyDiagramModal = ({
         };
         const crossSymbolStyle = {
             ...symbolBaseStyle,
-            color: 'blue', fontSize: '20px', fontWeight: 'bold',
+            color: 'red', fontSize: '20px', fontWeight: 'bold',
             lineHeight: '1', userSelect: 'none',
         };
 
@@ -542,7 +567,7 @@ const AutopsyDiagramModal = ({
             transform: 'translateY(-50%)',
             fontSize: '10px', color: '#f0f0f0', backgroundColor: 'rgba(0,0,0,0.6)',
             padding: '1px 4px', borderRadius: '3px', whiteSpace: 'nowrap',
-            cursor: 'pointer', // Make label clickable
+            cursor: 'pointer',
             zIndex: 1,
         };
 
@@ -552,60 +577,70 @@ const AutopsyDiagramModal = ({
             labelStyle.right = '12px';
         }
 
-        // Find the display label using the helper function
         const labeledMarkers = getGroupedLabeledMarkers(markers);
         const markerWithDisplayLabel = labeledMarkers.find(m => m.id === marker.id);
-        const displayLabelText = markerWithDisplayLabel?.displayLabel || marker.label; // Use displayLabel if available, fallback to raw label
-
+        const displayLabelText = markerWithDisplayLabel?.displayLabel || marker.label;
 
         return (
             <div
-                key={marker.id} style={anchorPointStyle}
-                // Click on the anchor point removes the marker
-                onClick={(e) => { e.stopPropagation(); handleRemoveMarker(marker.id); }}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); handleRemoveMarker(marker.id); }}}
-                role="button" tabIndex={0}
-                aria-label={`Remove ${marker.type}${displayLabelText ? ' ' + displayLabelText : ''} at ${marker.x.toFixed(0)}%, ${marker.y.toFixed(0)}%`}
+                key={marker.id}
+                style={anchorPointStyle}
+                onMouseDown={(e) => handleMarkerMouseDown(e, marker.id)}
             >
-                {marker.type === 'circle' && <div style={circleSymbolStyle}></div>}
-                {marker.type === 'cross' && <div style={crossSymbolStyle}>X</div>}
+                <div
+                    style={symbolBaseStyle}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (wasDragging.current) {
+                            wasDragging.current = false;
+                            return;
+                        }
+                        handleRemoveMarker(marker.id);
+                    }}
+                    role="button"
+                    aria-label={`Remove ${marker.type}`}
+                >
+                    {marker.type === 'circle' && <div style={circleSymbolStyle}></div>}
+                    {marker.type === 'cross' && <div style={crossSymbolStyle}>X</div>}
+                </div>
 
-                {/* Conditionally render input or label */}
                 {editingMarkerId === marker.id ? (
-                     <Form.Control
+                    <Form.Control
                         type="text"
                         value={marker.label}
                         onChange={(e) => handleLabelInputChange(marker.id, e.target.value)}
                         onBlur={handleLabelInputBlur}
-                        maxLength={9} // Limit input length
-                        autoFocus // Automatically focus the input when it appears
+                        maxLength={9}
+                        autoFocus
                         size="sm"
                         style={{
                             position: 'absolute',
                             top: '50%',
-                            transform: marker.labelSide === 'right' ? 'translateY(-50%)' : 'translate(-100%, -50%)', // Position based on side
-                            [marker.labelSide]: '12px', // Position based on side
-                            width: '80px', // Adjust width as needed
+                            transform: marker.labelSide === 'right' ? 'translateY(-50%)' : 'translate(-100%, -50%)',
+                            [marker.labelSide]: '12px',
+                            width: '80px',
                             fontSize: '10px',
                             padding: '1px 4px',
                             backgroundColor: '#16202c',
                             color: '#eeeeeeb0',
                             borderColor: '#30363d',
-                            zIndex: 2, // Ensure input is above other elements
+                            zIndex: 2,
                         }}
-                        onClick={e => e.stopPropagation()} // Prevent click on input from closing modal/removing marker
+                        onClick={e => e.stopPropagation()}
+                        onMouseDown={e => e.stopPropagation()} // Prevent drag from starting on input
                         onKeyDown={(e) => {
                             if (e.key === 'Enter') {
-                                e.preventDefault(); // Prevent form submission if it were in a form
-                                handleLabelInputBlur(); // Treat Enter as blur
+                                e.preventDefault();
+                                handleLabelInputBlur();
                             }
                         }}
                     />
                 ) : (
-                    marker.label && ( // Only show label element if label exists
+                    marker.label && (
                         <span
                             style={labelStyle}
-                            onClick={(e) => { e.stopPropagation(); setEditingMarkerId(marker.id); }} // Click label to edit
+                            onClick={(e) => { e.stopPropagation(); setEditingMarkerId(marker.id); }}
+                            onMouseDown={e => e.stopPropagation()} // Prevent drag from starting on label
                         >
                             {displayLabelText}
                         </span>
@@ -645,7 +680,6 @@ const AutopsyDiagramModal = ({
                     <div style={modalBodyStyle}>
                         <div style={{ flexShrink: 0 }}>
                             <div style={markerControlsStyle}>
-                                {/* --- MODIFICATION START: Silhouette Type Buttons --- */}
                                 <Button
                                     variant={selectedSilhouetteType === 'male' ? 'info' : 'outline-info'}
                                     size="sm"
@@ -662,11 +696,10 @@ const AutopsyDiagramModal = ({
                                 >
                                     Female Body
                                 </Button>
-                                <span style={{ borderLeft: '1px solid #30363d', height: '20px', margin: '0 5px' }}></span> {/* Visual separator */}
-                                {/* --- MODIFICATION END --- */}
+                                <span style={{ borderLeft: '1px solid #30363d', height: '20px', margin: '0 5px' }}></span>
 
                                 <Button variant={selectedMarkerType === 'circle' ? 'danger' : 'outline-danger'} size="sm" onClick={() => setSelectedMarkerType('circle')}>Circle (O)</Button>
-                                <Button variant={selectedMarkerType === 'cross' ? 'primary' : 'outline-primary'} size="sm" onClick={() => setSelectedMarkerType('cross')}>Cross (X)</Button>
+                                <Button variant={selectedMarkerType === 'cross' ? 'danger' : 'outline-danger'} size="sm" onClick={() => setSelectedMarkerType('cross')}>Cross (X)</Button>
                                 <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('GSW')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>GSW</Button>
                                 <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('STAB')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>STAB</Button>
                                 <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('UNK')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>UNK</Button>
@@ -697,7 +730,6 @@ const AutopsyDiagramModal = ({
                         </div>
 
                         <div ref={imageContainerRef} style={imageContainerStyle}>
-                            {/* --- MODIFICATION START: Dynamically set image source --- */}
                             <img
                                 ref={imageRef}
                                 src={selectedSilhouetteType === 'female' ? femalebodySilhouette : malebodySilhouette}
@@ -705,11 +737,10 @@ const AutopsyDiagramModal = ({
                                 style={bodyImageStyle}
                                 onClick={handleImageClick}
                             />
-                            {/* --- MODIFICATION END --- */}
                             {markers.map(marker => renderMarker(marker))}
                         </div>
                         <small style={{ color: '#8b949e', flexShrink: 0 }}>
-                            Click diagram to place marker. Click marker to remove. Click label to edit (max 9 chars).
+                            Click diagram to add a marker. Drag marker to reposition. Click marker symbol to remove.
                         </small>
                     </div>
                     <div style={modalFooterStyle}>
