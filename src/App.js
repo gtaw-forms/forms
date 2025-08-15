@@ -85,6 +85,7 @@ const initialFormData = {
     patientID: '',
     patientName: '',
     patientAddress: '',
+    massFatality: false,
     patientRace: '',
     patientGender: '',
     patientPH: '',
@@ -1406,6 +1407,10 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
     const handleDoeChange = (type) => (e) => {
         const isChecked = e.target.checked;
 
+        if (isChecked) {
+            setFormData(prev => ({ ...prev, massFatality: false }));
+        }
+
         // This part resets other modal states when a 'Doe' option is selected.
         if (isChecked) {
             setIsRemoveStaff(false);
@@ -1440,28 +1445,6 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
         }
     };
 
-    const handleRemoveStaffChange = (e) => {
-        if (e.target.checked) {
-            setIsRemoveStaff(true);
-            setIsJohnDoe(false); // Turn off other modes
-            setIsJaneDoe(false); // Turn off other modes
-            setMissingEmployeeData(prev => ({
-                ...prev,
-                coronerName: '',
-                coronerDiscord: '',
-                coronerRank: '',
-                coronerPHNumber: '',
-                coronerBadge: '',
-            }));
-        }
-    };
-
-    const handleMissingEmployeeChange = (value, type) => {
-        setMissingEmployeeData(prevData => ({
-            ...prevData,
-            [type]: value,
-        }));
-    };
 
 
     // UTC time stuff
@@ -3061,8 +3044,33 @@ useEffect(() => {
     };
 const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    const valToSet = type === 'checkbox' ? checked : value;
+    const valToSet = type === 'checkbox' || type === 'radio' ? checked : value;
     const timestamp = Date.now().toString();
+
+    if (name === 'massFatality' && checked) {
+        setIsJohnDoe(false);
+        setIsJaneDoe(false);
+        if (formData.decedentName === 'John Doe' || formData.decedentName === 'Jane Doe') {
+            setFormData(prev => ({ ...prev, decedentName: '' }));
+        }
+
+        let notificationId;
+        const actions = [{
+            label: 'Switch to Mass Fatality Report',
+            handler: () => {
+                handleAgencySelect(11);
+                if (notificationId) removeNotification(notificationId);
+            },
+            variant: 'primary'
+        }];
+
+        notificationId = showNotification(
+            "You have picked Mass Fatality, do you wish to swap to the Mass Fatality Report?",
+            'info-circle',
+            15000,
+            actions
+        );
+    }
 
     setFormData(prevFormData => ({
         ...prevFormData,

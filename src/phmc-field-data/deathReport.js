@@ -156,10 +156,14 @@ useEffect(() => {
             </div>
 
             <div className="radio-inline-container">
-                <span className="radio-text">Decedent Name:</span>
                 <div className="radio-button-group">
+                    <div className="radio-button-group">
                     <Form.Check type="radio" id="johnDoe" label="   John Doe" checked={isJohnDoe} onChange={handleDoeChange('john')} inline />
                     <Form.Check type="radio" id="janeDoe" label="   Jane Doe" checked={isJaneDoe} onChange={handleDoeChange('jane')} inline />
+                    <Form.Check type="radio"id="massFatality"name="massFatality"label="Mass Fatality?" checked={formData.massFatality || false} onChange={handleChange} className="mb-3"/>
+
+                </div>
+
                 </div>
             </div>
             <div style={{ display: 'flex', gap: '10px' }}>
