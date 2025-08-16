@@ -2099,7 +2099,6 @@ const handleReportSelectedForAttachment = useCallback(async (reportFirebaseKey, 
     // Set a timer to close the modal. If another report is loaded quickly,
     // the timer will be reset, ensuring the modal only closes after the last report is processed.
     modalCloseTimer.current = setTimeout(() => {
-        pendingReportAttachmentCallback.current = null;
         setReportSelectionFilter(null);
         setPreselectedEmployeeType(null);
         setShowSavedReports(false);
@@ -4099,6 +4098,7 @@ setFormData={setFormData}                                        typeOfDeathOpti
     filterByBbCodeVersions={reportSelectionFilter}
     onReportSelectedForAttachment={pendingReportAttachmentCallback.current ? handleReportSelectedForAttachment : null}
     preselectedEmployeeType={preselectedEmployeeType}
+    bbCodeVersion={bbCodeVersion}
 />
             <WebhookModal
                 show={showWebhookModal}
