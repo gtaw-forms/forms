@@ -244,6 +244,7 @@ const SavedReportsModal = ({
     filterByBbCodeVersions,
     onReportSelectedForAttachment,
     preselectedEmployeeType,
+    bbCodeVersion,
 }) => {
     const [currentPage, setCurrentPage] = useState(1);
     const [searchQuery, setSearchQuery] = useState('');
@@ -626,7 +627,7 @@ const SavedReportsModal = ({
                                     Loading...
                                 </>
                             ) : (
-                                `Load Selected (${selectedReportKeys.length})`
+                                `${bbCodeVersion === 2 ? 'Attach Selected' : 'Load Selected'} (${selectedReportKeys.length})`
                             )}
                         </Button>
                     </div>
