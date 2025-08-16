@@ -74,13 +74,16 @@ init({
   dsn: "https://5dfa5683e8dc9adbc7f30e44757995c7@o4509126124765184.ingest.de.sentry.io/4509126125813840",
   sendDefaultPii: true,
   integrations: [
-    Sentry.replayIntegration(),
+    Sentry.browserTracingIntegration(),
+    Sentry.replayIntegration({
+      maskAllText: false,
+      blockAllMedia: false,
+    }),
   ],
-  // These options should be at the root, not inside integrations:
-  maskAllText: false,
-  blockAllMedia: false,
+  tracesSampleRate: 1.0,
   replaysSessionSampleRate: 0.1,
   replaysOnErrorSampleRate: 1.0,
+  tracePropagationTargets: ["localhost", "https://forms.phmc.io", /^\//],
 });console.log("Sentry has been initialized.");
 
 // --- Global Error Handling Setup ---
