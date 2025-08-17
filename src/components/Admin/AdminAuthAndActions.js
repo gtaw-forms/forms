@@ -123,6 +123,14 @@ const sendAdminActionWebhook = async (adminEmail, action, details, categoryName 
 
 
 const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNotification: showInAppNotification, commitInfo }) => {
+    // GTA World OAuth login handler
+    const handleGtaWorldLogin = () => {
+        // Replace with your actual client ID and callback URL
+        const clientId = process.env.REACT_APP_GTAWORLD_CLIENT_ID || 'YOUR_CLIENT_ID';
+    const redirectUri = encodeURIComponent(window.location.origin + '/forms/auth/gta/callback');
+        const authUrl = `https://ucp.gta.world/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}`;
+        window.location.href = authUrl;
+    };
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
@@ -1100,6 +1108,10 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                     <i className="fas fa-bug me-2"></i>
                     Trigger Sentry Test Error
                 </Button>
+                    <Button variant="primary" className="ms-2" onClick={handleGtaWorldLogin} title="Login to GTA World UCP (OAuth)">
+                        <i className="fas fa-sign-in-alt me-2"></i>
+                        Login UCP
+                    </Button>
                                     <Button variant="secondary" onClick={() => setShowCctvWebhookModal(true)} title="Send a test webhook simulating a CCTV request.">
                         <i className="fas fa-video me-2"></i>
                         CCTV Request Test
