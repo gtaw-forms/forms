@@ -34,6 +34,7 @@ import {
 } from './phmc-bbcode-generators'; 
 import PositionInfoModal from './components/PositionInfoModal'; // Adjust path as needed
 import EmsBingoModal from './components/EmsBingoModal'; // <-- ADD THIS IMPORT
+import GtaCallback from './components/GtaCallback';
 
 // logos
 import email from './assets/email.png'
@@ -62,6 +63,7 @@ function App() {
     const [isMobile, setIsMobile] = useState(false);
     const modalCloseTimer = useRef(null);
     const [showEmsBingoModal, setShowEmsBingoModal] = useState(false);
+    const [showGtaCallback, setShowGtaCallback] = useState(false);
 
 const initialFormData = {
     // Core user state to preserve
@@ -1127,6 +1129,8 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
             setShowEmsBingoModal(true);
         } else if (currentPath.endsWith('/cctv') || (redirectedPath && redirectedPath.endsWith('/cctv'))) {
             handleShowCctvRequestModal();
+        } else if (currentPath.endsWith('/forms/auth/gta/callback')) {
+            setShowGtaCallback(true);
         }
 
         if (redirectedPath) {
