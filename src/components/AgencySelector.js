@@ -64,6 +64,12 @@ const AgencySelector = ({
     setHideAgencySelector,
     selectedAgencyGroup,
     formDefinitions,
+    physicianRecruitmentDetails,
+    psychRecruitmentDetails,
+    adminRecruitmentDetails,
+    emsRecruitmentDetails,
+    nurseRecruitmentDetails,
+    coronerRecruitmentDetails,
 }) => {
     if (!showAgencySelector || !selectedAgencyGroup) {
         return null;
@@ -77,6 +83,25 @@ const AgencySelector = ({
             if (orderA !== orderB) return orderA - orderB;
             return a.name.localeCompare(b.name);
         });
+    
+        // --- Recruitment Details Mapping ---
+        // Use props passed from App.js
+        const recruitmentDetailsMap = {
+            50: physicianRecruitmentDetails || {},
+            51: psychRecruitmentDetails || {},
+            52: adminRecruitmentDetails || {},
+            53: nurseRecruitmentDetails || {},
+            54: coronerRecruitmentDetails || {},
+            55: emsRecruitmentDetails || {},
+        };
+        const recruitmentGroupMap = {
+            50: "Physician",
+            51: "Psych",
+            52: "Admin",
+            53: "Nurse",
+            54: "Coroner",
+            55: "EMS",
+        };
 
     const overlayStyle = {
         position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -112,7 +137,6 @@ const AgencySelector = ({
         paddingBottom: '0.75rem',     // Ensure consistent padding
         paddingLeft: '0.5rem',        // Horizontal padding
         paddingRight: '0.5rem',       // Horizontal padding
-        height: '11rem', // Increased height for all buttons
         textAlign: 'center', backgroundColor: '#343a40', color: '#f8f9fa',
         border: '1px solid #495057', borderRadius: '0.1rem',
         boxShadow: '0 0.125rem 0.25rem rgba(0, 0, 0, 0.075)',
@@ -192,6 +216,8 @@ const AgencySelector = ({
                 )}
 
                 {/* PHMC Sub-Forms List */}
+
+
                 {formSpecificButtonProps.subForms && formSpecificButtonProps.subForms.length > 0 && (
                     <div style={subFormListContainerStyle}>
                         <div style={subFormListHeaderStyle}>Related Forms:</div>
@@ -236,7 +262,7 @@ const AgencySelector = ({
                                     {availableForms.map(form => {
                                         let buttonDisplayProps = {
                                             text: form.name, title: form.name,
-                                            style: { ...formButtonStyleBase }, // Use the new taller base style
+                                            style: { ...formButtonStyleBase },
                                             openPositions: [], closedPositions: [],
                                             isRecruitmentForm: false, overallOpen: false, statusKnown: true,
                                             subForms: [],
@@ -250,15 +276,22 @@ const AgencySelector = ({
 
                                             if (relatedSubForms.length > 0) {
                                                 buttonDisplayProps.subForms = relatedSubForms;
-                                                // Adjust style for dynamic height if sub-forms are present
                                                 buttonDisplayProps.style = {
-                                                    ...buttonDisplayProps.style, // This already includes the taller base height
-                                                    height: 'auto', // Allow it to grow
-                                                    // minHeight is already effectively set by formButtonStyleBase.height
-                                                    // justifyContent is already 'flex-start' from formButtonStyleBase
-                                                    // paddingTop and paddingBottom are already in formButtonStyleBase
+                                                    ...buttonDisplayProps.style,
+                                                    height: 'auto',
                                                 };
                                             }
+                                        }
+
+                                        // For PHMC Recruitment, set recruitment status props before rendering
+                                        if (selectedAgencyGroup === 'PHMC Recruitment' && recruitmentDetailsMap[form.version]) {
+                                            const details = recruitmentDetailsMap[form.version];
+                                            const groupFilter = recruitmentGroupMap[form.version]; // Get the group filter
+                                            buttonDisplayProps.isRecruitmentForm = true;
+                                            buttonDisplayProps.openPositions = Object.values(details).filter(pos => pos.status === 'OPEN' && pos.group === groupFilter).map(pos => pos.displayName);
+                                            buttonDisplayProps.closedPositions = Object.values(details).filter(pos => pos.status === 'CLOSED' && pos.group === groupFilter).map(pos => pos.displayName);
+                                            buttonDisplayProps.statusKnown = Object.keys(details).length > 0;
+                                            buttonDisplayProps.overallOpen = buttonDisplayProps.openPositions.length > 0;
                                         }
 
                                         let currentGridItemStyle = { ...gridItemStyleBase, flex: isMobile ? '1 0 48%' : '1 0 23%' };
@@ -274,6 +307,7 @@ const AgencySelector = ({
                     <div className="mt-4">
                         <Form.Check
                             type="checkbox" id="hideMainFormSelector"
+
                             label=" Don't show this popup again (for this session)"
                             checked={hideAgencySelector}
                             onChange={(e) => {

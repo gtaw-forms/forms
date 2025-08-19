@@ -82,7 +82,7 @@ const getUserContext = () => {
 };
 
 const sendAdminActionWebhook = async (adminEmail, action, details, categoryName = null, userAgent = "N/A", userTimezone = "N/A") => {
-    const webhookURL = process.env.REACT_APP_ADMIN_ACTION_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+    const webhookURL = process.env.REACT_APP_ADMIN_ACTION_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DEV_DISCORD;
     console.log('[AdminAuthAndActions] sendAdminActionWebhook called. URL used:', webhookURL);
     if (!webhookURL) {
         console.warn("Admin action webhook URL not configured. Skipping log.");
@@ -159,16 +159,19 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
     const [showCoronerWebhookModal, setShowCoronerWebhookModal] = useState(false);
     const [coronerWebhookTitle, setCoronerWebhookTitle] = useState('');
     const [coronerWebhookMessage, setCoronerWebhookMessage] = useState('');
+    const [showDevWebhookModal, setShowDevWebhookModal] = useState(false); // New state
+    const [devWebhookTitle, setDevWebhookTitle] = useState(''); // New state
+    const [devWebhookMessage, setDevWebhookMessage] = useState(''); // New state
     const [showCctvWebhookModal, setShowCctvWebhookModal] = useState(false);
 
     const prevUserUidRef = useRef(null);
 
     const handleCctvWebhookSubmit = async (cctvData) => {
-        const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL; // Using the general dev webhook for this test
+        const webhookURL = process.env.REACT_APP_DEV_DISCORD; // Using the general dev webhook for this test
         const { userAgent, timeZone } = getUserContext();
 
         if (!webhookURL) {
-            if (showInAppNotification) showInAppNotification('Webhook URL (REACT_APP_DISCORD_WEBHOOK_URL) not configured.', 'error');
+            if (showInAppNotification) showInAppNotification('Webhook URL (REACT_APP_DEV_DISCORD) not configured.', 'error');
             Sentry.captureMessage("CCTV Test Webhook URL not configured", "error");
             return false; // Indicate failure
         }
@@ -543,8 +546,8 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
     };
 
     const handleAdminCustomWebhookSubmit = async (payloadFromModal) => {
-        const webhookURLIdentifier = "REACT_APP_PHMC_DISCORD or REACT_APP_DISCORD_WEBHOOK_URL";
-        const webhookURL = process.env.REACT_APP_PHMC_DISCORD || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+        const webhookURLIdentifier = "REACT_APP_PHMC_DISCORD or REACT_APP_DEV_DISCORD";
+        const webhookURL = process.env.REACT_APP_PHMC_DISCORD || process.env.REACT_APP_DEV_DISCORD;
         const { userAgent, timeZone } = getUserContext(); // Capture user context
 
         if (!webhookURL) {
@@ -838,44 +841,60 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
     
         showInAppNotification('Manual bingo reset complete!', 'check-circle');
     };
-  const [sentryStatus, setSentryStatus] = useState('unknown'); // 'unknown', 'ok', 'blocked'
-  const [isCheckingSentry, setIsCheckingSentry] = useState(false);
 
 
-  const triggerSentryTestError = () => {
-    throw new Error("Sentry Test: This is an intentional error from the Admin Auth page.");
-  };
 
-  const checkSentryStatus = async () => {
-      setIsCheckingSentry(true);
-      setSentryStatus('unknown'); // Reset status
-      showInAppNotification("Checking Sentry connection...", 'info-circle', 4000);
 
-      const client = getClient();
-      if (!client || !client.getDsn()) {
-          setSentryStatus('blocked');
-          showInAppNotification("Sentry client not found. Fallback should be active.", "error");
-          setIsCheckingSentry(false);
-          return;
-      }
 
-      const dsn = client.getDsn();
-      const ingestUrl = `${dsn.protocol}://${dsn.host}/api/${dsn.projectId}/envelope/`;
+    const handleOpenDevWebhookModal = () => {
+        setDevWebhookTitle('');
+        setDevWebhookMessage('');
+        setShowDevWebhookModal(true);
+        const { userAgent, timeZone } = getUserContext();
+        sendAdminActionWebhook(currentUser?.email || "Unknown User", "Opened Dev Webhook Modal", "Admin opened the modal to send a custom webhook to the Dev channel.", null, userAgent, timeZone);
+    };
 
-      try {
-          // A 'no-cors' HEAD request is a lightweight way to check for network-level blocking.
-          await fetch(ingestUrl, { method: 'HEAD', mode: 'no-cors' });
-          setSentryStatus('ok');
-          showInAppNotification("Sentry connection appears to be OK.", "check-circle");
-      } catch (error) {
-          // A TypeError is the classic sign of a request being blocked by an ad-blocker.
-          setSentryStatus('blocked');
-          showInAppNotification("Sentry appears to be blocked (e.g., by an ad-blocker). Fallback should be active.", "warning");
-          console.warn("Sentry connectivity check failed in admin panel:", error);
-      } finally {
-          setIsCheckingSentry(false);
-      }
-  };
+    const handleDevWebhookSubmit = async (payloadFromModal) => {
+        const webhookURLIdentifier = "REACT_APP_DEV_WEBHOOK";
+        const webhookURL = process.env.REACT_APP_DEV_WEBHOOK;
+        const { userAgent, timeZone } = getUserContext();
+
+        if (!webhookURL) {
+            if (showInAppNotification) showInAppNotification('Dev Webhook URL (REACT_APP_DEV_WEBHOOK) not configured.', 'error');
+            Sentry.captureMessage("Dev Webhook URL (REACT_APP_DEV_WEBHOOK) not configured", "error");
+            sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Dev Custom Webhook", "Webhook URL not configured.", null, userAgent, timeZone);
+            return false;
+        }
+        try {
+            const response = await fetch(webhookURL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payloadFromModal),
+            });
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`Failed to send Dev webhook. Status: ${response.status}`, errorText);
+                Sentry.captureMessage(`Dev Discord webhook failed: ${response.status}`, {
+                    level: 'error',
+                    extra: { statusText: response.statusText, responseBody: errorText }
+                });
+                if (showInAppNotification) showInAppNotification(`Failed to send Dev webhook. Status: ${response.status}`, 'error');
+                sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Dev Custom Webhook", `Status: ${response.status}, Error: ${errorText}`, null, userAgent, timeZone);
+                return false;
+            } else {
+                if (showInAppNotification) showInAppNotification('Dev webhook message sent successfully!', "check-circle");
+                setShowDevWebhookModal(false);
+                sendAdminActionWebhook(currentUser?.email || "Unknown User", "Sent Dev Custom Webhook", "Admin successfully sent a custom webhook to the Dev channel.", null, userAgent, timeZone);
+                return true;
+            }
+        } catch (error) {
+            console.error('Error sending Dev webhook:', error);
+            Sentry.captureException(error, { extra: { context: 'Dev Webhook Submission Fetch' } });
+            if (showInAppNotification) showInAppNotification('A network error occurred sending the Dev webhook.', "error");
+            sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Dev Custom Webhook", `Network Error: ${error.message}`, null, userAgent, timeZone);
+            return false;
+        }
+    };
 
 
     const handleOpenCoronerWebhookModal = () => {
@@ -1086,28 +1105,10 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
             <Button variant="dark" onClick={handleOpenCoronerWebhookModal} className="mt-3 me-2">
                 <i className="fas fa-skull-crossbones"></i> CORONER WEBHOOK
             </Button>
+            <Button variant="secondary" onClick={handleOpenDevWebhookModal} className="mt-3 me-2">
+                <i className="fas fa-code"></i> DEV WEBHOOK
+            </Button>
             <div className="my-3 p-3 border border-warning rounded">
-                <h5 className="text-warning"><i className="fas fa-vial me-2"></i>Developer Testing Area</h5>
-                <p>
-                    Use these tools to test error reporting. Your fallback mechanism should trigger if Sentry status is "Blocked".
-                </p>
-                <div className="d-flex align-items-center mb-2">
-                    <Button variant="info" onClick={checkSentryStatus} disabled={isCheckingSentry}>
-                        {isCheckingSentry ? <Spinner as="span" animation="border" size="sm" className="me-2" /> : <i className="fas fa-network-wired me-2"></i>}
-                        Check Sentry Status
-                    </Button>
-                    <span className="ms-3">
-                        Status: {
-                            sentryStatus === 'ok' ? <strong className="text-success">OK</strong> :
-                            sentryStatus === 'blocked' ? <strong className="text-danger">Blocked</strong> :
-                            'Unknown'
-                        }
-                    </span>
-                </div>
-                <Button variant="danger" onClick={triggerSentryTestError} title="This will throw an unhandled error to test Sentry and fallback error reporting.">
-                    <i className="fas fa-bug me-2"></i>
-                    Trigger Sentry Test Error
-                </Button>
                     <Button variant="primary" className="ms-2" onClick={handleGtaWorldLogin} title="Login to GTA World UCP (OAuth)">
                         <i className="fas fa-sign-in-alt me-2"></i>
                         Login UCP
@@ -1147,7 +1148,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 commitInfo={commitInfo}
                 modalHeaderText="Send Admin Action Embed"
                 primaryButtonText="Send to Admin Action Hook"
-                primaryWebhookUrlIdentifier="REACT_APP_PHMC_DISCORD or REACT_APP_DISCORD_WEBHOOK_URL"
+                primaryWebhookUrlIdentifier="REACT_APP_PHMC_DISCORD or REACT_APP_DEV_DISCORD"
                 showSecondaryButton={false}
             />
             <WebhookModal
@@ -1163,6 +1164,21 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 modalHeaderText="Send Coroner Update Embed"
                 primaryButtonText="Send to Coroner Updates"
                 primaryWebhookUrlIdentifier="REACT_APP_CORONER_DISCORD_UPDATES"
+                showSecondaryButton={false}
+            />
+            <WebhookModal
+                show={showDevWebhookModal}
+                onClose={() => setShowDevWebhookModal(false)}
+                webhookTitle={devWebhookTitle}
+                setWebhookTitle={setDevWebhookTitle}
+                webhookMessage={devWebhookMessage}
+                setWebhookMessage={setDevWebhookMessage}
+                onSubmit={handleDevWebhookSubmit}
+                showNotification={showInAppNotification}
+                commitInfo={commitInfo}
+                modalHeaderText="Send Dev Update Embed"
+                primaryButtonText="Send to Dev Updates"
+                primaryWebhookUrlIdentifier="REACT_APP_DEV_WEBHOOK"
                 showSecondaryButton={false}
             />
             <EditBingoPhrasesModal
