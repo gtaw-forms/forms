@@ -151,7 +151,6 @@ const MassFatality = ({
     currentUtcTime,
     coronerGroupedOptions,
 }) => {
-    const [decedents, setDecedents] = useState(formData.decedents && Array.isArray(formData.decedents) ? formData.decedents : [{ ...defaultDecedent }]);
     const generateEvidenceLockerID = () => {
         const today = new Date();
         const day = String(today.getDate()).padStart(2, '0');
@@ -177,52 +176,47 @@ const MassFatality = ({
         }));
     }, [setFormData]);
 
-    // Only update parent formData when decedents change
-    useEffect(() => {
-        setFormData(prevFormData => ({
-            ...prevFormData,
-            decedents
-        }));
-    }, [decedents]);
-
-    useEffect(() => {
-        if (formData.decedents && formData.decedents.length > 0) {
-            setDecedents(formData.decedents);
-        } else {
-            setDecedents([{ ...defaultDecedent }]);
-        }
-    }, [formData.decedents]);
+    
 
     const addDecedent = () => {
-        setDecedents(prev => [...prev, { ...defaultDecedent, collapsed: false }]); // New decedents start expanded
+        setFormData(prevFormData => ({
+            ...prevFormData,
+            decedents: [...(prevFormData.decedents || []), { ...defaultDecedent, collapsed: false }]
+        }));
     };
 
     const updateDecedent = (index, field, value) => {
-        setDecedents(prev => prev.map((dec, i) => {
-            if (i === index) {
-                const updatedDec = { ...dec, [field]: value };
-                // If a field is updated, ensure the block is expanded
-                const shouldCollapse = isDecedentComplete(updatedDec);
-                return { ...updatedDec, collapsed: shouldCollapse };
-            }
-            return dec;
+        setFormData(prevFormData => ({
+            ...prevFormData,
+            decedents: prevFormData.decedents.map((dec, i) => {
+                if (i === index) {
+                    const updatedDec = { ...dec, [field]: value };
+                    // If a field is updated, ensure the block is expanded
+                    const shouldCollapse = isDecedentComplete(updatedDec);
+                    return { ...updatedDec, collapsed: shouldCollapse };
+                }
+                return dec;
+            })
         }));
     };
 
     const toggleCollapse = (index) => {
-        setDecedents(prev => {
-            const newDecedents = prev.map((dec, i) => {
+        setFormData(prevFormData => ({
+            ...prevFormData,
+            decedents: prevFormData.decedents.map((dec, i) => {
                 if (i === index) {
                     return { ...dec, collapsed: !dec.collapsed };
                 }
                 return dec;
-            });
-            return newDecedents;
-        });
+            })
+        }));
     };
 
     const removeDecedent = (index) => {
-        setDecedents(prev => prev.filter((_, i) => i !== index));
+        setFormData(prevFormData => ({
+            ...prevFormData,
+            decedents: prevFormData.decedents.filter((_, i) => i !== index)
+        }));
     };
 
     const handleDoeChange = (index, type) => (e) => {
@@ -356,7 +350,7 @@ const MassFatality = ({
             <Button variant="primary" onClick={addDecedent} style={{ marginBottom: '1rem' }}>
                 Add New Decedent
             </Button>
-            {decedents.map((dec, idx) => (
+            {(formData.decedents || []).map((dec, idx) => (
                 <div key={idx}>
                     <CollapsibleHeader
                         title={`Decedent #${idx + 1} Information`}
@@ -364,7 +358,7 @@ const MassFatality = ({
                         onToggle={() => toggleCollapse(idx)}
                         sectionId={`decedent-${idx}`}
                         onRemove={() => removeDecedent(idx)}
-                        showRemoveButton={decedents.length > 1}
+                        showRemoveButton={formData.decedents.length > 1}
                     />
                     {!dec.collapsed && (
                         <div id={`decedent-collapse-${idx}`}>

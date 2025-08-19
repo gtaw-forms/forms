@@ -53,13 +53,14 @@ const getRelevantFields = (bbCodeVersion) => {
             ];
         case 5: // Surgery Report
             return [
-                'phmcEmployee', 'extraStaff', 'patientID', 'patientSummaryConsultation',
+                'phmcEmployee', 'lastName', 'extraStaff', 'patientID', 'patientSummaryConsultation',
                 'patientAddress', 'rank', 'date', 'patientSummary', 'lastName',
                 'surgeryProcedures', 'patientConsentOption', 'patientComplicationOptions',
                 'procedureGoodOptions'
             ];
         case 6: // Physical Evaluation (PHMC)
             return [
+                'phmcEmployee', 'lastName', 'patientName',
                 'patientID', 'date', 'lastName', 'patientHeight', 'patientWeight',
                 'phmcRank', 'careerRisks', 'patientAllergies', 'patientMedicine',
                 'patientcareerNo', 'patientSummary', 'patientCareer', 'patientImpairments',
@@ -68,6 +69,7 @@ const getRelevantFields = (bbCodeVersion) => {
             ];
         case 7: // Physical Evaluation (PBC)
             return [
+                'phmcEmployee', 'lastName', 'patientName',
                 'patientID', 'date', 'lastName', 'patientHeight', 'patientWeight',
                 'phmcRank', 'careerRisks', 'patientAllergies', 'patientMedicine',
                 'patientcareerNo', 'patientSummary', 'patientCareer', 'patientImpairments',
@@ -76,7 +78,7 @@ const getRelevantFields = (bbCodeVersion) => {
             ];
         case 9: // Obs Main File
             return [
-                'phmcEmployee', 'patientName', 'patientMedicalRecord', 'patientJob',
+                'phmcEmployee', 'lastName', 'patientName', 'patientMedicalRecord', 'patientJob',
                 'patientPartnerPH', 'patientDateofBirth', 'patientPartnerName', 'patientJobTasks',
                 'patientLivingHabits', 'patientPreHealth', 'patientBaggageofParents', 'patientTemperature',
                 'patientBP', 'patientWeight', 'patientSummaryConsultation', 'patientBPM',
@@ -89,7 +91,7 @@ const getRelevantFields = (bbCodeVersion) => {
             ];
         case 10: // Obs Follow Up
             return [
-                'phmcEmployee', 'patientName', 'patientMedicalRecord', 'patientContractions',
+                'phmcEmployee', 'lastName', 'patientName', 'patientMedicalRecord', 'patientContractions',
                 'patientBleeding', 'patientDateofBirth', 'patientDiscomfort', 'patientFatter',
                 'patientBabyGender', 'patientKnowBabyGender', 'patientTemperature', 'patientBP',
                 'patientWeight', 'patientSummaryConsultation', 'patientBPM', 'patientResperation',
@@ -105,7 +107,7 @@ const getRelevantFields = (bbCodeVersion) => {
             ];
         case 12: // Gynecology - Main File
             return [
-                'phmcEmployee', 'patientName', 'patientMedicalRecord', 'patientJob',
+                'phmcEmployee', 'lastName', 'patientName', 'patientMedicalRecord', 'patientJob',
                 'patientPartnerPH', 'patientDateofBirth', 'patientPartnerName', 'patientJobTasks',
                 'patientLivingHabits', 'patientBaggageofParents', 'patientTemperature', 'patientBP',
                 'patientWeight', 'patientSummaryConsultation', 'patientBPM', 'patientResperation',
@@ -117,7 +119,7 @@ const getRelevantFields = (bbCodeVersion) => {
             ];
         case 13: // Gynecology - Add Reply
             return [
-                'phmcEmployee', 'patientName', 'patientMedicalRecord', 'patientBleeding',
+                'phmcEmployee', 'lastName', 'patientName', 'patientMedicalRecord', 'patientBleeding',
                 'patientDateofBirth', 'patientDiscomfort', 'patientFatter', 'patientTemperature',
                 'patientBP', 'patientWeight', 'patientSummaryConsultation', 'patientBPM',
                 'patientResperation', 'patientOxi', 'patientBloodAnalysis', 'patientBloodAnalysisResults',
@@ -126,11 +128,13 @@ const getRelevantFields = (bbCodeVersion) => {
             ];
         case 14: // Mental Health - PHMC
             return [
+                'phmcEmployee', 'lastName', 'patientName',
                 'lastName', 'patientID', 'date', 'patientChiefComplaint', 'rank',
                 'patientNotes', 'patientDiagnosis', 'patientMedicine', 'patientProcedure'
             ];
         case 16: // Mental Health - PBC
             return [
+                'phmcEmployee', 'lastName', 'patientName',
                 'lastName', 'patientID', 'rank', 'date', 'patientChiefComplaint',
                 'patientNotes', 'patientDiagnosis', 'patientMedicine', 'patientProcedure'
             ];
@@ -164,14 +168,14 @@ const getRelevantFields = (bbCodeVersion) => {
             ];
         case 22: // Commentary Note (PHMC)
             return [
-                'phmcEmployee',
+                'phmcEmployee', 'lastName',
                 'date',
                 'patientID',
                 'departmentLarge',
             ];
         case 23: // Commentary Note (PBC)
             return [
-                'phmcEmployee',
+                'phmcEmployee', 'lastName',
                 'date',
                 'patientID',
                 'departmentLarge',
@@ -187,7 +191,7 @@ const getRelevantFields = (bbCodeVersion) => {
                 'patientZIP',
                 'patientEmail',
                 'patientMedInfoReleaseOther',
-                'phmcEmployee',
+                'phmcEmployee', 'lastName',
                 'MedicalRecordsReleaseOther',
                 'patientMedInfoFormatOther',
                 'StupidDateFrom',
@@ -248,7 +252,7 @@ const getRelevantFields = (bbCodeVersion) => {
                 'decedentName',
                 'patientNotes',
                 'synopsis',
-                'phmcEmployee',
+                'phmcEmployee', 'lastName',
                 'decedentOOC',
                 'patientCareer',
             ];

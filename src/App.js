@@ -215,6 +215,27 @@ function AppContent({
 
 
     const generateTitle = () => {
+        // Mass Fatality form (bbCodeVersion 11) special handling
+        if (bbCodeVersion === 11) {
+            const decedents = formData.decedents || [];
+            const numDecedents = decedents.length;
+            const firstDecedentName = numDecedents > 0 ? (decedents[0].decedentName || 'Unidentified') : 'No Decedents';
+
+            let formattedDate = '';
+            if (formData.dateTime) {
+                const dateObj = new Date(formData.dateTime);
+                // Ensure dateObj is valid before formatting
+                if (!isNaN(dateObj.getTime())) {
+                    const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+                    const day = dateObj.getDate().toString().padStart(2, '0');
+                    const year = dateObj.getFullYear();
+                    formattedDate = `${month}/${day}/${year}`;
+                }
+            }
+            
+            return `[Mass Fatality] ${firstDecedentName} (x${numDecedents}) - ${formattedDate}`;
+        }
+
         const definition = getFormDefinition(bbCodeVersion);
         if (definition && definition.titleGenerator) {
             return definition.titleGenerator(formData);
