@@ -4,6 +4,8 @@ import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 import { init, getClient } from "@sentry/react";
+import { NotificationProvider } from './contexts/NotificationContext';
+import { DataProvider } from './contexts/DataContext';
 // --- MODIFICATION END ---
 import * as Sentry from "@sentry/react";
 
@@ -19,7 +21,7 @@ let isSentryBlocked = false; // Flag to track if Sentry connectivity failed
 const processDiscordErrorQueue = async () => {
     if (isProcessingDiscordQueue || discordErrorWebhookQueue.length === 0) return;
 
-    const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+    const webhookURL = process.env.REACT_APP_DEV_DISCORD;
     if (!webhookURL) {
         console.error("Discord Error Webhook: URL is not configured. Cannot process queue.");
         discordErrorWebhookQueue.length = 0; // Clear queue if no URL
@@ -134,7 +136,11 @@ window.onerror = (message, source, lineno, colno, errorObject) => {
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
-      <App />
+    <NotificationProvider>
+      <DataProvider>
+        <App />
+      </DataProvider>
+    </NotificationProvider>
   </React.StrictMode>
 );
 

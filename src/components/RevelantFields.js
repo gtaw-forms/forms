@@ -101,8 +101,7 @@ const getRelevantFields = (bbCodeVersion) => {
             return [
                 'decedents', 'coronerRank', 'placeOfDeath', 'department', 'dateTime',
                 'coronerEmployee', 'coronerBadge', 'synopsis', 'requestingOfficer',
-
-
+                'decedentName', 'decedentOOC',
             ];
         case 12: // Gynecology - Main File
             return [
