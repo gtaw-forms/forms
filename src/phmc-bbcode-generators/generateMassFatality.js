@@ -56,10 +56,10 @@ An official from the ${departmentFullName(department) || 'Unknown Department'} h
                 : '';
 
             bbCode += `
-[divbox=transparent][altspoiler=${idx + 1} - ${dec.decedentName}]
-[divbox=transparent][center][bold]DECEDENT INFORMATION[/center]
+[divbox=transparent][altspoiler=${idx + 1} - ${dec.decedentName} - OOC: ${dec.decedentOOC || 'Unknown'}]
+[divbox=transparent][center][bold]DECEDENT INFORMATION[/bold][/center]
 [b] DECEDENT NAME: [/b] ${dec.decedentName || 'Unidentified Decedent'}
-[b] DECEDENT OOC NAME: [/b] ${dec.decedentOOC || 'Unknown'}
+[b] DECEDENT OOC NAME: [/b] (( ${dec.decedentOOC || 'Unknown'} ))
 [b] PRONOUNCED TIME OF DEATH: [/b] ${dec.pronouncedTimeOfDeath || 'Unknown Time'}
 [b] PROBABLE CAUSE OF DEATH: [/b] ${dec.probableCauseOfDeath || 'Unknown Cause'}
 [b] MANNER OF DEATH: [/b] ${dec.mannerOfDeath || 'Unknown Manner'}

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Form, Button, InputGroup } from 'react-bootstrap';
 import Select from 'react-select';
 import AutopsyDiagramModal from '../components/AutopsyDiagramModal';
+import * as Sentry from "@sentry/react";
 
 const Autopsy = ({
     formData,
@@ -10,12 +11,13 @@ const Autopsy = ({
     coronerGroupedOptions,
     handleSelectChange,
     isUploading,
-    handleAutopsyImageUploadAndCreateAlbum,
+    setIsUploading,
     setShowMissingEmployeeModal,
     showNotification,
     commitInfo, // <-- Add commitInfo to props
+    removeNotification
+
 }) => {
-    // ... (existing state and handlers: showAutopsyDiagramModal, handleOpenDiagramModal, etc.) ...
 
     const [showAutopsyDiagramModal, setShowAutopsyDiagramModal] = useState(false);
 
@@ -46,7 +48,6 @@ const Autopsy = ({
     };
 
 
-
     const handleAddDeathCause = () => {
         setFormData(prev => ({
             ...prev,
@@ -73,6 +74,91 @@ const Autopsy = ({
             return { ...prev, autopsyDeathCauses: newCauses };
         });
     };
+ 
+    const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
+        const files = event.target.files;
+        if (!files || files.length === 0) {
+            showNotification('No files selected for autopsy photos.', 'warning');
+            return;
+        }
+
+        let indefiniteNotificationId = null;
+
+        setIsUploading(true);
+        indefiniteNotificationId = showNotification('Processing autopsy photos, please wait...', 'info-circle', 0);
+
+        const imgurAccessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
+
+        if (!imgurAccessToken) {
+            console.error('[Autopsy Photos] Imgur access token not configured.');
+            Sentry.captureMessage('Imgur access token not configured for image upload.', 'error');
+            showNotification('Configuration error: Imgur token missing.', 'exclamation-triangle');
+            setIsUploading(false);
+            if (indefiniteNotificationId) removeNotification(indefiniteNotificationId);
+            return;
+        }
+
+        const delayBetweenIndividualImageUploads = 1000; // 1 second delay
+        const uploadedImageLinks = [];
+
+        try {
+            
+            for (const file of files) {
+                await new Promise(resolve => setTimeout(resolve, delayBetweenIndividualImageUploads));
+                
+                const imageFormData = new FormData();
+                imageFormData.append('image', file);
+                // No album ID needed for individual uploads if not grouping them
+
+                const imageUploadResponse = await fetch('https://api.imgur.com/3/image', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${imgurAccessToken}` },
+                    body: imageFormData,
+                });
+                const imageData = await imageUploadResponse.json();
+
+                if (imageData.success && imageData.data.link) {
+                    uploadedImageLinks.push(imageData.data.link); // Collect direct image links
+                    console.log(`[Autopsy Photos] Successfully uploaded image: "${file.name}" (Link: ${imageData.data.link}). Collected ${uploadedImageLinks.length} image links.`);
+                } else {
+                    console.warn(`[Autopsy Photos] Failed to upload image "${file.name}". Imgur response:`, imageData);
+                    // Optionally, notify about individual failures
+                    showNotification(`Failed to upload ${file.name}. Error: ${imageData.data?.error?.message || 'Unknown'}`, 'warning', 4000);
+                }
+            }
+            console.log(`[Autopsy Photos] Finished individual image uploads. ${uploadedImageLinks.length}/${files.length} images successfully uploaded.`);
+
+            if (uploadedImageLinks.length > 0) {
+                // Append new links to existing ones, if any
+                setFormData(prev => {
+                    const existingLinks = prev.autopsyAlbumUrl ? prev.autopsyAlbumUrl.split(',').map(s => s.trim()).filter(s => s) : [];
+                    const allLinks = [...existingLinks, ...uploadedImageLinks];
+                    // Remove duplicates just in case, though unlikely with new uploads
+                    const uniqueLinks = [...new Set(allLinks)]; 
+                    return {
+                        ...prev,
+                        autopsyAlbumUrl: uniqueLinks.join(', '), // Store as comma-separated string
+                        autopsyPhotosUnavailable: false
+                    };
+                });
+                showNotification(`Successfully uploaded ${uploadedImageLinks.length}/${files.length} image(s). Links added to the photography field.`, 'check-circle', 7000);
+            } else if (files.length > 0) {
+                showNotification(`No images were successfully uploaded.`, 'warning', 5000);
+            }
+
+        } catch (error) {
+            console.error('[Autopsy Photos] An error occurred during image upload:', error);
+            Sentry.captureException(error, { extra: { context: 'handleAutopsyImageUploadAndCreateAlbum' } });
+            showNotification(`Error uploading images: ${error.message}`, 'exclamation-triangle', 7000);
+        } finally {
+            setIsUploading(false);
+            if (indefiniteNotificationId) {
+                removeNotification(indefiniteNotificationId);
+            }
+            console.log('[Autopsy Photos] Process finished. isUploading set to false, indefinite notification removed.');
+        }
+    };
+
 
     const handleAnatomicSummaryItemChange = (index, value) => {
         setFormData(prev => {

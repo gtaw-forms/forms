@@ -68,12 +68,15 @@ export const generateAdminView = (viewData) => {
 
     } else if (viewData.adminDisplayData === null && viewData.adminSelectedCategoryName) {
         adminContent += `Data for ${categoryName} not found or failed to load.`;
-    } else if (viewData.adminSelectedCategoryName) {
+    }
+    else if (viewData.adminSelectedCategoryName) {
         // This case might occur briefly while data is loading after category selection
         adminContent += `Loading data for ${categoryName}...`;
-    } else if (viewData.isAdminAuthenticated && !viewData.adminSelectedCategoryName) {
+    }
+    else if (viewData.isAdminAuthenticated && !viewData.adminSelectedCategoryName) {
         adminContent += "Please select a recruitment category in the panel to view statuses.";
-    } else {
+    }
+    else {
         adminContent += "No recruitment data to display. Please select a category or check logs if issues persist.";
     }
     // No need for an extra newline if join is used, as it doesn't end with one.
@@ -83,35 +86,35 @@ export const generateAdminView = (viewData) => {
 
 export const formDefinitions = [
     // Civilian Forms First
-    { version: 3, name: "[Civilian] Patient File Advanced", group: "PHMC", icon: Civilian, generator: generateAdvancedPatientFile, FieldComponent: PatientAdvanced, titleKey: "patientFileAdvanced", sortOrder: 3, hasCustomTitle: true, isHiddenInSelector: true},
-    { version: 24, name: "[Civilian] Medical Release Form", group: "PHMC", icon: Civilian, generator: generateMedicalRecordRelease, FieldComponent: MedicalRelease, titleKey: "medicalRelease", sortOrder: 1, hasCustomTitle: true },
-    { version: 25, name: "[Civilian] Patient Files", group: "PHMC", icon: Civilian, generator: generateBasicPatientFile, FieldComponent: BasicPatientFile, titleKey: "patientFileBasic", sortOrder: 2, hasCustomTitle: true },
-    { version: 26, name: "[Civilian] Update Medical Records", group: "PHMC", icon: Civilian, generator: generateMedicalFileUpdate, FieldComponent: MedicalUpdate, titleKey: "patientUpdateMedical", sortOrder: 2, hasCustomTitle: true, isHiddenInSelector: true },
+    { version: 3, name: "[Civilian] Patient File Advanced", group: "PHMC", icon: Civilian, generator: generateAdvancedPatientFile, FieldComponent: PatientAdvanced, titleKey: "patientFileAdvanced", sortOrder: 3, hasCustomTitle: true, isHiddenInSelector: true, titleGenerator: (formData) => `[Medical Information Registration] -  ${formData.patientName || 'N/A'}`},
+    { version: 24, name: "[Civilian] Medical Release Form", group: "PHMC", icon: Civilian, generator: generateMedicalRecordRelease, FieldComponent: MedicalRelease, titleKey: "medicalRelease", sortOrder: 1, hasCustomTitle: true, titleGenerator: (formData) => `[RELEASE REQUEST] ${formData.patientFirstName || ''} ${formData.patientLastName || ''} `.trim() },
+    { version: 25, name: "[Civilian] Patient Files", group: "PHMC", icon: Civilian, generator: generateBasicPatientFile, FieldComponent: BasicPatientFile, titleKey: "patientFileBasic", sortOrder: 2, hasCustomTitle: true, titleGenerator: (formData) => `[Medical Information Registration] -  ${formData.patientName || 'N/A'}` },
+    { version: 26, name: "[Civilian] Update Medical Records", group: "PHMC", icon: Civilian, generator: generateMedicalFileUpdate, FieldComponent: MedicalUpdate, titleKey: "patientUpdateMedical", sortOrder: 2, hasCustomTitle: true, isHiddenInSelector: true, titleGenerator: (formData) => `[Medical Information Update] -  ${formData.patientName || 'N/A'}` },
     // PHMC Forms (Forensic Services next, then others)
-    { version: 1, name: "Forensic Services ", group: "PHMC", icon: corpse, generator: generateDeathReport, FieldComponent: DeathReport, titleKey: "deathReport", sortOrder: 10, hasCustomTitle: true },
-    { version: 4, name: "Autopsy Report", group: "PHMC", icon: corpse /* Placeholder */, generator: generateAutopsy, FieldComponent: Autopsy, titleKey: "autopsyReport", sortOrder: 11, isHiddenInSelector: true, hasCustomTitle: true },
-    { version: 2, name: "Coroner Email", group: "PHMC", icon: emailIcon, generator: generateEmail, FieldComponent: CoronerEmail, titleKey: "coronerEmail", sortOrder: 12, isHiddenInSelector: true, hasCustomTitle: true },
-    { version: 8, name: "Certificate of Death", group: "PHMC", icon: corpse, generator: generateCertificate, FieldComponent: Certificate, titleKey: "certificateOfDeath", sortOrder: 13, isHiddenInSelector: true, hasCustomTitle: true },
-    { version: 5, name: "Surgical Ops", group: "PHMC", icon: surgeon, generator: generateSurgicalOps, FieldComponent: Surgical, titleKey: "surgicalOps", sortOrder: 20 },
-    { version: 6, name: "Physical Evaluation", group: "PHMC", icon: nurse, generator: generatePhysEvalInternalMed, FieldComponent: PhysEval, titleKey: "physEvalPHMC", sortOrder: 21 },
-    { version: 11, name: "Mass Fatality Report", group: "PHMC", icon: corpse, generator: generateMassFatality, FieldComponent: MassFatality, titleKey: "massFatalityReport", sortOrder: 14, isHiddenInSelector: true, hasCustomTitle: true },
+    { version: 1, name: "Forensic Services ", group: "PHMC", icon: corpse, generator: generateDeathReport, FieldComponent: DeathReport, titleKey: "deathReport", sortOrder: 10, hasCustomTitle: true, titleGenerator: (formData) => { const { typeOfDeath, decedentName, decedentOOC, dateTime } = formData; const date = dateTime ? new Date(dateTime).toLocaleDateString('en-US') : 'N/A'; return `[${typeOfDeath || 'N/A'}] ${decedentName || 'N/A'} ((${decedentOOC || 'N/A'})) - ${date}`; } },
+    { version: 4, name: "Autopsy Report", group: "PHMC", icon: corpse /* Placeholder */, generator: generateAutopsy, FieldComponent: Autopsy, titleKey: "autopsyReport", sortOrder: 11, isHiddenInSelector: true, hasCustomTitle: true, titleGenerator: (formData) => { const { decedentName, decedentOOC } = formData; return `CASE ## ${decedentName || 'N/A'} ((${decedentOOC || 'N/A'})) | SENT/COMPLETED/PENDING`; } },
+    { version: 2, name: "Coroner Email", group: "PHMC", icon: emailIcon, generator: generateEmail, FieldComponent: CoronerEmail, titleKey: "coronerEmail", sortOrder: 12, isHiddenInSelector: true, hasCustomTitle: true, titleGenerator: (formData) => { const { decedentName, decedentOOC } = formData; return `Coroner Report - ${decedentName || 'N/A'} | ((${decedentOOC || 'N/A'}))`; } },
+    { version: 8, name: "Certificate of Death", group: "PHMC", icon: corpse, generator: generateCertificate, FieldComponent: Certificate, titleKey: "certificateOfDeath", sortOrder: 13, isHiddenInSelector: true, hasCustomTitle: true, titleGenerator: (formData) => `[Death Certificate] -  ${formData.decedentOOC || 'N/A'}` },
+    { version: 5, name: "Surgical Ops", group: "PHMC", icon: surgeon, generator: generateSurgicalOps, FieldComponent: Surgical, titleKey: "surgicalOps", sortOrder: 20, titleGenerator: (formData) => `Surgical Ops: ${formData.patientName || 'Unknown'}` },
+    { version: 6, name: "Physical Evaluation", group: "PHMC", icon: nurse, generator: generatePhysEvalInternalMed, FieldComponent: PhysEval, titleKey: "physEvalPHMC", sortOrder: 21, titleGenerator: (formData) => `Physical Evaluation: ${formData.patientName || 'Unknown'}` },
+    { version: 11, name: "Mass Fatality Report", group: "PHMC", icon: corpse, generator: generateMassFatality, FieldComponent: MassFatality, titleKey: "massFatalityReport", sortOrder: 14, isHiddenInSelector: true, hasCustomTitle: true, titleGenerator: (formData) => { const { decedents, dateTime } = formData; let date = 'No Date'; if (dateTime) { const datePart = dateTime.split('T')[0]; const [year, month, day] = datePart.split('-'); date = `${month}/${day}/${year}`; } if (decedents && decedents.length > 0) { const decedentNames = decedents.map(d => d.decedentName).filter(name => name).join(', '); return `[Mass Fatality Report] - ${decedentNames || 'N/A'} - ${date}`; } return `[Mass Fatality Report] - N/A - ${date}`; } },
     // Add isHiddenInSelector: true to the PBC version
-    { version: 7, name: "Physical Evaluation (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generatePhysEvalInternalMedPBC, FieldComponent: PhysEval, titleKey: "physEvalPBC", sortOrder: 22, isHiddenInSelector: true },
-    { version: 14, name: "Mental Health", group: "PHMC", icon: psychology, generator: generateMentalHealthPHMC, FieldComponent: MentalHealth, titleKey: "mentalHealthPHMC", sortOrder: 23 },
+    { version: 7, name: "Physical Evaluation (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generatePhysEvalInternalMedPBC, FieldComponent: PhysEval, titleKey: "physEvalPBC", sortOrder: 22, isHiddenInSelector: true, titleGenerator: (formData) => `Physical Evaluation: ${formData.patientName || 'Unknown'}` },
+    { version: 14, name: "Mental Health", group: "PHMC", icon: psychology, generator: generateMentalHealthPHMC, FieldComponent: MentalHealth, titleKey: "mentalHealthPHMC", sortOrder: 23, titleGenerator: (formData) => `Mental Health: ${formData.patientName || 'Unknown'}` },
     // Add isHiddenInSelector: true to the PBC version
-    { version: 16, name: "Mental Health (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generateMentalHealthPBC, FieldComponent: MentalHealth, titleKey: "mentalHealthPBC", sortOrder: 24, isHiddenInSelector: true },
-    { version: 19, name: "ER Protocol", group: "PHMC", icon: emergency, generator: generateEmergencyProtocol, FieldComponent: EmergencyForm, titleKey: "erProtocol", sortOrder: 25 },
-    { version: 20, name: "General Consultation", group: "PHMC", icon: empathy, generator: generateConsultationNotesPHMC, FieldComponent: GeneralConsult, titleKey: "generalConsultPHMC", sortOrder: 26 },
+    { version: 16, name: "Mental Health (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generateMentalHealthPBC, FieldComponent: MentalHealth, titleKey: "mentalHealthPBC", sortOrder: 24, isHiddenInSelector: true, titleGenerator: (formData) => `Mental Health: ${formData.patientName || 'Unknown'}` },
+    { version: 19, name: "ER Protocol", group: "PHMC", icon: emergency, generator: generateEmergencyProtocol, FieldComponent: EmergencyForm, titleKey: "erProtocol", sortOrder: 25, titleGenerator: (formData) => `ER Protocol: ${formData.patientName || 'Unknown'}` },
+    { version: 20, name: "General Consultation", group: "PHMC", icon: empathy, generator: generateConsultationNotesPHMC, FieldComponent: GeneralConsult, titleKey: "generalConsultPHMC", sortOrder: 26, titleGenerator: (formData) => `General Consultation: ${formData.patientName || 'Unknown'}` },
     // Add isHiddenInSelector: true to the PBC version
-    { version: 21, name: "General Consultation (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generateConsultationNotesPBC, FieldComponent: GeneralConsult, titleKey: "generalConsultPBC", sortOrder: 27, isHiddenInSelector: true },
-    { version: 22, name: "Commentary Notes", group: "PHMC", icon: paperwork, generator: generateCommentaryNotePHMC, FieldComponent: CommNotePHMC, titleKey: "commNotePHMC", sortOrder: 28 },
+    { version: 21, name: "General Consultation (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generateConsultationNotesPBC, FieldComponent: GeneralConsult, titleKey: "generalConsultPBC", sortOrder: 27, isHiddenInSelector: true, titleGenerator: (formData) => `General Consultation: ${formData.patientName || 'Unknown'}` },
+    { version: 22, name: "Commentary Notes", group: "PHMC", icon: paperwork, generator: generateCommentaryNotePHMC, FieldComponent: CommNotePHMC, titleKey: "commNotePHMC", sortOrder: 28, titleGenerator: (formData) => `Commentary Note: ${formData.patientName || 'Unknown'}` },
     // Add isHiddenInSelector: true to the PBC version
-    { version: 23, name: "Commentary Notes (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generateCommentaryNotePBC, FieldComponent: CommNotePBC, titleKey: "commNotePBC", sortOrder: 29, isHiddenInSelector: true },
-    { version: 27, name: "PHMC Internal Email", group: "PHMC", icon: emailIcon, generator: generateEmailPHMCEmail, FieldComponent: EmailInternal, titleKey: "internalEmail", sortOrder: 30 },
-    { version: 28, name: "Psychological Evaluation", group: "PHMC", icon: psychology, generator: generatePsychEvalPHMC, FieldComponent: Shrink, titleKey: "psychEvalPHMC", sortOrder: 31 },
+    { version: 23, name: "Commentary Notes (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generateCommentaryNotePBC, FieldComponent: CommNotePBC, titleKey: "commNotePBC", sortOrder: 29, isHiddenInSelector: true, titleGenerator: (formData) => `Commentary Note: ${formData.patientName || 'Unknown'}` },
+    { version: 27, name: "PHMC Internal Email", group: "PHMC", icon: emailIcon, generator: generateEmailPHMCEmail, FieldComponent: EmailInternal, titleKey: "internalEmail", sortOrder: 30, titleGenerator: (formData) => `Internal Email: ${formData.subject || 'No Subject'}` },
+    { version: 28, name: "Psychological Evaluation", group: "PHMC", icon: psychology, generator: generatePsychEvalPHMC, FieldComponent: Shrink, titleKey: "psychEvalPHMC", sortOrder: 31, titleGenerator: (formData) => `Psychological Evaluation: ${formData.patientName || 'Unknown'}` },
     // Add isHiddenInSelector: true to the PBC version
-    { version: 29, name: "Psychological Evaluation (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generatePsychEvalPBC, FieldComponent: Shrink, titleKey: "psychEvalPBC", sortOrder: 32, isHiddenInSelector: true },
-    { version: 35, name: "Medical Sickness Email", group: "PHMC", icon: emailIcon, generator: generateSicknessEmail, FieldComponent: SicknessEmail, titleKey: "sicknessEmail", sortOrder: 33, isHiddenInSelector: true }, // No FieldComponent for this one
+    { version: 29, name: "Psychological Evaluation (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generatePsychEvalPBC, FieldComponent: Shrink, titleKey: "psychEvalPBC", sortOrder: 32, isHiddenInSelector: true, titleGenerator: (formData) => `Psychological Evaluation: ${formData.patientName || 'Unknown'}` },
+    { version: 35, name: "Medical Sickness Email", group: "PHMC", icon: emailIcon, generator: generateSicknessEmail, FieldComponent: SicknessEmail, titleKey: "sicknessEmail", sortOrder: 33, isHiddenInSelector: true, titleGenerator: (formData) => `Sickness Email: ${formData.phmcEmployee || 'Unknown'}` }, // No FieldComponent for this one
     {
         version: 50,
         name: "Physician Careers",
@@ -122,6 +125,7 @@ export const formDefinitions = [
         titleKey: "phmcGeneralApplication",
         sortOrder: 200,
         hasCustomTitle: true,
+        titleGenerator: (formData) => `Application: ${formData.characterName || 'Unknown'}`
     },
     {
         version: 51,
@@ -133,6 +137,7 @@ export const formDefinitions = [
         titleKey: "phmcPsychApplication",
         sortOrder: 201,
         hasCustomTitle: true,
+        titleGenerator: (formData) => `Application: ${formData.characterName || 'Unknown'}`
     },
     {
         version: 52,
@@ -144,6 +149,7 @@ export const formDefinitions = [
         titleKey: "phmcAdminApplication",
         sortOrder: 202,
         hasCustomTitle: true,
+        titleGenerator: (formData) => `Application: ${formData.characterName || 'Unknown'}`
     },
     {
         version: 53,
@@ -155,6 +161,7 @@ export const formDefinitions = [
         titleKey: "phmcNursingApplication",
         sortOrder: 203,
         hasCustomTitle: true,
+        titleGenerator: (formData) => `Application: ${formData.characterName || 'Unknown'}`
     },
     {
         version: 54,
@@ -166,6 +173,7 @@ export const formDefinitions = [
         titleKey: "phmcCoronerRecruitmentApplication",
         sortOrder: 204,
         hasCustomTitle: true,
+        titleGenerator: (formData) => `Application: ${formData.characterName || 'Unknown'}`
     },
     {
         version: 55,
@@ -177,6 +185,7 @@ export const formDefinitions = [
         titleKey: "phmcEMSApplication",
         sortOrder: 205,
         hasCustomTitle: true,
+        titleGenerator: (formData) => `Application: ${formData.characterName || 'Unknown'}`
     },
     {
         version: 999,
@@ -187,6 +196,7 @@ export const formDefinitions = [
         generator: generateAdminView,
         titleKey: "adminControlPanel",
         sortOrder: 999,
+        titleGenerator: () => 'Admin Control Panel'
     },
 ];
 

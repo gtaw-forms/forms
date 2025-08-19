@@ -380,6 +380,8 @@ const MassFatality = ({
 
                                         <div style={{ display: 'flex', gap: '10px' }}>
                                 <Form.Control type="datetime-local" value={dec.pronouncedTimeOfDeath} onChange={e => updateDecedent(idx, 'pronouncedTimeOfDeath', e.target.value)} />
+                                      <Form.Control type="text" value={dec.probableCauseOfDeath} placeholder="Probable cause of Death" onChange={e => updateDecedent(idx, 'probableCauseOfDeath', e.target.value)} />
+
                              <Form.Select value={dec.typeOfDeath} onChange={e => updateDecedent(idx, 'typeOfDeath', e.target.value)}>
                                     <option value="" disabled>Select Type of Death</option>
                                     {typeOfDeathOptions.map(opt => (

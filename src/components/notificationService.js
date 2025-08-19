@@ -101,7 +101,7 @@ export const sendDiscordWebhookInternal = async (webhookUrl, embedData, commitIn
 };
 
 export const sendBingoNotification = async ({ scorer, bingoType, phrase, lineName, commitInfo, marked }) => {
-    const webhookUrl = process.env.REACT_APP_BINGO_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+    const webhookUrl = process.env.REACT_APP_BINGO_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DEV_DISCORD;
     if (!webhookUrl) {
         console.warn("Bingo webhook URL not configured. Skipping notification.");
         return;
@@ -147,20 +147,11 @@ export const sendMissingEmployeeNotification = async (
     missingEmployeeData,
     commitInfo,
     showNotification,
+    coronerEmployee,
+    phmcEmployee
 ) => {
-    console.log('Inside sendMissingEmployeeNotification - actionType:', actionType);
-    console.log('Inside sendMissingEmployeeNotification - employeeType:', employeeType);
-    console.log('Inside sendMissingEmployeeNotification - selectedEmployeeName:', selectedEmployeeName);
-    console.log('Inside sendMissingEmployeeNotification - newRank:', newRank);
-    console.log('Inside sendMissingEmployeeNotification - coronerList:', coronerList);
-    console.log('Inside sendMissingEmployeeNotification - phmcList:', phmcList);
-    console.log('Inside sendMissingEmployeeNotification - staffToRemove:', staffToRemove);
-    console.log('Inside sendMissingEmployeeNotification - authorizedBy:', authorizedBy);
-    console.log('Inside sendMissingEmployeeNotification - missingEmployeeData:', missingEmployeeData);
-    console.log('Inside sendMissingEmployeeNotification - commitInfo:', commitInfo);
-    console.log('Inside sendMissingEmployeeNotification - showNotification:', showNotification);
 
-    const webhookURL = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+    const webhookURL = process.env.REACT_APP_DEV_DISCORD;
 
     if (!webhookURL) {
         console.error('Discord webhook URL not configured for employee management.');
@@ -207,8 +198,8 @@ export const sendMissingEmployeeNotification = async (
                 {
                     name: 'Requested By',
                     value: isCoronerRequest
-                        ? missingEmployeeData.coronerEmployee  // Changed to get from missingEmployeeData
-                        : missingEmployeeData.phmcEmployee,     // Changed to get from missingEmployeeData
+                        ? coronerEmployee
+                        : phmcEmployee,
                     inline: false,
                 },
                 {
@@ -402,7 +393,7 @@ else {
 
 // NEW: Webhook for when a player requests a new phrase
 export const sendPhraseRequestNotification = async ({ requester, phrase, bingoType, commitInfo }) => {
-    const webhookUrl = process.env.REACT_APP_BINGO_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+    const webhookUrl = process.env.REACT_APP_BINGO_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DEV_DISCORD;
     if (!webhookUrl) {
         console.warn("Bingo webhook URL not configured. Skipping notification.");
         return;
@@ -518,7 +509,7 @@ export const handlePhmcRecruitmentCopyAndNotify = async ({
     const copied = await copyToClipboard(bbCodeToCopy, showNotification, `${formName} BBCode copied to clipboard!`);
 
     if (copied) {
-        const discordWebhookUrl = process.env.REACT_APP_PHMC_RECRUITMENT_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+        const discordWebhookUrl = process.env.REACT_APP_PHMC_RECRUITMENT_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DEV_DISCORD;
 
         if (discordWebhookUrl) {
             await sendPhmcRecruitmentWebhook({ 
@@ -749,7 +740,7 @@ const key = `[CIVILIAN-REPORT] - ${formData.patientName || ''} ${formData.patien
     // This part runs if the previous steps were successful.
     try {
         let discordWebhookUrl;
-        discordWebhookUrl = process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+        discordWebhookUrl = process.env.REACT_APP_DEV_DISCORD;
 
         if (discordWebhookUrl) {
             let currentIdentifier;
@@ -859,7 +850,7 @@ const key = `[CIVILIAN-REPORT] - ${formData.patientName || ''} ${formData.patien
 };
 export const sendErrorToDiscord = async (errorDetails) => {
     // A dedicated webhook for errors, or a fallback.
-    const webhookUrl = process.env.REACT_APP_ERROR_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DISCORD_WEBHOOK_URL;
+    const webhookUrl = process.env.REACT_APP_ERROR_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DEV_DISCORD;
 
     if (!webhookUrl) {
         console.error("Error reporting webhook URL not configured. Cannot send error report.");

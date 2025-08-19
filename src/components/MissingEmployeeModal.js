@@ -187,77 +187,79 @@ useEffect(() => {
     }, [actionType, selectedEmployeeName, employeeType, showNotification, refreshData]);
 
   const handleSubmit = async () => {
-    setIsLoading(true);
-    let listRef;
- if (actionType === 'addEmployee') {
-        const requiredFields = employeeType === 'coroner'
-            ? ['coronerName', 'coronerDiscord', 'coronerRank', 'coronerBadge']
-            : ['coronerName', 'employeeLastName', 'coronerRank'];
-        
-        const emptyFields = requiredFields.filter(key => !missingEmployeeData[key]?.trim());
-        if (emptyFields.length > 0) {
-            console.error(`Missing required fields: ${emptyFields.join(', ')}`);
-            setIsLoading(false);
-            showNotification(`Please fill in all required fields: ${emptyFields.join(', ')}`, 'warning');
-            return; // Stop further execution
-        }
+        setIsLoading(true);
+        let listRef;
 
-        let combinedName = missingEmployeeData.coronerName; // Start with the first name
-        if (missingEmployeeData.employeeLastName && !missingEmployeeData.coronerName.includes(missingEmployeeData.employeeLastName)) {
-            combinedName += ` ${missingEmployeeData.employeeLastName}`; // Add last name only if it's not already there
-        }
+        if (actionType === 'addEmployee') {
+            const isCoroner = employeeType === 'coroner';
+            const requiredFields = isCoroner
+                ? { coronerName: 'Coroner Name', coronerDiscord: 'Discord', coronerRank: 'Rank', coronerBadge: 'Badge' }
+                : { coronerName: 'First Name', employeeLastName: 'Last Name', coronerRank: 'Rank' };
 
-        const newStaffMember = employeeType === 'coroner' ? {
-            name: missingEmployeeData.coronerName,
-            discord: missingEmployeeData.coronerDiscord,
-            rank: missingEmployeeData.coronerRank,
-            badge: missingEmployeeData.coronerBadge,
-            phNumber: missingEmployeeData.coronerPHNumber || "",
-            category: missingEmployeeData.coronerRank, // Consistent with CoronerRankModal
-        } : {
-            name: combinedName, // Use the combined name
-            lastName: missingEmployeeData.employeeLastName,
-            rank: missingEmployeeData.coronerRank,
-            category: missingEmployeeData.coronerRank, // Consistent with CoronerRankModal
-        };
+            const emptyFields = Object.keys(requiredFields).filter(key => !missingEmployeeData[key]?.trim());
 
-        listRef = ref(database, employeeType === 'coroner' ? 'staff/coroner' : 'staff/phmc');
-
-        try {
-            const snapshot = await get(listRef);
-            let currentStaff = snapshot.exists() ? snapshot.val() : [];
-            
-            // Check for duplicate (you may need to adjust the criteria)
-            const isDuplicate = currentStaff.some(member => member.name === newStaffMember.name);
-            if (isDuplicate) {
-                console.error(`Staff member with name "${newStaffMember.name}" already exists.`);
+            if (emptyFields.length > 0) {
+                const fieldNames = emptyFields.map(key => requiredFields[key]).join(', ');
+                showNotification(`Please fill in all required fields: ${fieldNames}`, 'warning');
                 setIsLoading(false);
-                 showNotification(`Staff member with name "${newStaffMember.name}" already exists.`, 'warning');
                 return;
             }
 
-            const updatedStaff = [...currentStaff, newStaffMember];
-            await set(listRef, updatedStaff);
+            const newStaffMemberName = isCoroner 
+                ? missingEmployeeData.coronerName 
+                : `${missingEmployeeData.coronerName} ${missingEmployeeData.employeeLastName}`.trim();
 
-            // Update local state or trigger a refresh if needed
-            handleMissingEmployeeSubmit(actionType, employeeType, selectedEmployeeName, newRank, staffToRemove, authorizedBy, missingEmployeeData, updatedStaff);
-            showNotification(`Successfully added ${newStaffMember.name} to the ${employeeType === 'coroner' ? 'coroner' : 'hospital staff'} list.`, 'success');
-                setRefreshData(!refreshData);
-        } catch (error) {
-            console.error(`Error adding staff member to Firebase:`, error);
-            showNotification(`Error adding staff member: ${error.message}`, 'error');
-        } finally {
-            setIsLoading(false);
-            setMissingEmployeeData({
-                coronerName: '',
-                coronerDiscord: '',
-                employeeLastName: '',
-                coronerRank: '',
-                coronerPHNumber: '',
-                coronerBadge: '',
-            });
+            const newStaffMember = isCoroner ? {
+                name: newStaffMemberName,
+                discord: missingEmployeeData.coronerDiscord,
+                rank: missingEmployeeData.coronerRank,
+                badge: missingEmployeeData.coronerBadge,
+                phNumber: missingEmployeeData.coronerPHNumber || "",
+                category: missingEmployeeData.coronerRank,
+            } : {
+                name: newStaffMemberName,
+                lastName: missingEmployeeData.employeeLastName,
+                rank: missingEmployeeData.coronerRank,
+                category: missingEmployeeData.coronerRank,
+            };
+
+            listRef = ref(database, isCoroner ? 'staff/coroner' : 'staff/phmc');
+
+            try {
+                const snapshot = await get(listRef);
+                const currentStaff = snapshot.exists() ? snapshot.val() : [];
+
+                const isDuplicate = currentStaff.some(member => member.name.toLowerCase() === newStaffMember.name.toLowerCase());
+                if (isDuplicate) {
+                    showNotification(`Staff member with name "${newStaffMember.name}" already exists.`, 'warning');
+                    setIsLoading(false);
+                    return;
+                }
+
+                const updatedStaff = [...currentStaff, newStaffMember];
+                await set(listRef, updatedStaff);
+
+                await handleMissingEmployeeSubmit(actionType, employeeType, newStaffMember.name, null, [], authorizedBy, missingEmployeeData, updatedStaff);
+                showNotification(`Successfully added ${newStaffMember.name} to the ${isCoroner ? 'coroner' : 'hospital staff'} list.`, 'success');
+                
+                setRefreshData(prev => !prev); // Refresh data
+                // Clear form after successful submission
+                setMissingEmployeeData({
+                    coronerName: '',
+                    coronerDiscord: '',
+                    employeeLastName: '',
+                    coronerRank: '',
+                    coronerPHNumber: '',
+                    coronerBadge: '',
+                });
+
+            } catch (error) {
+                console.error(`Error adding staff member to Firebase:`, error);
+                showNotification(`Error adding staff member: ${error.message}`, 'error');
+            } finally {
+                setIsLoading(false);
+            }
         }
-    }
  else if (actionType === 'editUser') {
         if (!selectedEmployeeName) {
             console.error('No employee selected for edit.');
