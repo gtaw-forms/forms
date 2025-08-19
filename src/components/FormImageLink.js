@@ -48,6 +48,14 @@ const FormImageLink = ({
             linkClass = deathReportClass;
             shouldRender = true;
             break;
+        case 11:
+            linkHref = "https://phmc.gta.world/posting.php?mode=post&f=267";
+            imgSrc = deathReportImage;
+            imgAlt = "Death Reports Link";
+            linkClass = deathReportClass;
+            linkTitle = "Easter Bunny goes bounce bounce";
+            shouldRender = true;
+            break;
 
         case 24:
             linkHref = "https://phmc.gta.world/posting.php?mode=post&f=109";
@@ -66,7 +74,7 @@ const FormImageLink = ({
             linkTitle = "Easter Bunny goes bounce bounce";
             shouldRender = true;
             break;
-            case 26: // This handles both bbCodeVersion 3 and 25
+        case 26: // This handles both bbCodeVersion 3 and 25
             linkHref = "https://phmc.gta.world/posting.php?mode=post&f=221";
             imgSrc = civilianPaperworkImage;
             imgAlt = "Update Medical Records";
@@ -74,7 +82,6 @@ const FormImageLink = ({
             linkTitle = "Easter Bunny goes bounce bounce";
             shouldRender = true;
             break;
-
         case 35:
             linkHref = "https://phmc.gta.world/ucp.php?i=pm&mode=compose";
             imgSrc = civilianPaperworkImage;
