@@ -286,185 +286,196 @@ export const useReportManagement = (
             loadingNotifId = showNotification(`Loading report: ${reportFirebaseKey} for ${userId}...`, 'info-circle', 0);
         }
 
-        try {
-            const snapshot = await get(reportRef);
-            if (snapshot.exists()) {
-                const reportData = snapshot.val();
-                const loadedVersion = reportData.bbCodeVersion;
-                let loadedBbCode = reportData.bbCode || ''; // Get the BBCode from the saved report
-                let loadedFormData = reportData.data || {};
+            try {
+                const snapshot = await get(reportRef);
+                if (snapshot.exists()) {
+                    const reportData = snapshot.val();
+                    const loadedVersion = reportData.bbCodeVersion;
+                    let loadedBbCode = reportData.bbCode || '';
+                    let loadedFormData = reportData.data || {};
 
-                loadedBbCode = loadedBbCode.replace(/\\`[bold]\\`/gi, '[b]').replace(/\\`[\\/bold]\\`/gi, '[/b]');
-                const loadedCoronerEmployee = loadedFormData.coronerEmployee;
-                const loadedPhmcEmployee = loadedFormData.phmcEmployee;
-                const currentTimestamp = Date.now().toString();
-
-                if (loadedCoronerEmployee) {
-                    const coronerDetails = coronerListData.find(c => c.name === loadedCoronerEmployee);
-                    if (coronerDetails) {
-                        loadedFormData.coronerEmployee = loadedCoronerEmployee;
-                        loadedFormData.coronerBadge = coronerDetails.badge || '';
-                        loadedFormData.coronerRank = coronerDetails.rank || '';
-                        loadedFormData.coronerDiscord = coronerDetails.discord || '';
-                        loadedFormData.coronerPHNumber = coronerDetails.phNumber || '50056';
-                        if (!returnOnly) { // Only update localStorage if directly loading
-                            localStorage.setItem('coronerEmployee', loadedFormData.coronerEmployee);
-                            localStorage.setItem('coronerEmployee_timestamp', currentTimestamp);
-                            localStorage.setItem('coronerBadge', loadedFormData.coronerBadge);
-                            localStorage.setItem('coronerBadge_timestamp', currentTimestamp);
-                            localStorage.setItem('coronerRank', loadedFormData.coronerRank);
-                            localStorage.setItem('coronerRank_timestamp', currentTimestamp);
-                            localStorage.setItem('coronerDiscord', loadedFormData.coronerDiscord);
-                            localStorage.setItem('coronerDiscord_timestamp', currentTimestamp);
-                            localStorage.setItem('coronerPHNumber', loadedFormData.coronerPHNumber);
-                            localStorage.setItem('coronerPHNumber_timestamp', currentTimestamp);
+                    if (returnOnly) {
+                        // When attaching, convert [bold] to [b]
+                        const boldMatches = (loadedBbCode.match(/\[bold\]/gi) || []).length;
+                        if (boldMatches > 0) {
+                            console.log(`[useReportManagement] Found ${boldMatches} [bold] tags. Converting to [b].`);
+                            loadedBbCode = loadedBbCode.replace(/\[bold\]/gi, '[b]').replace(/\[\/bold\]/gi, '[/b]');
+                            console.log(`[useReportManagement] Conversion complete.`);
                         }
                     } else {
-                        if (!returnOnly) showNotification(`Coroner "${loadedCoronerEmployee}" not found in current staff list. Using data from saved report.`, 'warning', 7000);
-                        if (!returnOnly) { // Update localStorage timestamps for loaded data
-                            if (loadedFormData.coronerEmployee) localStorage.setItem('coronerEmployee_timestamp', currentTimestamp);
-                            if (loadedFormData.coronerBadge) localStorage.setItem('coronerBadge_timestamp', currentTimestamp);
-                            if (loadedFormData.coronerRank) localStorage.setItem('coronerRank_timestamp', currentTimestamp);
-                            if (loadedFormData.coronerDiscord) localStorage.setItem('coronerDiscord_timestamp', currentTimestamp);
-                            if (loadedFormData.coronerPHNumber) localStorage.setItem('coronerPHNumber_timestamp', currentTimestamp);
-                        }
+                        // When loading into the form, ensure any escaped bold tags are converted to simple [b]
+                        loadedBbCode = loadedBbCode.replace(/\[bold\]/gi, '[b]').replace(/\[\/bold\]/gi, '[/b]');
                     }
-                } else if (!returnOnly) { // Clear localStorage if no coronerEmployee in loaded report and not in returnOnly mode
-                    const coronerFieldsToClear = ['coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord', 'coronerPHNumber'];
-                    coronerFieldsToClear.forEach(field => {
-                        localStorage.removeItem(field);
-                        localStorage.removeItem(`${field}_timestamp`);
-                    });
-                }
+                    const loadedCoronerEmployee = loadedFormData.coronerEmployee;
+                    const loadedPhmcEmployee = loadedFormData.phmcEmployee;
+                    const currentTimestamp = Date.now().toString();
 
-                if (loadedPhmcEmployee) {
-                    const phmcDetails = phmcListData.find(p => p.name === loadedPhmcEmployee);
-                    if (phmcDetails) {
-                        loadedFormData.phmcEmployee = loadedPhmcEmployee;
-                        loadedFormData.phmcEmployeeLastName = phmcDetails.lastName || '';
-                        loadedFormData.phmcRank = phmcDetails.category || phmcDetails.rank || '';
-                        if (!returnOnly) { // Only update localStorage if directly loading
-                            localStorage.setItem('phmcEmployee', loadedFormData.phmcEmployee);
-                            localStorage.setItem('phmcEmployee_timestamp', currentTimestamp);
-                            localStorage.setItem('phmcEmployeeLastName', loadedFormData.phmcEmployeeLastName);
-                            localStorage.setItem('phmcEmployeeLastName_timestamp', currentTimestamp);
-                            localStorage.setItem('phmcRank', loadedFormData.phmcRank);
-                            localStorage.setItem('phmcRank_timestamp', currentTimestamp);
-                        }
-                    } else {
-                        if (!returnOnly) showNotification(`PHMC Staff "${loadedPhmcEmployee}" not found in current staff list. Using data from saved report.`, 'warning', 7000);
-                        if (!returnOnly) { // Update localStorage timestamps for loaded data
-                            if (loadedFormData.phmcEmployee) localStorage.setItem('phmcEmployee_timestamp', currentTimestamp);
-                            if (loadedFormData.phmcEmployeeLastName) localStorage.setItem('phmcEmployeeLastName_timestamp', currentTimestamp);
-                            if (loadedFormData.phmcRank) localStorage.setItem('phmcRank_timestamp', currentTimestamp);
-                        }
-                    }
-                } else if (!returnOnly) { // Clear localStorage if no phmcEmployee in loaded report and not in returnOnly mode
-                    const phmcFieldsToClear = ['phmcEmployee', 'phmcEmployeeLastName', 'phmcRank'];
-                    phmcFieldsToClear.forEach(field => {
-                        localStorage.removeItem(field);
-                        localStorage.removeItem(`${field}_timestamp`);
-                    });
-                }
-
-                const localStorageManagedFields = [
-                    'placeOfDeath', 'pronouncedTimeOfDeath', 'dateTime', 'department',
-                    'mannerOfDeath',
-                ];
-                localStorageManagedFields.forEach(field => {
-                    if (loadedFormData.hasOwnProperty(field) && loadedFormData[field]) {
-                        if (!returnOnly) { // Only update localStorage if directly loading
-                            localStorage.setItem(field, loadedFormData[field]);
-                            localStorage.setItem(`${field}_timestamp`, currentTimestamp);
-                        }
-                    }
-                });
-                // --- End Employee Sync Logic ---
-
-                if (!returnOnly) {
-                    if (loadedVersion === 11) {
-                        // Mass Fatality Report: set decedents array and other relevant fields
-                        const decedents = Array.isArray(loadedFormData.decedents) ? loadedFormData.decedents.map(dec => ({
-                            ...dec,
-                            decedentName: dec.decedentName || dec.DecedentName,
-                            decedentOOC: dec.decedentOOC || dec.DecedentOOC,
-                        })) : [];
-
-                        setFormData(prev => ({
-                            ...prev,
-                            ...loadedFormData,
-                            decedents: decedents,
-                            coronerEmployee: loadedFormData.coronerEmployee || prev.coronerEmployee,
-                            phmcEmployee: loadedFormData.phmcEmployee || prev.phmcEmployee,
-                        }));
-                        setBbCodeVersion(loadedVersion);
-                        showNotification(`Mass Fatality Report loaded.`, 'upload');
-                    } else if (bbCodeVersion === 2 && loadedVersion === 1) {
-                        // ...existing code for v2 loading v1...
-                        const currentDeathReportIsEmpty = !formData.deathReport || formData.deathReport.trim() === '';
-                        let notificationMessage = '';
-                        setFormData(prevFormData => {
-                            let updatedName = prevFormData.decedentName || '';
-                            let updatedOoc = prevFormData.decedentOOC || '';
-                            let updatedDeathReport = prevFormData.deathReport || '';
-                            let updatedAdditionalReports = prevFormData.additionalReports || [];
-                            if (prevFormData.decedentName && loadedFormData.decedentName) {
-                                updatedName = `${prevFormData.decedentName}, ${loadedFormData.decedentName}`;
-                            } else {
-                                updatedName = loadedFormData.decedentName || prevFormData.decedentName || '';
+                    if (loadedCoronerEmployee) {
+                        const coronerDetails = coronerListData.find(c => c.name === loadedCoronerEmployee);
+                        if (coronerDetails) {
+                            loadedFormData.coronerEmployee = loadedCoronerEmployee;
+                            loadedFormData.coronerBadge = coronerDetails.badge || '';
+                            loadedFormData.coronerRank = coronerDetails.rank || '';
+                            loadedFormData.coronerDiscord = coronerDetails.discord || '';
+                            loadedFormData.coronerPHNumber = coronerDetails.phNumber || '50056';
+                            if (!returnOnly) {
+                                localStorage.setItem('coronerEmployee', loadedFormData.coronerEmployee);
+                                localStorage.setItem('coronerEmployee_timestamp', currentTimestamp);
+                                localStorage.setItem('coronerBadge', loadedFormData.coronerBadge);
+                                localStorage.setItem('coronerBadge_timestamp', currentTimestamp);
+                                localStorage.setItem('coronerRank', loadedFormData.coronerRank);
+                                localStorage.setItem('coronerRank_timestamp', currentTimestamp);
+                                localStorage.setItem('coronerDiscord', loadedFormData.coronerDiscord);
+                                localStorage.setItem('coronerDiscord_timestamp', currentTimestamp);
+                                localStorage.setItem('coronerPHNumber', loadedFormData.coronerPHNumber);
+                                localStorage.setItem('coronerPHNumber_timestamp', currentTimestamp);
                             }
-                            if (prevFormData.decedentOOC && loadedFormData.decedentOOC) {
-                                updatedOoc = `${prevFormData.decedentOOC}, ${loadedFormData.decedentOOC}`;
-                            } else {
-                                updatedOoc = loadedFormData.decedentOOC || prevFormData.decedentOOC || '';
+                        } else {
+                            if (!returnOnly) showNotification(`Coroner "${loadedCoronerEmployee}" not found in current staff list. Using data from saved report.`, 'warning', 7000);
+                            if (!returnOnly) {
+                                if (loadedFormData.coronerEmployee) localStorage.setItem('coronerEmployee_timestamp', currentTimestamp);
+                                if (loadedFormData.coronerBadge) localStorage.setItem('coronerBadge_timestamp', currentTimestamp);
+                                if (loadedFormData.coronerRank) localStorage.setItem('coronerRank_timestamp', currentTimestamp);
+                                if (loadedFormData.coronerDiscord) localStorage.setItem('coronerDiscord_timestamp', currentTimestamp);
+                                if (loadedFormData.coronerPHNumber) localStorage.setItem('coronerPHNumber_timestamp', currentTimestamp);
                             }
-                            if (currentDeathReportIsEmpty) {
-                                updatedDeathReport = loadedBbCode;
-                                notificationMessage = `Loaded report for ${loadedFormData.decedentName || reportData.originalKey} into main Death Report field.`;
-                            } else {
-                                updatedAdditionalReports = [...updatedAdditionalReports, loadedBbCode];
-                                notificationMessage = `Added report for ${loadedFormData.decedentName || reportData.originalKey} as an additional report.`;
-                            }
-                            const finalDataToSet = {
-                                ...prevFormData,
-                                ...loadedFormData,
-                                decedentName: updatedName,
-                                decedentOOC: updatedOoc,
-                                deathReport: updatedDeathReport,
-                                additionalReports: updatedAdditionalReports,
-                            };
-                            return finalDataToSet;
+                        }
+                    } else if (!returnOnly) {
+                        const coronerFieldsToClear = ['coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord', 'coronerPHNumber'];
+                        coronerFieldsToClear.forEach(field => {
+                            localStorage.removeItem(field);
+                            localStorage.removeItem(`${field}_timestamp`);
                         });
-                        showNotification(notificationMessage, 'plus-circle');
-                    } else {
-                        setFormData(prev => ({
-                            ...prev,
-                            ...loadedFormData,
-                            coronerEmployee: loadedFormData.coronerEmployee || prev.coronerEmployee,
-                            phmcEmployee: loadedFormData.phmcEmployee || prev.phmcEmployee,
-                        }));
-                        setBbCodeVersion(loadedVersion);
-                        showNotification(`Report "${reportData.originalKey || reportFirebaseKey}" loaded.`, 'upload');
                     }
-                    setShowSavedReports(false);
+
+                    if (loadedPhmcEmployee) {
+                        const phmcDetails = phmcListData.find(p => p.name === loadedPhmcEmployee);
+                        if (phmcDetails) {
+                            loadedFormData.phmcEmployee = loadedPhmcEmployee;
+                            loadedFormData.phmcEmployeeLastName = phmcDetails.lastName || '';
+                            loadedFormData.phmcRank = phmcDetails.category || phmcDetails.rank || '';
+                            if (!returnOnly) {
+                                localStorage.setItem('phmcEmployee', loadedFormData.phmcEmployee);
+                                localStorage.setItem('phmcEmployee_timestamp', currentTimestamp);
+                                localStorage.setItem('phmcEmployeeLastName', loadedFormData.phmcEmployeeLastName);
+                                localStorage.setItem('phmcEmployeeLastName_timestamp', currentTimestamp);
+                                localStorage.setItem('phmcRank', loadedFormData.phmcRank);
+                                localStorage.setItem('phmcRank_timestamp', currentTimestamp);
+                            }
+                        } else {
+                            if (!returnOnly) showNotification(`PHMC Staff "${loadedPhmcEmployee}" not found in current staff list. Using data from saved report.`, 'warning', 7000);
+                            if (!returnOnly) {
+                                if (loadedFormData.phmcEmployee) localStorage.setItem('phmcEmployee_timestamp', currentTimestamp);
+                                if (loadedFormData.phmcEmployeeLastName) localStorage.setItem('phmcEmployeeLastName_timestamp', currentTimestamp);
+                                if (loadedFormData.phmcRank) localStorage.setItem('phmcRank_timestamp', currentTimestamp);
+                            }
+                        }
+                    } else if (!returnOnly) {
+                        const phmcFieldsToClear = ['phmcEmployee', 'phmcEmployeeLastName', 'phmcRank'];
+                        phmcFieldsToClear.forEach(field => {
+                            localStorage.removeItem(field);
+                            localStorage.removeItem(`${field}_timestamp`);
+                        });
+                    }
+
+                    const localStorageManagedFields = [
+                        'placeOfDeath', 'pronouncedTimeOfDeath', 'dateTime', 'department',
+                        'mannerOfDeath',
+                    ];
+                    localStorageManagedFields.forEach(field => {
+                        if (loadedFormData.hasOwnProperty(field) && loadedFormData[field]) {
+                            if (!returnOnly) {
+                                localStorage.setItem(field, loadedFormData[field]);
+                                localStorage.setItem(`${field}_timestamp`, currentTimestamp);
+                            }
+                        }
+                    });
+                    // --- End Employee Sync Logic ---
+
+                    if (!returnOnly) {
+                        if (loadedVersion === 11) {
+                            // Mass Fatality Report: set decedents array and other relevant fields
+                            const decedents = Array.isArray(loadedFormData.decedents) ? loadedFormData.decedents.map(dec => ({
+                                ...dec,
+                                decedentName: dec.decedentName || dec.DecedentName,
+                                decedentOOC: dec.decedentOOC || dec.DecedentOOC,
+                            })) : [];
+
+                            setFormData(prev => ({
+                                ...prev,
+                                ...loadedFormData,
+                                decedents: decedents,
+                                coronerEmployee: loadedFormData.coronerEmployee || prev.coronerEmployee,
+                                phmcEmployee: loadedFormData.phmcEmployee || prev.phmcEmployee,
+                            }));
+                            setBbCodeVersion(loadedVersion);
+                            showNotification(`Mass Fatality Report loaded.`, 'upload');
+                        } else if (bbCodeVersion === 2 && loadedVersion === 1) {
+                            // ...existing code for v2 loading v1...
+                            const currentDeathReportIsEmpty = !formData.deathReport || formData.deathReport.trim() === '';
+                            let notificationMessage = '';
+                            setFormData(prevFormData => {
+                                let updatedName = prevFormData.decedentName || '';
+                                let updatedOoc = prevFormData.decedentOOC || '';
+                                let updatedDeathReport = prevFormData.deathReport || '';
+                                let updatedAdditionalReports = prevFormData.additionalReports || [];
+                                if (prevFormData.decedentName && loadedFormData.decedentName) {
+                                    updatedName = `${prevFormData.decedentName}, ${loadedFormData.decedentName}`;
+                                } else {
+                                    updatedName = loadedFormData.decedentName || prevFormData.decedentName || '';
+                                }
+                                if (prevFormData.decedentOOC && loadedFormData.decedentOOC) {
+                                    updatedOoc = `${prevFormData.decedentOOC}, ${loadedFormData.decedentOOC}`;
+                                } else {
+                                    updatedOoc = loadedFormData.decedentOOC || prevFormData.decedentOOC || '';
+                                }
+                                if (currentDeathReportIsEmpty) {
+                                    updatedDeathReport = loadedBbCode;
+                                    notificationMessage = `Loaded report for ${loadedFormData.decedentName || reportData.originalKey} into main Death Report field.`;
+                                } else {
+                                    updatedAdditionalReports = [...updatedAdditionalReports, loadedBbCode];
+                                    notificationMessage = `Added report for ${loadedFormData.decedentName || reportData.originalKey} as an additional report.`;
+                                }
+                                const finalDataToSet = {
+                                    ...prevFormData,
+                                    ...loadedFormData,
+                                    decedentName: updatedName,
+                                    decedentOOC: updatedOoc,
+                                    deathReport: updatedDeathReport,
+                                    additionalReports: updatedAdditionalReports,
+                                };
+                                return finalDataToSet;
+                            });
+                            showNotification(notificationMessage, 'plus-circle');
+                        } else {
+                            setFormData(prev => ({
+                                ...prev,
+                                ...loadedFormData,
+                                coronerEmployee: loadedFormData.coronerEmployee || prev.coronerEmployee,
+                                phmcEmployee: loadedFormData.phmcEmployee || prev.phmcEmployee,
+                            }));
+                            setBbCodeVersion(loadedVersion);
+                            showNotification(`Report "${reportData.originalKey || reportFirebaseKey}" loaded.`, 'upload');
+                        }
+                        setShowSavedReports(false);
+                    }
+                    // Always return the processed data, regardless of `returnOnly`
+                    return { success: true, reportData: { ...reportData, data: loadedFormData, bbCode: loadedBbCode } };
+                } else {
+                    if (!returnOnly) showNotification(`Report not found in Firebase: ${reportFirebaseKey}`, 'error');
+                    return { success: false, message: `Report not found in Firebase: ${reportFirebaseKey}` };
                 }
-                // Always return the processed data, regardless of `returnOnly`
-                return { success: true, reportData: { ...reportData, data: loadedFormData, bbCode: loadedBbCode } };
-            } else {
-                if (!returnOnly) showNotification(`Report not found in Firebase: ${reportFirebaseKey}`, 'error');
-                return { success: false, message: `Report not found in Firebase: ${reportFirebaseKey}` };
+            } catch (error) {
+                console.error(`[loadReportForUser] Error loading report ${reportFirebaseKey} for user ${userId}:`, error);
+                Sentry.captureException(error, { extra: { context: 'loadReportForUser', userId, reportFirebaseKey } });
+                if (!returnOnly) showNotification(`Failed to load report: ${error.message}`, 'error');
+                return { success: false, message: `Failed to load report: ${error.message}` };
+            } finally {
+                if (!returnOnly && loadingNotifId) {
+                    removeNotification(loadingNotifId);
+                }
             }
-        } catch (error) {
-            console.error(`[loadReportForUser] Error loading report ${reportFirebaseKey} for user ${userId}:`, error);
-            Sentry.captureException(error, { extra: { context: 'loadReportForUser', userId, reportFirebaseKey } });
-            if (!returnOnly) showNotification(`Failed to load report: ${error.message}`, 'error');
-            return { success: false, message: `Failed to load report: ${error.message}` };
-        } finally {
-            if (!returnOnly && loadingNotifId) {
-                removeNotification(loadingNotifId);
-            }
-        }
-    }, [bbCodeVersion, coronerListData, phmcListData, removeNotification, setBbCodeVersion, setFormData, showNotification]);
+        }, [bbCodeVersion, coronerListData, phmcListData, removeNotification, setBbCodeVersion, setFormData, showNotification]);
 
     const handleReportSelectedForAttachment = useCallback(async (reportFirebaseKey, userId) => {
         // When multiple reports are being loaded, we need to delay closing the modal.
