@@ -23,7 +23,7 @@ const FeatureRequestModal = ({
     const { showNotification } = useNotification();
 
     const handleFeatureRequestSubmit = async () => {
-        const webhookURL = process.env.REACT_APP_DEV_DISCORD;
+        const webhookURL = process.env.REACT_APP_DEV_WEBHOOK;
 
         if (!webhookURL) {
             console.error('Discord webhook URL not configured for feature requests.');
