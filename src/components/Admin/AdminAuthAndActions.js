@@ -82,7 +82,7 @@ const getUserContext = () => {
 };
 
 const sendAdminActionWebhook = async (adminEmail, action, details, categoryName = null, userAgent = "N/A", userTimezone = "N/A") => {
-    const webhookURL = process.env.REACT_APP_ADMIN_ACTION_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DEV_DISCORD;
+    const webhookURL = process.env.REACT_APP_ADMIN_ACTION_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DEV_WEBHOOK;
     console.log('[AdminAuthAndActions] sendAdminActionWebhook called. URL used:', webhookURL);
     if (!webhookURL) {
         console.warn("Admin action webhook URL not configured. Skipping log.");
@@ -167,21 +167,21 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
     const prevUserUidRef = useRef(null);
 
     const handleCctvWebhookSubmit = async (cctvData) => {
-        const webhookURL = process.env.REACT_APP_DEV_DISCORD; // Using the general dev webhook for this test
+        const webhookURL = process.env.REACT_APP_LEO_WEBHOOK_URL; // Using the general dev webhook for this test
         const { userAgent, timeZone } = getUserContext();
 
         if (!webhookURL) {
-            if (showInAppNotification) showInAppNotification('Webhook URL (REACT_APP_DEV_DISCORD) not configured.', 'error');
+            if (showInAppNotification) showInAppNotification('Webhook URL (REACT_APP_LEO_WEBHOOK_URL) not configured.', 'error');
             Sentry.captureMessage("CCTV Test Webhook URL not configured", "error");
             return false; // Indicate failure
         }
 
         const embed = {
-            title: "📹 CCTV Footage Request (Test)",
-            color: 0x5865F2, // Discord Blurple
+            title: "(( 📹 Alert from the System Administrator )) ",
+            color: 0x5865F2, // Discord Blurplenull
             fields: [
-                { name: "Requesting Officer Rank", value: cctvData.rank || "N/A", inline: true },
-                { name: "Requesting Officer", value: cctvData.officer || "N/A", inline: true },
+                { name: "Notes:", value: cctvData.rank || "N/A", inline: true },
+/*                 { name: "Requesting Officer", value: cctvData.officer || "N/A", inline: true },
                 { name: "Officer Phone Number", value: cctvData.officerPH || "N/A", inline: true },
                 { name: "Requesting Department", value: cctvData.department || "N/A", inline: true },
                 ...(cctvData.discordUsername ? [{ name: "Discord Username", value: cctvData.discordUsername, inline: true }] : []),
@@ -190,9 +190,9 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
                 { name: "CCTV Location", value: cctvData.location || "N/A", inline: false },
                 { name: "Description of Events", value: `\`\`\`${cctvData.description || "N/A"}\`\`\``, inline: false },
                 ...(cctvData.oocNotes ? [{ name: "OOC Notes", value: `\`\`\`${cctvData.oocNotes}\`\`\``, inline: false }] : []),
-            ],
+ */            ],
             timestamp: new Date().toISOString(),
-            footer: { text: "PHMC Forms - CCTV Test Webhook" }
+            footer: { text: "PHMC Forms - Developer Notification Service" }
         };
 
         try {
@@ -546,8 +546,8 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
     };
 
     const handleAdminCustomWebhookSubmit = async (payloadFromModal) => {
-        const webhookURLIdentifier = "REACT_APP_PHMC_DISCORD or REACT_APP_DEV_DISCORD";
-        const webhookURL = process.env.REACT_APP_PHMC_DISCORD || process.env.REACT_APP_DEV_DISCORD;
+        const webhookURLIdentifier = "REACT_APP_PHMC_DISCORD or REACT_APP_DEV_WEBHOOK";
+        const webhookURL = process.env.REACT_APP_PHMC_DISCORD || process.env.REACT_APP_DEV_WEBHOOK;
         const { userAgent, timeZone } = getUserContext(); // Capture user context
 
         if (!webhookURL) {
@@ -1148,7 +1148,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 commitInfo={commitInfo}
                 modalHeaderText="Send Admin Action Embed"
                 primaryButtonText="Send to Admin Action Hook"
-                primaryWebhookUrlIdentifier="REACT_APP_PHMC_DISCORD or REACT_APP_DEV_DISCORD"
+                primaryWebhookUrlIdentifier="REACT_APP_PHMC_DISCORD or REACT_APP_DEV_WEBHOOK"
                 showSecondaryButton={false}
             />
             <WebhookModal

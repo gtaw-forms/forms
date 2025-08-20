@@ -165,12 +165,107 @@ function AppContent({
         localStorage.setItem('hideAgencyGroupSelectorPreference', hide);
     };
 
-    const handleCctvWebhookSubmit = (payload) => {
-        console.log("CCTV Webhook Payload:", payload);
-        // Implement actual webhook submission logic here
-        showNotification("CCTV Request submitted (placeholder)", 'info');
-    };
+    const handleCctvWebhookSubmit = async (cctvData) => {
+        // Log the submission attempt to Sentry for tracking and abuse monitoring
+        Sentry.captureMessage('CCTV Request Submitted', {
+            level: 'info',
+            extra: {
+                officer: cctvData.officer,
+                department: cctvData.department,
+                location: cctvData.location,
+                reason: cctvData.requestReason,
+                submitter: formData.coronerEmployee || formData.phmcEmployee || 'Unknown App User'
+            },
+            tags: {
+                webhook_type: 'cctv_request',
+                environment: process.env.NODE_ENV
+            }
+        });
 
+        // --- MODIFICATION START: Send to multiple webhooks ---
+        const devWebhookURL = process.env.REACT_APP_DEV_WEBHOOK;
+        //const leoWebhookURL = process.env.REACT_APP_LEO_WEBHOOK_URL;
+
+        if (!devWebhookURL) {
+            showNotification('No CCTV webhook URLs are configured.', 'error');
+            Sentry.captureMessage('Neither DEV nor LEO webhook URLs are configured for CCTV.', 'error');
+            return false;
+        }
+
+        const embed = {
+            title: "📹 CCTV Footage Request",
+            color: 0x007bff, // Blue for LEO
+            fields: [
+                { name: "Requesting Officer Rank", value: cctvData.rank || "N/A", inline: true },
+                { name: "Requesting Officer", value: cctvData.officer || "N/A", inline: true },
+                { name: "Officer Phone Number", value: cctvData.officerPH || "N/A", inline: true },
+                { name: "Requesting Department", value: cctvData.department || "N/A", inline: true },
+                ...(cctvData.discordUsername ? [{ name: "Discord Username", value: cctvData.discordUsername, inline: true }] : []),
+                { name: "Date/Time of Incident", value: cctvData.incidentDateTime || "N/A", inline: true },
+                { name: "Reason for Request", value: cctvData.requestReason || "N/A", inline: false },
+                { name: "CCTV Location", value: cctvData.location || "N/A", inline: false },
+                { name: "Description of Events", value: `\`\`\`${cctvData.description || "N/A"}\`\`\``, inline: false },
+                ...(cctvData.oocNotes ? [{ name: "OOC Notes", value: `\`\`\`${cctvData.oocNotes}\`\`\``, inline: false }] : []),
+            ],
+            timestamp: new Date().toISOString(),
+            footer: { text: `PHMC Forms - v${commitInfo.sha || 'N/A'}` }
+        };
+            const pad = (num) => num.toString().padStart(2, '0');
+
+        const payload = JSON.stringify({
+            username: "CCTV Bot",
+            content: "New CCTV Request! Supervisor Alert: <@&860257102324301864> | Leadership Alert: <@&860257063182925874>",
+            embeds: [embed]
+        });
+        const webhookTargets = [];
+        if (devWebhookURL) webhookTargets.push({ name: 'Dev', url: devWebhookURL });
+        // if (leoWebhookURL) webhookTargets.push({ name: 'LEO', url: leoWebhookURL });
+
+        const sendPromises = webhookTargets.map(target =>
+            fetch(target.url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: payload
+            }).then(async response => {
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Request to ${target.name} failed with status ${response.status}: ${errorText}`);
+                }
+                return { name: target.name, status: 'fulfilled' };
+            })
+        );
+
+        const results = await Promise.allSettled(sendPromises);
+        let successfulSends = 0;
+
+        results.forEach((result, index) => {
+            const targetName = webhookTargets[index].name;
+            if (result.status === 'fulfilled') {
+                console.log(`Successfully sent CCTV webhook to ${targetName}.`);
+                successfulSends++;
+            } else {
+                console.error(`Failed to send CCTV webhook to ${targetName}:`, result.reason.message);
+                Sentry.captureMessage(`CCTV Webhook to ${targetName} failed`, {
+                    level: 'error',
+                    extra: { reason: result.reason.message }
+                });
+            }
+        });
+
+        if (successfulSends === webhookTargets.length) {
+            showNotification('CCTV Request sent successfully!', "check-circle");
+            handleHideCctvRequestModal();
+            return true;
+        } else if (successfulSends > 0) {
+            showNotification('CCTV Request sent, but some destinations failed.', "warning");
+            handleHideCctvRequestModal();
+            return true;
+        } else {
+            showNotification('Failed to send CCTV request to any destination.', "error");
+            return false;
+        }
+        // --- MODIFICATION END ---
+    };
     const handleRefresh = () => {
         window.location.reload();
     };
@@ -335,7 +430,7 @@ const getBBCodeContent = () => {
     };
     
     const sendEasterEggNotification = async (type = 'normal') => { // Default to 'normal'
-        const webhookUrl = process.env.REACT_APP_DEV_DISCORD;
+        const webhookUrl = process.env.REACT_APP_DEV_WEBHOOK;
         if (!webhookUrl) {
             console.error("Discord webhook URL is not configured.");
             return; // Don't proceed if the URL isn't set
@@ -1099,7 +1194,7 @@ const handlePhmcWebhookSubmit = async (payload) => { // Receive payload from mod
 
 const handleWebhookSubmit = async (payload) => { // Receive payload from modal
     if (!payload) return;
-    const webhookURL = process.env.REACT_APP_DEV_DISCORD; // Dev URL
+    const webhookURL = process.env.REACT_APP_DEV_WEBHOOK; // Dev URL
     // Pass showNotification directly to sendWebhookPayload
     await sendWebhookPayload(webhookURL, payload, 'Dev webhook embed sent successfully!', 'Dev', showNotification);
 };
@@ -1946,7 +2041,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 commitInfo={commitInfo}
                 modalHeaderText="Send Webhook Message" // Or "Send Dev/PHMC Webhook"
                 primaryButtonText="Send to INTERNALDEV"
-                primaryWebhookUrlIdentifier="REACT_APP_DEV_DISCORD"
+                primaryWebhookUrlIdentifier="REACT_APP_DEV_WEBHOOK"
                 secondaryButtonText="Send to PHMC Discord"
                 secondaryWebhookUrlIdentifier="REACT_APP_PHMC_DISCORD" // Make sure this matches your env var for PHMC
                 showSecondaryButton={true} // Explicitly show the secondary button
