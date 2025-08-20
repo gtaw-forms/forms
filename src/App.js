@@ -686,7 +686,7 @@ const getBBCodeContent = () => {
         setShowCctvRequestModal(true);
     };
 
-const loadData = async () => {
+const loadData = useCallback(async () => {
     let loadingNotificationId; // Declare a variable to store the notification ID
     try {
         loadingNotificationId = showNotification("Data Loading...", 'spinner fa-spin', 0); // Store the ID
@@ -705,8 +705,6 @@ const loadData = async () => {
                 initialLoadFormData[field] = value;
             }
         });
-
-        // Log the data right before calling setFormData
 
         // Initialize state with localStorage values
         setFormData(prevFormData => ({
@@ -755,15 +753,17 @@ const loadData = async () => {
             removeNotification(loadingNotificationId); // Remove the notification
         }
     }
-};
-useEffect(() => {
-    loadData();
 }, [
-    showNotification, setPhmcListData, setCoronerListData,
+    showNotification, removeNotification, setFormData, setPhmcListData, setCoronerListData,
     setAgencyDataStore, setSelectOptions, setPhysicianRecruitmentDetails,
     setPsychRecruitmentDetails, setAdminRecruitmentDetails,
-    setEmsRecruitmentDetails, setNurseRecruitmentDetails, setCoronerRecruitmentDetails
+    setEmsRecruitmentDetails, setNurseRecruitmentDetails, setCoronerRecruitmentDetails,
+    setIsLoadingData, setLoading
 ]);
+
+useEffect(() => {
+    loadData();
+}, [loadData]);
 
 
     useEffect(() => {
@@ -1483,6 +1483,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 <div className="button-group">
 
         <div className="floating-tools-container">
+
                 <Button
                     variant="info" // Or PHMC theme color
                     className="changelog-button" // Or a new class
@@ -1885,6 +1886,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                     <i className="fas fa-user-shield"></i>
                     Admin Panel
                 </Button>
+                
             </div>
 
 <RecruitmentStatusDisplay

@@ -314,7 +314,7 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
             setIsLoadingAuth(false);
         });
         return () => unsubscribe();
-    }, [setFormData, showInAppNotification, currentUser]);
+    }, [setFormData, showInAppNotification]);
 
     useEffect(() => {
         if (currentUser && selectedRecruitmentCategory && recruitmentCategories[selectedRecruitmentCategory]) {
@@ -1107,6 +1107,17 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
             </Button>
             <Button variant="secondary" onClick={handleOpenDevWebhookModal} className="mt-3 me-2">
                 <i className="fas fa-code"></i> DEV WEBHOOK
+            </Button>
+            <Button variant="danger" onClick={() => {
+                try {
+                    null.throwError();
+                } catch (error) {
+                    Sentry.captureException(error, { extra: { context: 'Test Error Button Clicked' } });
+                    if (showInAppNotification) showInAppNotification('Test error sent to Sentry!', 'check-circle');
+                    throw error; // Re-throw the error to trigger the global handler
+                }
+            }} className="mt-3 me-2">
+                <i className="fas fa-bug"></i> Test Error
             </Button>
             <div className="my-3 p-3 border border-warning rounded">
                     <Button variant="primary" className="ms-2" onClick={handleGtaWorldLogin} title="Login to GTA World UCP (OAuth)">

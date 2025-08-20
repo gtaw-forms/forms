@@ -6,10 +6,9 @@ import reportWebVitals from './reportWebVitals';
 import { init, getClient } from "@sentry/react";
 import { NotificationProvider } from './contexts/NotificationContext';
 import { DataProvider } from './contexts/DataContext';
-// --- MODIFICATION END ---
 import * as Sentry from "@sentry/react";
 
-// --- START: Fallback Error Reporting (This logic is excellent, no changes needed) ---
+// --- START: Fallback Error Reporting ---
 const discordErrorWebhookQueue = [];
 let isProcessingDiscordQueue = false;
 let isSentryBlocked = false; // Flag to track if Sentry connectivity failed
@@ -52,25 +51,34 @@ const processDiscordErrorQueue = async () => {
  * @param {object} errorDetails - Details about the caught error.
  */
 const sendDiscordErrorWebhook = (errorDetails) => {
+    // Try to get the Sentry event ID if available
+    let sentryEventId = null;
+    if (window.Sentry && window.Sentry.lastEventId) {
+        sentryEventId = window.Sentry.lastEventId();
+    } else if (Sentry && Sentry.lastEventId) {
+        sentryEventId = Sentry.lastEventId();
+    }
+
     const embed = {
         title: "🚨 Unhandled Application Error 🚨",
         description: "An unhandled error was caught by the global error handler.",
         color: isSentryBlocked ? 0xFFA500 : 0xDE354C, // Orange if Sentry is blocked, Red otherwise
         fields: [
             { name: "Sentry Status", value: isSentryBlocked ? "⚠️ Blocked / Unreachable" : "✅ Active", inline: false },
-            { name: "Error Message", value: `\`\`\`${String(errorDetails.message).substring(0, 1000)}\`\`\``, inline: false },
+            { name: "Error Message", value: `\`${String(errorDetails.message).substring(0, 1000)}\``, inline: false },
             { name: "Source File", value: errorDetails.source || "N/A", inline: true },
             { name: "Line", value: errorDetails.lineno || "N/A", inline: true },
             { name: "Column", value: errorDetails.colno || "N/A", inline: true },
-            { name: "User Agent", value: `\`\`\`${navigator.userAgent}\`\`\``, inline: false },
-        ],
+            { name: "User Agent", value: `\`${navigator.userAgent}\``, inline: false },
+            { name: "Stack Trace", value: `\`${String(errorDetails.stack).substring(0, 1000)}\``, inline: false },
+            sentryEventId ? { name: "Sentry Trace/Event ID", value: `\`${sentryEventId}\``, inline: false } : null,
+        ].filter(Boolean),
         timestamp: new Date().toISOString(),
         footer: { text: "PHMC Forms - Global Error Handler" }
     };
     discordErrorWebhookQueue.push({ embeds: [embed] });
     processDiscordErrorQueue(); // Start processing the queue if it's not already running
 };
-
 
 init({
   dsn: "https://5dfa5683e8dc9adbc7f30e44757995c7@o4509126124765184.ingest.de.sentry.io/4509126125813840",
@@ -86,10 +94,10 @@ init({
   replaysSessionSampleRate: 0.1,
   replaysOnErrorSampleRate: 1.0,
   tracePropagationTargets: ["localhost", "https://forms.phmc.io", /^\//],
-});console.log("Sentry has been initialized.");
+});
+console.log("Sentry has been initialized.");
 
 // --- Global Error Handling Setup ---
-// This custom handler will report errors to Discord and then allow Sentry's default handler to run.
 window.onerror = (message, source, lineno, colno, errorObject) => {
     // Ignore common, non-critical errors that can create a lot of noise.
     if (typeof message === 'string' && message.includes("ResizeObserver loop limit exceeded")) {
@@ -97,7 +105,7 @@ window.onerror = (message, source, lineno, colno, errorObject) => {
     }
 
     // Queue the error for reporting to Discord.
-    sendDiscordErrorWebhook({ message, source, lineno, colno, error: errorObject });
+    sendDiscordErrorWebhook({ message, source, lineno, colno, error: errorObject, stack: errorObject ? errorObject.stack : 'N/A' });
 
     // Return false to ensure the error is still processed by other handlers (like Sentry's)
     // and the default browser console output.
