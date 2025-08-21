@@ -99,13 +99,13 @@ const getRelevantFields = (bbCodeVersion) => {
                 'patientBloodAnalysisResults', 'patientUrine', 'patientUrineResults', 'date',
                 'patientUltraSummary', 'phmcSignature'
             ];
-        case 11: // Mass Fatality Report
+/*         case 11: // Mass Fatality Report
             return [
                 'decedents', 'coronerRank', 'placeOfDeath', 'department', 'dateTime',
                 'coronerEmployee', 'coronerBadge', 'synopsis', 'requestingOfficer',
                 'decedentName', 'decedentOOC',
             ];
-        case 12: // Gynecology - Main File
+ */        case 12: // Gynecology - Main File
             return [
                 'phmcEmployee', 'lastName', 'patientName', 'patientMedicalRecord', 'patientJob',
                 'patientPartnerPH', 'patientDateofBirth', 'patientPartnerName', 'patientJobTasks',
