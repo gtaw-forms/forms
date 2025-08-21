@@ -572,8 +572,8 @@ const getBBCodeContent = () => {
         8: "Death Certificate",
         9: "Obs Main File",
         10: "Obs Follow Up",
-        11: "Mass Fatality Report",
-        12: "Gynecology - Main File",
+/*         11: "Mass Fatality Report",
+ */        12: "Gynecology - Main File",
         13: "Gynecology - Add Reply",
         14: "Mental Health - PHMC",
         16: "Mental Health - PBC",
@@ -901,8 +901,8 @@ useEffect(() => {
         { version: 2, name: "Email Generator", icon: email },
         { version: 4, name: "Autopsy Report", icon: corpse },
         { version: 8, name: "Death Certificate", icon: PHMCLogo },
-        { version: 11, name: "Mass Fatality Report", icon: corpse },
-    ];
+/*         { version: 11, name: "Mass Fatality Report", icon: corpse },
+ */    ];
     const physicalEvalFormsSubGroup = [
         { version: 6, name: "Physical Evaluation PHMC", icon: PHMCLogo },
         { version: 7, name: "Physical Evaluation PBC", icon: phmcpaletobay }
@@ -1093,7 +1093,6 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
     }
 };
 
-const phmcLogoUrl = 'https://i.imgur.com/QMaz0OC.png'; // Publicly accessible URL for the logo
 const sendWebhookPayload = async (webhookURL, payload, successMessage, context, notifyFunc) => {
     if (!webhookURL) {
         console.error(`Discord webhook URL not configured for ${context}.`);
