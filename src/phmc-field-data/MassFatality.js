@@ -190,15 +190,25 @@ const MassFatality = ({
             ...prevFormData,
             decedents: prevFormData.decedents.map((dec, i) => {
                 if (i === index) {
-                    const updatedDec = { ...dec, [field]: value };
-                    // If a field is updated, ensure the block is expanded
-                    const shouldCollapse = isDecedentComplete(updatedDec);
-                    return { ...updatedDec, collapsed: shouldCollapse };
+                    // Only update the field value, not the collapsed state
+                    return { ...dec, [field]: value };
                 }
                 return dec;
             })
         }));
     };
+
+    useEffect(() => {
+        // This effect runs once on mount to collapse any decedents that are already complete.
+        setFormData(prevFormData => {
+            if (!prevFormData.decedents) return prevFormData;
+            const updatedDecedents = prevFormData.decedents.map(dec => ({
+                ...dec,
+                collapsed: isDecedentComplete(dec)
+            }));
+            return { ...prevFormData, decedents: updatedDecedents };
+        });
+    }, []); // Empty dependency array ensures this runs only once on mount
 
     const toggleCollapse = (index) => {
         setFormData(prevFormData => ({
@@ -254,7 +264,7 @@ const MassFatality = ({
                     .flatMap(group => group.options)
                     .find(option => option.value === formData.coronerEmployee) || null}
                 // Corrected onChange handler:
-                onChange={(selectedOption) => handleSelectChange(selectedOption, { name: 'coronerEmployee' })}
+                onChange={(selectedOption) => handleSelectChange(selectedOption, 'coronerEmployee')}
                 options={coronerGroupedOptions}
                 isClearable
                 placeholder="Search or select coroner..."
