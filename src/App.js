@@ -31,12 +31,7 @@ import FormImageLink from './components/FormImageLink';
 // 
 import { copyToClipboard, handleFormCopyAndNotify, handlePhmcRecruitmentCopyAndNotify } from './components/notificationService'; // Add copyToClipboard
 
-import {
-    generateDeathReport,
-} from './phmc-bbcode-generators'; 
-import PositionInfoModal from './components/PositionInfoModal'; // Adjust path as needed
 import EmsBingoModal from './components/EmsBingoModal'; // <-- ADD THIS IMPORT
-import GtaCallback from './components/GtaCallback';
 
 // logos
 import email from './assets/email.png'
@@ -296,11 +291,31 @@ function AppContent({
         }));
     };
 
-    const handleSelectChange = (selectedOption, name) => {
-        setFormData(prev => ({
-            ...prev,
-            [name]: selectedOption ? selectedOption.value : ''
-        }));
+    const handleSelectChange = (selectedOption, action) => {
+        const name = typeof action === 'string' ? action : action.name;
+
+        if (name === 'coronerEmployee' && selectedOption) {
+            setFormData(prev => ({
+                ...prev,
+                coronerEmployee: selectedOption.value,
+                coronerBadge: selectedOption.badge,
+                coronerRank: selectedOption.rank,
+                coronerDiscord: selectedOption.discord,
+            }));
+        } else if (name === 'coronerEmployee' && !selectedOption) {
+            setFormData(prev => ({
+                ...prev,
+                coronerEmployee: '',
+                coronerBadge: '',
+                coronerRank: '',
+                coronerDiscord: '',
+            }));
+        } else {
+            setFormData(prev => ({
+                ...prev,
+                [name]: selectedOption ? selectedOption.value : ''
+            }));
+        }
     };
 
     const handleFillCoronerPhone = () => {
@@ -389,7 +404,21 @@ const getBBCodeContent = () => {
     };
 
         useEffect(() => {
-        const { evidenceLockerID, ...formDataToPersist } = formData; // Exclude evidenceLocker
+        const fieldsToSaveToLS = [
+            'phmcEmployee', 'phmcEmployeeLastName', 'phmcRank',
+            'coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord', 'coronerPHNumber',
+            'pronouncedTimeOfDeath', 'department', 'dateTime', 'placeOfDeath', 'mannerOfDeath',
+        ];
+
+        fieldsToSaveToLS.forEach(field => {
+            if (formData[field]) {
+                localStorage.setItem(field, formData[field]);
+            } else {
+                localStorage.removeItem(field);
+            }
+        });
+
+        const { evidenceLockerID, ...formDataToPersist } = formData;
         localStorage.setItem('formData', JSON.stringify(formDataToPersist));
     }, [formData]);
 
