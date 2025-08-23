@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Form, Button } from 'react-bootstrap';
 import Select from 'react-select';
+import { useData } from '../contexts/DataContext';
 const customSelectStyles = {
     control: (base, state) => ({
         ...base,
@@ -77,7 +78,7 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
     formData,
     handleChange,
     handleSelectChange, // Added this prop
-    setShowMissingEmployeeModal,
+    setShowEmployeeModal,
     coronerGroupedOptions,
     handleFillCoronerPhone,
     fillPhoneChecked,
@@ -88,13 +89,19 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
     parseBBCode,
     toggleSavedReports 
 }) => {
+    const { loadAgencyData } = useData(); // Destructure loadAgencyData
+
+    useEffect(() => {
+        loadAgencyData(); // Call loadAgencyData on component mount
+    }, [loadAgencyData]); // Dependency array includes loadAgencyData
+
     return (
         <>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
                                     <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
                                     <button
                                         type="button"
-                                        onClick={() => setShowMissingEmployeeModal(true)}
+                                        onClick={() => setShowEmployeeModal(true)}
                                         className="close-button"
                                         style={{
                                             padding: '0.25rem 0.5rem',
@@ -183,7 +190,7 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
         {/* Missing Name Button */}
         <button
             type="button"
-            onClick={() => setShowMissingEmployeeModal(true)}
+            onClick={() => setShowEmployeeModal(true)}
             className="close-button" // You might want a different class/style for this button
             style={{
                 padding: '0.1rem 0.1rem',

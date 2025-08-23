@@ -1,13 +1,13 @@
-// src/field-data/deathReport.js
 import React, { useState, useEffect} from 'react'; // Import useEffect
 import { Form, Button, InputGroup } from 'react-bootstrap';
 import Select from 'react-select';
+import { useData } from '../contexts/DataContext';
 
 const DeathReport = ({
     formData,
     handleChange,
     handleSelectChange,
-    setShowMissingEmployeeModal,
+    setShowEmployeeModal,
     coronerGroupedOptions,
     handleDoeChange,
     setFormData,
@@ -20,6 +20,11 @@ const DeathReport = ({
     mannerOfDeathOptions,
     requestingAgencyOptions
 }) => {
+    const { loadAgencyData } = useData(); // Destructure loadAgencyData
+
+    useEffect(() => {
+        loadAgencyData(); // Call loadAgencyData on component mount
+    }, [loadAgencyData]); // Dependency array includes loadAgencyData
 
     // Function to generate the Evidence Locker ID
     const generateEvidenceLockerID = () => {
@@ -54,7 +59,7 @@ useEffect(() => {
                 <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
                 <button
                     type="button"
-                    onClick={() => setShowMissingEmployeeModal(true)}
+                    onClick={() => setShowEmployeeModal(true)}
                     className="close-button"
                     style={{
                         padding: '0.25rem 0.5rem',

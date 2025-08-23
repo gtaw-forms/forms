@@ -42,7 +42,7 @@ export const useReportManagement = (
     const [showPositionInfoModal, setShowPositionInfoModal] = useState(false);
     const [currentPositionInfo, setCurrentPositionInfo] = useState(null);
 
-    const saveReport = async () => {
+    async function saveReport() {
         let key = '';
         const bbCodeContent = getBBCodeContent();
         const currentAuthor = getCurrentReportAuthor(formData);
@@ -50,14 +50,16 @@ export const useReportManagement = (
         // --- Validation logic to determine the key ---
         if (bbCodeVersion === 1) { // Death Report
             if (!formData.decedentOOC || !formData.dateTime) {
-                showNotification(`Please fill in Decedent OOC and Date/Time fields.`, 'exclamation-circle');
-                return false;
+                const message = `Please fill in Decedent OOC and Date/Time fields.`;
+                showNotification(message, 'exclamation-circle');
+                return { success: false, error: message };
             }
             key = `[DEATH-REPORT] ${formData.decedentOOC} - ${formData.dateTime}`;
         } else if (bbCodeVersion === 4) { // Autopsy Report
             if (!formData.decedentName || !formData.decedentOOC || !formData.autopsyDate) {
-                showNotification(`Please fill in Decedent IC Name, OOC Name, and Autopsy Date fields.`, 'exclamation-circle');
-                return false;
+                const message = `Please fill in Decedent IC Name, OOC Name, and Autopsy Date fields.`;
+                showNotification(message, 'exclamation-circle');
+                return { success: false, error: message };
             }
             key = `[Autopsy] ${formData.decedentName} (${formData.decedentOOC}) - ${formData.autopsyDate}`;
         } else if (((bbCodeVersion >= 3 && bbCodeVersion <= 7) && bbCodeVersion !== 4)) { // PatientAdvanced (3), SurgicalOps (5), PhysEval PHMC/PBC (6,7)
@@ -73,21 +75,24 @@ export const useReportManagement = (
                 if (patientNameMissing) missingFieldLabels.push('Patient Name');
                 if (dateMissing) missingFieldLabels.push('Date');
                 if (missingFieldLabels.length > 0) {
-                    showNotification(`Please fill in ${missingFieldLabels.join(', ')} fields.`, 'exclamation-circle');
-                    return false;
+                    const message = `Please fill in ${missingFieldLabels.join(', ')} fields.`;
+                    showNotification(message, 'exclamation-circle');
+                    return { success: false, error: message };
                 }
             }
             key = `${formData.patientID || 'NO_ID'} - ${formData.patientName || 'NO_NAME'} - ${formData.date || 'NO_DATE'}`;
         } else if (bbCodeVersion === 19) { // EmergencyProtocol
             if (!formData.patientID || !formData.date) {
-                showNotification(`Please fill in Patient ID, and Date fields.`, 'exclamation-circle');
-                return false;
+                const message = `Please fill in Patient ID, and Date fields.`;
+                showNotification(message, 'exclamation-circle');
+                return { success: false, error: message };
             }
             key = `${formData.patientID} - ${formData.lastName} - ${formData.date}`;
         } else if (bbCodeVersion === 25) { // BasicPatientFile
             if (!formData.patientName || !formData.date) {
-                showNotification(`Please fill in Patient Name and Date fields.`, 'exclamation-circle');
-                return false;
+                const message = `Please fill in Patient Name and Date fields.`;
+                showNotification(message, 'exclamation-circle');
+                return { success: false, error: message };
             }
             key = `${formData.patientName} - ${formData.date}`;
         }
@@ -95,34 +100,38 @@ export const useReportManagement = (
         // Example for Coroner Email (bbCodeVersion 2)
         else if (bbCodeVersion === 2) {
             if (!formData.coronerEmployee || !formData.requestingOfficer || (!formData.decedentName && !formData.decedentOOC)) {
-                showNotification(`Please fill in Coroner, Requesting Officer, and Decedent Name/OOC for Coroner Email.`, 'exclamation-circle');
-                return false;
+                const message = `Please fill in Coroner, Requesting Officer, and Decedent Name/OOC for Coroner Email.`;
+                showNotification(message, 'exclamation-circle');
+                return { success: false, error: message };
             }
             key = `[Email] ${formData.requestingOfficer} re: ${formData.decedentName || formData.decedentOOC} - ${new Date().toISOString().split('T')[0]}`;
         }
         // Example for Agency Feedback (bbCodeVersion 18)
         else if (bbCodeVersion === 18) {
             if (!formData.department || !formData.dateTime || !formData.synopsis) {
-                showNotification(`Please fill in Department, Date/Time, and Synopsis for Agency Feedback.`, 'exclamation-circle');
-                return false;
+                const message = `Please fill in Department, Date/Time, and Synopsis for Agency Feedback.`;
+                showNotification(message, 'exclamation-circle');
+                return { success: false, error: message };
             }
             key = `[Feedback] ${formData.department} - ${formData.dateTime}`;
         }
         // --- MODIFICATION FOR PHMC RECRUITMENT ---
         else if (getFormDefinition(bbCodeVersion)?.group === 'PHMC Recruitment') {
-            return false; // Prevent Firebase saving for PHMC Recruitment forms
+            return { success: false, error: 'PHMC Recruitment forms cannot be saved to Firebase.' };
         }
         // --- END MODIFICATION ---
         else if (bbCodeVersion === 11) { // Mass Fatality Report
             const { decedents, dateTime } = formData;
             if (!decedents || decedents.length === 0) {
-                showNotification(`Please add at least one decedent to the report.`, 'exclamation-circle');
-                return false;
+                const message = `Please add at least one decedent to the report.`;
+                showNotification(message, 'exclamation-circle');
+                return { success: false, error: message };
             }
             const firstDecedent = decedents[0];
             if (!firstDecedent.decedentName || !dateTime) {
-                showNotification(`The first decedent must have a name and the main date/time must be set.`, 'exclamation-circle');
-                return false;
+                const message = `The first decedent must have a name and the main date/time must be set.`;
+                showNotification(message, 'exclamation-circle');
+                return { success: false, error: message };
             }
             const decedentNames = decedents.map(d => d.decedentName).filter(name => name).join(', ');
             key = `[Mass Fatality Report] - ${decedentNames} - ${(dateTime && dateTime.split('T')[0]) || 'No Date'}`;
@@ -149,13 +158,15 @@ export const useReportManagement = (
 
         // If key is still empty, something went wrong (should be caught by validations)
         if (!key) {
-            showNotification('Could not generate a report key. Save aborted.', 'error');
-            return false;
+            const message = 'Could not generate a report key. Save aborted.';
+            showNotification(message, 'error');
+            return { success: false, error: message };
         }
 
         if (!currentAuthor) {
-            showNotification('Cannot determine report author. Please ensure an employee is selected or patient name is filled if applicable for this form type.', 'error');
-            return false;
+            const message = 'Cannot determine report author. Please ensure an employee is selected or patient name is filled if applicable for this form type.';
+            showNotification(message, 'error');
+            return { success: false, error: message };
         }
 
         const sanitizedAuthorId = currentAuthor.replace(/[.#$[\]/]/g, '_');
@@ -203,13 +214,14 @@ export const useReportManagement = (
             const reportRef = ref(database, reportPath);
             await set(reportRef, reportDataToSave);
             showNotification(`Report "${key}" saved for ${currentAuthor} to Firebase!`, 'save');
-            return true; // Indicate success
+            return { success: true }; // Indicate success
 
         } catch (error) {
             console.error("Error saving report to Firebase:", error);
             Sentry.captureException(error, { extra: { context: 'Firebase set report' } });
-            showNotification('Failed to save report to Firebase.', 'error');
-            return false; // Indicate failure
+            const message = 'Failed to save report to Firebase.';
+            showNotification(message, 'error');
+            return { success: false, error: message }; // Indicate failure
         }
     };
 
@@ -515,6 +527,7 @@ export const useReportManagement = (
                         let newState = { ...prev };
                         newState.decedentName = icName;
                         newState.decedentOOC = oocName;
+                        newState.paperworkType = 'Mass Fatality';
 
                         if (currentDeathReportIsEmpty) {
                             newState.deathReport = reportData.bbCode;

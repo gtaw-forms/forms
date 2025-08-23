@@ -6,7 +6,7 @@ import Select from 'react-select'; // Make sure react-select is imported
 const PHMCCommentaryNoteQuestions = ({
     formData,
     handleChange,
-    setShowMissingEmployeeModal,
+    setShowEmployeeModal,
     phmcGroupedOptions,
     isUploading,
     handleImageUpload, 
@@ -213,7 +213,7 @@ const PHMCCommentaryNoteQuestions = ({
                 <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
                 <button
                     type="button"
-                    onClick={() => setShowMissingEmployeeModal(true)}
+                    onClick={() => setShowEmployeeModal(true)}
                     className="close-button" // Consider a more specific class if needed
                     style={{
                         padding: '0.25rem 0.5rem',

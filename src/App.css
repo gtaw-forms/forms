@@ -191,6 +191,12 @@ select {
     color: #acb1cad3;
     margin-bottom: 0.9rem;
 }
+#webpack-dev-server-client-overlay-div {
+    display: none !important;
+}
+#webpack-dev-server-client-overlay {
+    display: none !important;
+}
 
 .helper-text {
     display: block;

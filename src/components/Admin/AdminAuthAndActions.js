@@ -13,6 +13,11 @@ import * as Sentry from "@sentry/react";
 import CctvRequestWebhookModal from './CctvRequestWebhookModal'; // Import the new modal
 import MarkdownBBCodeModal from '../MarkdownBBCodeModal';
 
+const CrashingComponent = () => {
+    throw new Error("This is a test error to check the Error Boundary.");
+    return null;
+};
+
 const recruitmentCategories = {
     physician: { displayName: "Physician Recruitment", path: 'selectOptions/physicianRecruitmentDetails' },
     psych: { displayName: "Psychologist/Psychiatrist Recruitment", path: 'selectOptions/psychPositionDetailsData' },
@@ -96,8 +101,14 @@ const sendAdminActionWebhook = async (adminEmail, action, details, categoryName 
             { name: "Admin User", value: adminEmail || "Unknown", inline: true },
             { name: "Action Taken", value: action || "Unknown Action", inline: true },
             ...(categoryName ? [{ name: "Category", value: categoryName, inline: true }] : []),
-            { name: "Details", value: `\`\`\`\n${details.substring(0,1000)}\n\`\`\``, inline: false },
-            { name: "User Agent", value: `\`\`\`${userAgent.substring(0, 250)}\`\`\``, inline: false }, // Truncate for Discord field limit
+            { name: "Details", value: `
+${details.substring(0,1000)}
+`,
+ inline: false },
+            { name: "User Agent", value: `
+${userAgent.substring(0, 250)}
+`,
+ inline: false }, // Truncate for Discord field limit
             { name: "Timezone", value: userTimezone, inline: true },
         ],
         timestamp: new Date().toISOString(),
@@ -163,6 +174,7 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
     const [devWebhookTitle, setDevWebhookTitle] = useState(''); // New state
     const [devWebhookMessage, setDevWebhookMessage] = useState(''); // New state
     const [showCctvWebhookModal, setShowCctvWebhookModal] = useState(false);
+    const [showCrashingComponent, setShowCrashingComponent] = useState(false);
 
     const prevUserUidRef = useRef(null);
 
@@ -188,8 +200,14 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
                 { name: "Date/Time of Incident", value: cctvData.incidentDateTime || "N/A", inline: true },
                 { name: "Reason for Request", value: cctvData.requestReason || "N/A", inline: true },
                 { name: "CCTV Location", value: cctvData.location || "N/A", inline: false },
-                { name: "Description of Events", value: `\`\`\`${cctvData.description || "N/A"}\`\`\``, inline: false },
-                ...(cctvData.oocNotes ? [{ name: "OOC Notes", value: `\`\`\`${cctvData.oocNotes}\`\`\``, inline: false }] : []),
+                { name: "Description of Events", value: `
+${cctvData.description || "N/A"}
+`,
+ inline: false },
+                ...(cctvData.oocNotes ? [{ name: "OOC Notes", value: `
+${cctvData.oocNotes}
+`,
+ inline: false }] : []),
  */            ],
             timestamp: new Date().toISOString(),
             footer: { text: "PHMC Forms - Developer Notification Service" }
@@ -974,6 +992,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
 
     return (
         <div>
+            {showCrashingComponent && <CrashingComponent />}
             <p>Logged in as: {currentUser.email}</p>
             {desktopNotificationPermission === 'default' && (
                 <Button variant="outline-info" size="sm" onClick={handleEnableDesktopNotifications} className="mb-2 d-block mx-auto" title="Click to allow desktop notifications for status updates">
@@ -1118,6 +1137,9 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 }
             }} className="mt-3 me-2">
                 <i className="fas fa-bug"></i> Test Error
+            </Button>
+            <Button variant="warning" onClick={() => setShowCrashingComponent(true)} className="mt-3 me-2">
+                <i className="fas fa-bomb"></i> Test Error Boundary
             </Button>
             <div className="my-3 p-3 border border-warning rounded">
                     <Button variant="primary" className="ms-2" onClick={handleGtaWorldLogin} title="Login to GTA World UCP (OAuth)">

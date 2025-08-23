@@ -142,7 +142,7 @@ const MassFatality = ({
     handleChange,
     handleSelectChange,
     setFormData,
-    setShowMissingEmployeeModal,
+    setShowEmployeeModal,
     isUploading,
     handleImageUpload,
     typeOfDeathOptions,
@@ -246,7 +246,7 @@ const MassFatality = ({
                 <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
                 <button
                     type="button"
-                    onClick={() => setShowMissingEmployeeModal(true)}
+                    onClick={() => setShowEmployeeModal(true)}
                     className="close-button"
                     style={{
                         padding: '0.25rem 0.5rem',
@@ -501,7 +501,7 @@ const MassFatality = ({
                                 <span className="helper-text">This supports clipboard uploading, ctrl + V! | Hosted by Imgur! - <a href="https://imgur.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a></span>
                             </Form.Group>
                             <Form.Group className="mb-3 upload-container">
-                                <Form.Label>Additional Images</Form.Label>
+                                <Form.Label>Morgue and CDNA Images</Form.Label>
                                 <InputGroup>
                                     <Form.Control
                                         as="textarea"

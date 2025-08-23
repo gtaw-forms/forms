@@ -103,8 +103,11 @@ export const NotificationProvider = ({ children }) => {
                         key={notification.id}
                         message={notification.message}
                         icon={notification.icon}
-                        onClose={() => removeNotification(notification.id)}
-                        actions={notification.actions}
+                        onDismiss={() => removeNotification(notification.id)}
+                        actions={notification.actions.map(action => ({
+                            ...action,
+                            handler: () => action.handler(notification.id)
+                        }))}
                     />
                 ))}
             </div>

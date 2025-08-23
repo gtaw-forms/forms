@@ -1,6 +1,6 @@
 import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
 import { database } from '../firebase';
-import { ref, get } from 'firebase/database';
+import { ref, get, child } from 'firebase/database';
 import { useNotification } from './NotificationContext';
 
 const DataContext = createContext();
@@ -27,31 +27,19 @@ export const DataProvider = ({ children }) => {
     const loadData = useCallback(async () => {
         let loadingNotificationId;
         try {
-            loadingNotificationId = showNotification("Data Loading...", 'spinner fa-spin', 0);
+            loadingNotificationId = showNotification("Staff Data Loading...", 'spinner fa-spin', 0);
 
             const dbRootRef = ref(database);
-            const snapshot = await get(dbRootRef);
+            const staffRef = child(dbRootRef, 'staff');
+            const staffSnapshot = await get(staffRef);
 
-            if (snapshot.exists()) {
-                const allData = snapshot.val();
-                let fetchedSelectOptions = allData.selectOptions || {};
-
-                setPhmcListData(allData.staff?.phmc || []);
-                setCoronerListData(allData.staff?.coroner || []);
-                setAgencyDataStore(allData.agencies || {});
-                setSelectOptions(allData.selectOptions || {});
-
-                setSelectOptions(fetchedSelectOptions);
-                setPhysicianRecruitmentDetails(fetchedSelectOptions.physicianRecruitmentDetails || {});
-                setPsychRecruitmentDetails(fetchedSelectOptions.psychPositionDetailsData || {});
-                setAdminRecruitmentDetails(fetchedSelectOptions.adminPositionDetailsData || {});
-                setEmsRecruitmentDetails(fetchedSelectOptions.emsPositionDetailsData || {});
-                setNurseRecruitmentDetails(fetchedSelectOptions.nursePositionDetailsData || {});
-                setCoronerRecruitmentDetails(fetchedSelectOptions.coronerPositionDetailsData || {});
-
-                showNotification("Data Loaded!", 'check-circle', 2000);
+            if (staffSnapshot.exists()) {
+                const staffData = staffSnapshot.val();
+                setPhmcListData(staffData?.phmc || []);
+                setCoronerListData(staffData?.coroner || []);
+                showNotification("Staff Data Loaded!", 'check-circle', 2000);
             } else {
-                showNotification('Initial application data not found on server.', 'error');
+                showNotification('Staff data not found on server.', 'error');
             }
         } catch (error) {
             showNotification("An error has happened, contact the maintainer", 'error');
@@ -73,6 +61,59 @@ export const DataProvider = ({ children }) => {
         await loadData();
     };
 
+    const loadSelectOptions = useCallback(async () => {
+        let loadingNotificationId;
+        try {
+            loadingNotificationId = showNotification("Loading form options...", 'spinner fa-spin', 0);
+            const selectOptionsRef = ref(database, 'selectOptions');
+            const snapshot = await get(selectOptionsRef);
+
+            if (snapshot.exists()) {
+                const fetchedSelectOptions = snapshot.val();
+                setSelectOptions(fetchedSelectOptions || {});
+                setPhysicianRecruitmentDetails(fetchedSelectOptions.physicianRecruitmentDetails || {});
+                setPsychRecruitmentDetails(fetchedSelectOptions.psychPositionDetailsData || {});
+                setAdminRecruitmentDetails(fetchedSelectOptions.adminPositionDetailsData || {});
+                setEmsRecruitmentDetails(fetchedSelectOptions.emsPositionDetailsData || {});
+                setNurseRecruitmentDetails(fetchedSelectOptions.nursePositionDetailsData || {});
+                setCoronerRecruitmentDetails(fetchedSelectOptions.coronerPositionDetailsData || {});
+                showNotification("Form options loaded!", 'check-circle', 2000);
+            } else {
+                showNotification('Form options not found on server.', 'error');
+            }
+        } catch (error) {
+            showNotification("An error occurred loading form options.", 'error');
+            console.error("Error fetching selectOptions:", error);
+        } finally {
+            if (loadingNotificationId) {
+                removeNotification(loadingNotificationId);
+            }
+        }
+    }, [showNotification, removeNotification]);
+
+    const loadAgencyData = useCallback(async () => {
+        let loadingNotificationId;
+        try {
+            loadingNotificationId = showNotification("Loading agency data...", 'spinner fa-spin', 0);
+            const agencyRef = ref(database, 'agencies');
+            const snapshot = await get(agencyRef);
+
+            if (snapshot.exists()) {
+                setAgencyDataStore(snapshot.val() || {});
+                showNotification("Agency data loaded!", 'check-circle', 2000);
+            } else {
+                showNotification('Agency data not found on server.', 'error');
+            }
+        } catch (error) {
+            showNotification("An error occurred loading agency data.", 'error');
+            console.error("Error fetching agency data:", error);
+        } finally {
+            if (loadingNotificationId) {
+                removeNotification(loadingNotificationId);
+            }
+        }
+    }, [showNotification, removeNotification]);
+
     const value = {
         phmcListData,
         coronerListData,
@@ -87,6 +128,8 @@ export const DataProvider = ({ children }) => {
         isLoadingData,
         loading,
         refreshData,
+        loadSelectOptions,
+        loadAgencyData,
     };
 
     return (

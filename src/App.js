@@ -18,7 +18,7 @@ import BusinessCardModal from './components/BusinessCardModal';
 import EasterEggModal from './components/EasterEggModal'; 
 import EmsAmaModal from './components/EmsAmaModal';
 import SwitchableFormsModal from './components/SwitchableFormsModal'; 
-import MissingEmployeeModal from './components/MissingEmployeeModal';
+import EmployeeModal from './components/EmployeeModal';
 import RecruitmentStatusDisplay from './components/RecruitmentStatusDisplay'; // Add this import
 import CctvRequestWebhookModal from './components/Admin/CctvRequestWebhookModal'; // Add this import
 import { sendBingoNotification, sendPhraseRequestNotification } from './components/notificationService';
@@ -61,7 +61,8 @@ function AppContent({
     setLastWebhookIdentifier,
     initialFormData,
     showNotification,
-    removeNotification
+    removeNotification,
+    setShowAdblockNotification
 }) {
     const [isMobile, setIsMobile] = useState(false);
     const modalCloseTimer = useRef(null);
@@ -72,7 +73,7 @@ function AppContent({
     const [easterEggType, setEasterEggType] = useState(null); // 'normal', 'rare', or null
     const [showAgencySelector, setShowAgencySelector] = useState(false);
     const [hideAgencySelector, setHideAgencySelector] = useState(false);
-    const [showMissingEmployeeModal, setShowMissingEmployeeModal] = useState(false);
+    const [showEmployeeModal, setShowEmployeeModal] = useState(false);
     const [showEmsAmaModal, setShowEmsAmaModal] = useState(false);
     const [showBusinessCard, setShowBusinessCard] = useState(false);
     const [fillPhoneChecked, setFillPhoneChecked] = useState(false);
@@ -149,11 +150,11 @@ function AppContent({
         setShowAgencySelector(true);
     };
 
-    const handleAgencySelect = (version) => {
+    const handleAgencySelect = useCallback((version) => {
         setBbCodeVersion(version);
         setShowAgencySelector(false);
         setShowPHMCModal(false);
-    };
+    }, [setBbCodeVersion, setShowAgencySelector, setShowPHMCModal]);
 
     const handleHideAgencyGroupSelectorPreference = (hide) => {
         setHideAgencyGroupSelectorPreference(hide);
@@ -422,34 +423,6 @@ const getBBCodeContent = () => {
         localStorage.setItem('formData', JSON.stringify(formDataToPersist));
     }, [formData]);
 
-    const handleCopyAndNotifyWrapper = () => {
-        if (selectedAgencyGroup === 'PHMC Recruitment') {
-            handlePhmcRecruitmentCopyAndNotify({
-                formData,
-                getBBCodeContent,
-                showNotification,
-                commitInfo,
-                selectOptions,
-                formDefinition: getFormDefinition(bbCodeVersion),
-            });
-        } else {
-            handleFormCopyAndNotify({
-                formData,
-                bbCodeVersion,
-                selectedAgencyGroup,
-                getBBCodeContent,
-                getFormDefinition,
-                saveReport,
-                showNotification,
-                removeNotification,
-                handleAgencySelect,
-                setLastWebhookIdentifier,
-                lastWebhookIdentifier,
-                commitInfo,
-                database,
-            });
-        }
-    };
 
     const getCopyButtonText = () => {
         if (selectedAgencyGroup === 'PHMC Recruitment') {
@@ -572,8 +545,8 @@ const getBBCodeContent = () => {
         8: "Death Certificate",
         9: "Obs Main File",
         10: "Obs Follow Up",
-/*         11: "Mass Fatality Report",
- */        12: "Gynecology - Main File",
+        11: "Mass Fatality Report",
+        12: "Gynecology - Main File",
         13: "Gynecology - Add Reply",
         14: "Mental Health - PHMC",
         16: "Mental Health - PBC",
@@ -815,6 +788,49 @@ useEffect(() => {
     const { imageSource: deathReportImage, className: deathReportClass, season } = SeasonalEvents({ imageType: 'deathReport' });
     const { imageSource: civilianPaperworkImage, className: civilianPaperworkClass } = SeasonalEvents({ imageType: 'civilianPaperwork' });
 
+    const handleCopyAndNotifyWrapper = useCallback(() => {
+        if (selectedAgencyGroup === 'PHMC Recruitment') {
+            handlePhmcRecruitmentCopyAndNotify({
+                formData,
+                getBBCodeContent,
+                showNotification,
+                commitInfo,
+                selectOptions,
+                formDefinition: getFormDefinition(bbCodeVersion),
+            });
+        } else {
+            handleFormCopyAndNotify({
+                formData,
+                bbCodeVersion,
+                selectedAgencyGroup,
+                getBBCodeContent,
+                getFormDefinition,
+                saveReport,
+                showNotification,
+                removeNotification,
+                handleAgencySelect,
+                setLastWebhookIdentifier,
+                lastWebhookIdentifier,
+                commitInfo,
+                database,
+            });
+        }
+    }, [
+        selectedAgencyGroup, 
+        formData, 
+        getBBCodeContent, 
+        showNotification, 
+        commitInfo, 
+        selectOptions, 
+        bbCodeVersion, 
+        saveReport, 
+        removeNotification, 
+        handleAgencySelect, 
+        setLastWebhookIdentifier, 
+        lastWebhookIdentifier, 
+        database
+    ]);
+
     const currentFormDefinition = useMemo(() => getFormDefinition(bbCodeVersion), [bbCodeVersion]);
     const FieldComponent = currentFormDefinition ? currentFormDefinition.FieldComponent : null;
     if (selectedAgencyGroup && !FieldComponent && !isLoadingData) {
@@ -901,8 +917,8 @@ useEffect(() => {
         { version: 2, name: "Email Generator", icon: email },
         { version: 4, name: "Autopsy Report", icon: corpse },
         { version: 8, name: "Death Certificate", icon: PHMCLogo },
-/*         { version: 11, name: "Mass Fatality Report", icon: corpse },
- */    ];
+        { version: 11, name: "Mass Fatality Report", icon: corpse },
+    ];
     const physicalEvalFormsSubGroup = [
         { version: 6, name: "Physical Evaluation PHMC", icon: PHMCLogo },
         { version: 7, name: "Physical Evaluation PBC", icon: phmcpaletobay }
@@ -1082,7 +1098,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
         formData.phmcEmployee
     );
 
-    // Trigger refresh after any action involving MissingEmployeeModal
+    // Trigger refresh after any action involving EmployeeModal
     if (actionType === 'updateRank') {
         showNotification("Refreshing staff data...", 'info-circle', 2000);
     }
@@ -1480,7 +1496,6 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 setShowCoronerTips(false);
             }}
         />
-
                     {showAgencySelector && ( // Only show if a group is selected
                         <AgencySelector
                             showAgencySelector={showAgencySelector}
@@ -1515,7 +1530,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 <Button
                     variant="info" // Or PHMC theme color
                     className="changelog-button" // Or a new class
-                    onClick={() => setShowMissingEmployeeModal(true)}
+                    onClick={() => setShowEmployeeModal(true)}
                     title="Manage PHMC Employees"
                 >
                     <i className="fas fa-users-cog"></i> 
@@ -1787,7 +1802,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                                         // Pass other props like phmcGroupedOptions, coronerGroupedOptions, etc.
                                         phmcGroupedOptions={phmcGroupedOptions}
                                         coronerGroupedOptions={coronerGroupedOptions}
-                                        setShowMissingEmployeeModal={setShowMissingEmployeeModal}
+                                        setShowEmployeeModal={setShowEmployeeModal}
                                         handleSelectChange={handleSelectChange}
                                         isUploading={isUploading}
                                         handleImageUpload={handleImageUpload}
@@ -1935,7 +1950,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 coronerGroupedOptions={coronerGroupedOptions}
                 currentPhmcEmployee={formData.phmcEmployee}
                 showNotification={showNotification}
-                setShowMissingEmployeeModal={setShowMissingEmployeeModal}
+                setShowEmployeeModal={setShowEmployeeModal}
                 isAdmin={formData.isAdminAuthenticated}
                 sendBingoWebhook={({ scorer, bingoType, phrase, lineName, marked, commitInfo: ci }) => 
                     sendBingoNotification({ scorer, bingoType, phrase, lineName, marked, commitInfo: ci || commitInfo })
@@ -1945,10 +1960,10 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 }
             />
 
-<MissingEmployeeModal
-    show={showMissingEmployeeModal}
+<EmployeeModal
+    show={showEmployeeModal}
     onHide={() => {
-        setShowMissingEmployeeModal(false);
+        setShowEmployeeModal(false);
         setIsJohnDoe(false);
         setIsJaneDoe(false);
         setIsRemoveStaff(false);
