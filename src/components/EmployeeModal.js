@@ -83,7 +83,7 @@ const reactSelectStyles = {
 };
 // --- End Styles ---
 
-const MissingEmployeeModal = ({
+const EmployeeModal = ({
     show,
     onHide,
     phmcList,
@@ -292,10 +292,12 @@ useEffect(() => {
                             employee.rank = missingEmployeeData.coronerRank;
                             employee.badge = missingEmployeeData.coronerBadge;
                             employee.phNumber = missingEmployeeData.coronerPHNumber;
+                            employee.category = missingEmployeeData.coronerRank;
                         } else {
                             employee.name = missingEmployeeData.coronerName; // First name
                             employee.lastName = missingEmployeeData.employeeLastName; // Last name
                             employee.rank = missingEmployeeData.coronerRank;
+                            employee.category = missingEmployeeData.coronerRank;
                         }
                         return employee;
                     }
@@ -438,7 +440,7 @@ useEffect(() => {
         if (typeof onHide === 'function') {
             onHide();
         } else {
-            console.error('MissingEmployeeModal: onHide is not a function', onHide);
+            console.error('EmployeeModal: onHide is not a function', onHide);
         }
     };
 
@@ -877,4 +879,4 @@ const combinedStaffOptions = useMemo(() => {
     );
 };
 
-export default MissingEmployeeModal;
+export default EmployeeModal;

@@ -93,12 +93,30 @@ export const formDefinitions = [
     // PHMC Forms (Forensic Services next, then others)
     { version: 1, name: "Forensic Services ", group: "PHMC", icon: corpse, generator: generateDeathReport, FieldComponent: DeathReport, titleKey: "deathReport", sortOrder: 10, hasCustomTitle: true, titleGenerator: (formData) => { const { typeOfDeath, decedentName, decedentOOC, dateTime } = formData; const date = dateTime ? new Date(dateTime).toLocaleDateString('en-US') : 'N/A'; return `[${typeOfDeath || 'N/A'}] ${decedentName || 'N/A'} ((${decedentOOC || 'N/A'})) - ${date}`; } },
     { version: 4, name: "Autopsy Report", group: "PHMC", icon: corpse /* Placeholder */, generator: generateAutopsy, FieldComponent: Autopsy, titleKey: "autopsyReport", sortOrder: 11, isHiddenInSelector: true, hasCustomTitle: true, titleGenerator: (formData) => { const { decedentName, decedentOOC } = formData; return `CASE ## ${decedentName || 'N/A'} ((${decedentOOC || 'N/A'})) | SENT/COMPLETED/PENDING`; } },
-    { version: 2, name: "Coroner Email", group: "PHMC", icon: emailIcon, generator: generateEmail, FieldComponent: CoronerEmail, titleKey: "coronerEmail", sortOrder: 12, isHiddenInSelector: true, hasCustomTitle: true, titleGenerator: (formData) => { const { decedentName, decedentOOC } = formData; return `Coroner Report - ${decedentName || 'N/A'} | ((${decedentOOC || 'N/A'}))`; } },
+{
+    version: 2,
+    name: "Coroner Email",
+    group: "PHMC",
+    icon: emailIcon,
+    generator: generateEmail,
+    FieldComponent: CoronerEmail,
+    titleKey: "coronerEmail",
+    sortOrder: 12,
+    isHiddenInSelector: true,
+    hasCustomTitle: true,
+    titleGenerator: (formData) => {
+        const { decedentName, decedentOOC, paperworkType } = formData;
+        if (paperworkType && paperworkType.toLowerCase().includes('mass fatality')) {
+            return `Coroner Report - ${decedentName || 'N/A'} | (MASS FATALITY)`;
+        }
+        return `Coroner Report - ${decedentName || 'N/A'} | ((${decedentOOC || 'N/A'}))`;
+    }
+},
     { version: 8, name: "Certificate of Death", group: "PHMC", icon: corpse, generator: generateCertificate, FieldComponent: Certificate, titleKey: "certificateOfDeath", sortOrder: 13, isHiddenInSelector: true, hasCustomTitle: true, titleGenerator: (formData) => `[Death Certificate] -  ${formData.decedentOOC || 'N/A'}` },
     { version: 5, name: "Surgical Ops", group: "PHMC", icon: surgeon, generator: generateSurgicalOps, FieldComponent: Surgical, titleKey: "surgicalOps", sortOrder: 20, titleGenerator: (formData) => `Surgical Ops: ${formData.patientName || 'Unknown'}` },
     { version: 6, name: "Physical Evaluation", group: "PHMC", icon: nurse, generator: generatePhysEvalInternalMed, FieldComponent: PhysEval, titleKey: "physEvalPHMC", sortOrder: 21, titleGenerator: (formData) => `Physical Evaluation: ${formData.patientName || 'Unknown'}` },
-/*     { version: 11, name: "Mass Fatality Report", group: "PHMC", icon: corpse, generator: generateMassFatality, FieldComponent: MassFatality, titleKey: "massFatalityReport", sortOrder: 14, isHiddenInSelector: true, hasCustomTitle: true, titleGenerator: (formData) => { const { decedents, dateTime } = formData; let date = 'No Date'; if (dateTime) { const datePart = dateTime.split('T')[0]; const [year, month, day] = datePart.split('-'); date = `${month}/${day}/${year}`; } if (decedents && decedents.length > 0) { const decedentNames = decedents.map(d => d.decedentName).filter(name => name).join(', '); return `[Mass Fatality Report] - ${decedentNames || 'N/A'} - ${date}`; } return `[Mass Fatality Report] - N/A - ${date}`; } },
- */    // Add isHiddenInSelector: true to the PBC version
+    { version: 11, name: "Mass Fatality Report", group: "PHMC", icon: corpse, generator: generateMassFatality, FieldComponent: MassFatality, titleKey: "massFatalityReport", sortOrder: 14, isHiddenInSelector: true, hasCustomTitle: true, titleGenerator: (formData) => { const { decedents, dateTime } = formData; let date = 'No Date'; if (dateTime) { const datePart = dateTime.split('T')[0]; const [year, month, day] = datePart.split('-'); date = `${month}/${day}/${year}`; } if (decedents && decedents.length > 0) { const decedentNames = decedents.map(d => d.decedentName).filter(name => name).join(', '); return `[Mass Fatality Report] - ${decedentNames || 'N/A'} - ${date}`; } return `[Mass Fatality Report] - N/A - ${date}`; } },
+    // Add isHiddenInSelector: true to the PBC version
     { version: 7, name: "Physical Evaluation (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generatePhysEvalInternalMedPBC, FieldComponent: PhysEval, titleKey: "physEvalPBC", sortOrder: 22, isHiddenInSelector: true, titleGenerator: (formData) => `Physical Evaluation: ${formData.patientName || 'Unknown'}` },
     { version: 14, name: "Mental Health", group: "PHMC", icon: psychology, generator: generateMentalHealthPHMC, FieldComponent: MentalHealth, titleKey: "mentalHealthPHMC", sortOrder: 23, titleGenerator: (formData) => `Mental Health: ${formData.patientName || 'Unknown'}` },
     // Add isHiddenInSelector: true to the PBC version

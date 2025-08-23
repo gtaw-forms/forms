@@ -12,7 +12,7 @@ const Autopsy = ({
     handleSelectChange,
     isUploading,
     setIsUploading,
-    setShowMissingEmployeeModal,
+    setShowEmployeeModal,
     showNotification,
     commitInfo, // <-- Add commitInfo to props
     removeNotification
@@ -394,7 +394,7 @@ const Autopsy = ({
                 <Form.Label style={{ marginBottom: 0 }}>Medical Examiner Performing Autopsy</Form.Label>
                 <button
                     type="button"
-                    onClick={() => setShowMissingEmployeeModal(true)}
+                    onClick={() => setShowEmployeeModal(true)}
                     className="close-button"
                     style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', lineHeight: '1.2' }}
                 >
