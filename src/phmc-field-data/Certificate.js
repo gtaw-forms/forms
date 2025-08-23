@@ -9,7 +9,7 @@ const Certificate = ({
     setFormData,
     coronerGroupedOptions,
     handleSelectChange,
-    setShowMissingEmployeeModal,
+    setShowEmployeeModal,
     isUploading,
     handleImageUpload,
     currentUtcTime, // Assuming you want to display current time for date/time fields
@@ -23,7 +23,7 @@ const Certificate = ({
                 <Form.Label style={{ marginBottom: 0 }}>Coroner Issuing Certificate</Form.Label>
                 <button
                     type="button"
-                    onClick={() => setShowMissingEmployeeModal(true)}
+                    onClick={() => setShowEmployeeModal(true)}
                     className="close-button"
                     style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', lineHeight: '1.2' }}
                 >
