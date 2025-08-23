@@ -67,7 +67,7 @@ const BINGO_LINE_NAMES = [
 ];
 
 // MODIFIED: Add isAdmin, sendBingoWebhook, and sendPhraseRequestWebhook props
-const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions, currentPhmcEmployee, showNotification, setShowMissingEmployeeModal, isAdmin, sendBingoWebhook, sendPhraseRequestWebhook }) => {
+const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions, currentPhmcEmployee, showNotification, setShowEmployeeModal, isAdmin, sendBingoWebhook, sendPhraseRequestWebhook }) => {
     const [phrases, setPhrases] = useState([]);
     const [masterPhraseList, setMasterPhraseList] = useState([]);
     const [isLoadingPhrases, setIsLoadingPhrases] = useState(true);
@@ -639,8 +639,8 @@ setCompletedBingoLines(prevCompletedLines => {
         colorIndexRef.current = 0;
     };
 
-    const handleOpenMissingEmployeeModal = () => {
-        setShowMissingEmployeeModal(true);
+    const handleOpenEmployeeModal = () => {
+        setShowEmployeeModal(true);
         onHide();
     };
 
@@ -696,7 +696,7 @@ setCompletedBingoLines(prevCompletedLines => {
                                     />
                                     <small className="form-text text-muted mt-1">
                                         <span
-                                            onClick={handleOpenMissingEmployeeModal}
+                                            onClick={handleOpenEmployeeModal}
                                             style={{ cursor: 'pointer', textDecoration: 'underline' }}
                                         >
                                             Missing Name?

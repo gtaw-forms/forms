@@ -83,7 +83,7 @@ const EmergencyForm = ({
     setFormData,
     phmcRank,
     phmcGroupedOptions,
-    setShowMissingEmployeeModal,
+    setShowEmployeeModal,
     lab,
     painLevel,
     temperature,
@@ -219,7 +219,7 @@ const EmergencyForm = ({
                 <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
                 <button
                     type="button"
-                    onClick={() => setShowMissingEmployeeModal(true)}
+                    onClick={() => setShowEmployeeModal(true)}
                     className="close-button"
                     style={{
                         padding: '0.25rem 0.5rem',

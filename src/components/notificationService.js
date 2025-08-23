@@ -683,17 +683,14 @@ export const handleFormCopyAndNotify = async ({
     }
 
     // --- Step 2: Save Report to Firebase (if applicable) ---
-    let saveSuccessful = false;
-    let savingAsCivilian = false; // Flag to track if saving as CIVILIAN
+    let saveResult = { success: false };
+    let savingAsCivilian = false;
 
     if ([3, 24, 25, 26].includes(bbCodeVersion)) { // Civilian Forms
         savingAsCivilian = true;
-
         const bbCodeContent = getBBCodeContent();
-
-const key = `[CIVILIAN-REPORT] - ${formData.patientName || ''} ${formData.patientFirstName || ''} ${formData.patientLastName || ''} - ${new Date().toISOString()}`; // unique key for the report
+        const key = `[CIVILIAN-REPORT] - ${formData.patientName || ''} ${formData.patientFirstName || ''} ${formData.patientLastName || ''} - ${new Date().toISOString()}`;
         const sanitizedKey = key.replace(/[.#$[\]/]/g, '_');
-
         const reportDataToSave = {
             bbCodeVersion: bbCodeVersion,
             data: filterFormData(formData, bbCodeVersion),
@@ -706,23 +703,21 @@ const key = `[CIVILIAN-REPORT] - ${formData.patientName || ''} ${formData.patien
         try {
             const reportRef = ref(database, `savedReports/CIVILIAN/${sanitizedKey}`);
             await set(reportRef, reportDataToSave);
-            //showNotification(`Report "${key}" saved for CIVILIAN to Firebase!`, 'save');
-            saveSuccessful = true;
-
+            saveResult = { success: true };
         } catch (error) {
             console.error("Error saving Civilian report to Firebase:", error);
             Sentry.captureException(error, { extra: { context: 'Firebase set report' } });
-            //showNotification('Failed to save Civilian report to Firebase.', 'error');
-            saveSuccessful = false;
+            saveResult = { success: false, error: 'Failed to save Civilian report to Firebase.' };
         }
-
     } else {
-        // Use the original saveReport function for other forms
-        saveSuccessful = await saveReport();
+        saveResult = await saveReport();
     }
 
-    if (!saveSuccessful && !savingAsCivilian) {
-        showNotification('Report failed to save to Firebase. Copying and webhook notification will be skipped.', 'error');
+    if (!saveResult.success && !savingAsCivilian) {
+        // If there was a specific validation error message from saveReport, show it.
+        // Otherwise, show a generic message.
+        const message = saveResult.error || 'Report failed to save. Copying and webhook notification will be skipped.';
+        showNotification(message, 'error');
         return;
     }
 
@@ -730,17 +725,13 @@ const key = `[CIVILIAN-REPORT] - ${formData.patientName || ''} ${formData.patien
     const copySuccessful = await copyToClipboard(bbCodeToCopy, showNotification, `${versionName} copied to clipboard!`);
 
     if (!copySuccessful) {
-        // If copy fails, we stop the process. The user has already been notified by copyToClipboard.
-        // We might add a small extra notification for context.
         showNotification('BBCode could not be copied. Webhook notification will be skipped.', 'warning');
         return;
     }
 
     // --- Step 4: Send Discord Webhook Notification ---
-    // This part runs if the previous steps were successful.
     try {
-        let discordWebhookUrl;
-        discordWebhookUrl = process.env.REACT_APP_DEV_WEBHOOK;
+        let discordWebhookUrl = process.env.REACT_APP_DEV_WEBHOOK;
 
         if (discordWebhookUrl) {
             let currentIdentifier;
@@ -752,13 +743,11 @@ const key = `[CIVILIAN-REPORT] - ${formData.patientName || ''} ${formData.patien
                 currentIdentifier =  `${decedentName || ''}|${decedentOOC || ''}`;
             }
 
-            // Prevent spamming webhooks for the same PHMC/Coroner report
             if (currentIdentifier && currentIdentifier === lastWebhookIdentifier) {
                 console.log('Duplicate PHMC/Coroner report copy detected, skipping webhook.');
                 return;
             }
 
-            // Get total saved reports count for context
             let firebaseSavedCount = 0;
             let userSavedCount = undefined;
             try {
@@ -773,7 +762,6 @@ const key = `[CIVILIAN-REPORT] - ${formData.patientName || ''} ${formData.patien
                 Sentry.captureException(error, { extra: { context: 'Firebase Total Saved Reports Count' } });
             }
 
-            // --- NEW: Fetch user-specific saved report count ---
             try {
                 let userKey;
                 if ([3, 24, 25, 26].includes(bbCodeVersion)) {
@@ -801,7 +789,7 @@ const key = `[CIVILIAN-REPORT] - ${formData.patientName || ''} ${formData.patien
             }
 
             let webhookActionMessage = "BBCode Copied";
-            if (saveSuccessful) {
+            if (saveResult.success) {
                 webhookActionMessage = "BBCode Copied & Report Saved to Firebase";
             }
 
@@ -820,13 +808,12 @@ const key = `[CIVILIAN-REPORT] - ${formData.patientName || ''} ${formData.patien
 
             setLastWebhookIdentifier(currentIdentifier);
 
-            // Special handling for Death Report to prompt for Coroner Email
             if (bbCodeVersion === 1 && formData.showRequestingOfficerInput === true) {
                 const buttonJSX = (
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
-                            handleAgencySelect(2); // Switch to Coroner Email form
+                            handleAgencySelect(2);
                         }}
                         style={{ marginLeft: '10px', cursor: 'pointer', padding: '0.25rem 0.5rem', fontSize: '0.875rem', border: '1px solid #0dcaf0', background: '#0dcaf0', color: 'white', borderRadius: '0.25rem' }}
                     >

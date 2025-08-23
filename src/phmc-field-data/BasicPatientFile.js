@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
-import { Form, Button, InputGroup } from 'react-bootstrap';
+import { Form, Button, InputGroup, OverlayTrigger, Tooltip } from 'react-bootstrap';
+import './phmc-tooltips.css';
 
 // CollapsibleHeader copied from PatientAdvanced.js
 const CollapsibleHeader = ({ title, isOpen, onToggle, sectionId }) => (
@@ -68,97 +69,141 @@ const BasicPatientFile = ({
             {isGeneralInfoOpen && (
                 <div id="collapse-general-info" onFocusCapture={() => setActiveSection('general-info')}>
                     <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}> {/* Added marginTop */}
-                        <Form.Control
-                            type="text"
-                            name="patientID"
-                            value={formData.patientID}
-                            onChange={handleChange}
-                            placeholder="Patient ID  (Optional leave blank if unsure)"
-                            className={`form-control ${!formData.patientID ? 'is-invalid' : ''}`}
-                        />
+                        <OverlayTrigger
+                            placement="top"
+                            overlay={<Tooltip id="tooltip-patientID" className="phmc-tooltip">Patient's unique identifier. Leave blank if unknown.</Tooltip>}
+                        >
+                            <Form.Control
+                                type="text"
+                                name="patientID"
+                                value={formData.patientID}
+                                onChange={handleChange}
+                                placeholder="Patient ID  (Optional leave blank if unsure)"
+                                className={`form-control ${!formData.patientID ? 'is-invalid' : ''}`}
+                            />
+                        </OverlayTrigger>
                         </div>
-                        <Form.Label>Title / Patient Name Name / Date of Birth</Form.Label>
                         <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}> {/* Added marginTop */}
 
-                            <Form.Select
-                                name="patientTitle"
-                                value={formData.patientTitle}
-                                onChange={handleChange}
-                                required
-                                className={`form-control ${!formData.patientTitle ? 'is-invalid' : ''}`}
+                            <OverlayTrigger
+                                placement="top"
+                                overlay={<Tooltip id="tooltip-patientTitle" className="phmc-tooltip">Select the patient's title (Mr, Ms, etc).</Tooltip>}
                             >
-                                <option value="" disabled>Title</option>
-                                {patientTitleOptions.map((option) => (
-                                    <option key={option.value} value={option.value}>{option.label}</option>
-                                ))}
-                            </Form.Select>
-                            <Form.Control
-                                type="text"
-                                name="patientName"
-                                value={formData.patientName}
-                                onChange={handleChange}
-                                placeholder="Patient Name"
-                                required
-                                className={`form-control ${!formData.patientName ? 'is-invalid' : ''}`}
-                            />
-                            <Form.Control
-                                type="date"
-                                name="patientDateOfBirth"
-                                value={formData.patientDateOfBirth}
-                                onChange={handleChange}
-                                placeholder="Date of Birth"
-                                required
-                                className={`form-control ${!formData.patientDateOfBirth ? 'is-invalid' : ''}`}
-                            />
+                                <Form.Select
+                                    name="patientTitle"
+                                    value={formData.patientTitle}
+                                    onChange={handleChange}
+                                    required
+                                    className={`form-control ${!formData.patientTitle ? 'is-invalid' : ''}`}
+                                >
+                                    <option value="" disabled>Title</option>
+                                    {patientTitleOptions.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                </Form.Select>
+                            </OverlayTrigger>
+                            <OverlayTrigger
+                                placement="top"
+                                overlay={<Tooltip id="tooltip-patientName" className="phmc-tooltip">Enter the patient's full name.</Tooltip>}
+                            >
+                                <Form.Control
+                                    type="text"
+                                    name="patientName"
+                                    value={formData.patientName}
+                                    onChange={handleChange}
+                                    placeholder="Patient Name"
+                                    required
+                                    className={`form-control ${!formData.patientName ? 'is-invalid' : ''}`}
+                                />
+                            </OverlayTrigger>
+                            <OverlayTrigger
+                                placement="top"
+                                overlay={<Tooltip id="tooltip-patientDOB" className="phmc-tooltip">Patient's date of birth.</Tooltip>}
+                            >
+                                <Form.Control
+                                    type="date"
+                                    name="patientDateOfBirth"
+                                    value={formData.patientDateOfBirth}
+                                    onChange={handleChange}
+                                    placeholder="Date of Birth"
+                                    required
+                                    className={`form-control ${!formData.patientDateOfBirth ? 'is-invalid' : ''}`}
+                                />
+                            </OverlayTrigger>
                         </div>
                         <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}> 
-                            <Form.Control
-                                type="text"
-                                name="patientAddress"
-                                value={formData.patientAddress}
-                                onChange={handleChange}
-                                placeholder="Patient Home Address"
-                                required
-                                className={`form-control ${!formData.patientAddress ? 'is-invalid' : ''}`}
-                            />
-                            <Form.Control
-                                type="text"
-                                name="patientGender"
-                                value={formData.patientGender}
-                                onChange={handleChange}
-                                placeholder="Patient Gender"
-                                required
-                                className={`form-control ${!formData.patientGender ? 'is-invalid' : ''}`}
-                            />
-                            <Form.Control
-                                type="text"
-                                name="patientRace"
-                                value={formData.patientRace}
-                                onChange={handleChange}
-                                placeholder="Patient Race"
-                                required
-                                className={`form-control ${!formData.patientRace ? 'is-invalid' : ''}`}
-                            />
+                            <OverlayTrigger
+                                placement="top"
+                                overlay={<Tooltip id="tooltip-patientAddress" className="phmc-tooltip">Patient's home address.</Tooltip>}
+                            >
+                                <Form.Control
+                                    type="text"
+                                    name="patientAddress"
+                                    value={formData.patientAddress}
+                                    onChange={handleChange}
+                                    placeholder="Patient Home Address"
+                                    required
+                                    className={`form-control ${!formData.patientAddress ? 'is-invalid' : ''}`}
+                                />
+                            </OverlayTrigger>
+                            <OverlayTrigger
+                                placement="top"
+                                overlay={<Tooltip id="tooltip-patientGender" className="phmc-tooltip">Patient's gender.</Tooltip>}
+                            >
+                                <Form.Control
+                                    type="text"
+                                    name="patientGender"
+                                    value={formData.patientGender}
+                                    onChange={handleChange}
+                                    placeholder="Patient Gender"
+                                    required
+                                    className={`form-control ${!formData.patientGender ? 'is-invalid' : ''}`}
+                                />
+                            </OverlayTrigger>
+                            <OverlayTrigger
+                                placement="top"
+                                overlay={<Tooltip id="tooltip-patientRace" className="phmc-tooltip">Patient's race/ethnicity.</Tooltip>}
+                            >
+                                <Form.Control
+                                    type="text"
+                                    name="patientRace"
+                                    value={formData.patientRace}
+                                    onChange={handleChange}
+                                    placeholder="Patient Race"
+                                    required
+                                    className={`form-control ${!formData.patientRace ? 'is-invalid' : ''}`}
+                                />
+                            </OverlayTrigger>
                         </div>
                         <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}> 
-                        <Form.Control
-                            type="text"
-                            name="patientPH"
-                            value={formData.patientPH}
-                            onChange={handleChange}
-                            placeholder="Patient Phone Number"
-                            required
-                            className={`form-control ${!formData.patientPH ? 'is-invalid' : ''}`}
-                        />
-                        <Form.Control
-                            type="text"
-                            name="patientDiscord"
-                            value={formData.patientDiscord}
-                            onChange={handleChange}
-                            placeholder="(( Patient Discord ID )) "
-                            required
-                            className={`form-control ${!formData.patientDiscord ? 'is-invalid' : ''}`}
-                        />
+                        <OverlayTrigger
+                            placement="top"
+                            overlay={<Tooltip id="tooltip-patientPH" className="phmc-tooltip">Patient's phone number.</Tooltip>}
+                        >
+                            <Form.Control
+                                type="text"
+                                name="patientPH"
+                                value={formData.patientPH}
+                                onChange={handleChange}
+                                placeholder="Patient Phone Number"
+                                required
+                                className={`form-control ${!formData.patientPH ? 'is-invalid' : ''}`}
+                            />
+                        </OverlayTrigger>
+                        <OverlayTrigger
+                            placement="top"
+                            overlay={<Tooltip id="tooltip-patientDiscord" className="phmc-tooltip">Patient's Discord ID (OOC).</Tooltip>}
+                        >
+                            <Form.Control
+                                type="text"
+                                name="patientDiscord"
+                                value={formData.patientDiscord}
+                                onChange={handleChange}
+                                placeholder="(( Patient Discord ID )) "
+                                required
+                                className={`form-control ${!formData.patientDiscord ? 'is-invalid' : ''}`}
+                            />
+                        </OverlayTrigger>
                     </div>
 
                 </div>
@@ -174,44 +219,64 @@ const BasicPatientFile = ({
             {isContactInfoOpen && (
                 <div id="collapse-contact-info">
                     <div style={{ display: 'flex', gap: '10px' }}>
-                        <Form.Control
-                            type="text"
-                            name="patientEmergencyContact"
-                            value={formData.patientEmergencyContact}
-                            onChange={handleChange}
-                            placeholder="Emergency Contact Full Name"
-                            required
-                            className={`form-control ${!formData.patientEmergencyContact ? 'is-invalid' : ''}`}
-                        />
-                        <Form.Control
-                            type="text"
-                            name="patientEmergencyContactRelation"
-                            value={formData.patientEmergencyContactRelation}
-                            onChange={handleChange}
-                            placeholder="Emergency Contact Relation to Patient"
-                            required
-                            className={`form-control ${!formData.patientEmergencyContactRelation ? 'is-invalid' : ''}`}
-                        />
+                        <OverlayTrigger
+                            placement="top"
+                            overlay={<Tooltip id="tooltip-emergencyContact" className="phmc-tooltip">Emergency contact's full name.</Tooltip>}
+                        >
+                            <Form.Control
+                                type="text"
+                                name="patientEmergencyContact"
+                                value={formData.patientEmergencyContact}
+                                onChange={handleChange}
+                                placeholder="Emergency Contact Full Name"
+                                required
+                                className={`form-control ${!formData.patientEmergencyContact ? 'is-invalid' : ''}`}
+                            />
+                        </OverlayTrigger>
+                        <OverlayTrigger
+                            placement="top"
+                            overlay={<Tooltip id="tooltip-emergencyContactRelation" className="phmc-tooltip">Relation of emergency contact to patient.</Tooltip>}
+                        >
+                            <Form.Control
+                                type="text"
+                                name="patientEmergencyContactRelation"
+                                value={formData.patientEmergencyContactRelation}
+                                onChange={handleChange}
+                                placeholder="Emergency Contact Relation to Patient"
+                                required
+                                className={`form-control ${!formData.patientEmergencyContactRelation ? 'is-invalid' : ''}`}
+                            />
+                        </OverlayTrigger>
                     </div>
                     <div style={{ display: 'flex', gap: '10px' }}>
-                        <Form.Control
-                            type="text"
-                            name="patientEmergencyContactNumber"
-                            value={formData.patientEmergencyContactNumber}
-                            onChange={handleChange}
-                            placeholder="Emergency Contact Contact Number"
-                            required
-                            className={`form-control ${!formData.patientEmergencyContactNumber ? 'is-invalid' : ''}`}
-                        />
-                        <Form.Control
-                            type="text"
-                            name="patientEmergencyContactDiscord"
-                            value={formData.patientEmergencyContactDiscord}
-                            onChange={handleChange}
-                            placeholder="(( Patient Emergency Contact Discord )) "
-                            required
-                            className={`form-control ${!formData.patientEmergencyContactDiscord ? 'is-invalid' : ''}`}
-                        />
+                        <OverlayTrigger
+                            placement="top"
+                            overlay={<Tooltip id="tooltip-emergencyContactNumber" className="phmc-tooltip">Emergency contact's phone number.</Tooltip>}
+                        >
+                            <Form.Control
+                                type="text"
+                                name="patientEmergencyContactNumber"
+                                value={formData.patientEmergencyContactNumber}
+                                onChange={handleChange}
+                                placeholder="Emergency Contact Contact Number"
+                                required
+                                className={`form-control ${!formData.patientEmergencyContactNumber ? 'is-invalid' : ''}`}
+                            />
+                        </OverlayTrigger>
+                        <OverlayTrigger
+                            placement="top"
+                            overlay={<Tooltip id="tooltip-emergencyContactDiscord" className="phmc-tooltip">Emergency contact's Discord ID (OOC).</Tooltip>}
+                        >
+                            <Form.Control
+                                type="text"
+                                name="patientEmergencyContactDiscord"
+                                value={formData.patientEmergencyContactDiscord}
+                                onChange={handleChange}
+                                placeholder="(( Patient Emergency Contact Discord )) "
+                                required
+                                className={`form-control ${!formData.patientEmergencyContactDiscord ? 'is-invalid' : ''}`}
+                            />
+                        </OverlayTrigger>
                     </div>
                 </div>
             )}
@@ -226,58 +291,83 @@ const BasicPatientFile = ({
             {isMedicalHistoryOpen && (
                 <div id="collapse-medical-history">
                     <div style={{ display: 'flex', gap: '10px' }}>
-                        <Form.Select
-                            name="patientBloodType"
-                            value={formData.patientBloodType || ""}
-                            onChange={handleChange}
-                            required
-                            className={`form-control ${!formData.patientBloodType ? 'is-invalid' : ''}`}
+                        <OverlayTrigger
+                            placement="top"
+                            overlay={<Tooltip id="tooltip-bloodType" className="phmc-tooltip">Patient's blood type.</Tooltip>}
                         >
-                            <option value="" disabled>Patient Blood Type</option>
-                            {(patientBloodType || []).map((option) => (
-                                <option key={option.value} value={option.value}>{option.label}</option>
-                            ))}
-                        </Form.Select>
+                            <Form.Select
+                                name="patientBloodType"
+                                value={formData.patientBloodType || ""}
+                                onChange={handleChange}
+                                required
+                                className={`form-control ${!formData.patientBloodType ? 'is-invalid' : ''}`}
+                            >
+                                <option value="" disabled>Patient Blood Type</option>
+                                {(patientBloodType || []).map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                            </Form.Select>
+                        </OverlayTrigger>
                     </div>
                     <div style={{ display: 'flex', gap: '10px' }}>
-                        <Form.Control
-                            type="text"
-                            name="patientAllergies"
-                            value={formData.patientAllergies}
-                            onChange={handleChange}
-                            placeholder="Patient Known Allergies"
-                            required
-                            className={`form-control ${!formData.patientAllergies ? 'is-invalid' : ''}`}
-                        />
-                        <Form.Control
-                            type="text"
-                            name="patientCurrentMedicine"
-                            value={formData.patientCurrentMedicine}
-                            onChange={handleChange}
-                            placeholder="Patient Current Medicine"
-                            required
-                            className={`form-control ${!formData.patientCurrentMedicine ? 'is-invalid' : ''}`}
-                        />
+                        <OverlayTrigger
+                            placement="top"
+                            overlay={<Tooltip id="tooltip-allergies" className="phmc-tooltip">Known allergies of the patient.</Tooltip>}
+                        >
+                            <Form.Control
+                                type="text"
+                                name="patientAllergies"
+                                value={formData.patientAllergies}
+                                onChange={handleChange}
+                                placeholder="Patient Known Allergies"
+                                required
+                                className={`form-control ${!formData.patientAllergies ? 'is-invalid' : ''}`}
+                            />
+                        </OverlayTrigger>
+                        <OverlayTrigger
+                            placement="top"
+                            overlay={<Tooltip id="tooltip-currentMedicine" className="phmc-tooltip">Current medicine(s) the patient is taking.</Tooltip>}
+                        >
+                            <Form.Control
+                                type="text"
+                                name="patientCurrentMedicine"
+                                value={formData.patientCurrentMedicine}
+                                onChange={handleChange}
+                                placeholder="Patient Current Medicine"
+                                required
+                                className={`form-control ${!formData.patientCurrentMedicine ? 'is-invalid' : ''}`}
+                            />
+                        </OverlayTrigger>
                     </div>
                     <div style={{ display: 'flex', gap: '10px' }}>
-                        <Form.Control
-                            type="text"
-                            name="patientChronicDiseases"
-                            value={formData.patientChronicDiseases}
-                            onChange={handleChange}
-                            placeholder="Patient Chronic Conditions"
-                            required
-                            className={`form-control ${!formData.patientChronicDiseases ? 'is-invalid' : ''}`}
-                        />
-                        <Form.Control
-                            type="text"
-                            name="patientNotes"
-                            value={formData.patientNotes}
-                            onChange={handleChange}
-                            placeholder="Patient Traumas & Injuries"
-                            required
-                            className={`form-control ${!formData.patientNotes ? 'is-invalid' : ''}`}
-                        />
+                        <OverlayTrigger
+                            placement="top"
+                            overlay={<Tooltip id="tooltip-chronicDiseases" className="phmc-tooltip">Chronic conditions of the patient.</Tooltip>}
+                        >
+                            <Form.Control
+                                type="text"
+                                name="patientChronicDiseases"
+                                value={formData.patientChronicDiseases}
+                                onChange={handleChange}
+                                placeholder="Patient Chronic Conditions"
+                                required
+                                className={`form-control ${!formData.patientChronicDiseases ? 'is-invalid' : ''}`}
+                            />
+                        </OverlayTrigger>
+                        <OverlayTrigger
+                            placement="top"
+                            overlay={<Tooltip id="tooltip-traumas" className="phmc-tooltip">Patient's traumas & injuries.</Tooltip>}
+                        >
+                            <Form.Control
+                                type="text"
+                                name="patientNotes"
+                                value={formData.patientNotes}
+                                onChange={handleChange}
+                                placeholder="Patient Traumas & Injuries"
+                                required
+                                className={`form-control ${!formData.patientNotes ? 'is-invalid' : ''}`}
+                            />
+                        </OverlayTrigger>
                     </div>
                 </div>
             )}
@@ -299,7 +389,7 @@ const BasicPatientFile = ({
                 <Form.Check
                     type="radio"
                     id="payNowRadio"
-                    label="Pay Now?"
+                    label="  Pay Now?"
                     name="paymentOption"
                     checked={isPayNow}
                     onChange={() => {
@@ -314,7 +404,7 @@ const BasicPatientFile = ({
                 <Form.Check
                     type="radio"
                     id="exemptRadio"
-                    label="I am exempt"
+                    label="  I am exempt"
                     name="paymentOption"
                     checked={isExempt}
                     onChange={() => {
@@ -327,6 +417,13 @@ const BasicPatientFile = ({
                     }}
                 />
             </Form.Group>
+                         {isExempt && (
+                                            <span className="helper-text">
+                    Exemption Information: Citizens that are either a minor (under the age of 18), or are a low income State Citizen are exempted from the payment of this service.
+                </span>
+
+            )}
+
             {isPayNow && approximateCost > 0 && (
                 <span className="helper-text">
                     Tick this box if you wish to provide proof of payment now. Routing: <a href="https://banking.gta.world/transfer" target="_blank" rel="noopener noreferrer">020000062</a>. Please login to Fleeca prior to payment.

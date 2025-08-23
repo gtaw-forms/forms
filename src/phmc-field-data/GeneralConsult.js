@@ -8,7 +8,7 @@ const GeneralConsult = ({
     setFormData,
     phmcRank,
     phmcGroupedOptions,
-    setShowMissingEmployeeModal,
+    setShowEmployeeModal,
     phmcEmployee,
     lab,
     bloodOxy,
@@ -69,7 +69,7 @@ const GeneralConsult = ({
                                     <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
                                     <button
                                         type="button"
-                                        onClick={() => setShowMissingEmployeeModal(true)}
+                                        onClick={() => setShowEmployeeModal(true)}
                                         className="close-button"
                                         style={{
                                             padding: '0.25rem 0.5rem',
