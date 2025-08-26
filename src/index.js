@@ -76,18 +76,19 @@ const sendDiscordErrorWebhook = (errorDetails) => {
     }
 
     const embed = {
-        title: "🚨 Unhandled Application Error 🚨",
+        title: errorDetails.isButtonClickError ? "🚨 Button Click Error 🚨" : "🚨 Unhandled Application Error 🚨",
         description: "An unhandled error was caught by the global error handler.",
         color: isSentryBlocked ? 0xFFA500 : 0xDE354C, // Orange if Sentry is blocked, Red otherwise
         fields: [
-            { name: "Sentry Status", value: isSentryBlocked ? "⚠️ Blocked / Unreachable" : "✅ Active", inline: false },
-            { name: "Error Message", value: `\`${String(errorDetails.message).substring(0, 1000)}\`\n`, inline: false },
+            { name: "Error Type", value: errorDetails.isButtonClickError ? "UI Button Interaction" : "General", inline: true },
+            { name: "Sentry Status", value: isSentryBlocked ? "⚠️ Blocked / Unreachable" : "✅ Active", inline: true },
+            { name: "Error Message", value: `\`${String(errorDetails.message).substring(0, 1000)}\``, inline: false },
             { name: "Source File", value: errorDetails.source || "N/A", inline: true },
             { name: "Line", value: errorDetails.lineno || "N/A", inline: true },
             { name: "Column", value: errorDetails.colno || "N/A", inline: true },
-            { name: "User Agent", value: `\`${navigator.userAgent}\`\n`, inline: false },
-            { name: "Stack Trace", value: `\`${String(errorDetails.stack).substring(0, 1000)}\`\n`, inline: false },
-            sentryEventId ? { name: "Sentry Trace/Event ID", value: `\`${sentryEventId}\`\n`, inline: false } : null,
+            { name: "User Agent", value: `\`${navigator.userAgent}\``, inline: false },
+            { name: "Stack Trace", value: `\`${String(errorDetails.stack).substring(0, 1000)}\``, inline: false },
+            sentryEventId ? { name: "Sentry Trace/Event ID", value: `\`${sentryEventId}\``, inline: false } : null,
         ].filter(Boolean),
         timestamp: new Date().toISOString(),
         footer: { text: "PHMC Forms - Global Error Handler" }
@@ -128,14 +129,34 @@ window.onerror = (message, source, lineno, colno, errorObject) => {
         return true; // Suppress this error from being processed further.
     }
 
+    // --- Button Error Detection ---
+    let isButtonClickError = false;
+    if (errorObject && typeof errorObject.stack === 'string') {
+        // Check for common patterns of event handlers in stack traces
+        if (errorObject.stack.includes('onClick') || errorObject.stack.includes('handleClick')) {
+            isButtonClickError = true;
+        }
+    }
+    // --- End Button Error Detection ---
+
     // Log the error to Firebase Analytics
     logEvent(analytics, 'exception', {
         description: message,
-        fatal: true
+        fatal: true,
+        is_button_error: isButtonClickError // Custom parameter
     });
 
     // Queue the error for reporting to Discord.
-    sendDiscordErrorWebhook({ message, source, lineno, colno, error: errorObject, stack: errorObject ? errorObject.stack : 'N/A' });
+    const errorDetails = {
+        message,
+        source,
+        lineno,
+        colno,
+        error: errorObject,
+        stack: errorObject ? errorObject.stack : 'N/A',
+        isButtonClickError // Pass the flag to the webhook function
+    };
+    sendDiscordErrorWebhook(errorDetails);
 
     // Return false to ensure the error is still processed by other handlers (like Sentry's)
     // and the default browser console output.
