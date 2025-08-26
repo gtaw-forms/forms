@@ -813,7 +813,12 @@ export const handleFormCopyAndNotify = async ({
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
-                            handleAgencySelect(2);
+                            if (typeof handleAgencySelect === 'function') {
+                                handleAgencySelect(2);
+                            } else {
+                                console.error('handleFormCopyAndNotify: Cannot switch form, the component may have unmounted.');
+                                showNotification('Action failed: The context was lost. Please navigate to the form manually.', 'error');
+                            }
                         }}
                         style={{ marginLeft: '10px', cursor: 'pointer', padding: '0.25rem 0.5rem', fontSize: '0.875rem', border: '1px solid #0dcaf0', background: '#0dcaf0', color: 'white', borderRadius: '0.25rem' }}
                     >
