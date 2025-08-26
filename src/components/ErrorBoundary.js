@@ -54,10 +54,10 @@ class ErrorBoundary extends Component {
       return (
         <>
           <div style={notificationStyle}>
-            <div style={iconStyle}>
+            <div style={iconStyle}>1515
                 <i className="fas fa-exclamation-triangle"></i>
             </div>
-            <span>Unexpected Error Detected, forwarding to Maintainer!</span>
+            <span>FATAL ERROR! Please ping Alyson in the PHMC Discord or post a Bug Report!</span>
             <button onClick={this.handleOkClick} style={buttonStyle}>OK</button>
           </div>
           {/* We still render the children to keep the UI visible */}
