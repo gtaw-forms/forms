@@ -268,6 +268,13 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
                     ))}
                     <div className="email-buttons">
                         <Button
+                            variant="primary"
+                            onClick={addReport}
+                            className="add-report-button"
+                        >
+                            Add Another Report
+                        </Button>
+                        <Button
                             variant="info"
                             onClick={() => toggleSavedReports([1, 11], 'Coroner', (reportData) => {
                                 // this magical bullshit is a callback which is handled in the app.js under LoadSavedReport

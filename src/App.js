@@ -324,6 +324,31 @@ function AppContent({
         showNotification("Coroner phone filled (placeholder)", 'info');
     };
 
+    const addReport = () => {
+        setFormData(prev => ({
+            ...prev,
+            additionalReports: [...(prev.additionalReports || []), '']
+        }));
+    };
+
+    const removeReport = (index) => {
+        setFormData(prev => ({
+            ...prev,
+            additionalReports: (prev.additionalReports || []).filter((_, i) => i !== index)
+        }));
+    };
+
+    const handleReportChange = (index, value) => {
+        setFormData(prev => {
+            const newReports = [...(prev.additionalReports || [])];
+            newReports[index] = value;
+            return {
+                ...prev,
+                additionalReports: newReports
+            };
+        });
+    };
+
 
     const generateTitle = () => {
         // Mass Fatality form (bbCodeVersion 11) special handling
@@ -1860,6 +1885,9 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                                         fillPhoneChecked={fillPhoneChecked}
                                         setFillPhoneChecked={setFillPhoneChecked}
                                         handleFillCoronerPhone={handleFillCoronerPhone}
+                                        addReport={addReport}
+                                        removeReport={removeReport}
+                                        handleReportChange={handleReportChange}
                                         toggleSavedReports={toggleSavedReports}
                                         // For DeathReport specific
                                         dnr={selectOptions.dnr || []}
