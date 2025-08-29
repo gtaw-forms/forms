@@ -76,6 +76,7 @@ const sendDiscordErrorWebhook = (errorDetails) => {
     }
 
     const embed = {
+        
         title: errorDetails.isButtonClickError ? "🚨 Button Click Error 🚨" : "🚨 Unhandled Application Error 🚨",
         description: "An unhandled error was caught by the global error handler.",
         color: isSentryBlocked ? 0xFFA500 : 0xDE354C, // Orange if Sentry is blocked, Red otherwise
@@ -93,7 +94,7 @@ const sendDiscordErrorWebhook = (errorDetails) => {
         timestamp: new Date().toISOString(),
         footer: { text: "PHMC Forms - Global Error Handler" }
     };
-    discordErrorWebhookQueue.push({ embeds: [embed] });
+    discordErrorWebhookQueue.push({ content: '<@228306972204597248>', embeds: [embed] });
     processDiscordErrorQueue(); // Start processing the queue if it's not already running
 };
 
