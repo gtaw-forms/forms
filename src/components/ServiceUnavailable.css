@@ -1,0 +1,30 @@
+.service-unavailable-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.service-unavailable-content {
+  background: #fff;
+  padding: 40px;
+  border-radius: 10px;
+  text-align: center;
+  color: #333;
+  max-width: 400px;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+}
+
+.service-unavailable-content h2 {
+    margin-bottom: 20px;
+}
+
+.service-unavailable-content img {
+  max-width: 100px;
+}
