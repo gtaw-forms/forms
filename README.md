@@ -1,6 +1,6 @@
 # Welcome to the Form Generator (PHMC)!
 
-This repository has been re-written from the ground up for simplicity. I'm currently using some modules, namely [https://googlefirebaseurl.com](Firebase) to handle data storage, it's on the Pay-As-You-Go plan, on average charges me around 0.22 cents per month. 
+This repository has been re-written from the ground up for simplicity. I'm currently using some modules, namely Google Firebase to handle data storage.
 
 ## Project Structure
 
