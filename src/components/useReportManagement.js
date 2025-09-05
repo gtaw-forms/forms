@@ -2,7 +2,6 @@ import { useState, useRef, useCallback } from 'react';
 import { getFormDefinition } from '../formDefinitions'; // Assuming this path
 import { database } from '../firebase'; // Assuming this path
 import { ref, get, set, remove } from 'firebase/database';
-import * as Sentry from "@sentry/react";
 
 export const useReportManagement = (
     formData,
@@ -218,7 +217,6 @@ export const useReportManagement = (
 
         } catch (error) {
             console.error("Error saving report to Firebase:", error);
-            Sentry.captureException(error, { extra: { context: 'Firebase set report' } });
             const message = 'Failed to save report to Firebase.';
             showNotification(message, 'error');
             return { success: false, error: message }; // Indicate failure
@@ -275,7 +273,6 @@ export const useReportManagement = (
         } catch (error) {
             removeNotification(loadingNotifId);
             console.error(`Error loading reports for user ${userId}:`, error);
-            Sentry.captureException(error, { extra: { context: 'loadUserSavedReports', userId } });
             showNotification(`Failed to load reports for ${userId}.`, 'error');
             setSavedReports([]);
         } finally {
@@ -479,7 +476,6 @@ export const useReportManagement = (
                 }
             } catch (error) {
                 console.error(`[loadReportForUser] Error loading report ${reportFirebaseKey} for user ${userId}:`, error);
-                Sentry.captureException(error, { extra: { context: 'loadReportForUser', userId, reportFirebaseKey } });
                 if (!returnOnly) showNotification(`Failed to load report: ${error.message}`, 'error');
                 return { success: false, message: `Failed to load report: ${error.message}` };
             } finally {
@@ -597,7 +593,6 @@ export const useReportManagement = (
                 showNotification('Failed to load the selected report.', 'error');
             } else if (!pendingReportAttachmentCallback.current) {
                 showNotification('Attachment process could not be completed (no callback).', 'error');
-                Sentry.captureMessage('handleReportSelectedForAttachment was called but pendingReportAttachmentCallback.current was null.');
             }
         }
 
@@ -653,7 +648,6 @@ export const useReportManagement = (
             }
         } catch (error) {
             console.error(`Error deleting report ${reportFirebaseKey} for user ${userId}:`, error);
-            Sentry.captureException(error, { extra: { context: 'deleteReportForUser', userId, reportFirebaseKey } });
             showNotification(`Failed to delete report: ${error.message}`, 'error');
         }
     }, [loadUserSavedReports, selectedUserForSavedReports, showNotification]);

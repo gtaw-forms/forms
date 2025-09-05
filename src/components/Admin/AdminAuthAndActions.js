@@ -6,10 +6,10 @@ import { ref, get, update, remove, set, serverTimestamp } from "firebase/databas
 import AddRoleModal from './RoleModal';
 import RenameRoleKeyModal from './RenameRoleKeyModal';
 import WebhookModal from '../WebhookModal';
-import { captureMessage, captureException, getClient } from "@sentry/react";
+
 import EditBingoPhrasesModal from './EditBingoPhrasesModal';
 import ReviewPhraseRequestsModal from './ReviewPhraseRequestsModal';
-import * as Sentry from "@sentry/react";
+import { H } from 'highlight.run';
 import CctvRequestWebhookModal from './CctvRequestWebhookModal'; // Import the new modal
 import MarkdownBBCodeModal from '../MarkdownBBCodeModal';
 
@@ -91,7 +91,7 @@ const sendAdminActionWebhook = async (adminEmail, action, details, categoryName 
     console.log('[AdminAuthAndActions] sendAdminActionWebhook called. URL used:', webhookURL);
     if (!webhookURL) {
         console.warn("Admin action webhook URL not configured. Skipping log.");
-        captureMessage("Admin Action Webhook URL not configured", "warning");
+        H.track("Admin Action Webhook URL not configured", {level: "warning"});
         return;
     }
     const embed = {
@@ -122,13 +122,13 @@ ${userAgent.substring(0, 250)}
         });
         if (!response.ok) {
             console.error(`Failed to send admin action webhook. Status: ${response.status}`);
-            captureMessage(`Admin Action Discord webhook failed: ${response.status}`, "error");
+            H.track(`Admin Action Discord webhook failed: ${response.status}`, {level: "error"});
         } else {
             console.log(`Admin action logged to Discord: ${action}`);
         }
     } catch (error) {
         console.error('Error sending admin action webhook:', error);
-        captureException(error, { extra: { context: 'Admin Action Webhook Submission' } });
+        H.consumeError(error, { context: 'Admin Action Webhook Submission' });
     }
 };
 
@@ -184,7 +184,7 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
 
         if (!webhookURL) {
             if (showInAppNotification) showInAppNotification('Webhook URL (REACT_APP_LEO_WEBHOOK_URL) not configured.', 'error');
-            Sentry.captureMessage("CCTV Test Webhook URL not configured", "error");
+            H.track("CCTV Test Webhook URL not configured", {level: "error"});
             return false; // Indicate failure
         }
 
@@ -223,7 +223,7 @@ ${cctvData.oocNotes}
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error(`Failed to send CCTV test webhook. Status: ${response.status}`, errorText);
-                Sentry.captureMessage(`CCTV Test Webhook failed: ${response.status}`, { level: 'error', extra: { responseBody: errorText } });
+                H.track(`CCTV Test Webhook failed: ${response.status}`, { level: 'error', extra: { responseBody: errorText } });
                 if (showInAppNotification) showInAppNotification(`Failed to send test webhook. Status: ${response.status}`, 'error');
                 return false;
             } else {
@@ -233,7 +233,7 @@ ${cctvData.oocNotes}
             }
         } catch (error) {
             console.error('Error sending CCTV test webhook:', error);
-            Sentry.captureException(error, { extra: { context: 'CCTV Test Webhook Submission' } });
+            H.consumeError(error, { context: 'CCTV Test Webhook Submission' });
             if (showInAppNotification) showInAppNotification('A network error occurred sending the test webhook.', "error");
             return false;
         }
@@ -354,9 +354,8 @@ ${cctvData.oocNotes}
             setError(err.message || "Failed to login.");
             setIsLoadingAuth(false);
 
-            Sentry.captureException(err, {
-                level: 'warning',
-                extra: {
+            H.consumeError(err, {
+                payload: {
                     email: email, // Log the email that was used for the attempt.
                     context: 'Admin Login Attempt'
                 },
@@ -570,7 +569,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
 
         if (!webhookURL) {
             if (showInAppNotification) showInAppNotification('Admin Webhook URL (PHMC_DISCORD) not configured.', 'error');
-            Sentry.captureMessage("Admin Custom Webhook URL (PHMC_DISCORD) not configured for AdminAuthAndActions", "error");
+            H.track("Admin Custom Webhook URL (PHMC_DISCORD) not configured for AdminAuthAndActions", {level: "error"});
             sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", "Webhook URL not configured.", null, userAgent, timeZone);
             return false;
         }
@@ -583,7 +582,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error(`Failed to send admin custom webhook. Status: ${response.status}`, errorText);
-                Sentry.captureMessage(`Admin Custom Discord webhook failed (AdminAuthAndActions): ${response.status}`, {
+                H.track(`Admin Custom Discord webhook failed (AdminAuthAndActions): ${response.status}`, {
                     level: 'error',
                     extra: { statusText: response.statusText, responseBody: errorText }
                 });
@@ -598,7 +597,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
             }
         } catch (error) {
             console.error('Error sending admin custom webhook:', error);
-            Sentry.captureException(error, { extra: { context: 'Admin Custom Webhook Submission Fetch (AdminAuthAndActions)' } });
+            H.consumeError(error, { context: 'Admin Custom Webhook Submission Fetch (AdminAuthAndActions)' });
             if (showInAppNotification) showInAppNotification('A network error occurred sending the admin webhook.', "error");
             sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", `Network Error: ${error.message}`, null, userAgent, timeZone);
             return false;
@@ -879,7 +878,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
 
         if (!webhookURL) {
             if (showInAppNotification) showInAppNotification('Dev Webhook URL (REACT_APP_DEV_WEBHOOK) not configured.', 'error');
-            Sentry.captureMessage("Dev Webhook URL (REACT_APP_DEV_WEBHOOK) not configured", "error");
+            H.track("Dev Webhook URL (REACT_APP_DEV_WEBHOOK) not configured", {level: "error"});
             sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Dev Custom Webhook", "Webhook URL not configured.", null, userAgent, timeZone);
             return false;
         }
@@ -892,7 +891,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error(`Failed to send Dev webhook. Status: ${response.status}`, errorText);
-                Sentry.captureMessage(`Dev Discord webhook failed: ${response.status}`, {
+                H.track(`Dev Discord webhook failed: ${response.status}`, {
                     level: 'error',
                     extra: { statusText: response.statusText, responseBody: errorText }
                 });
@@ -907,7 +906,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
             }
         } catch (error) {
             console.error('Error sending Dev webhook:', error);
-            Sentry.captureException(error, { extra: { context: 'Dev Webhook Submission Fetch' } });
+            H.consumeError(error, { context: 'Dev Webhook Submission Fetch' });
             if (showInAppNotification) showInAppNotification('A network error occurred sending the Dev webhook.', "error");
             sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Dev Custom Webhook", `Network Error: ${error.message}`, null, userAgent, timeZone);
             return false;
@@ -931,7 +930,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
 
         if (!webhookURL) {
             if (showInAppNotification) showInAppNotification('Coroner Webhook URL (CORONER_DISCORD_UPDATES) not configured.', 'error');
-            Sentry.captureMessage("Coroner Webhook URL (CORONER_DISCORD_UPDATES) not configured", "error");
+            H.track("Coroner Webhook URL (CORONER_DISCORD_UPDATES) not configured", {level: "error"});
             sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", "Webhook URL not configured.", null, userAgent, timeZone);
             return false;
         }
@@ -944,7 +943,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error(`Failed to send Coroner webhook. Status: ${response.status}`, errorText);
-                Sentry.captureMessage(`Coroner Discord webhook failed: ${response.status}`, {
+                H.track(`Coroner Discord webhook failed: ${response.status}`, {
                     level: 'error',
                     extra: { statusText: response.statusText, responseBody: errorText }
                 });
@@ -959,7 +958,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
             }
         } catch (error) {
             console.error('Error sending Coroner webhook:', error);
-            Sentry.captureException(error, { extra: { context: 'Coroner Webhook Submission Fetch' } });
+            H.consumeError(error, { context: 'Coroner Webhook Submission Fetch' });
             if (showInAppNotification) showInAppNotification('A network error occurred sending the Coroner webhook.', "error");
             sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", `Network Error: ${error.message}`, null, userAgent, timeZone);
             return false;
@@ -1131,12 +1130,18 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 try {
                     null.throwError();
                 } catch (error) {
-                    Sentry.captureException(error, { extra: { context: 'Test Error Button Clicked' } });
-                    if (showInAppNotification) showInAppNotification('Test error sent to Sentry!', 'check-circle');
+                    H.consumeError(error, { context: 'Test Error Button Clicked' });
+                    if (showInAppNotification) showInAppNotification('Test error sent to Highlight.io!', 'check-circle');
                     throw error; // Re-throw the error to trigger the global handler
                 }
             }} className="mt-3 me-2">
                 <i className="fas fa-bug"></i> Test Error
+            </Button>
+            <Button variant="info" onClick={() => {
+                H.consumeError(new Error("Manually triggered Highlight.io error from Admin Panel"), { context: 'Manual Highlight.io Error' });
+                if (showInAppNotification) showInAppNotification('Manually triggered Highlight.io error!', 'check-circle');
+            }} className="mt-3 me-2">
+                <i className="fas fa-exclamation-triangle"></i> Trigger Highlight.io Error
             </Button>
             <Button variant="warning" onClick={() => setShowCrashingComponent(true)} className="mt-3 me-2">
                 <i className="fas fa-bomb"></i> Test Error Boundary

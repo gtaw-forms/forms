@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Form, Button } from 'react-bootstrap';
 // import domtoimage from 'dom-to-image'; // No longer needed
-import * as Sentry from "@sentry/react";
+import { H } from 'highlight.run';
 import EMSAMAImage from '../assets/EMSAMA.png';
 import { copyToClipboard } from './notificationService'; // <-- NEW IMPORT
 
@@ -77,12 +77,12 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
                 return data.data.link;
             } else {
                 console.error('Imgur upload failed (AMA):', data);
-                Sentry.captureMessage("Imgur API Error (AMA)", { extra: data, level: "error" });
+                H.track("Imgur API Error (AMA)", { payload: data, level: "error" });
                 throw new Error(`Imgur upload failed: ${data.data?.error || 'Unknown error'}`);
             }
         } catch (error) {
             console.error('Imgur upload failed (AMA):', error);
-            Sentry.captureException(error, { extra: { context: 'Imgur Upload Function (AMA)' } });
+            H.consumeError(error, { context: 'Imgur Upload Function (AMA)' });
             throw error;
         }
     }, []);
@@ -116,8 +116,8 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
             if (!response.ok) {
                 const errorData = await response.text();
                 console.error('Failed to send Discord webhook (AMA):', response.status, response.statusText, errorData);
-                Sentry.captureMessage("Discord Webhook Send Failure (AMA)", {
-                    extra: { status: response.status, statusText: response.statusText, responseBody: errorData },
+                H.track("Discord Webhook Send Failure (AMA)", {
+                    payload: { status: response.status, statusText: response.statusText, responseBody: errorData },
                     level: "error"
                 });
             } else {
@@ -125,7 +125,7 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
             }
         } catch (error) {
             console.error('Error sending Discord webhook (AMA):', error);
-            Sentry.captureException(error, { extra: { context: 'Discord Webhook Send Function (AMA)' } });
+            H.consumeError(error, { context: 'Discord Webhook Send Function (AMA)' });
         } finally {
             isWebhookProcessing.current = false;
             if (webhookQueue.current.length > 0) {
@@ -139,7 +139,7 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
         const webhookURL = process.env.REACT_APP_DEV_WEBHOOK;
         if (!webhookURL) {
             console.warn('Discord webhook URL is not set for AMA.');
-            Sentry.captureMessage("Discord Webhook URL not set (AMA)", { level: "warning" });
+            H.track("Discord Webhook URL not set (AMA)", { level: "warning" });
             return;
         }
 
@@ -221,7 +221,7 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
                 img.onload = () => resolve(img);
                 img.onerror = (err) => {
                     console.error("Failed to load base AMA image for canvas:", err);
-                    Sentry.captureException(err, { extra: { context: 'AMA loadImage', imgSrc: src } });
+                    H.consumeError(err, { context: 'AMA loadImage', payload: { imgSrc: src } });
                     reject(new Error("Failed to load base AMA image."));
                 };
                 img.src = src;
@@ -293,7 +293,7 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
             else errorContext = 'Image Generation Failed';
             
             showNotification(`${errorContext}: ${detailedMessage.substring(0,100)}...`, 'error');
-            Sentry.captureException(error, { extra: { context: 'EMS AMA Save', patientSignature, date, detailedMessage } });
+            H.consumeError(error, { payload: { context: 'EMS AMA Save', patientSignature, date, detailedMessage } });
             sendDiscordWebhook(patientSignature, date, guardianSignature, paramedicSignature, null, `${errorContext}: ${detailedMessage}`);
         } finally {
             setIsSaving(false);

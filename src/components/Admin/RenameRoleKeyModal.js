@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react';
 import { Modal as BootstrapModal, Button, Form, Spinner } from 'react-bootstrap';
 import { database } from '../../firebase';
 import { ref, get, set, remove } from "firebase/database";
-import * as Sentry from "@sentry/react";
 
 // Modal Styles (can be shared or defined per modal)
 const modalOverlayStyle = { /* ... (same as RoleModal) ... */ };
@@ -100,9 +99,6 @@ const RenameRoleKeyModal = ({
         } catch (dbError) {
             setError(`Failed to rename key: ${dbError.message}`);
             if (showInAppNotification) showInAppNotification(`Failed to rename key. ${dbError.message}`, "error");
-            Sentry.captureException(dbError, {
-                extra: { context: 'RenameRoleKeyModal Firebase Ops', oldPath, newPath }
-            });
         } finally {
             setIsProcessing(false);
         }

@@ -8,9 +8,7 @@ function HeaderInfo({ commitInfo }) {
                 {commitInfo.date ? (
                     // If we have a date, display it.
                     <span className="version-info">
-                        <a href="https://github.com/GTAW-PHMC/forms/tree/gh-pages" target="_blank" rel="noopener noreferrer">
-                            This website was last updated on {commitInfo.date} with version #{commitInfo.sha}
-                        </a>
+                        Last updated: {commitInfo.date}
                         {/* Also, if there was an error on the latest fetch, show a subtle warning. */}
                         {commitInfo.error && <span style={{ color: '#ffc107', marginLeft: '10px' }}>(Update check failed)</span>}
                     </span>

@@ -3,7 +3,6 @@ import React, { useState } from 'react';
 import { Modal, Button, Form, Spinner } from 'react-bootstrap';
 import { database } from '../firebase';
 import { ref, push, serverTimestamp } from 'firebase/database';
-import * as Sentry from "@sentry/react";
 
 const PhraseRequestModal = ({ show, onHide, showNotification, selectedEmployee, selectedBingoType, sendPhraseRequestWebhook }) => {
     const [phraseText, setPhraseText] = useState('');
@@ -58,7 +57,6 @@ const PhraseRequestModal = ({ show, onHide, showNotification, selectedEmployee, 
             console.error("Error submitting phrase request:", err);
             setError("Failed to submit request: " + err.message);
             showNotification('Failed to submit phrase request.', 'error');
-            Sentry.captureException(err, { extra: { context: 'PhraseRequestModal Submit' } });
         } finally {
             setIsSubmitting(false);
             onHide();
