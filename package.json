@@ -1,7 +1,7 @@
 {
-  "name": "phmc-app-forms",
-  "version": "0.1.0",
-  "homepage": "https://gtaw-forms.github.io/forms/",
+  "name": "phmc-tools",
+  "version": "1.0",
+  "homepage": "http://phmc-forms.gta.world/",
   "private": true,
   "dependencies": {
     "@emotion/react": "^11.13.5",
