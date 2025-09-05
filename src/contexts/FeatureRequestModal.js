@@ -1,6 +1,6 @@
 import React from 'react';
 import { Modal, Form, Button } from 'react-bootstrap';
-import * as Sentry from "@sentry/react";
+import { H } from 'highlight.run';
 import { useNotification } from './NotificationContext';
 
 const FeatureRequestModal = ({
@@ -27,7 +27,7 @@ const FeatureRequestModal = ({
 
         if (!webhookURL) {
             console.error('Discord webhook URL not configured for feature requests.');
-            Sentry.captureMessage('Discord webhook URL is missing for feature request submission.', 'error');
+            H.track('Discord webhook URL is missing for feature request submission.', {level: 'error'});
             showNotification('Configuration error: Unable to submit request. Please contact the administrator.', 'exclamation-triangle');
             return;
         }
@@ -152,7 +152,7 @@ const FeatureRequestModal = ({
                 allWebhooksSentSuccessfully = false;
                 const errorText = await firstResponse.text();
                 console.error(`Failed to send message (Part 1) to Discord webhook. Status: ${firstResponse.status} ${firstResponse.statusText}`, errorText);
-                Sentry.captureMessage(`Discord webhook failed for feature request (Part 1): ${firstResponse.status}`, {
+                H.track(`Discord webhook failed for feature request (Part 1): ${firstResponse.status}`, {
                     level: 'error',
                     extra: { statusText: firstResponse.statusText, responseBody: errorText }
                 });
@@ -185,7 +185,7 @@ const FeatureRequestModal = ({
                         allWebhooksSentSuccessfully = false;
                         const errorText = await subsequentResponse.text();
                         console.error(`Failed to send message (Part ${i + 1}) to Discord webhook. Status: ${subsequentResponse.status} ${subsequentResponse.statusText}`, errorText);
-                        Sentry.captureMessage(`Discord webhook failed for feature request (Part ${i + 1}): ${subsequentResponse.status}`, {
+                        H.track(`Discord webhook failed for feature request (Part ${i + 1}): ${subsequentResponse.status}`, {
                             level: 'error',
                             extra: { statusText: subsequentResponse.statusText, responseBody: errorText }
                         });
@@ -208,7 +208,7 @@ const FeatureRequestModal = ({
 
         } catch (error) {
             console.error('Error submitting feature request:', error);
-            Sentry.captureException(error, { extra: { context: 'Feature Request Submission Fetch' } });
+            H.consumeError(error, { context: 'Feature Request Submission Fetch' });
             showNotification('A network error occurred. Please try again.', 'exclamation-triangle');
         }
     };
