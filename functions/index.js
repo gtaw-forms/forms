@@ -2,6 +2,7 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { setGlobalOptions } from "firebase-functions/v2";
 import admin from "firebase-admin";
 import fetch from "node-fetch";
+import { ErrorBoundary } from '@highlight-run/react';
 
 // Initialize Firebase Admin SDK
 if (admin.apps.length === 0) {
