@@ -1,7 +1,7 @@
 {
   "name": "phmc-tools",
-  "version": "1.0",
-  "homepage": "http://phmc-forms.gta.world/",
+  "version": "1.1",
+  "homepage": "http://phmc-tools.gta.world/",
   "private": true,
   "dependencies": {
     "@emotion/react": "^11.13.5",
@@ -36,13 +36,12 @@
   },
   "scripts": {
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d build && npm run sentry:sourcemaps",
+    "deploy": "gh-pages -d build",
     "start": "craco start",
-    "build": "craco build && npm run sentry:sourcemaps",
+    "build": "craco build",
     "test": "craco test",
     "eject": "react-scripts eject",
-    "postbuild": "git add . && git commit && git push origin source",
-    "sentry:sourcemaps": "sentry-cli sourcemaps inject --org phmc-gtaw --project javascript-react ./build && sentry-cli sourcemaps upload --org phmc-gtaw --project javascript-react ./build"
+    "postbuild": "git add . && git commit && git push origin source"
   },
   "eslintConfig": {
     "extends": [
