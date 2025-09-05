@@ -52,7 +52,7 @@ class ErrorBoundary extends Component {
       return (
         <>
           <div style={notificationStyle}>
-            <div style={iconStyle}>1515
+            <div style={iconStyle}>
                 <i className="fas fa-exclamation-triangle"></i>
             </div>
             <span>FATAL ERROR! Please ping Alyson in the PHMC Discord or post a Bug Report!</span>
