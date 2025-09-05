@@ -1,6 +1,6 @@
 {
   "name": "phmc-tools",
-  "version": "1.3",
+  "version": "1.3b",
   "homepage": "https://phmc-tools.gta.world/",
   "private": true,
   "dependencies": {
