@@ -5,8 +5,8 @@ import '@fortawesome/fontawesome-free/css/all.min.css';
 import { Modal, Form, Button } from 'react-bootstrap';
 import SavedReportsModal from './components/SavedReportsModal'; 
 import getRelevantFields from './components/RevelantFields';
-import AgencyGroupSelectorModal from './components/AgencyGroupSelectorModal'; // Corrected import
-import AgencySelector from './components/AgencySelector'; // Expected import
+import AgencyGroupSelectorModal from './components/AgencyGroupSelectorModal'; 
+import AgencySelector from './components/AgencySelector';
 import Footer from './components/Footer';
 import SeasonalEvents from './components/SeasonalEvents';
 import HeaderInfo from './components/HeaderInfo';
@@ -53,7 +53,6 @@ import 'react-bootstrap-typeahead/css/Typeahead.css';
 // database
 import { database } from './firebase'; // Your Firebase config
 import { ref, get, set, remove} from 'firebase/database'; // Added set
-import { phmcList } from './data';
 
 function AppContent({
     formData,
