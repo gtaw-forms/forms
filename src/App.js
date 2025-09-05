@@ -1,5 +1,6 @@
 import { useReportManagement } from './components/useReportManagement';
 import React, { useState, useEffect, useRef, useMemo, useCallback} from 'react';
+import { H } from 'highlight.run';
 import { formDefinitions, getFormDefinition } from './formDefinitions'; 
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import { Modal, Form, Button } from 'react-bootstrap';
@@ -11,7 +12,6 @@ import Footer from './components/Footer';
 import SeasonalEvents from './components/SeasonalEvents';
 import HeaderInfo from './components/HeaderInfo';
 import Snowfall from 'react-snowfall'; 
-import * as Sentry from "@sentry/react";
 import WebhookModal from './components/WebhookModal'; 
 import CoronerTipsModal from './components/CoronerTipsModal'; 
 import BusinessCardModal from './components/BusinessCardModal'; 
@@ -27,9 +27,6 @@ import { FormProvider } from './contexts/FormContext';
 import { DataProvider } from './contexts/DataContext';
 import FeatureRequestModal from './contexts/FeatureRequestModal';
 import FormImageLink from './components/FormImageLink';
-// import ServiceUnavailable from './components/ServiceUnavailable';
-
-// 
 import { copyToClipboard, handleFormCopyAndNotify, handlePhmcRecruitmentCopyAndNotify } from './components/notificationService'; // Add copyToClipboard
 
 import EmsBingoModal from './components/EmsBingoModal'; 
@@ -163,19 +160,14 @@ function AppContent({
 
     const handleCctvWebhookSubmit = async (cctvData) => {
         // Log the submission attempt to Sentry for tracking and abuse monitoring
-        Sentry.captureMessage('CCTV Request Submitted', {
-            level: 'info',
-            extra: {
-                officer: cctvData.officer,
-                department: cctvData.department,
-                location: cctvData.location,
-                reason: cctvData.requestReason,
-                submitter: formData.coronerEmployee || formData.phmcEmployee || 'Unknown App User'
-            },
-            tags: {
-                webhook_type: 'cctv_request',
-                environment: process.env.NODE_ENV
-            }
+        H.track('CCTV Request Submitted', {
+            officer: cctvData.officer,
+            department: cctvData.department,
+            location: cctvData.location,
+            reason: cctvData.requestReason,
+            submitter: formData.coronerEmployee || formData.phmcEmployee || 'Unknown App User',
+            webhook_type: 'cctv_request',
+            environment: process.env.NODE_ENV
         });
 
         // --- MODIFICATION START: Send to multiple webhooks ---
@@ -184,7 +176,7 @@ function AppContent({
 
         if (!devWebhookURL) {
             showNotification('No CCTV webhook URLs are configured.', 'error');
-            Sentry.captureMessage('Neither DEV nor LEO webhook URLs are configured for CCTV.', 'error');
+            H.consumeError(new Error('Neither DEV nor LEO webhook URLs are configured for CCTV.'));
             return false;
         }
 
@@ -241,10 +233,7 @@ function AppContent({
                 successfulSends++;
             } else {
                 console.error(`Failed to send CCTV webhook to ${targetName}:`, result.reason.message);
-                Sentry.captureMessage(`CCTV Webhook to ${targetName} failed`, {
-                    level: 'error',
-                    extra: { reason: result.reason.message }
-                });
+                H.consumeError(new Error(`CCTV Webhook to ${targetName} failed`), result.reason.message);
             }
         });
 
@@ -419,7 +408,7 @@ const getBBCodeContent = () => {
             return definition.generator(generatorArgs);
         }
     } else {
-        Sentry.captureMessage(`No BBCode generator found for version: ${bbCodeVersion}`);
+        H.consumeError(new Error(`No BBCode generator found for version: ${bbCodeVersion}`));
         const formName = (getFormDefinition(bbCodeVersion) || {}).name || `Form v${bbCodeVersion}`;
         return `BBCode generation for form "${formName}" is not implemented.`;
     }
@@ -513,7 +502,7 @@ const getBBCodeContent = () => {
             }
         } catch (error) {
             console.error(`Failed to send ${type} easter egg webhook:`, error);
-            Sentry.captureException(error, { extra: { context: `sendEasterEggNotification (${type})` } });
+            H.consumeError(error, { context: `sendEasterEggNotification (${type})` });
         }
     };
 
@@ -861,14 +850,11 @@ useEffect(() => {
     if (selectedAgencyGroup && !FieldComponent && !isLoadingData) {
         const warningMessage = `No FieldComponent found for bbCodeVersion: ${bbCodeVersion} in group: ${selectedAgencyGroup}.`;
         console.warn(`[App.js] ${warningMessage}`, currentFormDefinition);
-        Sentry.captureMessage(warningMessage, {
-            level: 'warning',
-            extra: {
-                bbCodeVersion: bbCodeVersion,
-                selectedAgencyGroup: selectedAgencyGroup,
-                currentFormDefinition: currentFormDefinition || 'Not found', // Ensure currentFormDefinition is not undefined for Sentry
-                isLoadingData: isLoadingData
-            }
+        H.track(warningMessage, {
+            bbCodeVersion: bbCodeVersion,
+            selectedAgencyGroup: selectedAgencyGroup,
+            currentFormDefinition: currentFormDefinition || 'Not found', // Ensure currentFormDefinition is not undefined for Sentry
+            isLoadingData: isLoadingData
         });
     }
 
@@ -876,66 +862,25 @@ useEffect(() => {
 
 
     useEffect(() => {
-        const GITHUB_COMMIT_CACHE_KEY = 'githubCommitInfo';
-        const GITHUB_COMMIT_CACHE_EXPIRATION_MS = 15 * 60 * 1000; // Cache for 15 minutes
+        const getDailyUpdateTime = () => {
+            const now = new Date();
+            const utcDate = new Date(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 9, 0, 0);
+            
+            // Format the date for display
+            const formattedDate = utcDate.toLocaleString('en-US', {
+                year: 'numeric', month: 'long', day: 'numeric',
+                hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
+                timeZone: 'UTC'
+            });
 
-        const fetchCommit = () => {
-            // 1. Try to load from cache first
-            try {
-                const cachedCommitDataString = localStorage.getItem(GITHUB_COMMIT_CACHE_KEY);
-                if (cachedCommitDataString) {
-                    const cachedData = JSON.parse(cachedCommitDataString);
-                    const isCacheFresh = (Date.now() - cachedData.timestamp) < GITHUB_COMMIT_CACHE_EXPIRATION_MS;
-                    if (isCacheFresh) {
-                        setCommitInfo(cachedData.info);
-                        return; // Exit if fresh data is found in cache
-                    }
-                }
-            } catch (e) {
-                console.error("Error reading commit info from cache:", e);
-            }
-
-            // 2. If cache is stale or doesn't exist, fetch from API
-            fetch('https://api.github.com/repos/GTAW-PHMC/forms/commits/gh-pages')
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`GitHub API responded with status: ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    const commitDate = new Date(data.commit.author.date);
-                    const newCommitInfo = {
-                        sha: data.sha.substring(0, 7),
-                        date: commitDate.toLocaleString('en-US', {
-                            year: 'numeric', month: 'long', day: 'numeric',
-                            hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
-                        }),
-                        error: null // Clear any previous error on success
-                    };
-                    setCommitInfo(newCommitInfo);
-
-                    // 3. Cache the new data
-                    try {
-                        localStorage.setItem(GITHUB_COMMIT_CACHE_KEY, JSON.stringify({
-                            timestamp: Date.now(),
-                            info: newCommitInfo
-                        }));
-                    } catch (e) {
-                        console.error("Error writing commit info to cache:", e);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error fetching commit:', error);
-                    // 4. On failure, set an error message but keep old data if it exists
-                    setCommitInfo(prev => ({
-                        ...prev,
-                        error: 'Could not fetch latest update information.'
-                    }));
-                });
+            return {
+                sha: 'daily', // Indicate it's a daily update, not a specific commit SHA
+                date: formattedDate,
+                error: null
+            };
         };
 
-        fetchCommit();
+        setCommitInfo(getDailyUpdateTime());
     }, []); // This effect runs once on mount
     const coronerFormsSubGroup = [
         { version: 1, name: " Decedent Services", icon: corpse },
@@ -1137,7 +1082,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
 const sendWebhookPayload = async (webhookURL, payload, successMessage, context, notifyFunc) => {
     if (!webhookURL) {
         console.error(`Discord webhook URL not configured for ${context}.`);
-        Sentry.captureMessage(`Discord webhook URL is missing for ${context} submission.`, 'error');
+        H.consumeError(new Error(`Discord webhook URL is missing for ${context} submission.`));
         notifyFunc('Configuration error: Unable to send message.', 'exclamation-triangle'); // Use passed notifyFunc
         return false;
     }
@@ -1152,10 +1097,7 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`Failed to send ${context} webhook embed. Status: ${response.status} ${response.statusText}`, errorText);
-            Sentry.captureMessage(`Discord webhook embed failed for ${context}: ${response.status}`, {
-                level: 'error',
-                extra: { statusText: response.statusText, responseBody: errorText }
-            });
+            H.consumeError(new Error(`Discord webhook embed failed for ${context}: ${response.status}`), JSON.stringify({ statusText: response.statusText, responseBody: errorText }));
             notifyFunc(`Failed to send embed to ${context}. Status: ${response.status}`, 'exclamation-triangle'); // Use passed notifyFunc
             return false;
         } else {
@@ -1168,7 +1110,7 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
         }
     } catch (error) {
         console.error(`Error sending ${context} webhook embed:`, error);
-        Sentry.captureException(error, { extra: { context: `${context} Webhook Embed Submission Fetch` } });
+        H.consumeError(error, { context: `${context} Webhook Embed Submission Fetch` } );
         notifyFunc(`A network error occurred sending to ${context}. Please try again.`, 'exclamation-triangle'); // Use passed notifyFunc
         return false;
     }

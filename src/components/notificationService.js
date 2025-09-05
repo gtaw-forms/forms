@@ -1,4 +1,5 @@
-import * as Sentry from "@sentry/react";
+import { H } from 'highlight.run';
+
 import { ref, get, set} from 'firebase/database';
 import getRelevantFields from './RevelantFields';
 
@@ -6,14 +7,14 @@ export const copyToClipboard = async (text, showNotification, successMessage) =>
     // Check if the clipboard API is available at all.
     if (!navigator.clipboard) {
         showNotification('Clipboard API not available in this browser.', 'error');
-        Sentry.captureMessage('Clipboard API not available.');
+        H.track('Clipboard API not available.');
         return false;
     }
 
     // The Clipboard API is only available in secure contexts (HTTPS or localhost).
     if (!window.isSecureContext) {
         showNotification('Clipboard access is only available on secure sites (HTTPS).', 'error');
-        Sentry.captureMessage('Attempted to use clipboard in a non-secure context.');
+        H.track('Attempted to use clipboard in a non-secure context.');
         return false;
     }
 
@@ -23,7 +24,7 @@ export const copyToClipboard = async (text, showNotification, successMessage) =>
         return true;
     } catch (err) {
         console.error('Failed to copy text: ', err);
-        Sentry.captureException(err, { extra: { context: 'copyToClipboard helper' } });
+        H.consumeError(err, { context: 'copyToClipboard helper' });
         
         let userMessage = 'Failed to copy text automatically.';
         // Provide more specific user guidance based on the error.
@@ -41,7 +42,7 @@ export const copyToClipboard = async (text, showNotification, successMessage) =>
 export const sendDiscordWebhookInternal = async (webhookUrl, embedData, commitInfo = {}, contextMessage = "") => { // Added export
     if (!webhookUrl) {
         console.error("Discord webhook URL not provided to sendDiscordWebhookInternal.");
-        Sentry.captureMessage("Discord webhook URL missing in sendDiscordWebhookInternal.", "error");
+        H.track("Discord webhook URL missing in sendDiscordWebhookInternal.", {level: "error"});
         return false;
     }
 
@@ -77,7 +78,7 @@ export const sendDiscordWebhookInternal = async (webhookUrl, embedData, commitIn
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`Failed to send Discord webhook. Status: ${response.status} ${response.statusText}`, errorText);
-            Sentry.captureMessage(`Discord webhook send failed: ${response.status}`, {
+            H.track(`Discord webhook send failed: ${response.status}`, {
                 level: 'error',
                 extra: {
                     statusText: response.statusText,
@@ -90,8 +91,8 @@ export const sendDiscordWebhookInternal = async (webhookUrl, embedData, commitIn
         return true;
     } catch (error) {
         console.error('Error sending Discord webhook:', error);
-        Sentry.captureException(error, {
-            extra: {
+        H.consumeError(error, {
+            payload: {
                 context: 'sendDiscordWebhookInternal Fetch Error',
                 webhookTitle: title,
             }
@@ -502,7 +503,7 @@ export const handlePhmcRecruitmentCopyAndNotify = async ({
 
     if (!bbCodeToCopy) {
         showNotification(`Failed to generate ${formName} BBCode. Copying skipped.`, 'error');
-        Sentry.captureMessage(`getBBCodeContent returned null/undefined for ${formName}`, 'error');
+        H.track(`getBBCodeContent returned null/undefined for ${formName}`, {level: 'error'});
         return;
     }
 
@@ -620,7 +621,7 @@ const sendFormInteractionWebhookInternal = async ({
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`Failed to send Discord webhook. Status: ${response.status} ${response.statusText}`, errorText);
-            Sentry.captureMessage(`Discord webhook send failed: ${response.status}`, {
+            H.track(`Discord webhook send failed: ${response.status}`, {
                 level: 'error',
                 extra: {
                     statusText: response.statusText,
@@ -633,8 +634,8 @@ const sendFormInteractionWebhookInternal = async ({
         // Optionally, return true on success
     } catch (error) {
         console.error('Error sending Discord webhook:', error);
-        Sentry.captureException(error, {
-            extra: {
+        H.consumeError(error, {
+            payload: {
                 context: 'sendFormInteractionWebhookInternal Fetch Error',
                 webhookTitle: statusTitle, // Use statusTitle here
             }
@@ -678,7 +679,7 @@ export const handleFormCopyAndNotify = async ({
 
     if (!bbCodeToCopy) {
         showNotification(`Failed to generate BBCode for ${versionName}. Please check form data.`, 'error');
-        Sentry.captureMessage(`getBBCodeContent returned null/undefined for bbCodeVersion: ${bbCodeVersion}`, 'error');
+        H.track(`getBBCodeContent returned null/undefined for bbCodeVersion: ${bbCodeVersion}`, {level: 'error'});
         return;
     }
 
@@ -706,7 +707,7 @@ export const handleFormCopyAndNotify = async ({
             saveResult = { success: true };
         } catch (error) {
             console.error("Error saving Civilian report to Firebase:", error);
-            Sentry.captureException(error, { extra: { context: 'Firebase set report' } });
+            H.consumeError(error, { context: 'Firebase set report' });
             saveResult = { success: false, error: 'Failed to save Civilian report to Firebase.' };
         }
     } else {
@@ -759,7 +760,7 @@ export const handleFormCopyAndNotify = async ({
                 }
             } catch (error) {
                 console.error("Error fetching total saved reports count from Firebase:", error);
-                Sentry.captureException(error, { extra: { context: 'Firebase Total Saved Reports Count' } });
+                H.consumeError(error, { context: 'Firebase Total Saved Reports Count' });
             }
 
             try {
@@ -785,7 +786,7 @@ export const handleFormCopyAndNotify = async ({
                 }
             } catch (error) {
                 console.error("Error fetching user saved reports count from Firebase:", error);
-                Sentry.captureException(error, { extra: { context: 'Firebase User Saved Reports Count' } });
+                H.consumeError(error, { context: 'Firebase User Saved Reports Count' });
             }
 
             let webhookActionMessage = "BBCode Copied";
@@ -836,7 +837,7 @@ export const handleFormCopyAndNotify = async ({
         }
     } catch (error) {
         console.error('Error during webhook notification in service: ', error);
-        Sentry.captureException(error, { extra: { context: 'handleFormCopyAndNotify Webhook Error', errorName: error.name, errorMessage: error.message } });
+        H.consumeError(error, { payload: { context: 'handleFormCopyAndNotify Webhook Error', errorName: error.name, errorMessage: error.message } });
         showNotification('Report processed, but failed to send Discord notification.', 'warning');
     }
 };

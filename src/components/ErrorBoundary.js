@@ -1,5 +1,4 @@
 import React, { Component } from 'react';
-import * as Sentry from "@sentry/react";
 
 const notificationStyle = {
     position: 'fixed',
@@ -42,7 +41,6 @@ class ErrorBoundary extends Component {
 
   componentDidCatch(error, errorInfo) {
     console.error("Uncaught error:", error, errorInfo);
-    Sentry.captureException(error, { extra: errorInfo });
   }
 
   handleOkClick = () => {
