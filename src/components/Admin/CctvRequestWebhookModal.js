@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { Modal, Button, Form, Spinner } from 'react-bootstrap';
+import * as Sentry from "@sentry/react";
 
 // --- MODIFICATION START: Generic Modal Styles ---
 const modalOverlayStyle = {
@@ -77,6 +78,7 @@ const CctvRequestWebhookModal = ({ show, onHide, onSubmit, showNotification }) =
             }
         } catch (error) {
             console.error("Error submitting CCTV webhook:", error);
+            Sentry.captureException(error, { extra: { context: 'CctvRequestWebhookModal Submit' } });
             showNotification('An error occurred during submission.', 'error');
         } finally {
             setIsSubmitting(false);

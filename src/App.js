@@ -1,9 +1,8 @@
 import { useReportManagement } from './components/useReportManagement';
 import React, { useState, useEffect, useRef, useMemo, useCallback} from 'react';
-import { H } from 'highlight.run';
 import { formDefinitions, getFormDefinition } from './formDefinitions'; 
 import '@fortawesome/fontawesome-free/css/all.min.css';
-import { Modal, Form, Button } from 'react-bootstrap';
+import { Modal, Form, Button, Dropdown } from 'react-bootstrap';
 import SavedReportsModal from './components/SavedReportsModal'; 
 import getRelevantFields from './components/RevelantFields';
 import AgencyGroupSelectorModal from './components/AgencyGroupSelectorModal'; 
@@ -12,6 +11,7 @@ import Footer from './components/Footer';
 import SeasonalEvents from './components/SeasonalEvents';
 import HeaderInfo from './components/HeaderInfo';
 import Snowfall from 'react-snowfall'; 
+import * as Sentry from "@sentry/react";
 import WebhookModal from './components/WebhookModal'; 
 import CoronerTipsModal from './components/CoronerTipsModal'; 
 import BusinessCardModal from './components/BusinessCardModal'; 
@@ -27,6 +27,10 @@ import { FormProvider } from './contexts/FormContext';
 import { DataProvider } from './contexts/DataContext';
 import FeatureRequestModal from './contexts/FeatureRequestModal';
 import FormImageLink from './components/FormImageLink';
+import SwitchableFormButtons from './components/SwitchableFormButtons';
+// import ServiceUnavailable from './components/ServiceUnavailable';
+
+// 
 import { copyToClipboard, handleFormCopyAndNotify, handlePhmcRecruitmentCopyAndNotify } from './components/notificationService'; // Add copyToClipboard
 
 import EmsBingoModal from './components/EmsBingoModal'; 
@@ -160,14 +164,19 @@ function AppContent({
 
     const handleCctvWebhookSubmit = async (cctvData) => {
         // Log the submission attempt to Sentry for tracking and abuse monitoring
-        H.track('CCTV Request Submitted', {
-            officer: cctvData.officer,
-            department: cctvData.department,
-            location: cctvData.location,
-            reason: cctvData.requestReason,
-            submitter: formData.coronerEmployee || formData.phmcEmployee || 'Unknown App User',
-            webhook_type: 'cctv_request',
-            environment: process.env.NODE_ENV
+        Sentry.captureMessage('CCTV Request Submitted', {
+            level: 'info',
+            extra: {
+                officer: cctvData.officer,
+                department: cctvData.department,
+                location: cctvData.location,
+                reason: cctvData.requestReason,
+                submitter: formData.coronerEmployee || formData.phmcEmployee || 'Unknown App User'
+            },
+            tags: {
+                webhook_type: 'cctv_request',
+                environment: process.env.NODE_ENV
+            }
         });
 
         // --- MODIFICATION START: Send to multiple webhooks ---
@@ -176,7 +185,7 @@ function AppContent({
 
         if (!devWebhookURL) {
             showNotification('No CCTV webhook URLs are configured.', 'error');
-            H.consumeError(new Error('Neither DEV nor LEO webhook URLs are configured for CCTV.'));
+            Sentry.captureMessage('Neither DEV nor LEO webhook URLs are configured for CCTV.', 'error');
             return false;
         }
 
@@ -196,7 +205,7 @@ function AppContent({
                 ...(cctvData.oocNotes ? [{ name: "OOC Notes", value: `\`\`\`${cctvData.oocNotes}\`\`\``, inline: false }] : []),
             ],
             timestamp: new Date().toISOString(),
-            footer: { text: `PHMC Forms - v${commitInfo.sha || 'N/A'}` }
+            footer: { text: `PHMC Tools - v${commitInfo.sha || 'N/A'}` }
         };
             const pad = (num) => num.toString().padStart(2, '0');
 
@@ -233,7 +242,10 @@ function AppContent({
                 successfulSends++;
             } else {
                 console.error(`Failed to send CCTV webhook to ${targetName}:`, result.reason.message);
-                H.consumeError(new Error(`CCTV Webhook to ${targetName} failed`), result.reason.message);
+                Sentry.captureMessage(`CCTV Webhook to ${targetName} failed`, {
+                    level: 'error',
+                    extra: { reason: result.reason.message }
+                });
             }
         });
 
@@ -408,7 +420,7 @@ const getBBCodeContent = () => {
             return definition.generator(generatorArgs);
         }
     } else {
-        H.consumeError(new Error(`No BBCode generator found for version: ${bbCodeVersion}`));
+        Sentry.captureMessage(`No BBCode generator found for version: ${bbCodeVersion}`);
         const formName = (getFormDefinition(bbCodeVersion) || {}).name || `Form v${bbCodeVersion}`;
         return `BBCode generation for form "${formName}" is not implemented.`;
     }
@@ -482,7 +494,7 @@ const getBBCodeContent = () => {
             color: embedColor,
             timestamp: new Date().toISOString(),
             footer: {
-                text: `PHMC Forms Tool | ${triggerSource}` // Use dynamic trigger source
+                text: `PHMC Tools Tool | ${triggerSource}` // Use dynamic trigger source
             }
         };
 
@@ -502,7 +514,7 @@ const getBBCodeContent = () => {
             }
         } catch (error) {
             console.error(`Failed to send ${type} easter egg webhook:`, error);
-            H.consumeError(error, { context: `sendEasterEggNotification (${type})` });
+            Sentry.captureException(error, { extra: { context: `sendEasterEggNotification (${type})` } });
         }
     };
 
@@ -515,13 +527,12 @@ const getBBCodeContent = () => {
         ];
 
         if (coronerFormVersions.includes(bbCodeVersion)) {
-            if (formData.coronerEmployee) return formData.coronerEmployee;
+            return formData.coronerEmployee || null;
         } else if (phmcFormVersions.includes(bbCodeVersion)) {
-            if (formData.phmcEmployee) return formData.phmcEmployee;
+            return formData.phmcEmployee || null;
         }
 
-        // Fallback logic if the form isn't strictly one or the other,
-        // or if the primary employee field for that form type is empty.
+        // Fallback logic for forms that are not strictly coroner or phmc
         if (formData.coronerEmployee) return formData.coronerEmployee;
         if (formData.phmcEmployee) return formData.phmcEmployee;
 
@@ -850,11 +861,14 @@ useEffect(() => {
     if (selectedAgencyGroup && !FieldComponent && !isLoadingData) {
         const warningMessage = `No FieldComponent found for bbCodeVersion: ${bbCodeVersion} in group: ${selectedAgencyGroup}.`;
         console.warn(`[App.js] ${warningMessage}`, currentFormDefinition);
-        H.track(warningMessage, {
-            bbCodeVersion: bbCodeVersion,
-            selectedAgencyGroup: selectedAgencyGroup,
-            currentFormDefinition: currentFormDefinition || 'Not found', // Ensure currentFormDefinition is not undefined for Sentry
-            isLoadingData: isLoadingData
+        Sentry.captureMessage(warningMessage, {
+            level: 'warning',
+            extra: {
+                bbCodeVersion: bbCodeVersion,
+                selectedAgencyGroup: selectedAgencyGroup,
+                currentFormDefinition: currentFormDefinition || 'Not found', // Ensure currentFormDefinition is not undefined for Sentry
+                isLoadingData: isLoadingData
+            }
         });
     }
 
@@ -862,25 +876,66 @@ useEffect(() => {
 
 
     useEffect(() => {
-        const getDailyUpdateTime = () => {
-            const now = new Date();
-            const utcDate = new Date(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 9, 0, 0);
-            
-            // Format the date for display
-            const formattedDate = utcDate.toLocaleString('en-US', {
-                year: 'numeric', month: 'long', day: 'numeric',
-                hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
-                timeZone: 'UTC'
-            });
+        const GITHUB_COMMIT_CACHE_KEY = 'githubCommitInfo';
+        const GITHUB_COMMIT_CACHE_EXPIRATION_MS = 15 * 60 * 1000; // Cache for 15 minutes
 
-            return {
-                sha: 'daily', // Indicate it's a daily update, not a specific commit SHA
-                date: formattedDate,
-                error: null
-            };
+        const fetchCommit = () => {
+            // 1. Try to load from cache first
+            try {
+                const cachedCommitDataString = localStorage.getItem(GITHUB_COMMIT_CACHE_KEY);
+                if (cachedCommitDataString) {
+                    const cachedData = JSON.parse(cachedCommitDataString);
+                    const isCacheFresh = (Date.now() - cachedData.timestamp) < GITHUB_COMMIT_CACHE_EXPIRATION_MS;
+                    if (isCacheFresh) {
+                        setCommitInfo(cachedData.info);
+                        return; // Exit if fresh data is found in cache
+                    }
+                }
+            } catch (e) {
+                console.error("Error reading commit info from cache:", e);
+            }
+
+            // 2. If cache is stale or doesn't exist, fetch from API
+            fetch('https://api.github.com/repos/GTAW-PHMC/forms/commits/gh-pages')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`GitHub API responded with status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    const commitDate = new Date(data.commit.author.date);
+                    const newCommitInfo = {
+                        sha: data.sha.substring(0, 7),
+                        date: commitDate.toLocaleString('en-US', {
+                            year: 'numeric', month: 'long', day: 'numeric',
+                            hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
+                        }),
+                        error: null // Clear any previous error on success
+                    };
+                    setCommitInfo(newCommitInfo);
+
+                    // 3. Cache the new data
+                    try {
+                        localStorage.setItem(GITHUB_COMMIT_CACHE_KEY, JSON.stringify({
+                            timestamp: Date.now(),
+                            info: newCommitInfo
+                        }));
+                    } catch (e) {
+                        console.error("Error writing commit info to cache:", e);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching commit:', error);
+                    // 4. On failure, set an error message but keep old data if it exists
+                    setCommitInfo(prev => ({
+                        ...prev,
+                        error: 'Could not fetch latest update information.'
+                    }));
+                });
         };
 
-        setCommitInfo(getDailyUpdateTime());
+        fetchCommit();
     }, []); // This effect runs once on mount
     const coronerFormsSubGroup = [
         { version: 1, name: " Decedent Services", icon: corpse },
@@ -1082,7 +1137,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
 const sendWebhookPayload = async (webhookURL, payload, successMessage, context, notifyFunc) => {
     if (!webhookURL) {
         console.error(`Discord webhook URL not configured for ${context}.`);
-        H.consumeError(new Error(`Discord webhook URL is missing for ${context} submission.`));
+        Sentry.captureMessage(`Discord webhook URL is missing for ${context} submission.`, 'error');
         notifyFunc('Configuration error: Unable to send message.', 'exclamation-triangle'); // Use passed notifyFunc
         return false;
     }
@@ -1097,7 +1152,10 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`Failed to send ${context} webhook embed. Status: ${response.status} ${response.statusText}`, errorText);
-            H.consumeError(new Error(`Discord webhook embed failed for ${context}: ${response.status}`), JSON.stringify({ statusText: response.statusText, responseBody: errorText }));
+            Sentry.captureMessage(`Discord webhook embed failed for ${context}: ${response.status}`, {
+                level: 'error',
+                extra: { statusText: response.statusText, responseBody: errorText }
+            });
             notifyFunc(`Failed to send embed to ${context}. Status: ${response.status}`, 'exclamation-triangle'); // Use passed notifyFunc
             return false;
         } else {
@@ -1110,7 +1168,7 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
         }
     } catch (error) {
         console.error(`Error sending ${context} webhook embed:`, error);
-        H.consumeError(error, { context: `${context} Webhook Embed Submission Fetch` } );
+        Sentry.captureException(error, { extra: { context: `${context} Webhook Embed Submission Fetch` } });
         notifyFunc(`A network error occurred sending to ${context}. Please try again.`, 'exclamation-triangle'); // Use passed notifyFunc
         return false;
     }
@@ -1440,25 +1498,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
             />
 {season === "Christmas" && <Snowfall snowflakeCount={75} />}
 
-{showUpdateNotification && (
-                <div className="notification-wrapper">
-                    <div
-                        className={`notification show`}
-                        style={{            
-                            right: '20px', // Positioned to the right
-                            top: `${20}px`, // Stacked with spacing
-                            zIndex: 1050 + 1 // Ensure it's on top
-                        }}
-                    >
-                        <i className={`fas fa-sync-alt`}></i>
-                        A new update is available! Please refresh your browser.
-                        <Button onClick={handleRefresh} className="notification-refresh-button">
-                            Refresh Now
-                        </Button>
-                        <button onClick={() => setShowUpdateNotification(false)} className="close-btn">&times;</button>
-                    </div>
-            </div>
-            )}
+
         <CoronerTipsModal
             show={showCoronerTips}
             onClose={() => {
@@ -1495,26 +1535,35 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 <div className="button-group">
 
         <div className="floating-tools-container">
+            <Dropdown drop="up">
+                <Dropdown.Toggle variant="secondary" id="dropdown-tools">
+                    <i className="fas fa-tools"></i> Tools
+                </Dropdown.Toggle>
 
-                <Button
-                    variant="info" // Or PHMC theme color
-                    className="changelog-button" // Or a new class
-                    onClick={() => setShowEmployeeModal(true)}
-                    title="Manage PHMC Employees"
-                >
-                    <i className="fas fa-users-cog"></i> 
-                    Manage PHMC Staff
-                </Button>
-
-            <Button
-                variant="light"
-                className="floating-tool-button"
-                onClick={() => setShowFeatureRequestModal(true)}
-                title="Report a Bug / Feature"
-            >
-                <i className="fas fa-bug"></i>
-                <span className="floating-button-text">Report Bug - Feature - Form</span>
-            </Button>
+                <Dropdown.Menu>
+                    <Dropdown.Item onClick={() => setShowEmployeeModal(true)}>
+                        <i className="fas fa-users-cog"></i> Manage PHMC Staff
+                    </Dropdown.Item>
+                    <Dropdown.Item onClick={() => setShowFeatureRequestModal(true)}>
+                        <i className="fas fa-bug"></i> Report Bug/Feature
+                    </Dropdown.Item>
+                    <Dropdown.Item onClick={toggleSavedReports}>
+                        <i className="fas fa-save"></i> Saved Reports
+                    </Dropdown.Item>
+                    <Dropdown.Item onClick={toggleEmsAmaModal}>
+                        <i className="fa-solid fa-truck-medical"></i> EMS AMA
+                    </Dropdown.Item>
+                    <Dropdown.Divider />
+                    <Dropdown.Item onClick={() => {
+                        localStorage.removeItem('selectedAgencyGroup');
+                        setSelectedAgencyGroup(null);
+                        setShowAgencyGroupSelectorModal(true);
+                    }}>
+                        <i className="fas fa-users"></i> Switch Form Type
+                    </Dropdown.Item>
+                </Dropdown.Menu>
+            </Dropdown>
+        </div>
 
             <FeatureRequestModal
                 show={showFeatureRequestModal}
@@ -1533,41 +1582,6 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 commitInfo={commitInfo}
                 setShowFeatureRequestModal={setShowFeatureRequestModal}
             />
-            <Button
-                variant="light"
-                className="floating-tool-button"
-                onClick={toggleSavedReports}
-                title="Saved Reports"
-            >
-                <i className="fas fa-save"></i>
-                <span className="floating-button-text">Saved Reports</span>
-            </Button>
-
-            <Button
-                variant="light"
-                className="floating-tool-button"
-                onClick={toggleEmsAmaModal} // +++ Use the new toggle function
-                title="Saved Reports"
-            >
-<i className="fa-solid fa-truck-medical"></i>
-                <span className="floating-button-text">EMS Against Medical Advise</span>
-            </Button>
-                                <Button
-                                    className="changelog-button"
-                                    variant='warning'
-                                    onClick={() => {
-                                        localStorage.removeItem('selectedAgencyGroup'); // Clear saved group
-                                        // Optionally clear hide preference: localStorage.removeItem('hideAgencyGroupSelectorPreference');
-                                        setSelectedAgencyGroup(null);
-                                        setShowAgencyGroupSelectorModal(true);
-                                        // setHideAgencySelectorPreference(false); // if you want to force show next time
-                                    }}
-                                >
-                                    <i className="fas fa-users"></i>
-                                    Switch Form Type
-                                </Button>
-
-        </div>
 
                  <Button
                         variant="secondary"
@@ -1672,89 +1686,20 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                             Select {selectedAgencyGroup || "Agency"} Form
                         </Button>
 
-                        {(bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 4 || bbCodeVersion === 8 || bbCodeVersion === 11 ) && (
-                            <Button
-                                className="changelog-button"
-                                variant='secondary'
-                                onClick={() => openSwitchableModal("Coroner Forms", coronerFormsSubGroup)}
-                            >
-                                <i className="fa fa-laptop"></i>
-                                <span>Coroner Forms</span>
-                            </Button>
-                        )}
-
-                        {(bbCodeVersion === 6 || bbCodeVersion === 7) && (
-                            <Button
-                                className="changelog-button"
-                                variant='secondary'
-                                onClick={() => openSwitchableModal("Select Physical Evaluation Form", physicalEvalFormsSubGroup)}
-                            >
-                                <i className="fas fa-exchange-alt"></i>
-                                <span>Switch Physical Evaluation Forms</span>
-                            </Button>
-                        )}
-                        {(bbCodeVersion === 28 || bbCodeVersion === 29) && (
-                            <Button
-                                className="changelog-button"
-                                variant='secondary'
-                                onClick={() => openSwitchableModal("Select Psychological Evaluation Form", psychEvalFormsSubGroup)}
-                            >
-                                <i className="fas fa-exchange-alt"></i>
-                                <span>Switch Psychological Evaluation Form</span>
-                            </Button>
-                        )}
-
-                        {(bbCodeVersion === 20 || bbCodeVersion === 21) && (
-                            <Button
-                                className="changelog-button"
-                                variant='secondary'
-                                onClick={() => openSwitchableModal("Select General Consultation Form", generalConsultFormsSubGroup)}
-                            >
-                                <i className="fas fa-exchange-alt"></i> {/* Added icon for consistency */}
-                                <span>Switch General Consultation Forms</span>
-                            </Button>
-                        )}
-
-                        {(bbCodeVersion === 22 || bbCodeVersion === 23) && (
-                            <Button
-                                className="changelog-button"
-                                variant='secondary'
-                                onClick={() => openSwitchableModal("Select Commentary Note Form", commentaryNoteFormsSubGroup)}
-                            >
-                                <i className="fas fa-exchange-alt"></i> {/* Added icon */}
-                                <span>Switch Commentary Note Form</span>
-                            </Button>
-                        )}
-                        {(bbCodeVersion === 14 || bbCodeVersion === 16) && (
-                            <Button
-                                className="changelog-button"
-                                variant='secondary'
-                                onClick={() => openSwitchableModal("Select Mental Health Form", mentalHealthFormsSubGroup)}
-                            >
-                                <i className="fas fa-exchange-alt"></i> {/* Added icon */}
-                                <span>Switch Mental Health Form</span>
-                            </Button>
-                        )}
-                        {(bbCodeVersion === 3 || bbCodeVersion === 24 || bbCodeVersion === 25 || bbCodeVersion === 26) && (
-                            <Button
-                                className="changelog-button"
-                                variant='secondary' // Added variant for consistency
-                                onClick={() => openSwitchableModal("Select Civilian Forms", civilianFormsSubGroup)}
-                            >
-                                <i className="fas fa-exchange-alt"></i>
-                                <span>Change Civilian Hospital Forms</span>
-                            </Button>
-                        )}
-                        {(bbCodeVersion === 27 || bbCodeVersion === 35 ) && (
-                            <Button
-                                className="changelog-button"
-                                variant='secondary' // Added variant for consistency
-                                onClick={() => openSwitchableModal("Select Email Form", phmcInternalEmails)}
-                            >
-                                <i className="fas fa-exchange-alt"></i>
-                                <span>Change Email Forms</span>
-                            </Button>
-                        )}
+                        <SwitchableFormButtons
+                            bbCodeVersion={bbCodeVersion}
+                            openSwitchableModal={openSwitchableModal}
+                            formGroups={{
+                                coronerFormsSubGroup,
+                                physicalEvalFormsSubGroup,
+                                psychEvalFormsSubGroup,
+                                generalConsultFormsSubGroup,
+                                commentaryNoteFormsSubGroup,
+                                mentalHealthFormsSubGroup,
+                                civilianFormsSubGroup,
+                                phmcInternalEmails
+                            }}
+                        />
                     </div>
                             <form> 
 

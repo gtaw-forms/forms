@@ -1,5 +1,4 @@
-import { H } from 'highlight.run';
-
+import * as Sentry from "@sentry/react";
 import { ref, get, set} from 'firebase/database';
 import getRelevantFields from './RevelantFields';
 
@@ -7,14 +6,14 @@ export const copyToClipboard = async (text, showNotification, successMessage) =>
     // Check if the clipboard API is available at all.
     if (!navigator.clipboard) {
         showNotification('Clipboard API not available in this browser.', 'error');
-        H.track('Clipboard API not available.');
+        Sentry.captureMessage('Clipboard API not available.');
         return false;
     }
 
     // The Clipboard API is only available in secure contexts (HTTPS or localhost).
     if (!window.isSecureContext) {
         showNotification('Clipboard access is only available on secure sites (HTTPS).', 'error');
-        H.track('Attempted to use clipboard in a non-secure context.');
+        Sentry.captureMessage('Attempted to use clipboard in a non-secure context.');
         return false;
     }
 
@@ -24,7 +23,7 @@ export const copyToClipboard = async (text, showNotification, successMessage) =>
         return true;
     } catch (err) {
         console.error('Failed to copy text: ', err);
-        H.consumeError(err, { context: 'copyToClipboard helper' });
+        Sentry.captureException(err, { extra: { context: 'copyToClipboard helper' } });
         
         let userMessage = 'Failed to copy text automatically.';
         // Provide more specific user guidance based on the error.
@@ -42,7 +41,7 @@ export const copyToClipboard = async (text, showNotification, successMessage) =>
 export const sendDiscordWebhookInternal = async (webhookUrl, embedData, commitInfo = {}, contextMessage = "") => { // Added export
     if (!webhookUrl) {
         console.error("Discord webhook URL not provided to sendDiscordWebhookInternal.");
-        H.track("Discord webhook URL missing in sendDiscordWebhookInternal.", {level: "error"});
+        Sentry.captureMessage("Discord webhook URL missing in sendDiscordWebhookInternal.", "error");
         return false;
     }
 
@@ -78,7 +77,7 @@ export const sendDiscordWebhookInternal = async (webhookUrl, embedData, commitIn
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`Failed to send Discord webhook. Status: ${response.status} ${response.statusText}`, errorText);
-            H.track(`Discord webhook send failed: ${response.status}`, {
+            Sentry.captureMessage(`Discord webhook send failed: ${response.status}`, {
                 level: 'error',
                 extra: {
                     statusText: response.statusText,
@@ -91,8 +90,8 @@ export const sendDiscordWebhookInternal = async (webhookUrl, embedData, commitIn
         return true;
     } catch (error) {
         console.error('Error sending Discord webhook:', error);
-        H.consumeError(error, {
-            payload: {
+        Sentry.captureException(error, {
+            extra: {
                 context: 'sendDiscordWebhookInternal Fetch Error',
                 webhookTitle: title,
             }
@@ -111,7 +110,7 @@ export const sendBingoNotification = async ({ scorer, bingoType, phrase, lineNam
     let embedData = {};
     if (marked) {
         embedData = {
-            title: `📍 Marker Placed by ${scorer || 'A player'}`,
+            title: `📍 Marker Placed by ${scorer || 'A player'}`, 
             description: `A marker was placed on the bingo board.`,
             color: 0x3498db, // Blue
             fields: [
@@ -123,7 +122,7 @@ export const sendBingoNotification = async ({ scorer, bingoType, phrase, lineNam
     } else { // Original Bingo! functionality
         embedData = {
             title: "🎉 BINGO! 🎉",
-            description: `**${scorer || 'A player'}** just scored a BINGO!`,
+            description: `**${scorer || 'A player'}** just scored a BINGO!`, 
             color: 0xffd700, // Gold
             fields: [
                 { name: "Game", value: bingoType || 'Unknown', inline: true },
@@ -170,7 +169,7 @@ export const sendMissingEmployeeNotification = async (
 
     if (actionType === 'addEmployee') {
         const isCoronerRequest = employeeType === 'coroner';
-        requestActionTitle = `⬆️ Missing ${
+        requestActionTitle = `⬆️ Missing ${ 
             isCoronerRequest ? 'Coroner' : 'Hospital Staff'
         } Addition Request`;
         let requiredFields = [];
@@ -221,33 +220,35 @@ export const sendMissingEmployeeNotification = async (
             ],
             timestamp: new Date().toISOString(),
             footer: {
-                text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}`,
+                text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}`, 
             },
         };
 
         let dataJsEntry = '';
         if (isCoronerRequest) {
-            embedData.fields.push({
+            embedData.fields.push({ 
                 name: 'Badge',
                 value: missingEmployeeData.coronerBadge,
                 inline: true,
             });
-            dataJsEntry = `{ name: '${missingEmployeeData.coronerName ||
-                'MISSING_NAME'}', badge: '${missingEmployeeData.coronerBadge ||
-                'MISSING_BADGE'}', rank: '${missingEmployeeData.coronerRank ||
-                'MISSING_RANK'}', discord: '${missingEmployeeData.coronerDiscord ||
-                'MISSING_DISCORD'}', category: '${missingEmployeeData.coronerRank ||
+            dataJsEntry = `{ name: '${missingEmployeeData.coronerName || 
+                'MISSING_NAME'}', badge: '${missingEmployeeData.coronerBadge || 
+                'MISSING_BADGE'}', rank: '${missingEmployeeData.coronerRank || 
+                'MISSING_RANK'}', discord: '${missingEmployeeData.coronerDiscord || 
+                'MISSING_DISCORD'}', category: '${missingEmployeeData.coronerRank || 
                 'MISSING_CATEGORY'}' },`;
         } else {
-            dataJsEntry = `{ name: '${missingEmployeeData.coronerName ||
-                'MISSING_NAME'}', lastName: '${missingEmployeeData.employeeLastName ||
-                'MISSING_LAST_NAME'}', rank: '${missingEmployeeData.coronerRank ||
-                'MISSING_RANK'}', category: '${missingEmployeeData.coronerRank ||
+            dataJsEntry = `{ name: '${missingEmployeeData.coronerName || 
+                'MISSING_NAME'}', lastName: '${missingEmployeeData.employeeLastName || 
+                'MISSING_LAST_NAME'}', rank: '${missingEmployeeData.coronerRank || 
+                'MISSING_RANK'}', category: '${missingEmployeeData.coronerRank || 
                 'MISSING_CATEGORY'}' },`;
         }
         embedData.fields.push({
             name: 'Google Firebase Debug String: ',
-            value: `\`\`\`javascript\n${dataJsEntry}\n\`\`\``,
+            value: `
+${dataJsEntry}
+`,
             inline: false,
         });
 
@@ -273,7 +274,9 @@ export const sendMissingEmployeeNotification = async (
             }
             return staffMember || { name }; // Return at least the name if not found
         });
-        const debugString = `\`\`\`javascript\n${JSON.stringify(debugData, null, 2)}\n\`\`\``;
+        const debugString = `
+${JSON.stringify(debugData, null, 2)}
+`;
 
         embedData = {
             title: requestActionTitle,
@@ -289,7 +292,7 @@ export const sendMissingEmployeeNotification = async (
             ],
             timestamp: new Date().toISOString(),
             footer: {
-                text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}`,
+                text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}`, 
             },
         };
 
@@ -316,38 +319,58 @@ export const sendMissingEmployeeNotification = async (
     console.log("originalData:", originalData); // Log the result to see if it's undefined
 
             if (missingEmployeeData.coronerName !== originalData?.name) {
-                updatedFields.push({ name: 'First Name', value: `\`${originalData?.name || 'N/A'}\` -> \`${missingEmployeeData.coronerName}\``, inline: false });
+                updatedFields.push({ name: 'First Name', value: `
+ -> 
+`, inline: false });
             }
             if (missingEmployeeData.employeeLastName !== originalData?.lastName) {
-                updatedFields.push({ name: 'Last Name', value: `\`${originalData?.lastName || 'N/A'}\` -> \`${missingEmployeeData.employeeLastName}\``, inline: false });
+                updatedFields.push({ name: 'Last Name', value: `
+ -> 
+`, inline: false });
             }
             if (missingEmployeeData.coronerRank !== originalData?.rank) {
-                updatedFields.push({ name: 'Rank', value: `\`${originalData?.rank || 'N/A'}\` -> \`${missingEmployeeData.coronerRank}\``, inline: false });
+                updatedFields.push({ name: 'Rank', value: `
+ -> 
+`, inline: false });
             }
 
-            firebaseDebugString = `\`\`\`javascript\n{ name: '${missingEmployeeData.coronerName || 'MISSING_NAME'}', lastName: '${missingEmployeeData.employeeLastName || 'MISSING_LAST_NAME'}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}' }\n\`\`\``;
+            firebaseDebugString = `
+{ name: '${missingEmployeeData.coronerName || 'MISSING_NAME'}', lastName: '${missingEmployeeData.employeeLastName || 'MISSING_LAST_NAME'}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}' }
+`;
         }
 else {
 
              originalData = coronerList.find(emp => emp.name === selectedEmployeeName);
 
             if (missingEmployeeData.coronerName !== originalData?.name) {
-                updatedFields.push({ name: 'Name', value: `\`${originalData?.name || 'N/A'}\` -> \`${missingEmployeeData.coronerName}\``, inline: false });
+                updatedFields.push({ name: 'Name', value: `
+ -> 
+`, inline: false });
             }
             if (missingEmployeeData.coronerDiscord !== originalData?.discord) {
-                updatedFields.push({ name: 'Discord', value: `\`${originalData?.discord || 'N/A'}\` -> \`${missingEmployeeData.coronerDiscord}\``, inline: false });
+                updatedFields.push({ name: 'Discord', value: `
+ -> 
+`, inline: false });
             }
             if (missingEmployeeData.coronerRank !== originalData?.rank) {
-                updatedFields.push({ name: 'Rank', value: `\`${originalData?.rank || 'N/A'}\` -> \`${missingEmployeeData.coronerRank}\``, inline: false });
+                updatedFields.push({ name: 'Rank', value: `
+ -> 
+`, inline: false });
             }
             if (missingEmployeeData.coronerBadge !== originalData?.badge) {
-                updatedFields.push({ name: 'Badge', value: `\`${originalData?.badge || 'N/A'}\` -> \`${missingEmployeeData.coronerBadge}\``, inline: false });
+                updatedFields.push({ name: 'Badge', value: `
+ -> 
+`, inline: false });
             }
             if (missingEmployeeData.coronerPHNumber !== originalData?.phNumber) {
-                updatedFields.push({ name: 'PH Number', value: `\`${originalData?.phNumber || 'N/A'}\` -> \`${missingEmployeeData.coronerPHNumber}\``, inline: false });
+                updatedFields.push({ name: 'PH Number', value: `
+ -> 
+`, inline: false });
             }
 
-            firebaseDebugString = `\`\`\`javascript\n{ name: '${missingEmployeeData.coronerName || 'MISSING_NAME'}', discord: '${missingEmployeeData.coronerDiscord || 'MISSING_DISCORD'}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', badge: '${missingEmployeeData.coronerBadge || 'MISSING_BADGE'}', phNumber: '${missingEmployeeData.coronerPHNumber || 'MISSING_PHNUMBER'}' }\n\`\`\``;
+            firebaseDebugString = `
+{ name: '${missingEmployeeData.coronerName || 'MISSING_NAME'}', discord: '${missingEmployeeData.coronerDiscord || 'MISSING_DISCORD'}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', badge: '${missingEmployeeData.coronerBadge || 'MISSING_BADGE'}', phNumber: '${missingEmployeeData.coronerPHNumber || 'MISSING_PHNUMBER'}' }
+`;
         }
 
         if (updatedFields.length === 0) {
@@ -367,7 +390,7 @@ else {
             ],
             timestamp: new Date().toISOString(),
             footer: {
-                text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}`,
+                text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}`, 
             },
         };
 
@@ -405,7 +428,8 @@ export const sendPhraseRequestNotification = async ({ requester, phrase, bingoTy
 
     // Add each line of the phrase as a separate field
     phraseLines.forEach((line, index) => {
-        embedFields.push({ name: `Phrase Line ${index + 1}`, value: `\`\`\`${line || 'N/A'}\`\`\``, inline: false });
+        embedFields.push({ name: `Phrase Line ${index + 1}`, value: `
+`, inline: false });
     });
 
     // Add requester and bingoType fields
@@ -414,7 +438,7 @@ export const sendPhraseRequestNotification = async ({ requester, phrase, bingoTy
 
     const embedData = {
         title: "📝 New Bingo Phrase Request",
-        description: `A new phrase has been requested for review.`,
+        description: `A new phrase has been requested for review.`, 
         color: 0x7289DA, // Discord Blurple
         fields: embedFields,
         footerText: "PHMC Bingo",
@@ -503,7 +527,7 @@ export const handlePhmcRecruitmentCopyAndNotify = async ({
 
     if (!bbCodeToCopy) {
         showNotification(`Failed to generate ${formName} BBCode. Copying skipped.`, 'error');
-        H.track(`getBBCodeContent returned null/undefined for ${formName}`, {level: 'error'});
+        Sentry.captureMessage(`getBBCodeContent returned null/undefined for ${formName}`, 'error');
         return;
     }
 
@@ -532,6 +556,7 @@ const sendFormInteractionWebhookInternal = async ({
     webhookUrl,
     formData,
     versionName,
+    bbCodeVersion,
     selectedAgencyGroup,
     statusTitle,
     statusColor,
@@ -559,6 +584,26 @@ const sendFormInteractionWebhookInternal = async ({
 
     let userValue = 'Unknown User';
 
+    const coronerFormVersions = [1, 2, 4, 8, 11, 18];
+    const phmcFormVersions = [5, 6, 7, 9, 10, 12, 13, 14, 16, 19, 20, 21, 22, 23, 27, 28, 29, 35];
+
+    const isCoronerForm = coronerFormVersions.includes(bbCodeVersion);
+    const isPhmcForm = phmcFormVersions.includes(bbCodeVersion);
+
+    if (isPhmcForm) {
+        if (phmcEmployee) {
+            userValue = `Hospital Staff ${phmcEmployee}`;
+        } else if (patientName) {
+            userValue = patientName;
+        } else if (patientFirstName || patientLastName) {
+            userValue = `${patientFirstName || ''} ${patientLastName || ''}`.trim();
+        }
+    } else if (isCoronerForm) {
+        if (coronerEmployee) {
+            userValue = `${coronerRank || 'Coroner'} ${coronerEmployee}`;
+        }
+    } else {
+        // Fallback for forms that are not strictly PHMC or Coroner
         if (coronerEmployee) {
             userValue = `${coronerRank || 'Coroner'} ${coronerEmployee}`;
         } else if (phmcEmployee) {
@@ -568,7 +613,7 @@ const sendFormInteractionWebhookInternal = async ({
         } else if (patientName) {
             userValue = patientName;
         }
-    
+    }
 
     const primaryIdentifier = patientName || decedentName || patientID || registrantFullName || ceoFullName || (selectedAgencyGroup === 'SAAA' ? (formData.aircraftType || formData.companyName || 'SAAA Record') : 'N/A');
 
@@ -621,7 +666,7 @@ const sendFormInteractionWebhookInternal = async ({
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`Failed to send Discord webhook. Status: ${response.status} ${response.statusText}`, errorText);
-            H.track(`Discord webhook send failed: ${response.status}`, {
+            Sentry.captureMessage(`Discord webhook send failed: ${response.status}`, {
                 level: 'error',
                 extra: {
                     statusText: response.statusText,
@@ -634,8 +679,8 @@ const sendFormInteractionWebhookInternal = async ({
         // Optionally, return true on success
     } catch (error) {
         console.error('Error sending Discord webhook:', error);
-        H.consumeError(error, {
-            payload: {
+        Sentry.captureException(error, {
+            extra: {
                 context: 'sendFormInteractionWebhookInternal Fetch Error',
                 webhookTitle: statusTitle, // Use statusTitle here
             }
@@ -679,7 +724,7 @@ export const handleFormCopyAndNotify = async ({
 
     if (!bbCodeToCopy) {
         showNotification(`Failed to generate BBCode for ${versionName}. Please check form data.`, 'error');
-        H.track(`getBBCodeContent returned null/undefined for bbCodeVersion: ${bbCodeVersion}`, {level: 'error'});
+        Sentry.captureMessage(`getBBCodeContent returned null/undefined for bbCodeVersion: ${bbCodeVersion}`, 'error');
         return;
     }
 
@@ -707,7 +752,7 @@ export const handleFormCopyAndNotify = async ({
             saveResult = { success: true };
         } catch (error) {
             console.error("Error saving Civilian report to Firebase:", error);
-            H.consumeError(error, { context: 'Firebase set report' });
+            Sentry.captureException(error, { extra: { context: 'Firebase set report' } });
             saveResult = { success: false, error: 'Failed to save Civilian report to Firebase.' };
         }
     } else {
@@ -740,7 +785,7 @@ export const handleFormCopyAndNotify = async ({
                 const { decedents } = formData;
                 currentIdentifier = decedents.map(d => `${d.decedentName || ''}|${d.decedentOOC || ''}`).join(',');
             } else {
-                const { decedentName, decedentOOC } = formData;
+                const {decedentName,decedentOOC } = formData;
                 currentIdentifier =  `${decedentName || ''}|${decedentOOC || ''}`;
             }
 
@@ -760,7 +805,7 @@ export const handleFormCopyAndNotify = async ({
                 }
             } catch (error) {
                 console.error("Error fetching total saved reports count from Firebase:", error);
-                H.consumeError(error, { context: 'Firebase Total Saved Reports Count' });
+                Sentry.captureException(error, { extra: { context: 'Firebase Total Saved Reports Count' } });
             }
 
             try {
@@ -786,7 +831,7 @@ export const handleFormCopyAndNotify = async ({
                 }
             } catch (error) {
                 console.error("Error fetching user saved reports count from Firebase:", error);
-                H.consumeError(error, { context: 'Firebase User Saved Reports Count' });
+                Sentry.captureException(error, { extra: { context: 'Firebase User Saved Reports Count' } });
             }
 
             let webhookActionMessage = "BBCode Copied";
@@ -798,6 +843,7 @@ export const handleFormCopyAndNotify = async ({
                 webhookUrl: discordWebhookUrl,
                 formData,
                 versionName,
+                bbCodeVersion,
                 selectedAgencyGroup,
                 statusTitle: "Someone has used your generator!",
                 statusColor: 0x00FF00,
@@ -837,7 +883,7 @@ export const handleFormCopyAndNotify = async ({
         }
     } catch (error) {
         console.error('Error during webhook notification in service: ', error);
-        H.consumeError(error, { payload: { context: 'handleFormCopyAndNotify Webhook Error', errorName: error.name, errorMessage: error.message } });
+        Sentry.captureException(error, { extra: { context: 'handleFormCopyAndNotify Webhook Error', errorName: error.name, errorMessage: error.message } });
         showNotification('Report processed, but failed to send Discord notification.', 'warning');
     }
 };
@@ -856,14 +902,20 @@ export const sendErrorToDiscord = async (errorDetails) => {
 
     const embedData = {
         title: "🚨 Unhandled Application Error 🚨",
-        description: `An uncaught error was detected. This is a fallback report, likely because Sentry is blocked or failed.`,
+        description: `An uncaught error was detected. This is a fallback report, likely because Sentry is blocked or failed.`, 
         color: 0xFF0000, // Red
         fields: [
-            { name: "Error Message", value: `\`\`\`\n${message}\n\`\`\``, inline: false },
+            { name: "Error Message", value: `
+${message}
+`,
+ inline: false },
             { name: "Source File", value: source || 'N/A', inline: true },
             { name: "Line", value: lineno ? lineno.toString() : 'N/A', inline: true },
             { name: "Column", value: colno ? colno.toString() : 'N/A', inline: true },
-            { name: "Stack Trace", value: `\`\`\`javascript\n${stack.substring(0, 1000)}\n\`\`\``, inline: false },
+            { name: "Stack Trace", value: `
+${stack.substring(0, 1000)}
+`,
+ inline: false },
         ],
         footerText: "Error Fallback Reporter"
     };

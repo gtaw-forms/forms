@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Spinner } from 'react-bootstrap';
 import { database } from '../../firebase';
 import { ref, get, set } from 'firebase/database';
+import * as Sentry from "@sentry/react";
 
 const EditBingoPhrasesModal = ({ show, onHide, showNotification, commitInfo, sendAdminActionWebhook, adminUserEmail, bingoType }) => {
     const [phrasesText, setPhrasesText] = useState('');
@@ -47,6 +48,7 @@ const EditBingoPhrasesModal = ({ show, onHide, showNotification, commitInfo, sen
             console.error(`[EditBingoPhrasesModal] fetchPhrases: Error during fetch for ${bingoType.name}:`, err);
             setError("Failed to load phrases: " + err.message);
             showNotification("Failed to load phrases.", "error");
+            Sentry.captureException(err, { extra: { context: `EditBingoPhrasesModal Fetch for ${bingoType?.name}` } });
         } finally {
             setIsLoading(false);
             console.log(`[EditBingoPhrasesModal] fetchPhrases: Finished fetch for ${bingoType.name}. isLoading set to false.`);
@@ -103,6 +105,7 @@ const EditBingoPhrasesModal = ({ show, onHide, showNotification, commitInfo, sen
             console.error("Error saving master phrases:", err);
             setError("Failed to save phrases: " + err.message);
             showNotification("Failed to save phrases.", "error");
+            Sentry.captureException(err, { extra: { context: `EditBingoPhrasesModal Save for ${bingoType?.name}` } });
         } finally {
             setIsSaving(false);
         }

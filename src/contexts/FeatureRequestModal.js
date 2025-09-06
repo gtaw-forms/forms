@@ -1,6 +1,6 @@
 import React from 'react';
 import { Modal, Form, Button } from 'react-bootstrap';
-import { H } from 'highlight.run';
+import * as Sentry from "@sentry/react";
 import { useNotification } from './NotificationContext';
 
 const FeatureRequestModal = ({
@@ -27,7 +27,7 @@ const FeatureRequestModal = ({
 
         if (!webhookURL) {
             console.error('Discord webhook URL not configured for feature requests.');
-            H.track('Discord webhook URL is missing for feature request submission.', {level: 'error'});
+            Sentry.captureMessage('Discord webhook URL is missing for feature request submission.', 'error');
             showNotification('Configuration error: Unable to submit request. Please contact the administrator.', 'exclamation-triangle');
             return;
         }
@@ -106,7 +106,7 @@ const FeatureRequestModal = ({
                 color: 0x3498DB,
                 fields: fieldsForFileEmbed,
                 timestamp: new Date().toISOString(),
-                footer: { text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}` }
+                footer: { text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}` }
             };
 
             formDataForFile.append('payload_json', JSON.stringify({
@@ -130,7 +130,7 @@ const FeatureRequestModal = ({
                 color: 0x3498DB,
                 fields: fieldsForJsonEmbed,
                 timestamp: new Date().toISOString(),
-                footer: { text: `Submitted via PHMC Forms Tool - v${commitInfo.sha || 'N/A'}` }
+                footer: { text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}` }
             };
             firstMessageBody = JSON.stringify({
                 content: `Feedback / Bug Report (Part 1${requestChunks.length > 1 ? ` of ${requestChunks.length}` : ''})`,
@@ -152,7 +152,7 @@ const FeatureRequestModal = ({
                 allWebhooksSentSuccessfully = false;
                 const errorText = await firstResponse.text();
                 console.error(`Failed to send message (Part 1) to Discord webhook. Status: ${firstResponse.status} ${firstResponse.statusText}`, errorText);
-                H.track(`Discord webhook failed for feature request (Part 1): ${firstResponse.status}`, {
+                Sentry.captureMessage(`Discord webhook failed for feature request (Part 1): ${firstResponse.status}`, {
                     level: 'error',
                     extra: { statusText: firstResponse.statusText, responseBody: errorText }
                 });
@@ -169,7 +169,7 @@ const FeatureRequestModal = ({
                         color: 0x3498DB,
                         timestamp: new Date().toISOString(),
                         footer: {
-                            text: `Submitted by: ${discordName || "N/A"} | PHMC Forms Tool - v${commitInfo.sha || 'N/A'}`
+                            text: `Submitted by: ${discordName || "N/A"} | PHMC Tools Tool - v${commitInfo.sha || 'N/A'}`
                         }
                     };
                     const subsequentResponse = await fetch(webhookURL, {
@@ -185,7 +185,7 @@ const FeatureRequestModal = ({
                         allWebhooksSentSuccessfully = false;
                         const errorText = await subsequentResponse.text();
                         console.error(`Failed to send message (Part ${i + 1}) to Discord webhook. Status: ${subsequentResponse.status} ${subsequentResponse.statusText}`, errorText);
-                        H.track(`Discord webhook failed for feature request (Part ${i + 1}): ${subsequentResponse.status}`, {
+                        Sentry.captureMessage(`Discord webhook failed for feature request (Part ${i + 1}): ${subsequentResponse.status}`, {
                             level: 'error',
                             extra: { statusText: subsequentResponse.statusText, responseBody: errorText }
                         });
@@ -208,7 +208,7 @@ const FeatureRequestModal = ({
 
         } catch (error) {
             console.error('Error submitting feature request:', error);
-            H.consumeError(error, { context: 'Feature Request Submission Fetch' });
+            Sentry.captureException(error, { extra: { context: 'Feature Request Submission Fetch' } });
             showNotification('A network error occurred. Please try again.', 'exclamation-triangle');
         }
     };

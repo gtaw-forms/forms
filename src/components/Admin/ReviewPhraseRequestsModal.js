@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, ListGroup, Spinner } from 'react-bootstrap';
 import { database } from '../../firebase';
 import { ref, get, update, set, remove } from 'firebase/database'; // Import remove
+import * as Sentry from "@sentry/react";
 
 const BINGO_TYPES = [
     { id: 'er', name: 'Emergency Room', path: 'ER' },
@@ -35,6 +36,7 @@ const ReviewPhraseRequestsModal = ({ show, onHide, showNotification, sendAdminAc
         } catch (error) {
             console.error("Error fetching phrase requests:", error);
             showNotification("Failed to load phrase requests.", "error");
+            Sentry.captureException(error, { extra: { context: 'ReviewPhraseRequestsModal Fetch' } });
         } finally {
             setIsLoading(false);
         }
@@ -66,6 +68,7 @@ const ReviewPhraseRequestsModal = ({ show, onHide, showNotification, sendAdminAc
             fetchRequests(); 
         } catch (error) {
             console.error(`Error deleting request ${requestId}:`, error);
+            Sentry.captureException(error, { extra: { context: 'ReviewPhraseRequestsModal Delete' } });
         }
     };
 
@@ -139,6 +142,7 @@ const ReviewPhraseRequestsModal = ({ show, onHide, showNotification, sendAdminAc
         } catch (error) {
             console.error("Error approving phrase:", error);
             showNotification("Failed to approve phrase.", "error");
+            Sentry.captureException(error, { extra: { context: 'ReviewPhraseRequestsModal Approve' } });
         } finally {
             setIsProcessing(null);
         }
@@ -163,6 +167,7 @@ const ReviewPhraseRequestsModal = ({ show, onHide, showNotification, sendAdminAc
         } catch (error) {
             console.error("Error denying phrase:", error);
             showNotification("Failed to deny phrase.", "error");
+            Sentry.captureException(error, { extra: { context: 'ReviewPhraseRequestsModal Deny' } });
         } finally {
             setIsProcessing(null);
         }
