@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Form, Button, InputGroup } from 'react-bootstrap';
 import Select from 'react-select';
 import AutopsyDiagramModal from '../components/AutopsyDiagramModal';
+import * as Sentry from "@sentry/react";
 
 const Autopsy = ({
     formData,
@@ -90,6 +91,7 @@ const Autopsy = ({
 
         if (!imgurAccessToken) {
             console.error('[Autopsy Photos] Imgur access token not configured.');
+            Sentry.captureMessage('Imgur access token not configured for image upload.', 'error');
             showNotification('Configuration error: Imgur token missing.', 'exclamation-triangle');
             setIsUploading(false);
             if (indefiniteNotificationId) removeNotification(indefiniteNotificationId);
@@ -146,6 +148,7 @@ const Autopsy = ({
 
         } catch (error) {
             console.error('[Autopsy Photos] An error occurred during image upload:', error);
+            Sentry.captureException(error, { extra: { context: 'handleAutopsyImageUploadAndCreateAlbum' } });
             showNotification(`Error uploading images: ${error.message}`, 'exclamation-triangle', 7000);
         } finally {
             setIsUploading(false);

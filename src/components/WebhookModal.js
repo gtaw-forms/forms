@@ -1,6 +1,7 @@
 import ReactDOM from 'react-dom'; // Import ReactDOM for Portals
 import React, { useState, useEffect } from 'react';
 import { Button, Form, InputGroup } from 'react-bootstrap';
+import * as Sentry from "@sentry/react";
 
 // --- Styles (Keep existing styles) ---
 const modalOverlayStyle = {
@@ -155,7 +156,7 @@ const LS_WEBHOOK_TITLE_TIMESTAMP = 'webhookModal_title_timestamp';
 const LS_WEBHOOK_MESSAGE_CONTENT = 'webhookModal_message_content';
 const LS_WEBHOOK_MESSAGE_TIMESTAMP = 'webhookModal_message_timestamp';
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-const FORM_GENERATOR_URL = "https://phmc-tools.gta.world/";
+const FORM_GENERATOR_URL = "https://gtaw-forms.github.io/forms/";
 
 const WebhookModal = ({
     show,
@@ -244,6 +245,7 @@ const WebhookModal = ({
                     failedCount++;
                     if (!firstErrorMessage) firstErrorMessage = result.reason.message;
                     console.error('Imgur upload failed:', result.reason.message);
+                    Sentry.captureMessage(`Imgur upload failed in WebhookModal: ${result.reason.message}`, "error");
                 }
             });
             setMediaUrls(prevUrls => [...prevUrls, ...successfulUrls]);
@@ -255,6 +257,7 @@ const WebhookModal = ({
             }
         } catch (error) {
             console.error('General upload process error:', error);
+            Sentry.captureException(error, { extra: { context: 'WebhookModal Multi-Image Upload Process' } });
             showNotification('An unexpected error occurred during upload.', 'exclamation-circle');
         } finally {
             setIsUploading(false);

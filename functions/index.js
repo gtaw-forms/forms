@@ -2,7 +2,6 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { setGlobalOptions } from "firebase-functions/v2";
 import admin from "firebase-admin";
 import fetch from "node-fetch";
-import { ErrorBoundary } from '@highlight-run/react';
 
 // Initialize Firebase Admin SDK
 if (admin.apps.length === 0) {
@@ -74,7 +73,7 @@ const scheduleDeletion = async (request) => {
                      { name: "Phrase", value: request.phrase, inline: false },
                  ],
                  timestamp: new Date().toISOString(),
-                 footer: { text: "PHMC Forms - Scheduled Cleanup" }
+                 footer: { text: "PHMC Tools - Scheduled Cleanup" }
              };
              await sendWebhook({ embeds: [embed] });
 
@@ -196,7 +195,7 @@ export const dailyTaskHandler = onSchedule({
             { name: "Phrase Request Deletion", value: `\`\`\`\n${deletionDetails.trim() || "No phrase request actions taken."}\n\`\`\``, inline: false },
         ],
         timestamp: new Date(event.timestamp).toUTCString(),
-        footer: { text: "PHMC Forms - Scheduled Cloud Function (v2)" }
+        footer: { text: "PHMC Tools - Scheduled Cloud Function (v2)" }
     };
 
     await sendWebhook({ embeds: [embed] });

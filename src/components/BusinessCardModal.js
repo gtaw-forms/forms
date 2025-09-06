@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Form, Button } from 'react-bootstrap';
 // import domtoimage from 'dom-to-image'; // No longer needed for image generation
-import { H } from 'highlight.run';
+import * as Sentry from "@sentry/react";
 import BusinessCardImage from '../assets/business-card.png';
 import { copyToClipboard } from './notificationService'; // <-- NEW IMPORT
 
@@ -65,12 +65,12 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
                 return data.data.link;
             } else {
                 console.error('Imgur upload failed:', data);
-                H.track("Imgur API Error (Business Card)", { payload: data, level: "error" });
+                Sentry.captureMessage("Imgur API Error (Business Card)", { extra: data, level: "error" });
                 throw new Error(`Imgur upload failed: ${data.data?.error || 'Unknown error'}`);
             }
         } catch (error) {
             console.error('Imgur upload failed:', error);
-            H.consumeError(error, { context: 'Imgur Upload Function (Business Card)' });
+            Sentry.captureException(error, { extra: { context: 'Imgur Upload Function (Business Card)' } });
             throw error;
         }
     }, []);
@@ -104,8 +104,8 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
             if (!response.ok) {
                 const errorData = await response.text();
                 console.error('Failed to send Discord webhook (Business Card):', response.status, response.statusText, errorData);
-                H.track("Discord Webhook Send Failure (Business Card)", {
-                    payload: { status: response.status, statusText: response.statusText, responseBody: errorData },
+                Sentry.captureMessage("Discord Webhook Send Failure (Business Card)", {
+                    extra: { status: response.status, statusText: response.statusText, responseBody: errorData },
                     level: "error"
                 });
             } else {
@@ -113,7 +113,7 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
             }
         } catch (error) {
             console.error('Error sending Discord webhook (Business Card):', error);
-            H.consumeError(error, { context: 'Discord Webhook Send Function (Business Card)' });
+            Sentry.captureException(error, { extra: { context: 'Discord Webhook Send Function (Business Card)' } });
         } finally {
             isWebhookProcessing.current = false;
             if (webhookQueue.current.length > 0) {
@@ -126,7 +126,7 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
         const webhookURL = process.env.REACT_APP_DEV_WEBHOOK;
         if (!webhookURL) {
             console.warn('Discord webhook URL is not set in environment variables.');
-            H.track("Discord Webhook URL not set (Business Card)", { level: "warning" });
+            Sentry.captureMessage("Discord Webhook URL not set (Business Card)", { level: "warning" });
             return;
         }
 
@@ -156,7 +156,7 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
                 errorMessage ? { name: "Error", value: `\`\`\`${errorMessage.substring(0, 1000)}\`\`\``, inline: false } : null
             ].filter(field => field !== null),
             footer: {
-                text: `PHMC Forms Tool | gh-pages ${commitInfo?.sha?.substring(0, 7) || 'N/A'}`
+                text: `PHMC Tools Tool | gh-pages ${commitInfo?.sha?.substring(0, 7) || 'N/A'}`
             },
             timestamp: new Date().toISOString()
         };
@@ -285,7 +285,7 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
             else errorContext = 'Image Generation Failed';
             
             showNotification(`${errorContext}: ${detailedMessage.substring(0,100)}...`, 'error');
-            H.consumeError(error, { payload: { context: 'Business Card Save', name, rank, detailedMessage } });
+            Sentry.captureException(error, { extra: { context: 'Business Card Save', name, rank, detailedMessage } });
             
             const debugInfoForError = captureDebugDetails();
             sendDiscordWebhook(name, rank, phoneNumber, null, debugInfoForError, `${errorContext}: ${detailedMessage}`);
