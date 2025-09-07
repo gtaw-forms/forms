@@ -49,7 +49,6 @@ import { sendMissingEmployeeNotification } from './components/notificationServic
 // css fun
 import './App.css';
 import './buttons.css';
-import './buttons.css'
 
 import 'react-bootstrap-typeahead/css/Typeahead.css';
 
