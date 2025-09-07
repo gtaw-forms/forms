@@ -1,21 +1,22 @@
-import React from 'react';
+import React, { useState } from 'react';
+import PrivacyPolicyModal from './PrivacyPolicyModal';
 
 const Footer = () => {
+    const [isPrivacyPolicyModalOpen, setPrivacyPolicyModalOpen] = useState(false);
+
+    const togglePrivacyPolicyModal = () => {
+        setPrivacyPolicyModalOpen(!isPrivacyPolicyModalOpen);
+    };
 
     return (
         <div className="header-info-wrapper">
             <div className="header-info">
-                    <>
-                                             <span className="contact-info">
-                            Privacy Policy: This service stores and collects anonymoized data (Error logs) and saves any Forms you fill out. <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">Google Firebase</a> has it's own privacy policy.
-                        </span>
-
-                         <span className="contact-info">
-                            PROUDLY PROVIDED TO GTA WORLD (EU). ICONS KINDLY PROVIDED BY FLATICON.
-                        </span>
-                    </>
-
+                <span className="contact-info">
+                    PROUDLY PROVIDED TO GTA WORLD (EU). ICONS KINDLY PROVIDED BY FLATICON.
+                </span>
+                <button onClick={togglePrivacyPolicyModal} className="privacy-policy-button">View Privacy Policy</button>
             </div>
+            <PrivacyPolicyModal isOpen={isPrivacyPolicyModalOpen} onClose={togglePrivacyPolicyModal} />
         </div>
     );
 };
