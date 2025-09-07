@@ -883,3 +883,25 @@ input[type="checkbox"] {
   align-items: flex-end; /* Align buttons to the right */
   gap: 10px; /* Space between buttons in this container */
 }
+
+/* Floating "Moved" Notification */
+.floating-moved-notification {
+  position: fixed;
+  bottom: 70px; /* Adjust as needed */
+  background-color: orange;
+  color: white;
+  padding: 10px 15px;
+  border-radius: 5px;
+  z-index: 1051; /* Above other notifications */
+  animation: soft-flash 1.5s infinite;
+  font-weight: bold;
+}
+
+@keyframes soft-flash {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}

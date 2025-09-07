@@ -28,6 +28,7 @@ import { DataProvider } from './contexts/DataContext';
 import FeatureRequestModal from './contexts/FeatureRequestModal';
 import FormImageLink from './components/FormImageLink';
 import SwitchableFormButtons from './components/SwitchableFormButtons';
+import PrivacyPolicyModal from './components/PrivacyPolicyModal';
 // import ServiceUnavailable from './components/ServiceUnavailable';
 
 // 
@@ -47,6 +48,7 @@ import { sendMissingEmployeeNotification } from './components/notificationServic
 
 // css fun
 import './App.css';
+import './buttons.css';
 import './buttons.css'
 
 import 'react-bootstrap-typeahead/css/Typeahead.css';
@@ -65,7 +67,22 @@ function AppContent({
     removeNotification,
     setShowAdblockNotification
 }) {
+    const [showPrivacyPolicyModal, setShowPrivacyPolicyModal] = useState(false);
+
+    useEffect(() => {
+        const hasAcceptedPrivacyPolicy = localStorage.getItem('hasAcceptedPrivacyPolicy');
+        if (!hasAcceptedPrivacyPolicy) {
+            setShowPrivacyPolicyModal(true);
+        }
+    }, []);
+
+    const handlePrivacyPolicyConfirm = () => {
+        localStorage.setItem('hasAcceptedPrivacyPolicy', 'true');
+        setShowPrivacyPolicyModal(false);
+    };
     const [isMobile, setIsMobile] = useState(false);
+    const [showMovedNotification, setShowMovedNotification] = useState(true);
+    const [showToolsDropdown, setShowToolsDropdown] = useState(false);
     const modalCloseTimer = useRef(null);
     const [showImages, setShowImages] = useState(false);
     const [showEmsBingoModal, setShowEmsBingoModal] = useState(false);
@@ -379,6 +396,13 @@ function AppContent({
         }
         return "Untitled Report";
     };
+        useEffect(() => {
+        const timer = setTimeout(() => {
+            setShowMovedNotification(false);
+        }, 5000); // Hides after 5 seconds
+        return () => clearTimeout(timer);
+    }, []);
+
 const getBBCodeContent = () => {
     const definition = getFormDefinition(bbCodeVersion);
 
@@ -422,7 +446,7 @@ const getBBCodeContent = () => {
     } else {
         Sentry.captureMessage(`No BBCode generator found for version: ${bbCodeVersion}`);
         const formName = (getFormDefinition(bbCodeVersion) || {}).name || `Form v${bbCodeVersion}`;
-        return `BBCode generation for form "${formName}" is not implemented.`;
+        return `BBCode generation for form \"${formName}\" is not implemented.`;
     }
 };
         const initialLoadFormData = () => {
@@ -1445,8 +1469,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
         return (
             
         <div className="App">
-{/*             <ServiceUnavailable />
- */}            
+            <PrivacyPolicyModal isOpen={showPrivacyPolicyModal} onClose={handlePrivacyPolicyConfirm} />
  <AgencyGroupSelectorModal
                 show={showAgencyGroupSelectorModal && !selectedAgencyGroup}
                 onSelectGroup={handleSelectAgencyGroup}
@@ -1535,22 +1558,27 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 <div className="button-group">
 
         <div className="floating-tools-container">
-            <Dropdown drop="up">
+            {showMovedNotification && (
+                <div className="floating-moved-notification">
+                    I'm new!
+                </div>
+            )}
+            <Dropdown drop="up" show={showToolsDropdown} onToggle={(isOpen) => setShowToolsDropdown(isOpen)}>
                 <Dropdown.Toggle variant="secondary" id="dropdown-tools">
                     <i className="fas fa-tools"></i> Tools
                 </Dropdown.Toggle>
 
                 <Dropdown.Menu>
-                    <Dropdown.Item onClick={() => setShowEmployeeModal(true)}>
+                    <Dropdown.Item onClick={() => {setShowEmployeeModal(true); setShowToolsDropdown(false);}}>
                         <i className="fas fa-users-cog"></i> Manage PHMC Staff
                     </Dropdown.Item>
-                    <Dropdown.Item onClick={() => setShowFeatureRequestModal(true)}>
+                    <Dropdown.Item onClick={() => {setShowFeatureRequestModal(true); setShowToolsDropdown(false);}}>
                         <i className="fas fa-bug"></i> Report Bug/Feature
                     </Dropdown.Item>
-                    <Dropdown.Item onClick={toggleSavedReports}>
+                    <Dropdown.Item onClick={() => {toggleSavedReports(); setShowToolsDropdown(false);}}>
                         <i className="fas fa-save"></i> Saved Reports
                     </Dropdown.Item>
-                    <Dropdown.Item onClick={toggleEmsAmaModal}>
+                    <Dropdown.Item onClick={() => {toggleEmsAmaModal(); setShowToolsDropdown(false);}}>
                         <i className="fa-solid fa-truck-medical"></i> EMS AMA
                     </Dropdown.Item>
                     <Dropdown.Divider />
@@ -1558,6 +1586,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                         localStorage.removeItem('selectedAgencyGroup');
                         setSelectedAgencyGroup(null);
                         setShowAgencyGroupSelectorModal(true);
+                        setShowToolsDropdown(false);
                     }}>
                         <i className="fas fa-users"></i> Switch Form Type
                     </Dropdown.Item>
