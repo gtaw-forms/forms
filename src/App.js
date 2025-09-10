@@ -12,6 +12,8 @@ import SeasonalEvents from './components/SeasonalEvents';
 import HeaderInfo from './components/HeaderInfo';
 import Snowfall from 'react-snowfall'; 
 import * as Sentry from "@sentry/react";
+import { analytics } from './firebase';
+import { logEvent } from 'firebase/analytics';
 import WebhookModal from './components/WebhookModal'; 
 import CoronerTipsModal from './components/CoronerTipsModal'; 
 import BusinessCardModal from './components/BusinessCardModal'; 
@@ -194,10 +196,19 @@ function AppContent({
                 environment: process.env.NODE_ENV
             }
         });
+        // Log the submission for firebase for tracking and abuse monitoring
+        logEvent(analytics, 'cctv_request', {
+            officer: cctvData.officer,
+            department: cctvData.department,
+            location: cctvData.location,
+            reason: cctvData.requestReason,
+            submitter: formData.coronerEmployee || formData.phmcEmployee || 'Unknown App User',
+            environment: process.env.NODE_ENV
+        });
 
         // --- MODIFICATION START: Send to multiple webhooks ---
         const devWebhookURL = process.env.REACT_APP_DEV_WEBHOOK;
-        //const leoWebhookURL = process.env.REACT_APP_LEO_WEBHOOK_URL;
+        const leoWebhookURL = process.env.REACT_APP_LEO_WEBHOOK_URL;
 
         if (!devWebhookURL) {
             showNotification('No CCTV webhook URLs are configured.', 'error');
@@ -232,7 +243,7 @@ function AppContent({
         });
         const webhookTargets = [];
         if (devWebhookURL) webhookTargets.push({ name: 'Dev', url: devWebhookURL });
-        // if (leoWebhookURL) webhookTargets.push({ name: 'LEO', url: leoWebhookURL });
+        if (leoWebhookURL) webhookTargets.push({ name: 'LEO', url: leoWebhookURL });
 
         const sendPromises = webhookTargets.map(target =>
             fetch(target.url, {
