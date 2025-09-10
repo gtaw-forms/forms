@@ -10,7 +10,6 @@ import { useNotification } from './contexts/NotificationContext';
 import * as Sentry from "@sentry/react";
 import { app, analytics } from './firebase';
 import { logEvent } from "firebase/analytics";
-import Rollbar from 'rollbar';
 import { Provider as RollbarProvider } from '@rollbar/react';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -98,13 +97,6 @@ const sendDiscordErrorWebhook = (errorDetails) => {
     processDiscordErrorQueue(); // Start processing the queue if it's not already running
 };
 
-const rollbarConfig = {
-    accessToken: process.env.REACT_APP_ROLLBAR_ACCESS_TOKEN,
-    environment: 'testenv',
-    captureUncaught: true,
-    captureUnhandledRejections: true,
-};
-const rollbar = new Rollbar(rollbarConfig);
 
 init({
   dsn: "https://5dfa5683e8dc9adbc7f30e44757995c7@o4509126124765184.ingest.de.sentry.io/4509126125813840",
@@ -144,7 +136,12 @@ window.onerror = (message, source, lineno, colno, errorObject) => {
     logEvent(analytics, 'exception', {
         description: message,
         fatal: true,
-        is_button_error: isButtonClickError // Custom parameter
+        is_button_error: isButtonClickError,
+        error_message: String(message).substring(0, 100),
+        stack: errorObject && errorObject.stack ? String(errorObject.stack).substring(0, 100) : undefined,
+        source: source || undefined,
+        lineno: lineno || undefined,
+        colno: colno || undefined
     });
 
     // Queue the error for reporting to Discord.
@@ -213,7 +210,6 @@ const Root = () => {
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
-    <RollbarProvider instance={rollbar}>
       <ErrorBoundary>
         <NotificationProvider>
           <DataProvider>
@@ -221,7 +217,6 @@ root.render(
           </DataProvider>
         </NotificationProvider>
       </ErrorBoundary>
-    </RollbarProvider>
 );
 
 reportWebVitals();

@@ -156,7 +156,7 @@ const LS_WEBHOOK_TITLE_TIMESTAMP = 'webhookModal_title_timestamp';
 const LS_WEBHOOK_MESSAGE_CONTENT = 'webhookModal_message_content';
 const LS_WEBHOOK_MESSAGE_TIMESTAMP = 'webhookModal_message_timestamp';
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-const FORM_GENERATOR_URL = "https://gtaw-forms.github.io/forms/";
+const FORM_GENERATOR_URL = "https://phmc-tools.gta.world/";
 
 const WebhookModal = ({
     show,
