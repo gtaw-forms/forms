@@ -343,7 +343,7 @@ const WebhookModal = ({
             embedFields.push({ name: "[Delayed Updates] Form Generator Link", value: FORM_GENERATOR_URL, inline: false });
         }
         if (ALTERNATIVE_FORM_GENERATOR_URL) {
-            embedFields.push({ name: "[Recommended] Alternative Form Generator Link", value: ALTERNATIVE_FORM_GENERATOR_URL, inline: false });
+            embedFields.push({ name: "Alternative Form Generator Link", value: ALTERNATIVE_FORM_GENERATOR_URL, inline: false });
         }
         const embed = {
             title: title || "PHMC Form Generator Notification",
