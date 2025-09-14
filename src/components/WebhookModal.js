@@ -157,6 +157,7 @@ const LS_WEBHOOK_MESSAGE_CONTENT = 'webhookModal_message_content';
 const LS_WEBHOOK_MESSAGE_TIMESTAMP = 'webhookModal_message_timestamp';
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const FORM_GENERATOR_URL = "https://phmc-tools.gta.world/";
+const ALTERNATIVE_FORM_GENERATOR_URL = "https://gtaw-forms.github.io/forms/";
 
 const WebhookModal = ({
     show,
@@ -339,7 +340,10 @@ const WebhookModal = ({
         }
         const embedFields = [];
         if (FORM_GENERATOR_URL) {
-            embedFields.push({ name: "Form Generator Link", value: FORM_GENERATOR_URL, inline: false });
+            embedFields.push({ name: "(Delayed Updates) Form Generator Link", value: FORM_GENERATOR_URL, inline: false });
+        }
+        if (ALTERNATIVE_FORM_GENERATOR_URL) {
+            embedFields.push({ name: "(Recommended) Alternative Form Generator Link", value: ALTERNATIVE_FORM_GENERATOR_URL, inline: false });
         }
         const embed = {
             title: title || "PHMC Form Generator Notification",
