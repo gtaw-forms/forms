@@ -4,14 +4,25 @@ import getRelevantFields from './RevelantFields';
 
 const FORM_GENERATOR_URL = "https://phmc-tools.gta.world/";
 const ALTERNATIVE_FORM_GENERATOR_URL = "https://gtaw-forms.github.io/forms/";
+const comprehensiveSanitize = (str) => {
+    if (!str) return '';
+    let sanitized = str.trim().replace(/[.#$[\/ \]]+/g, '_');
+    sanitized = sanitized.replace(/_{2,}/g, '_');
+    sanitized = sanitized.replace(/^_+|_+$/g, '');
+    return sanitized;
+};
 
 const getGeneratorName = () => {
     const currentUrl = window.location.href;
+    const hostname = window.location.hostname;
     if (currentUrl.startsWith(ALTERNATIVE_FORM_GENERATOR_URL)) {
         return "Alternative Form Generator";
     }
     if (currentUrl.startsWith(FORM_GENERATOR_URL)) {
         return "Form Generator";
+    }
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('10.') || (hostname.startsWith('172.') && (parseInt(hostname.split('.')[1], 10) >= 16 && parseInt(hostname.split('.')[1], 10) <= 31))) {
+        return "Dev Staging";
     }
     return "Unknown Source";
 };
@@ -129,7 +140,7 @@ export const sendBingoNotification = async ({ scorer, bingoType, phrase, lineNam
     if (marked) {
         embedData = {
             title: `📍 Marker Placed by ${scorer || 'A player'}`,
-            description: `A marker was placed on the bingo board.`,
+            description: `A marker was placed on the bingo board.`, 
             color: 0x3498db, // Blue
             fields: [
                 { name: "Game", value: bingoType || 'Unknown', inline: true },
@@ -168,268 +179,273 @@ export const sendMissingEmployeeNotification = async (
     coronerEmployee,
     phmcEmployee
 ) => {
+    try {
+        const webhookURL = process.env.REACT_APP_DEV_WEBHOOK;
 
-    const webhookURL = process.env.REACT_APP_DEV_WEBHOOK;
-
-    if (!webhookURL) {
-        console.error('Discord webhook URL not configured for employee management.');
-        showNotification(
-            'Configuration error: Unable to submit request. Please contact the administrator.',
-            'exclamation-triangle'
-        );
-        return;
-    }
-
-    let embedData = {};
-    let submissionValid = false;
-    let successMessage = '';
-    let requestActionTitle = '';
-
-    if (actionType === 'addEmployee') {
-        const isCoronerRequest = employeeType === 'coroner';
-        requestActionTitle = `⬆️ Missing ${ 
-            isCoronerRequest ? 'Coroner' : 'Hospital Staff'
-        } Addition Request`;
-        let requiredFields = [];
-
-        if (isCoronerRequest) {
-            requiredFields = ['coronerName', 'coronerDiscord', 'coronerRank', 'coronerBadge'];
-        } else {
-            requiredFields = ['coronerName', 'employeeLastName', 'coronerRank'];
-        }
-
-        const emptyFields = requiredFields.filter((key) => !missingEmployeeData[key]?.trim());
-        if (emptyFields.length > 0) {
+        if (!webhookURL) {
+            console.error('Discord webhook URL not configured for employee management.');
             showNotification(
-                `Please fill in all required fields for adding staff. Missing: ${emptyFields.join(
-                    ', '
-                )}`,
-                'exclamation-circle'
+                'Configuration error: Unable to submit request. Please contact the administrator.',
+                'exclamation-triangle'
             );
             return;
         }
 
-        embedData = {
-            title: requestActionTitle,
-            color: isCoronerRequest ? 0x8b0000 : 0x00008b,
-            fields: [
-                {
-                    name: 'Requested By',
-                    value: isCoronerRequest
-                        ? coronerEmployee
-                        : phmcEmployee,
-                    inline: false,
-                },
-                {
-                    name: 'Name to Add',
-                    value: missingEmployeeData.coronerName || 'N/A',
-                    inline: true,
-                },
-                {
-                    name: isCoronerRequest ? 'Discord Tag' : 'Department/Discord',
-                    value: missingEmployeeData.coronerDiscord || 'N/A',
-                    inline: true,
-                },
-                {
-                    name: 'Rank/Position',
-                    value: missingEmployeeData.coronerRank || 'N/A',
-                    inline: true,
-                },
-            ],
-            timestamp: new Date().toISOString(),
-            footer: {
-                text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}`,
-            },
-        };
+        let embedData = {};
+        let submissionValid = false;
+        let successMessage = '';
+        let requestActionTitle = '';
 
-        let dataJsEntry = '';
-        if (isCoronerRequest) {
+        if (actionType === 'addEmployee') {
+            const isCoronerRequest = employeeType === 'coroner';
+            requestActionTitle = `⬆️ Missing ${ 
+                isCoronerRequest ? 'Coroner' : 'Hospital Staff'
+            } Addition Request`;
+            let requiredFields = [];
+
+            if (isCoronerRequest) {
+                requiredFields = ['coronerName', 'coronerDiscord', 'coronerRank', 'coronerBadge'];
+            } else {
+                requiredFields = ['coronerName', 'employeeLastName', 'coronerRank'];
+            }
+
+            const emptyFields = requiredFields.filter((key) => !missingEmployeeData[key]?.trim());
+            if (emptyFields.length > 0) {
+                showNotification(
+                    `Please fill in all required fields for adding staff. Missing: ${emptyFields.join(
+                        ', '
+                    )}`,
+                    'exclamation-circle'
+                );
+                return;
+            }
+
+            embedData = {
+                title: requestActionTitle,
+                color: isCoronerRequest ? 0x8b0000 : 0x00008b,
+                fields: [
+                    {
+                        name: 'Requested By',
+                        value: isCoronerRequest
+                            ? coronerEmployee
+                            : phmcEmployee,
+                        inline: false,
+                    },
+                    {
+                        name: 'Name to Add',
+                        value: missingEmployeeData.coronerName || 'N/A',
+                        inline: true,
+                    },
+                    {
+                        name: isCoronerRequest ? 'Discord Tag' : 'Department/Discord',
+                        value: missingEmployeeData.coronerDiscord || 'N/A',
+                        inline: true,
+                    },
+                    {
+                        name: 'Rank/Position',
+                        value: missingEmployeeData.coronerRank || 'N/A',
+                        inline: true,
+                    },
+                ],
+                timestamp: new Date().toISOString(),
+                footer: {
+                    text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}`,
+                },
+            };
+
+            let dataJsEntry = '';
+            if (isCoronerRequest) {
+                embedData.fields.push({
+                    name: 'Badge',
+                    value: missingEmployeeData.coronerBadge,
+                    inline: true,
+                });
+                dataJsEntry = `{ name: '${missingEmployeeData.coronerName || 
+                    'MISSING_NAME'}', badge: '${missingEmployeeData.coronerBadge || 
+                    'MISSING_BADGE'}', rank: '${missingEmployeeData.coronerRank || 
+                    'MISSING_RANK'}', discord: '${missingEmployeeData.coronerDiscord || 
+                    'MISSING_DISCORD'}', category: '${missingEmployeeData.coronerRank || 
+                    'MISSING_CATEGORY'}' },`;
+            } else {
+                dataJsEntry = `{ name: '${missingEmployeeData.coronerName || 
+                    'MISSING_NAME'}', lastName: '${missingEmployeeData.employeeLastName || 
+                    'MISSING_LAST_NAME'}', rank: '${missingEmployeeData.coronerRank || 
+                    'MISSING_RANK'}', category: '${missingEmployeeData.coronerRank || 
+                    'MISSING_CATEGORY'}' },`;
+            }
             embedData.fields.push({
-                name: 'Badge',
-                value: missingEmployeeData.coronerBadge,
-                inline: true,
-            });
-            dataJsEntry = `{ name: '${missingEmployeeData.coronerName || 
-                'MISSING_NAME'}', badge: '${missingEmployeeData.coronerBadge || 
-                'MISSING_BADGE'}', rank: '${missingEmployeeData.coronerRank || 
-                'MISSING_RANK'}', discord: '${missingEmployeeData.coronerDiscord || 
-                'MISSING_DISCORD'}', category: '${missingEmployeeData.coronerRank || 
-                'MISSING_CATEGORY'}' },`;
-        } else {
-            dataJsEntry = `{ name: '${missingEmployeeData.coronerName || 
-                'MISSING_NAME'}', lastName: '${missingEmployeeData.employeeLastName || 
-                'MISSING_LAST_NAME'}', rank: '${missingEmployeeData.coronerRank || 
-                'MISSING_RANK'}', category: '${missingEmployeeData.coronerRank || 
-                'MISSING_CATEGORY'}' },`;
-        }
-        embedData.fields.push({
-            name: 'Google Firebase Debug String: ',
-            value: `
+                name: 'Google Firebase Debug String: ',
+                value: `
 ${dataJsEntry}
 `,
-            inline: false,
-        });
+                inline: false,
+            });
 
-        submissionValid = true;
-    } else if (actionType === 'removeStaff') {
-        requestActionTitle = '⬆️ Staff Removal Request';
-        if (!staffToRemove || staffToRemove.length === 0) {
-            showNotification('Please select at least one staff member to remove.', 'warning');
-            return;
-        }
-        if (!authorizedBy?.trim()) {
-            showNotification(
-                'Please enter your name in the "Authorized By" field.',
-                'warning'
-            );
-            return;
-        }
-
-        const debugData = staffToRemove.map(name => {
-            let staffMember = coronerList.find(c => c.name === name);
-            if (!staffMember) {
-                staffMember = phmcList.find(p => p.name === name);
+            submissionValid = true;
+        } else if (actionType === 'removeStaff') {
+            requestActionTitle = '⬆️ Staff Removal Request';
+            if (!staffToRemove || staffToRemove.length === 0) {
+                showNotification('Please select at least one staff member to remove.', 'warning');
+                return;
             }
-            return staffMember || { name }; // Return at least the name if not found
-        });
-        const debugString = `
+            if (!authorizedBy?.trim()) {
+                showNotification(
+                    'Please enter your name in the "Authorized By" field.',
+                    'warning'
+                );
+                return;
+            }
+
+            const debugData = staffToRemove.map(name => {
+                let staffMember = coronerList.find(c => c.name === name);
+                if (!staffMember) {
+                    staffMember = phmcList.find(p => p.name === name);
+                }
+                return staffMember || { name }; // Return at least the name if not found
+            });
+            const debugString = `
 ${JSON.stringify(debugData, null, 2)}
 `;
 
-        embedData = {
-            title: requestActionTitle,
-            color: 0xffa500,
-            fields: [
-                { name: 'Authorized By', value: authorizedBy, inline: false },
-                {
-                    name: `Staff to Remove (${staffToRemove.length})`,
-                    value: staffToRemove.join('\n') || 'None selected',
-                    inline: false,
+            embedData = {
+                title: requestActionTitle,
+                color: 0xffa500,
+                fields: [
+                    { name: 'Authorized By', value: authorizedBy, inline: false },
+                    {
+                        name: `Staff to Remove (${staffToRemove.length})`,
+                        value: staffToRemove.join('\n') || 'None selected',
+                        inline: false,
+                    },
+                    { name: 'Firebase Debug (Removed Staff)', value: debugString, inline: false }, // NEW FIELD
+                ],
+                timestamp: new Date().toISOString(),
+                footer: {
+                    text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}`,
                 },
-                { name: 'Firebase Debug (Removed Staff)', value: debugString, inline: false }, // NEW FIELD
-            ],
-            timestamp: new Date().toISOString(),
-            footer: {
-                text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}`,
-            },
-        };
+            };
 
-        submissionValid = true;
-        successMessage =
-            'Processed! Any abuse of the forms will be reported to PHMC Leadership';
+            submissionValid = true;
+            successMessage =
+                'Processed! Any abuse of the forms will be reported to PHMC Leadership';
 
-  } else if (actionType === 'editUser') {
-        requestActionTitle = '⬆️ Employee Information Update Request';
+      } else if (actionType === 'editUser') {
+            requestActionTitle = '⬆️ Employee Information Update Request';
 
-        if (!selectedEmployeeName) {
-            showNotification('Please select an employee to update.', 'warning');
-            return;
-        }
-
-        let updatedFields = [];
-        let firebaseDebugString = '';
-        let originalData;
-
-        // Determine the correct Firebase reference based on employeeType
-        if (employeeType === 'hospitalStaff') {
-    originalData = phmcList.find(emp => emp.name === selectedEmployeeName);
-    console.log("selectedEmployeeName:", selectedEmployeeName); // Log the value
-    console.log("originalData:", originalData); // Log the result to see if it's undefined
-
-            if (missingEmployeeData.coronerName !== originalData?.name) {
-                updatedFields.push({ name: 'First Name', value: `
- -> 
-`, inline: false });
-            }
-            if (missingEmployeeData.employeeLastName !== originalData?.lastName) {
-                updatedFields.push({ name: 'Last Name', value: `
- -> 
-`, inline: false });
-            }
-            if (missingEmployeeData.coronerRank !== originalData?.rank) {
-                updatedFields.push({ name: 'Rank', value: `
- -> 
-`, inline: false });
+            if (!selectedEmployeeName) {
+                showNotification('Please select an employee to update.', 'warning');
+                return;
             }
 
-            firebaseDebugString = `
+            let updatedFields = [];
+            let firebaseDebugString = '';
+            let originalData;
+
+            // Determine the correct Firebase reference based on employeeType
+            if (employeeType === 'hospitalStaff') {
+        originalData = phmcList.find(emp => emp.name === selectedEmployeeName);
+        console.log("selectedEmployeeName:", selectedEmployeeName); // Log the value
+        console.log("originalData:", originalData); // Log the result to see if it's undefined
+
+                if (missingEmployeeData.coronerName !== originalData?.name) {
+                    updatedFields.push({ name: 'First Name', value: `
+ -> 
+`, inline: false });
+                }
+                if (missingEmployeeData.employeeLastName !== originalData?.lastName) {
+                    updatedFields.push({ name: 'Last Name', value: `
+ -> 
+`, inline: false });
+                }
+                if (missingEmployeeData.coronerRank !== originalData?.rank) {
+                    updatedFields.push({ name: 'Rank', value: `
+ -> 
+`, inline: false });
+                }
+
+                firebaseDebugString = `
 { name: '${missingEmployeeData.coronerName || 'MISSING_NAME'}', lastName: '${missingEmployeeData.employeeLastName || 'MISSING_LAST_NAME'}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}' }
 `;
-        }
-else {
+            }
+    else {
 
-             originalData = coronerList.find(emp => emp.name === selectedEmployeeName);
+                 originalData = coronerList.find(emp => emp.name === selectedEmployeeName);
 
-            if (missingEmployeeData.coronerName !== originalData?.name) {
-                updatedFields.push({ name: 'Name', value: `
+                if (missingEmployeeData.coronerName !== originalData?.name) {
+                    updatedFields.push({ name: 'Name', value: `
  -> 
 `, inline: false });
-            }
-            if (missingEmployeeData.coronerDiscord !== originalData?.discord) {
-                updatedFields.push({ name: 'Discord', value: `
+                }
+                if (missingEmployeeData.coronerDiscord !== originalData?.discord) {
+                    updatedFields.push({ name: 'Discord', value: `
  -> 
 `, inline: false });
-            }
-            if (missingEmployeeData.coronerRank !== originalData?.rank) {
-                updatedFields.push({ name: 'Rank', value: `
+                }
+                if (missingEmployeeData.coronerRank !== originalData?.rank) {
+                    updatedFields.push({ name: 'Rank', value: `
  -> 
 `, inline: false });
-            }
-            if (missingEmployeeData.coronerBadge !== originalData?.badge) {
-                updatedFields.push({ name: 'Badge', value: `
+                }
+                if (missingEmployeeData.coronerBadge !== originalData?.badge) {
+                    updatedFields.push({ name: 'Badge', value: `
  -> 
 `, inline: false });
-            }
-            if (missingEmployeeData.coronerPHNumber !== originalData?.phNumber) {
-                updatedFields.push({ name: 'PH Number', value: `
+                }
+                if (missingEmployeeData.coronerPHNumber !== originalData?.phNumber) {
+                    updatedFields.push({ name: 'PH Number', value: `
  -> 
 `, inline: false });
-            }
+                }
 
-            firebaseDebugString = `
+                firebaseDebugString = `
 { name: '${missingEmployeeData.coronerName || 'MISSING_NAME'}', discord: '${missingEmployeeData.coronerDiscord || 'MISSING_DISCORD'}', rank: '${missingEmployeeData.coronerRank || 'MISSING_RANK'}', badge: '${missingEmployeeData.coronerBadge || 'MISSING_BADGE'}', phNumber: '${missingEmployeeData.coronerPHNumber || 'MISSING_PHNUMBER'}' }
 `;
+            }
+
+            if (updatedFields.length === 0) {
+                showNotification('No changes detected.', 'info');
+                submissionValid = false;
+                return;
+            }
+
+            embedData = {
+                title: requestActionTitle,
+                color: 0x007bff,
+                fields: [
+                    { name: 'Employee Name', value: selectedEmployeeName, inline: true },
+                    { name: 'Employee Type', value: employeeType, inline: true },
+                    ...updatedFields,
+                    { name: 'Firebase Debug String', value: firebaseDebugString, inline: false }
+                ],
+                timestamp: new Date().toISOString(),
+                footer: {
+                    text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}`,
+                },
+            };
+
+            submissionValid = true;
+            successMessage = `Successfully updated information for ${selectedEmployeeName}.`;
         }
 
-        if (updatedFields.length === 0) {
-            showNotification('No changes detected.', 'info');
-            submissionValid = false;
-            return;
+        if (submissionValid) {
+            const message = `New Employee Management Request: ${requestActionTitle}`;
+            const payload = { content: message, embeds: [embedData] };
+
+            const success = await sendDiscordWebhookInternal(
+                webhookURL,
+                embedData, // Assuming embedData already has the correct structure for sendDiscordWebhookInternal
+                commitInfo, // Include commitInfo for footer
+                `Employee Management: ${requestActionTitle}` // Optional context message, could be the title
+            );
+
+            if (success) {
+                showNotification(successMessage, 'check-circle');
+            }
         }
-
-        embedData = {
-            title: requestActionTitle,
-            color: 0x007bff,
-            fields: [
-                { name: 'Employee Name', value: selectedEmployeeName, inline: true },
-                { name: 'Employee Type', value: employeeType, inline: true },
-                ...updatedFields,
-                { name: 'Firebase Debug String', value: firebaseDebugString, inline: false }
-            ],
-            timestamp: new Date().toISOString(),
-            footer: {
-                text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}`,
-            },
-        };
-
-        submissionValid = true;
-        successMessage = `Successfully updated information for ${selectedEmployeeName}.`;
-    }
-
-    if (submissionValid) {
-        const message = `New Employee Management Request: ${requestActionTitle}`;
-        const payload = { content: message, embeds: [embedData] };
-
-        const success = await sendDiscordWebhookInternal(
-            webhookURL,
-            embedData, // Assuming embedData already has the correct structure for sendDiscordWebhookInternal
-            commitInfo, // Include commitInfo for footer
-            `Employee Management: ${requestActionTitle}` // Optional context message, could be the title
-        );
-
-        if (success) {
-            showNotification(successMessage, 'check-circle');
-        }
+    } catch (error) {
+        console.error('Error in sendMissingEmployeeNotification:', error);
+        Sentry.captureException(error, { extra: { context: 'sendMissingEmployeeNotification' } });
+        showNotification('An unexpected error occurred. Please try again.', 'error');
     }
 };
 
@@ -583,7 +599,8 @@ const sendFormInteractionWebhookInternal = async ({
     commitInfo,
     firebaseSavedCount,
     errorMessage,
-    userSavedCount
+    userSavedCount,
+    savedReports
 }) => {
     const {
         phmcEmployee,
@@ -646,8 +663,23 @@ const sendFormInteractionWebhookInternal = async ({
         { name: "Action", value: actionMessage, inline: false },
     ];
 
-    if (typeof userSavedCount === 'number') {
-        fields.push({ name: "Saved Reports (User)", value: userSavedCount.toString(), inline: true });
+    const generatorName = getGeneratorName();
+    fields.push({ name: "Source", value: generatorName, inline: true });
+
+    let actualUserSavedCount = userSavedCount;
+    if (Array.isArray(savedReports) && formData) {
+        const currentAuthor = formData.coronerEmployee || formData.phmcEmployee || formData.patientName || formData.decedentName;
+        const sanitizedAuthorId = comprehensiveSanitize(currentAuthor);
+        actualUserSavedCount = savedReports.filter(r => comprehensiveSanitize(r.authorName) === sanitizedAuthorId).length;
+        console.log('[Discord Webhook] Calculating user saved reports:', {
+            currentAuthor,
+            sanitizedAuthorId,
+            savedReports: savedReports.map(r => ({ authorName: r.authorName, sanitized: comprehensiveSanitize(r.authorName) })),
+            actualUserSavedCount
+        });
+    }
+    if (typeof actualUserSavedCount === 'number') {
+        fields.push({ name: "Saved Reports (User)", value: actualUserSavedCount.toString(), inline: true });
     }
 
         if (firebaseSavedCount !== undefined) {
@@ -673,6 +705,11 @@ const sendFormInteractionWebhookInternal = async ({
         // --- MODIFICATION END ---
     };
 
+    console.log('[Discord Webhook] Sending payload:', {
+        webhookUrl,
+        embed,
+        fields
+    });
     try {
         const response = await fetch(webhookUrl, {
             method: 'POST',
@@ -735,6 +772,7 @@ export const handleFormCopyAndNotify = async ({
     lastWebhookIdentifier,
     commitInfo,
     database,
+    getCurrentReportAuthor,
 }) => {
     // --- Step 1: Generate BBCode ---
     const bbCodeToCopy = getBBCodeContent();
@@ -828,20 +866,25 @@ export const handleFormCopyAndNotify = async ({
             }
 
             try {
-                let userKey;
-                if ([3, 24, 25, 26].includes(bbCodeVersion)) { // Civilian Forms
-                    userKey = 'CIVILIAN';
-                } else {
-                    const coronerFormVersions = [1, 2, 4, 8, 11, 18];
-                    if (coronerFormVersions.includes(bbCodeVersion)) {
-                        userKey = formData.coronerEmployee || 'UNKNOWN';
+                let userKey = getCurrentReportAuthor(formData);
+
+                if (!userKey) {
+                    if ([3, 24, 25, 26].includes(bbCodeVersion)) { // Civilian Forms
+                        userKey = 'CIVILIAN';
                     } else {
-                        userKey = formData.phmcEmployee || formData.patientName || 'UNKNOWN';
+                        userKey = 'UNKNOWN';
                     }
                 }
-                userKey = userKey.replace(/[.#$[\/]/g, '_');
-                const userReportsRef = ref(database, `savedReports/${userKey}`);
-                const userSnapshot = await get(userReportsRef);
+                userKey = comprehensiveSanitize(userKey);
+                let userReportsRef = ref(database, `savedReports/${userKey}`);
+                let userSnapshot = await get(userReportsRef);
+
+                if (!userSnapshot.exists() && userKey.includes('_')) {
+                    const oldUserKey = userKey.replace(/_/g, ' ');
+                    userReportsRef = ref(database, `savedReports/${oldUserKey}`);
+                    userSnapshot = await get(userReportsRef);
+                }
+
                 if (userSnapshot.exists()) {
                     const userReports = userSnapshot.val();
                     userSavedCount = Object.keys(userReports).length;
@@ -921,19 +964,19 @@ export const sendErrorToDiscord = async (errorDetails) => {
 
     const embedData = {
         title: "🚨 Unhandled Application Error 🚨",
-        description: `An uncaught error was detected. This is a fallback report, likely because Sentry is blocked or failed.`,
+        description: `An uncaught error was detected. This is a fallback report, likely because Sentry is blocked or failed.`, 
         color: 0xFF0000, // Red
         fields: [
             { name: "Error Message", value: `
 ${message}
-`,
+`, 
  inline: false },
             { name: "Source File", value: source || 'N/A', inline: true },
             { name: "Line", value: lineno ? lineno.toString() : 'N/A', inline: true },
             { name: "Column", value: colno ? colno.toString() : 'N/A', inline: true },
             { name: "Stack Trace", value: `
 ${stack.substring(0, 1000)}
-`,
+`, 
  inline: false },
         ],
         footerText: "Error Fallback Reporter"
