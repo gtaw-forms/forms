@@ -12,6 +12,7 @@ import ReviewPhraseRequestsModal from './ReviewPhraseRequestsModal';
 import * as Sentry from "@sentry/react";
 import CctvRequestWebhookModal from './CctvRequestWebhookModal'; // Import the new modal
 import MarkdownBBCodeModal from '../MarkdownBBCodeModal';
+import UserManagementModal from './UserManagementModal';
 
 const CrashingComponent = () => {
     throw new Error("This is a test error to check the Error Boundary.");
@@ -175,6 +176,7 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
     const [devWebhookMessage, setDevWebhookMessage] = useState(''); // New state
     const [showCctvWebhookModal, setShowCctvWebhookModal] = useState(false);
     const [showCrashingComponent, setShowCrashingComponent] = useState(false);
+    const [showUserManagementModal, setShowUserManagementModal] = useState(false);
 
     const prevUserUidRef = useRef(null);
 
@@ -1116,6 +1118,11 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 <i className="fas fa-inbox"></i> Review Phrase Requests
             </Button>
             <p className="text-muted small mt-1">"Generate Card" and "Clear Log" apply to the selected Bingo type. Phrase editing is also type-specific.</p>
+            <hr />
+            <h5>User Management</h5>
+            <Button variant="primary" onClick={() => setShowUserManagementModal(true)}>
+                <i className="fas fa-users-cog"></i> Manage Users
+            </Button>
             
             <hr />
             <Button variant="info" onClick={handleOpenAdminCustomWebhookModal} className="mt-3 me-2">
@@ -1237,6 +1244,12 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 showNotification={showInAppNotification}
             />
 
+            <UserManagementModal
+                show={showUserManagementModal}
+                onHide={() => setShowUserManagementModal(false)}
+                database={database}
+                showNotification={showInAppNotification}
+            />
         </div>
     );
 };
