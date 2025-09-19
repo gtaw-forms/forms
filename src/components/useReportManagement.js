@@ -4,6 +4,14 @@ import { database } from '../firebase'; // Assuming this path
 import { ref, get, set, remove } from 'firebase/database';
 import * as Sentry from "@sentry/react";
 
+const comprehensiveSanitize = (str) => {
+    if (!str) return '';
+    let sanitized = str.trim().replace(/[.#$[\/ \]]+/g, '_');
+    sanitized = sanitized.replace(/_{2,}/g, '_');
+    sanitized = sanitized.replace(/^_+|_+$/g, '');
+    return sanitized;
+};
+
 export const useReportManagement = (
     formData,
     setFormData,
@@ -169,7 +177,7 @@ export const useReportManagement = (
             return { success: false, error: message };
         }
 
-        const sanitizedAuthorId = currentAuthor.trim().replace(/[.#$[\]/\s]+/g, '_');
+        const sanitizedAuthorId = comprehensiveSanitize(currentAuthor);
         const sanitizedKey = key.trim().replace(/[.#$[\]/\s]+/g, '_');
 
         // --- Easter Egg Logic ---
@@ -236,7 +244,7 @@ export const useReportManagement = (
         setSelectedUserForSavedReports(userId);
         const loadingNotifId = showNotification(`Loading reports for ${userId}...`, 'info-circle', 0);
 
-        const sanitizedUserId = userId.replace(/[.#$[\]/]/g, '_');
+        const sanitizedUserId = comprehensiveSanitize(userId);
         const userReportsPath = `savedReports/${sanitizedUserId}`;
         const reportsRef = ref(database, userReportsPath);
 
@@ -289,7 +297,7 @@ export const useReportManagement = (
             return { success: false, message: 'User ID or Report Key is missing.' };
         }
 
-        const sanitizedUserId = userId.replace(/[.#$[\]/]/g, '_');
+        const sanitizedUserId = comprehensiveSanitize(userId);
         const reportPath = `savedReports/${sanitizedUserId}/${reportFirebaseKey}`;
         const reportRef = ref(database, reportPath);
 
@@ -634,7 +642,7 @@ export const useReportManagement = (
             return;
         }
 
-        const sanitizedUserId = userId.replace(/[.#$[\]/]/g, '_');
+        const sanitizedUserId = comprehensiveSanitize(userId);
         // reportFirebaseKey is already sanitized
         const reportPath = `savedReports/${sanitizedUserId}/${reportFirebaseKey}`;
         const reportRef = ref(database, reportPath);
