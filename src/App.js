@@ -31,9 +31,6 @@ import FeatureRequestModal from './contexts/FeatureRequestModal';
 import FormImageLink from './components/FormImageLink';
 import SwitchableFormButtons from './components/SwitchableFormButtons';
 import PrivacyPolicyModal from './components/PrivacyPolicyModal';
-// import ServiceUnavailable from './components/ServiceUnavailable';
-
-// 
 import { copyToClipboard, handleFormCopyAndNotify, handlePhmcRecruitmentCopyAndNotify } from './components/notificationService'; // Add copyToClipboard
 
 import EmsBingoModal from './components/EmsBingoModal'; 
@@ -69,6 +66,7 @@ function AppContent({
     setShowAdblockNotification
 }) {
     const [showPrivacyPolicyModal, setShowPrivacyPolicyModal] = useState(false);
+    const [testSeason, setTestSeason] = useState(null);
 
     useEffect(() => {
         const hasAcceptedPrivacyPolicy = localStorage.getItem('hasAcceptedPrivacyPolicy');
@@ -844,8 +842,8 @@ useEffect(() => {
 
 
 
-    const { imageSource: deathReportImage, className: deathReportClass, season } = SeasonalEvents({ imageType: 'deathReport' });
-    const { imageSource: civilianPaperworkImage, className: civilianPaperworkClass } = SeasonalEvents({ imageType: 'civilianPaperwork' });
+    const { imageSource: deathReportImage, className: deathReportClass, season, effect } = SeasonalEvents({ imageType: 'deathReport', season: testSeason });
+    const { imageSource: civilianPaperworkImage, className: civilianPaperworkClass } = SeasonalEvents({ imageType: 'civilianPaperwork', season: testSeason });
 
     const handleCopyAndNotifyWrapper = useCallback(() => {
         if (selectedAgencyGroup === 'PHMC Recruitment') {
@@ -872,6 +870,7 @@ useEffect(() => {
                 lastWebhookIdentifier,
                 commitInfo,
                 database,
+                getCurrentReportAuthor,
             });
         }
     }, [
@@ -887,7 +886,8 @@ useEffect(() => {
         handleAgencySelect, 
         setLastWebhookIdentifier, 
         lastWebhookIdentifier, 
-        database
+        database,
+        getCurrentReportAuthor
     ]);
 
     const currentFormDefinition = useMemo(() => getFormDefinition(bbCodeVersion), [bbCodeVersion]);
@@ -1529,7 +1529,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                     setEasterEggType(null); // Reset type on hide
                 }}
             />
-{season === "Christmas" && <Snowfall snowflakeCount={75} />}
+{effect}
 
 
         <CoronerTipsModal
@@ -1566,6 +1566,22 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 
                 <div className="form-container">
                 <div className="button-group">
+                    <div style={{ marginBottom: '1rem' }}>
+                        <Button variant="warning" onClick={() => {
+                            const nextSeason = (() => {
+                                const seasons = ['Default', 'Christmas', 'AprilFools', 'Easter', 'Halloween'];
+                                const currentIdx = seasons.indexOf(testSeason || 'Default');
+                                return seasons[(currentIdx + 1) % seasons.length];
+                            })();
+                            setTestSeason(nextSeason);
+                            showNotification(`Seasonal event set to: ${nextSeason}`, 'info');
+                        }}>
+                            Test Seasonal Event
+                        </Button>
+                        <span style={{ marginLeft: '1rem', fontWeight: 'bold', color: '#d7263d' }}>
+                            {testSeason ? `Current: ${testSeason}` : 'Current: Auto'}
+                        </span>
+                    </div>
 
         <div className="floating-tools-container">
             {showMovedNotification && (
@@ -1600,6 +1616,13 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                     }}>
                         <i className="fas fa-users"></i> Switch Form Type
                     </Dropdown.Item>
+                    <Dropdown.Divider />
+                    <Dropdown.Header>Test Seasonal Events</Dropdown.Header>
+                    <Dropdown.Item onClick={() => {setTestSeason('Christmas'); setShowToolsDropdown(false);}}>Christmas</Dropdown.Item>
+                    <Dropdown.Item onClick={() => {setTestSeason('Halloween'); setShowToolsDropdown(false);}}>Halloween</Dropdown.Item>
+                    <Dropdown.Item onClick={() => {setTestSeason('AprilFools'); setShowToolsDropdown(false);}}>April Fools</Dropdown.Item>
+                    <Dropdown.Item onClick={() => {setTestSeason('Easter'); setShowToolsDropdown(false);}}>Easter</Dropdown.Item>
+                    <Dropdown.Item onClick={() => {setTestSeason(null); setShowToolsDropdown(false);}}>Default</Dropdown.Item>
                 </Dropdown.Menu>
             </Dropdown>
         </div>
