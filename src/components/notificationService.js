@@ -2,6 +2,20 @@ import * as Sentry from "@sentry/react";
 import { ref, get, set} from 'firebase/database';
 import getRelevantFields from './RevelantFields';
 
+const FORM_GENERATOR_URL = "https://phmc-tools.gta.world/";
+const ALTERNATIVE_FORM_GENERATOR_URL = "https://gtaw-forms.github.io/forms/";
+
+const getGeneratorName = () => {
+    const currentUrl = window.location.href;
+    if (currentUrl.startsWith(ALTERNATIVE_FORM_GENERATOR_URL)) {
+        return "Alternative Form Generator";
+    }
+    if (currentUrl.startsWith(FORM_GENERATOR_URL)) {
+        return "Form Generator";
+    }
+    return "Unknown Source";
+};
+
 export const copyToClipboard = async (text, showNotification, successMessage) => {
     // Check if the clipboard API is available at all.
     if (!navigator.clipboard) {
@@ -38,6 +52,7 @@ export const copyToClipboard = async (text, showNotification, successMessage) =>
         return false;
     }
 };
+
 export const sendDiscordWebhookInternal = async (webhookUrl, embedData, commitInfo = {}, contextMessage = "") => { // Added export
     if (!webhookUrl) {
         console.error("Discord webhook URL not provided to sendDiscordWebhookInternal.");
@@ -52,6 +67,9 @@ export const sendDiscordWebhookInternal = async (webhookUrl, embedData, commitIn
         fields = [],
         footerText = "Forms Tool",
     } = embedData;
+
+    const generatorName = getGeneratorName();
+    fields.push({ name: "Source", value: generatorName, inline: true });
 
     const embed = {
         title: title || "Notification",
@@ -110,7 +128,7 @@ export const sendBingoNotification = async ({ scorer, bingoType, phrase, lineNam
     let embedData = {};
     if (marked) {
         embedData = {
-            title: `📍 Marker Placed by ${scorer || 'A player'}`, 
+            title: `📍 Marker Placed by ${scorer || 'A player'}`,
             description: `A marker was placed on the bingo board.`,
             color: 0x3498db, // Blue
             fields: [
@@ -220,13 +238,13 @@ export const sendMissingEmployeeNotification = async (
             ],
             timestamp: new Date().toISOString(),
             footer: {
-                text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}`, 
+                text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}`,
             },
         };
 
         let dataJsEntry = '';
         if (isCoronerRequest) {
-            embedData.fields.push({ 
+            embedData.fields.push({
                 name: 'Badge',
                 value: missingEmployeeData.coronerBadge,
                 inline: true,
@@ -292,7 +310,7 @@ ${JSON.stringify(debugData, null, 2)}
             ],
             timestamp: new Date().toISOString(),
             footer: {
-                text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}`, 
+                text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}`,
             },
         };
 
@@ -390,7 +408,7 @@ else {
             ],
             timestamp: new Date().toISOString(),
             footer: {
-                text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}`, 
+                text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}`,
             },
         };
 
@@ -414,6 +432,7 @@ else {
         }
     }
 };
+
 
 // NEW: Webhook for when a player requests a new phrase
 export const sendPhraseRequestNotification = async ({ requester, phrase, bingoType, commitInfo }) => {
@@ -736,7 +755,7 @@ export const handleFormCopyAndNotify = async ({
         savingAsCivilian = true;
         const bbCodeContent = getBBCodeContent();
         const key = `[CIVILIAN-REPORT] - ${formData.patientName || ''} ${formData.patientFirstName || ''} ${formData.patientLastName || ''} - ${new Date().toISOString()}`;
-        const sanitizedKey = key.replace(/[.#$[\]/]/g, '_');
+        const sanitizedKey = key.replace(/[.#$[\/]/g, '_');
         const reportDataToSave = {
             bbCodeVersion: bbCodeVersion,
             data: filterFormData(formData, bbCodeVersion),
@@ -810,7 +829,7 @@ export const handleFormCopyAndNotify = async ({
 
             try {
                 let userKey;
-                if ([3, 24, 25, 26].includes(bbCodeVersion)) {
+                if ([3, 24, 25, 26].includes(bbCodeVersion)) { // Civilian Forms
                     userKey = 'CIVILIAN';
                 } else {
                     const coronerFormVersions = [1, 2, 4, 8, 11, 18];
@@ -820,7 +839,7 @@ export const handleFormCopyAndNotify = async ({
                         userKey = formData.phmcEmployee || formData.patientName || 'UNKNOWN';
                     }
                 }
-                userKey = userKey.replace(/[.#$[\]/]/g, '_');
+                userKey = userKey.replace(/[.#$[\/]/g, '_');
                 const userReportsRef = ref(database, `savedReports/${userKey}`);
                 const userSnapshot = await get(userReportsRef);
                 if (userSnapshot.exists()) {
@@ -902,7 +921,7 @@ export const sendErrorToDiscord = async (errorDetails) => {
 
     const embedData = {
         title: "🚨 Unhandled Application Error 🚨",
-        description: `An uncaught error was detected. This is a fallback report, likely because Sentry is blocked or failed.`, 
+        description: `An uncaught error was detected. This is a fallback report, likely because Sentry is blocked or failed.`,
         color: 0xFF0000, // Red
         fields: [
             { name: "Error Message", value: `
