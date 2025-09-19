@@ -1566,7 +1566,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 
                 <div className="form-container">
                 <div className="button-group">
-                    <div style={{ marginBottom: '1rem' }}>
+{/*                     <div style={{ marginBottom: '1rem' }}>
                         <Button variant="warning" onClick={() => {
                             const nextSeason = (() => {
                                 const seasons = ['Default', 'Christmas', 'AprilFools', 'Easter', 'Halloween'];
@@ -1581,7 +1581,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                         <span style={{ marginLeft: '1rem', fontWeight: 'bold', color: '#d7263d' }}>
                             {testSeason ? `Current: ${testSeason}` : 'Current: Auto'}
                         </span>
-                    </div>
+                  </div> */}  
 
         <div className="floating-tools-container">
             {showMovedNotification && (
