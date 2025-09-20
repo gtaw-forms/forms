@@ -226,8 +226,8 @@ function AppContent({
                 { name: "Date/Time of Incident", value: cctvData.incidentDateTime || "N/A", inline: true },
                 { name: "Reason for Request", value: cctvData.requestReason || "N/A", inline: false },
                 { name: "CCTV Location", value: cctvData.location || "N/A", inline: false },
-                { name: "Description of Events", value: `\`\`\`${cctvData.description || "N/A"}\`\`\``, inline: false },
-                ...(cctvData.oocNotes ? [{ name: "OOC Notes", value: `\`\`\`${cctvData.oocNotes}\`\`\``, inline: false }] : []),
+                { name: "Description of Events", value: ````${cctvData.description || "N/A"}````, inline: false },
+                ...(cctvData.oocNotes ? [{ name: "OOC Notes", value: ````${cctvData.oocNotes}````, inline: false }] : []),
             ],
             timestamp: new Date().toISOString(),
             footer: { text: `PHMC Tools - v${commitInfo.sha || 'N/A'}` }
@@ -461,7 +461,7 @@ const getBBCodeContent = () => {
     } else {
         Sentry.captureMessage(`No BBCode generator found for version: ${bbCodeVersion}`);
         const formName = (getFormDefinition(bbCodeVersion) || {}).name || `Form v${bbCodeVersion}`;
-        return `BBCode generation for form \"${formName}\" is not implemented.`;
+        return `BBCode generation for form "${formName}" is not implemented.`;
     }
 };
         const initialLoadFormData = () => {
@@ -635,7 +635,7 @@ const getBBCodeContent = () => {
         55: "PHMC - EMS Careers"
     };
 
-    const {
+    const { 
         saveReport,
         savedReports,
         setSavedReports,
@@ -752,7 +752,7 @@ const getBBCodeContent = () => {
         setShowCctvRequestModal(true);
     };
 
-const loadData = useCallback(async () => {
+const loadData = useCallback(async () => { // Added useCallback
     let loadingNotificationId; // Declare a variable to store the notification ID
     try {
         loadingNotificationId = showNotification("Data Loading...", 'spinner fa-spin', 0); // Store the ID
@@ -819,7 +819,7 @@ const loadData = useCallback(async () => {
             removeNotification(loadingNotificationId); // Remove the notification
         }
     }
-}, [
+}, [ // Dependencies for useCallback
     showNotification, removeNotification, setFormData, setPhmcListData, setCoronerListData,
     setAgencyDataStore, setSelectOptions, setPhysicianRecruitmentDetails,
     setPsychRecruitmentDetails, setAdminRecruitmentDetails,
@@ -832,7 +832,7 @@ useEffect(() => {
 }, [loadData]);
 
 
-    useEffect(() => {
+    const useEffect(() => {
         const handleResize = () => {
             setIsMobile(window.innerWidth <= 768); // Adjust breakpoint as needed
         };
@@ -880,7 +880,7 @@ useEffect(() => {
                 getCurrentReportAuthor,
             });
         }
-    }, [
+    }, [ // Dependencies for useCallback
         selectedAgencyGroup, 
         formData, 
         getBBCodeContent, 
@@ -899,7 +899,7 @@ useEffect(() => {
 
     const currentFormDefinition = useMemo(() => getFormDefinition(bbCodeVersion), [bbCodeVersion]);
     const FieldComponent = currentFormDefinition ? currentFormDefinition.FieldComponent : null;
-    if (selectedAgencyGroup && !FieldComponent && !isLoadingData) {
+    if (selectedAgencyGroup && !FieldComponent && !isLoadingData) { // Added isLoadingData check
         const warningMessage = `No FieldComponent found for bbCodeVersion: ${bbCodeVersion} in group: ${selectedAgencyGroup}.`;
         console.warn(`[App.js] ${warningMessage}`, currentFormDefinition);
         Sentry.captureMessage(warningMessage, {
@@ -979,7 +979,7 @@ useEffect(() => {
         fetchCommit();
     }, []); // This effect runs once on mount
     const coronerFormsSubGroup = [
-        { version: 1, name: " Decedent Services", icon: corpse },
+        { version: 1, name: "Decedent Services", icon: corpse },
         { version: 2, name: "Email Generator", icon: email },
         { version: 4, name: "Autopsy Report", icon: corpse },
         { version: 8, name: "Death Certificate", icon: PHMCLogo },
@@ -1072,7 +1072,7 @@ useEffect(() => {
             if (uploadedUrls.length > 0) {
                 const newUrlString = uploadedUrls.join(', ');
 
-                if (fieldName.includes('-')) {
+                if (fieldName.includes('-')) { // Handle array of objects like decedents
                     const [key, indexStr] = fieldName.split('-');
                     const index = parseInt(indexStr, 10);
 
@@ -1086,7 +1086,7 @@ useEffect(() => {
                         return { ...prev, decedents: newDecedents };
                     });
 
-                } else {
+                } else { // Handle direct string fields
                     const currentValue = formData[fieldName] || '';
                     const newValue = currentValue ? `${currentValue}, ${newUrlString}` : newUrlString;
         
@@ -1253,7 +1253,7 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
 
         // Check and clean the path.
         if (url.pathname.endsWith('/bingo')) {
-            url.pathname = url.pathname.replace(/\/bingo$/, '') || '/';
+            url.pathname = url.pathname.replace(///bingo$/, '') || '/';
         }
 
         window.history.replaceState({}, document.title, url.href);
@@ -1348,7 +1348,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 }
                 groups[categoryName].push({
                     value: coroner.name, // Or a unique ID
-                    label: `${coroner.name} (${coroner.rank || ''})`,
+                    label: `${coroner.name} (${coroner.rank || 'Coroner'})`,
                     badge: coroner.badge,
                     rank: coroner.rank,
                     discord: coroner.discord,
@@ -1538,7 +1538,6 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
             />
 {effect}
 
-
         <CoronerTipsModal
             show={showCoronerTips}
             onClose={() => {
@@ -1588,7 +1587,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                         <span style={{ marginLeft: '1rem', fontWeight: 'bold', color: '#d7263d' }}>
                             {testSeason ? `Current: ${testSeason}` : 'Current: Auto'}
                         </span>
-                  </div> */}  
+                  </div> */}
 
         <div className="floating-tools-container">
 
@@ -1601,10 +1600,10 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                     <Dropdown.Item onClick={() => {setShowEmployeeModal(true); setShowToolsDropdown(false);}}>
                         <i className="fas fa-users-cog"></i> Manage PHMC Staff
                     </Dropdown.Item>
-{/*                     <Dropdown.Item onClick={() => {setShowFeatureRequestModal(true); setShowToolsDropdown(false);}}>
+                    <Dropdown.Item onClick={() => {setShowFeatureRequestModal(true); setShowToolsDropdown(false);}}>
                         <i className="fas fa-bug"></i> Report Bug/Feature
                     </Dropdown.Item>
- */}                    <Dropdown.Item onClick={() => {toggleSavedReports(); setShowToolsDropdown(false);}}>
+                    <Dropdown.Item onClick={() => {toggleSavedReports(); setShowToolsDropdown(false);}}>
                         <i className="fas fa-save"></i> Saved Reports
                     </Dropdown.Item>
                     <Dropdown.Item onClick={() => {toggleEmsAmaModal(); setShowToolsDropdown(false);}}>
@@ -1672,17 +1671,17 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                             let positionDisplayNameForTitle = formData.recruitmentPosition || 'selected position';
                             const currentFormDef = getFormDefinition(bbCodeVersion);
 
-                            if (currentFormDef?.titleKey === "phmcGeneralApplication") {
+                            if (currentFormDef?.titleKey === "phmcGeneralApplication") { // Physician (50)
                                 currentRecruitmentDetailsSource = selectOptions.physicianRecruitmentDetails;
-                            } else if (currentFormDef?.titleKey === "phmcPsychApplication") {
+                            } else if (currentFormDef?.titleKey === "phmcPsychApplication") { // Psych (51)
                                 currentRecruitmentDetailsSource = selectOptions.psychPositionDetailsData;
-                            } else if (currentFormDef?.titleKey === "phmcAdminApplication") {
+                            } else if (currentFormDef?.titleKey === "phmcAdminApplication") { // Admin (52)
                                 currentRecruitmentDetailsSource = selectOptions.adminPositionDetailsData;
-                            } else if (currentFormDef?.titleKey === "phmcNursingApplication") {
+                            } else if (currentFormDef?.titleKey === "phmcNursingApplication") { // Nursing (53)
                                 currentRecruitmentDetailsSource = selectOptions.nursePositionDetailsData;
-                            } else if (currentFormDef?.titleKey === "phmcEMSApplication") {
+                            } else if (currentFormDef?.titleKey === "phmcEMSApplication") { // EMS (55)
                                 currentRecruitmentDetailsSource = selectOptions.emsPositionDetailsData;
-                            } else if (currentFormDef?.titleKey === "phmcCoronerRecruitmentApplication") {
+                            } else if (currentFormDef?.titleKey === "phmcCoronerRecruitmentApplication") { // Coroner (54)
                                 currentRecruitmentDetailsSource = selectOptions.coronerPositionDetailsData;
                             }
 
@@ -1847,11 +1846,18 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                                         UpdateMedicalFile={selectOptions.UpdateMedicalFile || []}
                                         Imaging={selectOptions.Imaging || []}
                                         patientTitleNew={selectOptions.patientTitleNew || []}
+                                        patientNameNew={selectOptions.patientNameNew || ''}
+                                        patientDateOfBirthNew={selectOptions.patientDateOfBirthNew || ''}
+                                        patientAddressNew={selectOptions.patientAddressNew || ''}
+                                        patientPHNew={selectOptions.patientPHNew || ''}
+                                        patientDiscordNew={selectOptions.patientDiscordNew || ''}
+                                        patientGenderNew={selectOptions.patientGenderNew || ''}
+                                        patientRaceNew={selectOptions.patientRaceNew || ''}
                                         XrayResults={selectOptions.XrayResults || []}
                                         ctResults={selectOptions.ctResults || []}
                                         mriResults={selectOptions.mriResults || []}
                                         ultrasoundResults={selectOptions.ultrasoundResults || []}
-                                        patientBloodType={selectOptions.patientBloodType || []} 
+                                        patientBloodType={selectOptions.patientBloodType || ''} 
                                         selectOptions={selectOptions} 
                                         maritalStatus={selectOptions.maritalStatus || []}
                                         numberChildren={selectOptions.numberChildren || []}
@@ -1987,68 +1993,6 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                             commitInfo={commitInfo}
                         />
                     )}
-            <SwitchableFormsModal
-                show={showPHMCModal} // Your state that controls this modal's visibility
-                onHide={() => setShowPHMCModal(false)}
-                title={switchableModalTitle} // Your state for the modal title
-                forms={switchableFormsList} // Your state for the list of forms for this modal
-                handleFormSelect={handleAgencySelect} // This now triggers the opt-in logic
-                isMobile={isMobile}
-                physicianRecruitmentDetails={physicianRecruitmentDetails} // Renamed prop
-                psychRecruitmentStatus={psychRecruitmentDetails} // For Psych buttons - NEW PROP
-                formDefinitions={formDefinitions} // Pass all form definitions
-                    adminRecruitmentDetails={selectOptions.adminPositionDetailsData || {}} // Assuming admin data is in selectOptions
-                nurseRecruitmentDetails={selectOptions.nursePositionDetailsData || {}}
-                 emsRecruitmentDetails={selectOptions.emsPositionDetailsData || {}}
-                coronerRecruitmentDetails={selectOptions.coronerPositionDetailsData || {}}
-
-            />
-
-<EmsAmaModal
-    show={showEmsAmaModal}
-    onHide={() => setShowEmsAmaModal(false)}
-    showNotification={showNotification}
-    commitInfo={commitInfo}
-/>
-
-<div className="button-group">
-                        {bbCodeVersion !== 999 && (
-
-                            <Button
-                                variant="primary"
-                                onClick={() => setShowBBCode(!showBBCode)}
-                                className="toggle-bbcode-button"
-                                style={{ marginRight: '10px' }}
-                            >
-                                <i className={`fas ${showBBCode ? 'fa-eye-slash' : 'fa-eye'}`}></i>
-                                {showBBCode ? ' Hide BBCode' : ' Show BBCode'}
-                            </Button>
-                                                    )}
-                        {bbCodeVersion !== 999 && (
-
-                            <Button 
-                            variant="success"
-                            onClick={saveReport}>Save Report</Button>
-                        )}
-
-<SavedReportsModal
-    show={showSavedReports}
-    onClose={toggleSavedReports}
-    getBBCodeContent={getBBCodeContent}
-    showNotification={showNotification}
-    reportsForSelectedUser={savedReports}
-    onEmployeeSelect={loadUserSavedReports}
-    employeeOptions={combinedStaffOptions}
-    isLoadingReports={isLoadingUserReports}
-    loadReportForUser={loadReportForUser}
-    deleteReportForUser={deleteReportForUser}
-    currentCoronerEmployee={formData.coronerEmployee}
-    currentPhmcEmployee={formData.phmcEmployee}
-    filterByBbCodeVersions={reportSelectionFilter}
-    onReportSelectedForAttachment={pendingReportAttachmentCallback.current ? handleReportSelectedForAttachment : null}
-    preselectedEmployeeType={preselectedEmployeeType}
-    bbCodeVersion={bbCodeVersion}
-/>
             <WebhookModal
                 show={showWebhookModal}
                 onClose={() => setShowWebhookModal(false)}
@@ -2311,7 +2255,6 @@ const initialFormData = {
     patientCareer: '',
     patientImpairments: '',
     patientTriggers: '',
-    patientStress: '',
     patientFamily: '',
     patientFam: '',
     patientMedicalRecord: '',
@@ -2426,7 +2369,6 @@ const initialFormData = {
     applicantMotivationLetter: '',
     exemptCheckbox: false,
     oocMedicalExperience: '',
-    UpdateMedicalFile: [],
     oocAdminRecordLink: '',
     oocStatsLink: '',
         applicantTitleAndFullName: '',
