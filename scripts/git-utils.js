@@ -12,7 +12,7 @@ function runCommand(command) {
     }
 }
 
-function switchGitRemote(remoteName, remoteUrl, branchName = 'main') {
+function switchGitRemote(remoteName, remoteUrl, branchName = 'source') {
     console.log(`Attempting to switch remote '${remoteName}' to '${remoteUrl}' for branch '${branchName}'`);
 
     // Check if remote exists
