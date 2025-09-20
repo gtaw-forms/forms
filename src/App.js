@@ -1601,10 +1601,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                     <Dropdown.Item onClick={() => {setShowEmployeeModal(true); setShowToolsDropdown(false);}}>
                         <i className="fas fa-users-cog"></i> Manage PHMC Staff
                     </Dropdown.Item>
-{/*                     <Dropdown.Item onClick={() => {setShowFeatureRequestModal(true); setShowToolsDropdown(false);}}>
-                        <i className="fas fa-bug"></i> Report Bug/Feature
-                    </Dropdown.Item>
- */}                    <Dropdown.Item onClick={() => {toggleSavedReports(); setShowToolsDropdown(false);}}>
+                    <Dropdown.Item onClick={() => {toggleSavedReports(); setShowToolsDropdown(false);}}>
                         <i className="fas fa-save"></i> Saved Reports
                     </Dropdown.Item>
                     <Dropdown.Item onClick={() => {toggleEmsAmaModal(); setShowToolsDropdown(false);}}>
