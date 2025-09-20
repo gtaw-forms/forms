@@ -36,12 +36,12 @@
   },
   "scripts": {
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d build",
+    "deploy": "node scripts/orchestrate-deploy.js",
     "start": "craco start",
     "build": "craco build",
     "test": "craco test",
     "eject": "react-scripts eject",
-    "postbuild": "git add . && git commit && git push origin source"
+    "postbuild": "git add . && git commit -m 'Staging' && git push origin source"
   },
   "eslintConfig": {
     "extends": [
