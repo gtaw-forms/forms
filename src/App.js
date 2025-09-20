@@ -119,7 +119,6 @@ function AppContent({
     const [isUploading, setIsUploading] = useState(false);
     const [isJohnDoe, setIsJohnDoe] = useState(false);
     const [isJaneDoe, setIsJaneDoe] = useState(false);
-    const [showUpdateNotification, setShowUpdateNotification] = useState(false);
     const [commitInfo, setCommitInfo] = useState({ sha: '', date: null, error: null });
     const [isLoadingUserReports, setIsLoadingUserReports] = useState(false);
     const [preselectedEmployeeType, setPreselectedEmployeeType] = useState(null);
