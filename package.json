@@ -1,7 +1,7 @@
 {
   "name": "phmc-tools",
-  "version": "1.4.0",
-  "homepage": "https://fr0styJS.github.io/phmc-code-archive/",
+  "version": "1.5.0",
+  "homepage": "https://gtaw-forms.github.io/forms/",
   "private": true,
   "dependencies": {
     "@emotion/react": "^11.13.5",
