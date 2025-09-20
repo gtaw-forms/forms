@@ -41,7 +41,7 @@
     "build": "craco build",
     "test": "craco test",
     "eject": "react-scripts eject",
-    "postbuild": "git add . && git commit -m 'Staging' && git push origin source"
+    "postbuild": ""
   },
   "eslintConfig": {
     "extends": [
