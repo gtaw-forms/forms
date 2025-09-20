@@ -1,7 +1,7 @@
 {
   "name": "phmc-tools",
   "version": "1.4.0",
-  "homepage": "https://phmc-tools.gta.world/",
+  "homepage": "https://fr0styJS.github.io/phmc-code-archive/",
   "private": true,
   "dependencies": {
     "@emotion/react": "^11.13.5",
@@ -36,11 +36,12 @@
   },
   "scripts": {
     "predeploy": "npm run build",
-    "deploy": "node scripts/orchestrate-deploy.js",
+    "deploy": "gh-pages -d build",
     "start": "craco start",
     "build": "craco build",
     "test": "craco test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "postbuild": "git add . && git commit && git push origin source"
   },
   "eslintConfig": {
     "extends": [
