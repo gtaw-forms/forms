@@ -1,18 +1,20 @@
 const { execSync } = require('child_process');
 
-function runCommand(command) {
+function runCommand(command, returnOutput = false) {
     try {
         console.log(`Executing: ${command}`);
-        // Capture output to check for specific error messages
         const output = execSync(command, { encoding: 'utf-8', stdio: 'pipe' });
-        console.log(output); // Print the output if successful
+        if (!returnOutput) {
+            console.log(output);
+        }
+        return output;
     } catch (error) {
         const errorMessage = error.message;
         // Check for "nothing to commit" error from git
         if (command.includes('git commit') && errorMessage.includes('nothing to commit, working tree clean')) {
             console.warn(`Warning: ${command} - ${errorMessage.trim()}`);
             console.warn('Proceeding as there were no changes to commit.');
-            return; // Do not exit the process
+            return ''; // Return empty string for no changes
         }
         console.error(`Error executing command: ${command}`);
         console.error(errorMessage);
