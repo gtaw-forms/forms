@@ -3,8 +3,8 @@ const { execSync } = require('child_process');
 function runCommand(command) {
     try {
         console.log(`Executing: ${command}`);
-        const output = execSync(command, { encoding: 'utf-8', stdio: 'inherit' });
-        return output;
+        // Use stdio: 'inherit' to show command output in real-time
+        execSync(command, { encoding: 'utf-8', stdio: 'inherit' });
     } catch (error) {
         console.error(`Error executing command: ${command}`);
         console.error(error.message);
@@ -17,7 +17,7 @@ function switchGitRemote(remoteName, remoteUrl, branchName = 'main') {
 
     // Check if remote exists
     try {
-        runCommand(`git remote get-url ${remoteName}`);
+        execSync(`git remote get-url ${remoteName}`, { stdio: 'pipe' }); // Use pipe to suppress output
         console.log(`Remote '${remoteName}' already exists. Removing it...`);
         runCommand(`git remote remove ${remoteName}`);
     } catch (error) {
@@ -34,24 +34,14 @@ function switchGitRemote(remoteName, remoteUrl, branchName = 'main') {
         runCommand(`git branch --set-upstream-to=${remoteName}/${branchName} ${branchName}`);
         console.log(`Branch '${branchName}' is now tracking '${remoteName}/${branchName}'.`);
     } catch (error) {
-        console.warn(`Could not set upstream for branch '${branchName}'. You might need to do this manually if it's a new branch.`);
+        console.warn(`Could not set upstream for branch '${branchName}'. You might need to do this manually if it's a new branch or if the remote branch doesn't exist yet.`);
     }
 
     console.log('Git remote switch complete.');
     runCommand('git remote -v'); // Verify remotes
 }
 
-// Parse command line arguments
-const args = process.argv.slice(2); // Skip 'node' and script name
-
-if (args.length < 2 || args.length > 3) {
-    console.log('Usage: node switch-git-remote.js <remoteName> <remoteUrl> [branchName]');
-    console.log('Example: node switch-git-remote.js origin https://github.com/user/repo.git main');
-    process.exit(1);
-}
-
-const remoteName = args[0];
-const remoteUrl = args[1];
-const branchName = args[2] || 'main'; // Default to 'main' if not provided
-
-switchGitRemote(remoteName, remoteUrl, branchName);
+module.exports = {
+    runCommand,
+    switchGitRemote
+};
