@@ -9,20 +9,22 @@ async function orchestrateDeploy() {
     console.log('Starting orchestrated deployment...');
 
     // Deploy to URL 1
-    console.log(`\n--- Deploying to ${URL_1} ---`);
+    console.log(`
+--- Deploying to ${URL_1} ---`);
     switchGitRemote(REMOTE_NAME, URL_1);
     runCommand(DEPLOY_COMMAND);
     runCommand('git add .');
-    runCommand('git commit -m "Staging Dev"');
+    runCommand('git commit -m "Staging"');
     runCommand('git push origin source');
     console.log(`Deployment to ${URL_1} complete.`);
 
     // Deploy to URL 2
-    console.log(`\n--- Deploying to ${URL_2} ---`);
+    console.log(`
+--- Deploying to ${URL_2} ---`);
     switchGitRemote(REMOTE_NAME, URL_2);
     runCommand(DEPLOY_COMMAND);
     runCommand('git add .');
-    runCommand('git commit -m "Staging Dev"');
+    runCommand('git commit -m "Staging"');
     runCommand('git push origin source');
     console.log(`Deployment to ${URL_2} complete.`);
 
