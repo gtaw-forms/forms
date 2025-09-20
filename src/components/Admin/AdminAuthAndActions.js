@@ -2,11 +2,11 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Form as BootstrapForm, Button, Spinner, ListGroup } from 'react-bootstrap';
 import { auth, database } from '../../firebase';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
-import { ref, get, update, remove, set, serverTimestamp } from "firebase/database"; 
+import { ref, get, update, remove, set, serverTimestamp, onValue } from "firebase/database"; 
 import AddRoleModal from './RoleModal';
 import RenameRoleKeyModal from './RenameRoleKeyModal';
 import WebhookModal from '../WebhookModal';
-import { captureMessage, captureException, getClient } from "@sentry/react";
+import { captureMessage, captureException } from "@sentry/react";
 import EditBingoPhrasesModal from './EditBingoPhrasesModal';
 import ReviewPhraseRequestsModal from './ReviewPhraseRequestsModal';
 import * as Sentry from "@sentry/react";
@@ -14,10 +14,6 @@ import CctvRequestWebhookModal from './CctvRequestWebhookModal'; // Import the n
 import MarkdownBBCodeModal from '../MarkdownBBCodeModal';
 import UserManagementModal from './UserManagementModal';
 
-const CrashingComponent = () => {
-    throw new Error("This is a test error to check the Error Boundary.");
-    return null;
-};
 
 const recruitmentCategories = {
     physician: { displayName: "Physician Recruitment", path: 'selectOptions/physicianRecruitmentDetails' },
@@ -102,14 +98,8 @@ const sendAdminActionWebhook = async (adminEmail, action, details, categoryName 
             { name: "Admin User", value: adminEmail || "Unknown", inline: true },
             { name: "Action Taken", value: action || "Unknown Action", inline: true },
             ...(categoryName ? [{ name: "Category", value: categoryName, inline: true }] : []),
-            { name: "Details", value: `
-${details.substring(0,1000)}
-`,
- inline: false },
-            { name: "User Agent", value: `
-${userAgent.substring(0, 250)}
-`,
- inline: false }, // Truncate for Discord field limit
+            { name: "Details", value: ```${details.substring(0,1000)}```, inline: false },
+            { name: "User Agent", value: ```${userAgent.substring(0, 250)}```, inline: false }, // Truncate for Discord field limit
             { name: "Timezone", value: userTimezone, inline: true },
         ],
         timestamp: new Date().toISOString(),
@@ -175,10 +165,62 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
     const [devWebhookTitle, setDevWebhookTitle] = useState(''); // New state
     const [devWebhookMessage, setDevWebhookMessage] = useState(''); // New state
     const [showCctvWebhookModal, setShowCctvWebhookModal] = useState(false);
-    const [showCrashingComponent, setShowCrashingComponent] = useState(false);
     const [showUserManagementModal, setShowUserManagementModal] = useState(false);
 
+    const [formGeneratorStatus, setFormGeneratorStatus] = useState('');
+    const [alternativeFormGeneratorStatus, setAlternativeFormGeneratorStatus] = useState('');
+    const [localHostStatus, setLocalHostStatus] = useState('');
+    const [isLoadingStatus, setIsLoadingStatus] = useState(true);
+
     const prevUserUidRef = useRef(null);
+
+    useEffect(() => {
+        const statusRef = ref(database, 'serviceStatus');
+        const unsubscribe = onValue(statusRef, (snapshot) => {
+            const statusData = snapshot.val();
+            setFormGeneratorStatus(statusData?.formGeneratorStatus || '');
+            setAlternativeFormGeneratorStatus(statusData?.alternativeFormGeneratorStatus || '');
+            setLocalHostStatus(statusData?.localHostStatus || '');
+            setIsLoadingStatus(false);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    const handleUpdateServiceStatus = async () => {
+        setIsUpdatingDb(true);
+        const statusRef = ref(database, 'serviceStatus');
+        const { userAgent, timeZone } = getUserContext();
+        const newStatuses = {
+            formGeneratorStatus,
+            alternativeFormGeneratorStatus,
+            localHostStatus
+        };
+        try {
+            await update(statusRef, newStatuses);
+            showInAppNotification(`Service statuses updated.`, "check-circle");
+            sendAdminActionWebhook(
+                currentUser.email,
+                "Updated Service Status",
+                `Form Generator: ${formGeneratorStatus}\nAlternative Form Generator: ${alternativeFormGeneratorStatus}\nLocalhost/Staging: ${localHostStatus}`,
+                "Service Status",
+                userAgent,
+                timeZone
+            );
+        } catch (error) {
+            console.error("Error updating service status:", error);
+            showInAppNotification("Failed to update service statuses.", "error");
+            sendAdminActionWebhook(
+                currentUser.email,
+                "Failed to Update Service Status",
+                `Error: ${error.message}`,
+                "Service Status",
+                userAgent,
+                timeZone
+            );
+        } finally {
+            setIsUpdatingDb(false);
+        }
+    };
 
     const handleCctvWebhookSubmit = async (cctvData) => {
         const webhookURL = process.env.REACT_APP_LEO_WEBHOOK_URL; // Using the general dev webhook for this test
@@ -202,14 +244,8 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
                 { name: "Date/Time of Incident", value: cctvData.incidentDateTime || "N/A", inline: true },
                 { name: "Reason for Request", value: cctvData.requestReason || "N/A", inline: true },
                 { name: "CCTV Location", value: cctvData.location || "N/A", inline: false },
-                { name: "Description of Events", value: `
-${cctvData.description || "N/A"}
-`,
- inline: false },
-                ...(cctvData.oocNotes ? [{ name: "OOC Notes", value: `
-${cctvData.oocNotes}
-`,
- inline: false }] : []),
+                { name: "Description of Events", value: ````${cctvData.description || "N/A"}````, inline: false },
+                ...(cctvData.oocNotes ? [{ name: "OOC Notes", value: ````${cctvData.oocNotes}````, inline: false }] : []),
  */            ],
             timestamp: new Date().toISOString(),
             footer: { text: "PHMC Tools - Developer Notification Service" }
@@ -428,7 +464,8 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
         sendAdminActionWebhook(
             currentUser.email,
             "Toggled Recruitment Status",
-            `Position: ${positionDisplayName}\nNew Status: ${newStatus}`,
+            `Position: ${positionDisplayName}\\
+New Status: ${newStatus}`,
             categoryConfig.displayName,
             userAgent,
             timeZone
@@ -455,7 +492,9 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
         sendAdminActionWebhook(
             currentUser?.email || "Unknown User", // Fallback for email if not available.
             "Failed to Toggle Recruitment Status",
-            `Position: ${positionDisplayName}\nAttempted Status: ${newStatus}\nError: ${dbError.message}`,
+            `Position: ${positionDisplayName}\\
+Attempted Status: ${newStatus}\\
+Error: ${dbError.message}`,
             categoryConfig.displayName,
             userAgent,
             timeZone
@@ -477,7 +516,10 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
             const action = actionType === 'edited' ? "Edited Role" : "Added New Role";
             sendAdminActionWebhook(
                 currentUser.email, action,
-                `Role Name: ${savedRoleData.displayName || savedRoleData.originalKey}\nShort Code: ${savedRoleData.shortCode || 'N/A'}\nStatus: ${savedRoleData.status || 'N/A'}\nKey: ${savedRoleData.originalKey}`,
+                `Role Name: ${savedRoleData.displayName || savedRoleData.originalKey}\\
+Short Code: ${savedRoleData.shortCode || 'N/A'}\\
+Status: ${savedRoleData.status || 'N/A'}\\
+Key: ${savedRoleData.originalKey}`,
                 categoryConfig?.displayName || "Unknown Category",
                 userAgent,
                 timeZone
@@ -485,8 +527,8 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
             if (desktopNotificationPermission === "granted" && savedRoleData?.displayName) {
                  const notificationTitle = actionType === 'edited' ? `Role Updated: ${categoryConfig?.displayName || 'Recruitment'}` : `New Role Added: ${categoryConfig?.displayName || 'Recruitment'}`;
                  const notificationBody = actionType === 'edited'
-                    ? `Role "${savedRoleData.displayName}" (${savedRoleData.shortCode || 'N/A'}) has been updated.`
-                    : `Role "${savedRoleData.displayName}" (${savedRoleData.shortCode || 'N/A'}) has been added.`;
+                    ? `Role \"${savedRoleData.displayName}\" (${savedRoleData.shortCode || 'N/A'}) has been updated.`
+                    : `Role \"${savedRoleData.displayName}\" (${savedRoleData.shortCode || 'N/A'}) has been added.`;
                 showDesktopNotification(notificationTitle, { body: notificationBody, icon: '/phmc512.png', tag: `${actionType}-role-${selectedRecruitmentCategory}-${savedRoleData.originalKey}` });
             }
         }
@@ -526,8 +568,8 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
         }
         if (currentUser?.email && roleToRenameKeyDetails && desktopNotificationPermission === "granted") {
             const categoryConfig = recruitmentCategories[selectedRecruitmentCategory];
-            showDesktopNotification(`Role Key Renamed: ${categoryConfig?.displayName || 'Recruitment'}`, {
-                body: `Key for "${roleToRenameKeyDetails.data.displayName || roleToRenameKeyDetails.key}" has been changed.`,
+            showDesktopNotification(`Role Key Renamed: ${categoryConfig?.displayName || 'Recruitment'}`,
+                { body: `Key for \"${roleToRenameKeyDetails.data.displayName || roleToRenameKeyDetails.key}\" has been changed.`,
                 icon: '/phmc512.png',
                 tag: `rename-key-${selectedRecruitmentCategory}-${roleToRenameKeyDetails.key}`
             });
@@ -845,10 +887,14 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
         // --- MODIFICATION FOR MANUAL ACTION ---
         const { userAgent, timeZone } = getUserContext();
         let details = '';
-        if (results.success.length > 0) details += `✅ Regenerated: ${results.success.join(', ')}\n`;
-        if (results.noCard.length > 0) details += `➖ Skipped (Disabled): ${results.noCard.join(', ')}\n`;
-        if (results.notEnoughPhrases.length > 0) details += `⚠️ Skipped (Not Enough Phrases): ${results.notEnoughPhrases.join(', ')}\n`;
-        if (results.errors.length > 0) details += `❌ Errors: ${results.errors.join(', ')}\n`;
+        if (results.success.length > 0) details += `✅ Regenerated: ${results.success.join(', ')}\\
+`;
+        if (results.noCard.length > 0) details += `➖ Skipped (Disabled): ${results.noCard.join(', ')}\\
+`;
+        if (results.notEnoughPhrases.length > 0) details += `⚠️ Skipped (Not Enough Phrases): ${results.notEnoughPhrases.join(', ')}\\
+`;
+        if (results.errors.length > 0) details += `❌ Errors: ${results.errors.join(', ')}\\
+`;
     
         sendAdminActionWebhook(
             currentUser.email, // Use the logged-in admin's email
@@ -861,6 +907,8 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
     
         showInAppNotification('Manual bingo reset complete!', 'check-circle');
     };
+
+
 
 
 
@@ -994,7 +1042,6 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
 
     return (
         <div>
-            {showCrashingComponent && <CrashingComponent />}
             <p>Logged in as: {currentUser.email}</p>
             {desktopNotificationPermission === 'default' && (
                 <Button variant="outline-info" size="sm" onClick={handleEnableDesktopNotifications} className="mb-2 d-block mx-auto" title="Click to allow desktop notifications for status updates">
@@ -1002,6 +1049,44 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 </Button>
             )}
             {desktopNotificationPermission === 'denied' && ( <p className="text-warning small text-center mb-2">Desktop notifications are blocked. Please enable them in your browser settings if desired.</p> )}
+            <hr />
+            <h5>Service Status</h5>
+            {isLoadingStatus ? (
+                <Spinner animation="border" size="sm" />
+            ) : (
+                <>
+                    <BootstrapForm.Group className="mb-3">
+                        <BootstrapForm.Label>Form Generator Status</BootstrapForm.Label>
+                        <BootstrapForm.Control 
+                            type="text" 
+                            value={formGeneratorStatus} 
+                            onChange={(e) => setFormGeneratorStatus(e.target.value)} 
+                            placeholder="e.g., Fully Updated"
+                        />
+                    </BootstrapForm.Group>
+                    <BootstrapForm.Group className="mb-3">
+                        <BootstrapForm.Label>Alternative Form Generator Status</BootstrapForm.Label>
+                        <BootstrapForm.Control 
+                            type="text" 
+                            value={alternativeFormGeneratorStatus} 
+                            onChange={(e) => setAlternativeFormGeneratorStatus(e.target.value)} 
+                            placeholder="e.g., Updates Delayed"
+                        />
+                    </BootstrapForm.Group>
+                    <BootstrapForm.Group className="mb-3">
+                        <BootstrapForm.Label>Localhost/Staging Status</BootstrapForm.Label>
+                        <BootstrapForm.Control 
+                            type="text" 
+                            value={localHostStatus} 
+                            onChange={(e) => setLocalHostStatus(e.target.value)} 
+                            placeholder="e.g., Under Development"
+                        />
+                    </BootstrapForm.Group>
+                </>
+            )}
+            <Button variant="primary" onClick={handleUpdateServiceStatus} disabled={isUpdatingDb || isLoadingStatus}>
+                {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : "Update Statuses"}
+            </Button>
             <hr />
             HELLO! WHAT YOU ARE ABOUT TO DO MAYBE DANGEROUS, PLEASE REVIEW EVERYTHING BEFORE CHANGING ANYTHING!
             <hr />
@@ -1144,9 +1229,6 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
                 }
             }} className="mt-3 me-2">
                 <i className="fas fa-bug"></i> Test Error
-            </Button>
-            <Button variant="warning" onClick={() => setShowCrashingComponent(true)} className="mt-3 me-2">
-                <i className="fas fa-bomb"></i> Test Error Boundary
             </Button>
             <div className="my-3 p-3 border border-warning rounded">
                     <Button variant="primary" className="ms-2" onClick={handleGtaWorldLogin} title="Login to GTA World UCP (OAuth)">
