@@ -622,14 +622,24 @@ const sendFormInteractionWebhookInternal = async ({
 
     const coronerFormVersions = [1, 2, 4, 8, 11, 18];
     const phmcFormVersions = [5, 6, 7, 9, 10, 12, 13, 14, 16, 19, 20, 21, 22, 23, 27, 28, 29, 35];
+    const civilianFormVersions = [3, 24, 25, 26]; // Civilian forms
 
     const isCoronerForm = coronerFormVersions.includes(bbCodeVersion);
     const isPhmcForm = phmcFormVersions.includes(bbCodeVersion);
+    const isCivilianForm = civilianFormVersions.includes(bbCodeVersion);
 
-    if (isPhmcForm) {
+    if (isCivilianForm) {
+        if (patientName) {
+            userValue = patientName;
+        } else if (patientFirstName || patientLastName) {
+            userValue = `${patientFirstName || ''} ${patientLastName || ''}`.trim();
+        } else {
+            userValue = 'Civilian'; // Fallback for civilian forms if no name is provided
+        }
+    } else if (isPhmcForm) {
         if (phmcEmployee) {
             userValue = `Hospital Staff ${phmcEmployee}`;
-        } else if (patientName) {
+        } else if (patientName) { // Fallback for PHMC forms if patient name is relevant
             userValue = patientName;
         } else if (patientFirstName || patientLastName) {
             userValue = `${patientFirstName || ''} ${patientLastName || ''}`.trim();
@@ -639,7 +649,7 @@ const sendFormInteractionWebhookInternal = async ({
             userValue = `${coronerRank || 'Coroner'} ${coronerEmployee}`;
         }
     } else {
-        // Fallback for forms that are not strictly PHMC or Coroner
+        // Fallback for forms that are not strictly PHMC, Coroner, or Civilian
         if (coronerEmployee) {
             userValue = `${coronerRank || 'Coroner'} ${coronerEmployee}`;
         } else if (phmcEmployee) {
@@ -793,7 +803,7 @@ export const handleFormCopyAndNotify = async ({
         savingAsCivilian = true;
         const bbCodeContent = getBBCodeContent();
         const key = `[CIVILIAN-REPORT] - ${formData.patientName || ''} ${formData.patientFirstName || ''} ${formData.patientLastName || ''} - ${new Date().toISOString()}`;
-        const sanitizedKey = key.replace(/[.#$[\/]/g, '_');
+        const sanitizedKey = comprehensiveSanitize(key);
         const reportDataToSave = {
             bbCodeVersion: bbCodeVersion,
             data: filterFormData(formData, bbCodeVersion),
@@ -866,15 +876,16 @@ export const handleFormCopyAndNotify = async ({
             }
 
             try {
-                let userKey = getCurrentReportAuthor(formData);
-
-                if (!userKey) {
-                    if ([3, 24, 25, 26].includes(bbCodeVersion)) { // Civilian Forms
-                        userKey = 'CIVILIAN';
-                    } else {
+                let userKey;
+                if (savingAsCivilian) {
+                    userKey = 'CIVILIAN'; // Directly use 'CIVILIAN' for civilian forms
+                } else {
+                    userKey = getCurrentReportAuthor(formData);
+                    if (!userKey) {
                         userKey = 'UNKNOWN';
                     }
                 }
+                
                 userKey = comprehensiveSanitize(userKey);
                 let userReportsRef = ref(database, `savedReports/${userKey}`);
                 let userSnapshot = await get(userReportsRef);
