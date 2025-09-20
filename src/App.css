@@ -1,7 +1,7 @@
 /* ==========================================================================
    Base styles
    ========================================================================== */
-   body {
+body {
     color: #eeeeeeb0;
     background: #010409;
     font: 100% system-ui;
@@ -10,29 +10,29 @@
 .coroner-tips-modal-content::-webkit-scrollbar {
     width: 10px; /* Width of the vertical scrollbar */
     height: 10px; /* Height of the horizontal scrollbar (if needed) */
-  }
-  
-  .coroner-tips-modal-content::-webkit-scrollbar-track {
+}
+
+.coroner-tips-modal-content::-webkit-scrollbar-track {
     background: #0d1117; /* Background of the scrollbar track (match modal bg) */
     border-radius: 5px; /* Optional: round the corners */
-  }
-  
-  .coroner-tips-modal-content::-webkit-scrollbar-thumb {
+}
+
+.coroner-tips-modal-content::-webkit-scrollbar-thumb {
     background-color: #30363d; /* Color of the scrollbar thumb (dark grey) */
     border-radius: 5px; /* Optional: round the corners */
     border: 2px solid #0d1117; /* Creates padding around thumb, matching track bg */
-  }
-  
-  .coroner-tips-modal-content::-webkit-scrollbar-thumb:hover {
+}
+
+.coroner-tips-modal-content::-webkit-scrollbar-thumb:hover {
     background-color: #484f58; /* Slightly lighter grey on hover */
-  }
-  
-  /* Basic Firefox scrollbar styling */
-  .coroner-tips-modal-content {
+}
+
+/* Basic Firefox scrollbar styling */
+.coroner-tips-modal-content {
     scrollbar-width: thin; /* Or "auto" */
     scrollbar-color: #30363d #0d1117; /* thumb color track color */
-  }
-  
+}
+
 /* ==========================================================================
    Layout
    ========================================================================== */
@@ -41,8 +41,8 @@
     margin: 20px;
 }
 .modal-title {
-  font-size: 1.5rem; /* Adjust the size as needed */
-  font-weight: bold;
+    font-size: 1.5rem; /* Adjust the size as needed */
+    font-weight: bold;
 }
 
 /* Seasonal Animations ' Day Animation */
@@ -60,19 +60,19 @@
 }
 .easter-bounce {
     animation: bounce 2s infinite; /* Adjust timing and iterations as needed */
-  }
-  
-  @keyframes bounce {
+}
+
+@keyframes bounce {
     0%, 20%, 50%, 80%, 100% {
-      transform: translateY(0);
+        transform: translateY(0);
     }
     40% {
-      transform: translateY(-36px); /* Adjust bounce height as needed */
+        transform: translateY(-36px); /* Adjust bounce height as needed */
     }
     60% {
-      transform: translateY(-36px); /* Adjust bounce height as needed */
+        transform: translateY(-36px); /* Adjust bounce height as needed */
     }
-  }
+}
 .header-info-wrapper {
     display: flex;
     flex-direction: row;
@@ -92,20 +92,41 @@
 }
 
 /* Container styles */
+.container-fluid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-around; /* Adjust as needed: space-between, center */
+    gap: 10px; /* Space between the form and output containers */
+}
+
 .form-container {
     background-color: #0d1117 !important;
     padding: 20px !important;
     border-radius: 8px !important;
+    flex: 1; /* Allows it to grow and shrink */
+    min-width: 300px; /* Minimum width before wrapping */
     margin-bottom: 5px; /* Add some spacing below the form */
 }
 .output-container {
-    background-color: #0d1117;
-    padding: 20px;
-    border-radius: 8px;
+    background-color: #0d1117 !important;
+    padding: 20px !important;
+    border-radius: 8px !important;
     display: flex;
     flex-direction: column;
+    flex: 1; /* Allows it to grow and shrink */
+    min-width: 300px; /* Minimum width before wrapping */
     margin-bottom: 5px; /* Add some spacing below the form */
+}
 
+@media (max-width: 768px) {
+    .container-fluid {
+        flex-direction: column; /* Stack them vertically on small screens */
+        align-items: center;
+    }
+    .form-container, .output-container {
+        width: 95%; /* Take up almost full width on small screens */
+        min-width: unset; /* Remove min-width constraint */
+    }
 }
 .char-counter {
     padding: 8px;
@@ -131,7 +152,7 @@ form {
     display: flex;
     flex-direction: column;
 }
-  
+
 label {
     margin-bottom: 8px;
 }
@@ -157,16 +178,16 @@ select {
     flex-grow: 1; 
 }
 
-    .form-control:focus {
-        background-color: #16202c;
-        color: #eeeeeeb0;
-        border-color: #58a6ff;
-        box-shadow: 0 0 0 0.25rem rgba(88, 166, 255, 0.25);
-    }
+.form-control:focus {
+    background-color: #16202c;
+    color: #eeeeeeb0;
+    border-color: #58a6ff;
+    box-shadow: 0 0 0 0.25rem rgba(88, 166, 255, 0.25);
+}
 
-    .form-control::placeholder {
-        color: #eeeeeeb0 !important;
-    }
+.form-control::placeholder {
+    color: #eeeeeeb0 !important;
+}
 
 /* Bootstrap Input Group Overrides */
 .input-group .form-control {
@@ -181,7 +202,7 @@ select {
 
 /* Form Label Styling */
 .form-label {
-  margin-right: 2rem !important; /* Adds space to the right of the label */
+    margin-right: 2rem !important; /* Adds space to the right of the label */
     color: #acb1cad3;
     margin-bottom: 0.9rem;
 }
@@ -235,7 +256,6 @@ select {
     margin: 0;
     white-space: nowrap;
 }
-
 
 /* ==========================================================================
    Output Display
@@ -297,15 +317,15 @@ select {
     cursor: pointer;
 }
 
-    .btn-success:hover {
-        background-color: #45a049;
-    }
+.btn-success:hover {
+    background-color: #45a049;
+}
 
-    .btn-success:disabled {
-        background-color: #4CAF50;
-        border-color: #4CAF50;
-        opacity: 0.65;
-    }
+.btn-success:disabled {
+    background-color: #4CAF50;
+    border-color: #4CAF50;
+    opacity: 0.65;
+}
 
 /* ==========================================================================
    Links
@@ -336,9 +356,9 @@ a {
         background: #010409;
     }
 
-        body a {
-            color: #809fff;
-        }
+    body a {
+        color: #809fff;
+    }
 }
 
 /* Modal Styles */
@@ -357,7 +377,6 @@ a {
 }
 
 .modal {
-    
     background-color: #0d1117;
     border-radius: 8px;
     padding: 20px;
@@ -381,14 +400,14 @@ a {
     text-align: right;
 }
 
-    .imgbb-attribution a {
-        color: #58a6ff;
-        text-decoration: none;
-    }
+.imgbb-attribution a {
+    color: #58a6ff;
+    text-decoration: none;
+}
 
-        .imgbb-attribution a:hover {
-            text-decoration: underline;
-        }
+.imgbb-attribution a:hover {
+    text-decoration: underline;
+}
 
 .decedent-header {
     display: flex;
@@ -396,7 +415,6 @@ a {
     gap: 15px;
     margin-bottom: 8px;
 }
-
 
 input[type="checkbox"] {
     width: 16px;
@@ -410,21 +428,21 @@ input[type="checkbox"] {
     -webkit-appearance: none;
 }
 
-    input[type="checkbox"]:checked {
-        background-color: #58a6ff;
-        border-color: #58a6ff;
-        position: relative;
-    }
+input[type="checkbox"]:checked {
+    background-color: #58a6ff;
+    border-color: #58a6ff;
+    position: relative;
+}
 
-        input[type="checkbox"]:checked::after {
-            content: '✓';
-            position: absolute;
-            color: #fff;
-            font-size: 12px;
-            left: 50%;
-            top: 50%;
-            transform: translate(-50%, -50%);
-        }
+input[type="checkbox"]:checked::after {
+    content: '✓';
+    position: absolute;
+    color: #fff;
+    font-size: 12px;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
 
 .version-toggle {
     background-color: #4CAF50;
@@ -437,10 +455,9 @@ input[type="checkbox"] {
     transition: background-color 0.3s;
 }
 
-    .version-toggle:hover {
-        background-color: #45a049;
-    }
-
+.version-toggle:hover {
+    background-color: #45a049;
+}
 
 /* ===== Form Toggle Components ===== */
 .report-toggle {
@@ -456,10 +473,10 @@ input[type="checkbox"] {
     gap: 10px;
 }
 
-    .input-group-horizontal input[type="checkbox"] {
-        width: auto;
-        margin: 0;
-    }
+.input-group-horizontal input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+}
 
 /* ===== Label Styles ===== */
 .label-text {
@@ -480,25 +497,25 @@ input[type="checkbox"] {
     gap: 10px; /* Add space BETWEEN notifications */
     max-width: 400px; /* Optional: Limit the width of notifications */
     pointer-events: none; /* Allow clicks to pass through the container itself */
-  }
-  
-  /* Individual notification wrapper/content */
-  /* Remove fixed positioning from the element that holds the notification content */
-  .notification-wrapper {
+}
+
+/* Individual notification wrapper/content */
+/* Remove fixed positioning from the element that holds the notification content */
+.notification-wrapper {
     /* Remove position: fixed, top, right, z-index if they were here */
     width: 100%; /* Make individual notifications take container width */
     pointer-events: auto; /* Re-enable pointer events for the actual notification */
     animation: slideIn 0.3s ease-out; /* Keep the animation if desired */
     /* min-width: 300px; /* This can likely be removed or adjusted */
-  }
-  
-  /* Ensure the exit animation still works */
-  .notification-exit {
-      animation: slideOut 0.3s ease-in forwards;
-  }
-  
-  /* Keep your existing styles for the content inside */
-  .notification-content {
+}
+
+/* Ensure the exit animation still works */
+.notification-exit {
+    animation: slideOut 0.3s ease-in forwards;
+}
+
+/* Keep your existing styles for the content inside */
+.notification-content {
     background-color: #4CAF50; /* Or use specific colors like .error */
     color: white;
     padding: 12px 20px;
@@ -508,62 +525,61 @@ input[type="checkbox"] {
     gap: 10px;
     box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     min-width: 300px; /* Apply min-width here if needed */
-  }
-  
-  .notification-content.error {
-      background-color: #f44336;
-  }
-  
-  /* Keep dismiss button styles */
-  .notification-dismiss {
-      background: none;
-      border: none;
-      color: white;
-      margin-left: auto;
-      cursor: pointer;
-      padding: 5px;
-      opacity: 0.8;
-  }
-  
-  .notification-dismiss:hover {
-      opacity: 1;
-  }
-  
-  /* Keep keyframes */
-  @keyframes slideIn {
-      from {
-          transform: translateX(100%);
-          opacity: 0;
-      }
-      to {
-          transform: translateX(0);
-          opacity: 1;
-      }
-  }
-  
-  @keyframes slideOut {
-      from {
-          transform: translateX(0);
-          opacity: 1;
-      }
-      to {
-          transform: translateX(100%);
-          opacity: 0;
-      }
-  }
-  
-  /* Other notification styles (icon, text) should remain as they are */
-  .notification-icon {
-      font-size: 1.2em;
-      /* color: #fff; */ /* Color might be set by specific classes */
-  }
-  
-  .notification-text {
-      font-size: 1em;
-      font-weight: 500;
-      flex-grow: 1; /* Allow text to take space */
-  }
-  
+}
+
+.notification-content.error {
+    background-color: #f44336;
+}
+
+/* Keep dismiss button styles */
+.notification-dismiss {
+    background: none;
+    border: none;
+    color: white;
+    margin-left: auto;
+    cursor: pointer;
+    padding: 5px;
+    opacity: 0.8;
+}
+
+.notification-dismiss:hover {
+    opacity: 1;
+}
+
+/* Keep keyframes */
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideOut {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+
+/* Other notification styles (icon, text) should remain as they are */
+.notification-icon {
+    font-size: 1.2em;
+    /* color: #fff; */ /* Color might be set by specific classes */
+}
+
+.notification-text {
+    font-size: 1em;
+    font-weight: 500;
+    flex-grow: 1; /* Allow text to take space */
+}
 
 .label-container {
     display: flex;
@@ -572,11 +588,11 @@ input[type="checkbox"] {
     margin-bottom: 5px;
 }
 
-    .label-container .helper-text {
-        color: #666;
-        font-size: 0.8em;
-        font-style: italic;
-    }
+.label-container .helper-text {
+    color: #666;
+    font-size: 0.8em;
+    font-style: italic;
+}
 
 .form-type-header {
     text-align: center;
@@ -585,11 +601,11 @@ input[type="checkbox"] {
     border-radius: 5px;
 }
 
-    .form-type-header h3 {
-        margin: 0;
-        color: #acb1cad3;
-        font-weight: 500;
-    }
+.form-type-header h3 {
+    margin: 0;
+    color: #acb1cad3;
+    font-weight: 500;
+}
 
 .party-input {
     display: flex;
@@ -599,22 +615,20 @@ input[type="checkbox"] {
     width: 100%;
 }
 
-    .party-input input {
-        flex: 1;
-        height: 35px;
-        padding: 5px 10px;
-        border: 1px solid #30363d;
-        border-radius: 4px;
-        font-size: 14px;
-    }
-
+.party-input input {
+    flex: 1;
+    height: 35px;
+    padding: 5px 10px;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    font-size: 14px;
+}
 
 .parties-container {
     display: flex;
     flex-direction: column;
     gap: 10px;
 }
-
 
 .version-info {
     font-size: 0.9em;
@@ -653,28 +667,28 @@ input[type="checkbox"] {
 .is-invalid::placeholder {
     color: #eeeeeeb0 !important;
     opacity: 1; /* Required for Firefox */
-
 }
 
 .is-invalid,
-    .is-invalid:focus {
-    color:  #acb1cad3 !important;
-}    .form-select:focus {
-        background-color: #16202c;
-        color: #eeeeeeb0;
-        border-color: #16202c;
-        box-shadow: 0 0 0 0.25rem rgba(147, 151, 155, 0.25);
-    }
+.is-invalid:focus {
+    color: #acb1cad3 !important;
+}
+.form-select:focus {
+    background-color: #16202c;
+    color: #eeeeeeb0;
+    border-color: #16202c;
+    box-shadow: 0 0 0 0.25rem rgba(147, 151, 155, 0.25);
+}
 
-        .form-select:hover {
-            background-color: #16202c;
-            color: #eeeeeeb0;
-        }
+.form-select:hover {
+    background-color: #16202c;
+    color: #eeeeeeb0;
+}
 
-    .form-select option {
-        background-color: #16202c;
-        color: #eeeeeeb0;
-    }
+.form-select option {
+    background-color: #16202c;
+    color: #eeeeeeb0;
+}
 
 .reports-container {
     display: flex;
@@ -688,15 +702,14 @@ input[type="checkbox"] {
     gap: 10px;
 }
 
-    .report-input span {
-        min-width: 25px;
-        padding-top: 8px;
-    }
+.report-input span {
+    min-width: 25px;
+    padding-top: 8px;
+}
 
-    .report-input textarea {
-        flex: 1;
-    }
-
+.report-input textarea {
+    flex: 1;
+}
 
 .hide-selector-option {
     margin-top: 20px;
@@ -707,32 +720,30 @@ input[type="checkbox"] {
     color: #acb1cad3;
 }
 
-    .hide-selector-option input[type="checkbox"] {
-        width: auto;
-        margin: 0;
+.hide-selector-option input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+}
+
+.hide-selector-option label {
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+@media (max-width: 768px) {
+    /* Styles to apply on screens smaller than 768px */
+    .header-info-wrapper {
+        text-align: center; /* Center header info on smaller screens */
     }
 
-    .hide-selector-option label {
-        font-size: 0.9rem;
-        cursor: pointer;
-    }
-    @media (max-width: 768px) {
-        /* Styles to apply on screens smaller than 768px */
-        .header-info-wrapper {
-            text-align: center; /* Center header info on smaller screens */
-        }
-    
-        .agency-selector-buttons {
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); /* Adjust grid for smaller screens */
-        }
-    
-        /* Adjust font sizes for better readability */
-        body {
-            font-size: 14px;
-        }
+    .agency-selector-buttons {
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); /* Adjust grid for smaller screens */
     }
 
-
+    /* Adjust font sizes for better readability */
+    body {
+        font-size: 14px;
+    }
+}
 
 .business-card-content {
     display: flex;
@@ -758,23 +769,23 @@ input[type="checkbox"] {
     src: url('./assets/fonts/LufgaMedium.ttf') format('truetype'); /* Adjust path and format */
     font-weight: normal;
     font-style: normal;
-  }
-  @font-face {
-  font-family: 'Poppins-Medium';
-  src: url('./assets/fonts/Poppins-Medium.ttf') format('truetype');
-  /* Add other formats if you have them */
-  font-weight: normal; /* Or 500 */
-  font-style: normal;
+}
+@font-face {
+    font-family: 'Poppins-Medium';
+    src: url('./assets/fonts/Poppins-Medium.ttf') format('truetype');
+    /* Add other formats if you have them */
+    font-weight: normal; /* Or 500 */
+    font-style: normal;
 }
 
-  .business-card-modal .name-overlay,
-  .business-card-modal .rank-overlay,
-  .business-card-modal .department-overlay,
-  .business-card-modal .phone-number-overlay {
+.business-card-modal .name-overlay,
+.business-card-modal .rank-overlay,
+.business-card-modal .department-overlay,
+.business-card-modal .phone-number-overlay {
     font-family: 'LufgaMedium', sans-serif;
-  }
+}
 
-  .imgur-link-container {
+.imgur-link-container {
     margin-bottom: 10px;
     text-align: center;
 }
@@ -794,96 +805,96 @@ input[type="checkbox"] {
 
 /* Modal content for business card */
 .position-info-modal-content::-webkit-scrollbar {
-  width: 10px; /* Width of the scrollbar */
+    width: 10px; /* Width of the scrollbar */
 }
 
 .position-info-modal-content::-webkit-scrollbar-track {
-  background: #161b22; /* Background of the scrollbar track (darker shade) */
-  border-radius: 5px;
+    background: #161b22; /* Background of the scrollbar track (darker shade) */
+    border-radius: 5px;
 }
 
 .position-info-modal-content::-webkit-scrollbar-thumb {
-  background-color: #30363d; /* Color of the scrollbar thumb (a bit lighter) */
-  border-radius: 5px;
-  border: 2px solid #161b22; /* Creates a padding effect around the thumb */
+    background-color: #30363d; /* Color of the scrollbar thumb (a bit lighter) */
+    border-radius: 5px;
+    border: 2px solid #161b22; /* Creates a padding effect around the thumb */
 }
 
 .position-info-modal-content::-webkit-scrollbar-thumb:hover {
-  background-color: #484f58; /* Color of the thumb on hover */
+    background-color: #484f58; /* Color of the thumb on hover */
 }
 
 /* For Firefox */
 .position-info-modal-content {
-  scrollbar-width: thin; /* "auto" or "thin" */
-  scrollbar-color: #30363d #161b22; /* thumb_color track_color */
+    scrollbar-width: thin; /* "auto" or "thin" */
+    scrollbar-color: #30363d #161b22; /* thumb_color track_color */
 }
 .custom-validation-message {
-  margin-top: 0.5rem;
-  margin-bottom: 0.5rem;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
 }
 
 /* Add to your App.css or index.css */
 .notification-actions {
-  display: flex;
-  justify-content: flex-end; /* Or center, space-around */
-  padding-top: 8px;
-  margin-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1); /* Optional separator */
+    display: flex;
+    justify-content: flex-end; /* Or center, space-around */
+    padding-top: 8px;
+    margin-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1); /* Optional separator */
 }
 
 .notification-action-button {
-  background-color: #007bff; /* Example primary color */
-  color: white;
-  border: none;
-  padding: 5px 10px;
-  margin-left: 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.85em;
+    background-color: #007bff; /* Example primary color */
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    margin-left: 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85em;
 }
 
 .notification-action-button:hover {
-  opacity: 0.9;
+    opacity: 0.9;
 }
 
 .notification-action-secondary { /* Example for a secondary button style */
-  background-color: #6c757d;
+    background-color: #6c757d;
 }
 .floating-admin-button-container {
-  position: fixed;
-  top: 0px;
-  right: 0px;
-  z-index: 1030; /* Ensure it's above most content but below modals if needed */
+    position: fixed;
+    top: 0px;
+    right: 0px;
+    z-index: 1030; /* Ensure it's above most content but below modals if needed */
 }
 
 .floating-top-right-tools {
-  position: fixed;
-  top: 0px;
-  right: 250px; /* Adjust based on admin panel button or desired spacing */
-  z-index: 1030;
-  flex-direction: column; /* Stack buttons vertically if more are added */
-  align-items: flex-end; /* Align buttons to the right */
-  gap: 10px; /* Space between buttons in this container */
+    position: fixed;
+    top: 0px;
+    right: 250px; /* Adjust based on admin panel button or desired spacing */
+    z-index: 1030;
+    flex-direction: column; /* Stack buttons vertically if more are added */
+    align-items: flex-end; /* Align buttons to the right */
+    gap: 10px; /* Space between buttons in this container */
 }
 
 /* Floating "Moved" Notification */
 .floating-moved-notification {
-  position: fixed;
-  bottom: 70px; /* Adjust as needed */
-  background-color: orange;
-  color: white;
-  padding: 10px 15px;
-  border-radius: 5px;
-  z-index: 1051; /* Above other notifications */
-  animation: soft-flash 1.5s infinite;
-  font-weight: bold;
+    position: fixed;
+    bottom: 70px; /* Adjust as needed */
+    background-color: orange;
+    color: white;
+    padding: 10px 15px;
+    border-radius: 5px;
+    z-index: 1051; /* Above other notifications */
+    animation: soft-flash 1.5s infinite;
+    font-weight: bold;
 }
 
 @keyframes soft-flash {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.7;
-  }
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
 }
