@@ -13,8 +13,13 @@ async function orchestrateDeploy() {
     switchGitRemote(REMOTE_NAME, URL_1);
     runCommand(DEPLOY_COMMAND);
     runCommand('git add .');
-    runCommand('git commit -m "Staging"');
-    runCommand('git push origin source');
+    const statusOutput1 = runCommand('git status --porcelain', true).trim(); // Pass true to return output
+    if (statusOutput1) {
+        runCommand('git commit -m "Staging"');
+        runCommand('git push origin source');
+    } else {
+        console.log('No changes to commit for URL 1. Skipping commit and push.');
+    }
     console.log(`Deployment to ${URL_1} complete.`);
 
     // Deploy to URL 2
@@ -22,10 +27,13 @@ async function orchestrateDeploy() {
     switchGitRemote(REMOTE_NAME, URL_2);
     runCommand(DEPLOY_COMMAND);
     runCommand('git add .');
-    runCommand('git commit -m "Staging"');
-    runCommand('git push origin source');
-    console.log(`Deployment to ${URL_2} complete.`);
-
+    const statusOutput2 = runCommand('git status --porcelain', true).trim(); // Pass true to return output
+    if (statusOutput2) {
+        runCommand('git commit -m "Staging"');
+        runCommand('git push origin source');
+    } else {
+        console.log('No changes to commit for URL 2. Skipping commit and push.');
+    }
     console.log('Orchestrated deployment finished.');
 }
 
