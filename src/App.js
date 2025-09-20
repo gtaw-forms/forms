@@ -10,7 +10,7 @@ import AgencySelector from './components/AgencySelector';
 import Footer from './components/Footer';
 import SeasonalEvents from './components/SeasonalEvents';
 import HeaderInfo from './components/HeaderInfo';
-import Snowfall from 'react-snowfall'; 
+import 'bootstrap/dist/css/bootstrap.min.css';
 import * as Sentry from "@sentry/react";
 import { analytics } from './firebase';
 import { logEvent } from 'firebase/analytics';
@@ -363,7 +363,14 @@ function AppContent({
             additionalReports: (prev.additionalReports || []).filter((_, i) => i !== index)
         }));
     };
-
+useEffect(() => {
+  if (showToolsDropdown) {
+    // Hack: Force reposition after a tick
+    setTimeout(() => {
+      // If you have a ref to the dropdown, call instance.update()
+    }, 0);
+  }
+}, [showToolsDropdown]);
     const handleReportChange = (index, value) => {
         setFormData(prev => {
             const newReports = [...(prev.additionalReports || [])];
@@ -1562,7 +1569,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
             <HeaderInfo commitInfo={commitInfo} /> 
             </div>
 
-            <div className="container"> 
+            <div className="container-fluid"> 
                 
                 <div className="form-container">
                 <div className="button-group">
@@ -1584,11 +1591,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                   </div> */}  
 
         <div className="floating-tools-container">
-            {showMovedNotification && (
-                <div className="floating-moved-notification">
-                    I'm new!
-                </div>
-            )}
+
             <Dropdown drop="up" show={showToolsDropdown} onToggle={(isOpen) => setShowToolsDropdown(isOpen)}>
                 <Dropdown.Toggle variant="secondary" id="dropdown-tools">
                     <i className="fas fa-tools"></i> Tools
@@ -1616,13 +1619,6 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                     }}>
                         <i className="fas fa-users"></i> Switch Form Type
                     </Dropdown.Item>
-                    <Dropdown.Divider />
-                    <Dropdown.Header>Test Seasonal Events</Dropdown.Header>
-                    <Dropdown.Item onClick={() => {setTestSeason('Christmas'); setShowToolsDropdown(false);}}>Christmas</Dropdown.Item>
-                    <Dropdown.Item onClick={() => {setTestSeason('Halloween'); setShowToolsDropdown(false);}}>Halloween</Dropdown.Item>
-                    <Dropdown.Item onClick={() => {setTestSeason('AprilFools'); setShowToolsDropdown(false);}}>April Fools</Dropdown.Item>
-                    <Dropdown.Item onClick={() => {setTestSeason('Easter'); setShowToolsDropdown(false);}}>Easter</Dropdown.Item>
-                    <Dropdown.Item onClick={() => {setTestSeason(null); setShowToolsDropdown(false);}}>Default</Dropdown.Item>
                 </Dropdown.Menu>
             </Dropdown>
         </div>
@@ -1886,6 +1882,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                         </div>
                     </form>
                 </div>
+                
                 <div className="output-container">
                 <div className="floating-admin-button-container">
                 <Button
