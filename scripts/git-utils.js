@@ -29,12 +29,25 @@ function switchGitRemote(remoteName, remoteUrl, branchName = 'source') {
     runCommand(`git remote add ${remoteName} ${remoteUrl}`);
     console.log(`Remote '${remoteName}' added with URL '${remoteUrl}'.`);
 
+    // Fetch to ensure we have the latest remote branches
+    runCommand(`git fetch ${remoteName}`);
+
     // Set upstream branch
     try {
         runCommand(`git branch --set-upstream-to=${remoteName}/${branchName} ${branchName}`);
         console.log(`Branch '${branchName}' is now tracking '${remoteName}/${branchName}'.`);
     } catch (error) {
-        console.warn(`Could not set upstream for branch '${branchName}'. You might need to do this manually if it's a new branch or if the remote branch doesn't exist yet.`);
+        console.warn(`Could not set upstream for branch '${branchName}'. Attempting to push and set upstream...`);
+        // If setting upstream fails, it might be because the remote branch doesn't exist.
+        // Try to push the branch and set upstream in one go.
+        try {
+            runCommand(`git push -u ${remoteName} ${branchName}`);
+            console.log(`Successfully pushed and set upstream for branch '${branchName}'.`);
+        } catch (pushError) {
+            console.error(`Failed to push and set upstream for branch '${branchName}'.`);
+            console.error(pushError.message);
+            process.exit(1);
+        }
     }
 
     console.log('Git remote switch complete.');
