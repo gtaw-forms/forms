@@ -75,8 +75,10 @@
   }
 .header-info-wrapper {
     display: flex;
+    flex-direction: row;
     background: #0d1117;
     justify-content: center;
+    align-items: center;
     margin-bottom: 5px;
     width: 100%;
     border-radius: 8px;
@@ -89,22 +91,14 @@
     text-align: center;
 }
 
-.container {
-    display: flex;
-    justify-content: space-between;
-    flex-direction: column; /* Stack form and output on smaller screens */
-}
-
 /* Container styles */
 .form-container {
-    width: 100% !important; /* Take full width on smaller screens */
     background-color: #0d1117 !important;
     padding: 20px !important;
     border-radius: 8px !important;
     margin-bottom: 5px; /* Add some spacing below the form */
 }
 .output-container {
-    width: 100% !important; /* Take full width on smaller screens */
     background-color: #0d1117;
     padding: 20px;
     border-radius: 8px;
@@ -738,19 +732,7 @@ input[type="checkbox"] {
         }
     }
 
-@media (min-width: 769px) {
-    .container {
-        flex-direction: row; /* Keep side-by-side layout on larger screens */
-    }
 
-    .form-container {
-        width: 35% !important; /* Restore original width on larger screens */
-    }
-
-    .output-container {
-        width: 60% !important; /* Restore original width on larger screens */
-    }
-}
 
 .business-card-content {
     display: flex;

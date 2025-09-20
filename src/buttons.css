@@ -525,16 +525,9 @@ input[type="radio"] {
       flex-grow: 1; /* Allow message to take available space */
   }
 
-  .floating-buttons-dropdown .dropdown-toggle {
-    background-color: #212529; /* Dark background to match theme */
-    border-color: #495057;     /* Slightly lighter border */
-    color: #adb5bd;           /* Lighter text color */
-    padding: 0.5rem 1rem;      /* Adjust padding */
-    font-size: 0.9rem;         /* Adjust font size */
-    border-radius: 5px;        /* Rounded corners */
-    transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out; /* Smooth transition */
-  }
-  .tools-dropdown-wrapper {
+.floating-buttons-dropdown .dropdown-toggle {
+  box-sizing: border-box; /* Explicitly set */
+}  .tools-dropdown-wrapper {
     position: fixed; /* Position relative to the viewport */
     top: 15px;       /* Distance from the top */
     right: 15px;      /* Distance from the right */
@@ -723,55 +716,21 @@ input[type="radio"] {
 
 .floating-tools-container {
   position: fixed;
-  bottom: 20px; /* Position from the bottom */
-  right: 20px; /* Position from the right */
-  z-index: 1040; 
+  bottom: 20px;
+  right: 35px;
+  z-index: 1040;
   display: flex;
-  flex-direction: row; 
-  gap: 15px; /* Adjusted gap for horizontal layout, can be 25px if preferred */
-  align-items: center; 
-}
-
-.floating-tool-button {
-  /* Inherit general button structure and feel */
-  display: inline-flex; 
+  flex-direction: row;
+  gap: 15px;
   align-items: center;
   justify-content: center;
-  
-  /* Consistent sizing and spacing with .btn */
-  padding: 0.5rem 0.75rem; /* Approx 8px 12px */
-  font-size: 0.8rem;   
-  border-radius: 4px;  
-  gap: 6px; /* Space between icon and text, consistent with .btn */
-  line-height: 1.5; 
-  flex-shrink: 0; 
-  min-height: calc(1.5em + 1rem + 2px); /* Consistent minimum height */
-  margin: 0; /* Remove individual margins, container 'gap' handles spacing */
-
-  /* Theme similar to .btn-secondary for a clean look */
-  background-color: #212529; 
-  border: 1px solid #495057;     
-  color: #adb5bd;           
-  
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15); /* Keep a subtle shadow */
-  transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out, color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+.tools-dropdown-wrapper {
+  position: relative; /* Change from fixed to relative (let the parent .floating-tools-container handle fixed) */
+  /* Remove top: 15px; right: 15px; */
+  z-index: 1050;
 }
 
-.floating-tool-button:hover,
-.floating-tool-button:focus,
-.floating-tool-button:active {
-  background-color: #343a40; 
-  border-color: #6c757d;
-  color: #f8f9fa;           
-  box-shadow: 0 0 0 0.2rem rgba(108, 117, 125, 0.5), 0 4px 8px rgba(0, 0, 0, 0.2); /* Combine focus and hover shadow */
-  outline: none; /* Remove default browser outline on focus if using box-shadow for focus */
-}
-
-.floating-tool-button i {
-  /* Icon size relative to button font size, consistent with .btn i */
-  font-size: 1em; 
-  /* margin-right is no longer needed due to 'gap' on the button itself */
-}
 
 /* Text visibility based on screen size (from your existing CSS) */
 @media (min-width: 768px) {
@@ -793,50 +752,6 @@ input[type="radio"] {
   }
 }
 
-.floating-tools-container .dropdown-menu {
-    display: none;
-}
-
-.floating-tools-container .dropdown-menu.show {
-    display: block;
-}
-.floating-tools-container .dropdown-menu {
-    background-color: #212529; /* Dark background */
-    border: 1px solid #495057;
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.3);
-    margin-top: 5px;
-    border-radius: 5px;
-}
-
-.floating-tools-container .dropdown-item {
-    color: #adb5bd;
-    padding: 0.5rem 1.2rem;
-    font-size: 0.9rem;
-    display: flex;
-    align-items: center;
-}
-
-.floating-tools-container .dropdown-item:hover,
-.floating-tools-container .dropdown-item:focus {
-    background-color: #343a40;
-    color: #f8f9fa;
-}
-
-.floating-tools-container .dropdown-item i {
-    margin-right: 10px;
-    width: 16px;
-    text-align: center;
-    color: #6c757d;
-}
-
-.floating-tools-container .dropdown-item:hover i,
-.floating-tools-container .dropdown-item:focus i {
-    color: #adb5bd;
-}
-
-.floating-tools-container .dropdown-divider {
-    border-top: 1px solid #495057;
-}
 
 .privacy-policy-button {
     background-color: #007bff;
