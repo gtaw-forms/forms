@@ -29,7 +29,7 @@ function App() {
                 <FormProvider initialFormData={initialFormData} setFormData={setFormData} setLastWebhookIdentifier={setLastWebhookIdentifier} showNotification={showNotification}>
                     <NotificationProvider>
                         <AuthProvider>
-                            <Router basename={window.location.hostname === 'fr0styjs.github.io' && window.location.pathname.startsWith('/phmc-code-archive') ? '/' : '/'}>
+                            <Router basename={"/"}>
                                 <Routes>
                                     <Route path="/" element={<MainApp formData={formData} setFormData={setFormData} lastWebhookIdentifier={lastWebhookIdentifier} setLastWebhookIdentifier={setLastWebhookIdentifier} initialFormData={initialFormData} showNotification={showNotification} removeNotification={removeNotification} setShowAdblockNotification={setShowAdblockNotification} />} />
                                     <Route path="/login" element={<GtaLogin />} />
