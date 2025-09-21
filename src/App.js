@@ -35,6 +35,7 @@ function App() {
                                     <Route path="/login" element={<GtaLogin />} />
                                     <Route path="/auth/gta/callback" element={<GtaCallback />} />
                                     <Route path="/admin" element={<ProtectedRoute><Admin formData={formData} setFormData={setFormData} showNotification={showNotification} /></ProtectedRoute>} />
+                                    <Route path="*" element={<Navigate to="/" replace />} />
                                 </Routes>
                             </Router>
                         </AuthProvider>

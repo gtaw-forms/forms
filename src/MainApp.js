@@ -1899,7 +1899,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                     type="button"
                     variant="danger"
                     className="changelog-button"
-                    onClick={() => window.location.href = '/admin'}
+                    onClick={() => window.location.href = '/forms/admin'}
                     title="Open Admin Control Panel"
                 >
                     <i className="fas fa-user-shield"></i>
