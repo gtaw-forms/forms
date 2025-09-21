@@ -2,6 +2,7 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { setGlobalOptions } from "firebase-functions/v2";
 import admin from "firebase-admin";
 import fetch from "node-fetch";
+import { onCall } from "firebase-functions/v2/https";
 
 // Initialize Firebase Admin SDK
 if (admin.apps.length === 0) {
@@ -86,7 +87,7 @@ const scheduleDeletion = async (request) => {
 
 // --- Scheduled Cloud Function (v2) ---
 
-// Use ESM 'export' syntax instead of 'exports.dailyTaskHandler ='
+// Use ESM 'export' syntax instead of 'exports.dailyTaskHandler =' 
 export const dailyTaskHandler = onSchedule({
     schedule: "every day 09:00",
     timeZone: "UTC",
@@ -191,8 +192,10 @@ export const dailyTaskHandler = onSchedule({
         title: "Daily Task Handler",
         color: 0x1E90FF,
         fields: [
-            { name: "Bingo Reset Status", value: `\`\`\`\n${bingoDetails.trim() || "No bingo actions taken."}\n\`\`\``, inline: false },
-            { name: "Phrase Request Deletion", value: `\`\`\`\n${deletionDetails.trim() || "No phrase request actions taken."}\n\`\`\``, inline: false },
+            { name: "Bingo Reset Status", value: `\`\`\n${bingoDetails.trim() || "No bingo actions taken."}\n\`\`
+`, inline: false },
+            { name: "Phrase Request Deletion", value: `\`\`\n${deletionDetails.trim() || "No phrase request actions taken."}\n\`\`
+`, inline: false },
         ],
         timestamp: new Date(event.timestamp).toUTCString(),
         footer: { text: "PHMC Tools - Scheduled Cloud Function (v2)" }
@@ -203,4 +206,56 @@ export const dailyTaskHandler = onSchedule({
     console.log('Daily task handler finished successfully.');
 
     return null;
+});
+
+export const exchangeAuthCodeForToken = onCall({ secrets: ["GTAWORLD_CLIENT_ID", "GTAWORLD_CLIENT_SECRET"] }, async (request) => {
+    const code = request.data.code;
+    const clientId = process.env.GTAWORLD_CLIENT_ID;
+    const clientSecret = process.env.GTAWORLD_CLIENT_SECRET;
+    const redirectUri = request.data.redirectUri;
+
+    if (!code) {
+        throw new functions.https.HttpsError('invalid-argument', 'The function must be called with one argument "code".');
+    }
+
+    try {
+        // Exchange auth code for access token
+        const tokenResponse = await fetch('https://ucp.gta.world/oauth/token', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+                grant_type: 'authorization_code',
+                client_id: clientId,
+                client_secret: clientSecret,
+                redirect_uri: redirectUri,
+                code: code,
+            }),
+        });
+
+        const tokenData = await tokenResponse.json();
+
+        if (!tokenResponse.ok) {
+            throw new functions.https.HttpsError('unknown', 'Failed to fetch token', tokenData);
+        }
+
+        // Fetch user profile
+        const userResponse = await fetch('https://ucp.gta.world/api/v1/user', {
+            headers: {
+                'Authorization': `Bearer ${tokenData.access_token}`,
+            },
+        });
+
+        const userData = await userResponse.json();
+
+        if (!userResponse.ok) {
+            throw new functions.https.HttpsError('unknown', 'Failed to fetch user data', userData);
+        }
+
+        return userData;
+    } catch (error) {
+        console.error("Error exchanging auth code:", error);
+        throw new functions.https.HttpsError('internal', 'An error occurred while exchanging the auth code.', error);
+    }
 });
