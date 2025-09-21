@@ -27,7 +27,7 @@ export const DataProvider = ({ children }) => {
     const loadData = useCallback(async () => {
         let loadingNotificationId;
         try {
-            loadingNotificationId = showNotification("Staff Data Loading...", 'spinner fa-spin', 0);
+            loadingNotificationId = showNotification("Application loading...", 'spinner fa-spin', 0);
 
             const dbRootRef = ref(database);
             const staffRef = child(dbRootRef, 'staff');
@@ -37,9 +37,9 @@ export const DataProvider = ({ children }) => {
                 const staffData = staffSnapshot.val();
                 setPhmcListData(staffData?.phmc || []);
                 setCoronerListData(staffData?.coroner || []);
-                showNotification("Staff Data Loaded!", 'check-circle', 2000);
+                showNotification("Application loaded!", 'check-circle', 2000);
             } else {
-                showNotification('Staff data not found on server.', 'error');
+                showNotification('Application failure! Contact System Administrator.', 'error');
             }
         } catch (error) {
             showNotification("An error has happened, contact the maintainer", 'error');
