@@ -2,15 +2,17 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="refresh" content="0; url=/forms/" />
     <script type="text/javascript">
-      // GitHub Pages 404 redirect for React Router
+      // Prevent infinite redirect loop for /forms/* routes
       (function() {
         var pathname = window.location.pathname;
         var search = window.location.search;
         var hash = window.location.hash;
-        var redirectUrl = '/forms' + pathname.replace(/^\/forms/, '') + search + hash;
-        window.location.replace(redirectUrl);
+        // Only redirect if not already at /forms or a subroute
+        if (!/^\/forms(\/|$)/.test(pathname)) {
+          var redirectUrl = '/forms' + pathname + search + hash;
+          window.location.replace(redirectUrl);
+        }
       })();
     </script>
     <title>Redirecting...</title>
