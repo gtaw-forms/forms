@@ -23,11 +23,9 @@ const generateBasicPatientFile = (formData) => {
         let paymentSection = '';
         if (formData.isExempt === true || formData.isExempt === 'true') {
             paymentSection = 'I am exempt from paying this service in accordance with the PHMC policies.';
-        } else {
+        } else if (paymentProofPhotos) {
             paymentSection = `[url=${paymentProofPhotos}]Proof Of Payment [/url]`;
         }
-
-    const scenePhotosBBCode = paymentProofPhotos.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
 
     let bbCode = `[table][tr][td][center][br][/br][br][/br][b]Patient Information[/b]
 

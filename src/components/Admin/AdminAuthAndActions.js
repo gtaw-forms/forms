@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Form as BootstrapForm, Button, Spinner, ListGroup } from 'react-bootstrap';
 import { auth, database } from '../../firebase';
-import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { ref, get, update, remove, set, serverTimestamp, onValue } from "firebase/database"; 
 import AddRoleModal from './RoleModal';
 import RenameRoleKeyModal from './RenameRoleKeyModal';
@@ -126,13 +126,7 @@ const sendAdminActionWebhook = async (adminEmail, action, details, categoryName 
 
 const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNotification: showInAppNotification, commitInfo }) => {
     // GTA World OAuth login handler
-    const handleGtaWorldLogin = () => {
-        // Replace with your actual client ID and callback URL
-        const clientId = process.env.REACT_APP_GTAWORLD_CLIENT_ID || 'YOUR_CLIENT_ID';
-    const redirectUri = encodeURIComponent(window.location.origin + '/forms/auth/gta/callback');
-        const authUrl = `https://ucp.gta.world/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}`;
-        window.location.href = authUrl;
-    };
+    // GTA World OAuth login handler is now in GtaLogin.js
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
@@ -1231,10 +1225,7 @@ Key: ${savedRoleData.originalKey}`,
                 <i className="fas fa-bug"></i> Test Error
             </Button>
             <div className="my-3 p-3 border border-warning rounded">
-                    <Button variant="primary" className="ms-2" onClick={handleGtaWorldLogin} title="Login to GTA World UCP (OAuth)">
-                        <i className="fas fa-sign-in-alt me-2"></i>
-                        Login UCP
-                    </Button>
+                    
                                     <Button variant="secondary" onClick={() => setShowCctvWebhookModal(true)} title="Send a test webhook simulating a CCTV request.">
                         <i className="fas fa-video me-2"></i>
                         CCTV Request Test
