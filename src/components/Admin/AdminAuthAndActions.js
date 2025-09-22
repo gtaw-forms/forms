@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import  { useState, useEffect, useCallback, useRef } from 'react';
 import { Form as BootstrapForm, Button, Spinner, ListGroup } from 'react-bootstrap';
 import { auth, database } from '../../firebase';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { ref, get, update, remove, set, serverTimestamp, onValue } from "firebase/database"; 
 import AddRoleModal from './RoleModal';
 import RenameRoleKeyModal from './RenameRoleKeyModal';
@@ -11,7 +11,6 @@ import EditBingoPhrasesModal from './EditBingoPhrasesModal';
 import ReviewPhraseRequestsModal from './ReviewPhraseRequestsModal';
 import * as Sentry from "@sentry/react";
 import CctvRequestWebhookModal from './CctvRequestWebhookModal'; // Import the new modal
-import MarkdownBBCodeModal from '../MarkdownBBCodeModal';
 import UserManagementModal from './UserManagementModal';
 
 
@@ -1234,11 +1233,6 @@ Key: ${savedRoleData.originalKey}`,
             </div>
             <hr />
                     <Button onClick={() => setShowMarkdownModal(true)}>Open Markdown Converter</Button>
-        <MarkdownBBCodeModal
-            show={showMarkdownModal}
-            onHide={() => setShowMarkdownModal(false)}
-            showNotification={showNotification}
-        />
 
             <Button variant="warning" onClick={handleLogout} className="mt-3">Logout</Button>
 

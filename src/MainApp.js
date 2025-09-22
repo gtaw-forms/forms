@@ -1,8 +1,8 @@
 import { useReportManagement } from './components/useReportManagement';
-import React, { useState, useEffect, useRef, useMemo, useCallback} from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback} from 'react';
 import { formDefinitions, getFormDefinition } from './formDefinitions'; 
 import '@fortawesome/fontawesome-free/css/all.min.css';
-import { Modal, Form, Button, Dropdown } from 'react-bootstrap';
+import { Button, Dropdown } from 'react-bootstrap';
 import SavedReportsModal from './components/SavedReportsModal'; 
 import getRelevantFields from './components/RevelantFields';
 import AgencyGroupSelectorModal from './components/AgencyGroupSelectorModal'; 
@@ -14,24 +14,19 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import * as Sentry from "@sentry/react";
 import { analytics } from './firebase';
 import { logEvent } from 'firebase/analytics';
-import WebhookModal from './components/WebhookModal'; 
 import CoronerTipsModal from './components/CoronerTipsModal'; 
 import BusinessCardModal from './components/BusinessCardModal'; 
 import EasterEggModal from './components/EasterEggModal'; 
-import EmsAmaModal from './components/EmsAmaModal';
 import SwitchableFormsModal from './components/SwitchableFormsModal'; 
 import EmployeeModal from './components/EmployeeModal';
 import RecruitmentStatusDisplay from './components/RecruitmentStatusDisplay'; 
 import CctvRequestWebhookModal from './components/Admin/CctvRequestWebhookModal'; 
 import { sendBingoNotification, sendPhraseRequestNotification } from './components/notificationService';
-import { NotificationProvider, useNotification } from './contexts/NotificationContext';
-import { FormProvider } from './contexts/FormContext';
-import { DataProvider } from './contexts/DataContext';
+import { useNotification } from './contexts/NotificationContext';
 import FeatureRequestModal from './contexts/FeatureRequestModal';
-import FormImageLink from './components/FormImageLink';
 import SwitchableFormButtons from './components/SwitchableFormButtons';
 import PrivacyPolicyModal from './components/PrivacyPolicyModal';
-import { copyToClipboard, handleFormCopyAndNotify, handlePhmcRecruitmentCopyAndNotify } from './components/notificationService'; // Add copyToClipboard
+import { handleFormCopyAndNotify, handlePhmcRecruitmentCopyAndNotify } from './components/notificationService';
 
 import EmsBingoModal from './components/EmsBingoModal'; 
 
@@ -53,7 +48,7 @@ import 'react-bootstrap-typeahead/css/Typeahead.css';
 
 // database
 import { database } from './firebase'; // Your Firebase config
-import { ref, get, set, remove} from 'firebase/database'; // Added set
+import { ref, get} from 'firebase/database'; // Added set
 
 function MainApp({ 
     formData,
@@ -63,7 +58,6 @@ function MainApp({
     initialFormData,
     showNotification,
     removeNotification,
-    setShowAdblockNotification
 }) { 
     const [showPrivacyPolicyModal, setShowPrivacyPolicyModal] = useState(false);
     const [testSeason, setTestSeason] = useState(null);
@@ -83,7 +77,7 @@ function MainApp({
     const [showMovedNotification, setShowMovedNotification] = useState(true);
     const [showToolsDropdown, setShowToolsDropdown] = useState(false);
     const modalCloseTimer = useRef(null);
-    const [showImages, setShowImages] = useState(false);
+    
     const [showEmsBingoModal, setShowEmsBingoModal] = useState(false);
     const [showGtaCallback, setShowGtaCallback] = useState(false);
     const [showEasterEggModal, setShowEasterEggModal] = useState(false);
@@ -121,7 +115,7 @@ function MainApp({
     const [isJaneDoe, setIsJaneDoe] = useState(false);
     const [commitInfo, setCommitInfo] = useState({ sha: '', date: null, error: null });
     const [isLoadingUserReports, setIsLoadingUserReports] = useState(false);
-    const [preselectedEmployeeType, setPreselectedEmployeeType] = useState(null);
+    
     const [showPHMCModal, setShowPHMCModal] = useState(false);
     const [switchableModalTitle, setSwitchableModalTitle] = useState('');
     const [switchableFormsList, setSwitchableFormsList] = useState([]);
@@ -231,7 +225,6 @@ function MainApp({
             timestamp: new Date().toISOString(),
             footer: { text: `PHMC Tools - v${commitInfo.sha || 'N/A'}` }
         };
-            const pad = (num) => num.toString().padStart(2, '0');
 
         const payload = JSON.stringify({
             username: "CCTV Bot",
@@ -1292,7 +1285,7 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
         }
     }, []); // This effect runs once on initial load
 
-const uniqueCoronerRanks = [...new Set(coronerListData.map(c => c.rank))].sort();
+
 
 const handlePhmcWebhookSubmit = async (payload) => { // Receive payload from modal
     if (!payload) return; // Should not happen if modal validates, but good check
@@ -1462,7 +1455,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
             setShowAgencyGroupSelectorModal(true); // Show if no saved group or preference is not to hide
         }
     }, []);
-    const optInNotificationIdRef = useRef(null); // Ref to store the ID of the opt-in prompt
+    
     // This useEffect ensures selectedAgencyGroup is primarily driven by bbCodeVersion.
     // It runs when bbCodeVersion changes, correcting selectedAgencyGroup if needed.
     useEffect(() => {
@@ -1899,7 +1892,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                     type="button"
                     variant="danger"
                     className="changelog-button"
-                    onClick={() => window.location.href = '/forms/admin'}
+                    onClick={() => window.location.replace('/forms/admin')}
                     title="Open Admin Control Panel"
                 >
                     <i className="fas fa-user-shield"></i>
@@ -2059,7 +2052,6 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
 function MainAppWrapper() {
     const [formData, setFormData] = useState({});
     const [lastWebhookIdentifier, setLastWebhookIdentifier] = useState(null);
-    const [showAdblockNotification, setShowAdblockNotification] = useState(false);
 
     const { showNotification, removeNotification, NotificationContainer } = useNotification();
 
@@ -2076,7 +2068,6 @@ function MainAppWrapper() {
             initialFormData={initialFormData}
             showNotification={showNotification}
             removeNotification={removeNotification}
-            setShowAdblockNotification={setShowAdblockNotification}
         />
     );
 }
