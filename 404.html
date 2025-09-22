@@ -1,17 +1,42 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
+    <meta charset="UTF-8">
     <script type="text/javascript">
-      // Prevent infinite redirect loop for /forms/* routes
+      // Single Page Apps for GitHub Pages
+      // MIT License
+      // https://github.com/rafgraph/spa-github-pages
+      (function(l) {
+        if (l.search[1] === '/') {
+          var decoded = l.search.slice(1).split('&').map(function(s) { 
+            return s.replace(/~and~/g, '&')
+          }).join('?');
+          window.history.replaceState(null, null,
+              l.pathname.slice(0, -1) + decoded + l.hash
+          );
+        }
+      }(window.location));
+
+      // Handle SPA routing for GitHub Pages
       (function() {
-        var pathname = window.location.pathname;
-        var search = window.location.search;
-        var hash = window.location.hash;
-        // Only redirect if not already at /forms or a subroute
-        if (!/^\/forms(\/|$)/.test(pathname)) {
-          var redirectUrl = '/forms' + pathname + search + hash;
-          window.location.replace(redirectUrl);
+        var location = window.location;
+        var pathname = location.pathname;
+        var segments = pathname.split('/');
+        
+        // If we're not in /forms already and not handling a previous redirect
+        if (segments[1] !== 'forms' && !location.search.includes('?p=')) {
+          // Store the path after /forms/ to maintain deep linking
+          var targetPath = pathname.replace(/^\//, '');
+          // Redirect to /forms/ with the rest of the path as a parameter
+          window.location.replace('/forms/?p=' + encodeURIComponent(targetPath));
+        }
+        // If we have a ?p= parameter, handle the redirect
+        else if (location.search.includes('?p=')) {
+          var targetPath = decodeURIComponent(location.search.split('?p=')[1]);
+          // Only redirect if we're not already at the target
+          if (pathname !== '/forms/' + targetPath) {
+            window.location.replace('/forms/' + targetPath);
+          }
         }
       })();
     </script>
