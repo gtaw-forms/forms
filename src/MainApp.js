@@ -1,4 +1,5 @@
 import { useReportManagement } from './components/useReportManagement';
+import { useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef, useMemo, useCallback} from 'react';
 import { formDefinitions, getFormDefinition } from './formDefinitions'; 
 import '@fortawesome/fontawesome-free/css/all.min.css';
@@ -59,6 +60,7 @@ function MainApp({
     showNotification,
     removeNotification,
 }) { 
+    const navigate = useNavigate();
     const [showPrivacyPolicyModal, setShowPrivacyPolicyModal] = useState(false);
     const [testSeason, setTestSeason] = useState(null);
 
@@ -1892,7 +1894,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                     type="button"
                     variant="danger"
                     className="changelog-button"
-                    onClick={() => window.location.replace('/forms/admin')}
+                    onClick={() => navigate('/admin')}
                     title="Open Admin Control Panel"
                 >
                     <i className="fas fa-user-shield"></i>
