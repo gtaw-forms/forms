@@ -463,8 +463,7 @@ export const sendPhraseRequestNotification = async ({ requester, phrase, bingoTy
 
     // Add each line of the phrase as a separate field
     phraseLines.forEach((line, index) => {
-        embedFields.push({ name: `Phrase Line ${index + 1}`, value: `
-`, inline: false });
+        embedFields.push({ name: `Phrase Line ${index + 1}`, value: `\n`, inline: false });
     });
 
     // Add requester and bingoType fields
@@ -572,7 +571,7 @@ export const handlePhmcRecruitmentCopyAndNotify = async ({
         const discordWebhookUrl = process.env.REACT_APP_PHMC_RECRUITMENT_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DEV_WEBHOOK;
 
         if (discordWebhookUrl) {
-            await sendPhmcRecruitmentWebhook({ 
+            await sendPhmcRecruitmentWebhook({
                 webhookUrl: discordWebhookUrl,
                 formData,
                 commitInfo,
