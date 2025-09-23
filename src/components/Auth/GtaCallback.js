@@ -16,7 +16,7 @@ const GtaCallback = () => {
         if (code) {
             const functions = getFunctions();
             const exchangeAuthCodeForToken = httpsCallable(functions, 'exchangeAuthCodeForToken');
-            exchangeAuthCodeForToken({ code, redirectUri: window.location.origin + '/forms/auth/gta/callback' })
+            exchangeAuthCodeForToken({ code, redirectUri: window.location.origin + '/auth/gta/callback' })
                 .then((result) => {
                     const userData = result.data;
                     login(userData);
