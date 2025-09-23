@@ -1,7 +1,8 @@
 
 .admin-dashboard-container {
+    display: flex;
+    height: 100vh;
     background-color: #f8f9fa;
-    /* Removed display: flex and height: 100vh from here */
 }
 
 /* Ensure the root elements take full height */

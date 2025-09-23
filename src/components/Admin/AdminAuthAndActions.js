@@ -1,4 +1,4 @@
-import  { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Form as BootstrapForm, Button, Spinner, ListGroup } from 'react-bootstrap';
 import { auth, database } from '../../firebase';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
@@ -13,6 +13,8 @@ import * as Sentry from "@sentry/react";
 import CctvRequestWebhookModal from './CctvRequestWebhookModal'; // Import the new modal
 import UserManagementModal from './UserManagementModal';
 import AdminDashboard from './AdminDashboard';
+import OAuthTokenExchangeModal from './OAuthTokenExchangeModal';
+import UserDataExchangeModal from './UserDataExchangeModal';
 
 
 const recruitmentCategories = {
@@ -168,6 +170,8 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
     const [devWebhookMessage, setDevWebhookMessage] = useState(''); // New state
     const [showCctvWebhookModal, setShowCctvWebhookModal] = useState(false);
     const [showUserManagementModal, setShowUserManagementModal] = useState(false);
+    const [showOAuthTokenExchangeModal, setShowOAuthTokenExchangeModal] = useState(false);
+    const [showUserDataExchangeModal, setShowUserDataExchangeModal] = useState(false);
 
     const [formGeneratorStatus, setFormGeneratorStatus] = useState('');
     const [alternativeFormGeneratorStatus, setAlternativeFormGeneratorStatus] = useState('');
@@ -203,7 +207,9 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
             sendAdminActionWebhook(
                 currentUser.email,
                 "Updated Service Status",
-                `Form Generator: ${formGeneratorStatus}\nAlternative Form Generator: ${alternativeFormGeneratorStatus}\nLocalhost/Staging: ${localHostStatus}`,
+                `Form Generator: ${formGeneratorStatus}\
+Alternative Form Generator: ${alternativeFormGeneratorStatus}\
+Localhost/Staging: ${localHostStatus}`,
                 "Service Status",
                 userAgent,
                 timeZone
@@ -332,8 +338,9 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
             if (showInAppNotification) showInAppNotification(`Failed to load data for ${categoryConfig.displayName}.`, "error");
             setCurrentRecruitmentData({});
             setFormData(prev => ({ ...prev, adminDisplayData: null, adminSelectedCategoryName: categoryConfig.displayName }));
+        } finally {
+            setIsLoadingRecruitmentData(false);
         }
-        setIsLoadingRecruitmentData(false);
     }, [setFormData, showInAppNotification]);
     const [webhookMessage, setWebhookMessage] = useState('');
 
@@ -467,7 +474,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
         sendAdminActionWebhook(
             currentUser.email,
             "Toggled Recruitment Status",
-            `Position: ${positionDisplayName}\\
+            `Position: ${positionDisplayName}\
 New Status: ${newStatus}`,
             categoryConfig.displayName,
             userAgent,
@@ -495,8 +502,8 @@ New Status: ${newStatus}`,
         sendAdminActionWebhook(
             currentUser?.email || "Unknown User", // Fallback for email if not available.
             "Failed to Toggle Recruitment Status",
-            `Position: ${positionDisplayName}\\
-Attempted Status: ${newStatus}\\
+            `Position: ${positionDisplayName}\
+Attempted Status: ${newStatus}\
 Error: ${dbError.message}`,
             categoryConfig.displayName,
             userAgent,
@@ -519,9 +526,9 @@ Error: ${dbError.message}`,
             const action = actionType === 'edited' ? "Edited Role" : "Added New Role";
             sendAdminActionWebhook(
                 currentUser.email, action,
-                `Role Name: ${savedRoleData.displayName || savedRoleData.originalKey}\\
-Short Code: ${savedRoleData.shortCode || 'N/A'}\\
-Status: ${savedRoleData.status || 'N/A'}\\
+                `Role Name: ${savedRoleData.displayName || savedRoleData.originalKey}\
+Short Code: ${savedRoleData.shortCode || 'N/A'}\
+Status: ${savedRoleData.status || 'N/A'}\
 Key: ${savedRoleData.originalKey}`,
                 categoryConfig?.displayName || "Unknown Category",
                 userAgent,
@@ -571,10 +578,10 @@ Key: ${savedRoleData.originalKey}`,
         }
         if (currentUser?.email && roleToRenameKeyDetails && desktopNotificationPermission === "granted") {
             const categoryConfig = recruitmentCategories[selectedRecruitmentCategory];
-            showDesktopNotification(`Role Key Renamed: ${categoryConfig?.displayName || 'Recruitment'}`,
-                { body: `Key for \"${roleToRenameKeyDetails.data.displayName || roleToRenameKeyDetails.key}\" has been changed.`,
-                icon: '/phmc512.png',
-                tag: `rename-key-${selectedRecruitmentCategory}-${roleToRenameKeyDetails.key}`
+            showDesktopNotification(`Role Key Renamed: ${categoryConfig?.displayName || 'Recruitment'}`, 
+                { body: `Key for \"${roleToRenameKeyDetails.data.displayName || roleToRenameKeyDetails.key}\" has been changed.`, 
+                icon: '/phmc512.png', 
+                tag: `rename-key-${selectedRecruitmentCategory}-${roleToRenameKeyDetails.key}` 
             });
         }
         setRoleToRenameKeyDetails(null);
@@ -890,13 +897,13 @@ Key: ${savedRoleData.originalKey}`,
         // --- MODIFICATION FOR MANUAL ACTION ---
         const { userAgent, timeZone } = getUserContext();
         let details = '';
-        if (results.success.length > 0) details += `✅ Regenerated: ${results.success.join(', ')}\\
+        if (results.success.length > 0) details += `✅ Regenerated: ${results.success.join(', ')}\
 `;
-        if (results.noCard.length > 0) details += `➖ Skipped (Disabled): ${results.noCard.join(', ')}\\
+        if (results.noCard.length > 0) details += `➖ Skipped (Disabled): ${results.noCard.join(', ')}\
 `;
-        if (results.notEnoughPhrases.length > 0) details += `⚠️ Skipped (Not Enough Phrases): ${results.notEnoughPhrases.join(', ')}\\
+        if (results.notEnoughPhrases.length > 0) details += `⚠️ Skipped (Not Enough Phrases): ${results.notEnoughPhrases.join(', ')}\
 `;
-        if (results.errors.length > 0) details += `❌ Errors: ${results.errors.join(', ')}\\
+        if (results.errors.length > 0) details += `❌ Errors: ${results.errors.join(', ')}\
 `;
     
         sendAdminActionWebhook(
@@ -1100,6 +1107,8 @@ Key: ${savedRoleData.originalKey}`,
                 Sentry={Sentry}
                 showInAppNotification={showInAppNotification}
                 handleGtaWorldLogin={handleGtaWorldLogin}
+                setShowOAuthTokenExchangeModal={setShowOAuthTokenExchangeModal}
+                setShowUserDataExchangeModal={setShowUserDataExchangeModal}
             />
 
             {selectedRecruitmentCategory && recruitmentCategories[selectedRecruitmentCategory] && (
@@ -1130,7 +1139,7 @@ Key: ${savedRoleData.originalKey}`,
                 webhookTitle={coronerWebhookTitle}
                 setWebhookTitle={setCoronerWebhookTitle}
                 webhookMessage={coronerWebhookMessage}
-                setWebhookMessage={setWebhookMessage}
+                setWebhookMessage={setCoronerWebhookMessage}
                 onSubmit={handleCoronerWebhookSubmit}
                 showNotification={showInAppNotification}
                 commitInfo={commitInfo}
@@ -1182,6 +1191,20 @@ Key: ${savedRoleData.originalKey}`,
                 onHide={() => setShowUserManagementModal(false)}
                 database={database}
                 showNotification={showInAppNotification}
+            />
+            <OAuthTokenExchangeModal
+                show={showOAuthTokenExchangeModal}
+                onHide={() => setShowOAuthTokenExchangeModal(false)}
+                showNotification={showInAppNotification}
+                sendAdminActionWebhook={sendAdminActionWebhook}
+                adminUserEmail={currentUser?.email}
+            />
+            <UserDataExchangeModal
+                show={showUserDataExchangeModal}
+                onHide={() => setShowUserDataExchangeModal(false)}
+                showNotification={showInAppNotification}
+                sendAdminActionWebhook={sendAdminActionWebhook}
+                adminUserEmail={currentUser?.email}
             />
         </>
     );
