@@ -142,7 +142,6 @@ function MainApp({
         authorizedBy: '',
     });
     const [staffToRemove, setStaffToRemove] = useState([]);
-    const [authorizedBy, setAuthorizedBy] = useState('');
     const [showWebhookModal, setShowWebhookModal] = useState(false);
     const [webhookMessage, setWebhookMessage] = useState('');
     const [webhookTitle, setWebhookTitle] = useState('');
