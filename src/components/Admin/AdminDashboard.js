@@ -1,14 +1,6 @@
-
 import React from 'react';
 import { Card, Nav, Tab, Container, Row, Col, Button, Spinner, Form as BootstrapForm, ListGroup } from 'react-bootstrap';
 import './AdminDashboard.css';
-    const handleGtaWorldLogin = () => {
-        // Replace with your actual client ID and callback URL
-        const clientId = process.env.REACT_APP_GTAWORLD_CLIENT_ID || 'YOUR_CLIENT_ID';
-        const redirectUri = encodeURIComponent(window.location.origin + '/auth/gta/callback');
-        const authUrl = `https://ucp.gta.world/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}`;
-        window.location.href = authUrl;
-    };
 
 const AdminDashboard = ({
     currentUser,
@@ -50,13 +42,16 @@ const AdminDashboard = ({
     setShowMarkdownModal,
     handleLogout,
     Sentry,
-    showInAppNotification
+    showInAppNotification,
+    setShowOAuthTokenExchangeModal,
+    setShowUserDataExchangeModal,
+    handleGtaWorldLogin
 }) => {
     return (
         <Container fluid className="admin-dashboard-container">
             <Tab.Container id="admin-dashboard-tabs" defaultActiveKey="serviceStatus">
                 <Row>
-                    <Col sm={3} md={3} lg={2} className="sidebar">
+                    <Col sm={3} md={2} lg={2} className="sidebar">
                         <div className="sidebar-header">
                             <h5>Admin Panel</h5>
                             <p className="text-muted small">Logged in as: {currentUser.email}</p>
@@ -90,7 +85,7 @@ const AdminDashboard = ({
                             <Button variant="warning" onClick={handleLogout} className="w-100">Logout</Button>
                         </div>
                     </Col>
-                    <Col sm={9} md={9} lg={10} className="main-content">
+                    <Col sm={9} md={10} lg={10} className="main-content">
                         <Tab.Content>
                             <Tab.Pane eventKey="serviceStatus">
                                 <Card>
@@ -293,6 +288,16 @@ const AdminDashboard = ({
                                             <Button variant="primary" onClick={handleGtaWorldLogin}>
                                                 <i className="fas fa-sign-in-alt me-2"></i>
                                                 Login to GTA World
+                                            </Button>
+                                        </div>
+                                        <div className="mb-3">
+                                            <Button variant="info" onClick={() => setShowOAuthTokenExchangeModal(true)}>
+                                                <i className="fas fa-exchange-alt me-2"></i>
+                                                OAuth Token Exchange
+                                            </Button>
+                                            <Button variant="info" onClick={() => setShowUserDataExchangeModal(true)} className="ms-2">
+                                                <i className="fas fa-user-secret me-2"></i>
+                                                User Data Exchange
                                             </Button>
                                         </div>
                                         <div className="mb-3">

@@ -14,17 +14,24 @@ const GtaCallback = () => {
         const code = searchParams.get('code');
 
         if (code) {
-            const functions = getFunctions();
-            const exchangeAuthCodeForToken = httpsCallable(functions, 'exchangeAuthCodeForToken');
-            exchangeAuthCodeForToken({ code, redirectUri: window.location.origin + '/auth/gta/callback' })
-                .then((result) => {
-                    const userData = result.data;
-                    login(userData);
-                    navigate('/admin');
-                })
-                .catch((error) => {
-                    setError(error.message);
-                });
+            const isExchangeInProgress = sessionStorage.getItem('oauth-exchange-in-progress');
+            if (isExchangeInProgress) {
+                sessionStorage.removeItem('oauth-exchange-in-progress');
+                sessionStorage.setItem('oauth-exchange-code', code);
+                navigate('/admin');
+            } else {
+                const functions = getFunctions();
+                const exchangeAuthCodeForToken = httpsCallable(functions, 'exchangeAuthCodeForToken');
+                exchangeAuthCodeForToken({ code, redirectUri: window.location.origin + '/auth/gta/callback' })
+                    .then((result) => {
+                        const userData = result.data;
+                        login(userData);
+                        navigate('/admin');
+                    })
+                    .catch((error) => {
+                        setError(error.message);
+                    });
+            }
         } else {
             setError('No authorization code found.');
         }
@@ -32,7 +39,7 @@ const GtaCallback = () => {
 
     return (
         <div>
-            {error ? <p>Error: {error}</p> : <p>Processing login...</p>}
+            {error ? <p>Error: {error}</p> : <p>Processing...</p>}
         </div>
     );
 };
