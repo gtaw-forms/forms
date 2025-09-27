@@ -306,37 +306,50 @@ function MainApp({
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: type === 'checkbox' ? checked : value
-        }));
+        const newValue = type === 'checkbox' ? checked : value;
+        
+        setFormData(prev => {
+            const newFormData = {
+                ...prev,
+                [name]: newValue
+            };
+            // Save to localStorage immediately after state update
+            localStorage.setItem('formData', JSON.stringify(newFormData));
+            return newFormData;
+        });
     };
 
     const handleSelectChange = (selectedOption, action) => {
         const name = typeof action === 'string' ? action : action.name;
 
-        if (name === 'coronerEmployee' && selectedOption) {
-            setFormData(prev => ({
-                ...prev,
-                coronerEmployee: selectedOption.value,
-                coronerBadge: selectedOption.badge,
-                coronerRank: selectedOption.rank,
-                coronerDiscord: selectedOption.discord,
-            }));
-        } else if (name === 'coronerEmployee' && !selectedOption) {
-            setFormData(prev => ({
-                ...prev,
-                coronerEmployee: '',
-                coronerBadge: '',
-                coronerRank: '',
-                coronerDiscord: '',
-            }));
-        } else {
-            setFormData(prev => ({
-                ...prev,
-                [name]: selectedOption ? selectedOption.value : ''
-            }));
-        }
+        setFormData(prev => {
+            let newFormData;
+            if (name === 'coronerEmployee' && selectedOption) {
+                newFormData = {
+                    ...prev,
+                    coronerEmployee: selectedOption.value,
+                    coronerBadge: selectedOption.badge,
+                    coronerRank: selectedOption.rank,
+                    coronerDiscord: selectedOption.discord,
+                };
+            } else if (name === 'coronerEmployee' && !selectedOption) {
+                newFormData = {
+                    ...prev,
+                    coronerEmployee: '',
+                    coronerBadge: '',
+                    coronerRank: '',
+                    coronerDiscord: '',
+                };
+            } else {
+                newFormData = {
+                    ...prev,
+                    [name]: selectedOption ? selectedOption.value : ''
+                };
+            }
+            // Save to localStorage immediately after state update
+            localStorage.setItem('formData', JSON.stringify(newFormData));
+            return newFormData;
+        });
     };
 
     const handleFillCoronerPhone = () => {
@@ -758,25 +771,10 @@ const loadData = useCallback(async () => {
         loadingNotificationId = showNotification("Data Loading...", 'spinner fa-spin', 0); // Store the ID
 
         // Load formData from localStorage FIRST
-        let initialLoadFormData = {};
-        const fieldsToLoadFromLS = [
-            'phmcEmployee', 'phmcEmployeeLastName', 'phmcRank',
-            'coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord', 'coronerPHNumber',
-            'pronouncedTimeOfDeath', 'department', 'dateTime', 'placeOfDeath', 'mannerOfDeath',
-        ];
-
-        fieldsToLoadFromLS.forEach(field => {
-            const value = localStorage.getItem(field);
-            if (value !== null) {
-                initialLoadFormData[field] = value;
-            }
-        });
-
-        // Initialize state with localStorage values
-        setFormData(prevFormData => ({
-            ...prevFormData,
-            ...initialLoadFormData,
-        }));
+        const storedData = localStorage.getItem('formData');
+        if (storedData) {
+            setFormData(JSON.parse(storedData));
+        }
 
         const dbRootRef = ref(database);
         const snapshot = await get(dbRootRef);
@@ -797,13 +795,6 @@ const loadData = useCallback(async () => {
             setEmsRecruitmentDetails(fetchedSelectOptions.emsPositionDetailsData || {});
             setNurseRecruitmentDetails(fetchedSelectOptions.nursePositionDetailsData || {});
             setCoronerRecruitmentDetails(fetchedSelectOptions.coronerPositionDetailsData || {});
-
-            // Merge Firebase data on top of localStorage data
-            setFormData(prevFormData => ({
-                ...prevFormData,
-                phmcEmployee: prevFormData.phmcEmployee, // load all details
-                coronerEmployee: prevFormData.coronerEmployee, // Ensure coroner data is re set by load
-            }));
 
             showNotification("Data Loaded!", 'check-circle', 2000);
         } else {
@@ -2067,7 +2058,9 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
             <SavedReportsModal
                 show={showSavedReports}
                 onHide={() => setShowSavedReports(false)}
+                onClose={() => setShowSavedReports(false)}
                 savedReports={savedReports}
+                reportsForSelectedUser={savedReports}
                 loadReport={loadReportForUser}
                 deleteReport={deleteReportForUser}
                 author={getCurrentReportAuthor(formData)}
@@ -2076,6 +2069,34 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 reportSelectionFilter={reportSelectionFilter}
                 setReportSelectionFilter={setReportSelectionFilter}
                 versionNames={versionNames}
+                onEmployeeSelect={(employeeValue) => {
+                    // Handle employee selection
+                    if (employeeValue) {
+                        loadUserSavedReports(employeeValue);
+                    }
+                }}
+                employeeOptions={[
+                    {
+                        label: 'PHMC Staff',
+                        options: phmcListData.map(p => ({
+                            value: p.name,
+                            label: `${p.name} (${p.category || 'PHMC'})`
+                        })).sort((a, b) => a.label.localeCompare(b.label))
+                    },
+                    {
+                        label: 'Coroners',
+                        options: coronerListData.map(c => ({
+                            value: c.name,
+                            label: `${c.name} (${c.rank || 'Coroner'})`
+                        })).sort((a, b) => a.label.localeCompare(b.label))
+                    }
+                ]}
+                currentPhmcEmployee={formData.phmcEmployee}
+                currentCoronerEmployee={formData.coronerEmployee}
+                showNotification={showNotification}
+                removeNotification={removeNotification}
+                bbCodeVersion={bbCodeVersion}
+                handleReportSelectedForAttachment={handleReportSelectedForAttachment}
             />
 
             
@@ -2101,14 +2122,268 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
 }
 
 function MainAppWrapper() {
-    const [formData, setFormData] = useState({});
+    const [formData, setFormData] = useState(() => {
+        const savedFormData = localStorage.getItem('formData');
+        return savedFormData ? JSON.parse(savedFormData) : {};
+    });
     const [lastWebhookIdentifier, setLastWebhookIdentifier] = useState(null);
 
     const { showNotification, removeNotification, NotificationContainer } = useNotification();
 
-    const initialFormData = {
-        // Your initial form data
-    };
+    // Save form data to localStorage whenever it changes
+    useEffect(() => {
+        if (Object.keys(formData).length > 0) {
+            localStorage.setItem('formData', JSON.stringify(formData));
+        }
+    }, [formData]);
+
+const initialFormData = {
+    // Core user state to preserve
+    phmcEmployee: '',
+    coronerEmployee: '',
+    coronerBadge: '',
+    coronerRank: 'Forensic Attendant',
+    coronerDiscord: '',
+    coronerPHNumber: '50056',
+    lastName: '',
+    phmcRank: '',
+    // Common form fields
+    department: '',
+    dateTime: '',
+    date: '',
+    decedentName: '',
+    decedentOOC: '',
+    synopsis: '',
+    scenePhotos: '',
+    additionalImages: '',
+    patientID: '',
+    patientName: '',
+    patientAddress: '',
+    massFatality: false,
+    patientRace: '',
+    patientGender: '',
+    patientPH: '',
+    patientDiscord: '',
+    patientEmergencyContact: '',
+    patientEmergencyContactNumber: '',
+    patientEmergencyContactRelation: '',
+    decedents: [],
+    patientEmergencyContactDiscord: '',
+    patientTitle: '',
+    patientTitleOptions: '',
+    patientAllergies: '',
+    patientCurrentMedicine: '',
+    patientChronicDiseases: '',
+    patientNotes: '',
+    patientDateOfBirth: '',
+    patientBloodType: '',
+    patientChiefComplaint: '',
+    patientProcedure: '',
+    patientDiagnosis: '',
+    patientSecondaryDiagnosis: '',
+    patientMedicine: '',
+    admission: '',
+    followup: '',
+    SubmitDate: new Date().toISOString().split('T')[0],
+    patientExercise: '',
+    // Form-specific fields
+    placeOfDeath: '',
+    evidenceLockerID: '',
+    evidenceLocker: '',
+    pronouncedTimeOfDeath: '',
+    mannerOfDeath: '',
+    typeOfDeath: '',
+    showRequestingOfficerInput: false,
+    requestingOfficer: '',
+    deathReport: '',
+    additionalReports: [],
+    autopsyDate: '',
+    autopsyTime: '',
+    autopsyDeathCauses: [''],
+    autopsyAnatomicSummaryItems: [''],
+    autopsyAlbumUrl: '',
+    autopsyPhotosUnavailable: false,
+    autopsyDiagramMarkers: [],
+    autopsyDiagramImgurUrl: '',
+    externalExamination: '',
+    RadiologyResult: '',
+    deathType: '',
+    causeOfDeath: '',
+    extraStaff: [],
+    patientSummaryConsultation: '',
+    patientSummary: '',
+    surgeryProcedures: '',
+    patientConsentOption: '',
+    patientComplicationOptions: '',
+    procedureGoodOptions: '',
+    patientHeight: '',
+    patientWeight: '',
+    BodyMassIndex: '',
+    temperature: '',
+    heartRate: '',
+    breathing: '',
+    bloodPressure: '',
+    patientJob: '',
+    patientJobRisks: '',
+    patientAllergiesRisk: '',
+    patientMedicineRegular: '',
+    patientOther: '',
+    predisposition: '',
+    patientCareer: '',
+    patientImpairments: '',
+    patientTriggers: '',
+    patientFamily: '',
+    patientFam: '',
+    patientMedicalRecord: '',
+    patientVisitReason: '',
+    patientSymptoms: '',
+    patientDrugs: '',
+    patientDrugsUsage: '',
+    patientMental: '',
+    patientFamSocial: '',
+    patientLegal: '',
+    patientRelationship: '',
+    patientFindings: '',
+    patientTreatmentPlan: '',
+    patientSafety: '',
+    patientFollowUp: '',
+    patientTreatmentMedicine: '',
+    patientTherapy: '',
+    patientRiskAssessment: '',
+    Speech: '',
+    Behavior: '',
+    Appearance: '',
+    Mood: '',
+    Affect: '',
+    Risk: '',
+    ThoughtProcess: '',
+    ThoughtContent: '',
+    Insight: '',
+    Cognition: '',
+    painLevel: '',
+    findings: '',
+    lungs: '',
+    pupils: '',
+    wounds: '',
+    ecg: '',
+    sono: '',
+    lab: [],
+    bloodOxy: '',
+    assignedDepartment: '',
+    departmentLarge: '',
+    paletoClinicDepartment: '',
+    MedicalRecordsRelease: [],
+    payNow: false,
+    paymentProofPhotos: '',
+    PurposeMedicalInformationReleaseFormat: '',
+    CarePurposeMedicalInformationRelease: '',
+    patientMedInfoReleaseOther: '',
+    MedicalRecordsReleaseOther: '',
+    patientMedInfoFormatOther: '',
+    StupidDateFrom: '',
+    StupidDateTo: '',
+    patientFirstName: '',
+    patientMiddleName: '',
+    patientLastName: '',
+    patientEmail: '',
+    patientPhoneType: '',
+    patientZIP: '',
+    dnr: '',
+    dnrOrder: '',
+    attorney: '',
+    dnrOther: '',
+    attorneyName: '',
+    attorneyRelation: '',
+    attorneyPH: '',
+    maritalStatus: '',
+    numberChildren: '',
+    financialStatus: '',
+    patientSupport: '',
+    patientHarm: '',
+    patientGenetic: '',
+    patientReligion: '',
+    patientSmoker: '',
+    patientAlcohol: '',
+    patientDiet: '',
+    patientSleep: '',
+    patientSexLife: '',
+    patientHazards: '',
+    prescriptionImage: '',
+    attachedReportSummary: '',
+    emailPurpose: '',
+    emailRecipient: '',
+    dateOfVisit: '',
+    sicknessStartDate: '',
+    sicknessEndDate: '',
+    reasonForSickness: '',
+    illnessCondition: '',
+    confirmationPurpose: '',
+    phmcEmployeeSignatureImage: '',
+
+    // Recruitment Fields
+    recruitmentPosition: '',
+    applicantContactDetails: '',
+    locationPHMC: false,
+    locationPBC: false,
+    applicantMedicalConditions: '',
+    citizenUS: false,
+    citizenPermanent: false,
+    citizenNone: false,
+    eduHighSchool: false,
+    eduCertificate: false,
+    eduDiploma: false,
+    eduAssociate: false,
+    eduBachelor: false,
+    eduMaster: false,
+    eduDoctorate: false,
+    applicantSchoolName: '',
+    applicantEnrollmentTerm: '',
+    applicantMajor: '',
+    applicantLanguages: '',
+    applicantPrevEmployment: '',
+    applicantPrevDuties: '',
+    applicantPrevDismissalReason: '',
+    applicantMotivationLetter: '',
+    exemptCheckbox: false,
+    oocMedicalExperience: '',
+    oocAdminRecordLink: '',
+    oocStatsLink: '',
+        applicantTitleAndFullName: '',
+        genderMale: '',
+        genderFemale: '',
+        genderOther: '',
+        applicantGenderOtherText: '',
+        applicantDOBAndPlace: '',
+        applicantAddress: '',
+        emsLicenseLink: '',
+        emsPartTimeReason: '',
+        oocUcpName: '',
+        oocForumName: '',
+        oocDiscord: '',
+        oocTimezone: '',
+        charBackground: '',
+        oocOtherCharLicenseProof: '',
+        dfpSanFireLink: '',
+        dfpPhmcLink: '',
+        dfpLegalFactionLink: '',
+
+    // Imaging Fields
+    Imaging: [],
+    XrayResults: [],
+    ctResults: [],
+    mriResults: [],
+    ultrasoundResults: [],
+        patientTitleNew: '',
+    patientNameNew: '',
+    patientDateOfBirthNew: '',
+    patientAddressNew: '',
+    patientPHNew: '',
+    patientDiscordNew: '',
+    patientGenderNew: '',
+    patientRaceNew: '',
+
+
+};
 
     return (
         <MainApp
@@ -2122,5 +2397,6 @@ function MainAppWrapper() {
         />
     );
 }
+
 
 export default MainAppWrapper;

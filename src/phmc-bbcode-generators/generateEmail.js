@@ -11,6 +11,9 @@ const generateEmail = (formData) => {
         additionalReports,
     } = formData;
 
+    console.log('Generating email with death report:', deathReport);
+    console.log('Additional reports:', additionalReports);
+
     let bbCode = `[center][img]https://i.imgur.com/ItaoQkO.png[/img][/center]
 [hr][/hr]
 

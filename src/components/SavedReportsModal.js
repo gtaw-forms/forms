@@ -232,17 +232,20 @@ const LOAD_DELAY_MS = 1000;
 const SavedReportsModal = ({
     show,
     onClose,
+    onHide,
     showNotification,
     reportsForSelectedUser,
     onEmployeeSelect,
     employeeOptions,
     isLoadingReports,
-    loadReportForUser,
+    loadReport,
     deleteReportForUser,
+    loadReportForUser,
+    handleReportSelectedForAttachment,
     currentCoronerEmployee,
     currentPhmcEmployee,
     filterByBbCodeVersions,
-    onReportSelectedForAttachment,
+    onAttachReportSummaryRequest,
     preselectedEmployeeType,
     bbCodeVersion,
 }) => {
@@ -251,20 +254,30 @@ const SavedReportsModal = ({
     const [selectedReportKeys, setSelectedReportKeys] = useState([]);
     const [isLoadingMultiple, setIsLoadingMultiple] = useState(false);
     const [selectedEmployee, setSelectedEmployee] = useState(null);
+    
     const lastLoadedEmployeeRef = useRef(null);
     const isManualSelectionRef = useRef(false);
 
     useEffect(() => {
         if (show && !isManualSelectionRef.current) {
             let employeeToSelectValue = null;
-            if (preselectedEmployeeType === 'PHMC') {
+            
+            // First try to use the current employee based on form data
+            if (currentPhmcEmployee) {
+                employeeToSelectValue = currentPhmcEmployee;
+            } else if (currentCoronerEmployee) {
+                employeeToSelectValue = currentCoronerEmployee;
+            } else if (preselectedEmployeeType === 'PHMC') {
                 employeeToSelectValue = currentPhmcEmployee;
             } else {
                 employeeToSelectValue = currentCoronerEmployee || currentPhmcEmployee;
             }
-            const employeeOption = employeeOptions.flatMap(group => group.options).find(
+
+            // Find the matching employee option
+            const employeeOption = employeeOptions?.flatMap(group => group.options).find(
                 (opt) => opt.value === employeeToSelectValue
             );
+
             if (employeeOption && employeeToSelectValue !== lastLoadedEmployeeRef.current) {
                 setSelectedEmployee(employeeOption);
                 onEmployeeSelect(String(employeeOption.value));
@@ -300,9 +313,9 @@ const SavedReportsModal = ({
 
     const filteredEmployeeOptions = useMemo(() => {
         if (preselectedEmployeeType === 'PHMC') {
-            return employeeOptions.filter((group) => group.label === 'PHMC Staff');
+            return (employeeOptions || []).filter((group) => group.label === 'PHMC Staff');
         }
-        return employeeOptions;
+        return employeeOptions || [];
     }, [employeeOptions, preselectedEmployeeType]);
 
     const sortedReports = useMemo(() => {
@@ -365,25 +378,25 @@ const SavedReportsModal = ({
             .filter((r) => selectedReportKeys.includes(r.key))
             .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
 
+        const isAttaching = bbCodeVersion === 2;
+        const actionFunction = isAttaching ? handleReportSelectedForAttachment : loadReport;
+
         for (let i = 0; i < reportsToLoad.length; i++) {
             const report = reportsToLoad[i];
             try {
-                if (onReportSelectedForAttachment) {
-                    await onReportSelectedForAttachment(report.key, selectedEmployee.value);
-                } else {
-                    await loadReportForUser(report.key, selectedEmployee.value);
-                }
+                await actionFunction(report.key, selectedEmployee.value);
                 if (i < reportsToLoad.length - 1) {
                     await new Promise((resolve) => setTimeout(resolve, LOAD_DELAY_MS));
                 }
             } catch (error) {
-                console.error(`Error loading report ${report.originalKey}:`, error);
-                showNotification(`Error loading report ${report.originalKey}.`, 'error');
+                console.error(`Error ${isAttaching ? 'attaching' : 'loading'} report ${report.originalKey}:`, error);
+                showNotification(`Error ${isAttaching ? 'attaching' : 'loading'} report ${report.originalKey}.`, 'error');
             }
         }
-        showNotification(`Finished loading ${reportsToLoad.length} report(s).`, 'check-circle');
+        showNotification(`Finished ${isAttaching ? 'attaching' : 'loading'} ${reportsToLoad.length} report(s).`, 'check-circle');
         setIsLoadingMultiple(false);
         setSelectedReportKeys([]);
+        onHide(); // Close modal after operation completes
     };
 
     const handleDeleteSelected = () => {
@@ -439,11 +452,11 @@ const SavedReportsModal = ({
     if (!show) return null;
 
     return ReactDOM.createPortal(
-        <div style={modalStyle} onClick={onClose}>
+        <div style={modalStyle} onClick={onHide}>
             <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
                 <div style={modalHeaderStyle}>
                     <h5 style={{ margin: 0 }}>Saved Reports</h5>
-                    <button onClick={onClose} style={closeButtonStyle} aria-label="Close modal">
+                    <button onClick={onHide} style={closeButtonStyle} aria-label="Close modal">
                         &times;
                     </button>
                 </div>
@@ -475,7 +488,7 @@ const SavedReportsModal = ({
                                 const newEmployeeValue =
                                     selectedEmployee?.value === currentCoronerEmployee ? currentPhmcEmployee : currentCoronerEmployee;
                                 const newEmployeeOption = employeeOptions
-                                    .flatMap((g) => g.options)
+                                    ?.flatMap((g) => g.options)
                                     .find((o) => o.value === newEmployeeValue);
                                 if (newEmployeeOption) {
                                     handleEmployeeSelect(newEmployeeOption);
@@ -548,15 +561,16 @@ const SavedReportsModal = ({
                                                     size="sm"
                                                     className="me-2"
                                                     onClick={() => {
-                                                        if (onReportSelectedForAttachment) {
-                                                            onReportSelectedForAttachment(report.key, selectedEmployee.value);
-                                                        } else {
-                                                            loadReportForUser(report.key, selectedEmployee.value);
+                                                        if (bbCodeVersion === 2) {
+                                                            handleReportSelectedForAttachment(report.key, selectedEmployee.value);
+                                                        } else if (loadReport) {
+                                                            loadReport(report.key, selectedEmployee.value);
                                                         }
+                                                        onHide(); // Close modal after action
                                                     }}
                                                     disabled={isLoadingReports || !selectedEmployee}
                                                 >
-                                                    {onReportSelectedForAttachment ? 'Attach' : 'Load'}
+                                                    {bbCodeVersion === 2 ? 'Attach' : 'Load'}
                                                 </Button>
                                                 <Button
                                                     variant="danger"

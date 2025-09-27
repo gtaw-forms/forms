@@ -571,8 +571,8 @@ export const useReportManagement = (
                 if (bbCodeVersion === 2) {
                     // If there's already a name, append the new one.
                     let newState = { ...prev };
-                    newState.decedentName = fieldsToUpdate.decedentName || '';
-                    newState.decedentOOC = fieldsToUpdate.decedentOOC || '';
+                    newState.decedentName = prev.decedentName && fieldsToUpdate.decedentName ? `${prev.decedentName}, ${fieldsToUpdate.decedentName}` : fieldsToUpdate.decedentName || prev.decedentName || '';
+                    newState.decedentOOC = prev.decedentOOC && fieldsToUpdate.decedentOOC ? `${prev.decedentOOC}, ${fieldsToUpdate.decedentOOC}` : fieldsToUpdate.decedentOOC || prev.decedentOOC || '';
                     newState.requestingOfficer = fieldsToUpdate.requestingOfficer || prev.requestingOfficer;
                     newState.department = fieldsToUpdate.department || prev.department;
                     if (loadedVersion === 1 && bbCodeVersion === 2) {
