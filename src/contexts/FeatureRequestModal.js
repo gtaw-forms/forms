@@ -1,5 +1,6 @@
 import React from 'react';
-import { Modal, Form, Button } from 'react-bootstrap';
+import { Form, Button } from 'react-bootstrap';
+import './FeatureRequestModal.css';
 import * as Sentry from "@sentry/react";
 import { useNotification } from './NotificationContext';
 
@@ -218,21 +219,21 @@ const FeatureRequestModal = ({
     }
 
     return (
-        <div className="modal-overlay">
-            <div className="modal">
-                <Modal.Header>
-                    <Modal.Title>Bug / Feature / BBCode Request</Modal.Title>
-                    <Button variant="secondary" className="close" onClick={onClose}>
-                        CLOSE
-                    </Button>
-                </Modal.Header>
-                <Modal.Body>
+        <div className="modal-overlay feature-request-modal" onClick={onClose}>
+            <div className="modal-content" onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
+                    <h5 className="modal-title">Bug / Feature / BBCode Request</h5>
+                    <button type="button" className="close" onClick={onClose}>
+                        <span>&times;</span>
+                    </button>
+                </div>
+                <div className="modal-body">
                     <Form>
                         <Form.Group className="mb-3">
                             <Form.Check
                                 type="checkbox"
                                 id="isBbcodeRequestCheckbox"
-                                label="  Are you requesting a new BBCode Format to be added?"
+                                label="Are you requesting a new BBCode Format to be added?"
                                 checked={isBbcodeRequest}
                                 onChange={(e) => setIsBbcodeRequest(e.target.checked)}
                             />
@@ -284,15 +285,15 @@ const FeatureRequestModal = ({
                             />
                         </Form.Group>
                     </Form>
-                </Modal.Body>
-                <Modal.Footer>
+                </div>
+                <div className="modal-footer">
                     <Button variant="primary" onClick={handleFeatureRequestSubmit}>
                         Submit
                     </Button>
                     <Button variant="secondary" onClick={onClose}>
                         Cancel
                     </Button>
-                </Modal.Footer>
+                </div>
             </div>
         </div>
     );

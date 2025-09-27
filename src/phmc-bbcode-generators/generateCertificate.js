@@ -11,7 +11,7 @@ const generateCertificate = (formData) => {
         coronerEmployee,
         date,
     } = formData;
-    const scenePhotosBBCode = scenePhotos.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
+    const scenePhotosBBCode = (scenePhotos || '').split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
 
     let bbCode = `[divbox=#E8E8E8][br][/br][center][img]https://i.imgur.com/Hxjt4M2.png[/img][/center][br][/br]
 
