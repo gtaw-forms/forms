@@ -247,7 +247,7 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
             <Form.Group className="mb-3">
                 <Form.Label>Additional Reports:</Form.Label>
                 <div className="reports-container">
-                    {formData.additionalReports.map((report, index) => (
+                    {(formData.additionalReports || []).map((report, index) => (
                         <div key={index} className="report-input">
                             <Form.Control
                                 as="textarea"
@@ -255,7 +255,7 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
                                 onChange={(e) => handleReportChange(index, e.target.value)}
                                 placeholder="Paste additional coroner report here"
                                 rows="4"
-                                className={`form-control ${!formData.additionalReports ? 'is-invalid' : ''}`}
+                                className={`form-control ${!report ? 'is-invalid' : ''}`}
                             />
                             <Button
                                 variant="danger"
@@ -277,11 +277,16 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
                         <Button
                             variant="info"
                             onClick={() => toggleSavedReports([1, 11], 'Coroner', (reportData) => {
-                                // this magical bullshit is a callback which is handled in the app.js under LoadSavedReport
-                                // It allows the app to do something after the report is selected and loaded.
-                                // In this case, it will update the formData with the selected report data
-                                // and then call the post-processing callback
-                                // after it has processed the report.
+                                console.log('Selected report data:', reportData);
+                                // Update the deathReport field with the selected report's BBCode
+                                if (reportData && reportData.bbCode) {
+                                    handleChange({
+                                        target: {
+                                            name: 'deathReport',
+                                            value: reportData.bbCode
+                                        }
+                                    });
+                                }
                             })}
                             className="email-button"
                         >

@@ -109,7 +109,22 @@ export const formDefinitions = [
             if (paperworkType && paperworkType.toLowerCase().includes('mass fatality')) {
                 return `Coroner Report - ${decedentName || 'N/A'} | (MASS FATALITY)`;
             }
-            return `Coroner Report - ${decedentName || 'N/A'} | ((${decedentOOC || 'N/A'}))`;
+
+            const names = (decedentName || '').split(', ').filter(Boolean);
+            const oocNames = (decedentOOC || '').split(', ').filter(Boolean);
+
+            let combinedNames = [];
+            for (let i = 0; i < names.length; i++) {
+                const name = names[i];
+                const ooc = oocNames[i] ? `((${oocNames[i]}))` : '';
+                combinedNames.push(`${name} ${ooc}`.trim());
+            }
+
+            if (combinedNames.length > 0) {
+                return `Coroner Report - ${combinedNames.join(', ')}`;
+            }
+
+            return `Coroner Report - N/A`;
         }
     },
     { version: 8, name: "Certificate of Death", group: "PHMC", icon: corpse, generator: generateCertificate, FieldComponent: Certificate, titleKey: "certificateOfDeath", sortOrder: 13, isHiddenInSelector: true, hasCustomTitle: true, titleGenerator: (formData) => `[Death Certificate] -  ${formData.decedentOOC || 'N/A'}` },
