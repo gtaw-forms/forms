@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import  {useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
@@ -8,9 +8,8 @@ import { NotificationProvider } from './contexts/NotificationContext';
 import { DataProvider } from './contexts/DataContext';
 import { useNotification } from './contexts/NotificationContext';
 import * as Sentry from "@sentry/react";
-import { app, analytics } from './firebase';
+import { analytics } from './firebase';
 import { logEvent } from "firebase/analytics";
-import { Provider as RollbarProvider } from '@rollbar/react';
 import ErrorBoundary from './components/ErrorBoundary';
 
 // --- START: Fallback Error Reporting ---
@@ -27,7 +26,7 @@ let lastDiscordErrorTimestamp = 0;
 const processDiscordErrorQueue = async () => {
     if (isProcessingDiscordQueue || discordErrorWebhookQueue.length === 0) return;
 
-    const webhookURL = process.env.REACT_APP_DEV_WEBHOOK;
+    const webhookURL = process.env.REACT_APP_ERROR_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DEV_WEBHOOK;
     if (!webhookURL) {
         console.error("Discord Error Webhook: URL is not configured. Cannot process queue.");
         discordErrorWebhookQueue.length = 0; // Clear queue if no URL
@@ -57,7 +56,7 @@ const processDiscordErrorQueue = async () => {
  * Creates and queues a Discord embed for an unhandled error.
  * @param {object} errorDetails - Details about the caught error.
  */
-const sendDiscordErrorWebhook = (errorDetails) => {
+export const sendDiscordErrorWebhook = (errorDetails) => {
     const now = Date.now();
     if (errorDetails.message === lastDiscordErrorMessage && now - lastDiscordErrorTimestamp < 5000) {
         console.log("Skipping duplicate Discord error message.");
