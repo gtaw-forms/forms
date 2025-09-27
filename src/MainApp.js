@@ -27,6 +27,7 @@ import { useNotification } from './contexts/NotificationContext';
 import FeatureRequestModal from './contexts/FeatureRequestModal';
 import SwitchableFormButtons from './components/SwitchableFormButtons';
 import PrivacyPolicyModal from './components/PrivacyPolicyModal';
+import FormImageLink from './components/FormImageLink';
 import { handleFormCopyAndNotify, handlePhmcRecruitmentCopyAndNotify } from './components/notificationService';
 
 import EmsBingoModal from './components/EmsBingoModal'; 
@@ -51,7 +52,7 @@ import 'react-bootstrap-typeahead/css/Typeahead.css';
 import { database } from './firebase'; // Your Firebase config
 import { ref, get} from 'firebase/database'; // Added set
 
-function MainApp({ 
+function MainApp({
     formData,
     setFormData,
     lastWebhookIdentifier,
@@ -376,6 +377,12 @@ useEffect(() => {
     };
 
 
+    const handleCopyTitle = () => {
+        const title = generateTitle();
+        navigator.clipboard.writeText(title);
+        showNotification('Title copied to clipboard!', 'check-circle');
+    };
+
     const generateTitle = () => {
         // Mass Fatality form (bbCodeVersion 11) special handling
         if (bbCodeVersion === 11) {
@@ -454,7 +461,7 @@ const getBBCodeContent = () => {
     } else {
         Sentry.captureMessage(`No BBCode generator found for version: ${bbCodeVersion}`);
         const formName = (getFormDefinition(bbCodeVersion) || {}).name || `Form v${bbCodeVersion}`;
-        return `BBCode generation for form \"${formName}\" is not implemented.`;
+        return `BBCode generation for form "${formName}" is not implemented.`;
     }
 };
         const initialLoadFormData = () => {
@@ -972,7 +979,7 @@ useEffect(() => {
         fetchCommit();
     }, []); // This effect runs once on mount
     const coronerFormsSubGroup = [
-        { version: 1, name: "Decedent Services", icon: corpse },
+        { version: 1, name: " Decedent Services", icon: corpse },
         { version: 2, name: "Email Generator", icon: email },
         { version: 4, name: "Autopsy Report", icon: corpse },
         { version: 8, name: "Death Certificate", icon: PHMCLogo },
@@ -1591,26 +1598,25 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 </Dropdown.Toggle>
 
                 <Dropdown.Menu>
-                    <Dropdown.Item onClick={() => {setShowEmployeeModal(true); setShowToolsDropdown(false);}}>
+                    <Dropdown.Item onClick={() => {{setShowEmployeeModal(true); setShowToolsDropdown(false);}}}>
                         <i className="fas fa-users-cog"></i> Manage PHMC Staff
                     </Dropdown.Item>
-{/*                     <Dropdown.Item onClick={() => {setShowFeatureRequestModal(true); setShowToolsDropdown(false);}}>
+                     <Dropdown.Item onClick={() => {{setShowFeatureRequestModal(true); setShowToolsDropdown(false);}}}>
                         <i className="fas fa-bug"></i> Report Bug/Feature
                     </Dropdown.Item>
- */}
-                    <Dropdown.Item onClick={() => {toggleSavedReports(); setShowToolsDropdown(false);}}>
+                    <Dropdown.Item onClick={() => {{toggleSavedReports(); setShowToolsDropdown(false);}}}>
                         <i className="fas fa-save"></i> Saved Reports
                     </Dropdown.Item>
-                    <Dropdown.Item onClick={() => {toggleEmsAmaModal(); setShowToolsDropdown(false);}}>
+                    <Dropdown.Item onClick={() => {{toggleEmsAmaModal(); setShowToolsDropdown(false);}}}>
                         <i className="fa-solid fa-truck-medical"></i> EMS AMA
                     </Dropdown.Item>
                     <Dropdown.Divider />
-                    <Dropdown.Item onClick={() => {
+                    <Dropdown.Item onClick={() => {{
                         localStorage.removeItem('selectedAgencyGroup');
                         setSelectedAgencyGroup(null);
                         setShowAgencyGroupSelectorModal(true);
                         setShowToolsDropdown(false);
-                    }}>
+                    }}}>
                         <i className="fas fa-users"></i> Switch Form Type
                     </Dropdown.Item>
                 </Dropdown.Menu>
@@ -1959,19 +1965,80 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
     handleMissingEmployeeSubmit={handleMissingEmployeeSubmit}
 />            
                                         
- <div className="bbcode-section"> 
- <div className={`char-counter ${getBBCodeContent()?.length > 60000 ? 'char-counter-warning' : ''}`}>
-    Character Counter: {getBBCodeContent()?.length ?? 'Error'}/60000
-    {getBBCodeContent()?.length > 60000 && (
-        <div className="char-counter-warning-message">
-            Hi, you found a new warning: Note that PHPBB has a default Character Limit (60000), some forums are different. You may need to split this form up if you encounter issues!
+ <div className="bbcode-section">
+    {getBBCodeContent()?.length > 30000 && (
+        <div className={`char-counter ${getBBCodeContent()?.length > 60000 ? 'char-counter-warning' : ''}`}>
+            Character Count: {getBBCodeContent()?.length ?? 'Error'} / 60000
+            {getBBCodeContent()?.length > 60000 && (
+                <div className="char-counter-warning-message">
+                    Warning: PHPBB forums often have a character limit around 60,000. You may need to split this form.
+                </div>
+            )}
         </div>
     )}
-    {getBBCodeContent() == null ? (
-        <div className="char-counter-warning-message">
-            Error: Contact a developer, getBBCodeContent() returned null or undefined.
+
+    <div className="modern-output-controls">
+        <Button
+            type="button"
+            onClick={() => setShowBBCode(prev => !prev)}
+            className="control-button"
+        >
+            <i className={`fas ${showBBCode ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+            {showBBCode ? 'Hide BBCode' : 'Show BBCode'}
+        </Button>
+        <Button
+            type="button"
+            onClick={toggleSavedReports}
+            className="control-button"
+        >
+            <i className="fas fa-save"></i>
+            Save Report
+        </Button>
+    </div>
+            <p className="generated-title-label">Generated Title</p>
+            <p className="generated-title-string">{generateTitle()}</p>
+
+    {showBBCode && (
+        <div className="generated-title-container">
         </div>
-    ) : null}
+    )}
+
+    <div className="modern-copy-controls">
+        <Button
+            type="button"
+            onClick={handleCopyTitle}
+            className="copy-button-modern"
+        >
+            <i className="fas fa-copy"></i>
+            Copy Title
+        </Button>
+
+        <Button
+            type="button"
+            onClick={handleCopyAndNotifyWrapper}
+            className="copy-button-modern"
+        >
+            <i className="fas fa-copy"></i>
+            {getCopyButtonText()}
+        </Button>
+
+    </div>
+    
+
+    {showBBCode && (
+        <pre className="bbcode-output">
+            {getBBCodeContent()}
+        </pre>
+    )}
+
+    <FormImageLink
+        bbCodeVersion={bbCodeVersion}
+        selectedAgencyGroup={selectedAgencyGroup}
+        deathReportClass={deathReportClass}
+        civilianPaperworkClass={civilianPaperworkClass}
+        deathReportImage={deathReportImage}
+        civilianPaperworkImage={civilianPaperworkImage}
+    />
 </div>
                     {selectedAgencyGroup === 'PHMC' && (
                         <BusinessCardModal
@@ -2011,24 +2078,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 versionNames={versionNames}
             />
 
-            <div className="output-controls">
-                <Button
-                    type="button"
-                    onClick={handleCopyAndNotifyWrapper}
-                    className="copy-button"
-                >
-                    <i className="fas fa-copy"></i>
-                    {getCopyButtonText()}
-                </Button>
-                <Button
-                    type="button"
-                    onClick={() => setShowBBCode(prev => !prev)}
-                    className="preview-button"
-                >
-                    <i className={`fas ${showBBCode ? 'fa-eye-slash' : 'fa-eye'}`}></i>
-                    {showBBCode ? 'Hide Preview' : 'Show Preview'}
-                </Button>
-            </div>
+            
 
             {showBBCode && (
                 <div className="bbcode-preview">
@@ -2046,7 +2096,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
             </div>
             <Footer />
         </div>
-        </div>
+        
     );
 }
 

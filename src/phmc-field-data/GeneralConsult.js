@@ -311,7 +311,7 @@ onChange={(selectedOption) => {
                                     isMulti
                                     name="lab"
                                     value={lab.filter(option =>
-                                        formData.lab.includes(option.value)
+                                        (formData.lab || []).includes(option.value)
                                     )}
                                     onChange={(selectedOptions) => {
                                         setFormData(prev => ({

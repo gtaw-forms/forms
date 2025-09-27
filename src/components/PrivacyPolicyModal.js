@@ -5,7 +5,7 @@ const PrivacyPolicyModal = ({ isOpen, onClose }) => {
     if (!isOpen) return null;
 
     return (
-        <div className="modal-overlay">
+        <div className="modal-overlay privacy-policy-modal">
             <div className="modal-content">
         <h2>(( Privacy Policy )) </h2>
         <p>This policy covers the use of PHMC Tools and complies with the <a href="https://gta.world/terms/" target="_blank" rel="noopener noreferrer">GTA World Privacy Policy</a>.</p>
@@ -22,7 +22,7 @@ const PrivacyPolicyModal = ({ isOpen, onClose }) => {
             <li>Only myself and Everett can view the Error Logs and the Firebase Database.</li>
         <p>We do not share your data with any third parties except for the third party providers mentioned above.</p>
         <p>Questions: Ask in the PHMC Discord Server. </p>
-                <button onClick={onClose}>Close</button>
+                <button onClick={onClose} className="close-button">Close</button>
             </div>
         </div>
     );

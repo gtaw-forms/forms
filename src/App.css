@@ -898,3 +898,72 @@ input[type="checkbox"]:checked::after {
         opacity: 0.7;
     }
 }
+
+/* Modern Output Controls */
+.modern-output-controls {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.control-button {
+    background-color: #21262d;
+    border: 1px solid #30363d;
+    color: #c9d1d9;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.control-button:hover {
+    background-color: #30363d;
+    border-color: #8b949e;
+}
+
+.generated-title-container {
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
+.generated-title-label {
+    font-weight: bold;
+    color: #8b949e;
+    margin-bottom: 0.25rem;
+}
+
+.generated-title-string {
+    font-family: monospace;
+    background-color: #161b22;
+    padding: 0.5rem;
+    border-radius: 6px;
+    color: #c9d1d9;
+    display: inline-block;
+}
+
+.modern-copy-controls {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.copy-button-modern {
+    background-color: #238636;
+    border: 1px solid #2ea043;
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    transition: background-color 0.2s;
+}
+
+.copy-button-modern:hover {
+    background-color: #2ea043;
+}
+
+.title-copy-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}

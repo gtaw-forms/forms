@@ -54,7 +54,6 @@ const generateMedicalFileUpdate = (formData) => {
         patientRaceNew
 
     } = formData;
-    const scenePhotosBBCode = scenePhotos.split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
 
     let bbCode = `[table][tr][td][center][br][/br][br][/br][b]Patient Information[/b]
 
@@ -184,7 +183,7 @@ I, ${patientName}, upon submitting this form, consent to the sharing of my medic
 I, ${patientName}, retain the right to revoke this consent at any time by notifying Pillbox Hill Medical Center in writing. However, I also understand that revoking consent may limit the ability of healthcare professionals to provide me with optimal and coordinated care.[/list][/divbox]
 [divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]Payment[/b][/color][/size][/center][/divboxcolor]
 [table][tr][td] Please attach an unedited confirmation of your payment, unless you are exempt. [size=70](see question 14 in the FAQ thread on how to pay)[/size][/td][td]
-[url=${scenePhotos}]Proof Of Payment [/url]
+${scenePhotos ? `[url=${scenePhotos}]Proof Of Payment [/url]` : 'No proof of payment provided'}
 [/table]`;
 
     return bbCode;
