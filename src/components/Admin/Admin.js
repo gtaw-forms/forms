@@ -70,7 +70,6 @@ const Admin = ({ formData, setFormData, showNotification }) => {
 
     return (
         <div>
-            <h2>Admin Panel</h2>
             <AdminAuthAndActions 
                 formData={formData} 
                 setFormData={setFormData} 

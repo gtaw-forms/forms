@@ -1,5 +1,3 @@
-import { departmentFullName } from '../data';
-
 const generateDeathReport = (formData) => {
     const {
         coronerRank,
@@ -16,10 +14,20 @@ const generateDeathReport = (formData) => {
         mannerOfDeath,
         typeOfDeath,
         scenePhotos,
+                agencyDataStore,
         additionalImages,
         evidenceLockerID,
         morgueStatus,
     } = formData;
+
+const getDepartmentFullName = (shortCode) => {
+    console.log("shortCode:", shortCode);
+    console.log("agencyDataStore:", agencyDataStore);
+    if (agencyDataStore && agencyDataStore[shortCode]) {
+        return agencyDataStore[shortCode].fullName;
+    }
+    return shortCode; // fallback to shortcode
+};
 
     // --- Input Validation (Optional but Recommended) ---
     // Add checks here if certain fields are absolutely required before generating
@@ -67,14 +75,14 @@ const generateDeathReport = (formData) => {
 
     // --- BBCode Template ---
     // Use template literals for better readability
-    const bbCode = `[divbox=transparent][center][img]https://i.imgur.com/Hxjt4M2.png[/img][/center][/divbox]
+    const bbCode = `[divbox=transparent][center][img]https://i.ibb.co/0pgw9hHm/phmc.png[/img][/center][/divbox]
 
 [divbox=transparent][br][/br][center]DEATH INVESTIGATION REPORT[/center]
 [hr][/hr]
 
 [center][bold]A. WRITTEN REPORT[/bold][/center]
 
-The County Coroner's Office has been called regarding the decease that occurred at the location of [bold]${placeOfDeath || 'Unknown Location'}[/bold]. Upon receiving the call from[bold] ${departmentFullName(department) || 'Unknown Department'}[/bold], Coroner's Office dispatched a ${coronerRank || 'Coroner'} to the crime scene to conduct an investigation on the [bold]${dateTime || 'Unknown Date/Time'}[/bold].
+The County Coroner's Office has been called regarding the decease that occurred at the location of [bold]${placeOfDeath || 'Unknown Location'}[/bold]. Upon receiving the call from[bold] ${getDepartmentFullName(department) || 'Unknown Department'}[/bold], Coroner's Office dispatched a ${coronerRank || 'Coroner'} to the crime scene to conduct an investigation on the [bold]${dateTime || 'Unknown Date/Time'}[/bold].
 
 The ${coronerRank || 'Coroner'}, [bold]${coronerEmployee || 'Unknown Coroner'}[/bold], Serial Number [bold]${coronerBadge || 'N/A'}[/bold], arrived at the scene and identified the individual as [bold]${decedentName || 'Unidentified Decedent'}[/bold], who is estimated to have died at [bold]${pronouncedTimeOfDeath || 'Unknown Time'}[/bold]. Following an initial investigation, The ${coronerRank || 'Coroner'} came up with the following [bold]synopsis[/bold]: ${synopsis || 'No synopsis provided.'}
 

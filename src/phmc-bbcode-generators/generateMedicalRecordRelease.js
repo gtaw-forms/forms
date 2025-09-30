@@ -32,7 +32,7 @@ const generateMedicalRecordRelease = (formData) => {
     const firstPaymentProofUrl = (paymentProofPhotos || '').split(',')[0].trim();
     const patientFullName = `${patientFirstName || ''} ${patientMiddleName || ''} ${patientLastName || ''}`.replace(/\s+/g, ' ').trim(); // Combine and clean up spaces
 
-    let bbCode = `[divbox=white] [center] [img]https://i.imgur.com/Hxjt4M2.png[/img] [/center] [/divbox]
+    let bbCode = `[divbox=white] [center] [img]https://i.ibb.co/0pgw9hHm/phmc.png[/img] [/center] [/divbox]
 [divbox=white]
 [br][/br][color=#800000][size=150][b]I. PATIENT INFORMATION[/b][/size][/color][hr][/hr]
 [list=none][b]Title:[/b] [i](select one)[/i]

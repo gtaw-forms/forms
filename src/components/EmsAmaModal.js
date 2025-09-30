@@ -1,36 +1,30 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Form, Button } from 'react-bootstrap';
-// import domtoimage from 'dom-to-image'; // No longer needed
 import * as Sentry from "@sentry/react";
 import EMSAMAImage from '../assets/EMSAMA.png';
-import { copyToClipboard } from './notificationService'; // <-- NEW IMPORT
+import { copyToClipboard } from './notificationService';
 
-import './EmsAmaModal.css'; // Ensure this CSS defines 'LufgaBold' if used, or use a fallback
+import './EmsAmaModal.css';
 
-const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
+const EmsAmaModal = ({ show, onHide, showNotification, commitInfo, handleImageUpload }) => {
     const [patientSignature, setPatientSignature] = useState('');
     const [date, setDate] = useState('');
     const [guardianSignature, setGuardianSignature] = useState('');
     const [paramedicSignature, setParamedicSignature] = useState('');
-    const [imgurLink, setImgurLink] = useState(null);
+    const [imageUrl, setImageUrl] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
-    const [isPreviewVisible, setIsPreviewVisible] = useState(true); // Keep preview visible by default
+    const [isPreviewVisible, setIsPreviewVisible] = useState(true);
 
-    // Refs for the visual preview elements (optional, but good for consistency if styles are complex)
     const patientSignaturePreviewRef = useRef(null);
     const datePreviewRef = useRef(null);
     const guardianSignaturePreviewRef = useRef(null);
     const paramedicSignaturePreviewRef = useRef(null);
-    // amaCardRef is for the preview container, not directly used by canvas generation
     const amaCardPreviewRef = useRef(null);
 
-
-    // Webhook queue logic (remains the same as in your original EmsAmaModal)
     const webhookQueue = useRef([]);
     const isWebhookProcessing = useRef(false);
     const lastWebhookCallTimestamp = useRef(0);
     const webhookRateLimitDelay = 1100;
-
 
     useEffect(() => {
         if (show) {
@@ -38,8 +32,7 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
             setDate(localStorage.getItem('emsAmaDate') || '');
             setGuardianSignature(localStorage.getItem('emsAmaGuardianSignature') || '');
             setParamedicSignature(localStorage.getItem('emsAmaParamedicSignature') || '');
-            setImgurLink(null);
-            // setIsPreviewVisible(false); // Or true, depending on desired default state
+            setImageUrl(null);
         }
     }, [show]);
 
@@ -48,47 +41,7 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
     const handleGuardianSignatureChange = (e) => setGuardianSignature(e.target.value);
     const handleParamedicSignatureChange = (e) => setParamedicSignature(e.target.value);
 
-    const uploadToImgur = useCallback(async (base64Image) => {
-        // This function remains the same as in your original EmsAmaModal
-        const imgurClientId = process.env.REACT_APP_IMGUR_CLIENT_ID;
-        const accessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
-        const albumId = process.env.REACT_APP_IMGUR_ALBUM_ID;
-        const apiUrl = 'https://api.imgur.com/3/image';
-
-        const formData = new FormData();
-        formData.append('image', base64Image.split(',')[1]);
-        formData.append('album', albumId);
-
-        const headers = {
-            'Authorization': `Client-ID ${imgurClientId}`
-        };
-        if (accessToken) {
-            headers['Authorization'] = `Bearer ${accessToken}`;
-        }
-
-        try {
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: headers,
-                body: formData,
-            });
-            const data = await response.json();
-            if (data.success) {
-                return data.data.link;
-            } else {
-                console.error('Imgur upload failed (AMA):', data);
-                Sentry.captureMessage("Imgur API Error (AMA)", { extra: data, level: "error" });
-                throw new Error(`Imgur upload failed: ${data.data?.error || 'Unknown error'}`);
-            }
-        } catch (error) {
-            console.error('Imgur upload failed (AMA):', error);
-            Sentry.captureException(error, { extra: { context: 'Imgur Upload Function (AMA)' } });
-            throw error;
-        }
-    }, []);
-
     const processWebhookQueue = useCallback(async () => {
-        // This function remains the same as in your original EmsAmaModal
         if (webhookQueue.current.length === 0 || isWebhookProcessing.current) {
             return;
         }
@@ -134,8 +87,7 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
         }
     }, []);
 
-    const sendDiscordWebhook = useCallback(async (patientSig, formDate, guardianSig, paramedicSig, generatedImgurLink, errorMessage = null) => {
-        // This function remains the same as in your original EmsAmaModal
+    const sendDiscordWebhook = useCallback(async (patientSig, formDate, guardianSig, paramedicSig, generatedImageUrl, errorMessage = null) => {
         const webhookURL = process.env.REACT_APP_DEV_WEBHOOK;
         if (!webhookURL) {
             console.warn('Discord webhook URL is not set for AMA.');
@@ -152,7 +104,7 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
                 { name: "Date", value: formDate || "N/A", inline: true },
                 { name: "Guardian Signature", value: guardianSig || "N/A", inline: true },
                 { name: "Paramedic Signature", value: paramedicSig || "N/A", inline: true },
-                errorMessage ? { name: "Error", value: `\`\`\`${errorMessage.substring(0, 1000)}\`\`\``, inline: false } : null
+                errorMessage ? { name: "Error", value: ```${errorMessage.substring(0, 1000)}```, inline: false } : null
             ].filter(field => field !== null),
             footer: {
                 text: `PHMC Tools Tool | gh-pages ${commitInfo?.sha?.substring(0, 7) || 'N/A'}`
@@ -160,8 +112,8 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
             timestamp: new Date().toISOString()
         };
 
-        if (generatedImgurLink) {
-            embed.image = { url: generatedImgurLink };
+        if (generatedImageUrl) {
+            embed.image = { url: generatedImageUrl };
         } else if (!errorMessage) {
             embed.fields.push({ name: "Image Status", value: "Image uploaded, but link is missing.", inline: false });
         } else {
@@ -175,8 +127,6 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
         }
     }, [commitInfo, processWebhookQueue]);
 
-    // Define overlay styles for canvas drawing and preview
-    // Ensure font family matches what's loaded (e.g., 'LufgaBold' from EmsAmaModal.css or a safe fallback)
     const patientSignatureOverlayStyle = {
         position: 'absolute', top: '73%', left: '12%', color: 'black',
         fontSize: '20px', fontFamily: 'LufgaBold, Arial, sans-serif', whiteSpace: 'nowrap'
@@ -204,10 +154,8 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
         localStorage.setItem('emsAmaGuardianSignature', guardianSignature);
         localStorage.setItem('emsAmaParamedicSignature', paramedicSignature);
 
-        // Get image natural dimensions (assuming EMSAMAImage is 1000x1414 or similar)
-        // For more robustness, load image to get dimensions, like in BusinessCardModal
-        const amaImageActualWidth = 1000; // Replace with actual width or dynamic loading
-        const amaImageActualHeight = 1414; // Replace with actual height or dynamic loading
+        const amaImageActualWidth = 1000;
+        const amaImageActualHeight = 1414;
 
         const canvas = document.createElement('canvas');
         canvas.width = amaImageActualWidth;
@@ -217,7 +165,7 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
         const loadImage = (src) => {
             return new Promise((resolve, reject) => {
                 const img = new Image();
-                img.crossOrigin = "anonymous"; // Important if image is hosted externally and fonts are webfonts
+                img.crossOrigin = "anonymous";
                 img.onload = () => resolve(img);
                 img.onerror = (err) => {
                     console.error("Failed to load base AMA image for canvas:", err);
@@ -231,7 +179,6 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
         try {
             const baseImage = await loadImage(EMSAMAImage);
             
-            // Ensure fonts are loaded before drawing text
             if (document.fonts && typeof document.fonts.ready === 'function') {
                 await document.fonts.ready;
                 console.log("Fonts ready for AMA canvas.");
@@ -240,55 +187,51 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
             }
 
             ctx.drawImage(baseImage, 0, 0, amaImageActualWidth, amaImageActualHeight);
-            ctx.textBaseline = 'top'; // Consistent text positioning
+            ctx.textBaseline = 'top';
 
-            // Draw Patient Signature
             const patientSigX = amaImageActualWidth * (parseFloat(patientSignatureOverlayStyle.left) / 100);
             const patientSigY = amaImageActualHeight * (parseFloat(patientSignatureOverlayStyle.top) / 100);
             const patientSigFontSize = parseInt(patientSignatureOverlayStyle.fontSize);
             ctx.fillStyle = patientSignatureOverlayStyle.color;
-            ctx.font = `${patientSigFontSize}px ${patientSignatureOverlayStyle.fontFamily}`;
+            ctx.font = `${patientSigFontSize}px ${patientSignatureOverlayStyle.fontFamily}`
             ctx.fillText(patientSignature, patientSigX, patientSigY);
 
-            // Draw Date
             const dateX = amaImageActualWidth * (parseFloat(dateOverlayStyle.left) / 100);
             const dateY = amaImageActualHeight * (parseFloat(dateOverlayStyle.top) / 100);
             const dateFontSize = parseInt(dateOverlayStyle.fontSize);
             ctx.fillStyle = dateOverlayStyle.color;
-            ctx.font = `${dateFontSize}px ${dateOverlayStyle.fontFamily}`;
+            ctx.font = `${dateFontSize}px ${dateOverlayStyle.fontFamily}`
             ctx.fillText(date, dateX, dateY);
 
-            // Draw Guardian Signature
             const guardianSigX = amaImageActualWidth * (parseFloat(guardianSignatureOverlayStyle.left) / 100);
             const guardianSigY = amaImageActualHeight * (parseFloat(guardianSignatureOverlayStyle.top) / 100);
             const guardianSigFontSize = parseInt(guardianSignatureOverlayStyle.fontSize);
             ctx.fillStyle = guardianSignatureOverlayStyle.color;
-            ctx.font = `${guardianSigFontSize}px ${guardianSignatureOverlayStyle.fontFamily}`;
+            ctx.font = `${guardianSigFontSize}px ${guardianSignatureOverlayStyle.fontFamily}`
             ctx.fillText(guardianSignature, guardianSigX, guardianSigY);
 
-            // Draw Paramedic Signature
             const paramedicSigX = amaImageActualWidth * (parseFloat(paramedicSignatureOverlayStyle.left) / 100);
             const paramedicSigY = amaImageActualHeight * (parseFloat(paramedicSignatureOverlayStyle.top) / 100);
             const paramedicSigFontSize = parseInt(paramedicSignatureOverlayStyle.fontSize);
             ctx.fillStyle = paramedicSignatureOverlayStyle.color;
-            ctx.font = `${paramedicSigFontSize}px ${paramedicSignatureOverlayStyle.fontFamily}`;
+            ctx.font = `${paramedicSigFontSize}px ${paramedicSignatureOverlayStyle.fontFamily}`
             ctx.fillText(paramedicSignature, paramedicSigX, paramedicSigY);
 
             const dataUrl = canvas.toDataURL('image/png');
 
-            showNotification('Uploading to Imgur...', 'upload');
-            const link = await uploadToImgur(dataUrl);
-            setImgurLink(link);
+            showNotification('Uploading...', 'upload');
+            const link = await handleImageUpload(dataUrl);
+            setImageUrl(link);
             showNotification(`AMA Form Saved & Uploaded: ${link}`, 'save');
             sendDiscordWebhook(patientSignature, date, guardianSignature, paramedicSignature, link);
 
-            await copyToClipboard(link, showNotification, 'Imgur link copied to clipboard!');
+            await copyToClipboard(link, showNotification, 'Image link copied to clipboard!');
         } catch (error) {
             console.error('Error in AMA handleSave:', error);
             let errorContext = 'Error generating AMA form';
             let detailedMessage = error.message || String(error);
 
-            if (detailedMessage.includes('Imgur upload failed')) errorContext = 'Imgur Upload Failed';
+            if (detailedMessage.includes('upload failed')) errorContext = 'Upload Failed';
             else if (detailedMessage.includes('Failed to load base AMA image')) errorContext = 'Base Image Load Failed';
             else errorContext = 'Image Generation Failed';
             
@@ -300,7 +243,7 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
         }
     }, [
         patientSignature, date, guardianSignature, paramedicSignature,
-        showNotification, uploadToImgur, sendDiscordWebhook, commitInfo,
+        showNotification, handleImageUpload, sendDiscordWebhook, commitInfo,
         patientSignatureOverlayStyle, dateOverlayStyle, guardianSignatureOverlayStyle, paramedicSignatureOverlayStyle
     ]);
 
@@ -324,19 +267,19 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
                     </Button>
                 </div>
                 <div className="ems-ama-modal-body">
-                    {imgurLink && (
+                    {imageUrl && (
                         <div className="imgur-link-container">
                             <p>
-                                <strong>Imgur Link: </strong>
-                                <a href={imgurLink} target="_blank" rel="noopener noreferrer">
-                                    {imgurLink}
+                                <strong>Image Link: </strong>
+                                <a href={imageUrl} target="_blank" rel="noopener noreferrer">
+                                    {imageUrl}
                                 </a>
                             </p>
                             Instructions!
                             <br />
                             1) /note [id of the blank note item in your inventory] [amount] [name for the cards]
                             <br />
-                            2) /note [id of the new note item in your inventory] [amount] [content] [URL from Imgur]
+                            2) /note [id of the new note item in your inventory] [amount] [content] [URL from ImgBB]
                         </div>
                     )}
 
@@ -352,7 +295,7 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo }) => {
                         <div 
                             className="business-card-image-container" // Re-use class if styles are similar
                             ref={amaCardPreviewRef} 
-                            style={{ 
+                            style={{
                                 position: 'relative', 
                                 width: '100%', 
                                 maxWidth: '800px', // Adjust as needed for AMA form aspect ratio

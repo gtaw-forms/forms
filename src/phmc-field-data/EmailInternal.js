@@ -127,7 +127,7 @@ const EmailInternal = ({
 
         </InputGroup>
         <span className="helper-text">
-        This supports clipboard uploading, ctrl + V! | Hosted by Imgur! - <a href="https://imgur.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+        This supports clipboard uploading, ctrl + V! | Hosted by ImgBB! - <a href="https://imgbb.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
         </span>
     </Form.Group>
 

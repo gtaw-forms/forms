@@ -15,7 +15,8 @@ const Autopsy = ({
     setShowEmployeeModal,
     showNotification,
     commitInfo, // <-- Add commitInfo to props
-    removeNotification
+    removeNotification,
+    handleImageUpload
 
 }) => {
 
@@ -36,17 +37,6 @@ const Autopsy = ({
             console.warn("[Autopsy.js] showNotification is not available in handleSaveAutopsyDiagram");
         }
     };
-
-    const handleDiagramImgurUploadSuccess = async (imgurUrl) => { // imgurUrl is the parameter here
-        setFormData(prev => ({
-            ...prev,
-            autopsyDiagramImgurUrl: imgurUrl, // The URL is saved to formData here
-        }));
-        if (showNotification) {
-            showNotification("Autopsy Diagram image uploaded and URL saved!", "upload");
-        }
-    };
-
 
     const handleAddDeathCause = () => {
         setFormData(prev => ({
@@ -75,7 +65,7 @@ const Autopsy = ({
         });
     };
  
-    const handleAutopsyImageUploadAndCreateAlbum = async (event) => {
+    const handleAutopsyImageUpload = async (event) => {
         const files = event.target.files;
         if (!files || files.length === 0) {
             showNotification('No files selected for autopsy photos.', 'warning');
@@ -83,61 +73,27 @@ const Autopsy = ({
         }
 
         let indefiniteNotificationId = null;
-
         setIsUploading(true);
         indefiniteNotificationId = showNotification('Processing autopsy photos, please wait...', 'info-circle', 0);
 
-        const imgurAccessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
-
-        if (!imgurAccessToken) {
-            console.error('[Autopsy Photos] Imgur access token not configured.');
-            Sentry.captureMessage('Imgur access token not configured for image upload.', 'error');
-            showNotification('Configuration error: Imgur token missing.', 'exclamation-triangle');
-            setIsUploading(false);
-            if (indefiniteNotificationId) removeNotification(indefiniteNotificationId);
-            return;
-        }
-
-        const delayBetweenIndividualImageUploads = 1000; // 1 second delay
         const uploadedImageLinks = [];
 
         try {
-            
             for (const file of files) {
-                await new Promise(resolve => setTimeout(resolve, delayBetweenIndividualImageUploads));
-                
-                const imageFormData = new FormData();
-                imageFormData.append('image', file);
-                // No album ID needed for individual uploads if not grouping them
-
-                const imageUploadResponse = await fetch('https://api.imgur.com/3/image', {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${imgurAccessToken}` },
-                    body: imageFormData,
-                });
-                const imageData = await imageUploadResponse.json();
-
-                if (imageData.success && imageData.data.link) {
-                    uploadedImageLinks.push(imageData.data.link); // Collect direct image links
-                    console.log(`[Autopsy Photos] Successfully uploaded image: "${file.name}" (Link: ${imageData.data.link}). Collected ${uploadedImageLinks.length} image links.`);
-                } else {
-                    console.warn(`[Autopsy Photos] Failed to upload image "${file.name}". Imgur response:`, imageData);
-                    // Optionally, notify about individual failures
-                    showNotification(`Failed to upload ${file.name}. Error: ${imageData.data?.error?.message || 'Unknown'}`, 'warning', 4000);
+                const imageUrl = await handleImageUpload(file);
+                if (imageUrl) {
+                    uploadedImageLinks.push(imageUrl);
                 }
             }
-            console.log(`[Autopsy Photos] Finished individual image uploads. ${uploadedImageLinks.length}/${files.length} images successfully uploaded.`);
 
             if (uploadedImageLinks.length > 0) {
-                // Append new links to existing ones, if any
                 setFormData(prev => {
                     const existingLinks = prev.autopsyAlbumUrl ? prev.autopsyAlbumUrl.split(',').map(s => s.trim()).filter(s => s) : [];
                     const allLinks = [...existingLinks, ...uploadedImageLinks];
-                    // Remove duplicates just in case, though unlikely with new uploads
-                    const uniqueLinks = [...new Set(allLinks)]; 
+                    const uniqueLinks = [...new Set(allLinks)];
                     return {
                         ...prev,
-                        autopsyAlbumUrl: uniqueLinks.join(', '), // Store as comma-separated string
+                        autopsyAlbumUrl: uniqueLinks.join(', '),
                         autopsyPhotosUnavailable: false
                     };
                 });
@@ -148,14 +104,13 @@ const Autopsy = ({
 
         } catch (error) {
             console.error('[Autopsy Photos] An error occurred during image upload:', error);
-            Sentry.captureException(error, { extra: { context: 'handleAutopsyImageUploadAndCreateAlbum' } });
+            Sentry.captureException(error, { extra: { context: 'handleAutopsyImageUpload' } });
             showNotification(`Error uploading images: ${error.message}`, 'exclamation-triangle', 7000);
         } finally {
             setIsUploading(false);
             if (indefiniteNotificationId) {
                 removeNotification(indefiniteNotificationId);
             }
-            console.log('[Autopsy Photos] Process finished. isUploading set to false, indefinite notification removed.');
         }
     };
 
@@ -349,7 +304,7 @@ const Autopsy = ({
                     name="autopsyAlbumUrl" // Keeping name for consistency, though it's not an album URL anymore
                     value={formData.autopsyAlbumUrl || ''}
                     onChange={handleChange}
-                    placeholder="Paste Imgur URLs here, separated by commas, or use upload button."
+                    placeholder="Paste ImgBB URLs here, separated by commas, or use upload button."
                     className={`form-control ${!formData.autopsyPhotosUnavailable && !(formData.autopsyAlbumUrl || '').trim() ? 'is-invalid' : ''}`}
                     disabled={formData.autopsyPhotosUnavailable}
                 />
@@ -361,7 +316,7 @@ const Autopsy = ({
                         fileInput.type = 'file';
                         fileInput.accept = 'image/*';
                         fileInput.multiple = true;
-                        fileInput.onchange = handleAutopsyImageUploadAndCreateAlbum;
+                        fileInput.onchange = handleAutopsyImageUpload;
                         fileInput.click();
                     }}
                 >
@@ -442,7 +397,7 @@ const Autopsy = ({
                show={showAutopsyDiagramModal}
                onHide={handleCloseDiagramModal}
                onSaveDiagram={handleSaveAutopsyDiagram}
-               onDiagramImgurUpload={handleDiagramImgurUploadSuccess}
+               handleImageUpload={handleImageUpload}
                initialMarkers={formData.autopsyDiagramMarkers || []}
                showNotification={showNotification}
             />

@@ -290,7 +290,7 @@ const SicknessEmail = ({
                     </Button>
                 </InputGroup>
                 <span className="helper-text">
-                    Upload your signature image. Supports clipboard pasting (Ctrl+V). Hosted by Imgur.
+                    Upload your signature image. Supports clipboard pasting (Ctrl+V). Hosted by ImgBB.
                 </span>
             </Form.Group>
                         <Form.Control

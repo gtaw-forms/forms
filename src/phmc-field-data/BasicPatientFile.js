@@ -490,7 +490,7 @@ const BasicPatientFile = ({
                         </Button>
                     </InputGroup>
                     <span className="helper-text">
-                        Upload proof of payment. Supports clipboard pasting (Ctrl+V). Hosted by Imgur.
+                        Upload proof of payment. Supports clipboard pasting (Ctrl+V). Hosted by ImgBB.
                     </span>
                 </Form.Group>
             )}

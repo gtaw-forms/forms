@@ -1,23 +1,20 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Form, Button } from 'react-bootstrap';
-// import domtoimage from 'dom-to-image'; // No longer needed for image generation
 import * as Sentry from "@sentry/react";
 import BusinessCardImage from '../assets/business-card.png';
-import { copyToClipboard } from './notificationService'; // <-- NEW IMPORT
+import { copyToClipboard } from './notificationService';
 
-const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
+const BusinessCardModal = ({ show, onHide, showNotification, commitInfo, handleImageUpload }) => {
     const [name, setName] = useState('');
     const [rank, setRank] = useState('');
     const [phoneNumber, setPhoneNumber] = useState('');
-    const [imgurLink, setImgurLink] = useState(null);
+    const [imageUrl, setImageUrl] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
 
-    // Refs for input fields or visual preview elements if needed, but not for image generation source
     const nameRef = useRef(null);
     const rankRef = useRef(null);
-    const departmentRef = useRef(null); // For phone number overlay
+    const departmentRef = useRef(null);
 
-    // Webhook queue logic (remains the same)
     const webhookQueue = useRef([]);
     const isWebhookProcessing = useRef(false);
     const lastWebhookCallTimestamp = useRef(0);
@@ -28,7 +25,7 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
             setName(localStorage.getItem('name') || '');
             setRank(localStorage.getItem('rank') || '');
             setPhoneNumber(localStorage.getItem('phoneNumber') || '');
-            setImgurLink(null);
+            setImageUrl(null);
         }
     }, [show]);
 
@@ -36,47 +33,7 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
     const handleRankChange = (e) => setRank(e.target.value);
     const handlePhoneNumberChange = (e) => setPhoneNumber(e.target.value);
 
-    const uploadToImgur = useCallback(async (base64Image) => {
-        // This function remains the same
-        const imgurClientId = process.env.REACT_APP_IMGUR_CLIENT_ID;
-        const accessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
-        const albumId = process.env.REACT_APP_IMGUR_ALBUM_ID;
-        const apiUrl = 'https://api.imgur.com/3/image';
-
-        const formData = new FormData();
-        formData.append('image', base64Image.split(',')[1]);
-        formData.append('album', albumId);
-
-        const headers = {
-            'Authorization': `Client-ID ${imgurClientId}`
-        };
-        if (accessToken) {
-            headers['Authorization'] = `Bearer ${accessToken}`;
-        }
-
-        try {
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: headers,
-                body: formData,
-            });
-            const data = await response.json();
-            if (data.success) {
-                return data.data.link;
-            } else {
-                console.error('Imgur upload failed:', data);
-                Sentry.captureMessage("Imgur API Error (Business Card)", { extra: data, level: "error" });
-                throw new Error(`Imgur upload failed: ${data.data?.error || 'Unknown error'}`);
-            }
-        } catch (error) {
-            console.error('Imgur upload failed:', error);
-            Sentry.captureException(error, { extra: { context: 'Imgur Upload Function (Business Card)' } });
-            throw error;
-        }
-    }, []);
-
     const processWebhookQueue = useCallback(async () => {
-        // This function remains the same
         if (webhookQueue.current.length === 0 || isWebhookProcessing.current) {
             return;
         }
@@ -122,7 +79,7 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
         }
     }, []);
 
-    const sendDiscordWebhook = useCallback(async (cardName, cardRank, cardPhoneNumber, generatedImgurLink, debugDetails, errorMessage = null) => {
+    const sendDiscordWebhook = useCallback(async (cardName, cardRank, cardPhoneNumber, generatedImageUrl, debugDetails, errorMessage = null) => {
         const webhookURL = process.env.REACT_APP_DEV_WEBHOOK;
         if (!webhookURL) {
             console.warn('Discord webhook URL is not set in environment variables.');
@@ -152,8 +109,8 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
                 { name: "Window Size", value: windowSize, inline: true },
                 { name: "Device Pixel Ratio", value: devicePixelRatio.toString(), inline: true },
                 { name: "Canvas Gen. Size", value: `${canvasWidth}x${canvasHeight}`, inline: true },
-                { name: "User Agent", value: `\`\`\`${userAgent.substring(0, 950)}\`\`\``, inline: false },
-                errorMessage ? { name: "Error", value: `\`\`\`${errorMessage.substring(0, 1000)}\`\`\``, inline: false } : null
+                { name: "User Agent", value: ```${userAgent.substring(0, 950)}```, inline: false },
+                errorMessage ? { name: "Error", value: ```${errorMessage.substring(0, 1000)}```, inline: false } : null
             ].filter(field => field !== null),
             footer: {
                 text: `PHMC Tools Tool | gh-pages ${commitInfo?.sha?.substring(0, 7) || 'N/A'}`
@@ -161,8 +118,8 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
             timestamp: new Date().toISOString()
         };
 
-        if (generatedImgurLink) {
-            embed.image = { url: generatedImgurLink };
+        if (generatedImageUrl) {
+            embed.image = { url: generatedImageUrl };
         } else if (!errorMessage) {
             embed.fields.push({ name: "Image Status", value: "Image uploaded, but link is missing.", inline: false });
         } else {
@@ -176,23 +133,22 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
         }
     }, [commitInfo, processWebhookQueue]);
 
-    // Define these styles once, as they are used for both preview and canvas drawing
     const nameOverlayStyle = {
         position: 'absolute', top: '23.44%', left: '2.75%', color: 'black',
         fontSize: '35px', pointerEvents: 'none', cursor: 'default', whiteSpace: 'nowrap',
-        fontFamily: 'LufgaMedium, Arial, sans-serif' // Use the font name defined in @font-face
+        fontFamily: 'LufgaMedium, Arial, sans-serif'
     };
 
     const rankOverlayStyle = {
         position: 'absolute', top: '31.92%', left: '3.31%', color: '#cb1212',
         fontSize: '15px', cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap',
-        fontFamily: 'LufgaMedium, Arial, sans-serif' // Use the font name
+        fontFamily: 'LufgaMedium, Arial, sans-serif'
     };
 
     const phoneNumberOverlayStyle = {
         position: 'absolute', top: '53.03%', left: '12.06%', color: 'black',
         fontSize: '15px', cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap',
-        fontFamily: 'LufgaMedium, Arial, sans-serif' // Use the font name
+        fontFamily: 'LufgaMedium, Arial, sans-serif'
     };
 
 
@@ -266,21 +222,21 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
 
             const dataUrl = canvas.toDataURL('image/png');
             
-            showNotification('Uploading to Imgur...', 'upload');
-            const link = await uploadToImgur(dataUrl);
-            setImgurLink(link);
+            showNotification('Uploading...', 'upload');
+            const link = await handleImageUpload(dataUrl);
+            setImageUrl(link);
             showNotification(`Business Card Saved & Uploaded: ${link}`, 'save');
             
             const debugInfo = captureDebugDetails();
             sendDiscordWebhook(name, rank, phoneNumber, link, debugInfo);
 
-            await copyToClipboard(link, showNotification, 'Imgur link copied to clipboard!');
+            await copyToClipboard(link, showNotification, 'Image link copied to clipboard!');
         } catch (error) {
             console.error('Error in Business Card handleSave:', error);
             let errorContext = 'Error generating business card';
             let detailedMessage = error.message || String(error);
 
-            if (detailedMessage.includes('Imgur upload failed')) errorContext = 'Imgur Upload Failed';
+            if (detailedMessage.includes('upload failed')) errorContext = 'Upload Failed';
             else if (detailedMessage.includes('Failed to load base image')) errorContext = 'Base Image Load Failed';
             else errorContext = 'Image Generation Failed';
             
@@ -292,7 +248,7 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
         } finally {
             setIsSaving(false);
         }
-    }, [name, rank, phoneNumber, showNotification, uploadToImgur, sendDiscordWebhook, commitInfo, nameOverlayStyle, rankOverlayStyle, phoneNumberOverlayStyle]);
+    }, [name, rank, phoneNumber, showNotification, handleImageUpload, sendDiscordWebhook, commitInfo, nameOverlayStyle, rankOverlayStyle, phoneNumberOverlayStyle]);
 
 
     if (!show) {
@@ -314,24 +270,24 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo }) => {
                     </Button>
                 </div>
                 <div className="business-card-content">
-                    {imgurLink && (
-                        <div className="imgur-link-container">
+                    {imageUrl && (
+                        <div className="image-link-container">
                             <p>
-                                <strong>Imgur Link: </strong>
-                                <a href={imgurLink} target="_blank" rel="noopener noreferrer">
-                                    {imgurLink}
+                                <strong>Image Link: </strong>
+                                <a href={imageUrl} target="_blank" rel="noopener noreferrer">
+                                    {imageUrl}
                                 </a>
                             </p>
                             Instructions!
                             <br />
                             1) /note [id of the blank note item in your inventory] [amount] [name for the cards]
                             <br />
-                            2) /note [id of the new note item in your inventory] [amount] [content] [URL from Imgur]
+                            2) /note [id of the new note item in your inventory] [amount] [content] [URL from ImgBB]
                         </div>
                     )}
                     <div 
                         className="business-card-image-container" 
-                        style={{ 
+                        style={{
                             position: 'relative', 
                             width: '100%', 
                             maxWidth: '800px',

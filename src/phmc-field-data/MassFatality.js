@@ -498,7 +498,7 @@ const MassFatality = ({
                                         {isUploading ? ' Uploading...' : ' Upload Image(s)'}
                                     </Button>
                                 </InputGroup>
-                                <span className="helper-text">This supports clipboard uploading, ctrl + V! | Hosted by Imgur! - <a href="https://imgur.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a></span>
+                                <span className="helper-text">This supports clipboard uploading, ctrl + V! | Hosted by ImgBB! - <a href="https://imgbb.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a></span>
                             </Form.Group>
                             <Form.Group className="mb-3 upload-container">
                                 <Form.Label>Morgue and CDNA Images</Form.Label>
@@ -554,7 +554,7 @@ const MassFatality = ({
                                         {isUploading ? ' Uploading...' : ' Upload Image(s)'}
                                     </Button>
                                 </InputGroup>
-                                <span className="helper-text">This supports clipboard uploading, ctrl + V! | Hosted by Imgur! - <a href="https://imgur.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a></span>
+                                <span className="helper-text">This supports clipboard uploading, ctrl + V! | Hosted by ImgBB! - <a href="https://imgbb.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a></span>
                             </Form.Group>
                             
                         </div>

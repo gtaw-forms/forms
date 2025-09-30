@@ -88,7 +88,7 @@ const generateAutopsy = (formData) => {
     }
     const finalAutopsyTime = formAutopsyTime || 'HH:MM';
 
-    let bbCode = `[divbox=white][center][img]https://i.imgur.com/Hxjt4M2.png[/img][/center][/divbox]
+    let bbCode = `[divbox=white][center][img]https://i.ibb.co/0pgw9hHm/phmc.png[/img][/center][/divbox]
 
 [divbox=white][b][size=150][br][/br][center]DEPARTMENT OF PATHOLOGY AND FORENSIC MEDICINE[/size][/b][/center]
 [center][size=120]Autopsy Report by Medical Examiner[/size][/center][hr][/hr][justify][br][/br]I performed an autopsy on the body of [b]${decedentName || 'John Doe'} ((${decedentOOC || 'OOC Name'}))[/b] at PHMC's Department of Pathology and Forensic Medicine on ${finalAutopsyDate}, ${finalAutopsyTime}.

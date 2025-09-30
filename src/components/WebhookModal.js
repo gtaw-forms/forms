@@ -1,4 +1,4 @@
-import ReactDOM from 'react-dom'; // Import ReactDOM for Portals
+import ReactDOM from 'react-dom';
 import React, { useState, useEffect } from 'react';
 import { Button, Form, InputGroup } from 'react-bootstrap';
 import * as Sentry from "@sentry/react";
@@ -171,18 +171,17 @@ const WebhookModal = ({
     showNotification,
     commitInfo,
     modalHeaderText = "Send Webhook Embed", // More generic default
-    // --- MODIFICATION START: New props for button customization ---
     primaryButtonText = "Send to Primary Hook",
     primaryWebhookUrlIdentifier = "N/A", // To display which REACT_APP_ variable is used
     secondaryButtonText = "Send to Secondary Hook",
     secondaryWebhookUrlIdentifier = "N/A", // To display which REACT_APP_ variable is used
-    showSecondaryButton = true // Prop to control visibility of the second button
-    // --- MODIFICATION END ---
+    showSecondaryButton = true, // Prop to control visibility of the second button
+    handleImageUpload
 }) => {
     const [mediaUrls, setMediaUrls] = useState([]);
     const [isUploading, setIsUploading] = useState(false);
     const [urlInput, setUrlInput] = useState('');
-    const phmcLogoUrl = 'https://i.imgur.com/QMaz0OC.png';
+    const phmcLogoUrl = 'https://i.ibb.co/0pgw9hHm/phmc.png';
 
     useEffect(() => {
         if (show) {
@@ -226,27 +225,23 @@ const WebhookModal = ({
     const [showConfirmation, setShowConfirmation] = useState(false);
     const [confirmationAction, setConfirmationAction] = useState(null); // { type: 'primary' | 'secondary', payload: object, identifier: string }
 
-    const handleImageUpload = async (event) => {
+    const handleLocalImageUpload = async (event) => {
         const files = event.target.files;
         if (!files || files.length === 0) return;
         setIsUploading(true);
         const uploadPromises = [];
         for (let i = 0; i < files.length; i++) {
-            uploadPromises.push(uploadSingleImageToImgur(files[i]));
+            uploadPromises.push(handleImageUpload(files[i]));
         }
         try {
             const results = await Promise.allSettled(uploadPromises);
             const successfulUrls = [];
             let failedCount = 0;
-            let firstErrorMessage = '';
             results.forEach(result => {
-                if (result.status === 'fulfilled') {
+                if (result.status === 'fulfilled' && result.value) {
                     successfulUrls.push(result.value);
                 } else {
                     failedCount++;
-                    if (!firstErrorMessage) firstErrorMessage = result.reason.message;
-                    console.error('Imgur upload failed:', result.reason.message);
-                    Sentry.captureMessage(`Imgur upload failed in WebhookModal: ${result.reason.message}`, "error");
                 }
             });
             setMediaUrls(prevUrls => [...prevUrls, ...successfulUrls]);
@@ -254,7 +249,7 @@ const WebhookModal = ({
                 showNotification(`${successfulUrls.length} image(s) uploaded successfully!`, 'check-circle');
             }
             if (failedCount > 0) {
-                showNotification(`${failedCount} image(s) failed to upload. Error: ${firstErrorMessage}`, 'exclamation-circle');
+                showNotification(`${failedCount} image(s) failed to upload.`, 'exclamation-circle');
             }
         } catch (error) {
             console.error('General upload process error:', error);
@@ -265,26 +260,7 @@ const WebhookModal = ({
             event.target.value = null;
         }
     };
-    const uploadSingleImageToImgur = async (file) => {
-        const imgurAccessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
-        const imgurAlbumId = process.env.REACT_APP_IMGUR_ALBUM_ID;
-        if (!imgurAccessToken || !imgurAlbumId) {
-            throw new Error("Imgur API credentials not configured.");
-        }
-        const formData = new FormData();
-        formData.append('image', file);
-        formData.append('album', imgurAlbumId);
-        const response = await fetch('https://api.imgur.com/3/image', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${imgurAccessToken}` },
-            body: formData,
-        });
-        const data = await response.json();
-        if (!data.success) {
-            throw new Error(data.data.error || 'Unknown Imgur error');
-        }
-        return data.data.link;
-    };
+
     const handleAddUrl = () => {
         const urlToAdd = urlInput.trim();
         if (!urlToAdd) {
@@ -308,7 +284,7 @@ const WebhookModal = ({
         setMediaUrls([]);
     };
     const isImageUrl = (url) => {
-        return /\.(jpg|jpeg|png|gif)$/i.test(url) || url.includes('imgur.com');
+        return /\.(jpg|jpeg|png|gif)$/i.test(url) || url.includes('ibb.co');
     };
     const isStreamableUrl = (url) => {
         return url.includes('streamable.com');
@@ -403,7 +379,6 @@ const WebhookModal = ({
         }
         setShowConfirmation(false);
         setConfirmationAction(null);
-        // Parent component's onSubmit/onSubmitPhmc should handle closing the main modal if successful
     };
 
     const cancelSend = () => {
@@ -417,11 +392,9 @@ const WebhookModal = ({
     const titlePlaceholder = "Major Update / Minor Update / Hotfix";
     const messagePlaceholder = `- Added: \n- Fixed: \n- Updated: `;
 
-    // --- MODIFICATION START: Define the modal's JSX content ---
     const modalDialogContent = (
-        <div style={modalOverlayStyle} onClick={showConfirmation ? undefined : onClose}> {/* Prevent closing overlay if confirmation is up */}
-            <div style={modalContentStyle} onClick={e => e.stopPropagation()}>
-                {/* --- MODIFICATION START: Confirmation Dialog --- */}
+        <div style={modalOverlayStyle} onClick={showConfirmation ? undefined : onClose}> 
+            <div style={modalContentStyle} onClick={e => e.stopPropagation()}> 
                 {showConfirmation && confirmationAction && (
                     <div style={confirmationDialogStyle}>
                         <p style={confirmationTextStyle}>
@@ -435,10 +408,8 @@ const WebhookModal = ({
                         </div>
                     </div>
                 )}
-                {/* --- MODIFICATION END --- */}
 
-                {/* Modal Header, Body, Footer (conditionally disabled if confirmation is shown) */}
-                <fieldset disabled={showConfirmation}> {/* Disable form fields when confirmation is active */}
+                <fieldset disabled={showConfirmation}> 
                     <div style={modalHeaderStyle}>
                         <h5 style={modalTitleStyle}>{modalHeaderText}</h5>
                         <button onClick={onClose} style={closeButtonStyle} aria-label="Close modal">
@@ -505,11 +476,11 @@ const WebhookModal = ({
                                         accept="image/*"
                                         multiple
                                         style={{ display: 'none' }}
-                                        onChange={handleImageUpload}
+                                        onChange={handleLocalImageUpload}
                                     />
                                 </InputGroup>
                                 <Form.Text style={{ color: '#6c757d', fontSize: '0.85em' }}>
-                                    Upload one or more images. Hosted by Imgur.
+                                    Upload one or more images. Hosted by ImgBB.
                                 </Form.Text>
                             </Form.Group>
                             {mediaUrls.length > 0 && (

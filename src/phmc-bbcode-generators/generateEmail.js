@@ -9,19 +9,24 @@ const generateEmail = (formData) => {
         coronerPHNumber,
         deathReport,
         additionalReports,
+        agencyDataStore, // Added agencyDataStore
     } = formData;
 
-    console.log('Generating email with death report:', deathReport);
-    console.log('Additional reports:', additionalReports);
+    const getDepartmentFullName = (shortCode) => {
+        if (agencyDataStore && agencyDataStore[shortCode]) {
+            return agencyDataStore[shortCode].fullName;
+        }
+        return shortCode; // fallback to shortcode
+    };
 
-    let bbCode = `[center][img]https://i.imgur.com/ItaoQkO.png[/img][/center]
+    let bbCode = `[center][img]https://i.ibb.co/GfSHbMMj/ItaoQkO.webp[/img][/center]
 [hr][/hr]
 
-TO: ${requestingOfficer} - ${department}
+TO: ${requestingOfficer} - ${getDepartmentFullName(department)}
 FROM: ${coronerEmployee} @ phmc.health
 SUBJECT: Death Report Paperwork
 
-For the attention of: [b]${department}[/b] - [b]${requestingOfficer}[/b]
+For the attention of: [b]${getDepartmentFullName(department)}[/b] - [b]${requestingOfficer}[/b]
 
 This Coroner Report has been written by ${coronerRank} ${coronerEmployee} you can find the enclosed documents attached to this email. 
 

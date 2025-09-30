@@ -130,7 +130,7 @@ const PHMCCommentaryNoteQuestions = ({
                     </Button>
                 </InputGroup>
                 <span className="helper-text">
-                    This supports clipboard uploading, ctrl + V! | Hosted by Imgur! - <a href="https://imgur.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+                    This supports clipboard uploading, ctrl + V! | Hosted by ImgBB! - <a href="https://imgbb.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
                 </span>
             </Form.Group>
             <Form.Group className="mb-3 upload-container">
@@ -193,7 +193,7 @@ const PHMCCommentaryNoteQuestions = ({
                     </Button>
                 </div>
                 <span className="helper-text">
-                    This supports clipboard uploading, ctrl + V! | Hosted by Imgur! - <a href="https://imgur.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+                    This supports clipboard uploading, ctrl + V! | Hosted by ImgBB! - <a href="https://imgbb.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
                 </span>
                 <label>Morgue Bugs:</label> {/* Use <Form.Label> ? */}
                 <Form.Check
