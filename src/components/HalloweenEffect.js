@@ -10,6 +10,14 @@ gravestoneImage.height = 32;
 const HalloweenEffect = () => {
   return (
     <Snowfall
+      style={{
+        position: 'fixed',
+        width: '100vw',
+        height: '100vh',
+        top: 0,
+        left: 0,
+        zIndex: 25,
+      }}
       snowflakeCount={50}
       images={[gravestoneImage]}
       radius={[10.0, 30.0]}
