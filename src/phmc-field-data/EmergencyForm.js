@@ -469,7 +469,7 @@ const EmergencyForm = ({
                                 }
                             }}
                         />
-                        <Button variant="success" disabled={isUploading} onClick={() => { const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*'; input.multiple = false; input.onchange = (e) => handleImageUpload(e, 'prescriptionImage'); input.click(); }}>
+                        <Button variant="success" disabled={isUploading} onClick={() => { const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*'; input.multiple = true; input.onchange = (e) => handleImageUpload(e, 'prescriptionImage'); input.click(); }}>
                             <i className={`fas ${isUploading ? 'fa-spinner fa-spin' : 'fa-upload'}`}></i> {isUploading ? 'Uploading...' : 'Upload Prescription'}
                         </Button>
                     </InputGroup>
