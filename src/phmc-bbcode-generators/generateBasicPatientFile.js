@@ -34,7 +34,7 @@ const generateBasicPatientFile = (formData) => {
 ${patientName}
 [/size]
 
-[/center][td][center][img]https://i.imgur.com/QMaz0OC.png[/img][img]https://i.imgur.com/LkRKav2.png[/img]
+[/center][td][center][img]https://i.ibb.co/0pgw9hHm/phmc.png[/img][img]https://i.ibb.co/fdGgxDH1/LkRKav2.png[/img]
 [b][size=150]BASIC PATIENT INFORMATION[/size][/center][/table]
 [divboxcolor=black][center][size=115][color=#FF0000]>[/color] [color=#FFFFFF][b]General Information[/b][/color][/size][/center][/divboxcolor]
 [table][tr][td] Title: ${patientTitle}[/td][td] Full Name: ${patientName}

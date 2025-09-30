@@ -430,7 +430,7 @@ const MedicalRelease = ({
                         </Button>
                     </InputGroup>
                     <span className="helper-text">
-                        Upload proof of payment. Supports clipboard pasting (Ctrl+V). Hosted by Imgur.
+                        Upload proof of payment. Supports clipboard pasting (Ctrl+V). Hosted by ImgBB.
                     </span>
                     {formData.paymentProofPhotos && formData.paymentProofPhotos.split(',').map((url, index) => (
                          url.trim() && <img key={index} src={url.trim()} alt={`Payment Proof ${index + 1}`} style={{ maxWidth: '100px', maxHeight: '100px', marginTop: '5px', marginRight: '5px', border: '1px solid #30363d' }} />
