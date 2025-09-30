@@ -334,7 +334,7 @@ const EMSFields = ({ formData, handleChange, setFormData, selectOptions
                             {isEMT && (
                                 <Form.Group className="mb-3">
                                     <Form.Label>5.2 Unedited Screenshot of your Admin Record:</Form.Label>
-                                    <Form.Control type="text" name="oocAdminRecordLink" value={formData.oocAdminRecordLink || ''} onChange={handleChange} placeholder="Direct link to image (e.g., Imgur)" required className={`form-control ${!formData.oocAdminRecordLink ? 'is-invalid' : ''} mb-4`} />
+                                    <Form.Control type="text" name="oocAdminRecordLink" value={formData.oocAdminRecordLink || ''} onChange={handleChange} placeholder="Direct link to image (e.g., ImgBB)" required className={`form-control ${!formData.oocAdminRecordLink ? 'is-invalid' : ''} mb-4`} />
                                 </Form.Group>
                             )}
 
@@ -366,13 +366,13 @@ const EMSFields = ({ formData, handleChange, setFormData, selectOptions
                                 {isEMT ? (
                                     <Form.Control as="textarea" rows={3} name="oocMedicalExperience" value={formData.oocMedicalExperience || ''} onChange={handleChange} placeholder="Describe in detail (or N/A)" required className={`form-control ${!formData.oocMedicalExperience ? 'is-invalid' : ''} mb-4`} />
                                 ) : (
-                                    <Form.Control type="text" name="oocAdminRecordLink" value={formData.oocAdminRecordLink || ''} onChange={handleChange} placeholder="Direct link to image (e.g., Imgur)" required className={`form-control ${!formData.oocAdminRecordLink ? 'is-invalid' : ''} mb-4`} />
+                                    <Form.Control type="text" name="oocAdminRecordLink" value={formData.oocAdminRecordLink || ''} onChange={handleChange} placeholder="Direct link to image (e.g., ImgBB)" required className={`form-control ${!formData.oocAdminRecordLink ? 'is-invalid' : ''} mb-4`} />
                                 )}
                             </Form.Group>
 
                             <Form.Group className="mb-3">
                                 <Form.Label>5.7 Provide a screenshot of your character's statistics (/stats) which you're applying with:</Form.Label>
-                                <Form.Control type="text" name="oocStatsLink" value={formData.oocStatsLink || ''} onChange={handleChange} placeholder="Direct link to image (e.g., Imgur)" required className={`form-control ${!formData.oocStatsLink ? 'is-invalid' : ''} mb-4`} />
+                                <Form.Control type="text" name="oocStatsLink" value={formData.oocStatsLink || ''} onChange={handleChange} placeholder="Direct link to image (e.g., ImgBB)" required className={`form-control ${!formData.oocStatsLink ? 'is-invalid' : ''} mb-4`} />
                             </Form.Group>
                             <Form.Group className="mb-3">
                                 <Form.Label>5.8 Provide your character's background story:</Form.Label>
@@ -399,7 +399,7 @@ const EMSFields = ({ formData, handleChange, setFormData, selectOptions
                             </Form.Group>
                             <Form.Group className="mb-3">
                                 <Form.Label>4.2 Unedited Screenshot of your Admin Record:</Form.Label>
-                                <Form.Control type="text" name="oocAdminRecordLink" value={formData.oocAdminRecordLink || ''} onChange={handleChange} placeholder="Direct link to image (e.g., Imgur)" required className={`form-control ${!formData.oocAdminRecordLink ? 'is-invalid' : ''} mb-4`} />
+                                <Form.Control type="text" name="oocAdminRecordLink" value={formData.oocAdminRecordLink || ''} onChange={handleChange} placeholder="Direct link to image (e.g., ImgBB)" required className={`form-control ${!formData.oocAdminRecordLink ? 'is-invalid' : ''} mb-4`} />
                             </Form.Group>
                             <Form.Group className="mb-3">
                                 <Form.Label>4.3 GTA:W Forum Account Name</Form.Label>
@@ -419,7 +419,7 @@ const EMSFields = ({ formData, handleChange, setFormData, selectOptions
                             </Form.Group>
                             <Form.Group className="mb-3">
                                 <Form.Label>4.7 Provide a screenshot of your character's statistics (/stats) which you're applying with:</Form.Label>
-                                <Form.Control type="text" name="oocStatsLink" value={formData.oocStatsLink || ''} onChange={handleChange} placeholder="Direct link to image (e.g., Imgur)" required className={`form-control ${!formData.oocStatsLink ? 'is-invalid' : ''} mb-4`} />
+                                <Form.Control type="text" name="oocStatsLink" value={formData.oocStatsLink || ''} onChange={handleChange} placeholder="Direct link to image (e.g., ImgBB)" required className={`form-control ${!formData.oocStatsLink ? 'is-invalid' : ''} mb-4`} />
                             </Form.Group>
                             <Form.Group className="mb-3">
                                 <Form.Label>4.8 Provide a link of proof to both your DFP from SANFIRE, PHMC and Legal Faction Management:</Form.Label>

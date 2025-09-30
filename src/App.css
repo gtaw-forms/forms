@@ -785,21 +785,21 @@ input[type="checkbox"]:checked::after {
     font-family: 'LufgaMedium', sans-serif;
 }
 
-.imgur-link-container {
+.image-link-container {
     margin-bottom: 10px;
     text-align: center;
 }
 
-.imgur-link-container p {
+.image-link-container p {
     font-size: 16px;
 }
 
-.imgur-link-container a {
+.image-link-container a {
     color: #007bff;
     text-decoration: none;
 }
 
-.imgur-link-container a:hover {
+.image-link-container a:hover {
     text-decoration: underline;
 }
 

@@ -57,7 +57,7 @@ PATIENT ID: ${patientID || 'N/A'}
 Date: ${date || 'N/A'}
 
 Signed: ${phmcRank || 'N/A'} ${lastName || 'N/A'}
-[/center][td][center][img]https://i.imgur.com/QMaz0OC.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PILLBOX HILL MEDICAL CENTER[/b]
+[/center][td][center][img]https://i.ibb.co/0pgw9hHm/phmc.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PILLBOX HILL MEDICAL CENTER[/b]
 ELGIN AVE. / STRAWBERRY AVE.
 PO BOX 742
 LOS SANTOS, SAN ANDREAS

@@ -10,7 +10,7 @@ const generateEmailPHMCEmail = (formData) => {
     } = formData;
     const scenePhotosBBCode = (scenePhotos || '').split(',').map(photo => `[img]${photo.trim()}[/img]`).join('\n');
 
-    let bbCode = `[divbox=na][br][/br][imageleft]https://i.imgur.com/dkdFQtg.png[/imageleft] [b][size=110]Pillbox Hill Medical Center[/size][/b] 
+    let bbCode = `[divbox=na][br][/br][imageleft]https://i.ibb.co/nMgfpMcv/phmc-curve.png[/imageleft] [b][size=110]Pillbox Hill Medical Center[/size][/b] 
 [center][/center][br][/br]
 [center][size=130][/center][/size]
 [center][size=150][b]RE: ${patientNotes} [/b][/size][/center]

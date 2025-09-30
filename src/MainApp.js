@@ -17,6 +17,7 @@ import { analytics } from './firebase';
 import { logEvent } from 'firebase/analytics';
 import CoronerTipsModal from './components/CoronerTipsModal'; 
 import BusinessCardModal from './components/BusinessCardModal'; 
+import EmsAmaModal from './components/EmsAmaModal'; 
 import EasterEggModal from './components/EasterEggModal'; 
 import SwitchableFormsModal from './components/SwitchableFormsModal'; 
 import EmployeeModal from './components/EmployeeModal';
@@ -63,7 +64,6 @@ function MainApp({
 }) { 
     const navigate = useNavigate();
     const [showPrivacyPolicyModal, setShowPrivacyPolicyModal] = useState(false);
-    const [testSeason, setTestSeason] = useState(null);
 
     useEffect(() => {
         const hasAcceptedPrivacyPolicy = localStorage.getItem('hasAcceptedPrivacyPolicy');
@@ -370,14 +370,6 @@ function MainApp({
             additionalReports: (prev.additionalReports || []).filter((_, i) => i !== index)
         }));
     };
-useEffect(() => {
-  if (showToolsDropdown) {
-    // Hack: Force reposition after a tick
-    setTimeout(() => {
-      // If you have a ref to the dropdown, call instance.update()
-    }, 0);
-  }
-}, [showToolsDropdown]);
     const handleReportChange = (index, value) => {
         setFormData(prev => {
             const newReports = [...(prev.additionalReports || [])];
@@ -468,6 +460,7 @@ const getBBCodeContent = () => {
                 ...formData,
                 // Ensure positionDetailsData is always an object, even if specificPositionData is null/undefined
                 positionDetailsData: specificPositionData || {},
+                agencyDataStore: agencyDataStore, // Pass agencyDataStore
             };
             return definition.generator(generatorArgs);
         }
@@ -840,8 +833,8 @@ useEffect(() => {
 
 
 
-    const { imageSource: deathReportImage, className: deathReportClass, season, effect } = SeasonalEvents({ imageType: 'deathReport', season: testSeason });
-    const { imageSource: civilianPaperworkImage, className: civilianPaperworkClass } = SeasonalEvents({ imageType: 'civilianPaperwork', season: testSeason });
+    const { imageSource: deathReportImage, className: deathReportClass, season, effect } = SeasonalEvents({ imageType: 'deathReport' });
+    const { imageSource: civilianPaperworkImage, className: civilianPaperworkClass } = SeasonalEvents({ imageType: 'civilianPaperwork'  });
 
     const handleCopyAndNotifyWrapper = useCallback(() => {
         if (selectedAgencyGroup === 'PHMC Recruitment') {
@@ -970,7 +963,7 @@ useEffect(() => {
         fetchCommit();
     }, []); // This effect runs once on mount
     const coronerFormsSubGroup = [
-        { version: 1, name: " Decedent Services", icon: corpse },
+        { version: 1, name: "Decedent Services", icon: corpse },
         { version: 2, name: "Email Generator", icon: email },
         { version: 4, name: "Autopsy Report", icon: corpse },
         { version: 8, name: "Death Certificate", icon: PHMCLogo },
@@ -1016,83 +1009,94 @@ useEffect(() => {
     };
 
 // ---
-    const handleImageUpload = async (event, fieldName) => {
-        const files = event.target.files;
-        if (!files.length) return;
-    
+    const handleImageUpload = async (imageSource, fieldName) => {
         setIsUploading(true);
-        const uploadedUrls = [];
-    
+        let imageUrl = null;
+
         try {
-            // Access Imgur API credentials from environment variables
-            const imgurAccessToken = process.env.REACT_APP_IMGUR_ACCESS_TOKEN;
-            const imgurAlbumId = process.env.REACT_APP_IMGUR_ALBUM_ID // Album ID
-    
-            // Function to upload a single file with a delay
-            const uploadFileWithDelay = async (file, delay) => {
-                await new Promise(resolve => setTimeout(resolve, delay)); // Introduce delay
-                const formData = new FormData();
-                formData.append('image', file);
-                formData.append('album', imgurAlbumId); // Add album ID
-    
-                const response = await fetch('https://api.imgur.com/3/image', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${imgurAccessToken}`,
-                    },
-                    body: formData,
-                });
-    
-                const data = await response.json();
-                return data;
-            };
-    
-            const delayBetweenUploads = 1000; // 1 second delay
-    
-            for (let file of files) {
-                const data = await uploadFileWithDelay(file, delayBetweenUploads);
-    
-                if (data.success) {
-                    uploadedUrls.push(data.data.link);
-                } else {
-                    console.error('Imgur upload failed:', data.data.error);
-                    showNotification(`Imgur upload failed: ${data.data.error}`, 'exclamation-circle');
-                }
+            const imgbbApiKey = process.env.REACT_APP_IMGBB_API_KEY;
+            if (!imgbbApiKey) {
+                showNotification('ImgBB API Key is not configured.', 'error');
+                setIsUploading(false);
+                return;
             }
-    
-            if (uploadedUrls.length > 0) {
-                const newUrlString = uploadedUrls.join(', ');
 
-                if (fieldName.includes('-')) {
-                    const [key, indexStr] = fieldName.split('-');
-                    const index = parseInt(indexStr, 10);
+            const formData = new FormData();
+            let base64Image;
 
-                    setFormData(prev => {
-                        const newDecedents = [...prev.decedents];
-                        const currentDecedent = newDecedents[index];
-                        const currentValue = currentDecedent[key] || '';
-                        const newValue = currentValue ? `${currentValue}, ${newUrlString}` : newUrlString;
-                        newDecedents[index] = { ...currentDecedent, [key]: newValue };
-
-                        return { ...prev, decedents: newDecedents };
-                    });
-
-                } else {
-                    const currentValue = formData[fieldName] || '';
-                    const newValue = currentValue ? `${currentValue}, ${newUrlString}` : newUrlString;
-        
-                    setFormData(prev => ({
-                        ...prev,
-                        [fieldName]: newValue
-                    }));
+            if (typeof imageSource === 'string') {
+                // It's a data URL
+                base64Image = imageSource.split(',')[1];
+            } else if (imageSource.target && imageSource.target.files) {
+                // It's an event from a file input
+                const file = imageSource.target.files[0];
+                if (!file) {
+                    setIsUploading(false);
+                    return;
                 }
-                showNotification(`${uploadedUrls.length} image(s) uploaded successfully!`, 'check-circle');
+                base64Image = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result.split(',')[1]);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+            } else {
+                // Assuming it's a File or Blob object
+                base64Image = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result.split(',')[1]);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(imageSource);
+                });
+            }
+            formData.append('image', base64Image);
+
+            const response = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbApiKey}`, {
+                method: 'POST',
+                body: formData,
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                imageUrl = data.data.url;
+                showNotification('Image uploaded successfully!', 'check-circle');
+
+                if (fieldName) {
+                    if (fieldName.includes('-')) {
+                        const [key, indexStr] = fieldName.split('-');
+                        const index = parseInt(indexStr, 10);
+
+                        setFormData(prev => {
+                            const newDecedents = [...prev.decedents];
+                            const currentDecedent = newDecedents[index];
+                            const currentValue = currentDecedent[key] || '';
+                            const newValue = currentValue ? `${currentValue}, ${imageUrl}` : imageUrl;
+                            newDecedents[index] = { ...currentDecedent, [key]: newValue };
+
+                            return { ...prev, decedents: newDecedents };
+                        });
+
+                    } else {
+                        const currentValue = formData[fieldName] || '';
+                        const newValue = currentValue ? `${currentValue}, ${imageUrl}` : imageUrl;
+            
+                        setFormData(prev => ({
+                            ...prev,
+                            [fieldName]: newValue
+                        }));
+                    }
+                }
+            } else {
+                console.error('ImgBB upload failed:', data.error.message);
+                showNotification(`ImgBB upload failed: ${data.error.message}`, 'exclamation-circle');
             }
         } catch (error) {
             console.error('Upload failed:', error);
             showNotification('Upload failed!', 'exclamation-circle');
         } finally {
             setIsUploading(false);
+            return imageUrl; // Return the URL so callers can use it if they need to
         }
     };
 
@@ -1339,7 +1343,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 }
                 groups[categoryName].push({
                     value: coroner.name, // Or a unique ID
-                    label: `${coroner.name} (${coroner.rank || ''})`,
+                    label: `${coroner.name} (${coroner.rank || 'Coroner'})`,
                     badge: coroner.badge,
                     rank: coroner.rank,
                     discord: coroner.discord,
@@ -1536,6 +1540,15 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 setShowCoronerTips(false);
             }}
         />
+
+        <EmsAmaModal
+                show={showEmsAmaModal}
+                onHide={toggleEmsAmaModal}
+                showNotification={showNotification}
+                commitInfo={commitInfo}
+                handleImageUpload={handleImageUpload}
+            />
+
                     {showAgencySelector && ( // Only show if a group is selected
                         <AgencySelector
                             showAgencySelector={showAgencySelector}
@@ -1564,22 +1577,6 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 
                 <div className="form-container">
                 <div className="button-group">
-{/*                     <div style={{ marginBottom: '1rem' }}>
-                        <Button variant="warning" onClick={() => {
-                            const nextSeason = (() => {
-                                const seasons = ['Default', 'Christmas', 'AprilFools', 'Easter', 'Halloween'];
-                                const currentIdx = seasons.indexOf(testSeason || 'Default');
-                                return seasons[(currentIdx + 1) % seasons.length];
-                            })();
-                            setTestSeason(nextSeason);
-                            showNotification(`Seasonal event set to: ${nextSeason}`, 'info');
-                        }}>
-                            Test Seasonal Event
-                        </Button>
-                        <span style={{ marginLeft: '1rem', fontWeight: 'bold', color: '#d7263d' }}>
-                            {testSeason ? `Current: ${testSeason}` : 'Current: Auto'}
-                        </span>
-                  </div> */}
   
         <div className="floating-tools-container">
 
@@ -1902,7 +1899,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
 <RecruitmentStatusDisplay
     selectedAgencyGroup={selectedAgencyGroup}
     bbCodeVersion={bbCodeVersion}
-    physicianRecruitmentDetails={physicianRecruitmentDetails} // Rename prop here too
+    physicianRecruitmentDetails={physicianRecruitmentDetails} // Renamed prop here too
     psychRecruitmentDetails={psychRecruitmentDetails}
     adminRecruitmentDetails={selectOptions.adminPositionDetailsData || {}} // Assuming admin data is in selectOptions
     emsRecruitmentDetails={selectOptions.emsPositionDetailsData || {}}     // Assuming EMS data is in selectOptions
@@ -2037,6 +2034,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                             onHide={() => setShowBusinessCard(false)}
                             showNotification={showNotification}
                             commitInfo={commitInfo}
+                            handleImageUpload={handleImageUpload}
                         />
                     )}
             <SwitchableFormsModal

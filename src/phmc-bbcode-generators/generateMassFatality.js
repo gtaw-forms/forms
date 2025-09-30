@@ -1,5 +1,3 @@
-import { departmentFullName } from '../data';
-
 const generateMassFatality = (formData) => {
     const {
         coronerRank,
@@ -12,7 +10,16 @@ const generateMassFatality = (formData) => {
         synopsis,
         showRequestingOfficerInput,
         decedents = [], // Array of decedent objects
+        agencyDataStore,
     } = formData;
+
+    const getDepartmentFullName = (shortCode) => {
+        if (agencyDataStore && agencyDataStore[shortCode]) {
+            return agencyDataStore[shortCode].fullName;
+        }
+        return shortCode; // fallback to shortcode
+    };
+
 const numberToWords = (num) => {
     const words = ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"];
     if (num >= 0 && num <= 10) {
@@ -22,19 +29,19 @@ const numberToWords = (num) => {
 };
 
     // --- BBCode Header ---
-    let bbCode = `[divbox=transparent][center][img]https://i.imgur.com/Hxjt4M2.png[/img][/center][/divbox]
+    let bbCode = `[divbox=transparent][center][img]https://i.ibb.co/0pgw9hHm/phmc.png[/img][/center][/divbox]
 
 [divbox=transparent][br][/br][center]MASS FATALITY REPORT[/center]
 [hr][/hr]
 
 [center][bold]A. WRITTEN REPORT[/bold][/center]
 
-The County Coroner's Office has been called regarding a Mass Fatality Incident that occurred at the location of [bold]${placeOfDeath || 'Unknown Location'}[/bold]. Upon receiving the call from[bold] ${departmentFullName(department) || 'Unknown Department'}[/bold], Coroner's Office dispatched a ${coronerRank || 'Coroner'} to the crime scene to conduct an investigation on the [bold]${dateTime || 'Unknown Date/Time'}[/bold].
+The County Coroner's Office has been called regarding a Mass Fatality Incident that occurred at the location of [bold]${placeOfDeath || 'Unknown Location'}[/bold]. Upon receiving the call from[bold] ${getDepartmentFullName(department) || 'Unknown Department'}[/bold], Coroner's Office dispatched a ${coronerRank || 'Coroner'} to the crime scene to conduct an investigation on the [bold]${dateTime || 'Unknown Date/Time'}[/bold].
 
 The ${coronerRank || 'Coroner'}, [bold]${coronerEmployee || 'Unknown Coroner'}[/bold], Serial Number [bold]${coronerBadge || 'N/A'}[/bold], arrived at the scene and identified a total of [bold]${numberToWords(Array.isArray(decedents) ? decedents.length : 0)} Decedents.[/bold]. Following an initial investigation, The ${coronerRank || 'Coroner'} came up with the following [bold]synopsis[/bold]: ${synopsis || 'No synopsis provided.'}
 
 ${showRequestingOfficerInput ? `
-An official from the ${departmentFullName(department) || 'Unknown Department'} has requested the report be forwarded via Secure Intranet to [b]${requestingOfficer}[/b], it has since been sent to the officer for further processing and review.` : ''}
+An official from the ${getDepartmentFullName(department) || 'Unknown Department'} has requested the report be forwarded via Secure Intranet to [b]${requestingOfficer}[/b], it has since been sent to the officer for further processing and review.` : ''}
 [/divbox]
 `;
 
@@ -71,7 +78,7 @@ An official from the ${departmentFullName(department) || 'Unknown Department'} h
 [b] PROBABLE CAUSE OF DEATH: [/b] ${dec.probableCauseOfDeath || 'Unknown Cause'}
 [b] MANNER OF DEATH: [/b] ${dec.mannerOfDeath || 'Unknown Manner'}
 [b] TYPE OF DEATH: [/b] ${dec.typeOfDeath || 'Unknown Type'}
-[b] Decedent Injuries / Things of Note: [/b] ${dec.synopsis || 'No Synopsis Provided'}
+[b]Decedent Injuries / Things of Note: [/b] ${dec.synopsis || 'No Synopsis Provided'}
 
 [hr][/hr]
 [/divbox]
