@@ -3,7 +3,7 @@ import React from 'react';
 import christmas from '../assets/christmas.png';
 import easter from '../assets/easteregg.png';
 import phmcEaster from '../assets/easter.png';
-import halloween from '../assets/corpse.png';
+import halloween from '../assets/halloween-rip.png';
 import Default from '../assets/Generic.png';
 import HalloweenEffect from './HalloweenEffect';
 import Snowfall from 'react-snowfall';
