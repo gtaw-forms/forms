@@ -71,7 +71,7 @@ const generateAdmin = (formData) => {
     }
 
     // --- BBCode for Admin Application ---
-    const bbCode = `[imageleft]https://i.imgur.com/dkdFQtg.png[/imageleft] [b][size=110]Pillbox Hill Medical Center[/size][/b] 
+    const bbCode = `[imageleft]https://i.ibb.co/nMgfpMcv/phmc-curve.png[/imageleft] [b][size=110]Pillbox Hill Medical Center[/size][/b] 
 Career Center [center][/center]
 [center]Applying as:[/center]
 [center][size=150][b]${dynamicDisplayPosition}[/b][/size][/center]

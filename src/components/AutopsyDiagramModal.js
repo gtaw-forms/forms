@@ -131,7 +131,7 @@ const AutopsyDiagramModal = ({
     onSaveDiagram,
     initialMarkers = [],
     showNotification,
-    onDiagramImgurUpload
+    handleImageUpload
 }) => {
     const [markers, setMarkers] = useState([]);
     const [selectedMarkerType, setSelectedMarkerType] = useState('circle');
@@ -146,7 +146,7 @@ const AutopsyDiagramModal = ({
     const [selectedSilhouetteType, setSelectedSilhouetteType] = useState('male'); // 'male' or 'female'
     const wasDragging = useRef(false);
 
-    const IMGUR_CLIENT_ID = process.env.REACT_APP_IMGUR_CLIENT_ID;
+    
 
     useEffect(() => {
         const imageToLoad = selectedSilhouetteType === 'female' ? femalebodySilhouette : malebodySilhouette;
@@ -361,11 +361,7 @@ const AutopsyDiagramModal = ({
         }
     }, [drawDiagramOnCanvas, showNotification]);
 
-    const handleUploadToImgur = useCallback(async () => {
-        if (!IMGUR_CLIENT_ID) {
-            if (showNotification) showNotification('Imgur Client ID is not configured.', 'error');
-            return;
-        }
+    const handleUpload = useCallback(async () => {
         setIsProcessingImage(true);
         const canvas = await drawDiagramOnCanvas();
         if (!canvas) {
@@ -374,30 +370,17 @@ const AutopsyDiagramModal = ({
             return;
         }
         const dataUrl = canvas.toDataURL('image/png');
-        const base64Image = dataUrl.split(',')[1];
-        try {
-            const formData = new FormData();
-            formData.append('image', base64Image);
-            const response = await fetch('https://api.imgur.com/3/image', {
-                method: 'POST',
-                headers: { Authorization: `Client-ID ${IMGUR_CLIENT_ID}` },
-                body: formData,
-            });
-            const result = await response.json();
-            if (result.success) {
-                if (showNotification) showNotification(`Uploaded to Imgur! Link: ${result.data.link}`, 'check-circle');
-                if (onDiagramImgurUpload) onDiagramImgurUpload(result.data.link);
-            } else {
-                const errorMessage = result.data.error?.message || result.data.error || 'Unknown error';
-                console.error('Imgur Upload Failed:', result);
-                if (showNotification) showNotification(`Imgur Upload Failed: ${errorMessage}`, 'exclamation-triangle');
-            }
-        } catch (error) {
-            console.error('Error during Imgur upload:', error);
-            if (showNotification) showNotification('Error during Imgur upload. See console.', 'exclamation-triangle');
+        
+        if (handleImageUpload) {
+            const imageUrl = await handleImageUpload(dataUrl, 'autopsyDiagramImgurUrl');
+            // The handleImageUpload function now shows notifications and sets form data.
+            // If you need to do something specific with the URL in this component, you can use `imageUrl`.
+        } else {
+            if (showNotification) showNotification('Image upload handler is not available.', 'error');
         }
+        
         setIsProcessingImage(false);
-    }, [drawDiagramOnCanvas, showNotification, onDiagramImgurUpload, IMGUR_CLIENT_ID]);
+    }, [drawDiagramOnCanvas, showNotification, handleImageUpload]);
 
     const handleAddLabelToLastMarker = (labelText) => {
         setMarkers(prevMarkers => {
@@ -747,8 +730,8 @@ const AutopsyDiagramModal = ({
                         <Button variant="outline-info" size="sm" onClick={handleCopyToClipboard} disabled={isProcessingImage || !bodyImage || !canvasRef.current} style={isProcessingImage ? processingButtonStyle : {}}>
                             {isProcessingImage ? 'Processing...' : 'Copy Diagram'}
                         </Button>
-                        <Button variant="outline-success" size="sm" onClick={handleUploadToImgur} disabled={isProcessingImage || !bodyImage || !canvasRef.current || !IMGUR_CLIENT_ID} style={isProcessingImage ? { ...processingButtonStyle, marginLeft: '10px' } : { marginLeft: '10px' }}>
-                            {isProcessingImage ? 'Processing...' : 'Upload to Imgur'}
+                        <Button variant="outline-success" size="sm" onClick={handleUpload} disabled={isProcessingImage || !bodyImage || !canvasRef.current} style={isProcessingImage ? { ...processingButtonStyle, marginLeft: '10px' } : { marginLeft: '10px' }}>
+                            {isProcessingImage ? 'Processing...' : 'Upload'}
                         </Button>
                         <div style={{ flexGrow: 1 }}></div>
                         <Button variant="secondary" onClick={onHide} disabled={isProcessingImage}>Cancel</Button>

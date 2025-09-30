@@ -19,7 +19,7 @@ PATIENT ID: ${patientID}
 Date: ${date}
 
 Signed: ${phmcRank} ${lastName}
-[/center][td][center][img]https://i.imgur.com/LkRKav2.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PALETO BAY CLINIC[/b]
+[/center][td][center][img]https://i.ibb.co/fdGgxDH1/LkRKav2.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PALETO BAY CLINIC[/b]
 PALETO BAY BLVD.
 PO BOX 685
 PALETO BAY, SAN ANDREAS

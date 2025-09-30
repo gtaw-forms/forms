@@ -53,7 +53,7 @@ Please do not hesitate to contact us if you require further information.`;
 
     const signatureBBCode = phmcEmployeeSignatureImage ? `[img]${phmcEmployeeSignatureImage.trim()}[/img]` : '';
 
-    const bbCode = `[divbox=na][br][/br][imageleft]https://i.imgur.com/dkdFQtg.png[/imageleft] [b][size=110]Pillbox Hill Medical Center[/size][/b] 
+    const bbCode = `[divbox=na][br][/br][imageleft]https://i.ibb.co/nMgfpMcv/phmc-curve.png[/imageleft] [b][size=110]Pillbox Hill Medical Center[/size][/b] 
 [center][/center][br][/br]
 [center][size=130][/center][/size]
 [center][size=150][b]${subject}[/b][/size][/center]

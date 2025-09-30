@@ -480,7 +480,7 @@ const NursingFields = ({
                                 value={formData.oocAdminRecordLink || ''}
                                 onChange={handleChange}
                                 onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')}
-                                placeholder="Direct link to image (e.g., Imgur)"
+                                placeholder="Direct link to image (e.g., ImgBB)"
                                 required
                                 className={`form-control ${!formData.oocAdminRecordLink ? 'is-invalid' : ''}`}
                             />
@@ -511,7 +511,7 @@ const NursingFields = ({
                                 value={formData.oocStatsLink || ''}
                                 onChange={handleChange}
                                 onBlur={() => handleSectionFieldBlur('oocInfo', isOocInfoOpen, setIsOocInfoOpen, 'oocInfo')}
-                                placeholder="Direct link to image (e.g., Imgur)"
+                                placeholder="Direct link to image (e.g., ImgBB)"
                                 required
                                 className={`form-control ${!formData.oocStatsLink ? 'is-invalid' : ''}`}
                             />
