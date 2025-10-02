@@ -149,7 +149,6 @@ useEffect(() => {
                 className={`form-control ${!formData.department ? 'is-invalid' : ''}`}
             >
                 <option value="" disabled>Select Requesting Agency</option>
-                {/* --- Updated to use requestingAgencyOptions --- */}
                 {requestingAgencyOptions.map((option) => (
                     <option key={option.value} value={option.value}>{option.label}</option>
                 ))}

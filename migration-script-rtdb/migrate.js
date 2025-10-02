@@ -14,7 +14,19 @@ admin.initializeApp({
 const db = admin.database();
 
 // Define or import all your selectOption arrays here
-
+const deathRecordType = [
+    { value: 'Identified', label: 'Identified' },
+    { value: 'Unidentified', label: 'Unidentified' },
+];
+const bodyStatusOptions = [
+    { value: 'Released', label: 'Released' },
+    { value: 'Ready for Release', label: 'Ready for Release' },
+    { value: 'Not Brought In', label: 'Not Brought In' },
+];
+const caseStatusOptions = [
+    { value: 'Open', label: 'Open' },
+    { value: 'Closed', label: 'Closed' },
+];
 const UpdateMedicalFile = [
     { value: 'GeneralInformation', label: 'Update General Information' },
     { value: 'EmergencyContact', label: 'Update Emergency Contact' },
@@ -819,6 +831,9 @@ const selectOptionsData = {
     coronerRecruitmentPositions, // Added Coroner positions
     UpdateMedicalFile,
     patientTitleNew,
+    caseStatusOptions,
+    bodyStatusOptions,
+    deathRecordType,
 };
 
 async function migrateToRealtimeDB() {
