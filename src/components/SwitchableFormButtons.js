@@ -14,7 +14,7 @@ const SwitchableFormButtons = ({ bbCodeVersion, openSwitchableModal, formGroups 
     } = formGroups;
 
     const switchableFormButtonConfig = [
-        { versions: [1, 2, 4, 8, 11], text: "Coroner Forms", icon: "fa fa-laptop", modalArgs: ["Coroner Forms", coronerFormsSubGroup] },
+        { versions: [1, 2, 4, 8, 11, 37], text: "Coroner Forms", icon: "fa fa-laptop", modalArgs: ["Coroner Forms", coronerFormsSubGroup] },
         { versions: [6, 7], text: "Switch Physical Evaluation Forms", icon: "fas fa-exchange-alt", modalArgs: ["Select Physical Evaluation Form", physicalEvalFormsSubGroup] },
         { versions: [28, 29], text: "Switch Psychological Evaluation Form", icon: "fas fa-exchange-alt", modalArgs: ["Select Psychological Evaluation Form", psychEvalFormsSubGroup] },
         { versions: [20, 21], text: "Switch General Consultation Forms", icon: "fas fa-exchange-alt", modalArgs: ["Select General Consultation Form", generalConsultFormsSubGroup] },

@@ -22,3 +22,4 @@ export { default as generateSicknessEmail } from './generateSicknessEmail';
 export { default as generateCertificate } from './generateCertificate';
 export { default as generateMedicalFileUpdate } from './generateMedicalFileUpdate';
 export { default as generateMassFatality } from './generateMassFatality'; // Added new generator for Mass Fatality Report
+export { default as generateDeathRecord } from './generateDeathRecord'; // Added new generator for Death Record

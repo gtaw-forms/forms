@@ -8,7 +8,6 @@ const FormImageLink = ({
     civilianPaperworkClass,
     deathReportImage,
     civilianPaperworkImage,
-    saaaLogo // Assuming you pass this prop for SAAA images
 }) => {
     let linkHref = '';
     let imgSrc = '';
@@ -88,6 +87,15 @@ const FormImageLink = ({
             imgAlt = "Patient Sicknote Request";
             shouldRender = true;
             break;
+        case 37: 
+            linkHref = "https://phmc.gta.world/posting.php?mode=post&f=404";
+            imgSrc = deathReportImage;
+            imgAlt = "Death Report Link";
+            linkClass = deathReportImage;
+            linkTitle = "Generic_String";
+            shouldRender = true;
+            break;
+            
         default:
             // Handle the complex PHMC condition that's not a simple bbCodeVersion match
             if (selectedAgencyGroup === 'PHMC' && ![1, 2, 3, 4, 24, 25, 26].includes(bbCodeVersion)) {

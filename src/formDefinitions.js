@@ -3,6 +3,8 @@ import {
     CommNotePHMC, CommNotePBC, DeathReport, CoronerEmail, PatientAdvanced, MentalHealth,
     EmailInternal, Surgical, PhysEval, EmergencyForm, GeneralConsult,
     MedicalRelease, BasicPatientFile, Shrink, Autopsy, Certificate, MedicalUpdate, MassFatality,
+    DeathRecord
+
 } from './phmc-field-data'; // Assuming all field components are here for now
 
 import {
@@ -12,7 +14,7 @@ import {
     generateEmergencyProtocol, generateCommentaryNotePHMC, generateCommentaryNotePBC,
     generateMedicalRecordRelease, generateBasicPatientFile, generateEmailPHMCEmail,
     generateConsultationNotesPBC, generatePsychEvalPHMC, generatePsychEvalPBC,
-    generateAutopsy, generateCertificate, generateMedicalFileUpdate, generateMassFatality,
+    generateAutopsy, generateCertificate, generateMedicalFileUpdate, generateMassFatality, generateDeathRecord,
 } from './phmc-bbcode-generators'; // Assuming all PHMC generators are here
 import generatePhysician from './phmc-recruitment-generators/generatePhysician'; // Make sure this path is correct
 import PhysicianFields from './phmc-civilian-fields/Physician'; // Path to your new component
@@ -63,7 +65,7 @@ export const generateAdminView = (viewData) => {
         });
 
         // Join the statuses with a separator for a more compact, single-line display if possible.
-        // If you prefer a list for many items, we can revert to `[list]` and `[*]`.
+        // If you prefer a list for many items, we can revert to `[list]` and `[*] `.
         adminContent += statusEntries.join(' | ');
 
     } else if (viewData.adminDisplayData === null && viewData.adminSelectedCategoryName) {
@@ -91,8 +93,8 @@ export const formDefinitions = [
     { version: 25, name: "[Civilian] Patient Files", group: "PHMC", icon: Civilian, generator: generateBasicPatientFile, FieldComponent: BasicPatientFile, titleKey: "patientFileBasic", sortOrder: 2, hasCustomTitle: true, titleGenerator: (formData) => `[Medical Information Registration] -  ${formData.patientName || 'N/A'}` },
     { version: 26, name: "[Civilian] Update Medical Records", group: "PHMC", icon: Civilian, generator: generateMedicalFileUpdate, FieldComponent: MedicalUpdate, titleKey: "patientUpdateMedical", sortOrder: 2, hasCustomTitle: true, isHiddenInSelector: true, titleGenerator: (formData) => `[Medical Information Update] -  ${formData.patientName || 'N/A'}` },
     // PHMC Tools (Forensic Services next, then others)
-    { version: 1, name: "Forensic Services ", group: "PHMC", icon: corpse, generator: generateDeathReport, FieldComponent: DeathReport, titleKey: "deathReport", sortOrder: 10, hasCustomTitle: true, titleGenerator: (formData) => { const { typeOfDeath, decedentName, decedentOOC, dateTime } = formData; const date = dateTime ? new Date(dateTime).toLocaleDateString('en-US') : 'N/A'; return `[${typeOfDeath || 'N/A'}] ${decedentName || 'N/A'} ((${decedentOOC || 'N/A'})) - ${date}`; } },
-    { version: 4, name: "Autopsy Report", group: "PHMC", icon: corpse /* Placeholder */, generator: generateAutopsy, FieldComponent: Autopsy, titleKey: "autopsyReport", sortOrder: 11, isHiddenInSelector: true, hasCustomTitle: true, titleGenerator: (formData) => { const { decedentName, decedentOOC } = formData; return `CASE ## ${decedentName || 'N/A'} ((${decedentOOC || 'N/A'})) | SENT/COMPLETED/PENDING`; } },
+    { version: 1, name: "Forensic Services ", group: "PHMC", icon: corpse, generator: generateDeathReport, FieldComponent: DeathReport, titleKey: "deathReport", sortOrder: 10, hasCustomTitle: true, titleGenerator: (formData) => { const { typeOfDeath,decedentName,decedentOOC, dateTime } = formData; const date = dateTime ? new Date(dateTime).toLocaleDateString('en-US') : 'N/A'; return `[${typeOfDeath || 'N/A'}] ${decedentName || 'N/A'} ((${decedentOOC || 'N/A'})) - ${date}`; } },
+    { version: 4, name: "Autopsy Report", group: "PHMC", icon: corpse /* Placeholder */, generator: generateAutopsy, FieldComponent: Autopsy, titleKey: "autopsyReport", sortOrder: 11, isHiddenInSelector: true, hasCustomTitle: true, titleGenerator: (formData) => { const {decedentName,decedentOOC } = formData; return `CASE ## ${decedentName || 'N/A'} ((${decedentOOC || 'N/A'})) | SENT/COMPLETED/PENDING`; } },
     {
         version: 2,
         name: "Coroner Email",
@@ -105,7 +107,7 @@ export const formDefinitions = [
         isHiddenInSelector: true,
         hasCustomTitle: true,
         titleGenerator: (formData) => {
-            const { decedentName, decedentOOC, paperworkType } = formData;
+            const {decedentName,decedentOOC, paperworkType } = formData;
             if (paperworkType && paperworkType.toLowerCase().includes('mass fatality')) {
                 return `Coroner Report - ${decedentName || 'N/A'} | (MASS FATALITY)`;
             }
@@ -231,6 +233,36 @@ export const formDefinitions = [
         sortOrder: 999,
         titleGenerator: () => 'Admin Control Panel'
     },
+    {
+        version: 37, 
+        name: "Death Record",
+        group: "PHMC",
+        icon: corpse,
+        generator: generateDeathRecord,
+        FieldComponent: DeathRecord,
+        titleKey: "deathRecord",
+        sortOrder: 15,
+        hasCustomTitle: true,
+        isHiddenInSelector: true,
+        
+        titleGenerator: (formData) => {
+            const { caseNumber, decedentName, decedentOOC, dateOfDeath } = formData;
+            const currentYear = new Date().getFullYear();
+
+            let formattedDate = 'N/A';
+            if (dateOfDeath) {
+                const date = new Date(dateOfDeath + 'T00:00:00');
+                const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+                const month = monthNames[date.getMonth()];
+                const day = String(date.getDate()).padStart(2, '0');
+                const year = date.getFullYear();
+                formattedDate = `${month}-${day}-${year}`;
+            }
+
+            const name = decedentName || (formData.deathRecordType === 'Unidentified' ? 'JANE/JOHN DOE' : 'JOHN/JANE DOE');
+            return `[CASE #${currentYear}-${caseNumber || '(( DEATH REPORT POST ID ))'}] ${name} ((${decedentOOC || 'OOC NAME'})) | [${formattedDate}]`;
+        }
+    }
 ];
 
 // Helper to get form definition by version

@@ -18,3 +18,4 @@ export { default as Autopsy } from './Autopsy'; // Removed .js extension for con
 export { default as Certificate } from './Certificate'; // <--- ADD THIS LINE
 export { default as MedicalUpdate } from './MedicalUpdate';
 export { default as MassFatality } from './MassFatality'; // <--- ADD THIS LINE
+export { default as DeathRecord } from './DeathRecord'; // <--- ADD THIS LINE
