@@ -133,7 +133,7 @@ const DeathRecord = ({
                             <div style={{ display: 'flex', gap: '10px' }}>
                                 <Form.Control type="text" name="height" value={formData.height} onChange={handleChange} placeholder="Enter Height" className={`form-control ${!formData.height ? 'is-invalid' : ''}`}/>
 
-                                <Form.Control as="textarea" rows={1} name="tattoos" value={formData.tattoos} onChange={handleChange} placeholder="Enter Tattoos or None" className={`form-control ${!formData.tattoos ? 'is-invalid' : ''}`}/>
+                                <Form.Control as="textarea" rows={1} name="tattoos" value={formData.tattoos} onChange={handleChange} placeholder="Enter Tattoos or None" className={`form-control ${!formData.tattoos ? 'is-invalid' : ''}`} />
 
                                 <Form.Control as="textarea" rows={1} name="jewelry" value={formData.jewelry} onChange={handleChange} placeholder="Enter Jewelry or None" className={`form-control ${!formData.jewelry ? 'is-invalid' : ''}`}/>
                             </div>
