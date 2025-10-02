@@ -43,7 +43,7 @@ const subFormListItemStyle = {
 };
 // Related Form Mapping
 const phmcSubFormMap = {
-    1: [2, 4, 8, 11,],
+    1: [2, 4, 11, 37],
     6: [7],
     14: [16],
     20: [21],
