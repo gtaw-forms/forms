@@ -39,6 +39,7 @@ import Civilian from './assets/Civilian.png'
 import nurse from './assets/nurse.png'
 import PHMCLogo from './assets/phmc.png'
 import corpse from './assets/corpse.png'
+import tombstone from './assets/tombstone.png'
 import phmcpaletobay from './assets/phmcpaletobaylogo.png'
 import './assets/fonts/Poppins-Medium.ttf';
 import { sendMissingEmployeeNotification } from './components/notificationService';
@@ -565,7 +566,7 @@ const getBBCodeContent = () => {
 
     const getCurrentReportAuthor = useCallback((formData) => {
         // Define which bbCodeVersions are primarily Coroner forms
-        const coronerFormVersions = [1, 2, 4, 8, 11, 18];
+        const coronerFormVersions = [1, 2, 4, 8, 11, 18, 37];
         // Define which bbCodeVersions are primarily PHMC forms
         const phmcFormVersions = [
             5, 6, 7, 9, 10, 12, 13, 14, 16, 19, 20, 21, 22, 23, 27, 28, 29, 35 // Added Sickness Email
@@ -968,6 +969,7 @@ useEffect(() => {
         { version: 4, name: "Autopsy Report", icon: corpse },
         { version: 8, name: "Death Certificate", icon: PHMCLogo },
         { version: 11, name: "Mass Fatality Report", icon: corpse },
+        { version: 37, name: "Public Death Record ", icon: tombstone }
     ];
     const physicalEvalFormsSubGroup = [
         { version: 6, name: "Physical Evaluation PHMC", icon: PHMCLogo },
@@ -1361,7 +1363,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
             label: category,
             options: options.sort((a, b) => a.label.localeCompare(b.label))
         })).sort((a, b) => { // Your existing sorting logic for coroner categories
-            const order = ['Chief Boss', 'Supervisor', 'Senior Medical Examiner', 'Medical Examiner', 'Senior Coroner Investigator', 'Coroner Investigator', 'Forensic Attendant', 'Trainee Forensic-Attendant', 'Developer Testing', 'Missing_Category', 'Uncategorized'];
+            const order = ['Chief Boss', 'Deputy Chief Medical Examiner-Coroner,', 'Supervisor', 'Senior Medical Examiner', 'Medical Examiner', 'Senior Coroner Investigator', 'Coroner Investigator', 'Forensic Attendant', 'Trainee Forensic-Attendant', 'Developer Testing', 'Missing_Category', 'Uncategorized'];
             return order.indexOf(a.label) - order.indexOf(b.label);
         });
     }, [coronerListData]);
@@ -1858,6 +1860,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                         coronerRecruitmentDetails={coronerRecruitmentDetails}
                     showNotification={showNotification}
                     onAttachReportSummaryRequest={onAttachReportSummaryRequest}
+                    deathRecordTypeOptions={selectOptions.deathRecordType || []}
 
                                     />
                                 ) : (
@@ -2104,18 +2107,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
 
             
 
-            {showBBCode && (
-                <div className="bbcode-preview">
-                    <pre><code>{getBBCodeContent()}</code></pre>
-                </div>
-            )}
 
-            <textarea
-                id="bbCodeOutput"
-                value={getBBCodeContent()}
-                readOnly
-                style={{ display: 'none' }} // Keep it off-screen
-            />
         </div>
             </div>
             <Footer />
@@ -2384,6 +2376,8 @@ const initialFormData = {
     patientDiscordNew: '',
     patientGenderNew: '',
     patientRaceNew: '',
+    // Death Report Type Fields
+    deathRecordType: '',
 
 
 };
