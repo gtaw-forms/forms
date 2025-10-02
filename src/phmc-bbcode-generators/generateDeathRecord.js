@@ -86,7 +86,7 @@ const generateDeathRecord = (formData) => {
 
 [divbox=#000000][center][size=130]${decedentName || 'FULL NAME HERE'}[/size][/center]
 [center]Date of Death: ${formattedDateOfDeath}[/center]
-[center]Age: ${age || '[AGE HERE]'}[/center][/divbox]
+[center]${deathRecordType === 'Unidentified' ? 'Approx Age' : 'Age'}: ${age || '[AGE HERE]'}[/center][/divbox]
 
 [table]
 [tr]
