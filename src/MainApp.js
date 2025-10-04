@@ -52,7 +52,7 @@ import 'react-bootstrap-typeahead/css/Typeahead.css';
 
 // database
 import { database } from './firebase'; // Your Firebase config
-import { ref, get} from 'firebase/database'; // Added set
+import { ref, get, set, push } from 'firebase/database'; // Added set and push
 
 function MainApp({
     formData,
@@ -503,6 +503,17 @@ const getBBCodeContent = () => {
         return 'Copy BBCode';
     };
     
+    const logWebhookToFirebase = async (type, payload) => {
+        const db = database;
+        const logsRef = ref(db, 'webhook_logs');
+        const newLogRef = push(logsRef);
+        await set(newLogRef, {
+            type,
+            payload,
+            timestamp: Date.now(),
+        });
+    };
+
     const sendEasterEggNotification = async (type = 'normal') => { // Default to 'normal'
         const webhookUrl = process.env.REACT_APP_DEV_WEBHOOK;
         if (!webhookUrl) {
@@ -557,6 +568,8 @@ const getBBCodeContent = () => {
                 console.error(`Error sending ${type} easter egg webhook: ${response.status} ${response.statusText}`);
             } else {
                 console.log(`${type} easter egg notification sent successfully.`);
+                await logWebhookToFirebase(type, { embeds: [embed] });
+
             }
         } catch (error) {
             console.error(`Failed to send ${type} easter egg webhook:`, error);
@@ -694,39 +707,6 @@ const getBBCodeContent = () => {
         selectedAgencyGroup
     );
 
-    const handleAdminPanelClick = () => {
-        const adminFormGroup = "Admin";
-        setSelectedAgencyGroup(adminFormGroup);
-        localStorage.setItem('selectedAgencyGroup', adminFormGroup);
-
-        const adminFormVersion = 999;
-        setBbCodeVersion(adminFormVersion);
-
-        setFormData(prevFormData => ({
-            ...prevFormData,
-            coronerEmployee: prevFormData.coronerEmployee,
-            phmcEmployee: prevFormData.phmcEmployee,
-            coronerBadge: prevFormData.coronerBadge,
-            coronerRank: prevFormData.coronerRank,
-            coronerDiscord: prevFormData.coronerDiscord,
-            SubmitDate: new Date().toISOString().split('T')[0],
-            // Updated fields for Admin Panel
-            isAdminAuthenticated: false, // Will be set by AdminAuthAndActions
-            adminUserEmail: null,      // Will be set by AdminAuthAndActions
-            adminDisplayData: null,    // Will hold data for the selected recruitment category
-            adminSelectedCategoryName: null, // Will hold the display name of the selected category
-        }));
-
-        setShowAgencySelector(false);
-        setShowPHMCModal(false);
-        setLastWebhookIdentifier(null);
-        showNotification(`Switched to Admin Control Panel`, 'info-circle');
-    };
-    const versionsWithTitleSection = useMemo(() =>
-        formDefinitions
-            .filter(def => def.hasCustomTitle)
-            .map(def => def.version),
-    []); // Empty dependency array means this runs only once. 
 
 
 
@@ -1998,7 +1978,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
         <div className="generated-title-container">
         </div>
     )}
-
+    
     <div className="modern-copy-controls">
         <Button
             type="button"

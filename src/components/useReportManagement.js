@@ -56,6 +56,20 @@ export const useReportManagement = (
     const [showPositionInfoModal, setShowPositionInfoModal] = useState(false);
     const [currentPositionInfo, setCurrentPositionInfo] = useState(null);
 
+    const logWebhook = async (type, payload) => {
+        const logRef = ref(database, 'webhook_logs/' + Date.now());
+        try {
+            await set(logRef, {
+                type: type,
+                payload: payload,
+                timestamp: Date.now()
+            });
+        } catch (error) {
+            console.error("Error logging webhook:", error);
+            Sentry.captureException(error, { extra: { context: 'logWebhook' } });
+        }
+    };
+
     async function saveReport() {
         let key = '';
         const bbCodeContent = getBBCodeContent();
@@ -239,6 +253,15 @@ export const useReportManagement = (
             const reportRef = ref(database, reportPath);
             await set(reportRef, reportDataToSave);
             showNotification(`Report "${key}" saved for ${currentAuthor} to Firebase!`, 'save');
+
+            // Log the webhook
+            await logWebhook('report_saved', {
+                author: currentAuthor,
+                reportKey: sanitizedKey,
+                originalKey: key,
+                bbCodeVersion: bbCodeVersion
+            });
+
             return { success: true }; // Indicate success
 
         } catch (error) {
