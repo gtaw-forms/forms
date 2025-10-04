@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Button, Spinner } from 'react-bootstrap';
+import { useNavigate } from 'react-router-dom';
 import './AdminDashboard.css';
 import DatabaseEditor from './DatabaseEditor';
 import UserStats from './UserStats';
+import WebhookLogs from './WebhookLogs';
 
 const AdminDashboard = ({
     currentUser,
@@ -51,6 +53,8 @@ const AdminDashboard = ({
 }) => {
 
     const [selectedSection, setSelectedSection] = useState('serviceStatus');
+    const navigate = useNavigate();
+
     return (
         <div className="admin-dashboard-container">
             <div className="admin-dashboard-layout">
@@ -75,6 +79,8 @@ const AdminDashboard = ({
                             </Button>
                         )}
                         <Button variant="warning" onClick={handleLogout} className="w-100">Logout</Button>
+                                    <Button type="button" variant="secondary" className="changelog-button" onClick={() => navigate('/')} title="Go to Home" > <i className="fas fa-home"></i>Home</Button>
+
                     </div>
                 </div>
                 <div className="main-content">
@@ -274,6 +280,7 @@ const AdminDashboard = ({
                                     <i className="fas fa-code"></i> DEV WEBHOOK
                                 </Button>
                             </div>
+                            <WebhookLogs />
                         </div>
                     )}
                     {selectedSection === 'dev' && (
