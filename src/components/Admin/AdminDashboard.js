@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Button, Spinner } from 'react-bootstrap';
 import './AdminDashboard.css';
 import DatabaseEditor from './DatabaseEditor';
+import UserStats from './UserStats';
 
 const AdminDashboard = ({
     currentUser,
@@ -256,6 +257,7 @@ const AdminDashboard = ({
                                     <i className="fas fa-users-cog"></i> Manage Users
                                 </Button>
                             </div>
+                            <UserStats currentUser={currentUser} />
                         </div>
                     )}
                     {selectedSection === 'webhooks' && (

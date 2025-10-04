@@ -855,11 +855,6 @@ export const handleFormCopyAndNotify = async ({
                 currentIdentifier =  `${decedentName || ''}|${decedentOOC || ''}`;
             }
 
-            if (currentIdentifier && currentIdentifier === lastWebhookIdentifier) {
-                console.log('Duplicate PHMC/Coroner report copy detected, skipping webhook.');
-                return;
-            }
-
             let firebaseSavedCount = 0;
             let userSavedCount = undefined;
             try {

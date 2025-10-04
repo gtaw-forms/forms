@@ -58,10 +58,6 @@ const processDiscordErrorQueue = async () => {
  */
 export const sendDiscordErrorWebhook = (errorDetails) => {
     const now = Date.now();
-    if (errorDetails.message === lastDiscordErrorMessage && now - lastDiscordErrorTimestamp < 5000) {
-        console.log("Skipping duplicate Discord error message.");
-        return;
-    }
     lastDiscordErrorMessage = errorDetails.message;
     lastDiscordErrorTimestamp = now;
 
