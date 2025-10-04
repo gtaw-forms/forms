@@ -139,7 +139,7 @@ const DeathRecord = ({
                             </div>
 
                             <Form.Group className="mb-3">
-                                <Form.Control as="textarea" rows={3} name="comments" value={formData.comments} onChange={handleChange} placeholder="Enter Comments" className={`form-control ${!formData.comments ? 'is-invalid' : ''}`}/>
+                                <Form.Control as="textarea" rows={3} name="comments" value={formData.comments} onChange={handleChange} placeholder="Enter Comments" className={`form-control ${!formData.comments ? 'is-invalid' : ''}`} />
                             </Form.Group>
                         </>
                     )}
@@ -147,14 +147,14 @@ const DeathRecord = ({
                     {formData.deathRecordType !== 'Unidentified' && (
                         <>
                             <div style={{ display: 'flex', gap: '10px' }}>
-                                <Form.Control type="text" name="causeA" value={formData.causeA} onChange={handleChange} placeholder="Enter Cause A" className={`form-control ${!formData.causeA ? 'is-invalid' : ''}`}/>
+                                <Form.Control type="text" name="causeA" value={formData.causeA} onChange={handleChange} placeholder="Enter Cause A" className={`form-control ${!formData.causeA ? 'is-invalid' : ''}`} />
                                 <Form.Control type="text" name="causeB" value={formData.causeB} onChange={handleChange} placeholder="Enter Cause B" className={`form-control ${!formData.causeB ? 'is-invalid' : ''}`}/>
                             </div>
                             <div style={{ display: 'flex', gap: '10px' }}>
                                 <Form.Control type="text" name="causeC" value={formData.causeC} onChange={handleChange} placeholder="Enter Cause C" className={`form-control ${!formData.causeC ? 'is-invalid' : ''}`}/>
                                 <Form.Control type="text" name="causeD" value={formData.causeD} onChange={handleChange} placeholder="Enter Cause D" className={`form-control ${!formData.causeD ? 'is-invalid' : ''}`}/>
                             </div>
-                            <Form.Control as="textarea" rows={3} name="otherSignificantConditions" value={formData.otherSignificantConditions} onChange={handleChange} placeholder="Enter Other Significant Conditions" className={`form-control ${!formData.otherSignificantConditions ? 'is-invalid' : ''}`}/>
+                            <Form.Control as="textarea" rows={3} name="otherSignificantConditions" value={formData.otherSignificantConditions} onChange={handleChange} placeholder="Enter Other Significant Conditions" className={`form-control ${!formData.otherSignificantConditions ? 'is-invalid' : ''}`} />
                         </>
                     )}
                     <Form.Label>Investigator</Form.Label>
@@ -174,14 +174,11 @@ const DeathRecord = ({
                                             ...base,
                                             backgroundColor: '#16202c',
                                             color: '#eeeeeeb0',
-                                            borderColor: !formData.coronerEmployee && state.isFocused ? '#dc3545' :
-                                                         !formData.coronerEmployee ? '#dc3545' :
-                                                         state.isFocused ? '#86b7fe' : '#6c757d',
+                                            borderColor: !formData.coronerEmployee ? '#dc3545' : (state.isFocused ? '#86b7fe' : '#6c757d'),
                                             '&:hover': {
                                                 borderColor: !formData.coronerEmployee ? '#dc3545' : '#86b7fe'
                                             },
-                                            boxShadow: !formData.coronerEmployee && state.isFocused ? '0 0 0 0.25rem rgba(220, 53, 69, 0.25)' :
-                                                       state.isFocused ? '0 0 0 0.25rem rgba(13, 110, 253, 0.25)' : null,
+                                            boxShadow: !formData.coronerEmployee ? '0 0 0 0.25rem rgba(220, 53, 69, 0.25)' : (state.isFocused ? '0 0 0 0.25rem rgba(13, 110, 253, 0.25)' : null),
                                         }),
                                         menu: (base) => ({ ...base, backgroundColor: '#16202c', zIndex: 1000 }),
                                         option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? 'Grey' : '#16202c', color: '#eeeeeeb0' }),
@@ -209,14 +206,11 @@ const DeathRecord = ({
                         ...base,
                         backgroundColor: '#16202c',
                         color: '#eeeeeeb0',
-                        borderColor: !formData.chiefMedicalExaminer && state.isFocused ? '#dc3545' :
-                                     !formData.chiefMedicalExaminer ? '#dc3545' :
-                                     state.isFocused ? '#86b7fe' : '#6c757d',
+                        borderColor: !formData.chiefMedicalExaminer ? '#dc3545' : (state.isFocused ? '#86b7fe' : '#6c757d'),
                         '&:hover': {
                             borderColor: !formData.chiefMedicalExaminer ? '#dc3545' : '#86b7fe'
                         },
-                        boxShadow: !formData.chiefMedicalExaminer && state.isFocused ? '0 0 0 0.25rem rgba(220, 53, 69, 0.25)' :
-                                   state.isFocused ? '0 0 0 0.25rem rgba(13, 110, 253, 0.25)' : null,
+                        boxShadow: !formData.chiefMedicalExaminer ? '0 0 0 0.25rem rgba(220, 53, 69, 0.25)' : (state.isFocused ? '0 0 0 0.25rem rgba(13, 110, 253, 0.25)' : null),
                     }),
                     menu: (base) => ({ ...base, backgroundColor: '#16202c', zIndex: 1000 }),
                     option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? 'Grey' : '#16202c', color: '#eeeeeeb0' }),
