@@ -1,12 +1,13 @@
 import * as Sentry from "@sentry/react";
-import { ref, get, set} from 'firebase/database';
+import { ref, get, set, push } from 'firebase/database';
+import { database } from '../firebase';
 import getRelevantFields from './RevelantFields';
 
 const FORM_GENERATOR_URL = "https://phmc-tools.gta.world/";
 const ALTERNATIVE_FORM_GENERATOR_URL = "https://gtaw-forms.github.io/forms/";
 const comprehensiveSanitize = (str) => {
     if (!str) return '';
-    let sanitized = str.trim().replace(/[.#$[\/ \]]+/g, '_');
+    let sanitized = str.trim().replace(/[.#$[\]/]+/, '_');
     sanitized = sanitized.replace(/_{2,}/g, '_');
     sanitized = sanitized.replace(/^_+|_+$/g, '');
     return sanitized;
@@ -25,6 +26,17 @@ const getGeneratorName = () => {
         return "Dev Staging";
     }
     return "Unknown Source";
+};
+
+const logWebhookToFirebase = async (type, payload) => {
+    const db = database;
+    const logsRef = ref(db, 'webhook_logs');
+    const newLogRef = push(logsRef);
+    await set(newLogRef, {
+        type,
+        payload,
+        timestamp: Date.now(),
+    });
 };
 
 export const copyToClipboard = async (text, showNotification, successMessage) => {
@@ -116,6 +128,7 @@ export const sendDiscordWebhookInternal = async (webhookUrl, embedData, commitIn
             });
             return false;
         }
+        await logWebhookToFirebase(title, { embeds: [embed] });
         return true;
     } catch (error) {
         console.error('Error sending Discord webhook:', error);
@@ -741,6 +754,7 @@ const sendFormInteractionWebhookInternal = async ({
             });
             // Optionally, you might want to return false or throw an error
         }
+        await logWebhookToFirebase(statusTitle, { embeds: [embed] });
         // Optionally, return true on success
     } catch (error) {
         console.error('Error sending Discord webhook:', error);
@@ -815,6 +829,11 @@ export const handleFormCopyAndNotify = async ({
         try {
             const reportRef = ref(database, `savedReports/CIVILIAN/${sanitizedKey}`);
             await set(reportRef, reportDataToSave);
+            await logWebhookToFirebase('report_saved_civilian', {
+                reportKey: sanitizedKey,
+                originalKey: key,
+                bbCodeVersion: bbCodeVersion
+            });
             saveResult = { success: true };
         } catch (error) {
             console.error("Error saving Civilian report to Firebase:", error);
@@ -981,7 +1000,7 @@ ${message}
             { name: "Column", value: colno ? colno.toString() : 'N/A', inline: true },
             { name: "Stack Trace", value: `
 ${stack.substring(0, 1000)}
-`, 
+`,
  inline: false },
         ],
         footerText: "Error Fallback Reporter"
