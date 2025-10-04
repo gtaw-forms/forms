@@ -21,8 +21,6 @@ const generateDeathReport = (formData) => {
     } = formData;
 
 const getDepartmentFullName = (shortCode) => {
-    console.log("shortCode:", shortCode);
-    console.log("agencyDataStore:", agencyDataStore);
     if (agencyDataStore && agencyDataStore[shortCode]) {
         return agencyDataStore[shortCode].fullName;
     }
