@@ -145,14 +145,14 @@ export const useReportManagement = (
             key = `[Mass Fatality Report] - ${decedentNames} - ${(dateTime && dateTime.split('T')[0]) || 'No Date'}`;
         }
         else if (bbCodeVersion === 37) { // Death Record
-            if (!formData.caseNumber || !formData.decedentName || !formData.dateOfDeath) {
+            if (!formData.deathReportPostId || !formData.decedentName || !formData.dateOfDeath) {
                 const message = `Please fill in Case Number, Decedent Name, and Date of Death fields.`;
                 showNotification(message, 'exclamation-circle');
                 return { success: false, error: message };
             }
             // Format date to MM-DD-YYYY
             const formattedDate = formData.dateOfDeath ? new Date(formData.dateOfDeath).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase().replace(/,/g, '') : 'NO_DATE';
-            key = `[CASE #${formData.caseNumber}] ${formData.decedentName} (( ${formData.decedentOOC || 'N/A'} )) | [${formattedDate}]`;
+            key = `[CASE #${formData.deathReportPostId}] ${formData.decedentName} (( ${formData.decedentOOC || 'N/A'} )) | [${formattedDate}]`;
         }
         else { // Default handler for any other bbCodeVersion (includes SAAA)
             const definition = getFormDefinition(bbCodeVersion); // Get current form definition
