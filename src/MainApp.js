@@ -18,7 +18,7 @@ import LoadingSpinner from './components/LoadingSpinner';
 import { useModal } from './contexts/ModalProvider';
 import { useSettings } from './contexts/SettingsProvider';
 import { useWebhooks } from './hooks/useWebhooks';
-
+import { useImageUpload } from './hooks/useImageUpload';
 // logos
 import email from './assets/email.png'
 import Civilian from './assets/Civilian.png'
@@ -130,7 +130,6 @@ function MainApp({
         isLoadingData,
         loading
     } = useData();
-    const [isUploading, setIsUploading] = useState(false);
     const [isJohnDoe, setIsJohnDoe] = useState(false);
     const [isJaneDoe, setIsJaneDoe] = useState(false);
     const [commitInfo, setCommitInfo] = useState({ sha: '', date: null, error: null });
@@ -175,7 +174,8 @@ function MainApp({
         handlePhmcWebhookSubmit,
         handleWebhookSubmit 
     } = useWebhooks(formData, commitInfo, showNotification);
-
+    // Get image upload functions
+    const { isUploading, handleImageUpload } = useImageUpload(showNotification, setFormData);
     // All references to bbCodeVersion now occur after its initialization
     const handleSelectAgencyGroup = (group) => {
         setSelectedAgencyGroup(group);
@@ -680,102 +680,6 @@ const getBBCodeContent = () => {
     };
 
 // ---
-    const handleImageUpload = async (imageSource, fieldName) => {
-        setIsUploading(true);
-        let imageUrls = [];
-
-        try {
-            const imgbbApiKey = process.env.REACT_APP_IMGBB_API_KEY;
-            if (!imgbbApiKey) {
-                showNotification('ImgBB API Key is not configured.', 'error');
-                setIsUploading(false);
-                return;
-            }
-
-            let filesToUpload = [];
-            if (typeof imageSource === 'string') {
-                // It's a data URL, handle as a single file
-                filesToUpload.push(imageSource);
-            } else if (imageSource.target && imageSource.target.files) {
-                // It's an event from a file input, can have multiple files
-                filesToUpload = Array.from(imageSource.target.files);
-            } else {
-                // Assuming it's a single File or Blob object
-                filesToUpload.push(imageSource);
-            }
-
-            for (const file of filesToUpload) {
-                const formData = new FormData();
-                let base64Image;
-
-                if (typeof file === 'string') {
-                    base64Image = file.split(',')[1];
-                } else {
-                    base64Image = await new Promise((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.onload = () => resolve(reader.result.split(',')[1]);
-                        reader.onerror = reject;
-                        reader.readAsDataURL(file);
-                    });
-                }
-                
-                formData.append('image', base64Image);
-
-                const response = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbApiKey}`, {
-                    method: 'POST',
-                    body: formData,
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    imageUrls.push(data.data.url);
-                } else {
-                    console.error('ImgBB upload failed:', data.error.message);
-                    showNotification(`ImgBB upload failed for one of the images: ${data.error.message}`, 'exclamation-circle');
-                }
-            }
-
-            if (imageUrls.length > 0) {
-                showNotification(`${imageUrls.length} image(s) uploaded successfully!`, 'check-circle');
-
-                if (fieldName) {
-                    if (fieldName.includes('-')) {
-                        const [key, indexStr] = fieldName.split('-');
-                        const index = parseInt(indexStr, 10);
-
-                        setFormData(prev => {
-                            const newDecedents = [...prev.decedents];
-                            const currentDecedent = newDecedents[index];
-                            const currentValue = currentDecedent[key] || '';
-                            const newValue = currentValue ? `${currentValue}, ${imageUrls.join(', ')}` : imageUrls.join(', ');
-                            newDecedents[index] = { ...currentDecedent, [key]: newValue };
-
-                            return { ...prev, decedents: newDecedents };
-                        });
-
-                    } else {
-                        setFormData(prev => {
-                            const currentValue = prev[fieldName] || '';
-                            const newValue = currentValue ? `${currentValue}, ${imageUrls.join(', ')}` : imageUrls.join(', ');
-                            return {
-                                ...prev,
-                                [fieldName]: newValue
-                            };
-                        });
-                    }
-                }
-            }
-
-        } catch (error) {
-            console.error('Upload failed:', error);
-            showNotification('Upload failed!', 'exclamation-circle');
-        } finally {
-            setIsUploading(false);
-            return imageUrls;
-        }
-    };
-
 
     //Coroner Tips Handling
 
@@ -1394,7 +1298,6 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                                             handleSelectChange={handleSelectChange}
                                             isUploading={isUploading}
                                             handleImageUpload={handleImageUpload}
-                                            setIsUploading={setIsUploading}
                                             removeNotification={removeNotification}
                                             patientTitleOptions={selectOptions.patientTitle || []}
                                             patientPhoneOptions={selectOptions.patientPhone || []}

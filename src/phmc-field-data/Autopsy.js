@@ -11,7 +11,6 @@ const Autopsy = ({
     coronerGroupedOptions,
     handleSelectChange,
     isUploading,
-    setIsUploading,
     setShowEmployeeModal,
     showNotification,
     commitInfo, // <-- Add commitInfo to props
@@ -73,7 +72,6 @@ const Autopsy = ({
         }
 
         let indefiniteNotificationId = null;
-        setIsUploading(true);
         indefiniteNotificationId = showNotification('Processing autopsy photos, please wait...', 'info-circle', 0);
 
         const uploadedImageLinks = [];
@@ -107,7 +105,6 @@ const Autopsy = ({
             Sentry.captureException(error, { extra: { context: 'handleAutopsyImageUpload' } });
             showNotification(`Error uploading images: ${error.message}`, 'exclamation-triangle', 7000);
         } finally {
-            setIsUploading(false);
             if (indefiniteNotificationId) {
                 removeNotification(indefiniteNotificationId);
             }
