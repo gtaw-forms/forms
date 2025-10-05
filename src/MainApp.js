@@ -30,7 +30,7 @@ import SwitchableFormButtons from './components/SwitchableFormButtons';
 import PrivacyPolicyModal from './components/PrivacyPolicyModal';
 import FormImageLink from './components/FormImageLink';
 import { handleFormCopyAndNotify, handlePhmcRecruitmentCopyAndNotify } from './components/notificationService';
-
+import { useData } from './contexts/DataContext';
 import EmsBingoModal from './components/EmsBingoModal'; 
 
 // logos
@@ -97,22 +97,26 @@ function MainApp({
         const storedVersion = localStorage.getItem('bbCodeVersion');
         return storedVersion ? parseInt(storedVersion, 10) : (formDefinitions[0]?.version || 1);
     });
-    const [phmcListData, setPhmcListData] = useState([]);
-    const [coronerListData, setCoronerListData] = useState([]);
-    const [agencyDataStore, setAgencyDataStore] = useState({});
-    const [selectOptions, setSelectOptions] = useState({});
     const [selectedAgencyGroup, setSelectedAgencyGroup] = useState(null);
     const [showCoronerTips, setShowCoronerTips] = useState(false);
-    const [isLoadingData, setIsLoadingData] = useState(true);
     const [showAgencyGroupSelectorModal, setShowAgencyGroupSelectorModal] = useState(false);
     const [hideAgencyGroupSelectorPreference, setHideAgencyGroupSelectorPreference] = useState(false);
-    const [physicianRecruitmentDetails, setPhysicianRecruitmentDetails] = useState({});
-    const [psychRecruitmentDetails, setPsychRecruitmentDetails] = useState({});
-    const [adminRecruitmentDetails, setAdminRecruitmentDetails] = useState({});
-    const [emsRecruitmentDetails, setEmsRecruitmentDetails] = useState({});
-    const [nurseRecruitmentDetails, setNurseRecruitmentDetails] = useState({});
-    const [coronerRecruitmentDetails, setCoronerRecruitmentDetails] = useState({});
-    const [loading, setLoading] = useState(true);
+    
+    // Get data from DataContext
+    const { 
+        phmcListData,
+        coronerListData,
+        agencyDataStore,
+        selectOptions,
+        physicianRecruitmentDetails,
+        psychRecruitmentDetails,
+        adminRecruitmentDetails,
+        emsRecruitmentDetails,
+        nurseRecruitmentDetails,
+        coronerRecruitmentDetails,
+        isLoadingData,
+        loading
+    } = useData();
     const [showCctvRequestModal, setShowCctvRequestModal] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [isJohnDoe, setIsJohnDoe] = useState(false);
@@ -739,62 +743,6 @@ const getBBCodeContent = () => {
         setShowCctvRequestModal(true);
     };
 
-const loadData = useCallback(async () => {
-    let loadingNotificationId; // Declare a variable to store the notification ID
-    try {
-        loadingNotificationId = showNotification("Data Loading...", 'spinner fa-spin', 0); // Store the ID
-
-        // Load formData from localStorage FIRST
-        const storedData = localStorage.getItem('formData');
-        if (storedData) {
-            setFormData(JSON.parse(storedData));
-        }
-
-        const dbRootRef = ref(database);
-        const snapshot = await get(dbRootRef);
-
-        if (snapshot.exists()) {
-            const allData = snapshot.val();
-            let fetchedSelectOptions = allData.selectOptions || {};
-
-            setPhmcListData(allData.staff?.phmc || []);
-            setCoronerListData(allData.staff?.coroner || []);
-            setAgencyDataStore(allData.agencies || {});
-            setSelectOptions(allData.selectOptions || {});
-
-            setSelectOptions(fetchedSelectOptions);
-            setPhysicianRecruitmentDetails(fetchedSelectOptions.physicianRecruitmentDetails || {});
-            setPsychRecruitmentDetails(fetchedSelectOptions.psychPositionDetailsData || {});
-            setAdminRecruitmentDetails(fetchedSelectOptions.adminPositionDetailsData || {});
-            setEmsRecruitmentDetails(fetchedSelectOptions.emsPositionDetailsData || {});
-            setNurseRecruitmentDetails(fetchedSelectOptions.nursePositionDetailsData || {});
-            setCoronerRecruitmentDetails(fetchedSelectOptions.coronerPositionDetailsData || {});
-
-            showNotification("Data Loaded!", 'check-circle', 2000);
-        } else {
-            showNotification('Initial application data not found on server.', 'error');
-        }
-    } catch (error) {
-        showNotification("An error has happened, contact the maintainer", 'error');
-        console.error("Error fetching data from Realtime Database:", error);
-    } finally {
-        setIsLoadingData(false);
-        setLoading(false);
-        if (loadingNotificationId) {
-            removeNotification(loadingNotificationId); // Remove the notification
-        }
-    }
-}, [
-    showNotification, removeNotification, setFormData, setPhmcListData, setCoronerListData,
-    setAgencyDataStore, setSelectOptions, setPhysicianRecruitmentDetails,
-    setPsychRecruitmentDetails, setAdminRecruitmentDetails,
-    setEmsRecruitmentDetails, setNurseRecruitmentDetails, setCoronerRecruitmentDetails,
-    setIsLoadingData, setLoading
-]);
-
-useEffect(() => {
-    loadData();
-}, [loadData]);
 
 
     useEffect(() => {
@@ -1150,7 +1098,6 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
     if (actionType === 'updateRank') {
         showNotification("Refreshing staff data...", 'info-circle', 2000);
     }
-    await loadData(); // Call the main data loading function to refresh data
 
     if (actionType === 'updateRank') {
         showNotification("Staff data refreshed.", 'check-circle', 3000);
@@ -1921,7 +1868,6 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
         setIsRemoveStaff(false);
     }}
     isJohnDoe={isJohnDoe}
-    setCoronerListData={setCoronerListData}
     isJaneDoe={isJaneDoe}
     coronerList={coronerListData}
     phmcList={phmcListData}
