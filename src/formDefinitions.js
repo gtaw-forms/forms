@@ -1,12 +1,11 @@
 // src/formDefinitions.js
-import {
-    CommNotePHMC, CommNotePBC, DeathReport, CoronerEmail, PatientAdvanced, MentalHealth,
-    EmailInternal, Surgical, PhysEval, EmergencyForm, GeneralConsult,
-    MedicalRelease, BasicPatientFile, Shrink, Autopsy, Certificate, MedicalUpdate, MassFatality,
-    DeathRecord
+import React, { lazy } from 'react';
 
-} from './phmc-field-data'; // Assuming all field components are here for now
+// Lazy load form field components
+// Admin component can be loaded normally as it's a distinct route/view
+import AdminAuthAndActions from './components/Admin/AdminAuthAndActions';
 
+// Import generators normally as they are not components
 import {
     generateDeathReport, generateEmail, generateSurgicalOps, generateAdvancedPatientFile,
     generatePhysEvalInternalMed, generatePhysEvalInternalMedPBC, generateMentalHealthPHMC,
@@ -15,11 +14,15 @@ import {
     generateMedicalRecordRelease, generateBasicPatientFile, generateEmailPHMCEmail,
     generateConsultationNotesPBC, generatePsychEvalPHMC, generatePsychEvalPBC,
     generateAutopsy, generateCertificate, generateMedicalFileUpdate, generateMassFatality, generateDeathRecord,
-} from './phmc-bbcode-generators'; // Assuming all PHMC generators are here
-import generatePhysician from './phmc-recruitment-generators/generatePhysician'; // Make sure this path is correct
-import PhysicianFields from './phmc-civilian-fields/Physician'; // Path to your new component
+    generateSicknessEmail
+} from './phmc-bbcode-generators';
+import generatePhysician from './phmc-recruitment-generators/generatePhysician';
+import generatePsych from './phmc-recruitment-generators/generatePsych';
+import admin from './phmc-recruitment-generators/generateAdmin';
+import nursing from './phmc-recruitment-generators/generateNursing';
+import generateCoroner from './phmc-recruitment-generators/generateCoroner';
+import generateEMS from './phmc-recruitment-generators/generateEMS';
 
-import AdminAuthAndActions from './components/Admin/AdminAuthAndActions'; // New component
 // Import your icons
 import corpse from './assets/corpse.png';
 import emailIcon from './assets/email.png';
@@ -32,19 +35,35 @@ import empathy from './assets/empathy.png';
 import paperwork from './assets/paperwork.png';
 import psychology from './assets/psychology.png';
 import application from './assets/application.png'; // Assuming this is for SAAA or generic
-import generatePsych from './phmc-recruitment-generators/generatePsych'; // New Psych generator
-import PsychFields from './phmc-civilian-fields/Psych'; // New Psych field component
-import AdminFields from './phmc-civilian-fields/Admin';
-import admin from './phmc-recruitment-generators/generateAdmin';
-import nursing from './phmc-recruitment-generators/generateNursing';
-import NursingFields from './phmc-civilian-fields/Nursing';
-import generateCoroner from './phmc-recruitment-generators/generateCoroner';
-import Coroner from './phmc-civilian-fields/Coroner';
-import generateEMS from './phmc-recruitment-generators/generateEMS';
-import Ems from './phmc-civilian-fields/Ems';
-import SicknessEmail, { default as SicknessEmailFields } from './phmc-field-data/SicknessEmail'; // Import the new field component
-import { default as generateSicknessEmail } from './phmc-bbcode-generators/generateSicknessEmail'; // Import the new generator
-import { version } from 'react';
+const CommNotePHMC = lazy(() => import('./phmc-field-data/CommNotePHMC'));
+const CommNotePBC = lazy(() => import('./phmc-field-data/CommNotePBC'));
+const DeathReport = lazy(() => import('./phmc-field-data/deathReport'));
+const CoronerEmail = lazy(() => import('./phmc-field-data/CoronerEmail'));
+const PatientAdvanced = lazy(() => import('./phmc-field-data/PatientAdvanced'));
+const MentalHealth = lazy(() => import('./phmc-field-data/MentalHealth'));
+const EmailInternal = lazy(() => import('./phmc-field-data/EmailInternal'));
+const Surgical = lazy(() => import('./phmc-field-data/Surgical'));
+const PhysEval = lazy(() => import('./phmc-field-data/PhysEvalPHMC'));
+const EmergencyForm = lazy(() => import('./phmc-field-data/EmergencyForm'));
+const GeneralConsult = lazy(() => import('./phmc-field-data/GeneralConsult'));
+const MedicalRelease = lazy(() => import('./phmc-field-data/MedicalRelease'));
+const BasicPatientFile = lazy(() => import('./phmc-field-data/BasicPatientFile'));
+const Shrink = lazy(() => import('./phmc-field-data/Shrink'));
+const Autopsy = lazy(() => import('./phmc-field-data/Autopsy'));
+const Certificate = lazy(() => import('./phmc-field-data/Certificate'));
+const MedicalUpdate = lazy(() => import('./phmc-field-data/MedicalUpdate'));
+const MassFatality = lazy(() => import('./phmc-field-data/MassFatality'));
+const DeathRecord = lazy(() => import('./phmc-field-data/DeathRecord'));
+const SicknessEmail = lazy(() => import('./phmc-field-data/SicknessEmail'));
+
+// Lazy load recruitment field components
+const PhysicianFields = lazy(() => import('./phmc-civilian-fields/Physician'));
+const PsychFields = lazy(() => import('./phmc-civilian-fields/Psych'));
+const AdminFields = lazy(() => import('./phmc-civilian-fields/Admin'));
+const NursingFields = lazy(() => import('./phmc-civilian-fields/Nursing'));
+const Coroner = lazy(() => import('./phmc-civilian-fields/Coroner'));
+const Ems = lazy(() => import('./phmc-civilian-fields/Ems'));
+
 
 export const generateAdminView = (viewData) => {
     if (!viewData.isAdminAuthenticated) {
