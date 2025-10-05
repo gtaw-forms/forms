@@ -229,35 +229,27 @@ const WebhookModal = ({
         const files = event.target.files;
         if (!files || files.length === 0) return;
         setIsUploading(true);
-        const uploadPromises = [];
-        for (let i = 0; i < files.length; i++) {
-            uploadPromises.push(handleImageUpload(files[i]));
-        }
+        
         try {
-            const results = await Promise.allSettled(uploadPromises);
-            const successfulUrls = [];
-            let failedCount = 0;
-            results.forEach(result => {
-                if (result.status === 'fulfilled' && result.value) {
-                    successfulUrls.push(result.value);
-                } else {
-                    failedCount++;
-                }
-            });
-            setMediaUrls(prevUrls => [...prevUrls, ...successfulUrls]);
-            if (successfulUrls.length > 0) {
-                showNotification(`${successfulUrls.length} image(s) uploaded successfully!`, 'check-circle');
-            }
-            if (failedCount > 0) {
-                showNotification(`${failedCount} image(s) failed to upload.`, 'exclamation-circle');
+            // The handleImageUpload prop is expected to be the function from MainApp
+            const uploadedUrls = await handleImageUpload(event); 
+            
+            if (uploadedUrls && uploadedUrls.length > 0) {
+                setMediaUrls(prevUrls => [...prevUrls, ...uploadedUrls]);
+                showNotification(`${uploadedUrls.length} image(s) uploaded successfully!`, 'check-circle');
+            } else {
+                showNotification('Image upload returned no URLs.', 'warning');
             }
         } catch (error) {
-            console.error('General upload process error:', error);
-            Sentry.captureException(error, { extra: { context: 'WebhookModal Multi-Image Upload Process' } });
+            console.error('Error during image upload in WebhookModal:', error);
+            Sentry.captureException(error, { extra: { context: 'WebhookModal handleLocalImageUpload' } });
             showNotification('An unexpected error occurred during upload.', 'exclamation-circle');
         } finally {
             setIsUploading(false);
-            event.target.value = null;
+            // It's good practice to clear the file input after handling
+            if(event.target) {
+                event.target.value = null;
+            }
         }
     };
 
