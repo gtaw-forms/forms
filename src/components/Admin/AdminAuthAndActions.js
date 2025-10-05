@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Form as BootstrapForm, Button, Spinner, ListGroup } from 'react-bootstrap';
 import { auth, database } from '../../firebase';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
-import { ref, get, update, remove, set, serverTimestamp, onValue } from "firebase/database"; 
+import { ref, get, update, remove, set, serverTimestamp, onValue, push } from "firebase/database"; 
 import AddRoleModal from './RoleModal';
 import RenameRoleKeyModal from './RenameRoleKeyModal';
 import WebhookModal from '../WebhookModal';
@@ -180,6 +180,17 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
     const [isLoadingStatus, setIsLoadingStatus] = useState(true);
 
     const prevUserUidRef = useRef(null);
+
+    const logWebhookToFirebase = async (type, payload) => {
+        const db = database;
+        const logsRef = ref(db, 'webhook_logs');
+        const newLogRef = push(logsRef);
+        await set(newLogRef, {
+            type,
+            payload,
+            timestamp: Date.now(),
+        });
+    };
 
     useEffect(() => {
         const statusRef = ref(database, 'serviceStatus');
@@ -649,6 +660,7 @@ Key: ${savedRoleData.originalKey}`,
                 if (showInAppNotification) showInAppNotification('Admin webhook message sent successfully!', "check-circle");
                 setShowAdminCustomWebhookModal(false);
                 sendAdminActionWebhook(currentUser?.email || "Unknown User", "Sent Admin Custom Webhook", "Admin successfully sent a custom webhook to the Admin Action channel.", null, userAgent, timeZone);
+                logWebhookToFirebase('Admin Custom Webhook Sent', { admin: currentUser?.email, title: payloadFromModal.embeds[0].title });
                 return true;
             }
         } catch (error) {
@@ -1016,6 +1028,7 @@ Key: ${savedRoleData.originalKey}`,
                 if (showInAppNotification) showInAppNotification('Coroner webhook message sent successfully!', "check-circle");
                 setShowCoronerWebhookModal(false);
                 sendAdminActionWebhook(currentUser?.email || "Unknown User", "Sent Coroner Custom Webhook", "Admin successfully sent a custom webhook to the Coroner Updates channel.", null, userAgent, timeZone);
+                logWebhookToFirebase('Coroner Custom Webhook Sent', { admin: currentUser?.email, title: payloadFromModal.embeds[0].title });
                 return true;
             }
         } catch (error) {

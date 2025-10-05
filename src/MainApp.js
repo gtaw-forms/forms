@@ -1697,106 +1697,106 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                         />
                     </div>
                             <form> 
-
-                                {FieldComponent ? (
-                                    <FieldComponent
-                                        formData={formData}
-                                        handleChange={handleChange}
-                                        commitInfo={commitInfo}
-                                        // Pass all necessary props from App.js state and selectOptions
-                                        setFormData={setFormData}                                        
-                                        typeOfDeathOptions={selectOptions.typeOfDeathOptions || []}
-                                        mannerOfDeathOptions={selectOptions.mannerOfDeathOptions || []}
-                                        requestingAgencyOptions={selectOptions.requestingAgenciesOptions || []}
-                                        // Pass other props like phmcGroupedOptions, coronerGroupedOptions, etc.
-                                        phmcGroupedOptions={phmcGroupedOptions}
-                                        coronerGroupedOptions={coronerGroupedOptions}
-                                        setShowEmployeeModal={setShowEmployeeModal}
-                                        handleSelectChange={handleSelectChange}
-                                        isUploading={isUploading}
-                                        handleImageUpload={handleImageUpload}
-                                        setIsUploading={setIsUploading}
-                                        removeNotification={removeNotification}
-                                        patientTitleOptions={selectOptions.patientTitle || []}
-                                        patientPhoneOptions={selectOptions.patientPhone || []}
-                                        purposeOptions={selectOptions.PurposeMedicalInformationRelease || []}
-                                        formatOptions={selectOptions.PurposeMedicalInformationReleaseFormat || []}
-                                        medicalRecordOptions={selectOptions.MedicalRecordsRelease || []}
-                                        // For Surgical
-                                        phmcRank={selectOptions.phmcRank || []}
-                                        patientConsent={selectOptions.patientConsent || []}
-                                        complications={selectOptions.complications || []}
-                                        procedureGood={selectOptions.procedureGood || []}
-                                        // For PhysEval
-                                        BodyMassIndex={selectOptions.BodyMassIndex || []}
-                                        temperature={selectOptions.temperature || []}
-                                        heartRate={selectOptions.heartRate || []}
-                                        breathing={selectOptions.breathing || []}
-                                        bloodPressure={selectOptions.bloodPressure || []}
-                                        patientJob={selectOptions.patientJob || []}
-                                        patientJobRisks={selectOptions.patientJobRisks || []}
-                                        patientAllergiesRisk={selectOptions.patientAllergiesRisk || []}
-                                        patientMedicineRegular={selectOptions.patientMedicineRegular || []}
-                                        patientOther={selectOptions.patientOther || []}
-                                        predisposition={selectOptions.predisposition || []}
-                                        // For MentalHealth & ER & GeneralConsult
-                                        admission={selectOptions.admission || []}
-                                        followup={selectOptions.followup || []}
-                                        // For ER & GeneralConsult
-                                        painLevel={selectOptions.painLevel || []}
-                                        findings={selectOptions.findings || []}
-                                        lungs={selectOptions.lungs || []}
-                                        pupils={selectOptions.pupils || []}
-                                        wounds={selectOptions.wounds || []}
-                                        ecg={selectOptions.ecg || []}
-                                        sono={selectOptions.sono || []}
-                                        lab={selectOptions.lab || []}
-                                        bloodOxy={selectOptions.bloodOxy || []}
-                                        assignedDepartment={selectOptions.assignedDepartment || []}
-                                        departmentLarge={ (currentFormDefinition?.version === 23 && selectedAgencyGroup === "PHMC") ? (selectOptions.paletoClinicDepartment || []) : (selectOptions.departmentLarge || [])}
-                                        // For Shrink
-                                        Appearance={selectOptions.Appearance || []}
-                                        Behavior={selectOptions.Behavior || []}
-                                        Speech={selectOptions.Speech || []}
-                                        Mood={selectOptions.Mood || []}
-                                        Affect={selectOptions.Affect || []}
-                                        ThoughtProcess={selectOptions.ThoughtProcess || []}
-                                        ThoughtContent={selectOptions.ThoughtContent || []}
-                                        Insight={selectOptions.Insight || []}
-                                        Cognition={selectOptions.Cognition || []}
-                                        Risk={selectOptions.Risk || []}
-                                        // For CoronerEmail
-                                        fillPhoneChecked={fillPhoneChecked}
-                                        setFillPhoneChecked={setFillPhoneChecked}
-                                        handleFillCoronerPhone={handleFillCoronerPhone}
-                                        addReport={addReport}
-                                        removeReport={removeReport}
-                                        handleReportChange={handleReportChange}
-                                        toggleSavedReports={toggleSavedReports}
-                                        // For DeathReport specific
-                                        dnr={selectOptions.dnr || []}
-                                        attorney={selectOptions.attorney || []}
-                                        dnrOrder={selectOptions.dnrOrder || []}
-                                        isJohnDoe={isJohnDoe}
-                                        isJaneDoe={isJaneDoe}
-                                        handleDoeChange={handleDoeChange}
-                                        currentUtcTime={currentUtcTime}
-                                        UpdateMedicalFile={selectOptions.UpdateMedicalFile || []}
-                                        Imaging={selectOptions.Imaging || []}
-                                        patientTitleNew={selectOptions.patientTitleNew || []}
-                                        XrayResults={selectOptions.XrayResults || []}
-                                        ctResults={selectOptions.ctResults || []}
-                                        mriResults={selectOptions.mriResults || []}
-                                        ultrasoundResults={selectOptions.ultrasoundResults || []}
-                                        patientBloodType={selectOptions.patientBloodType || []} 
-                                        selectOptions={selectOptions} 
-                                        
-                                        maritalStatus={selectOptions.maritalStatus || []}
-                                        numberChildren={selectOptions.numberChildren || []}
-                                        financialStatus={selectOptions.financialStatus || []}
-                                        
-                                        physicianRecruitmentDetails={physicianRecruitmentDetails} // Renamed prop here too
-                                        psychRecruitmentDetails={psychRecruitmentDetails}
+                                <Suspense fallback={<LoadingSpinner />}>
+                                    {FieldComponent ? (
+                                        <FieldComponent
+                                            formData={formData}
+                                            handleChange={handleChange}
+                                            commitInfo={commitInfo}
+                                            // Pass all necessary props from App.js state and selectOptions
+                                            setFormData={setFormData}                                        
+                                            typeOfDeathOptions={selectOptions.typeOfDeathOptions || []}
+                                            mannerOfDeathOptions={selectOptions.mannerOfDeathOptions || []}
+                                            requestingAgencyOptions={selectOptions.requestingAgenciesOptions || []}
+                                            // Pass other props like phmcGroupedOptions, coronerGroupedOptions, etc.
+                                            phmcGroupedOptions={phmcGroupedOptions}
+                                            coronerGroupedOptions={coronerGroupedOptions}
+                                            setShowEmployeeModal={setShowEmployeeModal}
+                                            handleSelectChange={handleSelectChange}
+                                            isUploading={isUploading}
+                                            handleImageUpload={handleImageUpload}
+                                            setIsUploading={setIsUploading}
+                                            removeNotification={removeNotification}
+                                            patientTitleOptions={selectOptions.patientTitle || []}
+                                            patientPhoneOptions={selectOptions.patientPhone || []}
+                                            purposeOptions={selectOptions.PurposeMedicalInformationRelease || []}
+                                            formatOptions={selectOptions.PurposeMedicalInformationReleaseFormat || []}
+                                            medicalRecordOptions={selectOptions.MedicalRecordsRelease || []}
+                                            // For Surgical
+                                            phmcRank={selectOptions.phmcRank || []}
+                                            patientConsent={selectOptions.patientConsent || []}
+                                            complications={selectOptions.complications || []}
+                                            procedureGood={selectOptions.procedureGood || []}
+                                            // For PhysEval
+                                            BodyMassIndex={selectOptions.BodyMassIndex || []}
+                                            temperature={selectOptions.temperature || []}
+                                            heartRate={selectOptions.heartRate || []}
+                                            breathing={selectOptions.breathing || []}
+                                            bloodPressure={selectOptions.bloodPressure || []}
+                                            patientJob={selectOptions.patientJob || []}
+                                            patientJobRisks={selectOptions.patientJobRisks || []}
+                                            patientAllergiesRisk={selectOptions.patientAllergiesRisk || []}
+                                            patientMedicineRegular={selectOptions.patientMedicineRegular || []}
+                                            patientOther={selectOptions.patientOther || []}
+                                            predisposition={selectOptions.predisposition || []}
+                                            // For MentalHealth & ER & GeneralConsult
+                                            admission={selectOptions.admission || []}
+                                            followup={selectOptions.followup || []}
+                                            // For ER & GeneralConsult
+                                            painLevel={selectOptions.painLevel || []}
+                                            findings={selectOptions.findings || []}
+                                            lungs={selectOptions.lungs || []}
+                                            pupils={selectOptions.pupils || []}
+                                            wounds={selectOptions.wounds || []}
+                                            ecg={selectOptions.ecg || []}
+                                            sono={selectOptions.sono || []}
+                                            lab={selectOptions.lab || []}
+                                            bloodOxy={selectOptions.bloodOxy || []}
+                                            assignedDepartment={selectOptions.assignedDepartment || []}
+                                            departmentLarge={ (currentFormDefinition?.version === 23 && selectedAgencyGroup === "PHMC") ? (selectOptions.paletoClinicDepartment || []) : (selectOptions.departmentLarge || [])}
+                                            // For Shrink
+                                            Appearance={selectOptions.Appearance || []}
+                                            Behavior={selectOptions.Behavior || []}
+                                            Speech={selectOptions.Speech || []}
+                                            Mood={selectOptions.Mood || []}
+                                            Affect={selectOptions.Affect || []}
+                                            ThoughtProcess={selectOptions.ThoughtProcess || []}
+                                            ThoughtContent={selectOptions.ThoughtContent || []}
+                                            Insight={selectOptions.Insight || []}
+                                            Cognition={selectOptions.Cognition || []}
+                                            Risk={selectOptions.Risk || []}
+                                            // For CoronerEmail
+                                            fillPhoneChecked={fillPhoneChecked}
+                                            setFillPhoneChecked={setFillPhoneChecked}
+                                            handleFillCoronerPhone={handleFillCoronerPhone}
+                                            addReport={addReport}
+                                            removeReport={removeReport}
+                                            handleReportChange={handleReportChange}
+                                            toggleSavedReports={toggleSavedReports}
+                                            // For DeathReport specific
+                                            dnr={selectOptions.dnr || []}
+                                            attorney={selectOptions.attorney || []}
+                                            dnrOrder={selectOptions.dnrOrder || []}
+                                            isJohnDoe={isJohnDoe}
+                                            isJaneDoe={isJaneDoe}
+                                            handleDoeChange={handleDoeChange}
+                                            currentUtcTime={currentUtcTime}
+                                            UpdateMedicalFile={selectOptions.UpdateMedicalFile || []}
+                                            Imaging={selectOptions.Imaging || []}
+                                            patientTitleNew={selectOptions.patientTitleNew || []}
+                                            XrayResults={selectOptions.XrayResults || []}
+                                            ctResults={selectOptions.ctResults || []}
+                                            mriResults={selectOptions.mriResults || []}
+                                            ultrasoundResults={selectOptions.ultrasoundResults || []}
+                                            patientBloodType={selectOptions.patientBloodType || []} 
+                                            selectOptions={selectOptions} 
+                                            
+                                            maritalStatus={selectOptions.maritalStatus || []}
+                                            numberChildren={selectOptions.numberChildren || []}
+                                            financialStatus={selectOptions.financialStatus || []}
+                                            
+                                            physicianRecruitmentDetails={physicianRecruitmentDetails} // Renamed prop here too
+                                            psychRecruitmentDetails={psychRecruitmentDetails}
                         adminRecruitmentDetails={adminRecruitmentDetails}
                         emsRecruitmentDetails={emsRecruitmentDetails}
                         nurseRecruitmentDetails={nurseRecruitmentDetails}
@@ -1808,6 +1808,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                                 ) : (
                                     <p>Please select an agency group and then a form type.</p>
                                 )}
+                                </Suspense>
                         <div className="button-group">
                             <Button
                                 type="button"
