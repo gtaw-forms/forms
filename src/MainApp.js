@@ -160,6 +160,16 @@ function MainApp({
     const [phmcRecruitmentOptIn, setPhmcRecruitmentOptIn] = useState(() => {
         return localStorage.getItem('phmcRecruitmentOptIn') === 'true';
     });
+    const [seasonalEffectsEnabled, setSeasonalEffectsEnabled] = useState(() => {
+        return localStorage.getItem('seasonalEffectsEnabled') !== 'false'; // default to true
+    });
+
+    const toggleSeasonalEffects = () => {
+        const newValue = !seasonalEffectsEnabled;
+        setSeasonalEffectsEnabled(newValue);
+        localStorage.setItem('seasonalEffectsEnabled', String(newValue));
+        showNotification(`Seasonal effects ${newValue ? 'enabled' : 'disabled'}.`, 'info');
+    };
 
     // All references to bbCodeVersion now occur after its initialization
     const handleSelectAgencyGroup = (group) => {
@@ -763,8 +773,8 @@ const getBBCodeContent = () => {
 
 
 
-    const { imageSource: deathReportImage, className: deathReportClass, season, effect } = SeasonalEvents({ imageType: 'deathReport' });
-    const { imageSource: civilianPaperworkImage, className: civilianPaperworkClass } = SeasonalEvents({ imageType: 'civilianPaperwork'  });
+    const { imageSource: deathReportImage, className: deathReportClass, season, effect } = seasonalEffectsEnabled ? SeasonalEvents({ imageType: 'deathReport' }) : {};
+    const { imageSource: civilianPaperworkImage, className: civilianPaperworkClass } = seasonalEffectsEnabled ? SeasonalEvents({ imageType: 'civilianPaperwork'  }) : {};
 
     const handleCopyAndNotifyWrapper = useCallback(() => {
         if (selectedAgencyGroup === 'PHMC Recruitment') {
@@ -1466,7 +1476,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                     setEasterEggType(null); // Reset type on hide
                 }}
             />
-{effect}
+            {seasonalEffectsEnabled && effect}
 
 
         <CoronerTipsModal
@@ -1521,17 +1531,21 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 </Dropdown.Toggle>
 
                 <Dropdown.Menu>
-                    <Dropdown.Item onClick={() => {{setShowEmployeeModal(true); setShowToolsDropdown(false);}}}>
+                    <Dropdown.Item onClick={() => {setShowEmployeeModal(true); setShowToolsDropdown(false);}}>
                         <i className="fas fa-users-cog"></i> Manage PHMC Staff
                     </Dropdown.Item>
-                     <Dropdown.Item onClick={() => {{setShowFeatureRequestModal(true); setShowToolsDropdown(false);}}}>
+                     <Dropdown.Item onClick={() => {setShowFeatureRequestModal(true); setShowToolsDropdown(false);}}>
                         <i className="fas fa-bug"></i> Report Bug/Feature
                     </Dropdown.Item>
-                    <Dropdown.Item onClick={() => {{toggleSavedReports(); setShowToolsDropdown(false);}}}>
+                    <Dropdown.Item onClick={() => {toggleSavedReports(); setShowToolsDropdown(false);}}>
                         <i className="fas fa-save"></i> Saved Reports
                     </Dropdown.Item>
-                    <Dropdown.Item onClick={() => {{toggleEmsAmaModal(); setShowToolsDropdown(false);}}}>
+                    <Dropdown.Item onClick={() => {toggleEmsAmaModal(); setShowToolsDropdown(false);}}>
                         <i className="fa-solid fa-truck-medical"></i> EMS AMA
+                    </Dropdown.Item>
+                    <Dropdown.Item onClick={() => {toggleSeasonalEffects(); setShowToolsDropdown(false);}}>
+                        <i className={`fas ${seasonalEffectsEnabled ? 'fa-snowflake' : 'fa-sun'}`}></i> 
+                        {seasonalEffectsEnabled ? 'Disable' : 'Enable'} Seasonal Effects
                     </Dropdown.Item>
                     <Dropdown.Divider />
                     <Dropdown.Item onClick={() => {{
