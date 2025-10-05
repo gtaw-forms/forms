@@ -1,7 +1,6 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Form, Button } from 'react-bootstrap';
 import Select from 'react-select';
-import { useData } from '../contexts/DataContext';
 const customSelectStyles = {
     control: (base, state) => ({
         ...base,
@@ -89,11 +88,6 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
     parseBBCode,
     toggleSavedReports 
 }) => {
-    const { loadAgencyData } = useData(); // Destructure loadAgencyData
-
-    useEffect(() => {
-        loadAgencyData(); // Call loadAgencyData on component mount
-    }, [loadAgencyData]); // Dependency array includes loadAgencyData
 
     return (
         <>

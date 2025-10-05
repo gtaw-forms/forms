@@ -711,6 +711,25 @@ const getBBCodeContent = () => {
         selectedAgencyGroup
     );
 
+    const handleCopyAndNotify = async () => {
+        const bbCodeContent = getBBCodeContent();
+        if (!bbCodeContent) {
+            showNotification('BBCode content is empty, cannot copy.', 'error');
+            return;
+        }
+
+        const saveResult = await saveReport();
+        if (saveResult.success) {
+            navigator.clipboard.writeText(bbCodeContent).then(() => {
+                showNotification('BBCode copied to clipboard and report saved!', 'success');
+            }).catch(err => {
+                showNotification('Report saved, but failed to copy BBCode to clipboard.', 'warning');
+                console.error('Clipboard copy failed:', err);
+            });
+        } else {
+            // Notification is shown by saveReport on failure
+        }
+    };
 
 
 
@@ -776,22 +795,7 @@ const getBBCodeContent = () => {
                 formDefinition: getFormDefinition(bbCodeVersion),
             });
         } else {
-            handleFormCopyAndNotify({
-                formData,
-                bbCodeVersion,
-                selectedAgencyGroup,
-                getBBCodeContent,
-                getFormDefinition,
-                saveReport,
-                showNotification,
-                removeNotification,
-                handleAgencySelect,
-                setLastWebhookIdentifier,
-                lastWebhookIdentifier,
-                commitInfo,
-                database,
-                getCurrentReportAuthor,
-            });
+            handleCopyAndNotify();
         }
     }, [
         selectedAgencyGroup, 
@@ -1445,7 +1449,6 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 psychRecruitmentStatus={selectOptions.psychPositionDetailsData}
                 adminRecruitmentDetails={selectOptions.adminPositionDetailsData}
                 emsRecruitmentDetails={selectOptions.emsPositionDetailsData}
-                nurseRecruitmentDetails={selectOptions.nursePositionDetailsData}
                 coronerRecruitmentDetails={selectOptions.coronerPositionDetailsData}
                 formDefinitions={formDefinitions}
             />
@@ -1978,7 +1981,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 forms={switchableFormsList} // Your state for the list of forms for this modal
                 handleFormSelect={handleAgencySelect} // This now triggers the opt-in logic
                 isMobile={isMobile}
-                physicianRecruitmentDetails={physicianRecruitmentDetails} // Renamed prop here too
+                physicianRecruitmentDetails={selectOptions.physicianRecruitmentDetails} // Renamed prop here too
                 psychRecruitmentStatus={psychRecruitmentDetails} // For Psych buttons - NEW PROP
                 formDefinitions={formDefinitions} // Pass all form definitions
                     adminRecruitmentDetails={selectOptions.adminPositionDetailsData || {}} // Assuming admin data is in selectOptions
