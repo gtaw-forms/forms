@@ -87,26 +87,28 @@ const getUserContext = () => {
 
 const sendAdminActionWebhook = async (adminEmail, action, details, categoryName = null, userAgent = "N/A", userTimezone = "N/A") => {
     const webhookURL = process.env.REACT_APP_ADMIN_ACTION_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DEV_WEBHOOK;
-    console.log('[AdminAuthAndActions] sendAdminActionWebhook called. URL used:', webhookURL);
     if (!webhookURL) {
         console.warn("Admin action webhook URL not configured. Skipping log.");
         captureMessage("Admin Action Webhook URL not configured", "warning");
         return;
     }
+
+    // Simplified description for a cleaner look
+    const description = categoryName
+        ? `**Action:** ${action || "Unknown Action"}\n**Admin:** ${adminEmail || "Unknown"}\n**Category:** ${categoryName}`
+        : `**Action:** ${action || "Unknown Action"}\n**Admin:** ${adminEmail || "Unknown"}`;
+
     const embed = {
-        title: "Admin Panel Action Logged",
-        color: 0xFFA500,
+        title: "Admin Action Logged",
+        color: 0xFFA500, // Orange
+        description: description,
         fields: [
-            { name: "Admin User", value: adminEmail || "Unknown", inline: true },
-            { name: "Action Taken", value: action || "Unknown Action", inline: true },
-            ...(categoryName ? [{ name: "Category", value: categoryName, inline: true }] : []),
-            { name: "Details", value: ```${details.substring(0,1000)}```, inline: false },
-            { name: "User Agent", value: ```${userAgent.substring(0, 250)}```, inline: false }, // Truncate for Discord field limit
-            { name: "Timezone", value: userTimezone, inline: true },
+            { name: "Details", value: `\`\`\`${details.substring(0, 1000)}\`\`\``, inline: false },
         ],
         timestamp: new Date().toISOString(),
-        footer: { text: "PHMC Tools - Admin Panel" }
+        footer: { text: `PHMC Tools | ${userTimezone}` }
     };
+
     try {
         const response = await fetch(webhookURL, {
             method: 'POST',
@@ -128,7 +130,6 @@ const sendAdminActionWebhook = async (adminEmail, action, details, categoryName 
 
 const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNotification: showInAppNotification, commitInfo }) => {
     // GTA World OAuth login handler
-    // GTA World OAuth login handler is now in GtaLogin.js
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');

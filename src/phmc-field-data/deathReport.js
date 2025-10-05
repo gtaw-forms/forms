@@ -1,7 +1,6 @@
 import React, { useState, useEffect} from 'react'; // Import useEffect
 import { Form, Button, InputGroup } from 'react-bootstrap';
 import Select from 'react-select';
-import { useData } from '../contexts/DataContext';
 
 const DeathReport = ({
     formData,
@@ -20,12 +19,6 @@ const DeathReport = ({
     mannerOfDeathOptions,
     requestingAgencyOptions
 }) => {
-    const { loadAgencyData } = useData(); // Destructure loadAgencyData
-
-    useEffect(() => {
-        loadAgencyData(); // Call loadAgencyData on component mount
-    }, [loadAgencyData]); // Dependency array includes loadAgencyData
-
     // Function to generate the Evidence Locker ID
     const generateEvidenceLockerID = () => {
         const today = new Date();

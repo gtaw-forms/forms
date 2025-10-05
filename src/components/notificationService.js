@@ -7,7 +7,9 @@ const FORM_GENERATOR_URL = "https://phmc-tools.gta.world/";
 const ALTERNATIVE_FORM_GENERATOR_URL = "https://gtaw-forms.github.io/forms/";
 const comprehensiveSanitize = (str) => {
     if (!str) return '';
-    let sanitized = str.trim().replace(/[.#$[\]/]+/, '_');
+    // This regex now includes the global flag 'g' to replace all occurrences
+    // and also includes spaces in the characters to be replaced.
+    let sanitized = str.trim().replace(/[.#$[\\/ \]]+/g, '_');
     sanitized = sanitized.replace(/_{2,}/g, '_');
     sanitized = sanitized.replace(/^_+|_+$/g, '');
     return sanitized;
