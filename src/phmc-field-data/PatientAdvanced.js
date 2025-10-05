@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Form, Button, InputGroup, OverlayTrigger, Tooltip } from 'react-bootstrap';
 
-import { useData } from '../contexts/DataContext';
 import './phmc-tooltips.css'; // Assuming you have a tooltip component
 // Helper component for collapsible section headers - Copied from Nursing.js
 const CollapsibleHeader = ({ title, isOpen, onToggle, sectionId }) => (
@@ -43,12 +42,6 @@ const PatientAdvanced = ({
     financialStatus,
     selectOptions
 }) => {
-    const { loadSelectOptions } = useData(); // Destructure loadSelectOptions
-
-    useEffect(() => {
-        loadSelectOptions(); // Call loadSelectOptions on component mount
-    }, [loadSelectOptions]); // Dependency array includes loadSelectOptions
-
     const [isGeneralInfoOpen, setIsGeneralInfoOpen] = useState(true);
     const [isContactInfoOpen, setIsContactInfoOpen] = useState(true);
     const [isMentalHealthOpen, setIsMentalHealthOpen] = useState(true);

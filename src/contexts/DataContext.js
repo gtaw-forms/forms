@@ -94,13 +94,14 @@ export const DataProvider = ({ children }) => {
 
     // Segmented cache for fetched data
     const dataCache = useRef({});
+    const didLoadFromCache = useRef(false); // Flag to track if cache was used
     const [dataLoaded, setDataLoaded] = useState(false);
     const firebaseListeners = useRef({});
 
     // Cache configuration
     const CACHE_PREFIX = 'firebaseCache';
     const CACHE_VERSION = '1.0';
-    const CACHE_EXPIRY = 1000 * 60 * 60; // 1 hour
+    const CACHE_EXPIRY = 1000 * 60 * 60 * 24 * 7; // 7 days in milliseconds
 
     // Version configuration for each segment
     const SEGMENT_VERSIONS = {
@@ -113,21 +114,23 @@ export const DataProvider = ({ children }) => {
 
     const getCacheKey = (segment) => `${CACHE_PREFIX}_${segment}_v${getSegmentVersion(segment)}`;
     const getTimestampKey = (segment) => `${CACHE_PREFIX}_${segment}_v${getSegmentVersion(segment)}_timestamp`;
-    const getVersionKey = (segment) => `${CACHE_PREFIX}_${segment}_version`;
+    const getVersionKey = (segment) => `${CACHE_PREFIX}_${segment}_v${getSegmentVersion(segment)}_version`;
     
     // Helper to check if a cache segment is valid
     const isCacheValid = (segment) => {
         const timestamp = localStorage.getItem(getTimestampKey(segment));
         const cachedVersion = localStorage.getItem(getVersionKey(segment));
         const currentVersion = getSegmentVersion(segment);
-        
+
         const isVersionValid = cachedVersion === currentVersion;
         const isTimeValid = timestamp && (Date.now() - parseInt(timestamp)) < CACHE_EXPIRY;
-        
-        if (!isVersionValid) {
-            console.log(`🔄 Cache version mismatch for ${segment}: ${cachedVersion} vs ${currentVersion}`);
+
+        if (!isVersionValid && cachedVersion) { // Only log if there was an old version
+            console.log(`🔄 Cache version mismatch for ${segment}: Stored ${cachedVersion} vs Required ${currentVersion}. Replacing.`);
+        } else if (!isTimeValid && timestamp) { // It's not a version issue, but it's expired
+            console.log(`⏰ Cache for ${segment} has expired. Replacing.`);
         }
-        
+
         return isVersionValid && isTimeValid;
     };
 
@@ -137,42 +140,63 @@ export const DataProvider = ({ children }) => {
         Object.values(firebaseListeners.current).forEach(unsubscribe => unsubscribe());
         firebaseListeners.current = {};
 
-        // Listen for staff changes
+        // --- Listener for staff changes ---
         const staffRef = ref(database, CACHE_SEGMENTS.STAFF);
+        let isInitialStaffCallback = true;
         firebaseListeners.current.staff = onValue(staffRef, (snapshot) => {
+            if (didLoadFromCache.current && isInitialStaffCallback) {
+                isInitialStaffCallback = false;
+                console.log('⏩ Skipping initial Firebase staff update because cache was used.');
+                return;
+            }
+            isInitialStaffCallback = false;
+
             if (snapshot.exists()) {
                 const staffData = snapshot.val();
+                if (JSON.stringify(staffData) === JSON.stringify(dataCache.current[CACHE_SEGMENTS.STAFF])) return;
                 updateCacheSegment(CACHE_SEGMENTS.STAFF, staffData);
                 console.log('🔄 Staff data updated from Firebase');
             }
         });
 
-        // Listen for agency changes
+        // --- Listener for agency changes ---
         const agenciesRef = ref(database, CACHE_SEGMENTS.AGENCIES);
+        let isInitialAgencyCallback = true;
         firebaseListeners.current.agencies = onValue(agenciesRef, (snapshot) => {
+            if (didLoadFromCache.current && isInitialAgencyCallback) {
+                isInitialAgencyCallback = false;
+                console.log('⏩ Skipping initial Firebase agency update because cache was used.');
+                return;
+            }
+            isInitialAgencyCallback = false;
+
             if (snapshot.exists()) {
                 const agencyData = snapshot.val();
-                dataCache.current[CACHE_SEGMENTS.AGENCIES] = agencyData;
-                localStorage.setItem(getCacheKey(CACHE_SEGMENTS.AGENCIES), JSON.stringify(agencyData));
-                localStorage.setItem(getTimestampKey(CACHE_SEGMENTS.AGENCIES), Date.now().toString());
-                setAgencyDataStore(agencyData);
+                if (JSON.stringify(agencyData) === JSON.stringify(dataCache.current[CACHE_SEGMENTS.AGENCIES])) return;
+                updateCacheSegment(CACHE_SEGMENTS.AGENCIES, agencyData);
                 console.log('🔄 Agency data updated from Firebase');
             }
         });
 
-        // Listen for select options changes
+        // --- Listener for select options changes ---
         const optionsRef = ref(database, CACHE_SEGMENTS.SELECT_OPTIONS);
+        let isInitialOptionsCallback = true;
         firebaseListeners.current.options = onValue(optionsRef, (snapshot) => {
+            if (didLoadFromCache.current && isInitialOptionsCallback) {
+                isInitialOptionsCallback = false;
+                console.log('⏩ Skipping initial Firebase select options update because cache was used.');
+                return;
+            }
+            isInitialOptionsCallback = false;
+
             if (snapshot.exists()) {
                 const optionsData = snapshot.val();
-                dataCache.current[CACHE_SEGMENTS.SELECT_OPTIONS] = optionsData;
-                localStorage.setItem(getCacheKey(CACHE_SEGMENTS.SELECT_OPTIONS), JSON.stringify(optionsData));
-                localStorage.setItem(getTimestampKey(CACHE_SEGMENTS.SELECT_OPTIONS), Date.now().toString());
-                setSelectOptions(optionsData);
+                if (JSON.stringify(optionsData) === JSON.stringify(dataCache.current[CACHE_SEGMENTS.SELECT_OPTIONS])) return;
+                updateCacheSegment(CACHE_SEGMENTS.SELECT_OPTIONS, optionsData);
                 console.log('🔄 Select options updated from Firebase');
             }
         });
-    }, []);
+    }, [updateCacheSegment]);
 
     const loadData = useCallback(async (forceRefresh = false) => {
         // Check memory cache first for each segment
@@ -207,6 +231,7 @@ export const DataProvider = ({ children }) => {
                 setDataLoaded(true);
                 setIsLoadingData(false);
                 setLoading(false);
+                didLoadFromCache.current = true; // Set the flag
                 return;
             }
         }
@@ -266,7 +291,7 @@ export const DataProvider = ({ children }) => {
             }
         }
     }, [
-        showNotification, removeNotification, dataLoaded,
+        showNotification, removeNotification,
         setPhmcListData, setCoronerListData, setAgencyDataStore, setSelectOptions,
         setPhysicianRecruitmentDetails, setPsychRecruitmentDetails, setAdminRecruitmentDetails,
         setEmsRecruitmentDetails, setNurseRecruitmentDetails, setCoronerRecruitmentDetails,
@@ -295,8 +320,15 @@ export const DataProvider = ({ children }) => {
     }, []);
 
     useEffect(() => {
-        loadData();
-        setupFirebaseListeners(); // Setup real-time listeners
+        const initialLoad = async () => {
+            await loadData();
+            // Only set up listeners after the initial data load is complete
+            if (!Object.keys(firebaseListeners.current).length) {
+                setupFirebaseListeners();
+            }
+        };
+
+        initialLoad();
         cleanupCache(); // Clean up old cache entries
 
         // Cleanup listeners on unmount

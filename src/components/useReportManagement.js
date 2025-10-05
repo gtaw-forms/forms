@@ -90,7 +90,14 @@ export const useReportManagement = (
                 return { success: false, error: message };
             }
             key = `[Autopsy] ${formData.decedentName} (${formData.decedentOOC}) - ${formData.autopsyDate}`;
-        } else if (((bbCodeVersion >= 3 && bbCodeVersion <= 7) && bbCodeVersion !== 4)) { // PatientAdvanced (3), SurgicalOps (5), PhysEval PHMC/PBC (6,7)
+        } else if (bbCodeVersion === 3) { // Detailed Patient File (PatientAdvanced)
+            if (!formData.patientName || !formData.patientDateOfBirth) {
+                const message = `Please fill in Patient Name and Date of Birth fields.`;
+                showNotification(message, 'exclamation-circle');
+                return { success: false, error: message };
+            }
+            key = `${formData.patientID || 'NO_ID'} - ${formData.patientName || 'NO_NAME'} - ${formData.patientDateOfBirth || 'NO_DATE'}`;
+        } else if (((bbCodeVersion > 3 && bbCodeVersion <= 7) && bbCodeVersion !== 4)) { // SurgicalOps (5), PhysEval PHMC/PBC (6,7)
             let patientIdMissing = !formData.patientID;
             let dateMissing = !formData.date;
             let patientNameMissing = false;
@@ -117,12 +124,20 @@ export const useReportManagement = (
             }
             key = `${formData.patientID} - ${formData.lastName} - ${formData.date}`;
         } else if (bbCodeVersion === 25) { // BasicPatientFile
-            if (!formData.patientName || !formData.date) {
-                const message = `Please fill in Patient Name and Date fields.`;
+            if (!formData.patientName || !formData.patientDateOfBirth) {
+                const message = `Please fill in Patient Name and Date of Birth fields.`;
                 showNotification(message, 'exclamation-circle');
                 return { success: false, error: message };
             }
-            key = `${formData.patientName} - ${formData.date}`;
+            key = `${formData.patientName} - ${formData.patientDateOfBirth}`;
+        } else if (bbCodeVersion === 24) { // Medical Record Release
+            // This form uses registrantFullName and dateOfRequest
+            if (!formData.registrantFullName || !formData.dateOfRequest) {
+                const message = `Please fill in Registrant Full Name and Date of Request fields.`;
+                showNotification(message, 'exclamation-circle');
+                return { success: false, error: message };
+            }
+            key = `[Medical Release] ${formData.registrantFullName} - ${formData.dateOfRequest}`;
         }
         // --- Add more 'else if' blocks here for other specific bbCodeVersions ---
         // Example for Coroner Email (bbCodeVersion 2)
@@ -280,8 +295,8 @@ export const useReportManagement = (
             return;
         }
 
-        const saveResult = await saveReport();
-        if (saveResult.success) {
+        const saveReportResult = await saveReport();
+        if (saveReportResult.success) {
             navigator.clipboard.writeText(bbCodeContent).then(() => {
                 showNotification('BBCode copied to clipboard and report saved!', 'success');
             }).catch(err => {
