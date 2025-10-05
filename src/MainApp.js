@@ -711,26 +711,6 @@ const getBBCodeContent = () => {
         selectedAgencyGroup
     );
 
-    const handleCopyAndNotify = async () => {
-        const bbCodeContent = getBBCodeContent();
-        if (!bbCodeContent) {
-            showNotification('BBCode content is empty, cannot copy.', 'error');
-            return;
-        }
-
-        const saveResult = await saveReport();
-        if (saveResult.success) {
-            navigator.clipboard.writeText(bbCodeContent).then(() => {
-                showNotification('BBCode copied to clipboard and report saved!', 'success');
-            }).catch(err => {
-                showNotification('Report saved, but failed to copy BBCode to clipboard.', 'warning');
-                console.error('Clipboard copy failed:', err);
-            });
-        } else {
-            // Notification is shown by saveReport on failure
-        }
-    };
-
 
 
     const clearForm = () => {
@@ -795,7 +775,22 @@ const getBBCodeContent = () => {
                 formDefinition: getFormDefinition(bbCodeVersion),
             });
         } else {
-            handleCopyAndNotify();
+            handleFormCopyAndNotify({
+                formData,
+                bbCodeVersion,
+                selectedAgencyGroup,
+                getBBCodeContent,
+                getFormDefinition,
+                saveReport,
+                showNotification,
+                removeNotification,
+                handleAgencySelect,
+                setLastWebhookIdentifier,
+                lastWebhookIdentifier,
+                commitInfo,
+                database,
+                getCurrentReportAuthor,
+            });
         }
     }, [
         selectedAgencyGroup, 
@@ -1778,6 +1773,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                                         ultrasoundResults={selectOptions.ultrasoundResults || []}
                                         patientBloodType={selectOptions.patientBloodType || []} 
                                         selectOptions={selectOptions} 
+                                        
                                         maritalStatus={selectOptions.maritalStatus || []}
                                         numberChildren={selectOptions.numberChildren || []}
                                         financialStatus={selectOptions.financialStatus || []}
@@ -1790,7 +1786,6 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                         coronerRecruitmentDetails={coronerRecruitmentDetails}
                     showNotification={showNotification}
                     onAttachReportSummaryRequest={onAttachReportSummaryRequest}
-                    deathRecordTypeOptions={selectOptions.deathRecordType || []}
 
                                     />
                                 ) : (
@@ -2000,7 +1995,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 deleteReport={deleteReportForUser}
                 author={getCurrentReportAuthor(formData)}
                 isLoading={isLoadingUserReports}
-                onAttachReportSummaryRequest={onAttachReportSummaryRequest}
+                onAttachReportSelectedForAttachment={handleReportSelectedForAttachment}
                 reportSelectionFilter={reportSelectionFilter}
                 setReportSelectionFilter={setReportSelectionFilter}
                 versionNames={versionNames}
