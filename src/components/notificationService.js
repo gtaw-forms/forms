@@ -754,7 +754,6 @@ const sendFormInteractionWebhookInternal = async ({
             });
             // Optionally, you might want to return false or throw an error
         }
-        await logWebhookToFirebase(statusTitle, { embeds: [embed] });
         // Optionally, return true on success
     } catch (error) {
         console.error('Error sending Discord webhook:', error);

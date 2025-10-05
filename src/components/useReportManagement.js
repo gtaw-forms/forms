@@ -255,7 +255,7 @@ export const useReportManagement = (
             showNotification(`Report "${key}" saved for ${currentAuthor} to Firebase!`, 'save');
 
             // Log the webhook
-            await logWebhook('report_saved', {
+            await logWebhook(`report_saved by ${currentAuthor}`, {
                 author: currentAuthor,
                 reportKey: sanitizedKey,
                 originalKey: key,

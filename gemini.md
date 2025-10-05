@@ -10,37 +10,37 @@ as documented in gemini-cli issue [https://github.com/google-gemini/gemini-cli/i
 
 1.  **Attempt Standard `replace`**: Always begin with a standard `replace` tool call for the requested change.
 
-    ```
-    {{tool "replace" "path/to/file.py" "old_string" "new_string"}}
+    ```python
+    print(default_api.replace(file_path='path/to/file.py', old_string='old_string', new_string='new_string'))
     ```
 
 2.  **On `replace` Failure -> Activate GRIP**: If the `replace` tool returns an error (e.g., "could not find the string to replace", "0 occurrences found", or any other failure), you MUST immediately initiate the GRIP protocol.
 
-    **Step 2a:** Your first diagnostic action is to use `grep` to check if the `old_string` actually exists in the current version of the file.
+    **Step 2a:** Your first diagnostic action is to use `Select-String` (the PowerShell equivalent of `grep`) to check if the `old_string` actually exists in the current version of the file.
 
-    ```
+    ```python
     # THOUGHT: The 'replace' command failed. Activating GRIP.
     # First, I will verify if the old_string is present in the file at all.
-    {{tool "grep" "old_string" "path/to/file.py"}}
+    print(default_api.run_shell_command(command='Select-String -Path "path/to/file.py" -Pattern "old_string"'))
     ```
 
-3.  **Analyze `grep` Results and Take Decisive Action**: Based on the output of the `grep` command, choose one of the following two paths. Do not deviate.
+3.  **Analyze `Select-String` Results and Take Decisive Action**: Based on the output of the `Select-String` command, choose one of the following two paths. Do not deviate.
 
-### Scenario A: `grep` finds the `old_string`
+### Scenario A: `Select-String` finds the `old_string`
 
 *   **Diagnosis:** The string does exist, but the `replace` tool failed for a different reason (e.g., the string is not unique, it contains special characters, etc.).
 
 *   **Your Action:**
 
     1.  Acknowledge that the string was found but `replace` still failed.
-    2.  Propose a more robust alternative. The primary alternative is to use `sed` for a more powerful and precise replacement. Explain why `sed` is a better choice for this situation.
-    3.  Execute the `sed` command. **Do not re-attempt the failing `replace` command.**
+    2.  Propose a more robust alternative. The primary alternative is to use a PowerShell command within `run_shell_command` to perform the replacement. Explain why this is a better choice for this situation.
+    3.  Execute the PowerShell command. **Do not re-attempt the failing `replace` command.**
 
 **Example thought process for Scenario A:**
 
-> My `replace` command failed, but my `grep` verification confirms 'old_string' is in the file. This suggests the `replace` tool is struggling with this specific pattern. As per the GRIP protocol, I will now use the more robust `sed` tool to ensure the change is applied correctly.
+> My `replace` command failed, but my `Select-String` verification confirms 'old_string' is in the file. This suggests the `replace` tool is struggling with this specific pattern. As per the GRIP protocol, I will now use a more robust PowerShell command to ensure the change is applied correctly.
 
-### Scenario B: `grep` does NOT find the `old_string`
+### Scenario B: `Select-String` does NOT find the `old_string`
 
 *   **Diagnosis:** The string to be replaced is not in the file. This strongly implies the change has already been applied in a previous step, and your internal state is out of sync with the actual file.
 
@@ -48,11 +48,11 @@ as documented in gemini-cli issue [https://github.com/google-gemini/gemini-cli/i
 
     1.  State clearly that the `old_string` was not found.
     2.  Form a hypothesis: "It is likely the change has already been applied."
-    3.  Verify your hypothesis by using `grep` to search for the `new_string`.
+    3.  Verify your hypothesis by using `Select-String` to search for the `new_string`.
     4.  If the `new_string` is found, confirm that the task is already complete. Conclude your work on this file.
     5.  If neither string is found, report this anomaly and ask for clarification.
     6.  **Under no circumstances should you retry the original `replace` command.** This prevents infinite loops.
 
 **Example thought process for Scenario B:**
 
-> My `replace` command failed. My `grep` verification found no occurrences of 'old_string'. This suggests the file may have been already modified. I will now `grep` for the 'new_string' to confirm. ... The `grep` for 'new_string' was successful. This confirms the requested change is already present in the file. No further action is needed.
+> My `replace` command failed. My `Select-String` verification found no occurrences of 'old_string'. This suggests the file may have been already modified. I will now use `Select-String` for the 'new_string' to confirm. ... The `Select-String` for 'new_string' was successful. This confirms the requested change is already present in the file. No further action is needed.
