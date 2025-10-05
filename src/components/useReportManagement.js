@@ -273,6 +273,26 @@ export const useReportManagement = (
         }
     };
 
+    const handleCopyAndNotify = async () => {
+        const bbCodeContent = getBBCodeContent();
+        if (!bbCodeContent) {
+            showNotification('BBCode content is empty, cannot copy.', 'error');
+            return;
+        }
+
+        const saveResult = await saveReport();
+        if (saveResult.success) {
+            navigator.clipboard.writeText(bbCodeContent).then(() => {
+                showNotification('BBCode copied to clipboard and report saved!', 'success');
+            }).catch(err => {
+                showNotification('Report saved, but failed to copy BBCode to clipboard.', 'warning');
+                console.error('Clipboard copy failed:', err);
+            });
+        } else {
+            // Notification is shown by saveReport on failure
+        }
+    };
+
     const loadUserSavedReports = useCallback(async (userId) => {
         if (!userId) {
             setSavedReports([]);
