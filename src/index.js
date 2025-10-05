@@ -6,6 +6,8 @@ import reportWebVitals from './reportWebVitals';
 import { init, getClient } from "@sentry/react";
 import { NotificationProvider } from './contexts/NotificationContext';
 import { DataProvider } from './contexts/DataContext';
+import { ModalProvider } from './contexts/ModalProvider';
+import { SettingsProvider } from './contexts/SettingsProvider';
 import { useNotification } from './contexts/NotificationContext';
 import * as Sentry from "@sentry/react";
 import { analytics } from './firebase';
@@ -203,15 +205,23 @@ const Root = () => {
     return <App />;
 };
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
+const container = document.getElementById('root');
+const root = ReactDOM.createRoot(container);
 root.render(
       <ErrorBoundary>
         <NotificationProvider>
           <DataProvider>
-            <Root />
+            <ModalProvider>
+              <SettingsProvider>
+                <Root />
+              </SettingsProvider>
+            </ModalProvider>
           </DataProvider>
         </NotificationProvider>
       </ErrorBoundary>
 );
 
+// If you want to start measuring performance in your app, pass a function
+// to log results (for example: reportWebVitals(console.log))
+// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
 reportWebVitals();

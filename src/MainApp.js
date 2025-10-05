@@ -15,7 +15,9 @@ import SwitchableFormButtons from './components/SwitchableFormButtons';
 import { handleFormCopyAndNotify, handlePhmcRecruitmentCopyAndNotify, sendBingoNotification, sendPhraseRequestNotification } from './components/notificationService';
 import { useData } from './contexts/DataContext';
 import LoadingSpinner from './components/LoadingSpinner';
-
+import { useModal } from './contexts/ModalProvider';
+import { useSettings } from './contexts/SettingsProvider';
+import { useWebhooks } from './hooks/useWebhooks';
 
 // logos
 import email from './assets/email.png'
@@ -66,7 +68,27 @@ function MainApp({
     removeNotification,
 }) { 
     const navigate = useNavigate();
-    const [showPrivacyPolicyModal, setShowPrivacyPolicyModal] = useState(false);
+
+    const {
+        showEmsBingoModal, setShowEmsBingoModal,
+        showGtaCallback, setShowGtaCallback,
+        showEasterEggModal, setShowEasterEggModal,
+        easterEggType, setEasterEggType,
+        showAgencySelector, setShowAgencySelector,
+        hideAgencySelector, setHideAgencySelector,
+        showEmployeeModal, setShowEmployeeModal,
+        showEmsAmaModal, setShowEmsAmaModal,
+        showBusinessCard, setShowBusinessCard,
+        showCoronerTips, setShowCoronerTips,
+        showAgencyGroupSelectorModal, setShowAgencyGroupSelectorModal,
+        showCctvRequestModal, setShowCctvRequestModal,
+        showPHMCModal, setShowPHMCModal,
+        switchableModalTitle, setSwitchableModalTitle,
+        switchableFormsList, setSwitchableFormsList,
+        showFeatureRequestModal, setShowFeatureRequestModal,
+        showWebhookModal, setShowWebhookModal,
+        showPrivacyPolicyModal, setShowPrivacyPolicyModal,
+    } = useModal();
 
     useEffect(() => {
         const hasAcceptedPrivacyPolicy = localStorage.getItem('hasAcceptedPrivacyPolicy');
@@ -84,15 +106,6 @@ function MainApp({
     const [showToolsDropdown, setShowToolsDropdown] = useState(false);
     const modalCloseTimer = useRef(null);
     
-    const [showEmsBingoModal, setShowEmsBingoModal] = useState(false);
-    const [showGtaCallback, setShowGtaCallback] = useState(false);
-    const [showEasterEggModal, setShowEasterEggModal] = useState(false);
-    const [easterEggType, setEasterEggType] = useState(null); // 'normal', 'rare', or null
-    const [showAgencySelector, setShowAgencySelector] = useState(false);
-    const [hideAgencySelector, setHideAgencySelector] = useState(false);
-    const [showEmployeeModal, setShowEmployeeModal] = useState(false);
-    const [showEmsAmaModal, setShowEmsAmaModal] = useState(false);
-    const [showBusinessCard, setShowBusinessCard] = useState(false);
     const [fillPhoneChecked, setFillPhoneChecked] = useState(false);
     const [showBBCode, setShowBBCode] = useState(false);
     const [bbCodeVersion, setBbCodeVersion] = useState(() => {
@@ -100,8 +113,6 @@ function MainApp({
         return storedVersion ? parseInt(storedVersion, 10) : (formDefinitions[0]?.version || 1);
     });
     const [selectedAgencyGroup, setSelectedAgencyGroup] = useState(null);
-    const [showCoronerTips, setShowCoronerTips] = useState(false);
-    const [showAgencyGroupSelectorModal, setShowAgencyGroupSelectorModal] = useState(false);
     const [hideAgencyGroupSelectorPreference, setHideAgencyGroupSelectorPreference] = useState(false);
     
     // Get data from DataContext
@@ -119,17 +130,12 @@ function MainApp({
         isLoadingData,
         loading
     } = useData();
-    const [showCctvRequestModal, setShowCctvRequestModal] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [isJohnDoe, setIsJohnDoe] = useState(false);
     const [isJaneDoe, setIsJaneDoe] = useState(false);
     const [commitInfo, setCommitInfo] = useState({ sha: '', date: null, error: null });
     const [isLoadingUserReports, setIsLoadingUserReports] = useState(false);
     
-    const [showPHMCModal, setShowPHMCModal] = useState(false);
-    const [switchableModalTitle, setSwitchableModalTitle] = useState('');
-    const [switchableFormsList, setSwitchableFormsList] = useState([]);
-    const [showFeatureRequestModal, setShowFeatureRequestModal] = useState(false);
     const [featureRequest, setFeatureRequest] = useState('');
     const [discordName, setDiscordName] = useState('');
       const ER_PROTOCOL_VERSION = 19;
@@ -150,7 +156,6 @@ function MainApp({
         authorizedBy: '',
     });
     const [staffToRemove, setStaffToRemove] = useState([]);
-    const [showWebhookModal, setShowWebhookModal] = useState(false);
     const [webhookMessage, setWebhookMessage] = useState('');
     const [webhookTitle, setWebhookTitle] = useState('');
     const [isBbcodeRequest, setIsBbcodeRequest] = useState(false);
@@ -160,16 +165,16 @@ function MainApp({
     const [phmcRecruitmentOptIn, setPhmcRecruitmentOptIn] = useState(() => {
         return localStorage.getItem('phmcRecruitmentOptIn') === 'true';
     });
-    const [seasonalEffectsEnabled, setSeasonalEffectsEnabled] = useState(() => {
-        return localStorage.getItem('seasonalEffectsEnabled') !== 'false'; // default to true
-    });
 
-    const toggleSeasonalEffects = () => {
-        const newValue = !seasonalEffectsEnabled;
-        setSeasonalEffectsEnabled(newValue);
-        localStorage.setItem('seasonalEffectsEnabled', String(newValue));
-        showNotification(`Seasonal effects ${newValue ? 'enabled' : 'disabled'}.`, 'info');
-    };
+    const { seasonalEffectsEnabled, toggleSeasonalEffects } = useSettings();
+
+    // Get webhooks functions
+    const { 
+        sendEasterEggNotification,
+        handleCctvWebhookSubmit,
+        handlePhmcWebhookSubmit,
+        handleWebhookSubmit 
+    } = useWebhooks(formData, commitInfo, showNotification);
 
     // All references to bbCodeVersion now occur after its initialization
     const handleSelectAgencyGroup = (group) => {
@@ -190,126 +195,11 @@ function MainApp({
         localStorage.setItem('hideAgencyGroupSelectorPreference', hide);
     };
 
-    const handleCctvWebhookSubmit = async (cctvData) => {
-        // Log the submission attempt to Sentry for tracking and abuse monitoring
-        Sentry.captureMessage('CCTV Request Submitted', {
-            level: 'info',
-            extra: {
-                officer: cctvData.officer,
-                department: cctvData.department,
-                location: cctvData.location,
-                reason: cctvData.requestReason,
-                submitter: formData.coronerEmployee || formData.phmcEmployee || 'Unknown App User'
-            },
-            tags: {
-                webhook_type: 'cctv_request',
-                environment: process.env.NODE_ENV
-            }
-        });
-        // Log the submission for firebase for tracking and abuse monitoring
-        logEvent(analytics, 'cctv_request', {
-            officer: cctvData.officer,
-            department: cctvData.department,
-            location: cctvData.location,
-            reason: cctvData.requestReason,
-            submitter: formData.coronerEmployee || formData.phmcEmployee || 'Unknown App User',
-            environment: process.env.NODE_ENV
-        });
-
-        // --- MODIFICATION START: Send to multiple webhooks ---
-        const devWebhookURL = process.env.REACT_APP_DEV_WEBHOOK;
-        const leoWebhookURL = process.env.REACT_APP_LEO_WEBHOOK_URL;
-
-        if (!devWebhookURL) {
-            showNotification('No CCTV webhook URLs are configured.', 'error');
-            Sentry.captureMessage('Neither DEV nor LEO webhook URLs are configured for CCTV.', 'error');
-            return false;
-        }
-
-        const embed = {
-            title: "📹 CCTV Footage Request",
-            color: 0x007bff, // Blue for LEO
-            fields: [
-                { name: "Requesting Officer Rank", value: cctvData.rank || "N/A", inline: true },
-                { name: "Requesting Officer", value: cctvData.officer || "N/A", inline: true },
-                { name: "Officer Phone Number", value: cctvData.officerPH || "N/A", inline: true },
-                { name: "Requesting Department", value: cctvData.department || "N/A", inline: true },
-                ...(cctvData.discordUsername ? [{ name: "Discord Username", value: cctvData.discordUsername, inline: true }] : []),
-                { name: "Date/Time of Incident", value: cctvData.incidentDateTime || "N/A", inline: true },
-                { name: "Reason for Request", value: cctvData.requestReason || "N/A", inline: false },
-                { name: "CCTV Location", value: cctvData.location || "N/A", inline: false },
-                { name: "Description of Events", value: ```${cctvData.description || "N/A"}```, inline: false },
-                ...(cctvData.oocNotes ? [{ name: "OOC Notes", value: ```${cctvData.oocNotes}```, inline: false }] : []),
-            ],
-            timestamp: new Date().toISOString(),
-            footer: { text: `PHMC Tools - v${commitInfo.sha || 'N/A'}` }
-        };
-
-        const payload = JSON.stringify({
-            username: "CCTV Bot",
-            content: "New CCTV Request! Supervisor Alert: <@&860257102324301864> | Leadership Alert: <@&860257063182925874>",
-            embeds: [embed]
-        });
-        const webhookTargets = [];
-        if (devWebhookURL) webhookTargets.push({ name: 'Dev', url: devWebhookURL });
-        if (leoWebhookURL) webhookTargets.push({ name: 'LEO', url: leoWebhookURL });
-
-        const sendPromises = webhookTargets.map(target =>
-            fetch(target.url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: payload
-            }).then(async response => {
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`Request to ${target.name} failed with status ${response.status}: ${errorText}`);
-                }
-                return { name: target.name, status: 'fulfilled' };
-            })
-        );
-
-        const results = await Promise.allSettled(sendPromises);
-        let successfulSends = 0;
-
-        results.forEach((result, index) => {
-            const targetName = webhookTargets[index].name;
-            if (result.status === 'fulfilled') {
-                console.log(`Successfully sent CCTV webhook to ${targetName}.`);
-                successfulSends++;
-            } else {
-                console.error(`Failed to send CCTV webhook to ${targetName}:`, result.reason.message);
-                Sentry.captureMessage(`CCTV Webhook to ${targetName} failed`, {
-                    level: 'error',
-                    extra: { reason: result.reason.message }
-                });
-            }
-        });
-
-        if (successfulSends === webhookTargets.length) {
-            showNotification('CCTV Request sent successfully!', "check-circle");
-            handleHideCctvRequestModal();
-            return true;
-        } else if (successfulSends > 0) {
-            showNotification('CCTV Request sent, but some destinations failed.', "warning");
-            handleHideCctvRequestModal();
-            return true;
-        } else {
-            showNotification('Failed to send CCTV request to any destination.', "error");
-            return false;
-        }
-        // --- MODIFICATION END ---
-    };
     const handleRefresh = () => {
         window.location.reload();
     };
 
-    const toggleEmsAmaModal = () => {
-        setShowEmsAmaModal(prev => !prev);
-    };
 
-    const toggleBusinessCard = () => {
-        setShowBusinessCard(prev => !prev);
-    };
 
     const handleRecruitmentOptIn = (optIn) => {
         setPhmcRecruitmentOptIn(optIn);
@@ -406,26 +296,6 @@ function MainApp({
     };
 
     const generateTitle = () => {
-        // Mass Fatality form (bbCodeVersion 11) special handling
-        if (bbCodeVersion === 11) {
-            const decedents = formData.decedents || [];
-            const numDecedents = decedents.length;
-            const firstDecedentName = numDecedents > 0 ? (decedents[0].decedentName || 'Unidentified') : 'No Decedents';
-
-            let formattedDate = '';
-            if (formData.dateTime) {
-                const dateObj = new Date(formData.dateTime);
-                // Ensure dateObj is valid before formatting
-                if (!isNaN(dateObj.getTime())) {
-                    const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
-                    const day = dateObj.getDate().toString().padStart(2, '0');
-                    const year = dateObj.getFullYear();
-                    formattedDate = `${month}/${day}/${year}`;
-                }
-            }
-            
-            return `[Mass Fatality] ${firstDecedentName} (x${numDecedents}) - ${formattedDate}`;
-        }
 
         const definition = getFormDefinition(bbCodeVersion);
         if (definition && definition.titleGenerator) {
@@ -519,80 +389,6 @@ const getBBCodeContent = () => {
         return 'Copy BBCode';
     };
     
-    const logWebhookToFirebase = async (type, payload) => {
-        const db = database;
-        const logsRef = ref(db, 'webhook_logs');
-        const newLogRef = push(logsRef);
-        await set(newLogRef, {
-            type,
-            payload,
-            timestamp: Date.now(),
-        });
-    };
-
-    const sendEasterEggNotification = async (type = 'normal') => { // Default to 'normal'
-        const webhookUrl = process.env.REACT_APP_DEV_WEBHOOK;
-        if (!webhookUrl) {
-            console.error("Discord webhook URL is not configured.");
-            return; // Don't proceed if the URL isn't set
-        }
-
-        // Try to get user identifier
-        const userIdentifier = formData.coronerEmployee || formData.phmcEmployee || formData.patientName || formData.decedentName || 'Someone';
-
-        // --- Customize embed based on type ---
-        let embedTitle = "🎉 Easter Egg Found! 🎉";
-        let embedDescription = `Hey! **${userIdentifier}** just found the normal easter egg! 🥚`;
-        let embedColor = 0x7289DA; // Discord Blurple for normal
-        let triggerSource = "Triggered during report save";
-
-        if (type === 'rare') {
-            embedTitle = "✨ Rare Easter Egg Found! ✨";
-            embedDescription = `Wow! **${userIdentifier}** just triggered the 1% rare easter egg! 🥚🎉`;
-            embedColor = 0xFFD700; // Gold color for rare
-        }
-
-        // Check if triggered manually (only for rare currently, but could be expanded)
-        const isManualTrigger = window.location.hostname === 'localhost' && type === 'rare'; // Check if manual trigger conditions are met
-        if (isManualTrigger) {
-            embedTitle += " (Manual Trigger)";
-            embedDescription = `Debug: **${userIdentifier}** just triggered the rare easter egg manually! 🥚🎉`;
-            triggerSource = "Triggered via Debug Button";
-        }
-        // --- End Customization ---
-
-        const embed = {
-            title: embedTitle,
-            description: embedDescription,
-            color: embedColor,
-            timestamp: new Date().toISOString(),
-            footer: {
-                text: `PHMC Tools Tool | ${triggerSource}` // Use dynamic trigger source
-            }
-        };
-
-        try {
-            const response = await fetch(webhookUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ embeds: [embed] }),
-            });
-
-            if (!response.ok) {
-                console.error(`Error sending ${type} easter egg webhook: ${response.status} ${response.statusText}`);
-            } else {
-                console.log(`${type} easter egg notification sent successfully.`);
-                await logWebhookToFirebase(type, { embeds: [embed] });
-
-            }
-        } catch (error) {
-            console.error(`Failed to send ${type} easter egg webhook:`, error);
-            Sentry.captureException(error, { extra: { context: `sendEasterEggNotification (${type})` } });
-        }
-    };
-
     const getCurrentReportAuthor = useCallback((formData) => {
         // Define which bbCodeVersions are primarily Coroner forms
         const coronerFormVersions = [1, 2, 4, 8, 11, 18, 37];
@@ -753,7 +549,7 @@ const getBBCodeContent = () => {
         setShowAgencyGroupSelectorModal(false); // Hide the main selector if it's open
         setShowCctvRequestModal(true);
     };
-
+    
 
 
     useEffect(() => {
@@ -836,72 +632,6 @@ const getBBCodeContent = () => {
             }
         });
     }
-
-
-
-
-    useEffect(() => {
-        const GITHUB_COMMIT_CACHE_KEY = 'githubCommitInfo';
-        const GITHUB_COMMIT_CACHE_EXPIRATION_MS = 15 * 60 * 1000; // Cache for 15 minutes
-
-        const fetchCommit = () => {
-            // 1. Try to load from cache first
-            try {
-                const cachedCommitDataString = localStorage.getItem(GITHUB_COMMIT_CACHE_KEY);
-                if (cachedCommitDataString) {
-                    const cachedData = JSON.parse(cachedCommitDataString);
-                    const isCacheFresh = (Date.now() - cachedData.timestamp) < GITHUB_COMMIT_CACHE_EXPIRATION_MS;
-                    if (isCacheFresh) {
-                        setCommitInfo(cachedData.info);
-                        return; // Exit if fresh data is found in cache
-                    }
-                }
-            } catch (e) {
-                console.error("Error reading commit info from cache:", e);
-            }
-
-            // 2. If cache is stale or doesn't exist, fetch from API
-            fetch('https://api.github.com/repos/GTAW-PHMC/forms/commits/gh-pages')
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`GitHub API responded with status: ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    const commitDate = new Date(data.commit.author.date);
-                    const newCommitInfo = {
-                        sha: data.sha.substring(0, 7),
-                        date: commitDate.toLocaleString('en-US', {
-                            year: 'numeric', month: 'long', day: 'numeric',
-                            hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
-                        }),
-                        error: null // Clear any previous error on success
-                    };
-                    setCommitInfo(newCommitInfo);
-
-                    // 3. Cache the new data
-                    try {
-                        localStorage.setItem(GITHUB_COMMIT_CACHE_KEY, JSON.stringify({
-                            timestamp: Date.now(),
-                            info: newCommitInfo
-                        }));
-                    } catch (e) {
-                        console.error("Error writing commit info to cache:", e);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error fetching commit:', error);
-                    // 4. On failure, set an error message but keep old data if it exists
-                    setCommitInfo(prev => ({
-                        ...prev,
-                        error: 'Could not fetch latest update information.'
-                    }));
-                });
-        };
-
-        fetchCommit();
-    }, []); // This effect runs once on mount
     const coronerFormsSubGroup = [
         { version: 1, name: "Decedent Services", icon: corpse },
         { version: 2, name: "Email Generator", icon: email },
@@ -1115,45 +845,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
     }
 };
 
-const sendWebhookPayload = async (webhookURL, payload, successMessage, context, notifyFunc) => {
-    if (!webhookURL) {
-        console.error(`Discord webhook URL not configured for ${context}.`);
-        Sentry.captureMessage(`Discord webhook URL is missing for ${context} submission.`, 'error');
-        notifyFunc('Configuration error: Unable to send message.', 'exclamation-triangle'); // Use passed notifyFunc
-        return false;
-    }
 
-    try {
-        const response = await fetch(webhookURL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`Failed to send ${context} webhook embed. Status: ${response.status} ${response.statusText}`, errorText);
-            Sentry.captureMessage(`Discord webhook embed failed for ${context}: ${response.status}`, {
-                level: 'error',
-                extra: { statusText: response.statusText, responseBody: errorText }
-            });
-            notifyFunc(`Failed to send embed to ${context}. Status: ${response.status}`, 'exclamation-triangle'); // Use passed notifyFunc
-            return false;
-        } else {
-            notifyFunc(successMessage, 'check-circle'); // Use passed notifyFunc
-            setShowWebhookModal(false);
-            setWebhookMessage('');
-            setWebhookTitle('');
-            // No need to clear imageUrl here, modal handles its own state
-            return true;
-        }
-    } catch (error) {
-        console.error(`Error sending ${context} webhook embed:`, error);
-        Sentry.captureException(error, { extra: { context: `${context} Webhook Embed Submission Fetch` } });
-        notifyFunc(`A network error occurred sending to ${context}. Please try again.`, 'exclamation-triangle'); // Use passed notifyFunc
-        return false;
-    }
-};
 
 
     useEffect(() => {
@@ -1235,19 +927,7 @@ const sendWebhookPayload = async (webhookURL, payload, successMessage, context, 
 
 
 
-const handlePhmcWebhookSubmit = async (payload) => { // Receive payload from modal
-    if (!payload) return; // Should not happen if modal validates, but good check
-    const webhookURL = process.env.REACT_APP_PHMC_DISCORD;
-    // Pass showNotification directly to sendWebhookPayload
-    await sendWebhookPayload(webhookURL, payload, 'PHMC webhook embed sent successfully!', 'PHMC', showNotification);
-};
 
-const handleWebhookSubmit = async (payload) => { // Receive payload from modal
-    if (!payload) return;
-    const webhookURL = process.env.REACT_APP_DEV_WEBHOOK; // Dev URL
-    // Pass showNotification directly to sendWebhookPayload
-    await sendWebhookPayload(webhookURL, payload, 'Dev webhook embed sent successfully!', 'Dev', showNotification);
-};
     
 
     // --- Add state to explicitly control dropdown visibility ---
@@ -1347,7 +1027,6 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
             }
         }
     };
-
 
 
     // UTC time stuff
@@ -1488,7 +1167,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
 
         <EmsAmaModal
                 show={showEmsAmaModal}
-                onHide={toggleEmsAmaModal}
+                onHide={() => setShowEmsAmaModal(false)}
                 showNotification={showNotification}
                 commitInfo={commitInfo}
                 handleImageUpload={handleImageUpload}
@@ -1540,7 +1219,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                     <Dropdown.Item onClick={() => {toggleSavedReports(); setShowToolsDropdown(false);}}>
                         <i className="fas fa-save"></i> Saved Reports
                     </Dropdown.Item>
-                    <Dropdown.Item onClick={() => {toggleEmsAmaModal(); setShowToolsDropdown(false);}}>
+                    <Dropdown.Item onClick={() => {setShowEmsAmaModal(prev => !prev); setShowToolsDropdown(false);}}>
                         <i className="fa-solid fa-truck-medical"></i> EMS AMA
                     </Dropdown.Item>
                     <Dropdown.Item onClick={() => {toggleSeasonalEffects(); setShowToolsDropdown(false);}}>
@@ -1582,7 +1261,7 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                         variant="secondary"
                         type="button"
                         className="changelog-button"
-                        onClick={toggleBusinessCard}
+                        onClick={() => setShowBusinessCard(prev => !prev)}
                     >
                         <i className="fa-solid fa-address-card"></i>
                         Business Card Tool
@@ -1884,7 +1563,6 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
         setIsRemoveStaff(false);
     }}
     isJohnDoe={isJohnDoe}
-    isJaneDoe={isJaneDoe}
     coronerList={coronerListData}
     phmcList={phmcListData}
     isRemoveStaff={isRemoveStaff}
@@ -2015,7 +1693,6 @@ const handleWebhookSubmit = async (payload) => { // Receive payload from modal
                 isLoading={isLoadingUserReports}
                 onAttachReportSelectedForAttachment={handleReportSelectedForAttachment}
                 reportSelectionFilter={reportSelectionFilter}
-                setReportSelectionFilter={setReportSelectionFilter}
                 versionNames={versionNames}
                 onEmployeeSelect={(employeeValue) => {
                     // Handle employee selection
