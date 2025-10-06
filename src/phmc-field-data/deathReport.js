@@ -191,7 +191,27 @@ useEffect(() => {
                 required
                 className={`form-control ${!formData.placeOfDeath ? 'is-invalid' : ''}`}
             />
-</div>            <div style={{ display: 'flex', gap: '10px' }}>
+</div>
+            {(formData.typeOfDeath === 'CK' || formData.typeOfDeath === 'Character Kill') && (
+                <>
+                    <Form.Group className="mb-3 upload-container">
+                        <InputGroup>
+                            <Form.Control
+                                type="text"
+                                name="decedentAttributes"
+                                value={formData.decedentAttributes}
+                                onChange={handleChange}
+                                className={`form-control`}
+                                placeholder="Decedent /attributes (comma-separated)"
+                            />
+                            <Button variant="success" disabled={isUploading} onClick={() => { const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*'; input.multiple = true; input.onchange = (e) => handleImageUpload(e, 'decedentAttributes'); input.click(); }}>
+                                <i className={`fas ${isUploading ? 'fa-spinner fa-spin' : 'fa-upload'}`}></i> {isUploading ? '...' : ''}
+                            </Button>
+                        </InputGroup>
+                    </Form.Group>
+                </>
+            )}
+            <div style={{ display: 'flex', gap: '10px' }}>
 
             <Form.Select
                 name="mannerOfDeath"
