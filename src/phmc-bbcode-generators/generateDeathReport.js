@@ -20,6 +20,8 @@ const generateDeathReport = (formData) => {
         morgueStatus,
     } = formData;
 
+    const { decedentAttributes, decedentPlaceholder } = formData;
+
 const getDepartmentFullName = (shortCode) => {
     if (agencyDataStore && agencyDataStore[shortCode]) {
         return agencyDataStore[shortCode].fullName;
@@ -39,6 +41,8 @@ const getDepartmentFullName = (shortCode) => {
     // Use optional chaining and provide default empty arrays to prevent errors if fields are null/undefined/empty
     const scenePhotosArray = (scenePhotos || '').split(',').map(url => url.trim()).filter(url => url);
     const additionalImagesArray = (additionalImages || '').split(',').map(url => url.trim()).filter(url => url);
+    const decedentAttributesArray = (decedentAttributes || '').split(',').map(url => url.trim()).filter(url => url);
+    const decedentPlaceholderArray = (decedentPlaceholder || '').split(',').map(url => url.trim()).filter(url => url);
 
     const scenePhotosBBCode = scenePhotosArray.length > 0
         ? scenePhotosArray.map(photo => `[img]${photo}[/img]`).join('\n')
@@ -47,6 +51,10 @@ const getDepartmentFullName = (shortCode) => {
     const additionalImagesBBCode = additionalImagesArray.length > 0
         ? additionalImagesArray.map(photo => `[img]${photo}[/img]`).join('\n')
         : '[i]No additional images provided.[/i]'; // Provide fallback text
+
+    const decedentAttributesBBCode = decedentAttributesArray.length > 0
+        ? `[b]Decedent /attributes:[/b]\n${decedentAttributesArray.map(photo => `[img]${photo}[/img]`).join('\n')}`
+        : '';
 
     // --- Evidence Locker Logic ---
     let evidenceLockerText = 'No';
@@ -117,6 +125,8 @@ Player OOC Name: ${decedentOOC || 'Unknown'}
 Morgue screen, cinjuries, cdna links: ${morgueStatusMessage || ''}
 [size=85][u] THESE IMAGES ARE [bold]OUT OF CHARACTER[/bold] FOR INTERNAL RECORDS, DO NOT USE THESE AS EVIDENCE. [/u][/size]
 ${additionalImagesBBCode}
+
+${decedentAttributesBBCode}
 
 ${coronerRank || 'Coroner'} ${coronerEmployee || 'Unknown Coroner'} has added something to the evidence locker: ${evidenceLockerText}
 ${evidenceLockerListItems}
