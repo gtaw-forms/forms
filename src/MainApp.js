@@ -8,8 +8,6 @@ import getRelevantFields from './components/RevelantFields';
 import SeasonalEvents from './components/SeasonalEvents';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import * as Sentry from "@sentry/react";
-import { analytics } from './firebase';
-import { logEvent } from 'firebase/analytics';
 import { useNotification } from './contexts/NotificationContext';
 import SwitchableFormButtons from './components/SwitchableFormButtons';
 import { handleFormCopyAndNotify, handlePhmcRecruitmentCopyAndNotify, sendBingoNotification, sendPhraseRequestNotification } from './components/notificationService';
@@ -41,7 +39,6 @@ import 'react-bootstrap-typeahead/css/Typeahead.css';
 
 // database
 import { database } from './firebase'; // Your Firebase config
-import { ref, get, set, push } from 'firebase/database'; // Added set and push
 // Lazy-loaded components
 const SavedReportsModal = lazy(() => import('./components/SavedReportsModal'));
 const AgencyGroupSelectorModal = lazy(() => import('./components/AgencyGroupSelectorModal'));
