@@ -179,6 +179,13 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
     const [localHostStatus, setLocalHostStatus] = useState('');
     const [isLoadingStatus, setIsLoadingStatus] = useState(true);
 
+    const [lockdownConfig, setLockdownConfig] = useState({
+        enabled: false,
+        notification: '',
+        dialog: '',
+        affectedDeployments: [],
+    });
+
     const prevUserUidRef = useRef(null);
 
     const logWebhookToFirebase = async (type, payload) => {
@@ -200,6 +207,22 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
             setAlternativeFormGeneratorStatus(statusData?.alternativeFormGeneratorStatus || '');
             setLocalHostStatus(statusData?.localHostStatus || '');
             setIsLoadingStatus(false);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    useEffect(() => {
+        const lockdownRef = ref(database, 'adminSettings/lockdownConfig');
+        const unsubscribe = onValue(lockdownRef, (snapshot) => {
+            const lockdownData = snapshot.val();
+            if (lockdownData) {
+                setLockdownConfig({
+                    enabled: lockdownData.enabled || false,
+                    notification: lockdownData.notification || '',
+                    dialog: lockdownData.dialog || '',
+                    affectedDeployments: lockdownData.affectedDeployments || [],
+                });
+            }
         });
         return () => unsubscribe();
     }, []);
@@ -234,6 +257,40 @@ Localhost/Staging: ${localHostStatus}`,
                 "Failed to Update Service Status",
                 `Error: ${error.message}`,
                 "Service Status",
+                userAgent,
+                timeZone
+            );
+        } finally {
+            setIsUpdatingDb(false);
+        }
+    };
+
+    const handleUpdateLockdownStatus = async () => {
+        setIsUpdatingDb(true);
+        const lockdownRef = ref(database, 'adminSettings/lockdownConfig');
+        const { userAgent, timeZone } = getUserContext();
+        try {
+            await update(lockdownRef, lockdownConfig);
+            showInAppNotification(`Lockdown status updated.`, "check-circle");
+            sendAdminActionWebhook(
+                currentUser.email,
+                "Updated Lockdown Status",
+                `Enabled: ${lockdownConfig.enabled}\
+Notification: ${lockdownConfig.notification}\
+Dialog: ${lockdownConfig.dialog}\
+Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
+                "Lockdown Status",
+                userAgent,
+                timeZone
+            );
+        } catch (error) {
+            console.error("Error updating lockdown status:", error);
+            showInAppNotification("Failed to update lockdown status.", "error");
+            sendAdminActionWebhook(
+                currentUser.email,
+                "Failed to Update Lockdown Status",
+                `Error: ${error.message}`,
+                "Lockdown Status",
                 userAgent,
                 timeZone
             );
@@ -1123,6 +1180,9 @@ Key: ${savedRoleData.originalKey}`,
                 handleGtaWorldLogin={handleGtaWorldLogin}
                 setShowOAuthTokenExchangeModal={setShowOAuthTokenExchangeModal}
                 setShowUserDataExchangeModal={setShowUserDataExchangeModal}
+                lockdownConfig={lockdownConfig}
+                setLockdownConfig={setLockdownConfig}
+                handleUpdateLockdownStatus={handleUpdateLockdownStatus}
             />
 
             {selectedRecruitmentCategory && recruitmentCategories[selectedRecruitmentCategory] && (

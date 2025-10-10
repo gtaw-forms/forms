@@ -8,7 +8,10 @@ module.exports = {
     },
   },
   webpack: {
-    configure: (webpackConfig) => {
+    configure: (webpackConfig, { env, paths }) => {
+      if (env === 'production') {
+        webpackConfig.devtool = 'source-map';
+      }
       // Add a rule to transpile react-markdown and remark-gfm with babel-loader
       webpackConfig.module.rules.push({
         test: /\.js$/,

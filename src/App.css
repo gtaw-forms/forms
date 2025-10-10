@@ -957,8 +957,19 @@ input[type="checkbox"]:checked::after {
     transition: background-color 0.2s;
 }
 
-.copy-button-modern:hover {
+.copy-button-modern:hover:not(:disabled) {
     background-color: #2ea043;
+}
+
+.copy-button-modern:disabled {
+    background-color: #1b1f23;
+    border-color: #30363d;
+    color: #6e7681;
+    cursor: not-allowed;
+}
+
+.copy-button-modern:disabled:hover {
+    background-color: #1b1f23;
 }
 
 .title-copy-container {

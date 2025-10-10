@@ -19,6 +19,9 @@ import { useModal } from './contexts/ModalProvider';
 import { useSettings } from './contexts/SettingsProvider';
 import { useWebhooks } from './hooks/useWebhooks';
 import { useImageUpload } from './hooks/useImageUpload';
+import { useLockdown } from './contexts/LockdownContext';
+import LockdownBanner from './components/LockdownBanner';
+import LockdownDialog from './components/LockdownDialog';
 // logos
 import email from './assets/email.png'
 import Civilian from './assets/Civilian.png'
@@ -166,6 +169,7 @@ function MainApp({
     });
 
     const { seasonalEffectsEnabled, toggleSeasonalEffects } = useSettings();
+    const { lockdownConfig, showDialog, hideDialog, isLockdownActive } = useLockdown();
 
     // Get webhooks functions
     const { 
@@ -1010,6 +1014,8 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             
         <Suspense fallback={<LoadingSpinner />}>
             <div className="App">
+                <LockdownBanner notification={lockdownConfig.notification} show={isLockdownActive} />
+                <LockdownDialog show={showDialog} onHide={hideDialog} message={lockdownConfig.dialog} />
                 <PrivacyPolicyModal isOpen={showPrivacyPolicyModal} onClose={handlePrivacyPolicyConfirm} />
                 <AgencyGroupSelectorModal
                 show={showAgencyGroupSelectorModal && !selectedAgencyGroup}
@@ -1536,6 +1542,8 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             type="button"
             onClick={handleCopyAndNotifyWrapper}
             className="copy-button-modern"
+            disabled={isLockdownActive}
+            title={isLockdownActive ? 'BBCode copying is disabled during site lockdown' : ''}
         >
             <i className="fas fa-copy"></i>
             {getCopyButtonText()}
