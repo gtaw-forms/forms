@@ -1,0 +1,42 @@
+.lockdown-dialog .modal-container {
+    max-width: 450px;
+}
+
+.lockdown-content {
+    padding: 1rem;
+    text-align: center;
+}
+
+.lockdown-message {
+    margin-bottom: 1.5rem;
+    font-size: 1.1rem;
+    line-height: 1.5;
+    color: #e6edf3;
+}
+
+.lockdown-footer {
+    display: flex;
+    justify-content: center;
+    padding-top: 1rem;
+    border-top: 1px solid #444c56;
+}
+
+.lockdown-button {
+    background-color: #238636;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    padding: 0.5rem 1rem;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.lockdown-button:hover {
+    background-color: #2ea043;
+}
+
+.lockdown-button:active {
+    background-color: #238636;
+    transform: translateY(1px);
+}
