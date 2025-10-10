@@ -42,27 +42,33 @@ export const LockdownProvider = ({ children }) => {
         const lockdownRef = ref(database, 'adminSettings/lockdownConfig');
         const unsubscribe = onValue(lockdownRef, (snapshot) => {
             const lockdownData = snapshot.val();
+            // Ensure we have valid data with defaults
+            const normalizedData = {
+                enabled: false,
+                notification: '',
+                dialog: '',
+                affectedDeployments: []
+            };
+
             if (lockdownData) {
-                setLockdownConfig({
-                    enabled: lockdownData.enabled || false,
-                    notification: lockdownData.notification || '',
-                    dialog: lockdownData.dialog || '',
-                    affectedDeployments: lockdownData.affectedDeployments || [],
-                });
-
-                // Show dialog if lockdown is enabled and affects this deployment
-                const isAffected = lockdownData.enabled && (
-                    lockdownData.affectedDeployments.includes('all') ||
-                    lockdownData.affectedDeployments.includes(currentDeployment)
-                );
-
-                // Always show dialog when lockdown is active
-                if (isAffected) {
-                    setShowDialog(true);
-                } else {
-                    setShowDialog(false);
-                }
+                normalizedData.enabled = Boolean(lockdownData.enabled);
+                normalizedData.notification = lockdownData.notification || '';
+                normalizedData.dialog = lockdownData.dialog || '';
+                normalizedData.affectedDeployments = Array.isArray(lockdownData.affectedDeployments) 
+                    ? lockdownData.affectedDeployments 
+                    : [];
             }
+
+            setLockdownConfig(normalizedData);
+
+            // Show dialog if lockdown is enabled and affects this deployment
+            const isAffected = normalizedData.enabled && (
+                normalizedData.affectedDeployments.includes('all') ||
+                normalizedData.affectedDeployments.includes(currentDeployment)
+            );
+
+            // Set dialog visibility based on affected status
+            setShowDialog(isAffected);
         });
 
         return () => unsubscribe();
@@ -72,7 +78,7 @@ export const LockdownProvider = ({ children }) => {
         setShowDialog(false);
     };
 
-    const isLockdownActive = lockdownConfig.enabled && (
+    const isLockdownActive = Boolean(lockdownConfig.enabled) && Array.isArray(lockdownConfig.affectedDeployments) && (
         lockdownConfig.affectedDeployments.includes('all') ||
         lockdownConfig.affectedDeployments.includes(currentDeployment)
     );
