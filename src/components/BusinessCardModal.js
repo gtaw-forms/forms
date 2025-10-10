@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Form, Button } from 'react-bootstrap';
 import * as Sentry from "@sentry/react";
 import BusinessCardImage from '../assets/business-card.png';
-import { copyToClipboard } from './notificationService';
+import { copyToClipboard } from '../components/notificationService';
 
 const BusinessCardModal = ({ show, onHide, showNotification, commitInfo, handleImageUpload }) => {
     const [name, setName] = useState('');
@@ -58,14 +58,28 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo, handleI
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(message)
             });
+            
             if (!response.ok) {
                 const errorData = await response.text();
-                console.error('Failed to send Discord webhook (Business Card):', response.status, response.statusText, errorData);
+                console.error('Failed to send Discord webhook (Business Card):', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    errorData,
+                    payload: message
+                });
                 Sentry.captureMessage("Discord Webhook Send Failure (Business Card)", {
-                    extra: { status: response.status, statusText: response.statusText, responseBody: errorData },
+                    extra: {
+                        status: response.status,
+                        statusText: response.statusText,
+                        responseBody: errorData,
+                        webhookPayload: JSON.stringify(message),
+                        embedCount: message.embeds?.length,
+                        firstEmbed: message.embeds?.[0]
+                    },
                     level: "error"
                 });
             } else {
+                console.log('Discord webhook sent successfully');
                 lastWebhookCallTimestamp.current = Date.now();
             }
         } catch (error) {
@@ -79,22 +93,13 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo, handleI
         }
     }, []);
 
-    const sendDiscordWebhook = useCallback(async (cardName, cardRank, cardPhoneNumber, generatedImageUrl, debugDetails, errorMessage = null) => {
+    const sendDiscordWebhook = useCallback(async (cardName, cardRank, cardPhoneNumber, generatedImageUrl, errorMessage = null) => {
         const webhookURL = process.env.REACT_APP_DEV_WEBHOOK;
         if (!webhookURL) {
             console.warn('Discord webhook URL is not set in environment variables.');
             Sentry.captureMessage("Discord Webhook URL not set (Business Card)", { level: "warning" });
             return;
         }
-
-        const {
-            screenResolution = 'N/A',
-            windowSize = 'N/A',
-            userAgent = 'N/A',
-            devicePixelRatio = 'N/A',
-            canvasWidth = 0,
-            canvasHeight = 0
-        } = debugDetails || {};
 
         const embed = {
             title: "Business Card Creation Alert!",
@@ -103,27 +108,46 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo, handleI
             fields: [
                 { name: "Employee Name", value: cardName || "N/A", inline: true },
                 { name: "Employee Rank", value: cardRank || "N/A", inline: true },
-                { name: "Phone Number", value: cardPhoneNumber || "N/A", inline: true },
-                // Debug Information
-                { name: "Screen Resolution", value: screenResolution, inline: true },
-                { name: "Window Size", value: windowSize, inline: true },
-                { name: "Device Pixel Ratio", value: devicePixelRatio.toString(), inline: true },
-                { name: "Canvas Gen. Size", value: `${canvasWidth}x${canvasHeight}`, inline: true },
-                { name: "User Agent", value: ```${userAgent.substring(0, 950)}```, inline: false },
-                errorMessage ? { name: "Error", value: ```${errorMessage.substring(0, 1000)}```, inline: false } : null
-            ].filter(field => field !== null),
+                { name: "Phone Number", value: cardPhoneNumber || "N/A", inline: true }
+            ],
             footer: {
                 text: `PHMC Tools Tool | gh-pages ${commitInfo?.sha?.substring(0, 7) || 'N/A'}`
             },
             timestamp: new Date().toISOString()
         };
 
-        if (generatedImageUrl) {
-            embed.image = { url: generatedImageUrl };
+        // Add error message if present
+        if (errorMessage) {
+            embed.fields.push({
+                name: "Error",
+                value: errorMessage.substring(0, 1000),
+                inline: false
+            });
+        }
+
+        // Handle image URL
+        const imageUrlString = typeof generatedImageUrl === 'string' ? generatedImageUrl : String(generatedImageUrl || '');
+        
+        if (imageUrlString && (imageUrlString.startsWith('http://') || imageUrlString.startsWith('https://'))) {
+            embed.image = { url: imageUrlString };
+            embed.fields.push({
+                name: "Image Status",
+                value: "Successfully uploaded and attached.",
+                inline: false
+            });
         } else if (!errorMessage) {
-            embed.fields.push({ name: "Image Status", value: "Image uploaded, but link is missing.", inline: false });
+            console.log('Invalid image URL:', { generatedImageUrl, type: typeof generatedImageUrl });
+            embed.fields.push({
+                name: "Image Status",
+                value: `Image uploaded, but link is invalid or missing. Received: ${imageUrlString.substring(0, 100)}`,
+                inline: false
+            });
         } else {
-            embed.fields.push({ name: "Image Status", value: "Image upload failed.", inline: false });
+            embed.fields.push({
+                name: "Image Status",
+                value: "Image upload failed.",
+                inline: false
+            });
         }
         
         const message = { embeds: [embed] };
@@ -163,14 +187,7 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo, handleI
         const cardImageActualWidth = 750;
         const cardImageActualHeight = 440;
 
-        const captureDebugDetails = () => ({
-            screenResolution: `${window.screen.width}x${window.screen.height}`,
-            windowSize: `${window.innerWidth}x${window.innerHeight}`,
-            userAgent: navigator.userAgent,
-            devicePixelRatio: window.devicePixelRatio || 1,
-            canvasWidth: cardImageActualWidth,
-            canvasHeight: cardImageActualHeight
-        });
+
 
         const canvas = document.createElement('canvas');
         canvas.width = cardImageActualWidth;
@@ -224,11 +241,12 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo, handleI
             
             showNotification('Uploading...', 'upload');
             const link = await handleImageUpload(dataUrl);
+            console.log('Image upload result:', { link, type: typeof link });
+            
             setImageUrl(link);
             showNotification(`Business Card Saved & Uploaded: ${link}`, 'save');
             
-            const debugInfo = captureDebugDetails();
-            sendDiscordWebhook(name, rank, phoneNumber, link, debugInfo);
+            sendDiscordWebhook(name, rank, phoneNumber, link);
 
             await copyToClipboard(link, showNotification, 'Image link copied to clipboard!');
         } catch (error) {
@@ -243,8 +261,7 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo, handleI
             showNotification(`${errorContext}: ${detailedMessage.substring(0,100)}...`, 'error');
             Sentry.captureException(error, { extra: { context: 'Business Card Save', name, rank, detailedMessage } });
             
-            const debugInfoForError = captureDebugDetails();
-            sendDiscordWebhook(name, rank, phoneNumber, null, debugInfoForError, `${errorContext}: ${detailedMessage}`);
+            sendDiscordWebhook(name, rank, phoneNumber, null, `${errorContext}: ${detailedMessage}`);
         } finally {
             setIsSaving(false);
         }

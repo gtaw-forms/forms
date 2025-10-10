@@ -1,153 +1,8 @@
-import ReactDOM from 'react-dom';
 import React, { useState, useEffect } from 'react';
-import { Button, Form, InputGroup } from 'react-bootstrap';
 import * as Sentry from "@sentry/react";
-
-// --- Styles (Keep existing styles) ---
-const modalOverlayStyle = {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: '100%',
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1050,
-};
-
-const modalContentStyle = {
-    backgroundColor: '#0d1117',
-    color: '#c9d1d9',
-    padding: '20px',
-    borderRadius: '5px',
-    width: '100%',
-    maxWidth: '800px',
-    maxHeight: '80vh',
-    overflowY: 'auto',
-    position: 'relative',
-    border: '1px solid #30363d',
-};
-
-const modalHeaderStyle = {
-    fontSize: '1.2em',
-    fontWeight: 'bold',
-    marginBottom: '15px',
-    borderBottom: '1px solid #30363d',
-    paddingBottom: '10px',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    color: '#c9d1d9',
-};
-
-const modalTitleStyle = {
-    margin: 0,
-};
-
-const closeButtonStyle = {
-    background: 'none',
-    border: 'none',
-    color: '#c9d1d9',
-    fontSize: '24px',
-    cursor: 'pointer',
-    lineHeight: '1',
-    padding: '0 5px',
-};
-
-const modalBodyStyle = {
-    paddingTop: '10px',
-};
-
-const modalFooterStyle = {
-    borderTop: '1px solid #30363d',
-    paddingTop: '15px',
-    marginTop: '20px',
-    display: 'flex',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    gap: '10px',
-};
-
-const formControlStyle = {
-    backgroundColor: '#0d1117',
-    color: '#c9d1d9',
-    borderColor: '#30363d',
-    width: '100%',
-};
-
-const formLabelStyle = {
-    color: '#c9d1d9',
-    marginBottom: '8px',
-    display: 'block',
-};
-const imagePreviewStyle = {
-    maxWidth: '100px',
-    maxHeight: '100px',
-    marginTop: '10px',
-    display: 'block',
-    border: '1px solid #30363d',
-    borderRadius: '4px',
-};
-const clearImageButtonStyle = {
-    padding: '2px 6px',
-    fontSize: '0.8em',
-    backgroundColor: '#6e7681',
-    color: '#ffffff',
-    border: 'none',
-    borderRadius: '3px',
-    cursor: 'pointer',
-};
-const imagePreviewContainerStyle = {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '10px',
-    marginTop: '10px',
-};
-const urlPreviewStyle = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '5px 8px',
-    border: '1px solid #30363d',
-    borderRadius: '4px',
-    backgroundColor: '#161b22',
-    fontSize: '0.9em',
-    maxWidth: '250px',
-};
-const urlIconStyle = {
-    color: '#8b949e',
-};
-const urlTextStyle = {
-    color: '#c9d1d9',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-};
-const confirmationDialogStyle = {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    transform: 'translate(-50%, -50%)',
-    backgroundColor: '#161b22', // Slightly different background
-    padding: '20px',
-    borderRadius: '8px',
-    border: '1px solid #444c56',
-    zIndex: 1060, // Above modal content
-    textAlign: 'center',
-    boxShadow: '0 0 15px rgba(0,0,0,0.5)',
-};
-const confirmationTextStyle = {
-    marginBottom: '15px',
-    fontSize: '1.1em',
-    color: '#e6edf3',
-};
-const confirmationButtonsStyle = {
-    display: 'flex',
-    justifyContent: 'center',
-    gap: '10px',
-};
+import BaseModal from './BaseModal';
+import './WebhookModal.css';
+// Remove inline styles as they're now in WebhookModal.css
 
 // --- End Styles ---
 
@@ -384,84 +239,91 @@ const WebhookModal = ({
     const titlePlaceholder = "Major Update / Minor Update / Hotfix";
     const messagePlaceholder = `- Added: \n- Fixed: \n- Updated: `;
 
-    const modalDialogContent = (
-        <div style={modalOverlayStyle} onClick={showConfirmation ? undefined : onClose}> 
-            <div style={modalContentStyle} onClick={e => e.stopPropagation()}> 
+    return (
+        <BaseModal
+            isOpen={show}
+            onClose={onClose}
+            title={modalHeaderText}
+            modalSize="large"
+            className="webhook-modal"
+            closeOnOverlayClick={!showConfirmation}
+        >
+            <div className="webhook-content">
                 {showConfirmation && confirmationAction && (
-                    <div style={confirmationDialogStyle}>
-                        <p style={confirmationTextStyle}>
+                    <div className="webhook-confirmation">
+                        <p className="webhook-confirmation-text">
                             Confirm sending webhook to: <br />
                             PLEASE MAKE SURE THIS IS CORRECT BEFORE PROCEEDING!
                             <strong>{confirmationAction.identifier}</strong>
                         </p>
-                        <div style={confirmationButtonsStyle}>
-                            <Button variant="secondary" onClick={cancelSend}>Cancel</Button>
-                            <Button variant="success" onClick={executeConfirmedSend}>Confirm Send</Button>
+                        <div className="webhook-confirmation-buttons">
+                            <button className="webhook-button webhook-button-secondary" onClick={cancelSend}>
+                                Cancel
+                            </button>
+                            <button className="webhook-button webhook-button-primary" onClick={executeConfirmedSend}>
+                                Confirm Send
+                            </button>
                         </div>
                     </div>
                 )}
 
-                <fieldset disabled={showConfirmation}> 
-                    <div style={modalHeaderStyle}>
-                        <h5 style={modalTitleStyle}>{modalHeaderText}</h5>
-                        <button onClick={onClose} style={closeButtonStyle} aria-label="Close modal">
-                            &times;
-                        </button>
-                    </div>
-
-                    <div style={modalBodyStyle}>
-                        <Form>
-                            <Form.Group controlId="webhookEmbedTitle" className="mb-3">
-                                <Form.Label style={formLabelStyle}>Embed Title</Form.Label>
-                                <Form.Control
+                <fieldset disabled={showConfirmation}>
+                    <div className="webhook-form">
+                        <form className="webhook-form">
+                            <div className="webhook-form-group">
+                                <label className="webhook-form-label" htmlFor="webhookEmbedTitle">Embed Title</label>
+                                <input
                                     type="text"
+                                    id="webhookEmbedTitle"
+                                    className="webhook-form-control"
                                     placeholder={titlePlaceholder}
                                     value={webhookTitle}
                                     onChange={(e) => setWebhookTitle(e.target.value)}
-                                    style={formControlStyle}
                                 />
-                            </Form.Group>
-                            <Form.Group controlId="webhookMessageTextarea" className="mb-3">
-                                <Form.Label style={formLabelStyle}>Embed Body</Form.Label>
-                                <Form.Control
-                                    as="textarea"
+                            </div>
+                            <div className="webhook-form-group">
+                                <label className="webhook-form-label" htmlFor="webhookMessageTextarea">Embed Body</label>
+                                <textarea
+                                    id="webhookMessageTextarea"
+                                    className="webhook-form-control"
                                     rows={4}
                                     placeholder={messagePlaceholder}
                                     value={webhookMessage}
                                     onChange={(e) => setWebhookMessage(e.target.value)}
-                                    style={formControlStyle}
                                 />
-                                <Form.Text style={{ color: '#6c757d', fontSize: '0.85em' }}>
+                                <span className="webhook-form-text">
                                     Supports basic Markdown. Media links will be appended automatically if only media is provided.
-                                </Form.Text>
-                            </Form.Group>
-                            <Form.Group controlId="webhookUrlInput" className="mb-3">
-                                <Form.Label style={formLabelStyle}>Add Media URL (Image or Streamable)</Form.Label>
-                                <InputGroup>
-                                    <Form.Control
+                                </span>
+                            </div>
+                            <div className="webhook-form-group">
+                                <label className="webhook-form-label" htmlFor="webhookUrlInput">Add Media URL (Image or Streamable)</label>
+                                <div className="webhook-input-group">
+                                    <input
                                         type="url"
+                                        id="webhookUrlInput"
+                                        className="webhook-form-control"
                                         placeholder="Paste Image or Streamable URL..."
                                         value={urlInput}
                                         onChange={(e) => setUrlInput(e.target.value)}
-                                        style={formControlStyle}
                                         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddUrl(); } }}
                                     />
-                                    <Button variant="info" onClick={handleAddUrl}>
+                                    <button type="button" className="webhook-button webhook-button-secondary" onClick={handleAddUrl}>
                                         <i className="fas fa-plus"></i> Add URL
-                                    </Button>
-                                </InputGroup>
-                            </Form.Group>
-                            <Form.Group controlId="webhookImageUpload" className="mb-3">
-                                <Form.Label style={formLabelStyle}>Upload Image(s)</Form.Label>
-                                <InputGroup>
-                                    <Button
-                                        variant="success"
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="webhook-form-group">
+                                <label className="webhook-form-label">Upload Image(s)</label>
+                                <div className="webhook-input-group">
+                                    <button
+                                        type="button"
+                                        className={`webhook-button webhook-button-primary ${isUploading ? 'disabled' : ''}`}
                                         disabled={isUploading}
                                         onClick={() => document.getElementById('webhook-image-input').click()}
                                     >
                                         <i className={`fas ${isUploading ? 'fa-spinner fa-spin' : 'fa-upload'}`}></i>
                                         {isUploading ? ' Uploading...' : ' Upload Image(s)'}
-                                    </Button>
+                                    </button>
                                     <input
                                         id="webhook-image-input"
                                         type="file"
@@ -470,70 +332,77 @@ const WebhookModal = ({
                                         style={{ display: 'none' }}
                                         onChange={handleLocalImageUpload}
                                     />
-                                </InputGroup>
-                                <Form.Text style={{ color: '#6c757d', fontSize: '0.85em' }}>
+                                </div>
+                                <span className="webhook-form-text">
                                     Upload one or more images. Hosted by ImgBB.
-                                </Form.Text>
-                            </Form.Group>
+                                </span>
+                            </div>
                             {mediaUrls.length > 0 && (
-                                <Form.Group className="mb-3">
-                                    <Form.Label style={formLabelStyle}>Added Media ({mediaUrls.length})</Form.Label>
-                                    <div style={imagePreviewContainerStyle}>
+                                <div className="webhook-form-group">
+                                    <label className="webhook-form-label">Added Media ({mediaUrls.length})</label>
+                                    <div className="webhook-media-preview">
                                         {mediaUrls.map((url, index) => (
-                                            <div key={index} style={{ position: 'relative' }}>
+                                            <div key={index} className="webhook-media-item">
                                                 {isImageUrl(url) ? (
-                                                    <img src={url} alt={`Preview ${index + 1}`} style={imagePreviewStyle} title={url} />
+                                                    <img src={url} alt={`Preview ${index + 1}`} className="webhook-media-image" title={url} />
                                                 ) : isStreamableUrl(url) ? (
-                                                    <div style={urlPreviewStyle} title={url}>
-                                                        <i className="fas fa-video" style={urlIconStyle}></i>
-                                                        <span style={urlTextStyle}>Streamable Link</span>
+                                                    <div className="webhook-media-link" title={url}>
+                                                        <i className="fas fa-video webhook-media-icon"></i>
+                                                        <span>Streamable Link</span>
                                                     </div>
                                                 ) : (
-                                                    <div style={urlPreviewStyle} title={url}>
-                                                        <i className="fas fa-link" style={urlIconStyle}></i>
-                                                        <span style={urlTextStyle}>External Link</span>
+                                                    <div className="webhook-media-link" title={url}>
+                                                        <i className="fas fa-link webhook-media-icon"></i>
+                                                        <span>External Link</span>
                                                     </div>
                                                 )}
                                             </div>
                                         ))}
                                     </div>
-                                    <button onClick={clearMedia} style={{...clearImageButtonStyle, marginTop: '10px'}} title="Clear All Media">
+                                    <button 
+                                        type="button"
+                                        className="webhook-button webhook-button-secondary"
+                                        onClick={clearMedia}
+                                        title="Clear All Media"
+                                    >
                                         Clear All Media ({mediaUrls.length})
                                     </button>
-                                </Form.Group>
+                                </div>
                             )}
-                        </Form>
+                        </form>
                     </div>
-                    <div style={modalFooterStyle}>
-                        <div style={{ flexGrow: 1 }}></div>
-                        <Button variant="secondary" onClick={onClose}>
+                    <div className="webhook-footer">
+                        <div className="webhook-spacer"></div>
+                        <button 
+                            type="button" 
+                            className="webhook-button webhook-button-secondary" 
+                            onClick={onClose}
+                        >
                             Cancel
-                        </Button>
-                        <Button
-                            variant="warning"
+                        </button>
+                        <button
+                            type="button"
+                            className="webhook-button webhook-button-warning"
                             onClick={handlePrimarySubmit}
                             title={`Uses: ${primaryWebhookUrlIdentifier}`}
                         >
                             <i className="fas fa-vial"></i> {primaryButtonText}
-                        </Button>
+                        </button>
                         {showSecondaryButton && (
-                            <Button
-                                variant="primary"
+                            <button
+                                type="button"
+                                className="webhook-button webhook-button-primary"
                                 onClick={handleSecondarySubmit}
                                 title={`Uses: ${secondaryWebhookUrlIdentifier}`}
                             >
                                 <i className="fas fa-paper-plane"></i> {secondaryButtonText}
-                            </Button>
+                            </button>
                         )}
                     </div>
                 </fieldset>
             </div>
-        </div>
-    );
-
-    return ReactDOM.createPortal(
-        modalDialogContent,
-        document.getElementById('modal-root')
+        </BaseModal>
     );
 };
+
 export default WebhookModal;

@@ -49,7 +49,10 @@ const AdminDashboard = ({
     showInAppNotification,
     setShowOAuthTokenExchangeModal,
     setShowUserDataExchangeModal,
-    handleGtaWorldLogin
+    handleGtaWorldLogin,
+    lockdownConfig,
+    setLockdownConfig,
+    handleUpdateLockdownStatus
 }) => {
 
     const [selectedSection, setSelectedSection] = useState('serviceStatus');
@@ -65,6 +68,7 @@ const AdminDashboard = ({
                     </div>
                     <div className="nav-pills-flex-column">
                         <button className={`nav-link ${selectedSection === 'serviceStatus' ? 'active' : ''}`} onClick={() => setSelectedSection('serviceStatus')}><i className="fas fa-server me-2"></i>Service Status</button>
+                        <button className={`nav-link ${selectedSection === 'lockdown' ? 'active' : ''}`} onClick={() => setSelectedSection('lockdown')}><i className="fas fa-lock me-2"></i>Lockdown</button>
                         <button className={`nav-link ${selectedSection === 'recruitment' ? 'active' : ''}`} onClick={() => setSelectedSection('recruitment')}><i className="fas fa-user-plus me-2"></i>Recruitment</button>
                         <button className={`nav-link ${selectedSection === 'bingo' ? 'active' : ''}`} onClick={() => setSelectedSection('bingo')}><i className="fas fa-dice me-2"></i>Bingo</button>
                         <button className={`nav-link ${selectedSection === 'users' ? 'active' : ''}`} onClick={() => setSelectedSection('users')}><i className="fas fa-users-cog me-2"></i>Users</button>
@@ -126,6 +130,80 @@ const AdminDashboard = ({
                                 )}
                                 <Button variant="primary" onClick={handleUpdateServiceStatus} disabled={isUpdatingDb || isLoadingStatus}>
                                     {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : "Update Statuses"}
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+                    {selectedSection === 'lockdown' && (
+                        <div className="card">
+                            <div className="card-header">Site Lockdown</div>
+                            <div className="card-body">
+                                <div className="form-check form-switch mb-3">
+                                    <input
+                                        className="form-check-input"
+                                        type="checkbox"
+                                        role="switch"
+                                        id="lockdownSwitch"
+                                        checked={lockdownConfig.enabled}
+                                        onChange={(e) => setLockdownConfig(prev => ({ ...prev, enabled: e.target.checked }))}
+                                    />
+                                    <label className="form-check-label" htmlFor="lockdownSwitch">
+                                        Enable Site Lockdown
+                                    </label>
+                                </div>
+                                <div className="form-group mb-3">
+                                    <label>Notification Message</label>
+                                    <input
+                                        type="text"
+                                        value={lockdownConfig.notification}
+                                        onChange={(e) => setLockdownConfig(prev => ({ ...prev, notification: e.target.value }))}
+                                        placeholder="e.g., The site is currently undergoing maintenance."
+                                        className="form-control"
+                                    />
+                                </div>
+                                <div className="form-group mb-3">
+                                    <label>Popup Dialog Text</label>
+                                    <textarea
+                                        value={lockdownConfig.dialog}
+                                        onChange={(e) => setLockdownConfig(prev => ({ ...prev, dialog: e.target.value }))}
+                                        placeholder="e.g., The BBCode generator is temporarily disabled."
+                                        className="form-control"
+                                        rows="3"
+                                    ></textarea>
+                                </div>
+                                <div className="form-group mb-3">
+                                    <label>Affected Deployments</label>
+                                    <div>
+                                        {['all', 'phmc-tools', 'github-pages', 'local'].map((deployment) => (
+                                            <div className="form-check form-check-inline" key={deployment}>
+                                                <input
+                                                    className="form-check-input"
+                                                    type="checkbox"
+                                                    id={`deployment-${deployment}`}
+                                                    value={deployment}
+                                                    checked={lockdownConfig.affectedDeployments.includes(deployment)}
+                                                    onChange={(e) => {
+                                                        const { value, checked } = e.target;
+                                                        setLockdownConfig((prev) => {
+                                                            let newDeployments;
+                                                            if (checked) {
+                                                                newDeployments = [...prev.affectedDeployments, value];
+                                                            } else {
+                                                                newDeployments = prev.affectedDeployments.filter((d) => d !== value);
+                                                            }
+                                                            return { ...prev, affectedDeployments: newDeployments };
+                                                        });
+                                                    }}
+                                                />
+                                                <label className="form-check-label" htmlFor={`deployment-${deployment}`}>
+                                                    {deployment.charAt(0).toUpperCase() + deployment.slice(1)}
+                                                </label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <Button variant="primary" onClick={handleUpdateLockdownStatus} disabled={isUpdatingDb}>
+                                    {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : "Update Lockdown Status"}
                                 </Button>
                             </div>
                         </div>
