@@ -69,7 +69,12 @@ const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActi
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ code, redirectUri }),
+                body: JSON.stringify({ 
+                    code, 
+                    redirectUri,
+                    clientId,
+                    clientSecret 
+                }),
             });
             console.debug('[OAuth] Token exchange response status:', response.status);
 
