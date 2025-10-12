@@ -51,73 +51,49 @@ const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActi
         setResponse(null);
         setError(null);
 
-        const params = new URLSearchParams();
-        params.append('grant_type', 'authorization_code');
-        params.append('client_id', clientId);
-        params.append('client_secret', clientSecret);
-        params.append('redirect_uri', redirectUri);
-        params.append('code', code);
-
+        const functionUrl = 'https://us-central1-gtaw-forms.cloudfunctions.net/exchangeAuthCodeForToken';
+        
         try {
-            const res = await fetch(tokenUrl, {
+            const res = await fetch(functionUrl, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Content-Type': 'application/json',
                 },
-                body: params.toString(),
+                body: JSON.stringify({
+                    code,
+                    redirectUri,
+                }),
             });
 
             const data = await res.json();
 
             if (res.ok) {
-                setResponse(data);
-                
-                // Fetch user data with the received token
-                try {
-                    const userRes = await fetch('https://ucp.gta.world/api/user', {
-                        headers: {
-                            'Authorization': `Bearer ${data.access_token}`
-                        }
-                    });
-                    const userData = await userRes.json();
-                    if (userRes.ok && userData.user) {
-                        onUserDataReceived(userData.user);
-                        showNotification(`OAuth Token Exchange successful! Welcome ${userData.user.username}`, 'check-circle');
-                    } else {
-                        throw new Error('Failed to fetch user data');
-                    }
-                } catch (userErr) {
-                    console.error('Error fetching user data:', userErr);
-                    showNotification('Token exchange successful but failed to fetch user data', 'warning');
-                    Sentry.captureException(userErr, {
-                        extra: {
-                            context: 'OAuth User Data Fetch Error',
-                            tokenUrl,
-                            clientId
-                        }
-                    });
+                setResponse(data.token);
+                if (data.user) {
+                    onUserDataReceived(data.user);
+                    showNotification(`OAuth Token Exchange successful! Welcome ${data.user.username}`, 'check-circle');
                 }
                 sendAdminActionWebhook(
                     adminUserEmail,
                     'OAuth Token Exchange Success',
-                    `URL: ${tokenUrl}\nClient ID: ${clientId}\nResponse: ${JSON.stringify(data, null, 2)}`,
+                    `Success: Token and user data received`,
                     'Developer Tools'
                 );
             } else {
-                setError(data);
-                showNotification(`OAuth Token Exchange failed: ${data.error_description || data.error || res.statusText}`, 'error');
+                const errorData = data;
+                setError(errorData);
+                showNotification(`OAuth Token Exchange failed: ${errorData.error || res.statusText}`, 'error');
                 sendAdminActionWebhook(
                     adminUserEmail,
                     'OAuth Token Exchange Failure',
-                    `URL: ${tokenUrl}\nClient ID: ${clientId}\nError: ${JSON.stringify(data, null, 2)}`,
+                    `Error: ${JSON.stringify(errorData, null, 2)}`,
                     'Developer Tools'
                 );
-                Sentry.captureMessage(`OAuth Token Exchange failed: ${tokenUrl}`, {
+                Sentry.captureMessage(`OAuth Token Exchange failed: ${functionUrl}`, {
                     level: 'error',
                     extra: {
-                        clientId,
                         redirectUri,
-                        response: data,
+                        response: errorData,
                         status: res.status,
                     }
                 });
@@ -129,14 +105,13 @@ const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActi
             sendAdminActionWebhook(
                 adminUserEmail,
                 'OAuth Token Exchange Network Error',
-                `URL: ${tokenUrl}\nClient ID: ${clientId}\nError: ${err.message}`,
+                `Network Error: ${err.message}`,
                 'Developer Tools'
             );
             Sentry.captureException(err, {
                 extra: {
                     context: 'OAuth Token Exchange Network Error',
-                    tokenUrl,
-                    clientId,
+                    functionUrl,
                     redirectUri,
                 }
             });
