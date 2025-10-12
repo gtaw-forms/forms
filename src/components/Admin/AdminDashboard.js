@@ -56,6 +56,7 @@ const AdminDashboard = ({
 }) => {
 
     const [selectedSection, setSelectedSection] = useState('serviceStatus');
+    const [gtaWorldUser, setGtaWorldUser] = useState(null);
     const navigate = useNavigate();
 
     return (
@@ -65,6 +66,12 @@ const AdminDashboard = ({
                     <div className="sidebar-header">
                         <h5>Admin Panel</h5>
                         <p>Logged in as: {currentUser.email}</p>
+                        {gtaWorldUser && (
+                            <p className="text-info">
+                                <i className="fas fa-user me-1"></i>
+                                GTA World: {gtaWorldUser.username}
+                            </p>
+                        )}
                     </div>
                     <div className="nav-pills-flex-column">
                         <button className={`nav-link ${selectedSection === 'serviceStatus' ? 'active' : ''}`} onClick={() => setSelectedSection('serviceStatus')}><i className="fas fa-server me-2"></i>Service Status</button>
@@ -372,7 +379,11 @@ const AdminDashboard = ({
                                     </Button>
                                 </div>
                                 <div className="mb-3">
-                                    <Button variant="info" onClick={() => setShowOAuthTokenExchangeModal(true)}>
+                                    <Button 
+                                        variant="info" 
+                                        onClick={() => setShowOAuthTokenExchangeModal(true)} 
+                                        title={gtaWorldUser ? `Connected as ${gtaWorldUser.username}` : 'Exchange OAuth Token'}
+                                    >
                                         <i className="fas fa-exchange-alt me-2"></i>
                                         OAuth Token Exchange
                                     </Button>
