@@ -8,12 +8,10 @@ const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActi
     const [clientSecret, setClientSecret] = useState('');
     const [redirectUri, setRedirectUri] = useState(() => {
         const isGithubPages = window.location.hostname.includes('github.io');
-        if (isGithubPages) {
-            // For GitHub Pages, use the hash-based routing
-            return 'https://gtaw-forms.github.io/forms/#/auth/gta/callback';
-        }
-        // For local development
-        return `${window.location.origin}/#/auth/gta/callback`;
+        // Always use hash-based routing for GitHub Pages and local development
+        return isGithubPages 
+            ? 'https://gtaw-forms.github.io/forms/#/auth/gta/callback'
+            : `${window.location.origin}/#/auth/gta/callback`;
     });
     const [code, setCode] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -23,6 +21,24 @@ const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActi
     useEffect(() => {
         if (show) {
             console.info('[OAuth] Initializing OAuth modal');
+            
+            // Handle OAuth callback
+            if (window.location.hash.includes('/auth/gta/callback')) {
+                const returnPath = sessionStorage.getItem('oauth-return-path') || '#/admin';
+                const urlParams = new URLSearchParams(window.location.hash.split('?')[1]);
+                const codeFromHash = urlParams.get('code');
+                
+                if (codeFromHash) {
+                    console.debug('[OAuth] Found code in hash params, storing for processing');
+                    sessionStorage.setItem('oauth-exchange-code', codeFromHash);
+                    
+                    // Clean up and redirect back
+                    sessionStorage.removeItem('oauth-return-path');
+                    window.location.replace(window.location.origin + returnPath);
+                    return;
+                }
+            }
+            
             // Check for code in URL params first (direct callback)
             const urlParams = new URLSearchParams(window.location.search);
             const codeFromUrl = urlParams.get('code');
@@ -47,7 +63,14 @@ const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActi
     const handleGetCode = () => {
         console.info('[OAuth] Initiating authorization code request');
         console.debug('[OAuth] Authorization parameters:', { clientId, redirectUri });
+        
+        // Store the current hash-based location
         sessionStorage.setItem('oauth-exchange-in-progress', 'true');
+        sessionStorage.setItem('oauth-return-path', window.location.hash || '#/');
+        
+        // Use the hash-based redirect URI
+        console.debug('[OAuth] Using redirect URI:', redirectUri);
+        
         const authUrl = `https://ucp.gta.world/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}`;
         window.location.href = authUrl;
     };
