@@ -7,10 +7,13 @@ const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActi
     const [clientId, setClientId] = useState(process.env.REACT_APP_GTAWORLD_CLIENT_ID || '');
     const [clientSecret, setClientSecret] = useState('');
     const [redirectUri, setRedirectUri] = useState(() => {
-        // Handle GitHub Pages base path
-        const baseUrl = window.location.origin;
-        const basePath = window.location.pathname.split('/')[1]; // Get 'forms' from /forms/...
-        return baseUrl + (basePath ? `/${basePath}` : '') + '/auth/gta/callback';
+        const isGithubPages = window.location.hostname.includes('github.io');
+        if (isGithubPages) {
+            // For GitHub Pages, use the hash-based routing
+            return 'https://gtaw-forms.github.io/forms/#/auth/gta/callback';
+        }
+        // For local development
+        return `${window.location.origin}/#/auth/gta/callback`;
     });
     const [code, setCode] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -19,9 +22,11 @@ const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActi
 
     useEffect(() => {
         if (show) {
+            console.info('[OAuth] Initializing OAuth modal');
             // Check for code in URL params first (direct callback)
             const urlParams = new URLSearchParams(window.location.search);
             const codeFromUrl = urlParams.get('code');
+            console.debug('[OAuth] Checking URL parameters for code');
             if (codeFromUrl) {
                 setCode(codeFromUrl);
                 // Clean up the URL
@@ -40,6 +45,8 @@ const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActi
     }, [show]);
 
     const handleGetCode = () => {
+        console.info('[OAuth] Initiating authorization code request');
+        console.debug('[OAuth] Authorization parameters:', { clientId, redirectUri });
         sessionStorage.setItem('oauth-exchange-in-progress', 'true');
         const authUrl = `https://ucp.gta.world/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}`;
         window.location.href = authUrl;
@@ -47,27 +54,30 @@ const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActi
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        console.info('[OAuth] Starting token exchange submission');
         setIsLoading(true);
         setResponse(null);
         setError(null);
 
         const functionUrl = 'https://us-central1-gtaw-forms.cloudfunctions.net/exchangeAuthCodeForToken';
+        console.debug('[OAuth] Using function URL:', functionUrl);
         
         try {
-            const res = await fetch(functionUrl, {
+            console.debug('[OAuth] Sending token exchange request to:', functionUrl);
+            const response = await fetch(functionUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    code,
-                    redirectUri,
-                }),
+                body: JSON.stringify({ code, redirectUri }),
             });
+            console.debug('[OAuth] Token exchange response status:', response.status);
 
-            const data = await res.json();
+            const data = await response.json();
 
-            if (res.ok) {
+            if (response.ok) {
+                console.info('[OAuth] Token exchange successful');
+                console.debug('[OAuth] Received user data:', { username: data.user?.username });
                 setResponse(data.token);
                 if (data.user) {
                     onUserDataReceived(data.user);
@@ -82,7 +92,7 @@ const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActi
             } else {
                 const errorData = data;
                 setError(errorData);
-                showNotification(`OAuth Token Exchange failed: ${errorData.error || res.statusText}`, 'error');
+                showNotification(`OAuth Token Exchange failed: ${errorData.error || response.statusText}`, 'error');
                 sendAdminActionWebhook(
                     adminUserEmail,
                     'OAuth Token Exchange Failure',
@@ -94,7 +104,7 @@ const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActi
                     extra: {
                         redirectUri,
                         response: errorData,
-                        status: res.status,
+                        status: response.status,
                     }
                 });
             }
