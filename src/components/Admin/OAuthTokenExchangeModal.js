@@ -73,7 +73,17 @@ const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActi
             });
             console.debug('[OAuth] Token exchange response status:', response.status);
 
-            const data = await response.json();
+            // Get the raw response text first
+            const responseText = await response.text();
+            console.debug('[OAuth] Raw response:', responseText);
+            
+            let data;
+            try {
+                data = JSON.parse(responseText);
+            } catch (parseError) {
+                console.error('[OAuth] Failed to parse response as JSON:', parseError);
+                throw new Error(`Invalid JSON response from server. Received: ${responseText.substring(0, 100)}...`);
+            }
 
             if (response.ok) {
                 console.info('[OAuth] Token exchange successful');
