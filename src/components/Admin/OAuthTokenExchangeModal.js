@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal, Button, Form, Spinner, Alert } from 'react-bootstrap';
 import * as Sentry from "@sentry/react";
 
-const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActionWebhook, adminUserEmail }) => {
+const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActionWebhook, adminUserEmail, onUserDataReceived }) => {
     const [tokenUrl, setTokenUrl] = useState('https://ucp.gta.world/oauth/token');
     const [clientId, setClientId] = useState(process.env.REACT_APP_GTAWORLD_CLIENT_ID || '');
     const [clientSecret, setClientSecret] = useState('');
@@ -54,7 +54,32 @@ const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActi
 
             if (res.ok) {
                 setResponse(data);
-                showNotification('OAuth Token Exchange successful!', 'check-circle');
+                
+                // Fetch user data with the received token
+                try {
+                    const userRes = await fetch('https://ucp.gta.world/api/user', {
+                        headers: {
+                            'Authorization': `Bearer ${data.access_token}`
+                        }
+                    });
+                    const userData = await userRes.json();
+                    if (userRes.ok && userData.user) {
+                        onUserDataReceived(userData.user);
+                        showNotification(`OAuth Token Exchange successful! Welcome ${userData.user.username}`, 'check-circle');
+                    } else {
+                        throw new Error('Failed to fetch user data');
+                    }
+                } catch (userErr) {
+                    console.error('Error fetching user data:', userErr);
+                    showNotification('Token exchange successful but failed to fetch user data', 'warning');
+                    Sentry.captureException(userErr, {
+                        extra: {
+                            context: 'OAuth User Data Fetch Error',
+                            tokenUrl,
+                            clientId
+                        }
+                    });
+                }
                 sendAdminActionWebhook(
                     adminUserEmail,
                     'OAuth Token Exchange Success',
