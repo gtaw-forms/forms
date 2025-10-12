@@ -6,7 +6,12 @@ const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActi
     const [tokenUrl, setTokenUrl] = useState('https://ucp.gta.world/oauth/token');
     const [clientId, setClientId] = useState(process.env.REACT_APP_GTAWORLD_CLIENT_ID || '');
     const [clientSecret, setClientSecret] = useState('');
-    const [redirectUri, setRedirectUri] = useState(window.location.origin + '/auth/gta/callback');
+    const [redirectUri, setRedirectUri] = useState(() => {
+        // Handle GitHub Pages base path
+        const baseUrl = window.location.origin;
+        const basePath = window.location.pathname.split('/')[1]; // Get 'forms' from /forms/...
+        return baseUrl + (basePath ? `/${basePath}` : '') + '/auth/gta/callback';
+    });
     const [code, setCode] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [response, setResponse] = useState(null);
@@ -14,6 +19,18 @@ const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActi
 
     useEffect(() => {
         if (show) {
+            // Check for code in URL params first (direct callback)
+            const urlParams = new URLSearchParams(window.location.search);
+            const codeFromUrl = urlParams.get('code');
+            if (codeFromUrl) {
+                setCode(codeFromUrl);
+                // Clean up the URL
+                const cleanUrl = window.location.href.split('?')[0];
+                window.history.replaceState({}, document.title, cleanUrl);
+                return;
+            }
+            
+            // Fallback to session storage
             const storedCode = sessionStorage.getItem('oauth-exchange-code');
             if (storedCode) {
                 setCode(storedCode);

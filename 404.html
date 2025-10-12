@@ -27,6 +27,12 @@
         if (segments[1] !== 'forms' && !location.search.includes('?p=')) {
           // Store the path after /forms/ to maintain deep linking
           var targetPath = pathname.replace(/^\//, '');
+        // Special handling for OAuth callback
+        if (targetPath.startsWith('auth/gta/callback')) {
+          // Preserve the authorization code
+          var searchParams = new URLSearchParams(window.location.search);
+          targetPath += (searchParams.toString() ? '?' + searchParams.toString() : '');
+        }
           // Redirect to /forms/ with the rest of the path as a parameter
           window.location.replace('/forms/?p=' + encodeURIComponent(targetPath));
         }
