@@ -208,11 +208,29 @@ export const dailyTaskHandler = onSchedule({
     return null;
 });
 
-export const exchangeAuthCodeForToken = onCall({ secrets: ["GTAWORLD_CLIENT_ID", "GTAWORLD_CLIENT_SECRET"] }, async (request) => {
-    const code = request.data.code;
+import cors from 'cors';
+import { onRequest } from "firebase-functions/v2/https";
+
+const corsHandler = cors({
+    origin: [
+        'https://ancad-studios.github.io',
+        'http://localhost:3000'
+    ],
+    methods: ['POST', 'OPTIONS']
+});
+
+export const exchangeAuthCodeForToken = onRequest({ secrets: ["GTAWORLD_CLIENT_ID", "GTAWORLD_CLIENT_SECRET"] }, async (req, res) => {
+    // Handle CORS
+    await new Promise((resolve) => corsHandler(req, res, resolve));
+
+    if (req.method !== 'POST') {
+        res.status(405).send('Method Not Allowed');
+        return;
+    }
+
+    const { code, redirectUri } = req.body;
     const clientId = process.env.GTAWORLD_CLIENT_ID;
     const clientSecret = process.env.GTAWORLD_CLIENT_SECRET;
-    const redirectUri = request.data.redirectUri;
 
     if (!code) {
         throw new functions.https.HttpsError('invalid-argument', 'The function must be called with one argument "code".');
@@ -237,7 +255,8 @@ export const exchangeAuthCodeForToken = onCall({ secrets: ["GTAWORLD_CLIENT_ID",
         const tokenData = await tokenResponse.json();
 
         if (!tokenResponse.ok) {
-            throw new functions.https.HttpsError('unknown', 'Failed to fetch token', tokenData);
+            res.status(400).json({ error: 'Failed to fetch token', details: tokenData });
+            return;
         }
 
         // Fetch user profile
@@ -250,12 +269,13 @@ export const exchangeAuthCodeForToken = onCall({ secrets: ["GTAWORLD_CLIENT_ID",
         const userData = await userResponse.json();
 
         if (!userResponse.ok) {
-            throw new functions.https.HttpsError('unknown', 'Failed to fetch user data', userData);
+            res.status(400).json({ error: 'Failed to fetch user data', details: userData });
+            return;
         }
 
-        return userData;
+        res.status(200).json({ token: tokenData, user: userData });
     } catch (error) {
         console.error("Error exchanging auth code:", error);
-        throw new functions.https.HttpsError('internal', 'An error occurred while exchanging the auth code.', error);
+        res.status(500).json({ error: 'An internal error occurred', details: error.message });
     }
 });
