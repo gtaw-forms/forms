@@ -214,7 +214,8 @@ import { onRequest } from "firebase-functions/v2/https";
 const corsHandler = cors({
     origin: [
         'https://ancad-studios.github.io',
-        'http://localhost:3000'
+        'http://localhost:3000',
+        'https://gtaw-forms.github.io',
     ],
     methods: ['POST', 'OPTIONS']
 });
