@@ -2,44 +2,119 @@ import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import * as Sentry from "@sentry/react";
 
 const GtaCallback = () => {
     const [error, setError] = useState(null);
+    const [isProcessing, setIsProcessing] = useState(true);
     const location = useLocation();
     const navigate = useNavigate();
     const { login } = useAuth();
 
     useEffect(() => {
-        const searchParams = new URLSearchParams(location.search);
-        const code = searchParams.get('code');
+        const handleCallback = async () => {
+            try {
+                const searchParams = new URLSearchParams(location.search);
+                const code = searchParams.get('code');
+                const error = searchParams.get('error');
+                const error_description = searchParams.get('error_description');
 
-        if (code) {
-            const isExchangeInProgress = sessionStorage.getItem('oauth-exchange-in-progress');
-            if (isExchangeInProgress) {
-                sessionStorage.removeItem('oauth-exchange-in-progress');
-                sessionStorage.setItem('oauth-exchange-code', code);
-                navigate('/admin');
-            } else {
-                const functions = getFunctions();
-                const exchangeAuthCodeForToken = httpsCallable(functions, 'exchangeAuthCodeForToken');
-                exchangeAuthCodeForToken({ code, redirectUri: window.location.origin + '/auth/gta/callback' })
-                    .then((result) => {
-                        const userData = result.data;
-                        login(userData);
-                        navigate('/admin');
-                    })
-                    .catch((error) => {
-                        setError(error.message);
+                // Handle OAuth errors
+                if (error) {
+                    const errorMsg = error_description || error;
+                    console.error('OAuth Error:', error, error_description);
+                    Sentry.captureMessage('OAuth Authorization Error', {
+                        level: 'error',
+                        extra: { error, error_description }
                     });
+                    setError(errorMsg);
+                    setIsProcessing(false);
+                    return;
+                }
+
+                // Handle missing code
+                if (!code) {
+                    const errorMsg = 'No authorization code received';
+                    console.error(errorMsg);
+                    Sentry.captureMessage(errorMsg, { level: 'error' });
+                    setError(errorMsg);
+                    setIsProcessing(false);
+                    return;
+                }
+
+                // Check if this is a token exchange test
+                const isExchangeInProgress = sessionStorage.getItem('oauth-exchange-in-progress');
+                if (isExchangeInProgress) {
+                    sessionStorage.removeItem('oauth-exchange-in-progress');
+                    sessionStorage.setItem('oauth-exchange-code', code);
+                    navigate('/admin');
+                    return;
+                }
+
+                // Handle actual authentication
+                try {
+                    const functions = getFunctions();
+                    const exchangeAuthCodeForToken = httpsCallable(functions, 'exchangeAuthCodeForToken');
+                    const result = await exchangeAuthCodeForToken({ 
+                        code, 
+                        redirectUri: window.location.origin + '/auth/gta/callback' 
+                    });
+                    
+                    if (result.data) {
+                        await login(result.data);
+                        navigate('/admin');
+                    } else {
+                        throw new Error('No user data received from token exchange');
+                    }
+                } catch (error) {
+                    console.error('Token exchange error:', error);
+                    Sentry.captureException(error, {
+                        extra: { context: 'OAuth Token Exchange' }
+                    });
+                    setError(error.message || 'Authentication failed');
+                    setIsProcessing(false);
+                }
+            } catch (error) {
+                console.error('OAuth callback error:', error);
+                Sentry.captureException(error, {
+                    extra: { context: 'OAuth Callback Handler' }
+                });
+                setError(error.message || 'An unexpected error occurred');
+                setIsProcessing(false);
             }
-        } else {
-            setError('No authorization code found.');
-        }
+        };
+
+        handleCallback();
     }, [location, login, navigate]);
 
+    if (error) {
+        return (
+            <div className="d-flex justify-content-center align-items-center" style={{ height: '100vh' }}>
+                <div className="text-center">
+                    <div className="alert alert-danger" role="alert">
+                        <h4 className="alert-heading">Authentication Error</h4>
+                        <p>{error}</p>
+                        <hr />
+                        <button 
+                            className="btn btn-primary" 
+                            onClick={() => navigate('/admin')}
+                        >
+                            Return to Admin Panel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
-        <div>
-            {error ? <p>Error: {error}</p> : <p>Processing...</p>}
+        <div className="d-flex justify-content-center align-items-center" style={{ height: '100vh' }}>
+            <div className="text-center">
+                <div className="spinner-border text-primary" role="status">
+                    <span className="visually-hidden">Processing authentication...</span>
+                </div>
+                <p className="mt-3">Processing authentication, please wait...</p>
+            </div>
         </div>
     );
 };

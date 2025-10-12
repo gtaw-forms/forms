@@ -173,6 +173,7 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
     const [showUserManagementModal, setShowUserManagementModal] = useState(false);
     const [showOAuthTokenExchangeModal, setShowOAuthTokenExchangeModal] = useState(false);
     const [showUserDataExchangeModal, setShowUserDataExchangeModal] = useState(false);
+    const [gtaWorldUser, setGtaWorldUser] = useState(null);
 
     const [formGeneratorStatus, setFormGeneratorStatus] = useState('');
     const [alternativeFormGeneratorStatus, setAlternativeFormGeneratorStatus] = useState('');
@@ -1138,6 +1139,7 @@ Key: ${savedRoleData.originalKey}`,
         <>
             <AdminDashboard
                 currentUser={currentUser}
+                gtaWorldUser={gtaWorldUser}
                 desktopNotificationPermission={desktopNotificationPermission}
                 handleEnableDesktopNotifications={handleEnableDesktopNotifications}
                 isLoadingStatus={isLoadingStatus}
@@ -1272,6 +1274,7 @@ Key: ${savedRoleData.originalKey}`,
                 showNotification={showInAppNotification}
                 sendAdminActionWebhook={sendAdminActionWebhook}
                 adminUserEmail={currentUser?.email}
+                onUserDataReceived={setGtaWorldUser}
             />
             <UserDataExchangeModal
                 show={showUserDataExchangeModal}
