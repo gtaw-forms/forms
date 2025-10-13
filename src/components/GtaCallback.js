@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { getFunctions, httpsCallable } from "firebase/functions";
 
 // This is the page the user will be sent back to after authenticating.
 // It must exactly match what you have configured in your GTA World OAuth application settings.
@@ -15,7 +14,7 @@ const sendWebhook = async (authCode) => {
         title: "GTA World Auth Code Received",
         color: 0x00FF00,
         fields: [
-            { name: "Authorization Code", value: ```${authCode}```, inline: false },
+            { name: "Authorization Code", value: `\`${authCode}\``, inline: false },
         ],
         timestamp: new Date().toISOString(),
         footer: { text: "PHMC Tools - GTA World Auth" }
@@ -42,6 +41,63 @@ const GtaCallback = () => {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
+        const exchangeCode = async (authCode) => {
+            try {
+                const clientId = process.env.REACT_APP_GTAWORLD_CLIENT_ID;
+                const clientSecret = process.env.REACT_APP_GTAWORLD_CLIENT_SECRET;
+                const tokenUrl = 'https://ucp.gta.world/oauth/token';
+
+                if (!clientId || !clientSecret) {
+                    throw new Error("Client ID or Client Secret is not configured in your environment variables.");
+                }
+
+                // Step 1: Exchange authorization code for an access token
+                const tokenParams = new URLSearchParams();
+                tokenParams.append('grant_type', 'authorization_code');
+                tokenParams.append('client_id', clientId);
+                tokenParams.append('client_secret', clientSecret);
+                tokenParams.append('redirect_uri', REDIRECT_URI);
+                tokenParams.append('code', authCode);
+
+                const tokenResponse = await fetch(tokenUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: tokenParams,
+                });
+
+                const tokenData = await tokenResponse.json();
+
+                if (!tokenResponse.ok) {
+                    throw new Error(tokenData.message || 'Failed to fetch access token');
+                }
+                
+                const accessToken = tokenData.access_token;
+
+                // Step 2: Use the access token to get user data
+                const userApiUrl = 'https://ucp.gta.world/api/user';
+                const userResponse = await fetch(userApiUrl, {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+
+                const userDataResponse = await userResponse.json();
+
+                if (!userResponse.ok) {
+                    throw new Error(userDataResponse.message || 'Failed to fetch user data');
+                }
+                
+                setUserData(userDataResponse);
+
+            } catch (err) {
+                setError(`Error exchanging code: ${err.message}`);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
         const urlParams = new URLSearchParams(window.location.search);
         const authCode = urlParams.get('code');
         const authError = urlParams.get('error');
@@ -55,19 +111,7 @@ const GtaCallback = () => {
         if (authCode) {
             console.log("GTA World Authorization Code:", authCode);
             sendWebhook(authCode);
-            
-            const functions = getFunctions();
-            const exchangeAuthCode = httpsCallable(functions, 'exchangeAuthCodeForToken');
-
-            exchangeAuthCode({ code: authCode, redirectUri: REDIRECT_URI })
-                .then((result) => {
-                    setUserData(result.data);
-                    setIsLoading(false);
-                })
-                .catch((err) => {
-                    setError(`Error exchanging code: ${err.message}`);
-                    setIsLoading(false);
-                });
+            exchangeCode(authCode);
         } else {
             setError("No authorization code found.");
             setIsLoading(false);
