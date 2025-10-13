@@ -231,12 +231,29 @@ export const exchangeAuthCodeForToken = onRequest({ secrets: ["GTAWORLD_CLIENT_I
 
     // Handle data from both httpsCallable (req.body.data) and direct fetch (req.body)
     const data = req.body.data || req.body;
-    const { code, redirectUri } = data;
+    
+    console.log('Received request data:', JSON.stringify(data, null, 2));
+    
+    const { code, redirectUri } = data || {};
     const clientId = process.env.GTAWORLD_CLIENT_ID;
     const clientSecret = process.env.GTAWORLD_CLIENT_SECRET;
 
+    // Validate required arguments
     if (!code) {
+        console.error('Missing code parameter');
         res.status(400).json({ error: 'invalid-argument', message: 'The function must be called with the "code" argument.' });
+        return;
+    }
+
+    if (!redirectUri) {
+        console.error('Missing redirectUri parameter');
+        res.status(400).json({ error: 'invalid-argument', message: 'The function must be called with the "redirectUri" argument.' });
+        return;
+    }
+
+    if (!clientId || !clientSecret) {
+        console.error('Missing client credentials');
+        res.status(500).json({ error: 'internal', message: 'OAuth client credentials not configured.' });
         return;
     }
 
@@ -280,6 +297,11 @@ export const exchangeAuthCodeForToken = onRequest({ secrets: ["GTAWORLD_CLIENT_I
         res.status(200).json({ token: tokenData, user: userData });
     } catch (error) {
         console.error("Error exchanging auth code:", error);
-        res.status(500).json({ error: 'An internal error occurred', details: error.message });
+        console.error("Error stack:", error.stack);
+        res.status(500).json({ 
+            error: 'internal', 
+            message: 'An internal error occurred during token exchange',
+            details: error.message 
+        });
     }
 });
