@@ -55,10 +55,18 @@ const GtaCallback = () => {
                 try {
                     const functions = getFunctions();
                     const exchangeAuthCodeForToken = httpsCallable(functions, 'exchangeAuthCodeForToken');
+                    
+                    console.log('Calling token exchange with:', { 
+                        code: code.substring(0, 10) + '...', 
+                        redirectUri: window.location.origin + '/auth/gta/callback' 
+                    });
+                    
                     const result = await exchangeAuthCodeForToken({ 
                         code, 
                         redirectUri: window.location.origin + '/auth/gta/callback' 
                     });
+                    
+                    console.log('Token exchange result:', result);
                     
                     if (result.data) {
                         await login(result.data);
@@ -68,10 +76,28 @@ const GtaCallback = () => {
                     }
                 } catch (error) {
                     console.error('Token exchange error:', error);
+                    console.error('Error code:', error.code);
+                    console.error('Error message:', error.message);
+                    console.error('Error details:', error.details);
+                    
                     Sentry.captureException(error, {
-                        extra: { context: 'OAuth Token Exchange' }
+                        extra: { 
+                            context: 'OAuth Token Exchange',
+                            errorCode: error.code,
+                            errorDetails: error.details
+                        }
                     });
-                    setError(error.message || 'Authentication failed');
+                    
+                    let errorMessage = 'Authentication failed';
+                    if (error.code === 'invalid-argument') {
+                        errorMessage = 'Invalid request parameters. Please try again.';
+                    } else if (error.code === 'internal') {
+                        errorMessage = 'Server configuration error. Please contact support.';
+                    } else if (error.message) {
+                        errorMessage = error.message;
+                    }
+                    
+                    setError(errorMessage);
                     setIsProcessing(false);
                 }
             } catch (error) {
