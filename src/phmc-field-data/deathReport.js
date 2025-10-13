@@ -99,30 +99,60 @@ useEffect(() => {
                 }}
             />
             <Form.Label></Form.Label>
-            <Form.Label>
-                Dispatch Time | Decedent Time of Death
                 <span style={{ fontSize: '0.8em', color: '#6c757d', marginLeft: '10px' }}>
-                    (Current Server Time: {currentUtcTime})
+                    Current Server Time: {currentUtcTime}
                 </span>
-            </Form.Label>
-            <div style={{ display: 'flex', gap: '10px' }}>
-                <Form.Control
-                    type="datetime-local"
-                    name="dateTime"
-                    value={formData.dateTime}
-                    onChange={handleChange}
-                    required
-                    className={`form-control ${!formData.dateTime ? 'is-invalid' : ''}`}
-                />
-                <Form.Control
-                    type="datetime-local"
-                    name="pronouncedTimeOfDeath"
-                    value={formData.pronouncedTimeOfDeath}
-                    onChange={handleChange}
-                    required
-                    className={`form-control ${!formData.pronouncedTimeOfDeath ? 'is-invalid' : ''}`}
-                />
-            </div>
+
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <Form.Control
+                        type="datetime-local"
+                        name="dateTime"
+                        value={formData.dateTime}
+                        onChange={handleChange}
+                        required
+                        className={`form-control ${!formData.dateTime ? 'is-invalid' : ''}`}
+                    />
+                    <Button
+                        variant="outline-info"
+                        size="sm"
+                        style={{ height: '38px', lineHeight: '1.5', paddingTop: 0, paddingBottom: 0, display: 'flex', alignItems: 'center', position: 'relative', top: '-10px' }}
+                        onClick={() => {
+                            const now = new Date();
+                            const pad = (n) => n.toString().padStart(2, '0');
+                            // Use UTC for accuracy (matches Current Server Time)
+                            const utc = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}T${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}`;
+                            handleChange({ target: { name: 'dateTime', value: utc } });
+                        }}
+                    >
+                        Dispatched to scene    
+                    </Button>
+                </div>
+
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <Form.Control
+                        type="time"
+                        name="pronouncedTimeOfDeath"
+                        value={formData.pronouncedTimeOfDeath}
+                        onChange={handleChange}
+                        required
+                        className={`form-control ${!formData.pronouncedTimeOfDeath ? 'is-invalid' : ''}`}
+                    />
+                    <Button
+                        variant="outline-info"
+                        size="sm"
+                        style={{ height: '38px', lineHeight: '1.5', paddingTop: 0, paddingBottom: 0, display: 'flex', alignItems: 'center', position: 'relative', top: '-10px' }}
+                        onClick={() => {
+                            const now = new Date();
+                            const pad = (n) => n.toString().padStart(2, '0');
+                            // Use UTC for accuracy (matches Current Server Time)
+                            const time = `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}`;
+                            handleChange({ target: { name: 'pronouncedTimeOfDeath', value: time } });
+                        }}
+                    >
+                        Decedent Time Of Death
+                    </Button>
+                </div>
+
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
             <Form.Check
                 type="checkbox"
