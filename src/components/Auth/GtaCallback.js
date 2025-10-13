@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import * as Sentry from "@sentry/react";
 
 const GtaCallback = () => {
@@ -52,60 +53,19 @@ const GtaCallback = () => {
 
                 // Handle actual authentication
                 try {
-                    const clientId = process.env.REACT_APP_GTAWORLD_CLIENT_ID;
-                    const clientSecret = process.env.REACT_APP_GTAWORLD_CLIENT_SECRET;
-                    const tokenUrl = 'https://ucp.gta.world/oauth/token';
-                    const redirectUri = window.location.origin + '/auth/gta/callback';
-
-                    if (!clientId || !clientSecret) {
-                        throw new Error("Client ID or Client Secret is not configured in your environment variables.");
-                    }
-
-                    // Step 1: Exchange authorization code for an access token
-                    const tokenParams = new URLSearchParams();
-                    tokenParams.append('grant_type', 'authorization_code');
-                    tokenParams.append('client_id', clientId);
-                    tokenParams.append('client_secret', clientSecret);
-                    tokenParams.append('redirect_uri', redirectUri);
-                    tokenParams.append('code', code);
-
-                    const tokenResponse = await fetch(tokenUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                        },
-                        body: tokenParams,
+                    const functions = getFunctions();
+                    const exchangeAuthCodeForToken = httpsCallable(functions, 'exchangeAuthCodeForToken');
+                    const result = await exchangeAuthCodeForToken({ 
+                        code, 
+                        redirectUri: window.location.origin + '/auth/gta/callback' 
                     });
-
-                    const tokenData = await tokenResponse.json();
-
-                    if (!tokenResponse.ok) {
-                        throw new Error(tokenData.message || 'Failed to fetch access token');
-                    }
                     
-                    const accessToken = tokenData.access_token;
-
-                    // Step 2: Use the access token to get user data
-                    const userApiUrl = 'https://ucp.gta.world/api/user';
-                    const userResponse = await fetch(userApiUrl, {
-                        headers: {
-                            'Authorization': `Bearer ${accessToken}`
-                        }
-                    });
-
-                    const userDataResponse = await userResponse.json();
-
-                    if (!userResponse.ok) {
-                        throw new Error(userDataResponse.message || 'Failed to fetch user data');
-                    }
-                    
-                    if (userDataResponse) {
-                        await login(userDataResponse);
+                    if (result.data) {
+                        await login(result.data);
                         navigate('/admin');
                     } else {
                         throw new Error('No user data received from token exchange');
                     }
-
                 } catch (error) {
                     console.error('Token exchange error:', error);
                     Sentry.captureException(error, {

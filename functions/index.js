@@ -229,12 +229,15 @@ export const exchangeAuthCodeForToken = onRequest({ secrets: ["GTAWORLD_CLIENT_I
         return;
     }
 
-    const { code, redirectUri } = req.body;
+    // Handle data from both httpsCallable (req.body.data) and direct fetch (req.body)
+    const data = req.body.data || req.body;
+    const { code, redirectUri } = data;
     const clientId = process.env.GTAWORLD_CLIENT_ID;
     const clientSecret = process.env.GTAWORLD_CLIENT_SECRET;
 
     if (!code) {
-        throw new functions.https.HttpsError('invalid-argument', 'The function must be called with one argument "code".');
+        res.status(400).json({ error: 'invalid-argument', message: 'The function must be called with the "code" argument.' });
+        return;
     }
 
     try {
