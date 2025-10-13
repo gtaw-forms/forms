@@ -167,6 +167,13 @@ function MainApp({
 
     const { seasonalEffectsEnabled, toggleSeasonalEffects } = useSettings();
     const { lockdownConfig, showDialog, hideDialog, isLockdownActive } = useLockdown();
+    const parseBBCode = (bbCode) => {
+        const deathReportDefinition = getFormDefinition(1); // Assuming '1' is the ID for Death Report
+        if (deathReportDefinition && deathReportDefinition.parser) {
+            return deathReportDefinition.parser(bbCode);
+        }
+        return null; // Return null if no parser is found
+    };
 
     // Get webhooks functions
     const { 
@@ -1546,6 +1553,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             {getCopyButtonText()}
         </Button>
 
+        {/* Agency Image Row: Only show for selected department */}
     </div>
     
 
@@ -1554,6 +1562,25 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             {getBBCodeContent()}
         </pre>
     )}
+        {bbCodeVersion === 2 && formData.department && agencyDataStore && agencyDataStore[formData.department] && agencyDataStore[formData.department].logo && agencyDataStore[formData.department].url && (
+            <div className="agency-buttons" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', margin: '18px 0 0 0', flexWrap: 'wrap' }}>
+                <button
+                    className="agency-button"
+                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                    onClick={() => window.open(agencyDataStore[formData.department].url, '_blank')}
+                    title={agencyDataStore[formData.department].fullName || formData.department}
+                >
+                    <img
+                        src={agencyDataStore[formData.department].logo}
+                        alt={agencyDataStore[formData.department].fullName || formData.department}
+                        style={{ height: '100px', width: 'auto', borderRadius: '6px', border: '1px solid #30363d', background: '#16202c', padding: '4px', marginBottom: '2px' }}
+                    />
+                </button>
+                <div style={{ color: '#eeeeeeb0', fontWeight: 600, fontSize: '1.1rem', textAlign: 'center', marginTop: '2px' }}>
+                    {agencyDataStore[formData.department].fullName || formData.department}
+                </div>
+            </div>
+        )}
 
     <FormImageLink
         bbCodeVersion={bbCodeVersion}

@@ -24,18 +24,44 @@ const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActi
             
             // Handle OAuth callback
             if (window.location.hash.includes('/auth/gta/callback')) {
-                const returnPath = sessionStorage.getItem('oauth-return-path') || '#/admin';
                 const urlParams = new URLSearchParams(window.location.hash.split('?')[1]);
                 const codeFromHash = urlParams.get('code');
+                const stateFromHash = urlParams.get('state');
                 
-                if (codeFromHash) {
-                    console.debug('[OAuth] Found code in hash params, storing for processing');
+                // Retrieve stored OAuth state
+                const storedOAuthData = JSON.parse(sessionStorage.getItem('oauth-state') || '{}');
+                
+                console.debug('[OAuth] Validating OAuth state:', {
+                    received: stateFromHash,
+                    stored: storedOAuthData.state,
+                    isValid: stateFromHash === storedOAuthData.state
+                });
+                
+                if (codeFromHash && stateFromHash === storedOAuthData.state) {
+                
+                    console.debug('[OAuth] Valid OAuth state, restoring session');
+                    
+                    // Restore the OAuth modal state
+                    setClientId(storedOAuthData.clientId || '');
+                    setClientSecret(storedOAuthData.clientSecret || '');
+                    setRedirectUri(storedOAuthData.redirectUri || redirectUri);
+                    setCode(codeFromHash);
+                    
+                    // Store code for processing
                     sessionStorage.setItem('oauth-exchange-code', codeFromHash);
                     
-                    // Clean up and redirect back
-                    sessionStorage.removeItem('oauth-return-path');
-                    window.location.replace(window.location.origin + returnPath);
+                    // Clean up
+                    sessionStorage.removeItem('oauth-state');
+                    
+                    // Redirect back to original location
+                    window.location.replace(window.location.origin + storedOAuthData.returnPath);
                     return;
+                } else {
+                    console.error('[OAuth] Invalid or expired OAuth state');
+                    setError({
+                        error: 'Invalid OAuth State',
+                        error_description: 'The OAuth flow was interrupted. Please try again.'
+                    });
                 }
             }
             
@@ -62,16 +88,28 @@ const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActi
 
     const handleGetCode = () => {
         console.info('[OAuth] Initiating authorization code request');
-        console.debug('[OAuth] Authorization parameters:', { clientId, redirectUri });
         
-        // Store the current hash-based location
-        sessionStorage.setItem('oauth-exchange-in-progress', 'true');
-        sessionStorage.setItem('oauth-return-path', window.location.hash || '#/');
+        // Generate a unique state for this OAuth request
+        const oauthState = Math.random().toString(36).substring(2);
         
-        // Use the hash-based redirect URI
-        console.debug('[OAuth] Using redirect URI:', redirectUri);
+        // Store OAuth state and modal state
+        const oauthData = {
+            state: oauthState,
+            returnPath: window.location.hash || '#/',
+            clientId,
+            clientSecret,
+            redirectUri,
+            timestamp: Date.now(),
+            inProgress: true
+        };
         
-        const authUrl = `https://ucp.gta.world/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+        // Store in sessionStorage
+        sessionStorage.setItem('oauth-state', JSON.stringify(oauthData));
+        
+        console.debug('[OAuth] Stored OAuth state:', { oauthState, returnPath: oauthData.returnPath });
+        
+        // Include state parameter in OAuth request
+        const authUrl = `https://ucp.gta.world/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${oauthState}`;
         window.location.href = authUrl;
     };
 
@@ -82,73 +120,100 @@ const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActi
         setResponse(null);
         setError(null);
 
-        const functionUrl = 'https://us-central1-gtaw-forms.cloudfunctions.net/exchangeAuthCodeForToken';
-        console.debug('[OAuth] Using function URL:', functionUrl);
-        
         try {
-            console.debug('[OAuth] Sending token exchange request to:', functionUrl);
-            const response = await fetch(functionUrl, {
+            // Step 1: Exchange authorization code for an access token
+            console.debug('[OAuth] Sending token exchange request to:', tokenUrl);
+            const tokenParams = new URLSearchParams();
+            tokenParams.append('grant_type', 'authorization_code');
+            tokenParams.append('client_id', clientId);
+            tokenParams.append('client_secret', clientSecret);
+            tokenParams.append('redirect_uri', redirectUri);
+            tokenParams.append('code', code);
+
+            const tokenResponse = await fetch(tokenUrl, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
+                    'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: JSON.stringify({ 
-                    code, 
-                    redirectUri,
-                    clientId,
-                    clientSecret 
-                }),
+                body: tokenParams,
             });
-            console.debug('[OAuth] Token exchange response status:', response.status);
 
-            // Get the raw response text first
-            const responseText = await response.text();
-            console.debug('[OAuth] Raw response:', responseText);
-            
-            let data;
-            try {
-                data = JSON.parse(responseText);
-            } catch (parseError) {
-                console.error('[OAuth] Failed to parse response as JSON:', parseError);
-                throw new Error(`Invalid JSON response from server. Received: ${responseText.substring(0, 100)}...`);
-            }
+            const tokenData = await tokenResponse.json();
 
-            if (response.ok) {
-                console.info('[OAuth] Token exchange successful');
-                console.debug('[OAuth] Received user data:', { username: data.user?.username });
-                setResponse(data.token);
-                if (data.user) {
-                    onUserDataReceived(data.user);
-                    showNotification(`OAuth Token Exchange successful! Welcome ${data.user.username}`, 'check-circle');
-                }
-                sendAdminActionWebhook(
-                    adminUserEmail,
-                    'OAuth Token Exchange Success',
-                    `Success: Token and user data received`,
-                    'Developer Tools'
-                );
-            } else {
-                const errorData = data;
-                setError(errorData);
-                showNotification(`OAuth Token Exchange failed: ${errorData.error || response.statusText}`, 'error');
+            if (!tokenResponse.ok) {
+                setError(tokenData);
+                showNotification(`OAuth Token Exchange failed: ${tokenData.error || tokenResponse.statusText}`, 'error');
                 sendAdminActionWebhook(
                     adminUserEmail,
                     'OAuth Token Exchange Failure',
-                    `Error: ${JSON.stringify(errorData, null, 2)}`,
+                    `Error: ${JSON.stringify(tokenData, null, 2)}`,
                     'Developer Tools'
                 );
-                Sentry.captureMessage(`OAuth Token Exchange failed: ${functionUrl}`, {
+                Sentry.captureMessage(`OAuth Token Exchange failed: ${tokenUrl}`, {
                     level: 'error',
                     extra: {
                         redirectUri,
-                        response: errorData,
-                        status: response.status,
+                        response: tokenData,
+                        status: tokenResponse.status,
                     }
                 });
+                return;
             }
+            
+            const accessToken = tokenData.access_token;
+            setResponse(tokenData); // Show token in the modal
+
+            // Step 2: Use the access token to get user data
+            const userApiUrl = 'https://ucp.gta.world/api/user';
+            console.debug('[OAuth] Fetching user data from:', userApiUrl);
+            const userResponse = await fetch(userApiUrl, {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                }
+            });
+
+            const userData = await userResponse.json();
+
+            if (!userResponse.ok) {
+                // Assuming error format is similar or just use message
+                const userErrorData = userData || { error: 'Failed to fetch user data', error_description: userResponse.statusText };
+                setError(userErrorData);
+                showNotification(`Failed to fetch user data: ${userErrorData.error || userResponse.statusText}`, 'error');
+                sendAdminActionWebhook(
+                    adminUserEmail,
+                    'User Data Fetch Failure',
+                    `Error: ${JSON.stringify(userErrorData, null, 2)}`,
+                    'Developer Tools'
+                );
+                Sentry.captureMessage(`User Data fetch failed: ${userApiUrl}`, {
+                    level: 'error',
+                    extra: {
+                        response: userErrorData,
+                        status: userResponse.status,
+                    }
+                });
+                return;
+            }
+
+            console.info('[OAuth] Token exchange and user data fetch successful');
+            console.debug('[OAuth] Received user data:', { username: userData.user?.username });
+
+            if (userData.user) {
+                onUserDataReceived(userData.user);
+                showNotification(`OAuth Token Exchange successful! Welcome ${userData.user.username}`, 'check-circle');
+            }
+            
+            sendAdminActionWebhook(
+                adminUserEmail,
+                'OAuth Token Exchange Success',
+                `Success: Token and user data received for ${userData.user?.username}`,
+                'Developer Tools'
+            );
+
         } catch (err) {
             console.error('Network error during OAuth Token Exchange:', err);
-            setError({ error: 'Network Error', error_description: err.message });
+            const errorPayload = { error: 'Network Error', error_description: err.message };
+            setError(errorPayload);
             showNotification(`Network error: ${err.message}`, 'error');
             sendAdminActionWebhook(
                 adminUserEmail,
@@ -159,7 +224,7 @@ const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActi
             Sentry.captureException(err, {
                 extra: {
                     context: 'OAuth Token Exchange Network Error',
-                    functionUrl,
+                    tokenUrl,
                     redirectUri,
                 }
             });

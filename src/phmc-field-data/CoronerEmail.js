@@ -1,6 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { useData } from '../contexts/DataContext';
 import { Form, Button } from 'react-bootstrap';
 import Select from 'react-select';
+import { getFormDefinition } from '../formDefinitions'; // Import getFormDefinition
+
 const customSelectStyles = {
     control: (base, state) => ({
         ...base,
@@ -76,6 +79,7 @@ const customSelectStyles = {
 const CoronerEmail = ({ // Renamed component to follow PascalCase convention
     formData,
     handleChange,
+    setFormData, // <-- Make sure setFormData is passed as a prop
     handleSelectChange, // Added this prop
     setShowEmployeeModal,
     coronerGroupedOptions,
@@ -85,12 +89,25 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
     addReport,
     removeReport,
     handleReportChange,
-    parseBBCode,
     toggleSavedReports 
 }) => {
 
+    // Get agencyDataStore from context
+    const { agencyDataStore, isLoadingData } = useData();
+
+    useEffect(() => {
+        setFormData(prev => ({
+            ...prev,
+            decedentName: '',
+            decedentOOC: ''
+        }));
+    }, [setFormData]);
+
+
     return (
         <>
+            <p>Please be careful when Attaching Reports, it may take some time to process. Also attaching reports will automatically add the decedent name and decedent OOC!!!</p>
+
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
                                     <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
                                     <button
@@ -132,21 +149,22 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
                                         className={`form-control ${!formData.requestingOfficer ? 'is-invalid' : ''}`}
                                         />
                                 <Form.Select
-                                        name="department"
-                                        value={formData.department}
-                                        onChange={handleChange}
-                                        required
-                                        className={`form-control ${!formData.department ? 'is-invalid' : ''}`}
-                                    >
-                                        <option value="" disabled>Select Department</option>
-                                        <option value="LSFD">LSFD</option>
-                                        <option value="LSPD">LSPD</option>
-                                        <option value="LSSD">LSSD</option>
-                                        <option value="PHMC">PHMC</option>
-                                        <option value="SANFIRE">SANFIRE</option>
-                                        <option value="SADCR">SADCR</option>
-                                        <option value="LSGOV">LSGOV</option>
-                                    </Form.Select>
+                                    name="department"
+                                    value={formData.department}
+                                    onChange={handleChange}
+                                    required
+                                    className={`form-control ${!formData.department ? 'is-invalid' : ''}`}
+                                    disabled={isLoadingData || !agencyDataStore || Object.keys(agencyDataStore).length === 0}
+                                >
+                                    <option value="" disabled>
+                                        {isLoadingData ? 'Loading departments...' : 'Select Department'}
+                                    </option>
+                                    {agencyDataStore && Object.entries(agencyDataStore).map(([key, agency]) => (
+                                        <option key={key} value={key}>
+                                            {agency.fullName || key}
+                                        </option>
+                                    ))}
+                                </Form.Select>
 </div>
 <Form.Group className="mb-3">
     <Form.Label>
@@ -162,46 +180,6 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
         placeholder="Coroner Phone Number"
         className={`form-control ${!formData.coronerPHNumber ? 'is-invalid' : ''}`}
     />
-    <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginTop: '8px' }}>
-        {/* Checkbox trigger */}
-        <Form.Check
-    type="checkbox"
-    id="fillCoronerPhoneCheckbox"
-    label="  Use selected coroner's phone number"
-    // Ensure fillPhoneChecked is treated as a boolean
-    checked={!!fillPhoneChecked}
-    onChange={(e) => {
-        // Your existing onChange logic is fine as e.target.checked is boolean
-        if (e.target.checked) {
-            handleFillCoronerPhone();
-            setFillPhoneChecked(true);
-        } else {
-            setFillPhoneChecked(false);
-        }
-    }}
-/>
-
-        {/* Missing Name Button */}
-        <button
-            type="button"
-            onClick={() => setShowEmployeeModal(true)}
-            className="close-button" // You might want a different class/style for this button
-            style={{
-                padding: '0.1rem 0.1rem',
-                fontSize: '0.8rem',
-                lineHeight: '1.2',
-                marginLeft: 'auto' // Pushes the button to the right if desired
-            }}
-            title="Report missing employee data" // Added tooltip
-        >
-            <i className="fas fa-question-circle" style={{ marginRight: '2px' }}></i>
-            Missing Number?
-        </button>
-    </div>
-
-    <span className="helper-text">
-        (Defaults to PHMC Landline. Check the box to fill from selected coroner.)
-    </span>
 </Form.Group>
 
                                 <div style={{ display: 'flex', gap: '10px' }}>
@@ -268,6 +246,7 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
                         >
                             Add Another Report
                         </Button>
+
                         <Button
                             variant="info"
                             onClick={() => toggleSavedReports([1, 11], 'Coroner', (reportData) => {
