@@ -1,6 +1,7 @@
 import React from 'react';
 import { Form, InputGroup, Button} from 'react-bootstrap';
 import Select from 'react-select';
+import ImagePreview from '../components/ImagePreview';
 
 const GeneralConsult = ({
     formData,
@@ -485,6 +486,7 @@ onChange={(selectedOption) => {
                         {isUploading ? 'Uploading...' : 'Upload Images'}
                     </Button>
                 </InputGroup>
+                <ImagePreview imageUrls={formData.scenePhotos} />
             </Form.Group>
 
                                 <Form.Select

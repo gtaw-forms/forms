@@ -1,6 +1,7 @@
 import React, { useState } from 'react'; // Import useState
 import { Form, InputGroup, Button } from 'react-bootstrap';
 import Select from 'react-select';
+import ImagePreview from '../components/ImagePreview';
 
 const SicknessEmail = ({
     formData,
@@ -289,6 +290,7 @@ const SicknessEmail = ({
                         {isUploading ? ' Uploading...' : ' Upload Image'}
                     </Button>
                 </InputGroup>
+                <ImagePreview imageUrls={formData.phmcEmployeeSignatureImage} />
                 <span className="helper-text">
                     Upload your signature image. Supports clipboard pasting (Ctrl+V). Hosted by ImgBB.
                 </span>
