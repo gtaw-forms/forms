@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Form, Button, InputGroup, OverlayTrigger, Tooltip } from 'react-bootstrap';
-
+import Select from 'react-select';
 import './phmc-tooltips.css'; // Assuming you have a tooltip component
+import ImagePreview from '../components/ImagePreview';
 // Helper component for collapsible section headers - Copied from Nursing.js
 const CollapsibleHeader = ({ title, isOpen, onToggle, sectionId }) => (
     <Button
@@ -937,6 +938,7 @@ const [activeSection, setActiveSection] = useState('general-info');
                             {isUploading ? ' Uploading...' : ' Upload Image(s)'}
                         </Button>
                     </InputGroup>
+                    <ImagePreview imageUrls={formData.paymentProofPhotos} />
                     <span className="helper-text">
                         Upload proof of payment. Supports clipboard pasting (Ctrl+V). Hosted by ImgBB.
                     </span>
