@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getDatabase, ref, get } from 'firebase/database';
 import { Card, Accordion, Button } from 'react-bootstrap';
 
-const WebhookLogs = () => {
+const WebhookLogs = ({ refreshTrigger }) => {
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(false);
 
@@ -19,11 +19,13 @@ const WebhookLogs = () => {
                     ...logsData[key]
                 })).sort((a, b) => b.timestamp - a.timestamp);
                 setLogs(logList);
+            } else {
+                setLogs([]);
             }
             setLoading(false);
         };
         fetchLogs();
-    }, []);
+    }, [refreshTrigger]);
 
     return (
         <Card>

@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Form as BootstrapForm, Button, Spinner, ListGroup } from 'react-bootstrap';
-import { auth, database } from '../../firebase';
+import { auth, database, db } from '../../firebase';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
-import { ref, get, update, remove, set, serverTimestamp, onValue, push } from "firebase/database"; 
+import { ref, get, update, remove, set, serverTimestamp, onValue, push } from "firebase/database";
+import { collection, addDoc, deleteDoc, doc, getDocs } from 'firebase/firestore'; 
 import AddRoleModal from './RoleModal';
 import RenameRoleKeyModal from './RenameRoleKeyModal';
-import WebhookModal from '../WebhookModal';
+
 import { captureMessage, captureException } from "@sentry/react";
 import EditBingoPhrasesModal from './EditBingoPhrasesModal';
 import ReviewPhraseRequestsModal from './ReviewPhraseRequestsModal';
@@ -128,7 +129,16 @@ const sendAdminActionWebhook = async (adminEmail, action, details, categoryName 
 };
 
 
+
 const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNotification: showInAppNotification, commitInfo }) => {
+    // --- Custom Webhook Panel State (must be first, before any logic or return) ---
+    const [customWebhookChannel, setCustomWebhookChannel] = useState('');
+    const [customWebhookTitle, setCustomWebhookTitle] = useState('');
+    const [customWebhookMessage, setCustomWebhookMessage] = useState('');
+    const [customWebhookUrl, setCustomWebhookUrl] = useState('');
+    const [customWebhookSending, setCustomWebhookSending] = useState(false);
+    const [customWebhookResult, setCustomWebhookResult] = useState(null);
+
     // GTA World OAuth login handler
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -160,16 +170,15 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
 
     const [desktopNotificationPermission, setDesktopNotificationPermission] = useState(Notification.permission);
 
-    const [showAdminCustomWebhookModal, setShowAdminCustomWebhookModal] = useState(false);
-    const [adminCustomWebhookTitle, setAdminCustomWebhookTitle] = useState('');
-    const [adminCustomWebhookMessage, setAdminCustomWebhookMessage] = useState('');
-    const [showCoronerWebhookModal, setShowCoronerWebhookModal] = useState(false);
-    const [coronerWebhookTitle, setCoronerWebhookTitle] = useState('');
-    const [coronerWebhookMessage, setCoronerWebhookMessage] = useState('');
-    const [showDevWebhookModal, setShowDevWebhookModal] = useState(false); // New state
-    const [devWebhookTitle, setDevWebhookTitle] = useState(''); // New state
-    const [devWebhookMessage, setDevWebhookMessage] = useState(''); // New state
+
     const [showCctvWebhookModal, setShowCctvWebhookModal] = useState(false);
+    
+    // Webhook Management States
+    const [webhooks, setWebhooks] = useState([]);
+    const [newWebhook, setNewWebhook] = useState({ name: '', url: '', type: 'all' });
+    const [isUpdatingWebhooks, setIsUpdatingWebhooks] = useState(false);
+    const [logRefreshTrigger, setLogRefreshTrigger] = useState(0);
+    
     const [showUserManagementModal, setShowUserManagementModal] = useState(false);
     const [showOAuthTokenExchangeModal, setShowOAuthTokenExchangeModal] = useState(false);
     const [showUserDataExchangeModal, setShowUserDataExchangeModal] = useState(false);
@@ -211,6 +220,13 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
         });
         return () => unsubscribe();
     }, []);
+
+    // Load webhooks on component mount
+    useEffect(() => {
+        if (currentUser) {
+            loadWebhooks();
+        }
+    }, [currentUser]);
 
     useEffect(() => {
         const lockdownRef = ref(database, 'adminSettings/lockdownConfig');
@@ -508,6 +524,76 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
         }
     };
 
+    // Webhook Management Functions
+    const handleAddWebhook = async () => {
+        if (!newWebhook.name || !newWebhook.url || !newWebhook.type) {
+            if (showInAppNotification) showInAppNotification('Please fill in all webhook fields', 'error');
+            return;
+        }
+
+        setIsUpdatingWebhooks(true);
+        try {
+            const webhooksRef = ref(database, 'webhooks');
+            const newWebhookRef = push(webhooksRef);
+            await set(newWebhookRef, {
+                ...newWebhook,
+                createdAt: Date.now(),
+                createdBy: currentUser.email
+            });
+            
+            // Reset form
+            setNewWebhook({ name: '', url: '', type: 'all' });
+            
+            if (showInAppNotification) showInAppNotification('Webhook added successfully!', 'check-circle');
+            
+            // Refresh webhooks list
+            await loadWebhooks();
+        } catch (error) {
+            console.error('Error adding webhook:', error);
+            if (showInAppNotification) showInAppNotification('Failed to add webhook', 'error');
+        } finally {
+            setIsUpdatingWebhooks(false);
+        }
+    };
+
+    const handleDeleteWebhook = async (webhookId) => {
+        if (!window.confirm('Are you sure you want to delete this webhook?')) return;
+        
+        setIsUpdatingWebhooks(true);
+        try {
+            const webhookRef = ref(database, `webhooks/${webhookId}`);
+            await remove(webhookRef);
+            if (showInAppNotification) showInAppNotification('Webhook deleted successfully!', 'check-circle');
+            
+            // Refresh webhooks list
+            await loadWebhooks();
+        } catch (error) {
+            console.error('Error deleting webhook:', error);
+            if (showInAppNotification) showInAppNotification('Failed to delete webhook', 'error');
+        } finally {
+            setIsUpdatingWebhooks(false);
+        }
+    };
+
+    const loadWebhooks = async () => {
+        try {
+            const webhooksRef = ref(database, 'webhooks');
+            const snapshot = await get(webhooksRef);
+            if (snapshot.exists()) {
+                const webhooksData = snapshot.val();
+                const webhooksList = Object.keys(webhooksData).map(key => ({
+                    id: key,
+                    ...webhooksData[key]
+                }));
+                setWebhooks(webhooksList);
+            } else {
+                setWebhooks([]);
+            }
+        } catch (error) {
+            console.error('Error loading webhooks:', error);
+        }
+    };
+
 const handleTogglePositionStatus = async (positionKey, currentStatus) => {
     // --- 1. Initial Validation & Early Exit ---
     if (!currentUser || !selectedRecruitmentCategory || !recruitmentCategories[selectedRecruitmentCategory]) {
@@ -679,14 +765,6 @@ Key: ${savedRoleData.originalKey}`,
         }
     };
 
-    const handleOpenAdminCustomWebhookModal = () => {
-        setAdminCustomWebhookTitle('');
-        setAdminCustomWebhookMessage('');
-        setShowAdminCustomWebhookModal(true);
-        const { userAgent, timeZone } = getUserContext(); // Capture user context
-        sendAdminActionWebhook(currentUser?.email || "Unknown User", "Opened Admin Custom Webhook Modal", "Admin opened the modal to send a custom webhook to the Admin Action channel.", null, userAgent, timeZone);
-    };
-
     const handleAdminCustomWebhookSubmit = async (payloadFromModal) => {
         const webhookURLIdentifier = "REACT_APP_PHMC_DISCORD or REACT_APP_DEV_WEBHOOK";
         const webhookURL = process.env.REACT_APP_PHMC_DISCORD || process.env.REACT_APP_DEV_WEBHOOK;
@@ -716,7 +794,7 @@ Key: ${savedRoleData.originalKey}`,
                 return false;
             } else {
                 if (showInAppNotification) showInAppNotification('Admin webhook message sent successfully!', "check-circle");
-                setShowAdminCustomWebhookModal(false);
+                // setShowAdminCustomWebhookModal(false); // REMOVED - state no longer exists
                 sendAdminActionWebhook(currentUser?.email || "Unknown User", "Sent Admin Custom Webhook", "Admin successfully sent a custom webhook to the Admin Action channel.", null, userAgent, timeZone);
                 logWebhookToFirebase('Admin Custom Webhook Sent', { admin: currentUser?.email, title: payloadFromModal.embeds[0].title });
                 return true;
@@ -996,9 +1074,9 @@ Key: ${savedRoleData.originalKey}`,
 
 
     const handleOpenDevWebhookModal = () => {
-        setDevWebhookTitle('');
-        setDevWebhookMessage('');
-        setShowDevWebhookModal(true);
+        // setDevWebhookTitle(''); // REMOVED - state no longer exists
+        // setDevWebhookMessage(''); // REMOVED - state no longer exists
+        // setShowDevWebhookModal(true); // REMOVED - state no longer exists
         const { userAgent, timeZone } = getUserContext();
         sendAdminActionWebhook(currentUser?.email || "Unknown User", "Opened Dev Webhook Modal", "Admin opened the modal to send a custom webhook to the Dev channel.", null, userAgent, timeZone);
     };
@@ -1032,7 +1110,7 @@ Key: ${savedRoleData.originalKey}`,
                 return false;
             } else {
                 if (showInAppNotification) showInAppNotification('Dev webhook message sent successfully!', "check-circle");
-                setShowDevWebhookModal(false);
+                // setShowDevWebhookModal(false); // REMOVED - state no longer exists
                 sendAdminActionWebhook(currentUser?.email || "Unknown User", "Sent Dev Custom Webhook", "Admin successfully sent a custom webhook to the Dev channel.", null, userAgent, timeZone);
                 return true;
             }
@@ -1047,9 +1125,9 @@ Key: ${savedRoleData.originalKey}`,
 
 
     const handleOpenCoronerWebhookModal = () => {
-        setCoronerWebhookTitle('');
-        setCoronerWebhookMessage('');
-        setShowCoronerWebhookModal(true);
+        // setCoronerWebhookTitle(''); // REMOVED - state no longer exists
+        // setCoronerWebhookMessage(''); // REMOVED - state no longer exists
+        // setShowCoronerWebhookModal(true); // REMOVED - state no longer exists
         const { userAgent, timeZone } = getUserContext(); // Capture user context
         sendAdminActionWebhook(currentUser?.email || "Unknown User", "Opened Coroner Webhook Modal", "Admin opened the modal to send a custom webhook to the Coroner Updates channel.", null, userAgent, timeZone);
     };
@@ -1084,7 +1162,7 @@ Key: ${savedRoleData.originalKey}`,
                 return false;
             } else {
                 if (showInAppNotification) showInAppNotification('Coroner webhook message sent successfully!', "check-circle");
-                setShowCoronerWebhookModal(false);
+                // setShowCoronerWebhookModal(false); // REMOVED - state no longer exists
                 sendAdminActionWebhook(currentUser?.email || "Unknown User", "Sent Coroner Custom Webhook", "Admin successfully sent a custom webhook to the Coroner Updates channel.", null, userAgent, timeZone);
                 logWebhookToFirebase('Coroner Custom Webhook Sent', { admin: currentUser?.email, title: payloadFromModal.embeds[0].title });
                 return true;
@@ -1097,6 +1175,7 @@ Key: ${savedRoleData.originalKey}`,
             return false;
         }
     };
+
 
 
     if (isLoadingAuth) {
@@ -1135,8 +1214,102 @@ Key: ${savedRoleData.originalKey}`,
 
     const selectedTypeForEdit = BINGO_TYPES.find(type => type.id === selectedAdminBingoType);
 
+
+    // Helper to build rich Discord embed payload with PHMC branding
+    const buildWebhookPayload = (title, message, customUrl = '') => {
+        const FORM_GENERATOR_URL = "https://phmc-tools.gta.world/";
+        const ALTERNATIVE_FORM_GENERATOR_URL = "https://gtaw-forms.github.io/forms/";
+        const phmcLogoUrl = 'https://i.ibb.co/0pgw9hHm/phmc.png';
+        
+        // Create embed fields with form generator links
+        const embedFields = [];
+        if (FORM_GENERATOR_URL) {
+            embedFields.push({ 
+                name: "[Delayed Updates] Form Generator Link", 
+                value: FORM_GENERATOR_URL, 
+                inline: false 
+            });
+        }
+        if (ALTERNATIVE_FORM_GENERATOR_URL) {
+            embedFields.push({ 
+                name: "Alternative Form Generator Link", 
+                value: ALTERNATIVE_FORM_GENERATOR_URL, 
+                inline: false 
+            });
+        }
+        
+        // Add custom URL field if provided
+        if (customUrl && customUrl.trim()) {
+            embedFields.push({
+                name: "Related Link",
+                value: customUrl.trim(),
+                inline: false
+            });
+        }
+                
+        const embed = {
+            title: title || "PHMC Admin Notification",
+            url: customUrl && customUrl.trim() ? customUrl.trim() : FORM_GENERATOR_URL,
+            description: message || undefined,
+            color: 0x7289DA, // Discord blue color matching WebhookModal
+            timestamp: new Date().toISOString(),
+            fields: embedFields,
+            footer: {
+                text: `PHMC Form Generator v${commitInfo?.sha || 'N/A'}`
+            }
+        };
+        
+        return {
+            username: "PHMC Admin",
+            avatar_url: phmcLogoUrl,
+            embeds: [embed]
+        };
+    };
+
+    const handleSendCustomWebhook = async (e) => {
+        e.preventDefault();
+        setCustomWebhookSending(true);
+        setCustomWebhookResult(null);
+        
+        // Find the selected webhook
+        const selectedWebhook = webhooks.find(hook => hook.id === customWebhookChannel);
+        if (!selectedWebhook) {
+            console.error('No webhook selected or webhook not found');
+            setCustomWebhookResult('error');
+            setCustomWebhookSending(false);
+            return;
+        }
+
+        const payload = buildWebhookPayload(customWebhookTitle, customWebhookMessage, customWebhookUrl);
+        let result = false;
+        
+        try {
+            const response = await fetch(selectedWebhook.url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            result = response.ok;
+            if (!result) {
+                console.error('Webhook send failed:', response.status, response.statusText);
+            }
+        } catch (error) {
+            console.error('Error sending custom webhook:', error);
+            result = false;
+        }
+        
+        setCustomWebhookResult(result ? 'success' : 'error');
+        setCustomWebhookSending(false);
+        if (result) {
+            setCustomWebhookTitle('');
+            setCustomWebhookMessage('');
+            setCustomWebhookUrl('');
+        }
+    };
+
     return (
         <>
+            {/* --- Main Admin Dashboard --- */}
             <AdminDashboard
                 currentUser={currentUser}
                 gtaWorldUser={gtaWorldUser}
@@ -1171,9 +1344,7 @@ Key: ${savedRoleData.originalKey}`,
                 selectedTypeForEdit={selectedTypeForEdit}
                 setShowReviewPhrasesModal={setShowReviewPhrasesModal}
                 setShowUserManagementModal={setShowUserManagementModal}
-                handleOpenAdminCustomWebhookModal={handleOpenAdminCustomWebhookModal}
-                handleOpenCoronerWebhookModal={handleOpenCoronerWebhookModal}
-                handleOpenDevWebhookModal={handleOpenDevWebhookModal}
+
                 setShowCctvWebhookModal={setShowCctvWebhookModal}
                 setShowMarkdownModal={setShowMarkdownModal}
                 handleLogout={handleLogout}
@@ -1185,6 +1356,24 @@ Key: ${savedRoleData.originalKey}`,
                 lockdownConfig={lockdownConfig}
                 setLockdownConfig={setLockdownConfig}
                 handleUpdateLockdownStatus={handleUpdateLockdownStatus}
+                webhooks={webhooks}
+                newWebhook={newWebhook}
+                setNewWebhook={setNewWebhook}
+                handleAddWebhook={handleAddWebhook}
+                handleDeleteWebhook={handleDeleteWebhook}
+                isUpdatingWebhooks={isUpdatingWebhooks}
+                customWebhookChannel={customWebhookChannel}
+                setCustomWebhookChannel={setCustomWebhookChannel}
+                customWebhookTitle={customWebhookTitle}
+                setCustomWebhookTitle={setCustomWebhookTitle}
+                customWebhookMessage={customWebhookMessage}
+                setCustomWebhookMessage={setCustomWebhookMessage}
+                customWebhookUrl={customWebhookUrl}
+                setCustomWebhookUrl={setCustomWebhookUrl}
+                customWebhookSending={customWebhookSending}
+                customWebhookResult={customWebhookResult}
+                handleSendCustomWebhook={handleSendCustomWebhook}
+                logRefreshTrigger={logRefreshTrigger}
             />
 
             {selectedRecruitmentCategory && recruitmentCategories[selectedRecruitmentCategory] && (
@@ -1194,51 +1383,7 @@ Key: ${savedRoleData.originalKey}`,
                 <RenameRoleKeyModal show={showRenameKeyModal} onHide={() => { setShowRenameKeyModal(false); setRoleToRenameKeyDetails(null); }} categoryConfig={recruitmentCategories[selectedRecruitmentCategory]} currentRoleKey={roleToRenameKeyDetails.key} currentRoleData={roleToRenameKeyDetails.data} showInAppNotification={showInAppNotification} onKeyRenamed={handleRoleKeyRenamed} sendAdminActionWebhook={sendAdminActionWebhook} adminUserEmail={currentUser?.email} />
             )}
 
-            <WebhookModal
-                show={showAdminCustomWebhookModal}
-                onClose={() => setShowAdminCustomWebhookModal(false)}
-                webhookTitle={adminCustomWebhookTitle}
-                setWebhookTitle={setAdminCustomWebhookTitle}
-                webhookMessage={adminCustomWebhookMessage}
-                setWebhookMessage={setAdminCustomWebhookMessage}
-                onSubmit={handleAdminCustomWebhookSubmit}
-                showNotification={showInAppNotification}
-                commitInfo={commitInfo}
-                modalHeaderText="Send Admin Action Embed"
-                primaryButtonText="Send to Admin Action Hook"
-                primaryWebhookUrlIdentifier="REACT_APP_PHMC_DISCORD or REACT_APP_DEV_WEBHOOK"
-                showSecondaryButton={false}
-            />
-            <WebhookModal
-                show={showCoronerWebhookModal}
-                onClose={() => setShowCoronerWebhookModal(false)}
-                webhookTitle={coronerWebhookTitle}
-                setWebhookTitle={setCoronerWebhookTitle}
-                webhookMessage={coronerWebhookMessage}
-                setWebhookMessage={setCoronerWebhookMessage}
-                onSubmit={handleCoronerWebhookSubmit}
-                showNotification={showInAppNotification}
-                commitInfo={commitInfo}
-                modalHeaderText="Send Coroner Update Embed"
-                primaryButtonText="Send to Coroner Updates"
-                primaryWebhookUrlIdentifier="REACT_APP_CORONER_DISCORD_UPDATES"
-                showSecondaryButton={false}
-            />
-            <WebhookModal
-                show={showDevWebhookModal}
-                onClose={() => setShowDevWebhookModal(false)}
-                webhookTitle={devWebhookTitle}
-                setWebhookTitle={setDevWebhookTitle}
-                webhookMessage={devWebhookMessage}
-                setWebhookMessage={setDevWebhookMessage}
-                onSubmit={handleDevWebhookSubmit}
-                showNotification={showInAppNotification}
-                commitInfo={commitInfo}
-                modalHeaderText="Send Dev Update Embed"
-                primaryButtonText="Send to Dev Updates"
-                primaryWebhookUrlIdentifier="REACT_APP_DEV_WEBHOOK"
-                showSecondaryButton={false}
-            />
+
             <EditBingoPhrasesModal
                 show={showEditBingoPhrasesModal}
                 onHide={() => setShowEditBingoPhrasesModal(false)}

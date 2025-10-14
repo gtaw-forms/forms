@@ -1,6 +1,7 @@
 import React from 'react';
 import { Form } from 'react-bootstrap';
 import Select from 'react-select'; // Make sure react-select is imported
+import ImagePreview from '../components/ImagePreview';
 
 // Destructure the props that this component will need from App.js
 const PHMCCommentaryNoteQuestions = ({
@@ -129,6 +130,7 @@ const PHMCCommentaryNoteQuestions = ({
                         {isUploading ? 'Uploading...' : 'Upload Images'}
                     </Button>
                 </InputGroup>
+                <ImagePreview imageUrls={formData.scenePhotos} />
                 <span className="helper-text">
                     This supports clipboard uploading, ctrl + V! | Hosted by ImgBB! - <a href="https://imgbb.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
                 </span>
@@ -192,6 +194,7 @@ const PHMCCommentaryNoteQuestions = ({
                         {isUploading ? 'Uploading...' : 'Upload Images'}
                     </Button>
                 </div>
+                <ImagePreview imageUrls={formData.additionalImages} />
                 <span className="helper-text">
                     This supports clipboard uploading, ctrl + V! | Hosted by ImgBB! - <a href="https://imgbb.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
                 </span>

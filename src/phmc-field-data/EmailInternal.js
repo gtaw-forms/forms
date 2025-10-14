@@ -1,6 +1,7 @@
 import React from 'react';
-import { Form, Button, InputGroup } from 'react-bootstrap'; 
+import { Form , Button, InputGroup} from 'react-bootstrap';
 import Select from 'react-select';
+import ImagePreview from '../components/ImagePreview';
 
 const EmailInternal = ({
     formData,
@@ -129,6 +130,7 @@ const EmailInternal = ({
         <span className="helper-text">
         This supports clipboard uploading, ctrl + V! | Hosted by ImgBB! - <a href="https://imgbb.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
         </span>
+        <ImagePreview imageUrls={formData.scenePhotos} />
     </Form.Group>
 
         <Select
