@@ -17,7 +17,7 @@ export function useModal() {
     const [switchableModalTitle, setSwitchableModalTitle] = useState('');
     const [switchableFormsList, setSwitchableFormsList] = useState([]);
     const [showFeatureRequestModal, setShowFeatureRequestModal] = useState(false);
-    const [showWebhookModal, setShowWebhookModal] = useState(false);
+
     const [showPrivacyPolicyModal, setShowPrivacyPolicyModal] = useState(false);
     const [showLockdownDialog, setShowLockdownDialog] = useState(false);
 
@@ -38,7 +38,7 @@ export function useModal() {
         switchableModalTitle, setSwitchableModalTitle,
         switchableFormsList, setSwitchableFormsList,
         showFeatureRequestModal, setShowFeatureRequestModal,
-        showWebhookModal, setShowWebhookModal,
+
         showPrivacyPolicyModal, setShowPrivacyPolicyModal,
         showLockdownDialog, setShowLockdownDialog
     };

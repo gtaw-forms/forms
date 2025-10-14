@@ -1,6 +1,7 @@
 import React, { useState, useEffect} from 'react'; // Import useEffect
 import { Form, Button, InputGroup } from 'react-bootstrap';
 import Select from 'react-select';
+import ImagePreview from '../components/ImagePreview';
 
 const DeathReport = ({
     formData,
@@ -184,13 +185,9 @@ useEffect(() => {
 
             <div className="radio-inline-container">
                 <div className="radio-button-group">
-                    <div className="radio-button-group">
                     <Form.Check type="radio" id="johnDoe" label="   John Doe" checked={isJohnDoe} onChange={handleDoeChange('john')} inline />
                     <Form.Check type="radio" id="janeDoe" label="   Jane Doe" checked={isJaneDoe} onChange={handleDoeChange('jane')} inline />
-                    <Form.Check type="radio"id="massFatality"name="massFatality"label="Mass Fatality?" checked={formData.massFatality || false} onChange={handleChange} className="mb-3"/>
-
-                </div>
-
+                    <Form.Check type="radio" id="massFatality" name="massFatality" label="   Mass Fatality?" checked={formData.massFatality || false} onChange={handleChange} inline />
                 </div>
             </div>
             <div style={{ display: 'flex', gap: '10px' }}>
@@ -338,7 +335,13 @@ useEffect(() => {
                     </Button>
                 </InputGroup>
                 <span className="helper-text">This supports clipboard uploading, ctrl + V! | Hosted by ImgBB! - <a href="https://imgbb.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a></span>
-            </Form.Group>
+<ImagePreview 
+    imageUrls={formData.scenePhotos} 
+    showPreviews={true}
+    onImageRemove={(updatedUrls) => {
+        setFormData(prev => ({ ...prev, scenePhotos: updatedUrls }));
+    }}
+/>             </Form.Group>
             <Form.Group className="mb-3 upload-container">
                 <div className="input-group">
                     <Form.Control
@@ -382,7 +385,14 @@ useEffect(() => {
                     </Button>
                 </div>
                 <span className="helper-text">This supports clipboard uploading, ctrl + V! | Hosted by ImgBB! - <a href="https://imgbb.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a></span>
-                <label>Morgue Bugs:</label>
+<ImagePreview 
+    imageUrls={formData.additionalImages} 
+    showPreviews={true}
+    onImageRemove={(updatedUrls) => {
+        setFormData(prev => ({ ...prev, additionalImages: updatedUrls }));
+    }}
+/>   
+             <label>Morgue Bugs:</label>
                 <Form.Check
                     type="checkbox"
                     id="morgueStatus"

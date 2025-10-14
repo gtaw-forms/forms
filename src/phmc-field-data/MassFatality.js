@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Form, Button, InputGroup } from 'react-bootstrap';
 import Select from 'react-select';
+import ImagePreview from '../components/ImagePreview';
 const defaultDecedent = {
     decedentName: '',
     decedentOOC: '',
@@ -498,6 +499,7 @@ const MassFatality = ({
                                         {isUploading ? ' Uploading...' : ' Upload Image(s)'}
                                     </Button>
                                 </InputGroup>
+                                <ImagePreview imageUrls={dec.scenePhotos} />
                                 <span className="helper-text">This supports clipboard uploading, ctrl + V! | Hosted by ImgBB! - <a href="https://imgbb.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a></span>
                             </Form.Group>
                             <Form.Group className="mb-3 upload-container">
@@ -554,6 +556,7 @@ const MassFatality = ({
                                         {isUploading ? ' Uploading...' : ' Upload Image(s)'}
                                     </Button>
                                 </InputGroup>
+                                <ImagePreview imageUrls={dec.additionalImages} />
                                 <span className="helper-text">This supports clipboard uploading, ctrl + V! | Hosted by ImgBB! - <a href="https://imgbb.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a></span>
                             </Form.Group>
                             

@@ -86,7 +86,7 @@ function MainApp({
         switchableModalTitle, setSwitchableModalTitle,
         switchableFormsList, setSwitchableFormsList,
         showFeatureRequestModal, setShowFeatureRequestModal,
-        showWebhookModal, setShowWebhookModal,
+
         showPrivacyPolicyModal, setShowPrivacyPolicyModal,
     } = useModal();
 
@@ -179,8 +179,6 @@ function MainApp({
     const { 
         sendEasterEggNotification,
         handleCctvWebhookSubmit,
-        handlePhmcWebhookSubmit,
-        handleWebhookSubmit 
     } = useWebhooks(formData, commitInfo, showNotification);
     // Get image upload functions
     const { isUploading, handleImageUpload } = useImageUpload(showNotification, setFormData);
@@ -203,9 +201,6 @@ function MainApp({
         localStorage.setItem('hideAgencyGroupSelectorPreference', hide);
     };
 
-    const handleRefresh = () => {
-        window.location.reload();
-    };
 
 
 
@@ -687,9 +682,6 @@ const getBBCodeContent = () => {
         setShowPHMCModal(true); // Use the existing state to show/hide the modal
     };
 
-// ---
-
-    //Coroner Tips Handling
 
     // --- Updated useEffect for CoronerTipsModal ---
     useEffect(() => {

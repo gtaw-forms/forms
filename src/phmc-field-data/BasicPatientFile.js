@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Form, Button, InputGroup, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import './phmc-tooltips.css';
+import ImagePreview from '../components/ImagePreview';
 
 // CollapsibleHeader copied from PatientAdvanced.js
 const CollapsibleHeader = ({ title, isOpen, onToggle, sectionId }) => (
@@ -492,6 +493,7 @@ const BasicPatientFile = ({
                     <span className="helper-text">
                         Upload proof of payment. Supports clipboard pasting (Ctrl+V). Hosted by ImgBB.
                     </span>
+                    <ImagePreview imageUrls={formData.paymentProofPhotos} />
                 </Form.Group>
             )}
             </div>
