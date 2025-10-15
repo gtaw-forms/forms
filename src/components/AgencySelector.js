@@ -1,8 +1,9 @@
 // src/components/AgencySelector.js
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button, Form, Image } from 'react-bootstrap';
+import { getPrimaryFormsForUserType } from '../formDefinitions';
 
-// Style definitions (styles for subFormListContainerStyle etc. remain as before)
+// Style definitions for recruitment forms
 const positionStatusListStyle = {
     fontSize: '0.75rem',
     marginTop: '0.5rem',
@@ -18,41 +19,23 @@ const positionStatusListStyle = {
 const openStatusStyle = { color: '#28a745', fontWeight: 'bold' };
 const closedStatusStyle = { color: '#dc3545', fontWeight: 'bold' };
 
-const subFormListContainerStyle = {
-    fontSize: '0.75rem',
-    marginTop: '0.5rem',
-    textAlign: 'left',
-    width: '90%',
-    lineHeight: '1.2',
-    alignSelf: 'stretch',
-    color: '#adb5bd',
-};
-const subFormListHeaderStyle = {
-    fontWeight: 'bold',
-    color: '#ced4da',
-    marginBottom: '0.15rem',
-};
-const subFormListStyle = {
-    listStyleType: 'circle',
-    paddingLeft: '15px',
-    marginBlockStart: '0.2em',
-    marginBlockEnd: '0.2em',
-};
-const subFormListItemStyle = {
-    // No specific style needed
-};
-// Related Form Mapping
-const phmcSubFormMap = {
-    1: [2, 4, 11, 37],
-    6: [7],
-    14: [16],
-    20: [21],
-    22: [23],
-    24: [26],
-    25: [3], 
-    28: [29],
-    27: [35],
-};
+// Sub-form styles - REMOVED (no longer needed)
+// const subFormListContainerStyle = { ... };
+// const subFormListHeaderStyle = { ... };
+// const subFormListStyle = { ... };
+// const subFormListItemStyle = { ... };
+// Related Form Mapping - REMOVED to prevent grouping
+// const phmcSubFormMap = {
+//     1: [2, 4, 11, 37],
+//     6: [7],
+//     14: [16],
+//     20: [21],
+//     22: [23],
+//     24: [26],
+//     25: [3], 
+//     28: [29],
+//     27: [35],
+// };
 
 
 const AgencySelector = ({
@@ -70,19 +53,80 @@ const AgencySelector = ({
     emsRecruitmentDetails,
     nurseRecruitmentDetails,
     coronerRecruitmentDetails,
+    userPreferences,
 }) => {
+    // State to track whether to show personalized or all forms
+    const [showPersonalizedForms, setShowPersonalizedForms] = useState(true);
+    
+    // Reset to personalized view when agency group changes or modal opens
+    useEffect(() => {
+        if (showAgencySelector && userPreferences) {
+            setShowPersonalizedForms(true);
+        }
+    }, [showAgencySelector, selectedAgencyGroup, userPreferences]);
+    
     if (!showAgencySelector || !selectedAgencyGroup) {
         return null;
     }
 
-    const availableForms = formDefinitions
-        .filter(form => form.group === selectedAgencyGroup && !form.name.includes('(PBC)') && !form.isHiddenInSelector)
+    // Get recommended forms from user preferences or onboarding
+    const getPersonalizedForms = (allForms) => {
+        if (!userPreferences || !userPreferences.recommendedForms) {
+            // If no user preferences, fall back to primary forms for user type
+            // BUT skip grouping for coroner users to avoid nested "Forensic Services" display
+            if (userPreferences && userPreferences.userType && userPreferences.userType !== 'coroner') {
+                const primaryForms = getPrimaryFormsForUserType(userPreferences.userType);
+                return allForms.filter(form => primaryForms.some(pf => pf.version === form.version));
+            }
+            return allForms; // Show all forms for coroners or if no preferences
+        }
+        
+        // Filter forms based on recommended forms from onboarding
+        return allForms.filter(form => userPreferences.recommendedForms.includes(form.version));
+    };
+
+    // Filter forms based on user preferences (existing functionality)
+    const filteredFormDefinitions = userPreferences 
+        ? formDefinitions.filter(form => {
+            // If no userTypes specified on form, show to everyone
+            if (!form.userTypes) return true;
+            
+            // Check if user's type is allowed for this form
+            return form.userTypes.includes(userPreferences.userType);
+        })
+        : formDefinitions;
+
+    // Get forms for the selected agency group - include all forms (no longer hiding sub-forms)
+    const agencyGroupForms = filteredFormDefinitions
+        .filter(form => form.group === selectedAgencyGroup && !form.name.includes('(PBC)'));
+    
+    // Determine which forms to show (personalized or all)
+    let formsToDisplay;
+    if (showPersonalizedForms && userPreferences) {
+        const personalizedForms = getPersonalizedForms(agencyGroupForms);
+        // Only use personalized forms if we have any, otherwise show all
+        formsToDisplay = personalizedForms.length > 0 ? personalizedForms : agencyGroupForms;
+    } else {
+        formsToDisplay = agencyGroupForms;
+    }
+
+    const availableForms = formsToDisplay
         .sort((a, b) => {
             const orderA = a.sortOrder !== undefined ? a.sortOrder : Infinity;
             const orderB = b.sortOrder !== undefined ? b.sortOrder : Infinity;
             if (orderA !== orderB) return orderA - orderB;
             return a.name.localeCompare(b.name);
         });
+    
+    // Helper function to generate modal title
+    const getModalTitle = () => {
+        if (!userPreferences) {
+            return `${selectedAgencyGroup} Form Selection (${availableForms.length})`;
+        }
+        
+        const modeText = showPersonalizedForms ? 'My' : 'All';
+        return `${modeText} ${selectedAgencyGroup} Forms (${availableForms.length})`;
+    };
     
         // --- Recruitment Details Mapping ---
         // Use props passed from App.js
@@ -215,9 +259,7 @@ const AgencySelector = ({
                     </div>
                 )}
 
-                {/* PHMC Sub-Forms List */}
-
-
+                {/* PHMC Sub-Forms List - REMOVED
                 {formSpecificButtonProps.subForms && formSpecificButtonProps.subForms.length > 0 && (
                     <div style={subFormListContainerStyle}>
                         <div style={subFormListHeaderStyle}>Related Forms:</div>
@@ -230,6 +272,7 @@ const AgencySelector = ({
                         </ul>
                     </div>
                 )}
+                */}
             </Button>
         );
     };
@@ -237,14 +280,61 @@ const AgencySelector = ({
     return (
         <div style={overlayStyle} onClick={() => setShowAgencySelector(false)}>
             <div style={modalContentStyle} onClick={e => e.stopPropagation()}>
-                <div style={modalHeaderStyle}>
-                    <h4 style={modalTitleStyle}>{selectedAgencyGroup} Form Selection ({availableForms.length})</h4>
-                    <button type="button" style={closeButtonStyle} onClick={() => setShowAgencySelector(false)} aria-label="Close">
-                        <span aria-hidden="true">&times;</span>
-                    </button>
+                                <div style={modalHeaderStyle}>
+                    <h4 style={modalTitleStyle}>{getModalTitle()}</h4>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {userPreferences && (
+                            <Button
+                                variant={showPersonalizedForms ? "outline-primary" : "primary"}
+                                size="sm"
+                                onClick={() => setShowPersonalizedForms(!showPersonalizedForms)}
+                                style={{
+                                    fontSize: '0.75rem',
+                                    padding: '0.25rem 0.5rem',
+                                    minWidth: '80px'
+                                }}
+                            >
+                                {showPersonalizedForms ? 'Show All' : 'Show My Forms'}
+                            </Button>
+                        )}
+                        <Button
+                            variant="outline-secondary"
+                            size="sm"
+                            onClick={() => setHideAgencySelector(true)}
+                            style={{
+                                fontSize: '0.75rem',
+                                padding: '0.25rem 0.5rem'
+                            }}
+                        >
+                            Hide Selector
+                        </Button>
+                        <button
+                            type="button"
+                            style={closeButtonStyle}
+                            onClick={() => setShowAgencySelector(false)}
+                            aria-label="Close selector"
+                        >
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
                 </div>
 
                 <div style={modalBodyStyle}>
+                    {userPreferences && showPersonalizedForms && availableForms.length > 0 && (
+                        <div style={{
+                            backgroundColor: '#1a3a5c',
+                            border: '1px solid #007bff',
+                            borderRadius: '0.25rem',
+                            padding: '0.75rem',
+                            marginBottom: '1rem',
+                            fontSize: '0.875rem',
+                            color: '#e3f2fd'
+                        }}>
+                            <i className="fas fa-info-circle" style={{ marginRight: '0.5rem', color: '#007bff' }}></i>
+                            Showing your personalized forms based on your onboarding preferences. 
+                            <strong>Click "Show All"</strong> to see all available forms.
+                        </div>
+                    )}
                     {isMobile ? (
                         <Form.Select
                             aria-label={`Select a ${selectedAgencyGroup} form`}
@@ -268,20 +358,21 @@ const AgencySelector = ({
                                             subForms: [],
                                         };
 
-                                        if (selectedAgencyGroup === 'PHMC' && phmcSubFormMap[form.version]) {
-                                            const subFormVersions = phmcSubFormMap[form.version];
-                                            const relatedSubForms = formDefinitions.filter(def =>
-                                                subFormVersions.includes(def.version) && def.isHiddenInSelector
-                                            ).map(sf => ({ version: sf.version, name: sf.name, icon: sf.icon }));
+                                        // Remove sub-forms grouping - show all forms individually
+                                        // if (selectedAgencyGroup === 'PHMC' && phmcSubFormMap[form.version]) {
+                                        //     const subFormVersions = phmcSubFormMap[form.version];
+                                        //     const relatedSubForms = formDefinitions.filter(def =>
+                                        //         subFormVersions.includes(def.version) && def.isHiddenInSelector
+                                        //     ).map(sf => ({ version: sf.version, name: sf.name, icon: sf.icon }));
 
-                                            if (relatedSubForms.length > 0) {
-                                                buttonDisplayProps.subForms = relatedSubForms;
-                                                buttonDisplayProps.style = {
-                                                    ...buttonDisplayProps.style,
-                                                    height: 'auto',
-                                                };
-                                            }
-                                        }
+                                        //     if (relatedSubForms.length > 0) {
+                                        //         buttonDisplayProps.subForms = relatedSubForms;
+                                        //         buttonDisplayProps.style = {
+                                        //             ...buttonDisplayProps.style,
+                                        //             height: 'auto',
+                                        //         };
+                                        //     }
+                                        // }
 
                                         // For PHMC Recruitment, set recruitment status props before rendering
                                         if (selectedAgencyGroup === 'PHMC Recruitment' && recruitmentDetailsMap[form.version]) {

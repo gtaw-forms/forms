@@ -1282,6 +1282,7 @@ Key: ${savedRoleData.originalKey}`,
 
         const payload = buildWebhookPayload(customWebhookTitle, customWebhookMessage, customWebhookUrl);
         let result = false;
+        let responseStatus = null;
         
         try {
             const response = await fetch(selectedWebhook.url, {
@@ -1290,12 +1291,37 @@ Key: ${savedRoleData.originalKey}`,
                 body: JSON.stringify(payload)
             });
             result = response.ok;
+            responseStatus = response.status;
             if (!result) {
                 console.error('Webhook send failed:', response.status, response.statusText);
             }
         } catch (error) {
             console.error('Error sending custom webhook:', error);
             result = false;
+        }
+        
+        // Log the webhook send to Firebase
+        try {
+            await logWebhookToFirebase('custom_webhook', {
+                webhook: {
+                    id: selectedWebhook.id,
+                    name: selectedWebhook.name,
+                    type: selectedWebhook.type,
+                    url: selectedWebhook.url
+                },
+                title: customWebhookTitle,
+                message: customWebhookMessage,
+                customUrl: customWebhookUrl,
+                adminUser: currentUser?.email || 'Unknown Admin',
+                success: result,
+                responseStatus: responseStatus,
+                timestamp: new Date().toISOString()
+            });
+            
+            // Trigger log refresh to update the WebhookLogs component
+            setLogRefreshTrigger(prev => prev + 1);
+        } catch (logError) {
+            console.error('Failed to log custom webhook to Firebase:', logError);
         }
         
         setCustomWebhookResult(result ? 'success' : 'error');
@@ -1351,8 +1377,6 @@ Key: ${savedRoleData.originalKey}`,
                 Sentry={Sentry}
                 showInAppNotification={showInAppNotification}
                 handleGtaWorldLogin={handleGtaWorldLogin}
-                setShowOAuthTokenExchangeModal={setShowOAuthTokenExchangeModal}
-                setShowUserDataExchangeModal={setShowUserDataExchangeModal}
                 lockdownConfig={lockdownConfig}
                 setLockdownConfig={setLockdownConfig}
                 handleUpdateLockdownStatus={handleUpdateLockdownStatus}
@@ -1413,7 +1437,7 @@ Key: ${savedRoleData.originalKey}`,
                 database={database}
                 showNotification={showInAppNotification}
             />
-            <OAuthTokenExchangeModal
+{/*             <OAuthTokenExchangeModal
                 show={showOAuthTokenExchangeModal}
                 onHide={() => setShowOAuthTokenExchangeModal(false)}
                 showNotification={showInAppNotification}
@@ -1428,7 +1452,7 @@ Key: ${savedRoleData.originalKey}`,
                 sendAdminActionWebhook={sendAdminActionWebhook}
                 adminUserEmail={currentUser?.email}
             />
-        </>
+ */}        </>
     );
 };
 
