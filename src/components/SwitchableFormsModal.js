@@ -1,6 +1,7 @@
 // src/components/SwitchableFormsModal.js
-import React, { useEffect } from 'react'; // Added useEffect for logging
+import React, { useEffect, useState } from 'react'; // Added useState
 import { Button, Image } from 'react-bootstrap';
+import { getPrimaryFormsForUserType } from '../formDefinitions';
 
 // Style definitions (consistent with AgencySelector)
 const modalOverlayStyle = {
@@ -165,8 +166,52 @@ const SwitchableFormsModal = ({
     emsRecruitmentDetails,
     nurseRecruitmentDetails, // This is the prop for Nursing data
     coronerRecruitmentDetails,
-    formDefinitions
+    formDefinitions,
+    userPreferences // Add user preferences prop
 }) => {
+    // State to track whether to show personalized or all forms
+    const [showPersonalizedForms, setShowPersonalizedForms] = useState(true);
+    
+    // Get recommended forms from user preferences or onboarding
+    const getPersonalizedForms = () => {
+        if (!userPreferences || !userPreferences.recommendedForms) {
+            // If no user preferences, fall back to primary forms for user type
+            if (userPreferences && userPreferences.userType) {
+                const primaryForms = getPrimaryFormsForUserType(userPreferences.userType);
+                return forms.filter(form => primaryForms.some(pf => pf.version === form.version));
+            }
+            return forms; // Show all if no preferences
+        }
+        
+        // Filter forms based on recommended forms from onboarding
+        return forms.filter(form => userPreferences.recommendedForms.includes(form.version));
+    };
+    
+    // Determine which forms to show
+    let formsToDisplay;
+    if (showPersonalizedForms && userPreferences) {
+        const personalizedForms = getPersonalizedForms();
+        // Only use personalized forms if we have any, otherwise show all
+        formsToDisplay = personalizedForms.length > 0 ? personalizedForms : forms;
+    } else {
+        formsToDisplay = forms;
+    }
+    
+    // Filter forms based on user preferences (existing functionality)
+    const filteredForms = userPreferences ? formsToDisplay.filter(form => {
+        // If no userTypes specified on form, show to everyone
+        if (!form.userTypes) return true;
+        
+        // Check if user's type is allowed for this form
+        return form.userTypes.includes(userPreferences.userType);
+    }) : formsToDisplay;
+    
+    // Reset to personalized view when modal opens
+    useEffect(() => {
+        if (show && userPreferences) {
+            setShowPersonalizedForms(true);
+        }
+    }, [show, userPreferences]);
     // Log props when the modal is shown or relevant props change
     useEffect(() => {
         if (show) {
@@ -181,23 +226,33 @@ const SwitchableFormsModal = ({
         }
     }, [show, physicianRecruitmentDetails, psychRecruitmentStatus, adminRecruitmentDetails, emsRecruitmentDetails, nurseRecruitmentDetails, coronerRecruitmentDetails]);
 
+    // Helper function to generate modal title
+    const getModalTitle = () => {
+        if (!userPreferences) {
+            return `${title} (${filteredForms.length})`;
+        }
+        
+        const baseTitle = title.replace(/^Select\\s+/, ''); // Remove "Select " prefix if present
+        const modeText = showPersonalizedForms ? 'My' : 'All';
+        return `${modeText} ${baseTitle} (${filteredForms.length})`;
+    };
 
-    if (!show || !forms || forms.length === 0) {
+    if (!show || !filteredForms || filteredForms.length === 0) {
         return null;
     }
 
     const modalContentStyle = {
         ...modalContentStyleBase,
-        width: isMobile ? '90%' : (forms.length > 2 ? '75%' : '50%'),
-        maxWidth: forms.length > 3 ? '1140px' : (forms.length > 2 ? '900px' : '600px'),
+        width: isMobile ? '90%' : (filteredForms.length > 2 ? '75%' : '50%'),
+        maxWidth: filteredForms.length > 3 ? '1140px' : (filteredForms.length > 2 ? '900px' : '600px'),
     };
 
     const gridItemStyle = {
         ...gridItemStyleBase,
         flex: isMobile ? '1 0 48%' :
-              forms.length === 1 ? '1 0 98%' :
-              forms.length === 2 ? '1 0 48%' :
-              forms.length === 3 ? '1 0 30%' :
+              filteredForms.length === 1 ? '1 0 98%' :
+              filteredForms.length === 2 ? '1 0 48%' :
+              filteredForms.length === 3 ? '1 0 30%' :
               '1 0 23%',
     };
 
@@ -205,19 +260,50 @@ const SwitchableFormsModal = ({
         <div style={modalOverlayStyle} onClick={onHide}>
             <div style={modalContentStyle} onClick={e => e.stopPropagation()}>
                 <div style={modalHeaderStyle}>
-                    <h4 style={modalTitleStyle}>{title} ({forms.length})</h4>
-                    <button
-                        type="button"
-                        style={modalCloseButtonStyle}
-                        onClick={onHide}
-                        aria-label="Close selector"
-                    >
-                        <span aria-hidden="true">&times;</span>
-                    </button>
+                    <h4 style={modalTitleStyle}>{getModalTitle()}</h4>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {userPreferences && (
+                            <Button
+                                variant={showPersonalizedForms ? "outline-primary" : "primary"}
+                                size="sm"
+                                onClick={() => setShowPersonalizedForms(!showPersonalizedForms)}
+                                style={{
+                                    fontSize: '0.75rem',
+                                    padding: '0.25rem 0.5rem',
+                                    minWidth: '80px'
+                                }}
+                            >
+                                {showPersonalizedForms ? 'Show All' : 'Show My Forms'}
+                            </Button>
+                        )}
+                        <button
+                            type="button"
+                            style={modalCloseButtonStyle}
+                            onClick={onHide}
+                            aria-label="Close selector"
+                        >
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
                 </div>
                 <div style={modalBodyStyle}>
+                    {userPreferences && showPersonalizedForms && filteredForms.length > 0 && (
+                        <div style={{
+                            backgroundColor: '#1a3a5c',
+                            border: '1px solid #007bff',
+                            borderRadius: '0.25rem',
+                            padding: '0.75rem',
+                            marginBottom: '1rem',
+                            fontSize: '0.875rem',
+                            color: '#e3f2fd'
+                        }}>
+                            <i className="fas fa-info-circle" style={{ marginRight: '0.5rem', color: '#007bff' }}></i>
+                            Showing your personalized forms based on your onboarding preferences. 
+                            <strong>Click "Show All"</strong> to see all available forms.
+                        </div>
+                    )}
                     <div style={gridContainerStyle}>
-                        {forms.map(form => {
+                        {filteredForms.map(form => {
                             let buttonDisplayProps = {
                                 text: form.name,
                                 title: form.name,

@@ -30,8 +30,6 @@ const CollapsibleHeader = ({ title, isOpen, onToggle, sectionId }) => (
 const EMSFields = ({ formData, handleChange, setFormData, selectOptions
 }) => {
     const positionDetails = selectOptions?.emsPositionDetailsData || {};
-        console.log("EMSFields: selectOptions prop:", selectOptions);
-    console.log("EMSFields: positionDetails (emsPositionDetailsData):", positionDetails);
 
     const selectedRole = formData.recruitmentPosition || '';
 

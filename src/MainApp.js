@@ -43,6 +43,7 @@ import { database } from './firebase'; // Your Firebase config
 const SavedReportsModal = lazy(() => import('./components/SavedReportsModal'));
 const AgencyGroupSelectorModal = lazy(() => import('./components/AgencyGroupSelectorModal'));
 const AgencySelector = lazy(() => import('./components/AgencySelector'));
+const OnboardingModal = lazy(() => import('./components/OnboardingModal'));
 const Footer = lazy(() => import('./components/Footer'));
 const HeaderInfo = lazy(() => import('./components/HeaderInfo'));
 const CoronerTipsModal = lazy(() => import('./components/CoronerTipsModal'));
@@ -71,7 +72,6 @@ function MainApp({
 
     const {
         showEmsBingoModal, setShowEmsBingoModal,
-        showGtaCallback, setShowGtaCallback,
         showEasterEggModal, setShowEasterEggModal,
         easterEggType, setEasterEggType,
         showAgencySelector, setShowAgencySelector,
@@ -100,6 +100,65 @@ function MainApp({
     const handlePrivacyPolicyConfirm = () => {
         localStorage.setItem('hasAcceptedPrivacyPolicy', 'true');
         setShowPrivacyPolicyModal(false);
+    };
+
+    // Onboarding detection and initialization
+    useEffect(() => {
+        const onboardingCompleteFlag = localStorage.getItem('onboardingComplete');
+        const userPreferences = localStorage.getItem('userOnboardingPreferences');
+        
+        if (userPreferences) {
+            try {
+                const preferences = JSON.parse(userPreferences);
+                setUserOnboardingPreferences(preferences);
+                setOnboardingComplete(true);
+            } catch (error) {
+                console.warn('Failed to parse user onboarding preferences:', error);
+                localStorage.removeItem('userOnboardingPreferences');
+            }
+        }
+        
+        // Show onboarding for first-time users
+        if (!onboardingCompleteFlag && !userPreferences) {
+            setShowOnboarding(true);
+        } else {
+            setOnboardingComplete(true);
+        }
+    }, []);
+
+    const handleOnboardingComplete = (preferences) => {
+        setUserOnboardingPreferences(preferences);
+        setOnboardingComplete(true);
+        setShowOnboarding(false);
+        
+        // Apply user preferences immediately
+        if (preferences.allowedCategories?.length === 1) {
+            setSelectedAgencyGroup(preferences.allowedCategories[0]);
+            localStorage.setItem('selectedAgencyGroup', preferences.allowedCategories[0]);
+        }
+        
+        // Set the default form based on user preferences
+        if (preferences.defaultForm) {
+            setBbCodeVersion(preferences.defaultForm);
+            localStorage.setItem('selectedForm', preferences.defaultForm.toString());
+        }
+        
+        showNotification(`Welcome! Your interface has been customized for ${preferences.userType} users.`, 'check-circle');
+    };
+
+    const handleOnboardingSkip = () => {
+        setShowOnboarding(false);
+        setOnboardingComplete(true);
+        showNotification('Onboarding skipped. You can restart it anytime from the Tools menu.', 'info-circle');
+    };
+
+    const restartOnboarding = () => {
+        localStorage.removeItem('onboardingComplete');
+        localStorage.removeItem('onboardingSkipped');
+        localStorage.removeItem('userOnboardingPreferences');
+        setUserOnboardingPreferences(null);
+        setOnboardingComplete(false);
+        setShowOnboarding(true);
     };
     const [isMobile, setIsMobile] = useState(false);
     const [showMovedNotification, setShowMovedNotification] = useState(true);
@@ -133,6 +192,11 @@ function MainApp({
     const [isJohnDoe, setIsJohnDoe] = useState(false);
     const [isJaneDoe, setIsJaneDoe] = useState(false);
     const [commitInfo, setCommitInfo] = useState({ sha: '', date: null, error: null });
+    
+    // Onboarding state management
+    const [showOnboarding, setShowOnboarding] = useState(false);
+    const [userOnboardingPreferences, setUserOnboardingPreferences] = useState(null);
+    const [onboardingComplete, setOnboardingComplete] = useState(false);
     const [isLoadingUserReports, setIsLoadingUserReports] = useState(false);
     
     const [featureRequest, setFeatureRequest] = useState('');
@@ -818,8 +882,6 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             setShowEmsBingoModal(true);
         } else if (currentPath.endsWith('/cctv') || (redirectedPath && redirectedPath.endsWith('/cctv'))) {
             handleShowCctvRequestModal();
-        } else if (currentPath.endsWith('/forms/auth/gta/callback')) {
-            setShowGtaCallback(true);
         }
 
         if (redirectedPath) {
@@ -975,17 +1037,28 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
     ].filter(group => group.options.length > 0); // Filter out empty groups if any list is empty
     // Effect to manage initial agency group selection
     useEffect(() => {
+        // Skip if onboarding is not complete yet
+        if (!onboardingComplete) return;
+        
         const savedGroup = localStorage.getItem('selectedAgencyGroup');
         const hidePreference = localStorage.getItem('hideAgencyGroupSelectorPreference') === 'true';
         setHideAgencyGroupSelectorPreference(hidePreference);
 
+        // If user has onboarding preferences, respect them
+        if (userOnboardingPreferences?.allowedCategories?.length === 1) {
+            const preferredGroup = userOnboardingPreferences.allowedCategories[0];
+            setSelectedAgencyGroup(preferredGroup);
+            setShowAgencyGroupSelectorModal(false);
+            return;
+        }
+
         if (savedGroup && hidePreference) { // Only auto-select if preference is to hide
             setSelectedAgencyGroup(savedGroup);
             setShowAgencyGroupSelectorModal(false);
-        } else {
+        } else if (onboardingComplete) { // Only show selector after onboarding is complete
             setShowAgencyGroupSelectorModal(true); // Show if no saved group or preference is not to hide
         }
-    }, []);
+    }, [onboardingComplete, userOnboardingPreferences]);
     
     // This useEffect ensures selectedAgencyGroup is primarily driven by bbCodeVersion.
     // It runs when bbCodeVersion changes, correcting selectedAgencyGroup if needed.
@@ -1013,8 +1086,17 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                 <LockdownBanner notification={lockdownConfig.notification} show={isLockdownActive} />
                 <LockdownDialog show={showDialog} onHide={hideDialog} message={lockdownConfig.dialog} />
                 <PrivacyPolicyModal isOpen={showPrivacyPolicyModal} onClose={handlePrivacyPolicyConfirm} />
+                <OnboardingModal 
+                    show={showOnboarding} 
+                    onComplete={handleOnboardingComplete}
+                    onSkip={handleOnboardingSkip}
+                    formDefinitions={formDefinitions}
+                    showNotification={showNotification}
+                    phmcList={phmcListData}
+                    coronerList={coronerListData}
+                />
                 <AgencyGroupSelectorModal
-                show={showAgencyGroupSelectorModal && !selectedAgencyGroup}
+                show={showAgencyGroupSelectorModal && !selectedAgencyGroup && onboardingComplete}
                 onSelectGroup={handleSelectAgencyGroup}
                 onHideSelectorPreference={handleHideAgencyGroupSelectorPreference}
     physicianRecruitmentDetails={selectOptions.physicianRecruitmentDetails || {}}
@@ -1042,8 +1124,10 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                 psychRecruitmentStatus={selectOptions.psychPositionDetailsData}
                 adminRecruitmentDetails={selectOptions.adminPositionDetailsData}
                 emsRecruitmentDetails={selectOptions.emsPositionDetailsData}
+                nurseRecruitmentDetails={selectOptions.nursePositionDetailsData}
                 coronerRecruitmentDetails={selectOptions.coronerPositionDetailsData}
                 formDefinitions={formDefinitions}
+                userPreferences={userOnboardingPreferences}
             />
 
             <CctvRequestWebhookModal
@@ -1095,6 +1179,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                             emsRecruitmentDetails={emsRecruitmentDetails}
                             nurseRecruitmentDetails={nurseRecruitmentDetails}
                             coronerRecruitmentDetails={coronerRecruitmentDetails}
+                            userPreferences={userOnboardingPreferences}
                         />
                         
                     )}
@@ -1131,6 +1216,9 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                     <Dropdown.Item onClick={() => {toggleSeasonalEffects(); setShowToolsDropdown(false);}}>
                         <i className={`fas ${seasonalEffectsEnabled ? 'fa-snowflake' : 'fa-sun'}`}></i> 
                         {seasonalEffectsEnabled ? 'Disable' : 'Enable'} Seasonal Effects
+                    </Dropdown.Item>
+                    <Dropdown.Item onClick={() => {restartOnboarding(); setShowToolsDropdown(false);}}>
+                        <i className="fas fa-play-circle"></i> Restart Setup Guide
                     </Dropdown.Item>
                     <Dropdown.Divider />
                     <Dropdown.Item onClick={() => {{
@@ -1606,6 +1694,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                 nurseRecruitmentDetails={selectOptions.nursePositionDetailsData || {}}
                 coronerRecruitmentDetails={selectOptions.coronerPositionDetailsData || {}}
                 emsRecruitmentDetails={selectOptions.emsPositionDetailsData || {}}
+                userPreferences={userOnboardingPreferences}
             />
 
             <SavedReportsModal
