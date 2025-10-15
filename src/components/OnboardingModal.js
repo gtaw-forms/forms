@@ -13,6 +13,7 @@ const ONBOARDING_STEPS = {
     USER_TYPE: 'userType',
     ROLE_SPECIFIC: 'roleSpecific',
     FORM_PREVIEW: 'formPreview',
+    PRIVACY_POLICY: 'privacyPolicy',
     COMPLETE: 'complete'
 };
 
@@ -40,7 +41,7 @@ const RECOMMENDED_FORMS = {
     [USER_TYPES.PHMC_STAFF]: [ 5, 6, 14, 19, 20, 22, 27], // Forensic Services, Surgical Ops, Physical Eval, ER Protocol, General Consultation
     [USER_TYPES.CORONER]: [1, 2, 4, 8, 11, 37, 27], // Forensic Services, Coroner Email, Autopsy, Certificate, Mass Fatality
     [USER_TYPES.RECRUITMENT]: [50, 51, 52, 53, 54, 55], // All recruitment forms
-    [USER_TYPES.OTHER]: [1, 24, 25, 50] // Mix of popular forms
+    [USER_TYPES.OTHER]: 'ALL_FORMS' // Show all available forms
 };
 
 const OnboardingModal = ({ 
@@ -101,9 +102,14 @@ const OnboardingModal = ({
     // Update recommended forms when user type changes
     useEffect(() => {
         if (selectedUserType) {
-            const formIds = RECOMMENDED_FORMS[selectedUserType] || [];
-            const forms = formIds.map(id => formDefs.find(form => form.version === id)).filter(Boolean);
-            setRecommendedForms(forms);
+            const formIds = RECOMMENDED_FORMS[selectedUserType];
+            if (formIds === 'ALL_FORMS') {
+                // For OTHER user type, show all forms
+                setRecommendedForms(formDefs);
+            } else {
+                const forms = formIds?.map(id => formDefs.find(form => form.version === id)).filter(Boolean) || [];
+                setRecommendedForms(forms);
+            }
         }
     }, [selectedUserType, formDefs]);
 
@@ -123,6 +129,9 @@ const OnboardingModal = ({
                 setCurrentStep(ONBOARDING_STEPS.FORM_PREVIEW);
                 break;
             case ONBOARDING_STEPS.FORM_PREVIEW:
+                setCurrentStep(ONBOARDING_STEPS.PRIVACY_POLICY);
+                break;
+            case ONBOARDING_STEPS.PRIVACY_POLICY:
                 setCurrentStep(ONBOARDING_STEPS.COMPLETE);
                 break;
             case ONBOARDING_STEPS.COMPLETE:
@@ -148,8 +157,11 @@ const OnboardingModal = ({
                     setCurrentStep(ONBOARDING_STEPS.USER_TYPE);
                 }
                 break;
-            case ONBOARDING_STEPS.COMPLETE:
+            case ONBOARDING_STEPS.PRIVACY_POLICY:
                 setCurrentStep(ONBOARDING_STEPS.FORM_PREVIEW);
+                break;
+            case ONBOARDING_STEPS.COMPLETE:
+                setCurrentStep(ONBOARDING_STEPS.PRIVACY_POLICY);
                 break;
             default:
                 break;
@@ -433,8 +445,8 @@ const OnboardingModal = ({
     };
 
     const getStepNumber = () => {
-        const steps = [ONBOARDING_STEPS.WELCOME, ONBOARDING_STEPS.USER_TYPE, ONBOARDING_STEPS.ROLE_SPECIFIC, ONBOARDING_STEPS.FORM_PREVIEW, ONBOARDING_STEPS.COMPLETE];
-        const totalSteps = selectedUserType === USER_TYPES.PHMC_STAFF || selectedUserType === USER_TYPES.CORONER ? 5 : 4;
+        const steps = [ONBOARDING_STEPS.WELCOME, ONBOARDING_STEPS.USER_TYPE, ONBOARDING_STEPS.ROLE_SPECIFIC, ONBOARDING_STEPS.FORM_PREVIEW, ONBOARDING_STEPS.PRIVACY_POLICY, ONBOARDING_STEPS.COMPLETE];
+        const totalSteps = selectedUserType === USER_TYPES.PHMC_STAFF || selectedUserType === USER_TYPES.CORONER ? 6 : 5;
         let currentStepIndex = steps.indexOf(currentStep) + 1;
         
         // Adjust for skipped role step
@@ -1005,6 +1017,39 @@ const OnboardingModal = ({
         </div>
     );
 
+    const renderPrivacyPolicyStep = () => (
+        <div style={stepContentStyle}>
+            <div style={privacyIconStyle}>
+                <i className="fas fa-shield-alt" style={{fontSize: '3rem', color: '#007bff'}}></i>
+            </div>
+            <h2 style={stepTitleStyle}>Privacy Policy</h2>
+            <p style={stepDescriptionStyle}>
+                Please review our privacy policy before completing your setup.
+            </p>
+            <div style={privacyContentStyle}>
+                <div style={privacyPolicyBoxStyle}>
+                    <h3 style={privacyTitleStyle}>PHMC Tools Privacy Policy</h3>
+                    <p>This policy covers the use of PHMC Tools and complies with the <a href="https://gta.world/terms/" target="_blank" rel="noopener noreferrer" style={linkStyle}>GTA World Privacy Policy</a>.</p>
+                    <p>This website processes <strong>IN CHARACTER</strong> information for the usage of Pillbox Hill Medical Center (A GTA World Faction)</p>
+                    <p>We are in full compliance of the <a href="https://forum.gta.world/en/topic/141256-gta-world-website-regulations-last-update-march-1st-2025/" target="_blank" rel="noopener noreferrer" style={linkStyle}>GTA World Regulations</a> by hosting this website on GTA World Servers and code is vetted by GTAW Developers.</p>
+                    <p>
+                        We utilize tools from third party providers: 
+                        <a href="https://sentry.io/privacy/" target="_blank" rel="noopener noreferrer" style={linkStyle}> Sentry</a> (Error Tracking) and 
+                        <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" style={linkStyle}> Google Firebase</a> (Report Saving).
+                    </p>
+                    <p><strong>We collect the following data:</strong></p>
+                    <ul style={privacyListStyle}>
+                        <li>Firebase only stores Saved Reports, Dropdown Fields and Employee Names</li>
+                        <li>Error Logs Device Information (Mobile / Desktop / Tablet), related error file and button pressed.</li>
+                        <li>Only myself and Everett can view the Error Logs and the Firebase Database.</li>
+                    </ul>
+                    <p>We do not share your data with any third parties except for the third party providers mentioned above.</p>
+                    <p><strong>Questions:</strong> Ask in the PHMC Discord Server.</p>
+                </div>
+            </div>
+        </div>
+    );
+
     const renderCompleteStep = () => (
         <div style={stepContentStyle}>
             <div style={completeIconStyle}>
@@ -1072,6 +1117,8 @@ const OnboardingModal = ({
                 return selectedRole !== null;
             case ONBOARDING_STEPS.FORM_PREVIEW:
                 return true;
+            case ONBOARDING_STEPS.PRIVACY_POLICY:
+                return true;
             case ONBOARDING_STEPS.COMPLETE:
                 return true;
             default:
@@ -1083,6 +1130,8 @@ const OnboardingModal = ({
         switch (currentStep) {
             case ONBOARDING_STEPS.WELCOME:
                 return "Let's Get Started";
+            case ONBOARDING_STEPS.PRIVACY_POLICY:
+                return "Accept & Continue";
             case ONBOARDING_STEPS.COMPLETE:
                 return "Start Using Forms";
             default:
@@ -1100,6 +1149,8 @@ const OnboardingModal = ({
                 return renderRoleSpecificStep();
             case ONBOARDING_STEPS.FORM_PREVIEW:
                 return renderFormPreviewStep();
+            case ONBOARDING_STEPS.PRIVACY_POLICY:
+                return renderPrivacyPolicyStep();
             case ONBOARDING_STEPS.COMPLETE:
                 return renderCompleteStep();
             default:
@@ -1562,6 +1613,70 @@ const coronerInfoDescStyle = {
     color: '#ccc',
     lineHeight: '1.4',
     margin: 0
+};
+
+const privacyIconStyle = {
+    fontSize: '3rem',
+    color: '#17a2b8',
+    marginBottom: '20px'
+};
+
+const privacyContentStyle = {
+    textAlign: 'left',
+    maxHeight: '400px',
+    overflowY: 'auto',
+    backgroundColor: '#2c3e50',
+    border: '1px solid #495057',
+    borderRadius: '8px',
+    padding: '20px',
+    marginBottom: '20px'
+};
+
+const privacyPolicyBoxStyle = {
+    backgroundColor: '#f8f9fa',
+    border: '1px solid #dee2e6',
+    borderRadius: '4px',
+    padding: '15px',
+    margin: '10px 0',
+    color: '#343a40'
+};
+
+const privacyHeaderStyle = {
+    color: '#17a2b8',
+    fontSize: '1.1rem',
+    fontWeight: 'bold',
+    marginBottom: '10px'
+};
+
+const privacyTextStyle = {
+    fontSize: '0.9rem',
+    lineHeight: '1.5',
+    color: '#495057',
+    marginBottom: '10px'
+};
+
+const privacyLinkStyle = {
+    color: '#007bff',
+    textDecoration: 'none'
+};
+
+const privacyTitleStyle = {
+    color: '#e9ecef',
+    fontSize: '1.4rem',
+    fontWeight: 'bold',
+    marginBottom: '15px',
+    textAlign: 'center'
+};
+
+const linkStyle = {
+    color: '#17a2b8',
+    textDecoration: 'none'
+};
+
+const privacyListStyle = {
+    color: '#e9ecef',
+    paddingLeft: '20px',
+    marginBottom: '15px'
 };
 
 export default OnboardingModal;
