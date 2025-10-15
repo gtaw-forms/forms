@@ -55,7 +55,6 @@ const EmployeeModal = lazy(() => import('./components/EmployeeModal'));
 const RecruitmentStatusDisplay = lazy(() => import('./components/RecruitmentStatusDisplay'));
 const CctvRequestWebhookModal = lazy(() => import('./components/Admin/CctvRequestWebhookModal'));
 const FeatureRequestModal = lazy(() => import('./contexts/FeatureRequestModal'));
-const PrivacyPolicyModal = lazy(() => import('./components/PrivacyPolicyModal'));
 const FormImageLink = lazy(() => import('./components/FormImageLink'));
 const EmsBingoModal = lazy(() => import('./components/EmsBingoModal'));
 
@@ -87,20 +86,8 @@ function MainApp({
         switchableFormsList, setSwitchableFormsList,
         showFeatureRequestModal, setShowFeatureRequestModal,
 
-        showPrivacyPolicyModal, setShowPrivacyPolicyModal,
     } = useModal();
 
-    useEffect(() => {
-        const hasAcceptedPrivacyPolicy = localStorage.getItem('hasAcceptedPrivacyPolicy');
-        if (!hasAcceptedPrivacyPolicy) {
-            setShowPrivacyPolicyModal(true);
-        }
-    }, []);
-
-    const handlePrivacyPolicyConfirm = () => {
-        localStorage.setItem('hasAcceptedPrivacyPolicy', 'true');
-        setShowPrivacyPolicyModal(false);
-    };
 
     // Onboarding detection and initialization
     useEffect(() => {
@@ -1085,7 +1072,6 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             <div className="App">
                 <LockdownBanner notification={lockdownConfig.notification} show={isLockdownActive} />
                 <LockdownDialog show={showDialog} onHide={hideDialog} message={lockdownConfig.dialog} />
-                <PrivacyPolicyModal isOpen={showPrivacyPolicyModal} onClose={handlePrivacyPolicyConfirm} />
                 <OnboardingModal 
                     show={showOnboarding} 
                     onComplete={handleOnboardingComplete}

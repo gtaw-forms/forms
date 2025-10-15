@@ -1028,7 +1028,6 @@ const OnboardingModal = ({
             </p>
             <div style={privacyContentStyle}>
                 <div style={privacyPolicyBoxStyle}>
-                    <h3 style={privacyTitleStyle}>PHMC Tools Privacy Policy</h3>
                     <p>This policy covers the use of PHMC Tools and complies with the <a href="https://gta.world/terms/" target="_blank" rel="noopener noreferrer" style={linkStyle}>GTA World Privacy Policy</a>.</p>
                     <p>This website processes <strong>IN CHARACTER</strong> information for the usage of Pillbox Hill Medical Center (A GTA World Faction)</p>
                     <p>We are in full compliance of the <a href="https://forum.gta.world/en/topic/141256-gta-world-website-regulations-last-update-march-1st-2025/" target="_blank" rel="noopener noreferrer" style={linkStyle}>GTA World Regulations</a> by hosting this website on GTA World Servers and code is vetted by GTAW Developers.</p>
@@ -1623,6 +1622,7 @@ const privacyIconStyle = {
 
 const privacyContentStyle = {
     textAlign: 'left',
+    color: '#f8f9fa',
     maxHeight: '400px',
     overflowY: 'auto',
     backgroundColor: '#2c3e50',
@@ -1633,39 +1633,12 @@ const privacyContentStyle = {
 };
 
 const privacyPolicyBoxStyle = {
-    backgroundColor: '#f8f9fa',
-    border: '1px solid #dee2e6',
+    backgroundColor: '#2c3e50',
+    border: '1px solid #495057',
     borderRadius: '4px',
     padding: '15px',
     margin: '10px 0',
-    color: '#343a40'
-};
-
-const privacyHeaderStyle = {
-    color: '#17a2b8',
-    fontSize: '1.1rem',
-    fontWeight: 'bold',
-    marginBottom: '10px'
-};
-
-const privacyTextStyle = {
-    fontSize: '0.9rem',
-    lineHeight: '1.5',
-    color: '#495057',
-    marginBottom: '10px'
-};
-
-const privacyLinkStyle = {
-    color: '#007bff',
-    textDecoration: 'none'
-};
-
-const privacyTitleStyle = {
-    color: '#e9ecef',
-    fontSize: '1.4rem',
-    fontWeight: 'bold',
-    marginBottom: '15px',
-    textAlign: 'center'
+    color: '#f8f9fa'
 };
 
 const linkStyle = {
