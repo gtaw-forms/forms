@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../../firebase';
 import * as Sentry from "@sentry/react";
 
 const GtaCallback = () => {
@@ -53,7 +54,6 @@ const GtaCallback = () => {
 
                 // Handle actual authentication
                 try {
-                    const functions = getFunctions();
                     const exchangeAuthCodeForToken = httpsCallable(functions, 'exchangeAuthCodeForToken');
                     
                     console.log('Calling token exchange with:', { 

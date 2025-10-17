@@ -20,6 +20,7 @@ const app = initializeApp(firebaseConfig);
 const database = getDatabase(app);
 const auth = getAuth(app);
 const analytics = getAnalytics(app);
-const functions = getFunctions(app);
+// Configure functions with the correct region (must match server-side)
+const functions = getFunctions(app, 'us-central1');
 
 export { database, auth, app, analytics, functions };
