@@ -208,61 +208,102 @@ export const dailyTaskHandler = onSchedule({
     return null;
 });
 
-import cors from 'cors';
 import { onRequest } from "firebase-functions/v2/https";
 
-const corsHandler = cors({
-    origin: [
-        'https://ancad-studios.github.io',
-        'http://localhost:3000',
-        'https://gtaw-forms.github.io',
-    ],
-    methods: ['POST', 'OPTIONS']
-});
-
-export const exchangeAuthCodeForToken = onRequest({ secrets: ["GTAWORLD_CLIENT_ID", "GTAWORLD_CLIENT_SECRET"] }, async (req, res) => {
-    // Handle CORS
-    await new Promise((resolve) => corsHandler(req, res, resolve));
-
+export const exchangeAuthCodeForToken = onRequest({ 
+    secrets: ["GTAWORLD_CLIENT_ID", "GTAWORLD_CLIENT_SECRET"],
+    cors: {
+        origin: [
+            'https://ancad-studios.github.io',
+            'http://localhost:3000',
+            'https://gtaw-forms.github.io',
+            'https://phmc-tools.gta.world'
+        ],
+        methods: ['POST', 'OPTIONS']
+    }
+}, async (req, res) => {
     if (req.method !== 'POST') {
-        res.status(405).send('Method Not Allowed');
+        res.status(405).json({ error: 'method-not-allowed', message: 'Only POST requests are allowed' });
         return;
     }
 
     // Handle data from both httpsCallable (req.body.data) and direct fetch (req.body)
     const data = req.body.data || req.body;
     
-    console.log('Received request data:', JSON.stringify(data, null, 2));
+    console.log('[OAuth] Received token exchange request');
+    console.log('[OAuth] Request method:', req.method);
+    console.log('[OAuth] Request origin:', req.get('origin'));
+    console.log('[OAuth] Has code:', !!data?.code);
+    console.log('[OAuth] Has redirectUri:', !!data?.redirectUri);
     
-    const { code, redirectUri } = data || {};
+    const { code, redirectUri, clientId: providedClientId } = data || {};
     const clientId = process.env.GTAWORLD_CLIENT_ID;
     const clientSecret = process.env.GTAWORLD_CLIENT_SECRET;
 
+    // Validate that the provided clientId matches the configured one (security check)
+    if (providedClientId && providedClientId !== clientId) {
+        console.error('[OAuth] Client ID mismatch');
+        res.status(400).json({ 
+            error: 'invalid-client', 
+            message: 'Invalid client ID provided' 
+        });
+        return;
+    }
+
     // Validate required arguments
     if (!code) {
-        console.error('Missing code parameter');
-        res.status(400).json({ error: 'invalid-argument', message: 'The function must be called with the "code" argument.' });
+        console.error('[OAuth] Missing authorization code parameter');
+        res.status(400).json({ 
+            error: 'invalid-argument', 
+            message: 'Authorization code is required' 
+        });
         return;
     }
 
     if (!redirectUri) {
-        console.error('Missing redirectUri parameter');
-        res.status(400).json({ error: 'invalid-argument', message: 'The function must be called with the "redirectUri" argument.' });
+        console.error('[OAuth] Missing redirectUri parameter');
+        res.status(400).json({ 
+            error: 'invalid-argument', 
+            message: 'Redirect URI is required and must match the registered URI' 
+        });
+        return;
+    }
+
+    // Validate redirect URI format and allowed domains
+    const allowedRedirectUris = [
+        'https://ancad-studios.github.io/phmc-forms/#/auth/gta/callback',
+        'https://gtaw-forms.github.io/forms/#/auth/gta/callback',
+        'http://localhost:3000/#/auth/gta/callback',
+        'https://phmc-tools.gta.world/#/auth/gta/callback'
+    ];
+
+    if (!allowedRedirectUris.includes(redirectUri)) {
+        console.error('[OAuth] Invalid redirect URI:', redirectUri);
+        res.status(400).json({ 
+            error: 'invalid-redirect-uri', 
+            message: 'Redirect URI is not allowed' 
+        });
         return;
     }
 
     if (!clientId || !clientSecret) {
-        console.error('Missing client credentials');
-        res.status(500).json({ error: 'internal', message: 'OAuth client credentials not configured.' });
+        console.error('[OAuth] Missing OAuth client credentials in environment');
+        res.status(500).json({ 
+            error: 'internal', 
+            message: 'OAuth client credentials not configured properly' 
+        });
         return;
     }
 
     try {
+        console.log('[OAuth] Starting token exchange with GTA World');
+        
         // Exchange auth code for access token
         const tokenResponse = await fetch('https://ucp.gta.world/oauth/token', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
+                'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)'
             },
             body: new URLSearchParams({
                 grant_type: 'authorization_code',
@@ -274,34 +315,98 @@ export const exchangeAuthCodeForToken = onRequest({ secrets: ["GTAWORLD_CLIENT_I
         });
 
         const tokenData = await tokenResponse.json();
+        console.log('[OAuth] Token response status:', tokenResponse.status);
 
         if (!tokenResponse.ok) {
-            res.status(400).json({ error: 'Failed to fetch token', details: tokenData });
+            console.error('[OAuth] Token exchange failed:', tokenData);
+            res.status(400).json({ 
+                error: 'token-exchange-failed', 
+                message: 'Failed to exchange authorization code for access token',
+                details: tokenData 
+            });
             return;
         }
 
-        // Fetch user profile
+        // Validate token response structure
+        if (!tokenData.access_token) {
+            console.error('[OAuth] Invalid token response - missing access_token');
+            res.status(500).json({ 
+                error: 'invalid-token-response', 
+                message: 'Invalid response from GTA World OAuth server' 
+            });
+            return;
+        }
+
+        console.log('[OAuth] Token exchange successful, fetching user profile');
+
+        // Fetch user profile with enhanced error handling
         const userResponse = await fetch('https://ucp.gta.world/api/v1/user', {
             headers: {
                 'Authorization': `Bearer ${tokenData.access_token}`,
+                'Accept': 'application/json',
+                'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)'
             },
         });
 
         const userData = await userResponse.json();
+        console.log('[OAuth] User profile response status:', userResponse.status);
 
         if (!userResponse.ok) {
-            res.status(400).json({ error: 'Failed to fetch user data', details: userData });
+            console.error('[OAuth] Failed to fetch user profile:', userData);
+            res.status(400).json({ 
+                error: 'user-profile-failed', 
+                message: 'Failed to fetch user profile from GTA World API',
+                details: userData 
+            });
             return;
         }
 
-        res.status(200).json({ token: tokenData, user: userData });
+        // Validate user data structure
+        if (!userData.user && !userData.id && !userData.username) {
+            console.error('[OAuth] Invalid user response structure:', userData);
+            res.status(500).json({ 
+                error: 'invalid-user-response', 
+                message: 'Invalid user data received from GTA World API' 
+            });
+            return;
+        }
+
+        console.log('[OAuth] Authentication successful for user:', userData.user?.username || userData.username);
+
+        // Return successful response with enhanced data structure
+        res.status(200).json({ 
+            success: true,
+            token: {
+                access_token: tokenData.access_token,
+                token_type: tokenData.token_type || 'Bearer',
+                expires_in: tokenData.expires_in,
+                refresh_token: tokenData.refresh_token,
+                scope: tokenData.scope
+            },
+            user: userData.user || userData, // Handle both response formats
+            timestamp: new Date().toISOString()
+        });
+
     } catch (error) {
-        console.error("Error exchanging auth code:", error);
-        console.error("Error stack:", error.stack);
+        console.error('[OAuth] Unexpected error during token exchange:', error);
+        console.error('[OAuth] Error stack:', error.stack);
+        
+        // Determine error type for better client-side handling
+        let errorType = 'internal';
+        let errorMessage = 'An internal error occurred during authentication';
+        
+        if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+            errorType = 'network-error';
+            errorMessage = 'Unable to connect to GTA World OAuth server';
+        } else if (error.name === 'AbortError') {
+            errorType = 'timeout';
+            errorMessage = 'Request to GTA World OAuth server timed out';
+        }
+        
         res.status(500).json({ 
-            error: 'internal', 
-            message: 'An internal error occurred during token exchange',
-            details: error.message 
+            error: errorType,
+            message: errorMessage,
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
 });
