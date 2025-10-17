@@ -18,17 +18,84 @@ const UnifiedGtaCallback = () => {
     const { login: authLogin } = useAuth();
     const { processCallback, user } = useGtaWorldAuth();
 
+    // Immediate URL logging when component mounts
+    useEffect(() => {
+        console.log('[Unified Callback] Component mounted - immediate URL analysis:', {
+            fullUrl: window.location.href,
+            pathname: window.location.pathname,
+            search: window.location.search,
+            hash: window.location.hash,
+            searchParams: Object.fromEntries(new URLSearchParams(window.location.search)),
+            hashParams: Object.fromEntries(new URLSearchParams(window.location.hash.split('?')[1] || '')),
+            locationSearch: location.search,
+            locationHash: location.hash,
+            timestamp: new Date().toISOString()
+        });
+    }, []); // Empty dependency array - runs once on mount
+
     useEffect(() => {
         const handleCallback = async () => {
             try {
                 setStatus('processing');
                 setMessage('Processing authentication...');
 
-                // Extract parameters from URL
+                // Extract parameters from URL - comprehensive approach
                 const searchParams = new URLSearchParams(location.search);
-                const code = searchParams.get('code');
-                const state = searchParams.get('state');
-                const error = searchParams.get('error');
+                const hashParams = new URLSearchParams(location.hash.split('?')[1] || '');
+                const windowSearchParams = new URLSearchParams(window.location.search);
+                const windowHashParams = new URLSearchParams(window.location.hash.split('?')[1] || '');
+                
+                // Get parameters from all possible locations
+                const code = searchParams.get('code') || hashParams.get('code') || 
+                            windowSearchParams.get('code') || windowHashParams.get('code');
+                let state = searchParams.get('state') || hashParams.get('state') || 
+                           windowSearchParams.get('state') || windowHashParams.get('state');
+                const error = searchParams.get('error') || hashParams.get('error') || 
+                             windowSearchParams.get('error') || windowHashParams.get('error');
+
+                // Debug state extraction
+                console.log('[Unified Callback] State extraction debug:', {
+                    fromSearchParams: searchParams.get('state'),
+                    fromHashParams: hashParams.get('state'),
+                    fromWindowSearch: windowSearchParams.get('state'),
+                    fromWindowHash: windowHashParams.get('state'),
+                    finalState: state,
+                    stateLength: state?.length
+                });
+
+                // Sometimes state gets URL encoded, let's try to decode it
+                if (state) {
+                    try {
+                        const decodedState = decodeURIComponent(state);
+                        if (decodedState !== state) {
+                            console.log('[Unified Callback] State was URL encoded, using decoded version:', {
+                                original: state,
+                                decoded: decodedState
+                            });
+                            state = decodedState;
+                        }
+                    } catch (e) {
+                        console.warn('[Unified Callback] Failed to decode state parameter:', e);
+                    }
+                }
+
+                console.log('[Unified Callback] URL parameter extraction (comprehensive):', {
+                    fullUrl: window.location.href,
+                    locationSearch: location.search,
+                    locationHash: location.hash,
+                    windowSearch: window.location.search,
+                    windowHash: window.location.hash,
+                    searchParams: Object.fromEntries(searchParams),
+                    hashParams: Object.fromEntries(hashParams),
+                    windowSearchParams: Object.fromEntries(windowSearchParams),
+                    windowHashParams: Object.fromEntries(windowHashParams),
+                    extractedCode: code ? `${code.substring(0, 10)}...` : 'NOT_FOUND',
+                    extractedState: state ? `${state.substring(0, 10)}...` : 'NOT_FOUND',
+                    extractedError: error,
+                    codeSource: code ? (searchParams.get('code') ? 'location.search' : 
+                                       hashParams.get('code') ? 'location.hash' : 
+                                       windowSearchParams.get('code') ? 'window.search' : 'window.hash') : 'none'
+                });
                 const errorDescription = searchParams.get('error_description');
 
                 // Handle OAuth errors
@@ -72,7 +139,9 @@ const UnifiedGtaCallback = () => {
                     
                     // Short delay before redirect to show success message
                     setTimeout(() => {
-                        navigate('/admin');
+                        const isGithubPages = window.location.hostname.includes('github.io');
+                        const basePath = isGithubPages ? '/forms' : '';
+                        navigate(`${basePath}/admin`);
                     }, 1500);
                     return;
                 }
@@ -82,24 +151,73 @@ const UnifiedGtaCallback = () => {
                 
                 try {
                     // Use the unified auth service to process the callback
-                    await processCallback(code, state);
+                    const authResult = await processCallback(code, state);
+                    
+                    // Wait a brief moment for state to update
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    
+                    // Log the full authentication result for debugging
+                    console.log('[Unified Callback] Full authentication result:', {
+                        authResult: authResult,
+                        user: user,
+                        userType: typeof user,
+                        userKeys: user ? Object.keys(user) : 'no user object',
+                        authResultType: typeof authResult,
+                        authResultKeys: authResult ? Object.keys(authResult) : 'no auth result',
+                        timestamp: new Date().toISOString()
+                    });
+                    
+                    // Get user data from authResult or current user state
+                    const userData = authResult?.userData || user;
+                    
+                    // Check if authentication data exists in sessionStorage as backup
+                    let fallbackUserData = null;
+                    try {
+                        const storedUserData = sessionStorage.getItem('gta-user-data');
+                        if (storedUserData) {
+                            fallbackUserData = JSON.parse(storedUserData);
+                            console.log('[Unified Callback] Found fallback user data in sessionStorage:', fallbackUserData);
+                        }
+                    } catch (e) {
+                        console.warn('[Unified Callback] Could not parse stored user data:', e);
+                    }
+                    
+                    const finalUserData = userData || fallbackUserData;
                     
                     // If we get here, authentication was successful
-                    if (user) {
-                        console.log('[Unified Callback] Authentication successful for user:', user.username);
+                    if (finalUserData) {
+                        console.log('[Unified Callback] Authentication successful, user data:', {
+                            hasUser: !!finalUserData,
+                            userId: finalUserData.id,
+                            username: finalUserData.username || finalUserData.name,
+                            source: userData ? 'callback' : 'sessionStorage'
+                        });
                         
                         // Update the main auth context for admin access
-                        authLogin(user);
+                        authLogin(finalUserData);
                         
                         setStatus('success');
-                        setMessage(`Welcome, ${user.username}! Redirecting to admin panel...`);
+                        const displayName = finalUserData.username || finalUserData.name || finalUserData.id || 'User';
+                        setMessage(`Welcome, ${displayName}! Redirecting to admin panel...`);
                         
                         // Redirect to admin panel after success
                         setTimeout(() => {
-                            navigate('/admin');
+                            // Get the correct base path for GitHub Pages
+                            const isGithubPages = window.location.hostname.includes('github.io');
+                            const basePath = isGithubPages ? '/forms' : '';
+                            navigate(`${basePath}/admin`);
                         }, 2000);
                     } else {
-                        throw new Error('Authentication succeeded but no user data received');
+                        console.warn('[Unified Callback] No user data available, forcing reload');
+                        setStatus('success');
+                        setMessage('Authentication successful! Reloading page...');
+                        
+                        // Force page reload to ensure authentication state is loaded
+                        setTimeout(() => {
+                            const isGithubPages = window.location.hostname.includes('github.io');
+                            const basePath = isGithubPages ? '/forms' : '';
+                            window.location.href = window.location.origin + `${basePath}/#/admin`;
+                        }, 1500);
                     }
                     
                 } catch (authError) {

@@ -17,6 +17,7 @@ import { useModal } from './contexts/ModalProvider';
 import { useSettings } from './contexts/SettingsProvider';
 import { useWebhooks } from './hooks/useWebhooks';
 import { useImageUpload } from './hooks/useImageUpload';
+import useGtaWorldAuth from './hooks/useGtaWorldAuth';
 import { useLockdown } from './contexts/LockdownContext';
 import LockdownBanner from './components/LockdownBanner';
 import LockdownDialog from './components/LockdownDialog';
@@ -87,6 +88,42 @@ function MainApp({
         showFeatureRequestModal, setShowFeatureRequestModal,
 
     } = useModal();
+
+    // GTA World Authentication hook for welcome notification
+    const { 
+        user: gtaWorldUser, 
+        isAuthenticated: isGtaAuthenticated 
+    } = useGtaWorldAuth();
+
+    // Track if we've already shown the welcome notification to avoid showing it multiple times
+    const [hasShownGtaWelcome, setHasShownGtaWelcome] = useState(false);
+
+    // Show welcome notification for GTA World OAuth users
+    useEffect(() => {
+        if (isGtaAuthenticated && gtaWorldUser && gtaWorldUser.username && !hasShownGtaWelcome) {
+            let welcomeMessage = `Welcome back, ${gtaWorldUser.username}! 🎮`;
+            
+            // Check if user is a PHMC faction member and display their character name and rank
+            if (gtaWorldUser.isFactionMember && gtaWorldUser.faction) {
+                const characterName = gtaWorldUser.faction.characterName || gtaWorldUser.faction.name;
+                const scriptRank = gtaWorldUser.faction.scriptRank;
+                
+                if (characterName && scriptRank !== undefined) {
+                    welcomeMessage = `Welcome back, ${characterName}! (Script Rank: ${scriptRank}) 🏥`;
+                } else if (characterName) {
+                    welcomeMessage = `Welcome back, ${characterName}! �`;
+                }
+            }
+            
+            showNotification(welcomeMessage, 'check-circle', 5000);
+            setHasShownGtaWelcome(true);
+        }
+        
+        // Reset the welcome flag when user logs out
+        if (!isGtaAuthenticated && hasShownGtaWelcome) {
+            setHasShownGtaWelcome(false);
+        }
+    }, [isGtaAuthenticated, gtaWorldUser, hasShownGtaWelcome, showNotification]);
 
 
     // Onboarding detection and initialization
