@@ -146,13 +146,7 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
     const [currentUser, setCurrentUser] = useState(null);
     const [isLoadingAuth, setIsLoadingAuth] = useState(true);
 
-    const handleGtaWorldLogin = () => {
-        // Replace with your actual client ID and callback URL
-        const clientId = process.env.REACT_APP_GTAWORLD_CLIENT_ID || 'YOUR_CLIENT_ID';
-        const redirectUri = encodeURIComponent(window.location.origin + '/auth/gta/callback');
-        const authUrl = `https://ucp.gta.world/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}`;
-        window.location.href = authUrl;
-    };
+    // GTA World login is now handled by the unified authentication service
 
     const [selectedRecruitmentCategory, setSelectedRecruitmentCategory] = useState('');
     const [currentRecruitmentData, setCurrentRecruitmentData] = useState({});
@@ -1376,7 +1370,7 @@ Key: ${savedRoleData.originalKey}`,
                 handleLogout={handleLogout}
                 Sentry={Sentry}
                 showInAppNotification={showInAppNotification}
-                handleGtaWorldLogin={handleGtaWorldLogin}
+                // handleGtaWorldLogin is now handled by unified auth service
                 lockdownConfig={lockdownConfig}
                 setLockdownConfig={setLockdownConfig}
                 handleUpdateLockdownStatus={handleUpdateLockdownStatus}

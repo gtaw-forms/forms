@@ -9,7 +9,7 @@ import { sendDiscordErrorWebhook } from './index';
 
 import MainApp from './MainApp';
 import GtaLogin from './components/Auth/GtaLogin';
-import GtaCallback from './components/Auth/GtaCallback';
+import UnifiedGtaCallback from './components/Auth/UnifiedGtaCallback';
 import Admin from './components/Admin/Admin';
 import ProtectedRoute from './components/Auth/ProtectedRoute';
 
@@ -269,13 +269,59 @@ const initialFormData = {
 };
     return (
         <Sentry.ErrorBoundary
-            fallback={<p>An unexpected fatal error occurred. Please inform the developer in the PHMC Discord server.</p>}
+            fallback={({ error, componentStack }) => (
+                <div style={{ padding: '20px', fontFamily: 'monospace' }}>
+                    <h2>An unexpected fatal error occurred</h2>
+                    <p><strong>Please post this error information in the PHMC Discord server:</strong></p>
+                    <div style={{ 
+                        backgroundColor: '#f8f9fa', 
+                        border: '1px solid #dee2e6', 
+                        borderRadius: '4px', 
+                        padding: '15px', 
+                        marginTop: '10px',
+                        whiteSpace: 'pre-wrap',
+                        fontSize: '12px',
+                        maxHeight: '400px',
+                        overflow: 'auto'
+                    }}>
+                        <strong>Error:</strong> {error?.message || 'Unknown error'}
+                        {error?.stack && (
+                            <>
+                                <br/><br/>
+                                <strong>Stack Trace:</strong><br/>
+                                {error.stack}
+                            </>
+                        )}
+                        {componentStack && (
+                            <>
+                                <br/><br/>
+                                <strong>Component Stack:</strong><br/>
+                                {componentStack}
+                            </>
+                        )}
+                    </div>
+                    <button 
+                        onClick={() => window.location.reload()} 
+                        style={{
+                            marginTop: '15px',
+                            padding: '10px 20px',
+                            backgroundColor: '#007bff',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        Reload Page
+                    </button>
+                </div>
+            )}
             onError={(error, componentStack) => {
                 sendDiscordErrorWebhook({
                     message: error.message,
                     stack: componentStack,
                     source: 'React ErrorBoundary',
-                    isButtonClickError: false, // In a React Error Boundary, we may not be able to determine this easily.
+                    isButtonClickError: false,
                 });
             }}
         >
@@ -287,7 +333,7 @@ const initialFormData = {
                                 <Routes>
                                     <Route path="/" element={<MainApp formData={formData} setFormData={setFormData} lastWebhookIdentifier={lastWebhookIdentifier} setLastWebhookIdentifier={setLastWebhookIdentifier} initialFormData={initialFormData} showNotification={showNotification} removeNotification={removeNotification} setShowAdblockNotification={setShowAdblockNotification} />} />
                                     <Route path="/login" element={<GtaLogin />} />
-                                    <Route path="/auth/gta/callback" element={<GtaCallback />} />
+                                    <Route path="/auth/gta/callback" element={<UnifiedGtaCallback />} />
                                     <Route path="/admin" element={<ProtectedRoute><Admin formData={formData} setFormData={setFormData} showNotification={showNotification} /></ProtectedRoute>} />
                                     <Route path="*" element={<Navigate to="/" replace />} />
                                 </Routes>
