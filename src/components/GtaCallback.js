@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { getFunctions, httpsCallable } from "firebase/functions";
+import { httpsCallable } from "firebase/functions";
+import { functions } from '../firebase';
 
 // This is the page the user will be sent back to after authenticating.
 // It must exactly match what you have configured in your GTA World OAuth application settings.

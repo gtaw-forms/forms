@@ -7,7 +7,8 @@ import {
     isAuthenticated,
     logout,
     validateSession,
-    makeAuthenticatedRequest
+    makeAuthenticatedRequest,
+    tryRestoreSession
 } from '../services/gtaWorldAuth';
 
 /**
@@ -15,8 +16,20 @@ import {
  * Provides a simple interface for components to interact with GTA World OAuth
  */
 export const useGtaWorldAuth = () => {
-    const [user, setUser] = useState(null);
-    const [isLoading, setIsLoading] = useState(true);
+    // Initialize with immediate authentication check to reduce loading time
+    const [user, setUser] = useState(() => {
+        // Immediately check if user is authenticated on hook initialization
+        if (isAuthenticated()) {
+            return getCurrentUser();
+        }
+        return null;
+    });
+    
+    const [isLoading, setIsLoading] = useState(() => {
+        // If we found a user immediately, start with minimal loading
+        return !user;
+    });
+    
     const [error, setError] = useState(null);
     const [isValidatingSession, setIsValidatingSession] = useState(false);
 
@@ -24,10 +37,63 @@ export const useGtaWorldAuth = () => {
     useEffect(() => {
         const initializeAuth = async () => {
             try {
+                // If we already have user data from initial state, validate in background
+                if (user) {
+                    setIsLoading(false); // Immediately stop loading since we have user data
+                    
+                    // Validate session in background without showing loading
+                    try {
+                        setIsValidatingSession(true);
+                        const validation = await validateSession();
+                        setIsValidatingSession(false);
+                        
+                        if (!validation.valid) {
+                            console.warn('[GTA Auth Hook] Session invalid, logging out');
+                            setUser(null);
+                            setError('Session expired. Please log in again.');
+                        }
+                    } catch (validationError) {
+                        console.error('[GTA Auth Hook] Background validation error:', validationError);
+                        setIsValidatingSession(false);
+                        // Don't clear user data for validation errors - keep them logged in
+                    }
+                    return;
+                }
+                
                 setIsLoading(true);
                 setError(null);
 
-                // Check if user is already authenticated
+                // First, try to restore session from sessionStorage
+                console.debug('[GTA Auth Hook] Attempting to restore session from stored data...');
+                const restoredSession = tryRestoreSession();
+                
+                if (restoredSession) {
+                    console.info('[GTA Auth Hook] Session restored successfully from stored data');
+                    setUser(restoredSession.user);
+                    setIsLoading(false);
+                    
+                    // Validate the restored session in the background
+                    setIsValidatingSession(true);
+                    try {
+                        const validation = await validateSession();
+                        setIsValidatingSession(false);
+                        
+                        if (!validation.valid) {
+                            console.warn('[GTA Auth Hook] Restored session invalid, logging out');
+                            setUser(null);
+                            setError('Session expired. Please log in again.');
+                        } else {
+                            console.info('[GTA Auth Hook] Restored session validated successfully');
+                        }
+                    } catch (validationError) {
+                        console.error('[GTA Auth Hook] Restored session validation error:', validationError);
+                        setIsValidatingSession(false);
+                        // Keep user logged in even if validation fails
+                    }
+                    return;
+                }
+
+                // Fallback to traditional authentication check
                 if (isAuthenticated()) {
                     const currentUser = getCurrentUser();
                     setUser(currentUser);
@@ -43,6 +109,7 @@ export const useGtaWorldAuth = () => {
                         setError('Session expired. Please log in again.');
                     }
                 } else {
+                    console.debug('[GTA Auth Hook] No authentication data found');
                     setUser(null);
                 }
             } catch (err) {
@@ -55,7 +122,7 @@ export const useGtaWorldAuth = () => {
         };
 
         initializeAuth();
-    }, []);
+    }, [user]); // Include user in dependencies to re-validate when user changes externally
 
     /**
      * Initiates the GTA World login process
@@ -65,6 +132,13 @@ export const useGtaWorldAuth = () => {
         
         const loginOptions = {
             ...options,
+            onSuccess: (userData, returnPath) => {
+                console.info('[GTA Auth Hook] Login successful, updating state:', userData);
+                setUser(userData);
+                if (options.onSuccess) {
+                    options.onSuccess(userData, returnPath);
+                }
+            },
             onError: (errorMessage) => {
                 setError(errorMessage);
                 if (options.onError) {
