@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import GtaWorldLoginButton from './GtaWorldLoginButton';
 
 const GtaLogin = () => {
     const [email, setEmail] = useState('');
@@ -26,13 +27,7 @@ const GtaLogin = () => {
             });
     };
 
-    const handleGtaWorldLogin = () => {
-        // Replace with your actual client ID and callback URL
-        const clientId = process.env.REACT_APP_GTAWORLD_CLIENT_ID || 'YOUR_CLIENT_ID';
-        const redirectUri = encodeURIComponent(window.location.origin + '/#/auth/gta/callback');
-        const authUrl = `https://ucp.gta.world/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}`;
-        window.location.href = authUrl;
-    };
+    // GTA World login is now handled by the unified authentication service
 
     return (
         <div style={{ maxWidth: '400px', margin: 'auto', paddingTop: '50px' }}>
@@ -60,7 +55,12 @@ const GtaLogin = () => {
                 </div>
                 <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
                     <button type="submit" style={{ flex: 1, padding: '10px', backgroundColor: 'blue', color: 'white', border: 'none' }}>Login</button>
-                    <button type="button" onClick={handleGtaWorldLogin} style={{ flex: 1, padding: '10px', backgroundColor: '#ff8c00', color: 'white', border: 'none' }}>Login with GTA World OAuth</button>
+                    <GtaWorldLoginButton 
+                        returnPath="#/admin"
+                        style={{ flex: 1, padding: '10px', backgroundColor: '#ff8c00', color: 'white', border: 'none' }}
+                    >
+                        Login with GTA World OAuth
+                    </GtaWorldLoginButton>
                 </div>
                 <button type="button" onClick={() => navigate('/')} style={{ width: '100%', padding: '10px', backgroundColor: '#6c757d', color: 'white', border: 'none', marginTop: '10px' }}>Home</button>
             </form>

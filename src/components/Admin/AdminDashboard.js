@@ -5,6 +5,8 @@ import './AdminDashboard.css';
 import DatabaseEditor from './DatabaseEditor';
 import UserStats from './UserStats';
 import WebhookLogs from './WebhookLogs';
+import GtaWorldLoginButton from '../Auth/GtaWorldLoginButton';
+import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 
 const AdminDashboard = ({
     currentUser,
@@ -41,13 +43,11 @@ const AdminDashboard = ({
     setShowUserManagementModal,
 
     setShowCctvWebhookModal,
-    setShowMarkdownModal,
     handleLogout,
     Sentry,
     showInAppNotification,
     setShowOAuthTokenExchangeModal,
     setShowUserDataExchangeModal,
-    handleGtaWorldLogin,
     lockdownConfig,
     setLockdownConfig,
     handleUpdateLockdownStatus,
@@ -72,9 +72,11 @@ const AdminDashboard = ({
 }) => {
 
     const [selectedSection, setSelectedSection] = useState('serviceStatus');
-    const [gtaWorldUser, setGtaWorldUser] = useState(null);
     const [testWebhookData, setTestWebhookData] = useState({ title: '', message: '', selectedWebhook: null });
     const navigate = useNavigate();
+    
+    // Use the unified GTA World auth hook
+    const { user: gtaWorldUser, isAuthenticated: isGtaAuthenticated, error: gtaAuthError } = useGtaWorldAuth();
 
     const handleTestWebhook = async (webhook) => {
         if (!testWebhookData.title || !testWebhookData.message) {
@@ -642,19 +644,59 @@ const AdminDashboard = ({
                             <div className="card-header">Developer Tools</div>
                             <div className="card-body">
                                 <div className="mb-3">
-                                    <Button variant="primary" onClick={handleGtaWorldLogin}>
-                                        <i className="fas fa-sign-in-alt me-2"></i>
-                                        Login to GTA World
-                                    </Button>
+                                    <div className="card">
+                                        <div className="card-header">
+                                            <h6 className="mb-0">GTA World Authentication</h6>
+                                        </div>
+                                        <div className="card-body">
+                                            {isGtaAuthenticated && gtaWorldUser ? (
+                                                <div className="alert alert-success d-flex align-items-center">
+                                                    <i className="fas fa-check-circle me-2"></i>
+                                                    <div>
+                                                        <strong>Connected as:</strong> {gtaWorldUser.username || gtaWorldUser.name}
+                                                        <br />
+                                                        <small className="text-muted">
+                                                            User ID: {gtaWorldUser.id} | Last login: {new Date().toLocaleDateString()}
+                                                        </small>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div>
+                                                    <p className="text-muted mb-3">
+                                                        Connect your GTA World account for enhanced admin features and OAuth testing.
+                                                    </p>
+                                                    <GtaWorldLoginButton 
+                                                        variant="primary"
+                                                        returnPath="#/admin"
+                                                        onError={(error) => showInAppNotification && showInAppNotification(`Login failed: ${error}`, 'error')}
+                                                        onInitiate={() => {
+                                                            // Mark as token exchange for testing purposes
+                                                            sessionStorage.setItem('oauth-exchange-in-progress', 'true');
+                                                        }}
+                                                    >
+                                                        <i className="fas fa-sign-in-alt me-2"></i>
+                                                        Connect GTA World Account
+                                                    </GtaWorldLoginButton>
+                                                </div>
+                                            )}
+                                            
+                                            {gtaAuthError && (
+                                                <div className="alert alert-warning mt-2">
+                                                    <i className="fas fa-exclamation-triangle me-2"></i>
+                                                    {gtaAuthError}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
                                 <div className="mb-3">
                                     <Button 
                                         variant="info" 
                                         onClick={() => setShowOAuthTokenExchangeModal(true)} 
-                                        title={gtaWorldUser ? `Connected as ${gtaWorldUser.username}` : 'Exchange OAuth Token'}
+                                        title="Manual OAuth token exchange for testing"
                                     >
                                         <i className="fas fa-exchange-alt me-2"></i>
-                                        OAuth Token Exchange
+                                        OAuth Token Exchange (Legacy)
                                     </Button>
                                     <Button variant="info" onClick={() => setShowUserDataExchangeModal(true)} className="ms-2">
                                         <i className="fas fa-user-secret me-2"></i>
