@@ -16,6 +16,8 @@ import UserManagementModal from './UserManagementModal';
 import AdminDashboard from './AdminDashboard';
 import OAuthTokenExchangeModal from './OAuthTokenExchangeModal';
 import UserDataExchangeModal from './UserDataExchangeModal';
+import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
+import { isGoogleAuthenticated, getGoogleUser } from '../../services/gtaWorldAuth';
 
 
 const recruitmentCategories = {
@@ -146,6 +148,13 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
     const [currentUser, setCurrentUser] = useState(null);
     const [isLoadingAuth, setIsLoadingAuth] = useState(true);
 
+    // GTA World authentication hook
+    const { 
+        user: gtaAuthUser, 
+        isAuthenticated: isGtaAuthenticated, 
+        isLoading: gtaAuthLoading 
+    } = useGtaWorldAuth();
+
     // GTA World login is now handled by the unified authentication service
 
     const [selectedRecruitmentCategory, setSelectedRecruitmentCategory] = useState('');
@@ -176,7 +185,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
     const [showUserManagementModal, setShowUserManagementModal] = useState(false);
     const [showOAuthTokenExchangeModal, setShowOAuthTokenExchangeModal] = useState(false);
     const [showUserDataExchangeModal, setShowUserDataExchangeModal] = useState(false);
-    const [gtaWorldUser, setGtaWorldUser] = useState(null);
 
     const [formGeneratorStatus, setFormGeneratorStatus] = useState('');
     const [alternativeFormGeneratorStatus, setAlternativeFormGeneratorStatus] = useState('');
@@ -251,7 +259,7 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
             await update(statusRef, newStatuses);
             showInAppNotification(`Service statuses updated.`, "check-circle");
             sendAdminActionWebhook(
-                currentUser.email,
+                unifiedCurrentUser?.email || "Unknown User",
                 "Updated Service Status",
                 `Form Generator: ${formGeneratorStatus}\
 Alternative Form Generator: ${alternativeFormGeneratorStatus}\
@@ -284,7 +292,7 @@ Localhost/Staging: ${localHostStatus}`,
             await update(lockdownRef, lockdownConfig);
             showInAppNotification(`Lockdown status updated.`, "check-circle");
             sendAdminActionWebhook(
-                currentUser.email,
+                unifiedCurrentUser?.email || "Unknown User",
                 "Updated Lockdown Status",
                 `Enabled: ${lockdownConfig.enabled}\
 Notification: ${lockdownConfig.notification}\
@@ -298,7 +306,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
             console.error("Error updating lockdown status:", error);
             showInAppNotification("Failed to update lockdown status.", "error");
             sendAdminActionWebhook(
-                currentUser.email,
+                unifiedCurrentUser?.email || "Unknown User",
                 "Failed to Update Lockdown Status",
                 `Error: ${error.message}`,
                 "Lockdown Status",
@@ -435,6 +443,20 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                 // User just logged in
                 setCurrentUser(user);
                 setFormData(prev => ({ ...prev, isAdminAuthenticated: true, adminUserEmail: user.email, adminDisplayData: null, adminSelectedCategoryName: null }));
+                
+                // Store Google authentication data for permission system
+                const googleAuthData = {
+                    email: user.email,
+                    uid: user.uid,
+                    isAdmin: true,
+                    loginTime: new Date().toISOString()
+                };
+                sessionStorage.setItem('google-admin-user', JSON.stringify(googleAuthData));
+                sessionStorage.setItem('admin-auth-context', JSON.stringify({
+                    isAdminAuthenticated: true,
+                    adminUserEmail: user.email
+                }));
+                
                 sendAdminActionWebhook(user.email, "Admin Login", "User successfully logged in to the Admin Panel.", null, userAgent, timeZone);
                 if (showInAppNotification) showInAppNotification(`Welcome, ${user.email}!`, "check-circle");
             } else if (!isLoggedIn && wasLoggedIn) {
@@ -444,16 +466,41 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                 setFormData(prev => ({ ...prev, isAdminAuthenticated: false, adminUserEmail: null, adminDisplayData: null, adminSelectedCategoryName: null }));
                 setCurrentRecruitmentData({});
                 setSelectedRecruitmentCategory('');
+                
+                // Clear Google authentication data
+                sessionStorage.removeItem('google-admin-user');
+                sessionStorage.removeItem('admin-auth-context');
+                
                 sendAdminActionWebhook(loggedOutEmail, "Admin Logout", "User successfully logged out from the Admin Panel.", null, userAgent, timeZone);
                 if (showInAppNotification) showInAppNotification(`Logged out from Admin Panel.`, "info-circle");
             } else if (isLoggedIn && wasLoggedIn) {
                 // User is still logged in (e.g., component re-rendered)
                 setCurrentUser(user);
                 setFormData(prev => ({ ...prev, isAdminAuthenticated: true, adminUserEmail: user.email }));
+                
+                // Ensure Google auth data is maintained
+                const existingData = sessionStorage.getItem('google-admin-user');
+                if (!existingData) {
+                    const googleAuthData = {
+                        email: user.email,
+                        uid: user.uid,
+                        isAdmin: true,
+                        loginTime: new Date().toISOString()
+                    };
+                    sessionStorage.setItem('google-admin-user', JSON.stringify(googleAuthData));
+                    sessionStorage.setItem('admin-auth-context', JSON.stringify({
+                        isAdminAuthenticated: true,
+                        adminUserEmail: user.email
+                    }));
+                }
             } else {
                 // User is still logged out
                 setCurrentUser(null);
                 setFormData(prev => ({ ...prev, isAdminAuthenticated: false, adminUserEmail: null }));
+                
+                // Ensure Google auth data is cleared
+                sessionStorage.removeItem('google-admin-user');
+                sessionStorage.removeItem('admin-auth-context');
             }
 
             prevUserUidRef.current = user ? user.uid : null;
@@ -532,7 +579,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
             await set(newWebhookRef, {
                 ...newWebhook,
                 createdAt: Date.now(),
-                createdBy: currentUser.email
+                createdBy: unifiedCurrentUser?.email || "Unknown User"
             });
             
             // Reset form
@@ -622,7 +669,7 @@ const handleTogglePositionStatus = async (positionKey, currentStatus) => {
 
         // Log the successful action to the admin webhook.
         sendAdminActionWebhook(
-            currentUser.email,
+            unifiedCurrentUser?.email || "Unknown User",
             "Toggled Recruitment Status",
             `Position: ${positionDisplayName}\
 New Status: ${newStatus}`,
@@ -671,11 +718,11 @@ Error: ${dbError.message}`,
             fetchRecruitmentDataForCategory(selectedRecruitmentCategory);
         }
         const { userAgent, timeZone } = getUserContext(); // Capture user context
-        if (currentUser?.email && savedRoleData) {
+        if (unifiedCurrentUser?.email && savedRoleData) {
             const categoryConfig = recruitmentCategories[selectedRecruitmentCategory];
             const action = actionType === 'edited' ? "Edited Role" : "Added New Role";
             sendAdminActionWebhook(
-                currentUser.email, action,
+                unifiedCurrentUser.email, action,
                 `Role Name: ${savedRoleData.displayName || savedRoleData.originalKey}\
 Short Code: ${savedRoleData.shortCode || 'N/A'}\
 Status: ${savedRoleData.status || 'N/A'}\
@@ -745,7 +792,7 @@ Key: ${savedRoleData.originalKey}`,
         setDesktopNotificationPermission(currentPermission);
         const { userAgent, timeZone } = getUserContext(); // Capture user context
         if (currentUser?.email) {
-            sendAdminActionWebhook(currentUser.email, "Desktop Notification Preference Changed", `Permission status: ${currentPermission}${granted ? ' (Granted by user)' : ' (Not granted or dismissed)'}`, null, userAgent, timeZone);
+            sendAdminActionWebhook(unifiedCurrentUser?.email || "Unknown User", "Desktop Notification Preference Changed", `Permission status: ${currentPermission}${granted ? ' (Granted by user)' : ' (Not granted or dismissed)'}`, null, userAgent, timeZone);
         }
         if (granted) {
             if (showInAppNotification) showInAppNotification("Desktop notifications enabled for this site! Please ensure your OS settings also allow notifications from your browser.", "check-circle", 7000);
@@ -824,7 +871,7 @@ Key: ${savedRoleData.originalKey}`,
             await remove(bingoLogRef);
             showInAppNotification(`${selectedType.name} Bingo activity log has been cleared.`, "check-circle");
             sendAdminActionWebhook(
-                currentUser.email,
+                unifiedCurrentUser?.email || "Unknown User",
                 `Cleared ${selectedType.name} Bingo Activity`,
                 `The 'bingo/logs/${selectedType.path}/activityLog' path was deleted from Firebase.`,
                 `${selectedType.name} Bingo`,
@@ -835,7 +882,7 @@ Key: ${savedRoleData.originalKey}`,
             console.error("Error clearing bingo activity log:", dbError);
             showInAppNotification(`Failed to clear ${selectedType.name} bingo activity log.`, "error");
             sendAdminActionWebhook(
-                currentUser.email,
+                unifiedCurrentUser?.email || "Unknown User",
                 `Failed to Clear ${selectedType.name} Bingo Activity`,
                 `Error: ${dbError.message}`,
                 `${selectedType.name} Bingo`,
@@ -908,7 +955,7 @@ Key: ${savedRoleData.originalKey}`,
 
             showInAppNotification(`New ${selectedType.name} Bingo card generated and activity log cleared!`, "check-circle");
             sendAdminActionWebhook(
-                currentUser.email,
+                unifiedCurrentUser?.email || "Unknown User",
                 `Generated New ${selectedType.name} Bingo Card`,
                 `A new card was generated and the activity log cleared for all users.`,
                 `${selectedType.name} Bingo`,
@@ -919,7 +966,7 @@ Key: ${savedRoleData.originalKey}`,
             console.error("Error generating new bingo card:", dbError);
             showInAppNotification("Failed to generate new bingo card.", "error");
             sendAdminActionWebhook(
-                currentUser.email,
+                unifiedCurrentUser?.email || "Unknown User",
                 `Failed to Generate New ${selectedType.name} Bingo Card`,
                 `Error: ${dbError.message}`,
                 `${selectedType.name} Bingo`,
@@ -953,7 +1000,7 @@ Key: ${savedRoleData.originalKey}`,
 
             showInAppNotification(`${selectedType.name} Bingo has been disabled and all data cleared.`, "check-circle");
             sendAdminActionWebhook(
-                currentUser.email,
+                unifiedCurrentUser?.email || "Unknown User",
                 `Disabled ${selectedType.name} Bingo Card`,
                 `The card and activity log for '${selectedType.name}' were deleted from Firebase.`,
                 `${selectedType.name} Bingo`,
@@ -964,7 +1011,7 @@ Key: ${savedRoleData.originalKey}`,
             console.error("Error disabling bingo card:", dbError);
             showInAppNotification(`Failed to disable ${selectedType.name} bingo card.`, "error");
             sendAdminActionWebhook(
-                currentUser.email,
+                unifiedCurrentUser?.email || "Unknown User",
                 `Failed to Disable ${selectedType.name} Bingo Card`,
                 `Error: ${dbError.message}`,
                 `${selectedType.name} Bingo`,
@@ -1050,7 +1097,7 @@ Key: ${savedRoleData.originalKey}`,
 `;
     
         sendAdminActionWebhook(
-            currentUser.email, // Use the logged-in admin's email
+            unifiedCurrentUser?.email || "Unknown User", // Use the unified user email
             "Manual Bingo Reset", // Change action text
             details.trim(),
             "Bingo Management",
@@ -1172,11 +1219,30 @@ Key: ${savedRoleData.originalKey}`,
 
 
 
-    if (isLoadingAuth) {
+    // Check if either loading state is active
+    if (isLoadingAuth || gtaAuthLoading) {
         return <p>Verifying authentication...</p>;
     }
 
-    if (!currentUser) {
+    // Check if user is authenticated via Google admin OR GTA World OR Google override
+    const isGoogleAdmin = isGoogleAuthenticated();
+    const hasAnyAuthentication = currentUser || isGtaAuthenticated || isGoogleAdmin;
+
+    // Create a unified current user object for components that expect it
+    const unifiedCurrentUser = currentUser || (isGtaAuthenticated && gtaAuthUser ? {
+        email: gtaAuthUser.username + '@gtaworld.auth',
+        uid: gtaAuthUser.id?.toString() || 'gta-user',
+        displayName: gtaAuthUser.username,
+        isGtaAuth: true,
+        ...gtaAuthUser
+    } : null) || (isGoogleAdmin ? {
+        email: getGoogleUser()?.email || 'admin@google.auth',
+        uid: 'google-admin',
+        displayName: 'Google Admin',
+        isGoogleAuth: true
+    } : null);
+
+    if (!hasAnyAuthentication) {
         return (
             <div className="container mt-5">
                 <div className="row justify-content-center">
@@ -1331,8 +1397,8 @@ Key: ${savedRoleData.originalKey}`,
         <>
             {/* --- Main Admin Dashboard --- */}
             <AdminDashboard
-                currentUser={currentUser}
-                gtaWorldUser={gtaWorldUser}
+                currentUser={unifiedCurrentUser}
+                gtaWorldUser={gtaAuthUser}
                 desktopNotificationPermission={desktopNotificationPermission}
                 handleEnableDesktopNotifications={handleEnableDesktopNotifications}
                 isLoadingStatus={isLoadingStatus}
@@ -1437,7 +1503,10 @@ Key: ${savedRoleData.originalKey}`,
                 showNotification={showInAppNotification}
                 sendAdminActionWebhook={sendAdminActionWebhook}
                 adminUserEmail={currentUser?.email}
-                onUserDataReceived={setGtaWorldUser}
+                onUserDataReceived={(userData) => {
+                    // The user data will be automatically updated by the GTA auth hook
+                    console.log('GTA user data received:', userData);
+                }}
             />
             <UserDataExchangeModal
                 show={showUserDataExchangeModal}

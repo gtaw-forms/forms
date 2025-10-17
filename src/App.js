@@ -10,6 +10,7 @@ import { sendDiscordErrorWebhook } from './index';
 import MainApp from './MainApp';
 import GtaLogin from './components/Auth/GtaLogin';
 import UnifiedGtaCallback from './components/Auth/UnifiedGtaCallback';
+import OAuthUrlDiagnostic from './components/Auth/OAuthUrlDiagnostic';
 import Admin from './components/Admin/Admin';
 import ProtectedRoute from './components/Auth/ProtectedRoute';
 
@@ -334,6 +335,7 @@ const initialFormData = {
                                     <Route path="/" element={<MainApp formData={formData} setFormData={setFormData} lastWebhookIdentifier={lastWebhookIdentifier} setLastWebhookIdentifier={setLastWebhookIdentifier} initialFormData={initialFormData} showNotification={showNotification} removeNotification={removeNotification} setShowAdblockNotification={setShowAdblockNotification} />} />
                                     <Route path="/login" element={<GtaLogin />} />
                                     <Route path="/auth/gta/callback" element={<UnifiedGtaCallback />} />
+                                    <Route path="/auth/gta/diagnostic" element={<OAuthUrlDiagnostic />} />
                                     <Route path="/admin" element={<ProtectedRoute><Admin formData={formData} setFormData={setFormData} showNotification={showNotification} /></ProtectedRoute>} />
                                     <Route path="*" element={<Navigate to="/" replace />} />
                                 </Routes>

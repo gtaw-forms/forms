@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useCallback } from 'react';
 import { Button } from 'react-bootstrap';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 
@@ -14,18 +14,56 @@ const GtaWorldLoginButton = ({
     returnPath,
     onError,
     onInitiate,
+    onSuccess,
     disabled = false,
     ...props 
 }) => {
-    const { login, isLoading, error } = useGtaWorldAuth();
+    const { login, isLoading, error, isAuthenticated, user } = useGtaWorldAuth();
+    const lastClickTimeRef = useRef(0);
+    const clickDebounceMs = 500; // 500ms debounce for faster response
 
-    const handleLogin = () => {
+    const handleLogin = useCallback(() => {
+        const now = Date.now();
+        const timeSinceLastClick = now - lastClickTimeRef.current;
+        
+        // Prevent rapid clicks
+        if (timeSinceLastClick < clickDebounceMs) {
+            console.warn('[GTA Login Button] Click ignored - too soon after last click:', {
+                timeSinceLastClick,
+                debounceMs: clickDebounceMs,
+                remainingMs: clickDebounceMs - timeSinceLastClick
+            });
+            return;
+        }
+        
+        // Check if user is already authenticated from session data
+        if (isAuthenticated && user) {
+            console.info('[GTA Login Button] User already authenticated, calling onSuccess callback:', {
+                username: user.username,
+                characterId: user.id
+            });
+            // User is already logged in, call success callback instead of starting OAuth flow
+            if (onSuccess) {
+                onSuccess(user);
+            }
+            return;
+        }
+        
+        lastClickTimeRef.current = now;
+        console.log('[GTA Login Button] Initiating login...');
+
         if (onInitiate) {
             onInitiate();
         }
 
         login({
             returnPath,
+            onSuccess: (userData, redirectPath) => {
+                console.info('[GTA Login Button] Login successful:', userData);
+                if (onSuccess) {
+                    onSuccess(userData, redirectPath);
+                }
+            },
             onError: (errorMessage) => {
                 console.error('[GTA Login Button] Login error:', errorMessage);
                 if (onError) {
@@ -33,7 +71,7 @@ const GtaWorldLoginButton = ({
                 }
             }
         });
-    };
+    }, [login, returnPath, onError, onInitiate, onSuccess, clickDebounceMs, isAuthenticated, user]);
 
     return (
         <Button
