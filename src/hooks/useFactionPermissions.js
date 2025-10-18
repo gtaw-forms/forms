@@ -131,15 +131,26 @@ const useFactionPermissions = () => {
         canAccessAuditLogs: checkFeatureAccess('audit_logs'),
         
         // Role level checks
-        isPresident: currentAccessLevel === 'president',
-        isExecutive: currentAccessLevel === 'executive',
-        isChief: currentAccessLevel === 'chief',
-        isDeputyChief: currentAccessLevel === 'deputy_chief',
-        isManager: currentAccessLevel === 'manager',
-        isSeniorStaff: currentAccessLevel === 'senior_staff',
-        isRegularStaff: currentAccessLevel === 'regular_staff',
-        isEntryLevel: currentAccessLevel === 'entry_level',
-        isTrainee: currentAccessLevel === 'trainee'
+        isLeadership: currentAccessLevel === 'Leadership',
+        isSeniorManagement: currentAccessLevel === 'Senior Management',
+        isMiddleManagement: currentAccessLevel === 'Middle Management',
+        isSupervisor: currentAccessLevel === 'Supervisor',
+        isAttending: currentAccessLevel === 'Attending',
+        isResident: currentAccessLevel === 'Resident',
+        isUpperLevel: currentAccessLevel === 'Upper Level',
+        isMidLevel: currentAccessLevel === 'Mid Level',
+        isAdministration: currentAccessLevel === 'Administration',
+        isEntryLevel: currentAccessLevel === 'Entry Level',
+        
+        // Legacy aliases for backward compatibility
+        isPresident: currentAccessLevel === 'Leadership',
+        isExecutive: currentAccessLevel === 'Leadership',
+        isChief: currentAccessLevel === 'Senior Management',
+        isDeputyChief: currentAccessLevel === 'Middle Management',
+        isManager: currentAccessLevel === 'Supervisor',
+        isSeniorStaff: currentAccessLevel === 'Attending',
+        isRegularStaff: currentAccessLevel === 'Mid Level',
+        isTrainee: currentAccessLevel === 'Entry Level'
     };
 };
 

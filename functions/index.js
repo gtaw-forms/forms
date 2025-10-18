@@ -14,6 +14,39 @@ const db = admin.database();
 // Set global options for all v2 functions in this file
 setGlobalOptions({ region: "us-central1" }); // Or your preferred region
 
+// Helper to safely check if secrets exist during deployment
+const secretsExist = (secretNames) => {
+    try {
+        return secretNames.every(name => process.env[name] !== undefined);
+    } catch {
+        return false;
+    }
+};
+
+/* 
+ * DEPLOYMENT SETUP INSTRUCTIONS:
+ * 
+ * 1. INITIAL DEPLOYMENT (without secrets):
+ *    firebase deploy --only functions
+ * 
+ * 2. GET YOUR ACCESS TOKEN:
+ *    Call getTokenForSecrets function and check the logs
+ * 
+ * 3. SET UP SECRETS:
+ *    firebase functions:secrets:set GTAWORLD_PERSISTENT_TOKEN --data="your_token"
+ *    firebase functions:secrets:set GTAWORLD_REFRESH_TOKEN --data="your_refresh_token"  # optional
+ * 
+ * 4. OPTIONAL - RE-ENABLE SECRETS IN FUNCTION CONFIG:
+ *    After secrets are created, you can add them back to function configurations:
+ *    
+ *    getManagedGtaWorldToken: add secrets: ["GTAWORLD_PERSISTENT_TOKEN", "GTAWORLD_REFRESH_TOKEN"]
+ *    getProfileWithManagedToken: add secrets: ["GTAWORLD_PERSISTENT_TOKEN"]  
+ *    checkFactionMembership: add secrets: ["GTAWORLD_PERSISTENT_TOKEN"]
+ * 
+ * 5. REDEPLOY:
+ *    firebase deploy --only functions
+ */
+
 // --- Helper Functions ---
 
 const getShuffledPhrases = (phrases) => {
@@ -392,19 +425,47 @@ export const exchangeAuthCodeForToken = onCall({
 
         // Get response text first to debug what's being returned
         const responseText = await userResponse.text();
+        
+        // Parse JSON to show structured data instead of truncated text
+        let parsedData;
+        let isValidJSON = false;
+        try {
+            parsedData = JSON.parse(responseText);
+            isValidJSON = true;
+        } catch {
+            parsedData = null;
+            isValidJSON = false;
+        }
+        
         console.log('[OAuth] Raw user profile response:', {
             textLength: responseText.length,
-            textPreview: responseText.substring(0, 200),
             startsWithHTML: responseText.trim().startsWith('<'),
-            isJSON: (() => {
-                try {
-                    JSON.parse(responseText);
-                    return true;
-                } catch {
-                    return false;
-                }
-            })()
+            isJSON: isValidJSON,
+            characterCount: isValidJSON && parsedData?.user?.character ? parsedData.user.character.length : 0,
+            userInfo: isValidJSON && parsedData?.user ? {
+                id: parsedData.user.id,
+                username: parsedData.user.username,
+                hasCharacters: !!parsedData.user.character
+            } : null
         });
+        
+        // Log character data separately to show full array contents
+        if (isValidJSON && parsedData?.user?.character) {
+            console.log('[OAuth] Character data details:', {
+                characterArray: parsedData.user.character,
+                characterDetails: parsedData.user.character.map((char, index) => ({
+                    index: index,
+                    id: char.id,
+                    name: char.name || `${char.firstname || ''} ${char.lastname || ''}`.trim(),
+                    firstname: char.firstname,
+                    lastname: char.lastname,
+                    memberid: char.memberid,
+                    fullCharacterData: char
+                }))
+            });
+        } else if (!isValidJSON) {
+            console.log('[OAuth] Raw response text (not JSON):', responseText.substring(0, 500));
+        }
 
         let userData;
         try {
@@ -435,6 +496,7 @@ export const exchangeAuthCodeForToken = onCall({
         }
 
         console.log('[OAuth] Authentication successful for user:', userData.user?.username || userData.username);
+        
 
         // Return successful response with enhanced data structure
         return { 
@@ -469,6 +531,484 @@ export const exchangeAuthCodeForToken = onCall({
         throw new functions.https.HttpsError(errorCode, errorMessage, 
             process.env.NODE_ENV === 'development' ? error.message : undefined
         );
+    }
+});
+
+/**
+ * Helper function to get access token for Firebase Secrets setup
+ * This function performs OAuth and clearly logs the token for easy copying
+ */
+export const getTokenForSecrets = onCall({ 
+    secrets: ["GTAWORLD_CLIENT_ID", "GTAWORLD_CLIENT_SECRET"],
+    cors: [
+        'https://ancad-studios.github.io',
+        'http://localhost:3000',
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world'
+    ]
+}, async (request) => {
+    console.log('🔧 [Token Setup] Starting token retrieval for Firebase Secrets setup');
+    
+    const data = request.data;
+    const { code, redirectUri } = data || {};
+    const clientId = process.env.GTAWORLD_CLIENT_ID;
+    const clientSecret = process.env.GTAWORLD_CLIENT_SECRET;
+
+    if (!code || !redirectUri) {
+        throw new functions.https.HttpsError('invalid-argument', 'Authorization code and redirect URI are required');
+    }
+
+    try {
+        // Exchange auth code for access token
+        const tokenRequestBody = new URLSearchParams({
+            grant_type: 'authorization_code',
+            client_id: clientId,
+            client_secret: clientSecret,
+            redirect_uri: redirectUri,
+            code: code,
+        });
+
+        const tokenResponse = await fetch('https://ucp.gta.world/oauth/token', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)'
+            },
+            body: tokenRequestBody,
+        });
+
+        const tokenData = await tokenResponse.json();
+
+        if (!tokenResponse.ok) {
+            throw new functions.https.HttpsError('invalid-argument', `Token exchange failed: ${tokenData.error_description || tokenData.error}`);
+        }
+
+        // CLEAR INSTRUCTIONS FOR SETTING UP SECRETS
+        console.log('\n' + '='.repeat(100));
+        console.log('🎉 SUCCESS! Your GTA World Access Token is ready!');
+        console.log('='.repeat(100));
+        console.log('');
+        console.log('📋 COPY AND PASTE THESE COMMANDS:');
+        console.log('');
+        console.log('1️⃣  Set your main access token:');
+        console.log(`firebase functions:secrets:set GTAWORLD_PERSISTENT_TOKEN --data="${tokenData.access_token}"`);
+        console.log('');
+        if (tokenData.refresh_token) {
+            console.log('2️⃣  Set your refresh token (optional but recommended):');
+            console.log(`firebase functions:secrets:set GTAWORLD_REFRESH_TOKEN --data="${tokenData.refresh_token}"`);
+            console.log('');
+        }
+        console.log('3️⃣  Deploy your functions to use the new secrets:');
+        console.log('firebase deploy --only functions');
+        console.log('');
+        console.log('='.repeat(100));
+        console.log('📊 TOKEN DETAILS:');
+        console.log(`   • Token Type: ${tokenData.token_type || 'Bearer'}`);
+        console.log(`   • Expires In: ${tokenData.expires_in} seconds (${Math.floor(tokenData.expires_in / 3600)} hours)`);
+        console.log(`   • Has Refresh Token: ${tokenData.refresh_token ? 'Yes ✅' : 'No ❌'}`);
+        console.log(`   • Token Length: ${tokenData.access_token.length} characters`);
+        console.log('='.repeat(100));
+        console.log('');
+
+        return {
+            success: true,
+            message: 'Token retrieved successfully! Check the function logs for setup instructions.',
+            tokenInfo: {
+                type: tokenData.token_type || 'Bearer',
+                expiresIn: tokenData.expires_in,
+                hasRefreshToken: !!tokenData.refresh_token,
+                tokenLength: tokenData.access_token.length
+            },
+            setupInstructions: [
+                `firebase functions:secrets:set GTAWORLD_PERSISTENT_TOKEN --data="${tokenData.access_token}"`,
+                tokenData.refresh_token ? `firebase functions:secrets:set GTAWORLD_REFRESH_TOKEN --data="${tokenData.refresh_token}"` : null,
+                'firebase deploy --only functions'
+            ].filter(Boolean),
+            timestamp: new Date().toISOString()
+        };
+
+    } catch (error) {
+        console.error('❌ [Token Setup] Error retrieving token:', error);
+        throw new functions.https.HttpsError('internal', 'Failed to retrieve token for secrets setup', {
+            originalError: error.message
+        });
+    }
+});
+
+// --- Token Management Functions ---
+
+/**
+ * Get or refresh the persistent GTA World access token
+ */
+export const getManagedGtaWorldToken = onCall({
+    secrets: ["GTAWORLD_PERSISTENT_TOKEN", "GTAWORLD_REFRESH_TOKEN", "GTAWORLD_CLIENT_ID", "GTAWORLD_CLIENT_SECRET"],
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000'
+    ]
+}, async (request) => {
+    console.log('[Managed Token] Getting persistent access token');
+    
+    const persistentToken = process.env.GTAWORLD_PERSISTENT_TOKEN;
+    const refreshToken = process.env.GTAWORLD_REFRESH_TOKEN;
+    
+    if (!persistentToken) {
+        return {
+            success: false,
+            error: 'No persistent token configured',
+            message: 'Please set GTAWORLD_PERSISTENT_TOKEN secret using: firebase functions:secrets:set GTAWORLD_PERSISTENT_TOKEN',
+            setupInstructions: [
+                '1. First call getTokenForSecrets to get your access token',
+                '2. Run: firebase functions:secrets:set GTAWORLD_PERSISTENT_TOKEN --data="YOUR_TOKEN"',
+                '3. Deploy functions again: firebase deploy --only functions',
+                '4. Then you can use getManagedGtaWorldToken'
+            ]
+        };
+    }
+    
+    try {
+        // First, try to validate the existing token
+        console.log('[Managed Token] Validating existing persistent token');
+        const validationResponse = await fetch('https://ucp.gta.world/api/user', {
+            headers: {
+                'Authorization': `Bearer ${persistentToken}`,
+                'Accept': 'application/json',
+                'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)'
+            },
+        });
+        
+        if (validationResponse.ok) {
+            console.log('[Managed Token] Persistent token is valid');
+            const userData = await validationResponse.json();
+            
+            return {
+                success: true,
+                token: persistentToken,
+                user: userData.user || userData,
+                fromPersistent: true,
+                timestamp: new Date().toISOString()
+            };
+        }
+        
+        console.log('[Managed Token] Persistent token expired, attempting refresh');
+        
+        // If token is expired and we have a refresh token, try to refresh
+        if (refreshToken) {
+            const clientId = process.env.GTAWORLD_CLIENT_ID;
+            const clientSecret = process.env.GTAWORLD_CLIENT_SECRET;
+            
+            if (!clientId || !clientSecret) {
+                throw new functions.https.HttpsError('failed-precondition', 
+                    'OAuth credentials not configured for token refresh');
+            }
+            
+            const refreshResponse = await fetch('https://ucp.gta.world/oauth/token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)'
+                },
+                body: new URLSearchParams({
+                    grant_type: 'refresh_token',
+                    client_id: clientId,
+                    client_secret: clientSecret,
+                    refresh_token: refreshToken
+                })
+            });
+            
+            if (refreshResponse.ok) {
+                const tokenData = await refreshResponse.json();
+                console.log('[Managed Token] Successfully refreshed token');
+                
+                // Note: In a real implementation, you'd need to update the secret
+                // This would require admin SDK or manual secret update
+                console.warn('[Managed Token] New token obtained but cannot automatically update secret. Manual update required.');
+                console.log('[Managed Token] New token (first 20 chars):', tokenData.access_token.substring(0, 20) + '...');
+                
+                return {
+                    success: true,
+                    token: tokenData.access_token,
+                    user: null, // Would need another API call
+                    refreshed: true,
+                    newTokenPreview: tokenData.access_token.substring(0, 20) + '...',
+                    message: 'Token refreshed successfully. Please update GTAWORLD_PERSISTENT_TOKEN secret.',
+                    timestamp: new Date().toISOString()
+                };
+            }
+        }
+        
+        throw new functions.https.HttpsError('unauthenticated', 
+            'Persistent token expired and refresh failed. Manual token update required.');
+        
+    } catch (error) {
+        console.error('[Managed Token] Error managing token:', error);
+        
+        if (error.code) {
+            throw error;
+        }
+        
+        throw new functions.https.HttpsError('internal', 'Failed to manage persistent token', {
+            originalError: error.message
+        });
+    }
+});
+
+/**
+ * Get user profile using the managed persistent token
+ */
+export const getProfileWithManagedToken = onCall({
+    secrets: ["GTAWORLD_PERSISTENT_TOKEN"],
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000'
+    ]
+}, async (request) => {
+    console.log('[Profile Managed] Getting profile with managed token');
+    
+    const persistentToken = process.env.GTAWORLD_PERSISTENT_TOKEN;
+    
+    if (!persistentToken) {
+        return {
+            success: false,
+            error: 'No persistent token configured',
+            message: 'Please set GTAWORLD_PERSISTENT_TOKEN secret first',
+            setupInstructions: [
+                '1. Call getTokenForSecrets to get your access token',
+                '2. Run: firebase functions:secrets:set GTAWORLD_PERSISTENT_TOKEN --data="YOUR_TOKEN"',
+                '3. Deploy functions: firebase deploy --only functions'
+            ]
+        };
+    }
+    
+    try {
+        const userResponse = await fetch('https://ucp.gta.world/api/user', {
+            headers: {
+                'Authorization': `Bearer ${persistentToken}`,
+                'Accept': 'application/json',
+                'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)'
+            },
+        });
+        
+        if (!userResponse.ok) {
+            if (userResponse.status === 401) {
+                throw new functions.https.HttpsError('unauthenticated', 
+                    'Persistent token expired. Please update GTAWORLD_PERSISTENT_TOKEN secret.');
+            }
+            throw new functions.https.HttpsError('failed-precondition', 
+                `GTA World API returned ${userResponse.status}: ${userResponse.statusText}`);
+        }
+        
+        const responseText = await userResponse.text();
+        let userData;
+        
+        try {
+            userData = JSON.parse(responseText);
+        } catch (parseError) {
+            console.error('[Profile Managed] JSON parse failed:', parseError.message);
+            throw new functions.https.HttpsError('internal', 'Invalid JSON response from GTA World API');
+        }
+        
+        console.log('[Profile Managed] Successfully retrieved profile with managed token');
+        
+        return {
+            success: true,
+            userData: userData,
+            fromManagedToken: true,
+            metadata: {
+                timestamp: new Date().toISOString(),
+                dataKeys: Object.keys(userData),
+                dataSize: JSON.stringify(userData).length
+            }
+        };
+        
+    } catch (error) {
+        console.error('[Profile Managed] Error retrieving profile:', error);
+        
+        if (error.code) {
+            throw error;
+        }
+        
+        throw new functions.https.HttpsError('internal', 'Failed to retrieve user profile with managed token', {
+            originalError: error.message
+        });
+    }
+});
+
+/**
+ * Validate an existing access token and return user data if valid
+ */
+export const validateGtaWorldToken = onCall({
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000'
+    ]
+}, async (request) => {
+    console.log('[Token Validation] Starting token validation');
+    
+    const { accessToken } = request.data;
+    
+    if (!accessToken) {
+        throw new functions.https.HttpsError('invalid-argument', 'Access token is required');
+    }
+    
+    try {
+        console.log('[Token Validation] Validating token with GTA World API');
+        
+        const userResponse = await fetch('https://ucp.gta.world/api/user', {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Accept': 'application/json',
+                'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)'
+            },
+        });
+        
+        if (!userResponse.ok) {
+            console.log('[Token Validation] Token validation failed:', userResponse.status);
+            return {
+                success: false,
+                valid: false,
+                error: 'Token is invalid or expired',
+                status: userResponse.status
+            };
+        }
+        
+        const responseText = await userResponse.text();
+        let userData;
+        
+        try {
+            userData = JSON.parse(responseText);
+        } catch (parseError) {
+            console.error('[Token Validation] Failed to parse response:', parseError.message);
+            throw new functions.https.HttpsError('internal', 'Invalid response from GTA World API');
+        }
+        
+        console.log('[Token Validation] Token is valid for user:', userData.user?.username || userData.username);
+        
+        return {
+            success: true,
+            valid: true,
+            user: userData.user || userData,
+            timestamp: new Date().toISOString()
+        };
+        
+    } catch (error) {
+        console.error('[Token Validation] Error validating token:', error);
+        
+        if (error.code) {
+            throw error; // Re-throw Firebase errors
+        }
+        
+        return {
+            success: false,
+            valid: false,
+            error: 'Failed to validate token',
+            originalError: error.message
+        };
+    }
+});
+
+/**
+ * Get user profile using cached token validation
+ */
+export const getCachedGtaWorldProfile = onCall({
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000'
+    ]
+}, async (request) => {
+    console.log('[Cached Profile] Starting cached profile retrieval');
+    
+    const { accessToken, useCache = true } = request.data;
+    
+    if (!accessToken) {
+        throw new functions.https.HttpsError('invalid-argument', 'Access token is required');
+    }
+    
+    try {
+        // Check if we have cached user data for this token (optional optimization)
+        const tokenHash = require('crypto').createHash('sha256').update(accessToken).digest('hex').substring(0, 16);
+        const cacheRef = db.ref(`tokenCache/${tokenHash}`);
+        
+        if (useCache) {
+            const cachedData = await cacheRef.once('value');
+            if (cachedData.exists()) {
+                const cached = cachedData.val();
+                // Check if cache is still valid (less than 1 hour old)
+                const cacheAge = Date.now() - cached.timestamp;
+                if (cacheAge < 3600000) { // 1 hour in milliseconds
+                    console.log('[Cached Profile] Using cached profile data');
+                    return {
+                        success: true,
+                        userData: cached.userData,
+                        fromCache: true,
+                        cacheAge: Math.floor(cacheAge / 1000) // age in seconds
+                    };
+                }
+            }
+        }
+        
+        // Make fresh API call
+        console.log('[Cached Profile] Making fresh API call');
+        const userResponse = await fetch('https://ucp.gta.world/api/user', {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Accept': 'application/json',
+                'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)'
+            },
+        });
+        
+        if (!userResponse.ok) {
+            // Token might be expired, clear cache
+            await cacheRef.remove();
+            throw new functions.https.HttpsError('failed-precondition', 
+                `GTA World API returned ${userResponse.status}: ${userResponse.statusText}`);
+        }
+        
+        const responseText = await userResponse.text();
+        let userData;
+        
+        try {
+            userData = JSON.parse(responseText);
+        } catch (parseError) {
+            console.error('[Cached Profile] JSON parse failed:', parseError.message);
+            throw new functions.https.HttpsError('internal', 'Invalid JSON response from GTA World API');
+        }
+        
+        // Cache the result
+        if (useCache) {
+            await cacheRef.set({
+                userData: userData,
+                timestamp: Date.now(),
+                tokenPrefix: accessToken.substring(0, 20) + '...'
+            });
+            console.log('[Cached Profile] Cached fresh profile data');
+        }
+        
+        return {
+            success: true,
+            userData: userData,
+            fromCache: false,
+            metadata: {
+                timestamp: new Date().toISOString(),
+                dataKeys: Object.keys(userData),
+                dataSize: JSON.stringify(userData).length
+            }
+        };
+        
+    } catch (error) {
+        console.error('[Cached Profile] Error retrieving profile:', error);
+        
+        if (error.code) {
+            throw error; // Re-throw Firebase errors
+        }
+        
+        throw new functions.https.HttpsError('internal', 'Failed to retrieve user profile', {
+            originalError: error.message
+        });
     }
 });
 
@@ -703,7 +1243,11 @@ export const uploadFactionData = onCall({
 /**
  * Check faction membership and permissions for authenticated user
  */
+/**
+ * Enhanced faction membership check with managed token support
+ */
 export const checkFactionMembership = onCall({
+    secrets: ["GTAWORLD_PERSISTENT_TOKEN"],
     cors: [
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',
@@ -712,10 +1256,58 @@ export const checkFactionMembership = onCall({
 }, async (request) => {
     console.log('[Faction Check] Starting faction membership check');
     
-    const { characterId, factionId = 364 } = request.data; // Default to PHMC faction
+    const { characterId, factionId = 364, accessToken, skipTokenValidation = false, useManagedToken = false } = request.data; // Default to PHMC faction
     
     if (!characterId) {
         throw new functions.https.HttpsError('invalid-argument', 'Character ID is required');
+    }
+    
+    // Use managed persistent token if requested
+    let tokenToUse = accessToken;
+    if (useManagedToken) {
+        const persistentToken = process.env.GTAWORLD_PERSISTENT_TOKEN;
+        if (persistentToken) {
+            console.log('[Faction Check] Using managed persistent token');
+            tokenToUse = persistentToken;
+        } else {
+            console.warn('[Faction Check] Managed token requested but GTAWORLD_PERSISTENT_TOKEN not configured');
+            return {
+                isMember: false,
+                error: 'Managed token not configured',
+                message: 'Please set GTAWORLD_PERSISTENT_TOKEN secret first. Call getTokenForSecrets to get your token.',
+                setupRequired: true
+            };
+        }
+    }
+    
+    // Note: Secrets configuration removed for initial deployment
+    // After setting up GTAWORLD_PERSISTENT_TOKEN, you can add it back to the function config
+    
+    // Optional: Validate the access token to ensure user is authenticated
+    if (accessToken && !skipTokenValidation) {
+        try {
+            console.log('[Faction Check] Validating access token');
+            const tokenValidation = await fetch('https://ucp.gta.world/api/user', {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Accept': 'application/json',
+                    'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)'
+                }
+            });
+            
+            if (!tokenValidation.ok) {
+                console.log('[Faction Check] Token validation failed:', tokenValidation.status);
+                throw new functions.https.HttpsError('unauthenticated', 'Invalid or expired access token');
+            }
+            
+            console.log('[Faction Check] Token validated successfully');
+        } catch (tokenError) {
+            console.error('[Faction Check] Token validation error:', tokenError);
+            if (tokenError.code) {
+                throw tokenError;
+            }
+            throw new functions.https.HttpsError('unauthenticated', 'Failed to validate access token');
+        }
     }
     
     try {
@@ -822,14 +1414,16 @@ function getPermissionsForRank(scriptRank) {
  * Helper function to get access level based on script rank
  */
 function getAccessLevel(scriptRank) {
-    if (scriptRank >= 15) return 'president';
-    if (scriptRank >= 14) return 'executive';
-    if (scriptRank >= 13) return 'chief';
-    if (scriptRank >= 12) return 'deputy_chief';
-    if (scriptRank >= 11) return 'manager';
-    if (scriptRank >= 10) return 'senior_staff';
-    if (scriptRank >= 7) return 'regular_staff';
-    if (scriptRank >= 4) return 'entry_level';
-    if (scriptRank >= 1) return 'trainee';
+    if (scriptRank >= 15) return 'leadership';
+    if (scriptRank >= 14) return 'leadership';
+    if (scriptRank >= 13) return 'senior_management';
+    if (scriptRank >= 12) return 'middle_management';
+    if (scriptRank >= 11) return 'supervisor';
+    if (scriptRank >= 10) return 'attending';
+    if (scriptRank >= 9) return 'resident';
+    if (scriptRank >= 8) return 'upper_level';
+    if (scriptRank >= 7) return 'mid_level';
+    if (scriptRank >= 6) return 'administration';
+    if (scriptRank >= 5) return 'entry_level';
     return 'none';
 }
