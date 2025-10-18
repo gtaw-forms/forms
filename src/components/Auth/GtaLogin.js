@@ -20,11 +20,11 @@ const GtaLogin = () => {
             console.log('[GtaLogin] Firebase user authenticated, redirecting to admin:', user.email);
             navigate('/admin');
         } else if (isGtaAuthenticated && gtaUser) {
-            console.log('[GtaLogin] GTA World user authenticated, redirecting to admin:', {
+            console.log('[GtaLogin] GTA World user authenticated, redirecting to home:', {
                 username: gtaUser.username,
                 characterId: gtaUser.id
             });
-            navigate('/admin');
+            navigate('/');
         }
     }, [user, isGtaAuthenticated, gtaUser, navigate]);
 
@@ -80,13 +80,13 @@ const GtaLogin = () => {
                 <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
                     <button type="submit" style={{ flex: 1, padding: '10px', backgroundColor: 'blue', color: 'white', border: 'none' }}>Login</button>
                     <GtaWorldLoginButton 
-                        returnPath="/admin"
+                        returnPath="/"
                         style={{ flex: 1, padding: '10px', backgroundColor: '#ff8c00', color: 'white', border: 'none' }}
                         onError={(error) => setError(`GTA World Login Error: ${error}`)}
                         onInitiate={() => setError('')}
                         onSuccess={(userData) => {
                             console.log('[GtaLogin] GTA World login successful:', userData);
-                            navigate('/admin');
+                            navigate('/');
                         }}
                     >
                         Login with GTA World OAuth

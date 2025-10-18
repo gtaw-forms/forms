@@ -3,6 +3,7 @@ import { getFormDefinition } from '../formDefinitions'; // Assuming this path
 import { database } from '../firebase'; // Assuming this path
 import { ref, get, set, remove } from 'firebase/database';
 import * as Sentry from "@sentry/react";
+import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
 
 const comprehensiveSanitize = (str) => {
     if (!str) return '';
@@ -46,6 +47,8 @@ export const useReportManagement = (
     coronerRecruitmentDetails,
     selectedAgencyGroup
 ) => {
+    // GTAW OAuth integration for automatic character data inclusion
+    const { user: gtaWorldUser, isAuthenticated: isGtaAuthenticated } = useGtaWorldAuth();
     const [savedReports, setSavedReports] = useState([]);
     const [showSavedReports, setShowSavedReports] = useState(false);
     const [isLoadingUserReports, setIsLoadingUserReports] = useState(false);
@@ -262,20 +265,54 @@ export const useReportManagement = (
             authorName: currentAuthor
         };
 
+        // Automatically add GTAW character data if user is authenticated with OAuth
+        if (isGtaAuthenticated && gtaWorldUser) {
+            reportDataToSave.gtawUsername = gtaWorldUser.username;
+            reportDataToSave.gtawCharacterId = gtaWorldUser.id;
+            reportDataToSave.gtawCharacterName = gtaWorldUser.faction ? 
+                ((gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? 
+                    `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : 
+                    gtaWorldUser.faction.characterName || gtaWorldUser.username) : 
+                gtaWorldUser.username;
+            reportDataToSave.gtawSyncTimestamp = new Date().toISOString();
+            reportDataToSave.gtawSyncVersion = '1.1';
+            
+            console.log('📄 [Report Save] Automatically added GTAW data to saved report:', {
+                username: reportDataToSave.gtawUsername,
+                characterId: reportDataToSave.gtawCharacterId,
+                characterName: reportDataToSave.gtawCharacterName,
+                author: currentAuthor
+            });
+        }
+
         const reportPath = `savedReports/${sanitizedAuthorId}/${sanitizedKey}`;
 
         try {
             const reportRef = ref(database, reportPath);
             await set(reportRef, reportDataToSave);
-            showNotification(`Report "${key}" saved for ${currentAuthor} to Firebase!`, 'save');
+            
+            const successMessage = isGtaAuthenticated && gtaWorldUser ? 
+                `Report "${key}" saved for ${currentAuthor} to Firebase with GTAW data!` :
+                `Report "${key}" saved for ${currentAuthor} to Firebase!`;
+            
+            showNotification(successMessage, 'save');
 
-            // Log the webhook
-            await logWebhook(`report_saved by ${currentAuthor}`, {
+            // Log the webhook with GTAW data information
+            const webhookPayload = {
                 author: currentAuthor,
                 reportKey: sanitizedKey,
                 originalKey: key,
-                bbCodeVersion: bbCodeVersion
-            });
+                bbCodeVersion: bbCodeVersion,
+                hasGtawData: isGtaAuthenticated && !!gtaWorldUser
+            };
+            
+            if (isGtaAuthenticated && gtaWorldUser) {
+                webhookPayload.gtawUsername = gtaWorldUser.username;
+                webhookPayload.gtawCharacterId = gtaWorldUser.id;
+                webhookPayload.gtawCharacterName = reportDataToSave.gtawCharacterName;
+            }
+            
+            await logWebhook(`report_saved by ${currentAuthor}`, webhookPayload);
 
             return { success: true }; // Indicate success
 
