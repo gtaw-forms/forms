@@ -3,6 +3,7 @@ import { Form, Button, InputGroup, OverlayTrigger, Tooltip } from 'react-bootstr
 import Select from 'react-select';
 import './phmc-tooltips.css'; // Assuming you have a tooltip component
 import ImagePreview from '../components/ImagePreview';
+import CharacterSelector from '../components/CharacterSelector';
 // Helper component for collapsible section headers - Copied from Nursing.js
 const CollapsibleHeader = ({ title, isOpen, onToggle, sectionId }) => (
     <Button
@@ -49,6 +50,25 @@ const PatientAdvanced = ({
     const [isFamilyHistoryOpen, setIsFamilyHistoryOpen] = useState(true);
     const [isSocialHistoryOpen, setIsSocialHistoryOpen] = useState(true);
     const [isLifestyleOpen, setIsLifestyleOpen] = useState(true);
+    
+    // Character selection state
+    const [selectedCharacter, setSelectedCharacter] = useState(null);
+    
+    // Character selection handler
+    const handleCharacterSelect = (character) => {
+        setSelectedCharacter(character);
+        
+        // Auto-populate patient name field with character's full name
+        if (character && character.fullName) {
+            const syntheticEvent = {
+                target: {
+                    name: 'patientName',
+                    value: character.fullName
+                }
+            };
+            handleChange(syntheticEvent);
+        }
+    };
     const [isMedicalHistoryOpen, setIsMedicalHistoryOpen] = useState(true);
     const [isAdvancedDirectivesOpen, setIsAdvancedDirectivesOpen] = useState(true);
     const [isPaymentInfoOpen, setIsPaymentInfoOpen] = useState(true);
@@ -100,54 +120,47 @@ const [activeSection, setActiveSection] = useState('general-info');
                             />
                         </OverlayTrigger>
                         </div>
-                        <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}> {/* Added marginTop */}
-
-                            <OverlayTrigger
-                                placement="top"
-                                overlay={<Tooltip id="tooltip-patientTitle" className="phmc-tooltip">Select the patient's title (Mr, Ms, etc).</Tooltip>}
-                            >
-                                <Form.Select
-                                    name="patientTitle"
-                                    value={formData.patientTitle}
-                                    onChange={handleChange}
-                                    required
-                                    className={`form-control ${!formData.patientTitle ? 'is-invalid' : ''}`}
+                        
+                        {/* Character Selector and Patient Title - Inline */}
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '1rem', marginBottom: '1rem' }}>
+                            <div style={{ flex: '2' }}>
+                                <CharacterSelector 
+                                    onCharacterSelect={handleCharacterSelect}
+                                    selectedCharacterId={selectedCharacter?.id}
+                                    label="Select Character (Login with GTAW to see your characters)"
+                                    forceDropdown={true}
+                                />
+                            </div>
+                            <div style={{ flex: '1' }}>
+                                <OverlayTrigger
+                                    placement="top"
+                                    overlay={<Tooltip id="tooltip-patientTitle" className="phmc-tooltip">Select the patient's title (Mr, Ms, etc).</Tooltip>}
                                 >
-                                    <option value="" disabled>Title</option>
-                                    {patientTitleOptions.map((option) => (
-                                        <option key={option.value} value={option.value}>{option.label}</option>
-                                    ))}
-                                </Form.Select>
-                            </OverlayTrigger>
-                            <OverlayTrigger
-                                placement="top"
-                                overlay={<Tooltip id="tooltip-patientName" className="phmc-tooltip">Patient Name</Tooltip>}
-                            >
-                                <Form.Control
-                                    type="text"
-                                    name="patientName"
-                                    value={formData.patientName}
-                                    onChange={handleChange}
-                                    placeholder="Patient Name"
-                                    required
-                                    className={`form-control ${!formData.patientName ? 'is-invalid' : ''}`}
-                                />
-                            </OverlayTrigger>
-                            <OverlayTrigger
-                                placement="top"
-                                overlay={<Tooltip id="tooltip-patientDateOfBirth" className="phmc-tooltip">Date of Birth</Tooltip>}
-                            >
-                                <Form.Control
-                                    type="date"
-                                    name="patientDateOfBirth"
-                                    value={formData.patientDateOfBirth}
-                                    onChange={handleChange}
-                                    placeholder="Date of Birth"
-                                    required
-                                    className={`form-control ${!formData.patientDateOfBirth ? 'is-invalid' : ''}`}
-                                />
-                            </OverlayTrigger>
+                                    <div>
+                                        <label style={{ marginBottom: '0.5rem', display: 'block' }}>Title</label>
+                                        <Form.Select
+                                            name="patientTitle"
+                                            value={formData.patientTitle}
+                                            onChange={handleChange}
+                                            required
+                                            className={`form-control ${!formData.patientTitle ? 'is-invalid' : ''}`}
+                                            style={{
+                                                padding: '8px',
+                                                border: '1px solid #ccc',
+                                                borderRadius: '4px',
+                                                fontSize: '14px'
+                                            }}
+                                        >
+                                            <option value="" disabled>Title</option>
+                                            {patientTitleOptions.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </Form.Select>
+                                    </div>
+                                </OverlayTrigger>
+                            </div>
                         </div>
+                        
                         <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}> 
                             <OverlayTrigger
                                 placement="top"

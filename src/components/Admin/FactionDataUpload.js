@@ -170,7 +170,7 @@ const FactionDataUpload = ({ showNotification }) => {
                 });
                 
                 showNotification && showNotification(
-                    `Loaded ${memberArray.length} faction members from database`, 
+                    `Loaded ${memberArray.length} faction members from database`,
                     'success'
                 );
             } else {
@@ -188,12 +188,72 @@ const FactionDataUpload = ({ showNotification }) => {
         }
     }, [showNotification]);
 
-    // Load stored data on component mount and when switching to stored tab
+    // Load metadata on component mount for counter, full data when switching to stored tab
     useEffect(() => {
+        // Prevent infinite loops by checking if we're already loading
+        if (loadingStored) return;
+        
         if (activeTab === 'stored') {
-            loadStoredFactionData();
+            // Always load data when switching to stored tab (unless we already have valid data)
+            if (storedData === null || (error && storedData === null)) {
+                console.log('[Faction Data] Loading stored data due to tab switch to stored');
+                loadStoredFactionData();
+            }
+        } else {
+            // Load just metadata for counter display when not on stored tab
+            const loadCountOnly = async () => {
+                try {
+                    const snapshot = await get(ref(database, 'factions/364/metadata'));
+                    const metadata = snapshot.val();
+                    
+                    if (metadata && metadata.statistics && metadata.statistics.validRecords) {
+                        // Create a minimal array just for count display
+                        setStoredData(new Array(metadata.statistics.validRecords));
+                    } else {
+                        setStoredData([]);
+                    }
+                } catch (error) {
+                    console.error('[Faction Data] Error loading count:', error);
+                    setStoredData([]);
+                }
+            };
+            
+            // Only load count if we don't have data yet and we're not on stored tab
+            if (storedData === null) {
+                console.log('[Faction Data] Loading count metadata for non-stored tab');
+                loadCountOnly();
+            }
         }
-    }, [activeTab, loadStoredFactionData]);
+    }, [activeTab, loadStoredFactionData]); // Removed storedData and error from dependencies
+
+    // Initial data load on component mount
+    useEffect(() => {
+        // Load initial data based on the starting tab
+        if (activeTab === 'stored' && storedData === null && !loadingStored) {
+            console.log('[Faction Data] Initial load for stored tab');
+            loadStoredFactionData();
+        } else if (activeTab !== 'stored' && storedData === null && !loadingStored) {
+            // Load count metadata for initial display
+            const loadInitialCount = async () => {
+                try {
+                    const snapshot = await get(ref(database, 'factions/364/metadata'));
+                    const metadata = snapshot.val();
+                    
+                    if (metadata && metadata.statistics && metadata.statistics.validRecords) {
+                        setStoredData(new Array(metadata.statistics.validRecords));
+                    } else {
+                        setStoredData([]);
+                    }
+                } catch (error) {
+                    console.error('[Faction Data] Error loading initial count:', error);
+                    setStoredData([]);
+                }
+            };
+            
+            console.log('[Faction Data] Initial count load for upload tab');
+            loadInitialCount();
+        }
+    }, []); // Empty dependency array - only run on mount
 
     // Dropzone configuration
     const onDrop = useCallback(async (acceptedFiles) => {
@@ -219,12 +279,12 @@ const FactionDataUpload = ({ showNotification }) => {
             
             if (parsed.errors.length > 0) {
                 showNotification && showNotification(
-                    `CSV parsed with ${parsed.errors.length} errors. Please review before uploading.`, 
+                    `CSV parsed with ${parsed.errors.length} errors. Please review before uploading.`,
                     'warning'
                 );
             } else {
                 showNotification && showNotification(
-                    `Successfully parsed ${parsed.validRows} faction members from CSV`, 
+                    `Successfully parsed ${parsed.validRows} faction members from CSV`,
                     'success'
                 );
             }
@@ -274,7 +334,7 @@ const FactionDataUpload = ({ showNotification }) => {
             setUploadStatus('success');
             
             showNotification && showNotification(
-                `Successfully uploaded ${parsedData.validRows} faction members to database`, 
+                `Successfully uploaded ${parsedData.validRows} faction members to database`,
                 'success'
             );
 
@@ -303,9 +363,7 @@ const FactionDataUpload = ({ showNotification }) => {
     const renderUploadArea = () => (
         <div
             {...getRootProps()}
-            className={`border-2 border-dashed p-4 text-center cursor-pointer transition-colors ${
-                isDragActive ? 'border-primary bg-light' : 'border-secondary'
-            } ${uploadStatus === 'uploading' ? 'opacity-50' : ''}`}
+            className={`border-2 border-dashed p-4 text-center cursor-pointer transition-colors ${isDragActive ? 'border-primary bg-light' : 'border-secondary'} ${uploadStatus === 'uploading' ? 'opacity-50' : ''}`}
             style={{ minHeight: '150px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         >
             <input {...getInputProps()} />
@@ -479,7 +537,7 @@ const FactionDataUpload = ({ showNotification }) => {
                                             <Button variant="outline-success" onClick={handleReset}>
                                                 Upload Another File
                                             </Button>
-                                            <Button variant="primary" onClick={() => setActiveTab('stored')}>
+                                            <Button variant="primary" onClick={() => setActiveTab('stored')}> 
                                                 View Stored Data
                                             </Button>
                                         </div>
@@ -511,7 +569,7 @@ const FactionDataUpload = ({ showNotification }) => {
                                 {/* Stored Data Header */}
                                 <div className="d-flex justify-content-between align-items-center mb-3">
                                     <div>
-                                        <h6 className="mb-1">Current Faction Database</h6>
+                                        <h6 className="mb-1">Current Faction Database - Hit 'Refresh' to get the latest data</h6>
                                         {lastUpdateInfo && lastUpdateInfo.uploadTime && (
                                             <small className="text-muted">
                                                 Last updated: {new Date(lastUpdateInfo.uploadTime).toLocaleString()} 
@@ -586,7 +644,39 @@ const FactionDataUpload = ({ showNotification }) => {
                                                         </div>
                                                     </Alert>
                                                     
-                                                    {/* Inactivity Warning */}
+                                                    {/* High-Priority Admin Alert for Rank 14+ */}
+                                                    {(() => {
+                                                        const highRankInactive = inactiveMembers.filter(member => member.scriptRank >= 14);
+                                                        if (highRankInactive.length > 0) {
+                                                            return (
+                                                                <Alert variant="danger" className="mb-3">
+                                                                    <Alert.Heading>
+                                                                        <i className="fas fa-crown me-2"></i>
+                                                                        High-Priority Admin Alert
+                                                                    </Alert.Heading>
+                                                                    <p className="mb-2">
+                                                                        <strong>{highRankInactive.length} high-ranking administrator(s)</strong> (Rank 14+) are inactive and require immediate attention:
+                                                                    </p>
+                                                                    <ul className="mb-2">
+                                                                        {highRankInactive.map(admin => (
+                                                                            <li key={admin.characterId}>
+                                                                                <strong>{admin.characterName}</strong> - 
+                                                                                {admin.scriptRank >= 15 ? ' Hospital President' : ' Executive Leadership'} 
+                                                                                (Rank {admin.scriptRank}, ABAS: {parseFloat(admin.activity || '0').toFixed(2)})
+                                                                            </li>
+                                                                        ))}
+                                                                    </ul>
+                                                                    <small className="text-muted">
+                                                                        <i className="fas fa-info-circle me-1"></i>
+                                                                        High-ranking inactive administrators may impact department operations and require priority intervention.
+                                                                    </small>
+                                                                </Alert>
+                                                            );
+                                                        }
+                                                        return null;
+                                                    })()}
+                                                    
+                                                    {/* Standard Inactivity Warning */}
                                                     {inactiveMembers.length > 0 && (
                                                         <Alert variant="warning" className="mb-3">
                                                             <Alert.Heading>
@@ -618,15 +708,29 @@ const FactionDataUpload = ({ showNotification }) => {
                                                                                 let statusColor = 'danger';
                                                                                 let statusText = 'Critical';
                                                                                 
-                                                                                if (activity >= 0.15) {
-                                                                                    statusColor = 'warning';
-                                                                                    statusText = 'At Risk';
-                                                                                } else if (activity >= 0.05) {
+                                                                                // Enhanced rank-based categories for Rank 14+ administrators
+                                                                                if (member.scriptRank >= 15) {
+                                                                                    // President Level - Most critical
                                                                                     statusColor = 'danger';
-                                                                                    statusText = 'Inactive';
+                                                                                    statusText = activity >= 0.15 ? 'Presidential Alert' : 
+                                                                                                activity >= 0.05 ? 'Presidential Critical' : 'Presidential Emergency';
+                                                                                } else if (member.scriptRank >= 14) {
+                                                                                    // Executive Level - High priority
+                                                                                    statusColor = 'warning';
+                                                                                    statusText = activity >= 0.15 ? 'Executive Alert' : 
+                                                                                                activity >= 0.05 ? 'Executive Critical' : 'Executive Emergency';
                                                                                 } else {
-                                                                                    statusColor = 'dark';
-                                                                                    statusText = 'Very Inactive';
+                                                                                    // Standard categorization for lower ranks
+                                                                                    if (activity >= 0.15) {
+                                                                                        statusColor = 'warning';
+                                                                                        statusText = 'At Risk';
+                                                                                    } else if (activity >= 0.05) {
+                                                                                        statusColor = 'danger';
+                                                                                        statusText = 'Inactive';
+                                                                                    } else {
+                                                                                        statusColor = 'dark';
+                                                                                        statusText = 'Very Inactive';
+                                                                                    }
                                                                                 }
                                                                                 
                                                                                 return (
@@ -673,50 +777,79 @@ const FactionDataUpload = ({ showNotification }) => {
                                             </thead>
                                             <tbody>
                                                 {storedData
-                                                    .filter(member => {
-                                                        const activity = parseFloat(member.activity || '0');
-                                                        return activity >= 0.25; // Only show active members
-                                                    })
                                                     .map((member, index) => {
                                                         const activity = parseFloat(member.activity || '0');
                                                         
-                                                        // Determine access level based on script rank
-                                                        let accessLevel = 'Member';
-                                                        let badgeVariant = 'secondary';
-                                                        let permissions = [];
+                                        // Determine access level based on script rank
+                                        let accessLevel = 'Member';
+                                        let badgeVariant = 'secondary';
+                                        let permissions = [];
 
-                                                        if (member.scriptRank >= 15) {
-                                                            accessLevel = 'President';
-                                                            badgeVariant = 'danger';
-                                                            permissions = ['All Permissions'];
-                                                        } else if (member.scriptRank >= 12) {
-                                                            accessLevel = 'Full Admin';
-                                                            badgeVariant = 'warning';
-                                                            permissions = ['Admin', 'Database', 'Webhooks', 'Faction Upload'];
-                                                        } else if (member.scriptRank >= 11) {
-                                                            accessLevel = 'Senior Admin';
-                                                            badgeVariant = 'info';
-                                                            permissions = ['Admin', 'Webhooks', 'Faction Upload'];
-                                                        } else if (member.scriptRank >= 10) {
-                                                            accessLevel = 'Admin';
-                                                            badgeVariant = 'primary';
-                                                            permissions = ['Admin', 'Faction Upload'];
-                                                        } else if (member.scriptRank >= 5) {
-                                                            accessLevel = 'Trusted Member';
-                                                            badgeVariant = 'success';
-                                                            permissions = ['Basic Access'];
-                                                        }
-                                                        
-                                                        // Activity badge color
+                                        if (member.scriptRank >= 15) {
+                                            accessLevel = 'Leadership';
+                                            badgeVariant = 'danger';
+                                            permissions = ['All Permissions', 'Executive Control', 'Strategic Oversight'];
+                                        } else if (member.scriptRank >= 14) {
+                                            accessLevel = 'Leadership';
+                                            badgeVariant = 'warning';
+                                            permissions = ['Admin', 'Department Management', 'All Reports', 'Webhooks', 'Faction Upload'];
+                                        } else if (member.scriptRank >= 13) {
+                                            accessLevel = 'Senior Management';
+                                            badgeVariant = 'info';
+                                            permissions = ['Limited Admin', 'Department Reports', 'Audit Logs'];
+                                        } else if (member.scriptRank >= 12) {
+                                            accessLevel = 'Middle Management';
+                                            badgeVariant = 'primary';
+                                            permissions = ['Limited Admin', 'Own Reports', 'View Members'];
+                                        } else if (member.scriptRank >= 11) {
+                                            accessLevel = 'Supervisor';
+                                            badgeVariant = 'info';
+                                            permissions = ['Admin', 'Webhooks', 'Faction Upload'];
+                                        } else if (member.scriptRank >= 10) {
+                                            accessLevel = 'Attending';
+                                            badgeVariant = 'primary';
+                                            permissions = ['Admin', 'Faction Upload'];
+                                        } else if (member.scriptRank >= 9) {
+                                            accessLevel = 'Resident';
+                                            badgeVariant = 'success';
+                                            permissions = ['Basic Access'];
+                                        } else if (member.scriptRank >= 8) {
+                                            accessLevel = 'Upper Level';
+                                            badgeVariant = 'success';
+                                            permissions = ['Basic Access'];
+                                        } else if (member.scriptRank >= 7) {
+                                            accessLevel = 'Mid Level';
+                                            badgeVariant = 'secondary';
+                                            permissions = ['Basic Access'];
+                                        } else if (member.scriptRank >= 6) {
+                                            accessLevel = 'Administration';
+                                            badgeVariant = 'secondary';
+                                            permissions = ['Basic Access'];
+                                        } else if (member.scriptRank >= 5) {
+                                            accessLevel = 'Entry Level';
+                                            badgeVariant = 'light';
+                                            permissions = ['Basic Access'];
+                                        }                                                        // Activity badge color and inactivity check
                                                         let activityBadge = 'success';
-                                                        if (activity < 0.5) activityBadge = 'warning';
-                                                        if (activity < 0.35) activityBadge = 'danger';
+                                                        let isInactive = false;
+                                                        if (activity < 0.25) {
+                                                            activityBadge = 'danger';
+                                                            isInactive = true;
+                                                        } else if (activity < 0.35) {
+                                                            activityBadge = 'warning';
+                                                        } else if (activity < 0.5) {
+                                                            activityBadge = 'info';
+                                                        }
 
                                                         return (
-                                                            <tr key={member.characterId}>
+                                                            <tr key={member.characterId} className={isInactive ? 'table-danger' : ''}>
                                                                 <td>{member.characterId}</td>
                                                                 <td>
                                                                     <strong>{member.characterName}</strong>
+                                                                    {isInactive && (
+                                                                        <i className="fas fa-exclamation-triangle text-danger ms-2" 
+                                                                           title="Inactive member (ABAS < 0.25)"></i>
+                                                                    )}
                                                                 </td>
                                                                 <td>{member.rank}</td>
                                                                 <td>
@@ -725,8 +858,9 @@ const FactionDataUpload = ({ showNotification }) => {
                                                                     </Badge>
                                                                 </td>
                                                                 <td>
-                                                                    <Badge bg={activityBadge}>
+                                                                    <Badge bg={activityBadge} title={isInactive ? 'Inactive - ABAS below 0.25 threshold' : `Active - ABAS ${activity.toFixed(2)}`}>
                                                                         {activity.toFixed(2)}
+                                                                        {isInactive && ' (INACTIVE)'}
                                                                     </Badge>
                                                                 </td>
                                                                 <td>
@@ -752,7 +886,7 @@ const FactionDataUpload = ({ showNotification }) => {
                                         <Alert.Heading>No Faction Data</Alert.Heading>
                                         <p>No faction member data is currently stored in the database.</p>
                                         <hr />
-                                        <Button variant="primary" onClick={() => setActiveTab('upload')}>
+                                        <Button variant="primary" onClick={() => setActiveTab('upload')}> 
                                             Upload CSV Data
                                         </Button>
                                     </Alert>
