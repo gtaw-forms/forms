@@ -1,6 +1,216 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Form, Button, InputGroup } from 'react-bootstrap';
 import Select from 'react-select';
+import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
+import CharacterSelector from '../components/CharacterSelector';
+
+const EmployeeCredentialsSection = ({ 
+    formData, 
+    setFormData, 
+    groupedOptions,
+    handleSelectChange, 
+    setShowEmployeeModal,
+    employeeType
+}) => {
+    const { user: gtaWorldUser, isAuthenticated: isGtaAuthenticated } = useGtaWorldAuth();
+    const [useGtawName, setUseGtawName] = useState(false);
+    
+    // Declare field names first (before useEffect)
+    const employeeNameField = `${employeeType}Employee`;
+    const employeeBadgeField = `${employeeType}Badge`;
+    const employeeRankField = `${employeeType}Rank`;
+    const employeeDiscordField = `${employeeType}Discord`;
+    const employeePHNumberField = `${employeeType}PHNumber`;
+    
+    // Automatically enable GTAW credentials when user is authenticated
+    useEffect(() => {
+        if (isGtaAuthenticated && gtaWorldUser && !useGtawName) {
+            // Check if we have a valid character name
+            const gtawCharacterName = gtaWorldUser.faction ? 
+                ((gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? 
+                    `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : 
+                    gtaWorldUser.faction.characterName || gtaWorldUser.username) : 
+                gtaWorldUser.username;
+            
+            if (gtawCharacterName) {
+                setUseGtawName(true);
+                
+                // Clean rank by removing dashes and extra text
+                const cleanRank = gtaWorldUser?.faction?.rank ? 
+                    gtaWorldUser.faction.rank.split('-')[0].trim() : 'GTAW User';
+                
+                setFormData(prev => ({
+                    ...prev,
+                    [employeeNameField]: gtawCharacterName,
+                    [employeeBadgeField]: gtaWorldUser?.character?.id || gtaWorldUser?.id || '', 
+                    [employeeRankField]: cleanRank,
+                    [employeeDiscordField]: gtaWorldUser?.username || '',
+                    [employeePHNumberField]: '50056'
+                }));
+            }
+        }
+    }, [isGtaAuthenticated, gtaWorldUser, useGtawName, setFormData, employeeNameField, employeeBadgeField, employeeRankField, employeeDiscordField, employeePHNumberField]);
+
+    // Get GTAW character name if available
+    const gtawCharacterName = isGtaAuthenticated && gtaWorldUser && gtaWorldUser.faction ? 
+        ((gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? 
+            `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : 
+            gtaWorldUser.faction.characterName || gtaWorldUser.username) : 
+        (isGtaAuthenticated && gtaWorldUser ? gtaWorldUser.username : null);
+
+    const handleGtawToggle = () => {
+        if (!useGtawName && gtawCharacterName) {
+            // Switch to GTAW name
+            setUseGtawName(true);
+            
+            // Clean rank by removing dashes and extra text
+            const cleanRank = gtaWorldUser?.faction?.rank ? 
+                gtaWorldUser.faction.rank.split('-')[0].trim() : 'GTAW User';
+            
+            setFormData(prev => ({
+                ...prev,
+                [employeeNameField]: gtawCharacterName,
+                [employeeBadgeField]: gtaWorldUser?.id || '', // Use character ID as badge number
+                [employeeRankField]: cleanRank,
+                [employeeDiscordField]: gtaWorldUser?.username || '',
+                [employeePHNumberField]: '50056'
+            }));
+        } else {
+            // Switch back to Firebase selection
+            setUseGtawName(false);
+            setFormData(prev => ({
+                ...prev,
+                [employeeNameField]: '',
+                [employeeBadgeField]: '',
+                [employeeRankField]: '',
+                [employeeDiscordField]: '',
+                [employeePHNumberField]: '50056'
+            }));
+        }
+    };
+
+    return (
+        <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                <Form.Label style={{ marginBottom: 0 }}>Practitioner Seen By:</Form.Label> 
+                <button
+                    type="button"
+                    onClick={() => setShowEmployeeModal(true)}
+                    className="close-button"
+                    style={{
+                        padding: '0.25rem 0.5rem',
+                        fontSize: '0.8rem',     
+                        lineHeight: '1.2'       
+                    }}
+                >
+                    <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i> {/* Changed icon */}
+                    Missing Name?
+                </button>
+                {isGtaAuthenticated && gtawCharacterName && (
+                    <button
+                        type="button"
+                        onClick={handleGtawToggle}
+                        className="close-button"
+                        style={{
+                            padding: '0.25rem 0.5rem',
+                            fontSize: '0.8rem',
+                            lineHeight: '1.2',
+                            backgroundColor: useGtawName ? '#28a745' : '#007bff',
+                            color: 'white',
+                            border: 'none'
+                        }}
+                        title={useGtawName ? `Using GTAW: ${gtawCharacterName}` : `Use GTAW name: ${gtawCharacterName}`}
+                    >
+                        <i className={`fas ${useGtawName ? 'fa-check' : 'fa-user'}`} style={{ marginRight: '5px' }}></i>
+                        {useGtawName ? 'Using GTAW' : 'Use GTAW'}
+                    </button>
+                )}
+            </div>
+            
+            {useGtawName ? (
+                <div style={{ 
+                    padding: '10px', 
+                    backgroundColor: '#1a2332', 
+                    border: '1px solid #28a745', 
+                    borderRadius: '4px',
+                    marginBottom: '1rem'
+                }}>
+                    <div style={{ color: '#28a745', fontWeight: 'bold', marginBottom: '5px' }}>
+                        <i className="fas fa-user-check" style={{ marginRight: '8px' }}></i>
+                        Using GTAW OAuth Credentials
+                    </div>
+                    <div style={{ color: '#eeeeeeb0' }}>
+                        <strong>Name:</strong> {gtawCharacterName}<br/>
+                        <strong>Username:</strong> {gtaWorldUser?.username}<br/>
+                        <strong>Badge Number:</strong> {gtaWorldUser?.character.id}<br/>
+                        {gtaWorldUser?.faction?.rank && (
+                            <><strong>Rank:</strong> {gtaWorldUser.faction.rank.split('-')[0].trim()}<br/></>
+                        )}
+                        <small style={{ color: '#6c757d' }}>Click "Use GTAW" again to switch back to database selection</small>
+                    </div>
+                </div>
+            ) : (
+                <Select
+                    name={employeeNameField}
+                    value={groupedOptions
+                        .flatMap(group => group.options)
+                        .find(option => option.value === formData[employeeNameField]) || null}
+                    onChange={(selectedOption) => handleSelectChange(selectedOption, { name: employeeNameField })}
+                    options={groupedOptions}
+                    isClearable
+                    placeholder={`Search or select ${employeeType}...`}
+                    className="form-control" 
+                    styles={{ 
+                        control: (base) => ({
+                            ...base,
+                            backgroundColor: '#16202c',
+                            color: '#eeeeeeb0',
+                            borderColor: '#6c757d',
+                            '&:hover': {
+                                borderColor: '#eeeeeeb0'
+                            }
+                        }),
+                        menu: (base) => ({
+                            ...base,
+                            backgroundColor: '#16202c',
+                            zIndex: 1000
+                        }),
+                        option: (base, state) => ({
+                            ...base,
+                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
+                            color: '#eeeeeeb0'
+                        }),
+                        singleValue: (base) => ({
+                            ...base,
+                            color: '#eeeeeeb0'
+                        }),
+                        input: (base) => ({
+                            ...base,
+                            color: '#eeeeeeb0'
+                        }),
+                        placeholder: (base) => ({
+                            ...base,
+                            color: '#eeeeeeb0'
+                        }),
+                        group: (base) => ({
+                            ...base,
+                            paddingTop: 8,
+                            paddingBottom: 8
+                        }),
+                        groupHeading: (base) => ({
+                            ...base,
+                            color: '#6c757d',
+                            fontWeight: 600,
+                            textTransform: 'uppercase',
+                            fontSize: '0.75rem',
+                            marginBottom: 4
+                        })
+                    }}
+                />
+            )}
+        </>
+    );
+};
 
 const MedicalRelease = ({
     formData,
@@ -14,8 +224,27 @@ const MedicalRelease = ({
     phmcGroupedOptions,
     handleImageUpload,
     isUploading,
-
+    setShowEmployeeModal,
+    handleSelectChange
 }) => {
+    // Character selection state
+    const [selectedCharacter, setSelectedCharacter] = useState(null);
+    
+    // Character selection handler
+    const handleCharacterSelect = (character) => {
+        setSelectedCharacter(character);
+        
+        // Auto-populate patient name fields with character's firstname and lastname
+        if (character && character.firstname && character.lastname) {
+            // Update multiple fields at once
+            const updatedFormData = {
+                ...formData,
+                patientFirstName: character.firstname,
+                patientLastName: character.lastname
+            };
+            setFormData(updatedFormData);
+        }
+    };
 
     const calculateCost = () => {
         const selectedCount = formData.MedicalRecordsRelease?.length || 0;
@@ -28,65 +257,54 @@ const MedicalRelease = ({
     const approximateCost = calculateCost();
 
     return (
-        <>        <Form.Group className="mb-3">
-
-        <Form.Label>Title / First Name / Middle Name / Lastname / Date of Birth</Form.Label>
-            <div style={{ display: 'flex', gap: '10px' }}>
+        <>        
+                        {/* Character Selector and Patient Title - Inline */}
+    <div style={{ display: 'flex', gap: '10px', marginTop: '1rem', marginBottom: '1rem' }}>
+        <div style={{ flex: '2' }}>
+            <CharacterSelector 
+                onCharacterSelect={handleCharacterSelect}
+                selectedCharacterId={selectedCharacter?.id}
+                label="Select Character (Login with GTAW to see your characters)"
+                forceDropdown={true}
+            />
+        </div>
+        <div style={{ flex: '1' }}>
+                <div>
+                    <label style={{ marginBottom: '0.5rem', display: 'block' }}>Title</label>
                     <Form.Select
-                    name="patientTitle"
-                    value={formData.patientTitle}
-                    onChange={handleChange}
-                    required
-                    className={`form-control ${!formData.patientTitle ? 'is-invalid' : ''}`}
-                >
-                    <option value="" disabled>Title</option>
-                    {/* Updated to use patientTitleOptions prop */}
-                    {(patientTitleOptions || []).map((option) => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                </Form.Select>
+                        name="patientTitle"
+                        value={formData.patientTitle}
+                        onChange={handleChange}
+                        required
+                        className={`form-control ${!formData.patientTitle ? 'is-invalid' : ''}`}
+                        style={{
+                            padding: '8px',
+                            border: '1px solid #ccc',
+                            borderRadius: '4px',
+                            fontSize: '14px'
+                        }}
+                    >
+                        <option value="" disabled>Title</option>
+                        {patientTitleOptions.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                    </Form.Select>
+                </div>
+        </div>
+    </div>
+        
+        <Form.Group className="mb-3">
+
                 <Form.Control
-                    type="text"
-                    name="patientFirstName"
-                    value={formData.patientFirstName}
-                    onChange={handleChange}
-                    placeholder="First Name"
-                    required
-                    className={`form-control ${!formData.patientFirstName ? 'is-invalid' : ''}`}
-
+                type="date"
+                name="patientDateOfBirth"
+                value={formData.patientDateOfBirth}
+                onChange={handleChange}
+                placeholder="Date of Birth"
+                required
+                className={`form-control ${!formData.patientDateOfBirth ? 'is-invalid' : ''}`}
                 />
 
-                <Form.Control
-                    type="text"
-                    name="patientMiddleName"
-                    value={formData.patientMiddleName}
-                    onChange={handleChange}
-                    placeholder="Middle Name (Optional)"
-                    className={`form-control ${!formData.patientMiddleName ? 'is-invalid' : ''}`}
-
-                />
-                    <Form.Control
-                    type="text"
-                    name="patientLastName"
-                    value={formData.patientLastName}
-                    onChange={handleChange}
-                    placeholder="Last Name"
-                    required
-                    className={`form-control ${!formData.patientLastName ? 'is-invalid' : ''}`}
-
-                />
-                <Form.Control
-                    type="date"
-                    name="patientDateOfBirth"
-                    value={formData.patientDateOfBirth}
-                    onChange={handleChange}
-                    placeholder="Date of Birth"
-                    required
-                    className={`form-control ${!formData.patientDateOfBirth ? 'is-invalid' : ''}`}
-
-                />
-
-            </div>
             <Form.Label>Gender:</Form.Label>
                 <Form.Check
                     type="radio"
@@ -451,82 +669,14 @@ const MedicalRelease = ({
             />
         )}
             <Form.Label></Form.Label>
-            <Form.Label>Practitioner Seen By:</Form.Label> 
-    <Select
-            name="phmcEmployee"
-            value={phmcGroupedOptions
-                .flatMap(group => group.options)
-                .find(option => option.value === formData.phmcEmployee) || null}
-            onChange={(selectedOption) => {
-                handleChange({
-                    target: {
-                        name: 'phmcEmployee',
-                        value: selectedOption?.value || ''
-                    }
-                });
-                if (selectedOption) {
-                    setFormData(prev => ({
-                        ...prev,
-                        phmcSignature: selectedOption.signature || ''
-                    }));
-                } else {
-                    setFormData(prev => ({
-                        ...prev,
-                        phmcSignature: ''
-                    }));
-                }
-            }}
-            options={phmcGroupedOptions}
-            isClearable
-            placeholder="Which Doctor Treated You? (You can type to search!)"
-            className="form-control" 
-            styles={{ 
-                control: (base) => ({
-                    ...base,
-                    backgroundColor: '#16202c',
-                    color: '#eeeeeeb0',
-                    borderColor: '#6c757d',
-                    '&:hover': {
-                        borderColor: '#eeeeeeb0'
-                    }
-                }),
-                menu: (base) => ({
-                    ...base,
-                    backgroundColor: '#16202c',
-                    zIndex: 1000
-                }),
-                option: (base, state) => ({
-                    ...base,
-                    backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                    color: '#eeeeeeb0'
-                }),
-                singleValue: (base) => ({
-                    ...base,
-                    color: '#eeeeeeb0'
-                }),
-                input: (base) => ({
-                    ...base,
-                    color: '#eeeeeeb0'
-                }),
-                placeholder: (base) => ({
-                    ...base,
-                    color: '#eeeeeeb0'
-                }),
-                group: (base) => ({
-                    ...base,
-                    paddingTop: 8,
-                    paddingBottom: 8
-                }),
-                groupHeading: (base) => ({
-                    ...base,
-                    color: '#6c757d',
-                    fontWeight: 600,
-                    textTransform: 'uppercase',
-                    fontSize: '0.75rem',
-                    marginBottom: 4
-                })
-            }}
-        />
+            <EmployeeCredentialsSection 
+                formData={formData}
+                setFormData={setFormData}
+                groupedOptions={phmcGroupedOptions}
+                handleSelectChange={handleSelectChange}
+                setShowEmployeeModal={setShowEmployeeModal}
+                employeeType="phmc"
+            />
             <Form.Label></Form.Label>
 
             <Form.Label>Authorization For Release Information</Form.Label>

@@ -1,4 +1,6 @@
 import { useReportManagement } from './components/useReportManagement';
+import { syncGtawAccountWithReports } from './services/gtawSyncService';
+import CharacterSelectionModal from './components/CharacterSelectionModal';
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { formDefinitions, getFormDefinition } from './formDefinitions'; 
@@ -10,7 +12,7 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import * as Sentry from "@sentry/react";
 import { useNotification } from './contexts/NotificationContext';
 import SwitchableFormButtons from './components/SwitchableFormButtons';
-import { handleFormCopyAndNotify, handlePhmcRecruitmentCopyAndNotify, sendBingoNotification, sendPhraseRequestNotification } from './components/notificationService';
+import { handleFormCopyAndNotify, handlePhmcRecruitmentCopyAndNotify, sendBingoNotification, sendPhraseRequestNotification, sendMissingEmployeeNotification } from './components/notificationService';
 import { useData } from './contexts/DataContext';
 import LoadingSpinner from './components/LoadingSpinner';
 import { useModal } from './contexts/ModalProvider';
@@ -21,6 +23,7 @@ import useGtaWorldAuth from './hooks/useGtaWorldAuth';
 import { useLockdown } from './contexts/LockdownContext';
 import LockdownBanner from './components/LockdownBanner';
 import LockdownDialog from './components/LockdownDialog';
+import { useAuth } from './contexts/AuthContext';
 // logos
 import email from './assets/email.png'
 import Civilian from './assets/Civilian.png'
@@ -30,7 +33,7 @@ import corpse from './assets/corpse.png'
 import tombstone from './assets/tombstone.png'
 import phmcpaletobay from './assets/phmcpaletobaylogo.png'
 import './assets/fonts/Poppins-Medium.ttf';
-import { sendMissingEmployeeNotification } from './components/notificationService';
+
 
 // css fun
 import './App.css';
@@ -40,6 +43,50 @@ import 'react-bootstrap-typeahead/css/Typeahead.css';
 
 // database
 import { database } from './firebase'; // Your Firebase config
+// Debug User Bar Component
+/* const DebugUserBar = () => {
+    const { currentUser } = useAuth();
+    const { user: gtaWorldUser, isAuthenticated: isGtaAuthenticated } = useGtaWorldAuth();
+    
+    const getUserName = () => {
+        if (isGtaAuthenticated && gtaWorldUser) {
+            if (gtaWorldUser.isFactionMember && gtaWorldUser.faction) {
+                const characterName = (gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? 
+                    `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : 
+                    gtaWorldUser.faction.characterName;
+                return characterName ? `${characterName} (${gtaWorldUser.username})` : gtaWorldUser.username;
+            }
+            return gtaWorldUser.username;
+        }
+        if (currentUser) {
+            return currentUser.email;
+        }
+        return null;
+    };
+    
+    const userName = getUserName();
+    
+    if (!userName) return null;
+    
+    return (
+        <div style={{
+            position: 'fixed',
+            top: '10px',
+            right: '10px',
+            backgroundColor: '#007bff',
+            color: 'white',
+            padding: '8px 12px',
+            borderRadius: '4px',
+            fontSize: '12px',
+            fontWeight: 'bold',
+            zIndex: '9999',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+        }}>
+            DEBUG: {userName} logged in!
+        </div>
+    );
+};
+ */
 // Lazy-loaded components
 const SavedReportsModal = lazy(() => import('./components/SavedReportsModal'));
 const AgencyGroupSelectorModal = lazy(() => import('./components/AgencyGroupSelectorModal'));
@@ -85,33 +132,162 @@ function MainApp({
         showPHMCModal, setShowPHMCModal,
         switchableModalTitle, setSwitchableModalTitle,
         switchableFormsList, setSwitchableFormsList,
-        showFeatureRequestModal, setShowFeatureRequestModal,
-
+        showFeatureRequestModal, setShowFeatureRequestModal
     } = useModal();
 
-    // GTA World Authentication hook for welcome notification
+    // GTA World Authentication hook for welcome notification and login button
     const { 
         user: gtaWorldUser, 
-        isAuthenticated: isGtaAuthenticated 
+        isAuthenticated: isGtaAuthenticated,
+        login: gtaLogin,
+        logout: gtaLogout,
+        isLoading: gtaLoading,
+        isPhmcMember,
+        factionData,
+        characterName
     } = useGtaWorldAuth();
 
     // Track if we've already shown the welcome notification to avoid showing it multiple times
     const [hasShownGtaWelcome, setHasShownGtaWelcome] = useState(false);
+    
+    // GTAW Sync state
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [syncResult, setSyncResult] = useState(null);
+    
+    // Character selection state for multi-character users
+    const [showCharacterSelection, setShowCharacterSelection] = useState(false);
+    const [selectedPhmcCharacter, setSelectedPhmcCharacter] = useState(null);
+    const [availablePhmcCharacters, setAvailablePhmcCharacters] = useState([]);
+    
+    // Get data from DataContext (moved up to avoid temporal dead zone)
+    const { 
+        phmcListData,
+        coronerListData,
+        agencyDataStore,
+        selectOptions,
+        physicianRecruitmentDetails,
+        psychRecruitmentDetails,
+        adminRecruitmentDetails,
+        emsRecruitmentDetails,
+        nurseRecruitmentDetails,
+        coronerRecruitmentDetails,
+        isLoadingData,
+        loading
+    } = useData();
+    
+    // Enhanced GTAW login handler with loading notification
+    const handleGtawLogin = () => {
+        // Show loading notification
+        showNotification('Please wait, this may take a moment...', 'info-circle', 10000);
+        
+        // Determine return path based on current location - preserve actual path
+        const currentPath = window.location.hash || '#/';
+        const isOnHomepage = currentPath === '#/' || currentPath === '#';
+        const isOnAdminPage = currentPath.startsWith('#/admin');
+        
+        // Return to the current page unless it's a problematic path
+        let returnPath = currentPath;
+        
+        // For problematic paths (like callback routes), default to homepage if came from homepage, otherwise admin
+        if (currentPath.includes('/auth/') || currentPath.includes('/callback')) {
+            returnPath = isOnHomepage ? '#/' : '#/admin';
+        } else if (isOnAdminPage) {
+            returnPath = '#/admin'; // Always return admin users to admin panel
+        }
+        // For homepage and form pages, preserve the current path
+        
+        console.log('[GTAW Login] Initiating login with return path:', returnPath);
+        
+        // Call the original login function with proper return path
+        gtaLogin({ returnPath });
+    };
+
+    // Handle GTAW account sync with saved reports
+    const handleGtawSync = async () => {
+        if (!gtaWorldUser || !isPhmcMember) {
+            showNotification('You must be logged in as a PHMC member to sync reports.', 'exclamation-triangle');
+            return;
+        }
+        
+        setIsSyncing(true);
+        setSyncResult(null);
+        
+        try {
+            showNotification('Starting GTAW account sync...', 'info-circle');
+            
+            // Enhanced sync with safety options
+            const result = await syncGtawAccountWithReports(gtaWorldUser, {
+                createBackup: true,      // Always create backup for safety
+                validateUpdates: true,   // Validate before applying changes
+                maxRetries: 3,          // Retry failed updates
+                dryRun: false           // Set to true for testing
+            });
+            
+            setSyncResult(result);
+            
+            if (result.success) {
+                showNotification(
+                    `${result.message} - ${result.stats.matches} character matches found.`,
+                    'check-circle'
+                );
+                
+                // Show backup info for user confidence
+                if (result.details?.backupId) {
+                    setTimeout(() => {
+                        showNotification(
+                            `Backup created: ${result.details.backupId.slice(-8)} (for rollback if needed)`,
+                            'shield-alt',
+                            5000
+                        );
+                    }, 2000);
+                }
+                
+                // If reports were updated, show detailed stats
+                if (result.stats.updatedReports > 0) {
+                    setTimeout(() => {
+                        showNotification(
+                            `Sync Stats: ${result.stats.updatedReports} reports updated across ${result.stats.updatedAuthors} authors`,
+                            'info-circle'
+                        );
+                    }, 4000);
+                }
+            } else {
+                showNotification(`Sync failed: ${result.message}`, 'times-circle');
+                
+                // Show rollback option if backup exists
+                if (result.canRollback && result.backupInfo) {
+                    setTimeout(() => {
+                        showNotification(
+                            `If needed, backup ${result.backupInfo.slice(-8)} can be restored via admin panel`,
+                            'undo',
+                            8000
+                        );
+                    }, 3000);
+                }
+            }
+        } catch (error) {
+            console.error('GTAW sync error:', error);
+            showNotification(`Sync error: ${error.message}`, 'times-circle');
+            setSyncResult({ success: false, message: error.message });
+        } finally {
+            setIsSyncing(false);
+        }
+    };
 
     // Show welcome notification for GTA World OAuth users
     useEffect(() => {
         if (isGtaAuthenticated && gtaWorldUser && gtaWorldUser.username && !hasShownGtaWelcome) {
-            let welcomeMessage = `Welcome back, ${gtaWorldUser.username}! 🎮`;
+            let welcomeMessage = `Welcome back, ${gtaWorldUser.username}!`;
             
             // Check if user is a PHMC faction member and display their character name and rank
             if (gtaWorldUser.isFactionMember && gtaWorldUser.faction) {
-                const characterName = gtaWorldUser.faction.characterName || gtaWorldUser.faction.name;
-                const scriptRank = gtaWorldUser.faction.scriptRank;
+                const characterName = (gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : (gtaWorldUser.faction.name || gtaWorldUser.username);
+                const rank = gtaWorldUser.faction.rank;
                 
-                if (characterName && scriptRank !== undefined) {
-                    welcomeMessage = `Welcome back, ${characterName}! (Script Rank: ${scriptRank}) 🏥`;
+                if (characterName && rank !== undefined) {
+                    welcomeMessage = `Welcome back, ${characterName}! (Script Rank: ${rank})`;
                 } else if (characterName) {
-                    welcomeMessage = `Welcome back, ${characterName}! �`;
+                    welcomeMessage = `Welcome back, ${characterName}!`;
                 }
             }
             
@@ -124,6 +300,122 @@ function MainApp({
             setHasShownGtaWelcome(false);
         }
     }, [isGtaAuthenticated, gtaWorldUser, hasShownGtaWelcome, showNotification]);
+
+    // Handle character selection from modal
+    const handleCharacterSelect = (character) => {
+        const characterName = character.name || `${character.firstname || ''} ${character.lastname || ''}`.trim();
+        
+        setSelectedPhmcCharacter(character);
+        
+        // Auto-fill the employee field
+        setFormData(prev => ({
+            ...prev,
+            phmcEmployee: characterName
+        }));
+        
+        console.log('[Character Selection] User selected character:', {
+            characterName,
+            characterId: character.id,
+            username: gtaWorldUser?.username
+        });
+        
+        showNotification(
+            `Selected character: ${characterName}`,
+            'check-circle',
+            3000
+        );
+    };
+
+    // Enhanced auto-fill employee names for PHMC members with Firebase employee matching
+    useEffect(() => {
+        if (isGtaAuthenticated && isPhmcMember && gtaWorldUser && (phmcListData.length > 0 || coronerListData.length > 0)) {
+            const characterName = gtaWorldUser.faction?.characterName || 
+                                 (gtaWorldUser.faction?.firstname && gtaWorldUser.faction?.lastname ? 
+                                  `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : null);
+            
+            if (characterName && !formData.phmcEmployee && !formData.coronerEmployee) {
+                // First, try to find exact match in PHMC staff
+                let matchedEmployee = phmcListData.find(employee => 
+                    employee.name && employee.name.toLowerCase() === characterName.toLowerCase()
+                );
+                
+                if (matchedEmployee) {
+                    setFormData(prev => ({
+                        ...prev,
+                        phmcEmployee: matchedEmployee.name,
+                        phmcEmployeeLastName: matchedEmployee.lastName || '',
+                        phmcRank: matchedEmployee.category || matchedEmployee.rank || ''
+                    }));
+                    
+                    console.log('[Auto-fill] Auto-populated PHMC employee field:', {
+                        characterName,
+                        matchedName: matchedEmployee.name,
+                        username: gtaWorldUser.username,
+                        rank: gtaWorldUser.faction?.scriptRank,
+                        category: matchedEmployee.category
+                    });
+                    
+                    setTimeout(() => {
+                        showNotification(
+                            `Auto-filled PHMC employee: ${matchedEmployee.name}`,
+                            'check-circle',
+                            3000
+                        );
+                    }, 1000);
+                    return;
+                }
+                
+                // If not found in PHMC, try coroner staff
+                matchedEmployee = coronerListData.find(employee => 
+                    employee.name && employee.name.toLowerCase() === characterName.toLowerCase()
+                );
+                
+                if (matchedEmployee) {
+                    setFormData(prev => ({
+                        ...prev,
+                        coronerEmployee: matchedEmployee.name,
+                        coronerBadge: matchedEmployee.badge || '',
+                        coronerRank: matchedEmployee.rank || matchedEmployee.category || '',
+                        coronerDiscord: matchedEmployee.discord || '',
+                        coronerPHNumber: matchedEmployee.phNumber || '50056'
+                    }));
+                    
+                    console.log('[Auto-fill] Auto-populated Coroner employee field:', {
+                        characterName,
+                        matchedName: matchedEmployee.name,
+                        username: gtaWorldUser.username,
+                        rank: gtaWorldUser.faction?.scriptRank,
+                        coronerRank: matchedEmployee.rank
+                    });
+                    
+                    setTimeout(() => {
+                        showNotification(
+                            `Auto-filled Coroner employee: ${matchedEmployee.name}`,
+                            'check-circle',
+                            3000
+                        );
+                    }, 1000);
+                    return;
+                }
+                
+                // If exact match not found, show informative message
+                console.log('[Auto-fill] No employee match found for character:', {
+                    characterName,
+                    username: gtaWorldUser.username,
+                    availablePhmcStaff: phmcListData.length,
+                    availableCoronerStaff: coronerListData.length
+                });
+                
+                setTimeout(() => {
+                    showNotification(
+                        `Character "${characterName}" not found in employee database. Please select manually.`,
+                        'info-circle',
+                        4000
+                    );
+                }, 1000);
+            }
+        }
+    }, [isGtaAuthenticated, isPhmcMember, gtaWorldUser, formData.phmcEmployee, formData.coronerEmployee, phmcListData, coronerListData, showNotification, setFormData]);
 
 
     // Onboarding detection and initialization
@@ -198,21 +490,6 @@ function MainApp({
     const [selectedAgencyGroup, setSelectedAgencyGroup] = useState(null);
     const [hideAgencyGroupSelectorPreference, setHideAgencyGroupSelectorPreference] = useState(false);
     
-    // Get data from DataContext
-    const { 
-        phmcListData,
-        coronerListData,
-        agencyDataStore,
-        selectOptions,
-        physicianRecruitmentDetails,
-        psychRecruitmentDetails,
-        adminRecruitmentDetails,
-        emsRecruitmentDetails,
-        nurseRecruitmentDetails,
-        coronerRecruitmentDetails,
-        isLoadingData,
-        loading
-    } = useData();
     const [isJohnDoe, setIsJohnDoe] = useState(false);
     const [isJaneDoe, setIsJaneDoe] = useState(false);
     const [commitInfo, setCommitInfo] = useState({ sha: '', date: null, error: null });
@@ -689,6 +966,9 @@ const getBBCodeContent = () => {
                 commitInfo,
                 database,
                 getCurrentReportAuthor,
+                // Pass GTAW OAuth data for automatic character inclusion
+                isGtaAuthenticated,
+                gtaWorldUser,
             });
         }
     }, [
@@ -1109,7 +1389,8 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             <div className="App">
                 <LockdownBanner notification={lockdownConfig.notification} show={isLockdownActive} />
                 <LockdownDialog show={showDialog} onHide={hideDialog} message={lockdownConfig.dialog} />
-                <OnboardingModal 
+{/*                 <DebugUserBar />
+ */}                <OnboardingModal 
                     show={showOnboarding} 
                     onComplete={handleOnboardingComplete}
                     onSkip={handleOnboardingSkip}
@@ -1519,6 +1800,49 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                 
                 <div className="output-container">
                 <div className="floating-admin-button-container">
+                {/* Login with GTAW Button */}
+                {!isGtaAuthenticated ? (
+                    <Button
+                        type="button"
+                        variant="primary"
+                        className="changelog-button"
+                        onClick={handleGtawLogin}
+                        disabled={gtaLoading}
+                        title="Login with GTA World"
+                    >
+                        <i className={gtaLoading ? "fas fa-spinner fa-spin" : "fab fa-steam"}></i>
+                        {gtaLoading ? 'Connecting...' : 'Login with GTAW'}
+                    </Button>
+                ) : (
+                    <>
+                        <Button
+                            type="button"
+                            variant="success"
+                            className="changelog-button"
+                            onClick={gtaLogout}
+                            title={`Logged in as ${gtaWorldUser?.username || 'Unknown'}. Click to logout.`}
+                        >
+                            <i className="fas fa-user-check"></i>
+                            {gtaWorldUser?.username || 'GTAW User'}
+                        </Button>
+                        
+                        {/* Sync Saved Reports Button - Only for PHMC Members */}
+                        {isPhmcMember && (
+                            <Button
+                                type="button"
+                                variant="info"
+                                className="changelog-button"
+                                onClick={handleGtawSync}
+                                disabled={isSyncing}
+                                title={`Sync your saved reports with GTAW account (${characterName || 'PHMC Member'})`}
+                            >
+                                <i className={isSyncing ? "fas fa-spinner fa-spin" : "fas fa-sync-alt"}></i>
+                                {isSyncing ? 'Syncing...' : 'Sync Reports'}
+                            </Button>
+                        )}
+                    </>
+                )}
+                
                 <Button
                     type="button"
                     variant="warning"
@@ -1769,6 +2093,16 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                 </div>
             </div>
             <Footer />
+            
+            {/* Character Selection Modal for Multi-Character PHMC Users */}
+            <CharacterSelectionModal
+                show={showCharacterSelection}
+                onHide={() => setShowCharacterSelection(false)}
+                characters={availablePhmcCharacters}
+                onCharacterSelect={handleCharacterSelect}
+                currentSelection={selectedPhmcCharacter}
+                title="Select PHMC Character"
+            />
             </div>
         </Suspense>
         

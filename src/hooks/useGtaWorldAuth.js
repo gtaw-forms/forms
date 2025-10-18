@@ -8,7 +8,9 @@ import {
     logout,
     validateSession,
     makeAuthenticatedRequest,
-    tryRestoreSession
+    tryRestoreSession,
+    refreshFactionData,
+    isFactionMember
 } from '../services/gtaWorldAuth';
 
 /**
@@ -72,6 +74,11 @@ export const useGtaWorldAuth = () => {
                     setUser(restoredSession.user);
                     setIsLoading(false);
                     
+                    // Refresh faction data in the background
+                    refreshFactionData().then(updatedUser => {
+                        setUser(updatedUser);
+                    });
+
                     // Validate the restored session in the background
                     setIsValidatingSession(true);
                     try {
@@ -154,29 +161,82 @@ export const useGtaWorldAuth = () => {
      * Processes OAuth callback
      */
     const processCallback = useCallback(async (code, state) => {
+        const callbackProcessId = Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+        const startTime = Date.now();
+        
         try {
             setIsLoading(true);
             setError(null);
+            
+            console.log(`🔄 [GTA Auth Hook] Processing OAuth callback [${callbackProcessId}]...`, {
+                codePresent: !!code,
+                statePresent: !!state,
+                codeLength: code?.length,
+                stateLength: state?.length,
+                timestamp: startTime
+            });
 
-            await new Promise((resolve, reject) => {
+            const result = await new Promise((resolve, reject) => {
+                const serviceCallStart = Date.now();
+                
                 handleOAuthCallback(
                     code,
                     state,
                     (userData, returnPath) => {
+                        const serviceCallDuration = Date.now() - serviceCallStart;
+                        
+                        console.log(`✅ [GTA Auth Hook] Service callback success [${callbackProcessId}]:`, {
+                            duration: serviceCallDuration,
+                            hasUserData: !!userData,
+                            userId: userData?.id,
+                            username: userData?.username,
+                            returnPath,
+                            possibleFirebaseCall: serviceCallDuration > 1000
+                        });
+                        
+                        if (serviceCallDuration > 2000) {
+                            console.warn(`⚠️ [GTA Auth Hook] Slow service callback [${callbackProcessId}]:`, {
+                                duration: serviceCallDuration,
+                                possibleFirebaseTimeout: serviceCallDuration > 5000,
+                                userData: userData ? 'present' : 'missing'
+                            });
+                        }
+                        
                         setUser(userData);
                         setIsLoading(false);
                         resolve({ userData, returnPath });
                     },
                     (errorMessage) => {
+                        const serviceCallDuration = Date.now() - serviceCallStart;
+                        
+                        console.error(`❌ [GTA Auth Hook] Service callback error [${callbackProcessId}]:`, {
+                            error: errorMessage,
+                            duration: serviceCallDuration,
+                            possibleFirebaseError: serviceCallDuration > 1000
+                        });
+                        
                         setError(errorMessage);
                         setIsLoading(false);
                         reject(new Error(errorMessage));
                     }
                 );
             });
+            
+            const totalDuration = Date.now() - startTime;
+            console.log(`🏁 [GTA Auth Hook] Callback processing completed [${callbackProcessId}]:`, {
+                totalDuration,
+                success: !!result.userData
+            });
+            
+            return result;
 
         } catch (err) {
-            console.error('[GTA Auth Hook] Callback processing error:', err);
+            const errorDuration = Date.now() - startTime;
+            console.error(`❌ [GTA Auth Hook] Callback processing error [${callbackProcessId}]:`, {
+                error: err.message,
+                duration: errorDuration,
+                stack: err.stack
+            });
             setError(err.message || 'Authentication failed');
             setIsLoading(false);
             throw err;
@@ -255,7 +315,14 @@ export const useGtaWorldAuth = () => {
 
         // Utility functions
         getUserData: getCurrentUser,
-        hasValidSession: isAuthenticated()
+        hasValidSession: isAuthenticated(),
+        
+        // Faction membership
+        isFactionMember: isFactionMember(),
+        isPhmcMember: user?.isFactionMember || false,
+        factionData: user?.faction || null,
+        factionRank: user?.faction?.scriptRank || 0,
+        characterName: user?.faction?.characterName || null
     };
 };
 

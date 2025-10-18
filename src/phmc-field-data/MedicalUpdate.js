@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Form, Button, InputGroup } from 'react-bootstrap';
 import Select from 'react-select';
+import CharacterSelector from '../components/CharacterSelector';
 const customSelectStyles = {
     control: (base, state) => ({
         ...base,
@@ -91,6 +92,24 @@ const MedicalRelease = ({
     isUploading,
 
 }) => {
+    // Character selection state
+    const [selectedCharacter, setSelectedCharacter] = useState(null);
+    
+    // Character selection handler
+    const handleCharacterSelect = (character) => {
+        setSelectedCharacter(character);
+        
+        // Auto-populate patient name field with character's full name
+        if (character && character.fullName) {
+            const syntheticEvent = {
+                target: {
+                    name: 'patientName',
+                    value: character.fullName
+                }
+            };
+            handleChange(syntheticEvent);
+        }
+    };
 
     const calculateCost = () => {
     if (formData.UpdateMedicalFile && formData.UpdateMedicalFile.length > 0) {
@@ -102,42 +121,42 @@ const MedicalRelease = ({
 
     return (
         <>
-        <Form.Label>Title / Patient Name  / Date of Birth</Form.Label>
-            <div style={{ display: 'flex', gap: '10px' }}>
-            <Form.Select
-            name="patientTitleOptions"
-            value={formData.patientTitleOptions}
-            onChange={handleChange}
-            required
-            className={`form-control ${!formData.patientTitleOptions ? 'is-invalid' : ''}`}
-        >
-            <option value="" disabled>Title</option>
-            {/* Ensure patientTitle (the options array) is not null/undefined before mapping */}
-            {(patientTitleOptions || []).map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-        </Form.Select>
-                <Form.Control
-                    type="text"
-                    name="patientName"
-                    value={formData.patientName}
-                    onChange={handleChange}
-                    placeholder="Patient Name"
-                    required
-                    className={`form-control ${!formData.patientName ? 'is-invalid' : ''}`}
-
-                />
-    <Form.Control
-      type="date"
-      name="date"
-      value={formData.date}
-      onChange={handleChange}
-      placeholder="Date of Birth"
-      required
-      className={`form-control ${!formData.date ? 'is-invalid' : ''}`}
-    />
-
+        {/* Character Selector */}
+                        {/* Character Selector and Patient Title - Inline */}
+    <div style={{ display: 'flex', gap: '10px', marginTop: '1rem', marginBottom: '1rem' }}>
+        <div style={{ flex: '2' }}>
+            <CharacterSelector 
+                onCharacterSelect={handleCharacterSelect}
+                selectedCharacterId={selectedCharacter?.id}
+                label="Select Character (Login with GTAW to see your characters)"
+                forceDropdown={true}
+            />
+        </div>
+        <div style={{ flex: '1' }}>
+                <div>
+                    <label style={{ marginBottom: '0.5rem', display: 'block' }}>Title</label>
+                    <Form.Select
+                        name="patientTitle"
+                        value={formData.patientTitle}
+                        onChange={handleChange}
+                        required
+                        className={`form-control ${!formData.patientTitle ? 'is-invalid' : ''}`}
+                        style={{
+                            padding: '8px',
+                            border: '1px solid #ccc',
+                            borderRadius: '4px',
+                            fontSize: '14px'
+                        }}
+                    >
+                        <option value="" disabled>Title</option>
+                        {patientTitleOptions.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                    </Form.Select>
                 </div>
+        </div>
+    </div>
+
 
 
             <div className="input-group">        

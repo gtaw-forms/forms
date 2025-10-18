@@ -797,6 +797,9 @@ export const handleFormCopyAndNotify = async ({
     commitInfo,
     database,
     getCurrentReportAuthor,
+    // GTAW OAuth data for automatic character inclusion
+    isGtaAuthenticated = false,
+    gtaWorldUser = null,
 }) => {
     // --- Step 1: Generate BBCode ---
     const bbCodeToCopy = getBBCodeContent();
@@ -827,14 +830,43 @@ export const handleFormCopyAndNotify = async ({
             authorName: 'CIVILIAN'
         };
 
+        // Automatically add GTAW character data to civilian reports if user is authenticated
+        if (isGtaAuthenticated && gtaWorldUser) {
+            reportDataToSave.gtawUsername = gtaWorldUser.username;
+            reportDataToSave.gtawCharacterId = gtaWorldUser.id;
+            reportDataToSave.gtawCharacterName = gtaWorldUser.faction ? 
+                ((gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? 
+                    `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : 
+                    gtaWorldUser.faction.characterName || gtaWorldUser.username) : 
+                gtaWorldUser.username;
+            reportDataToSave.gtawSyncTimestamp = new Date().toISOString();
+            reportDataToSave.gtawSyncVersion = '1.1';
+            
+            console.log('📄 [Civilian Report Save] Automatically added GTAW data to civilian report:', {
+                username: reportDataToSave.gtawUsername,
+                characterId: reportDataToSave.gtawCharacterId,
+                characterName: reportDataToSave.gtawCharacterName,
+                reportType: 'CIVILIAN'
+            });
+        }
+
         try {
             const reportRef = ref(database, `savedReports/CIVILIAN/${sanitizedKey}`);
             await set(reportRef, reportDataToSave);
-            await logWebhookToFirebase('report_saved_civilian', {
+            const webhookPayload = {
                 reportKey: sanitizedKey,
                 originalKey: key,
-                bbCodeVersion: bbCodeVersion
-            });
+                bbCodeVersion: bbCodeVersion,
+                hasGtawData: isGtaAuthenticated && !!gtaWorldUser
+            };
+            
+            if (isGtaAuthenticated && gtaWorldUser) {
+                webhookPayload.gtawUsername = gtaWorldUser.username;
+                webhookPayload.gtawCharacterId = gtaWorldUser.id;
+                webhookPayload.gtawCharacterName = reportDataToSave.gtawCharacterName;
+            }
+            
+            await logWebhookToFirebase('report_saved_civilian', webhookPayload);
             saveResult = { success: true };
         } catch (error) {
             console.error("Error saving Civilian report to Firebase:", error);

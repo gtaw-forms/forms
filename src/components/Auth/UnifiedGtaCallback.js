@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
@@ -12,15 +12,56 @@ const UnifiedGtaCallback = () => {
     const [status, setStatus] = useState('processing');
     const [error, setError] = useState(null);
     const [message, setMessage] = useState('Processing authentication...');
+    const [isProcessing, setIsProcessing] = useState(false);
+    
+    // Process tracking
+    const processId = useRef(Date.now() + '-' + Math.random().toString(36).substr(2, 9));
+    const componentMountTime = useRef(Date.now());
+    const firebaseCalls = useRef([]);
+    const processingStarted = useRef(false);
+    const duplicateCallCount = useRef(0);
     
     const location = useLocation();
     const navigate = useNavigate();
     const { login: authLogin } = useAuth();
     const { processCallback, user } = useGtaWorldAuth();
+    
+    // Track Firebase Functions calls
+    const trackFirebaseCall = (functionName, params, result, error, duration) => {
+        const callInfo = {
+            timestamp: Date.now(),
+            processId: processId.current,
+            functionName,
+            params: typeof params === 'object' ? JSON.stringify(params) : String(params || 'none'),
+            success: !error,
+            error: error?.message || error,
+            duration: duration || 0,
+            timeSinceMount: Date.now() - componentMountTime.current,
+            callIndex: firebaseCalls.current.length
+        };
+        firebaseCalls.current.push(callInfo);
+        console.log(`🔥 Firebase Call [${processId.current}][${callInfo.callIndex}]:`, callInfo);
+        
+        // Check for suspicious patterns
+        if (firebaseCalls.current.length > 1) {
+            const recentCalls = firebaseCalls.current.slice(-2);
+            const [prev, current] = recentCalls;
+            if (prev.functionName === current.functionName && current.timestamp - prev.timestamp < 100) {
+                console.warn(`⚠️ Potential duplicate Firebase call detected [${processId.current}]:`, {
+                    function: functionName,
+                    timeBetween: current.timestamp - prev.timestamp,
+                    previousCall: prev,
+                    currentCall: current
+                });
+            }
+        }
+    };
 
     // Immediate URL logging when component mounts
     useEffect(() => {
-        console.log('[Unified Callback] Component mounted - immediate URL analysis:', {
+        console.log(`🚀 [Unified Callback] Component mounted [${processId.current}] - immediate URL analysis:`, {
+            processId: processId.current,
+            mountTime: componentMountTime.current,
             fullUrl: window.location.href,
             pathname: window.location.pathname,
             search: window.location.search,
@@ -29,12 +70,73 @@ const UnifiedGtaCallback = () => {
             hashParams: Object.fromEntries(new URLSearchParams(window.location.hash.split('?')[1] || '')),
             locationSearch: location.search,
             locationHash: location.hash,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            userAgent: navigator.userAgent.slice(0, 100)
         });
-    }, []); // Empty dependency array - runs once on mount
+    }, []); // Empty dependency array - runs once on mount\n\n    useEffect(() => {
 
     useEffect(() => {
         const handleCallback = async () => {
+            const currentProcessId = processId.current;
+            const callTime = Date.now();
+            
+            // Check for interrupted process from previous component instance
+            const interruptedProcess = sessionStorage.getItem('oauth-callback-interrupted');
+            if (interruptedProcess) {
+                const interrupted = JSON.parse(interruptedProcess);
+                console.log(`🔄 [Unified Callback] Detected interrupted process [${currentProcessId}]:`, {
+                    previousProcessId: interrupted.processId,
+                    timeSinceInterruption: callTime - interrupted.timestamp,
+                    wasProcessing: interrupted.wasProcessing,
+                    previousFirebaseCalls: interrupted.firebaseCalls
+                });
+                sessionStorage.removeItem('oauth-callback-interrupted');
+                
+                // If interruption was recent (< 5 seconds), delay new processing
+                if (callTime - interrupted.timestamp < 5000) {
+                    console.log(`⏳ [Unified Callback] Delaying processing due to recent interruption [${currentProcessId}]`);
+                    setTimeout(() => {
+                        if (!processingStarted.current && !isProcessing) {
+                            console.log(`🔄 [Unified Callback] Resuming after interruption delay [${currentProcessId}]`);
+                            // Re-trigger the effect after delay
+                            setIsProcessing(false); // Force re-render to trigger effect
+                        }
+                    }, 1000);
+                    return;
+                }
+            }
+            
+            console.log(`🔄 [Unified Callback] Effect triggered [${currentProcessId}]:`, {
+                processId: currentProcessId,
+                isProcessing,
+                processingStarted: processingStarted.current,
+                duplicateCallCount: duplicateCallCount.current,
+                timeSinceMount: callTime - componentMountTime.current,
+                firebaseCallCount: firebaseCalls.current.length,
+                locationTrigger: {
+                    search: location.search,
+                    hash: location.hash,
+                    pathname: location.pathname
+                },
+                hadInterruptedProcess: !!interruptedProcess
+            });
+            
+            // Prevent multiple simultaneous processing
+            if (isProcessing || processingStarted.current) {
+                duplicateCallCount.current++;
+                console.warn(`⚠️ [Unified Callback] Duplicate processing attempt [${currentProcessId}]:`, {
+                    duplicateCount: duplicateCallCount.current,
+                    isProcessing,
+                    processingStarted: processingStarted.current,
+                    timeSinceMount: callTime - componentMountTime.current,
+                    firebaseCallHistory: firebaseCalls.current
+                });
+                return;
+            }
+            
+            processingStarted.current = true;
+            setIsProcessing(true);
+            
             try {
                 setStatus('processing');
                 setMessage('Processing authentication...');
@@ -141,17 +243,41 @@ const UnifiedGtaCallback = () => {
                     setTimeout(() => {
                         const isGithubPages = window.location.hostname.includes('github.io');
                         const basePath = isGithubPages ? '/forms' : '';
-                        navigate(`${basePath}/admin`);
-                    }, 1500);
+                        const targetUrl = window.location.origin + `${basePath}/#/admin`;
+                        window.location.href = targetUrl;
+                    }, 800);
                     return;
                 }
 
                 // Handle actual authentication flow
-                setMessage('Exchanging authorization code...');
+                setMessage('Handshaking with GTA World...');
+                
+                let callbackStartTime = Date.now(); // Define at broader scope
                 
                 try {
                     // Use the unified auth service to process the callback
+                    callbackStartTime = Date.now();
+                    console.log(`🔗 [Unified Callback] Calling processCallback [${currentProcessId}]:`, {
+                        codeLength: code?.length,
+                        stateLength: state?.length,
+                        timestamp: callbackStartTime
+                    });
+                    
                     const authResult = await processCallback(code, state);
+                    const callbackDuration = Date.now() - callbackStartTime;
+                    
+                    trackFirebaseCall('processCallback', 
+                        { code: code ? 'present' : 'missing', state: state ? 'present' : 'missing' }, 
+                        authResult, 
+                        null, 
+                        callbackDuration
+                    );
+                    
+                    console.log(`✅ [Unified Callback] processCallback completed [${currentProcessId}]:`, {
+                        duration: callbackDuration,
+                        hasResult: !!authResult,
+                        resultKeys: authResult ? Object.keys(authResult) : 'none'
+                    });
                     
                     // Wait a brief moment for state to update
                     await new Promise(resolve => setTimeout(resolve, 100));
@@ -198,15 +324,45 @@ const UnifiedGtaCallback = () => {
                         
                         setStatus('success');
                         const displayName = finalUserData.username || finalUserData.name || finalUserData.id || 'User';
-                        setMessage(`Welcome, ${displayName}! Redirecting to admin panel...`);
                         
-                        // Redirect to admin panel after success
+                        // Get the returnPath from stored OAuth data
+                        let targetPath = '#/admin'; // Default fallback
+                        try {
+                            const storedOAuthData = sessionStorage.getItem('gta-oauth-state');
+                            if (storedOAuthData) {
+                                const oauthData = JSON.parse(storedOAuthData);
+                                targetPath = oauthData.returnPath || '#/admin';
+                                console.log('🎯 [Unified Callback] Using stored returnPath:', targetPath);
+                            }
+                        } catch (e) {
+                            console.warn('⚠️ [Unified Callback] Could not retrieve returnPath from OAuth state:', e);
+                        }
+                        
+                        // Determine redirect message based on target
+                        const isHomepage = targetPath === '#/' || targetPath === '#';
+                        const redirectMessage = isHomepage ? 'homepage' : 'admin panel';
+                        setMessage(`Welcome, ${displayName}! Redirecting to ${redirectMessage}...`);
+                        
+                        // Prepare navigation URL
+                        const isGithubPages = window.location.hostname.includes('github.io');
+                        const basePath = isGithubPages ? '/forms' : '';
+                        const targetUrl = window.location.origin + `${basePath}/${targetPath}`;
+                        
+                        console.log(`🧭 [Unified Callback] Preparing navigation to ${redirectMessage} [${currentProcessId}]...`);
+                        console.log(`🎯 [Unified Callback] Target navigation URL [${currentProcessId}]:`, targetUrl);
+                        
+                        // Clear OAuth state before navigation to prevent remount issues
+                        sessionStorage.removeItem('gta-oauth-state');
+                        
+                        // Store navigation intent as backup in case component unmounts
+                        sessionStorage.setItem('gta-pending-navigation', targetUrl);
+                        
+                        // Use window.location.href for more reliable navigation that won't be interrupted by component unmounting
                         setTimeout(() => {
-                            // Get the correct base path for GitHub Pages
-                            const isGithubPages = window.location.hostname.includes('github.io');
-                            const basePath = isGithubPages ? '/forms' : '';
-                            navigate(`${basePath}/admin`);
-                        }, 2000);
+                            console.log(`🚀 [Unified Callback] Executing navigation [${currentProcessId}]...`);
+                            sessionStorage.removeItem('gta-pending-navigation'); // Clear backup
+                            window.location.href = targetUrl;
+                        }, 800); // Optimal timeout to show success message but prevent race conditions
                     } else {
                         console.warn('[Unified Callback] No user data available, forcing reload');
                         setStatus('success');
@@ -214,14 +370,45 @@ const UnifiedGtaCallback = () => {
                         
                         // Force page reload to ensure authentication state is loaded
                         setTimeout(() => {
+                            console.log('[Unified Callback] Using fallback navigation...');
+                            
+                            // Try to get returnPath from stored OAuth data for fallback too
+                            let targetPath = '#/admin'; // Default fallback
+                            try {
+                                const storedOAuthData = sessionStorage.getItem('gta-oauth-state');
+                                if (storedOAuthData) {
+                                    const oauthData = JSON.parse(storedOAuthData);
+                                    targetPath = oauthData.returnPath || '#/admin';
+                                }
+                            } catch (e) {
+                                console.warn('⚠️ [Unified Callback] Fallback: Could not retrieve returnPath:', e);
+                            }
+                            
                             const isGithubPages = window.location.hostname.includes('github.io');
                             const basePath = isGithubPages ? '/forms' : '';
-                            window.location.href = window.location.origin + `${basePath}/#/admin`;
-                        }, 1500);
+                            const targetUrl = window.location.origin + `${basePath}/${targetPath}`;
+                            console.log('[Unified Callback] Fallback target URL:', targetUrl);
+                            window.location.href = targetUrl;
+                        }, 800); // Consistent timeout with main navigation
                     }
                     
                 } catch (authError) {
-                    console.error('[Unified Callback] Authentication error:', authError);
+                    const authErrorTime = Date.now();
+                    const authErrorDuration = authErrorTime - (callbackStartTime || callTime);
+                    
+                    console.error(`❌ [Unified Callback] Authentication error [${currentProcessId}]:`, {
+                        error: authError.message,
+                        duration: authErrorDuration,
+                        errorType: authError.name,
+                        firebaseCallsAtError: firebaseCalls.current.length
+                    });
+                    
+                    trackFirebaseCall('processCallback_error', 
+                        { code: 'present', state: state ? 'present' : 'missing' }, 
+                        null, 
+                        authError, 
+                        authErrorDuration
+                    );
                     
                     let errorMessage = 'Authentication failed';
                     if (authError.message.includes('invalid-argument')) {
@@ -238,19 +425,97 @@ const UnifiedGtaCallback = () => {
                 }
 
             } catch (error) {
-                console.error('[Unified Callback] Unexpected error:', error);
+                const errorTime = Date.now();
+                const processingDuration = errorTime - callTime;
+                
+                console.error(`❌ [Unified Callback] Unexpected error [${currentProcessId}]:`, {
+                    error: error.message,
+                    stack: error.stack,
+                    processingDuration,
+                    firebaseCallHistory: firebaseCalls.current,
+                    duplicateAttempts: duplicateCallCount.current
+                });
+                
+                trackFirebaseCall('callback_error', 
+                    { error: error.message }, 
+                    null, 
+                    error, 
+                    processingDuration
+                );
+                
                 Sentry.captureException(error, {
-                    extra: { context: 'Unified OAuth Callback Handler' }
+                    tags: {
+                        processId: currentProcessId,
+                        component: 'UnifiedGtaCallback'
+                    },
+                    extra: { 
+                        context: 'Unified OAuth Callback Handler',
+                        firebaseCallHistory: firebaseCalls.current,
+                        processingDuration,
+                        duplicateAttempts: duplicateCallCount.current
+                    }
                 });
                 
                 setStatus('error');
                 setError(error.message || 'An unexpected error occurred');
                 setMessage('Authentication failed');
+            } finally {
+                const endTime = Date.now();
+                const totalDuration = endTime - callTime;
+                
+                console.log(`🏁 [Unified Callback] Process completed [${currentProcessId}]:`, {
+                    totalDuration,
+                    firebaseCallCount: firebaseCalls.current.length,
+                    duplicateAttempts: duplicateCallCount.current,
+                    callHistory: firebaseCalls.current,
+                    finalStatus: status,
+                    hasError: !!error
+                });
+                
+                setIsProcessing(false);
+                processingStarted.current = false;
             }
         };
 
         handleCallback();
-    }, [location, navigate, authLogin, processCallback, user]);
+    }, [location.search, location.hash, navigate, authLogin, processCallback, user]); // Removed isProcessing to prevent loops
+
+    // Component unmount tracking with process preservation
+    useEffect(() => {
+        return () => {
+            const unmountTime = Date.now();
+            console.log(`🗑️ [Unified Callback] Component unmounting [${processId.current}]:`, {
+                processId: processId.current,
+                wasProcessing: isProcessing,
+                firebaseCallCount: firebaseCalls.current.length,
+                duplicateAttempts: duplicateCallCount.current,
+                totalLifetime: unmountTime - componentMountTime.current,
+                finalCallHistory: firebaseCalls.current
+            });
+            
+            // If component is unmounting while processing, mark it as interrupted
+            if (isProcessing || processingStarted.current) {
+                console.warn(`⚠️ [Unified Callback] Process interrupted by unmount [${processId.current}]`);
+                sessionStorage.setItem('oauth-callback-interrupted', JSON.stringify({
+                    processId: processId.current,
+                    timestamp: unmountTime,
+                    wasProcessing: isProcessing,
+                    firebaseCalls: firebaseCalls.current.length
+                }));
+                
+                // Check for pending navigation and execute it as backup
+                const pendingNavigation = sessionStorage.getItem('gta-pending-navigation');
+                if (pendingNavigation && status === 'success') {
+                    console.log(`🔄 [Unified Callback] Executing backup navigation on unmount [${processId.current}]:`, pendingNavigation);
+                    sessionStorage.removeItem('gta-pending-navigation');
+                    // Use setTimeout to ensure unmount completes first
+                    setTimeout(() => {
+                        window.location.href = pendingNavigation;
+                    }, 100);
+                }
+            }
+        };
+    }, [isProcessing]);
 
     // Render based on current status
     if (status === 'processing') {

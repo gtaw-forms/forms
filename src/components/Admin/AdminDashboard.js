@@ -111,11 +111,26 @@ const AdminDashboard = ({
     const [googleAdminToggle, setGoogleAdminToggle] = useState(false);
     const isGoogleAdminActive = (isGoogleAdmin || googleAdminToggle) && currentUser;
     
+    // Permission helper functions based on ranks and auth type
+    const isEmailSignin = currentUser && !currentUser.isGtaAuth && !currentUser.isGoogleAuth;
+    const scriptRank = gtaWorldUser?.faction?.scriptRank;
+    const isRank14OrHigher = scriptRank >= 14;
+    const isRank15OrHigher = scriptRank >= 15;
+    const isRank11OrHigher = scriptRank >= 11;
+    
+    // Determine access levels for specific sections
+    const hasServiceStatusAccess = isGoogleAdminActive || isRank14OrHigher;
+    const hasLockdownAccess = isGoogleAdminActive || isRank14OrHigher;
+    const hasBingoAccess = isGoogleAdminActive || isRank14OrHigher;
+    const hasUsersAccess = isGoogleAdminActive || isRank14OrHigher;
+    const hasRankPermissionsAccess = isGoogleAdminActive || isRank15OrHigher;
+    const canUseGoogleAdminOverride = isEmailSignin; // Only available for email signin
+    
     // Override permissions for Google-authenticated users
     const hasAdminAccess = isGoogleAdminActive || canAccessAdmin;
-    const hasFactionUpload = isGoogleAdminActive || canUploadFactionData;
-    const hasDatabaseAccess = isGoogleAdminActive || canAccessDatabase;
-    const hasWebhookAccess = isGoogleAdminActive || canManageWebhooks;
+    const hasFactionUpload = isGoogleAdminActive || canUploadFactionData || (scriptRank >= 10); // Direct rank check for faction upload
+    const hasDatabaseAccess = isGoogleAdminActive || canAccessDatabase || (scriptRank >= 12); // Direct rank check for database
+    const hasWebhookAccess = isGoogleAdminActive || canManageWebhooks || isRank11OrHigher; // Direct rank check for webhook management
 
     const handleRunDiagnostics = async () => {
         setIsRunningDiagnostics(true);
@@ -206,20 +221,19 @@ const AdminDashboard = ({
                 <div className="sidebar">
                     <div className="sidebar-header">
                         <h5>Admin Panel</h5>
-                        <p>Logged in as: {currentUser.email}</p>
+                        <p>Logged in as: {(() => {
+                            if (isGtaAuthenticated && gtaWorldUser) {
+                                return gtaWorldUser.username;
+                            }
+                            return currentUser?.email || 'Unknown';
+                        })()}</p>
                         {gtaWorldUser && (
                             <p className="text-info">
                                 <i className="fas fa-user me-1"></i>
                                 GTA World: {gtaWorldUser.username}
                             </p>
                         )}
-                        {currentUser && (
-                            <p className="text-success">
-                                <i className="fas fa-shield-alt me-1"></i>
-                                Google Admin: Full Access
-                            </p>
-                        )}
-                        {currentUser && (
+                        {currentUser && canUseGoogleAdminOverride && (
                             <div className="mt-3">
                                 <div className="form-check form-switch">
                                     <input
@@ -241,15 +255,26 @@ const AdminDashboard = ({
                         )}
                     </div>
                     <div className="nav-pills-flex-column">
-                        <button className={`nav-link ${selectedSection === 'serviceStatus' ? 'active' : ''}`} onClick={() => setSelectedSection('serviceStatus')}><i className="fas fa-server me-2"></i>Service Status</button>
-                        <button className={`nav-link ${selectedSection === 'lockdown' ? 'active' : ''}`} onClick={() => setSelectedSection('lockdown')}><i className="fas fa-lock me-2"></i>Lockdown</button>
+                        {hasServiceStatusAccess && (
+                            <button className={`nav-link ${selectedSection === 'serviceStatus' ? 'active' : ''}`} onClick={() => setSelectedSection('serviceStatus')}><i className="fas fa-server me-2"></i>Service Status</button>
+                        )}
+                        {hasLockdownAccess && (
+                            <button className={`nav-link ${selectedSection === 'lockdown' ? 'active' : ''}`} onClick={() => setSelectedSection('lockdown')}><i className="fas fa-lock me-2"></i>Lockdown</button>
+                        )}
                         <button className={`nav-link ${selectedSection === 'recruitment' ? 'active' : ''}`} onClick={() => setSelectedSection('recruitment')}><i className="fas fa-user-plus me-2"></i>Recruitment</button>
-                        <button className={`nav-link ${selectedSection === 'bingo' ? 'active' : ''}`} onClick={() => setSelectedSection('bingo')}><i className="fas fa-dice me-2"></i>Bingo</button>
-                        <button className={`nav-link ${selectedSection === 'users' ? 'active' : ''}`} onClick={() => setSelectedSection('users')}><i className="fas fa-users-cog me-2"></i>Users</button>
+                        {hasBingoAccess && (
+                            <button className={`nav-link ${selectedSection === 'bingo' ? 'active' : ''}`} onClick={() => setSelectedSection('bingo')}><i className="fas fa-dice me-2"></i>Bingo</button>
+                        )}
+                        {hasUsersAccess && (
+                            <button className={`nav-link ${selectedSection === 'users' ? 'active' : ''}`} onClick={() => setSelectedSection('users')}><i className="fas fa-users-cog me-2"></i>Users</button>
+                        )}
                         <button className={`nav-link ${selectedSection === 'webhooks' ? 'active' : ''}`} onClick={() => setSelectedSection('webhooks')}><i className="fas fa-bullhorn me-2"></i>Webhooks</button>
                         <button className={`nav-link ${selectedSection === 'factions' ? 'active' : ''}`} onClick={() => setSelectedSection('factions')}><i className="fas fa-users me-2"></i>Faction Data</button>
                         <button className={`nav-link ${selectedSection === 'dev' ? 'active' : ''}`} onClick={() => setSelectedSection('dev')}><i className="fas fa-code me-2"></i>Developer</button>
                         <button className={`nav-link ${selectedSection === 'database' ? 'active' : ''}`} onClick={() => setSelectedSection('database')}><i className="fas fa-database me-2"></i>Database</button>
+                        {hasRankPermissionsAccess && (
+                            <button className={`nav-link ${selectedSection === 'rankPermissions' ? 'active' : ''}`} onClick={() => setSelectedSection('rankPermissions')}><i className="fas fa-user-shield me-2"></i>Rank Permissions</button>
+                        )}
                     </div>
                     <div className="sidebar-footer">
                         {desktopNotificationPermission === 'default' && (
@@ -257,21 +282,68 @@ const AdminDashboard = ({
                                 <i className="fas fa-bell"></i> Enable Notifications
                             </Button>
                         )}
-                        <Button variant="warning" onClick={handleLogout} className="w-100">Logout</Button>
+                        <Button variant="warning" onClick={handleLogout} className="w-100">
+                            <i className="fas fa-sign-out-alt me-2"></i>
+                            Sign Out {(() => {
+                                if (gtaWorldUser) return '(GTA World)';
+                                if (isGoogleAdmin) return '(Google Admin)';
+                                return '(Firebase)';
+                            })()}
+                        </Button>
                                     <Button type="button" variant="secondary" className="changelog-button" onClick={() => navigate('/')} title="Go to Home" > <i className="fas fa-home"></i>Home</Button>
 
                     </div>
                 </div>
                 <div className="main-content">
+                    {/* Welcome Section for PHMC Users */}
+                    {isGtaAuthenticated && isFactionMember && factionData && (
+                        <div className="card mb-4">
+                            <div className="card-header bg-primary text-white">
+                                <h5 className="mb-0">
+                                    <i className="fas fa-user-shield me-2"></i>
+                                    Welcome to PHMC Admin Panel
+                                </h5>
+                            </div>
+                            <div className="card-body">
+                                <div className="row">
+                                    <div className="col-md-6">
+                                        <h6 className="text-primary">Character Information</h6>
+                                        <p className="mb-1"><strong>Name:</strong> {factionData.characterName}</p>
+                                        <p className="mb-1"><strong>Character ID:</strong> {factionData.characterId}</p>
+                                        <p className="mb-1"><strong>Username:</strong> {gtaWorldUser.username}</p>
+                                    </div>
+                                    <div className="col-md-6">
+                                        <h6 className="text-primary">PHMC Status</h6>
+                                        <p className="mb-1"><strong>Rank:</strong> {factionData.rank}</p>
+                                        <p className="mb-1"><strong>Script Rank:</strong> {factionData.scriptRank}</p>
+                                        <p className="mb-1"><strong>Access Level:</strong> <span className="badge bg-success">{accessLevel}</span></p>
+                                        {factionData.activity && (
+                                            <p className="mb-1"><strong>Activity:</strong> {factionData.activity}</p>
+                                        )}
+                                    </div>
+                                </div>
+                                {factionData.lastOnline && (
+                                    <div className="mt-2">
+                                        <small className="text-muted">
+                                            <i className="fas fa-clock me-1"></i>
+                                            Last online: {factionData.lastOnline}
+                                        </small>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     {selectedSection === 'serviceStatus' && (
                         <div className="card">
                             <div className="card-header">Service Status</div>
                             <div className="card-body">
-                                {isLoadingStatus ? (
-                                    <Spinner animation="border" size="sm" />
-                                ) : (
-                                    <>
-                                        <div className="form-group mb-3">
+                                {hasServiceStatusAccess ? (
+                                    isLoadingStatus ? (
+                                        <Spinner animation="border" size="sm" />
+                                    ) : (
+                                        <>
+                                            <div className="form-group mb-3">
                                             <label>Form Generator Status</label>
                                             <input
                                                 type="text"
@@ -301,11 +373,19 @@ const AdminDashboard = ({
                                                 className="form-control"
                                             />
                                         </div>
+                                        <Button variant="primary" onClick={handleUpdateServiceStatus} disabled={isUpdatingDb || isLoadingStatus}>
+                                            {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : "Update Statuses"}
+                                        </Button>
                                     </>
+                                )
+                                ) : (
+                                    <div className="alert alert-danger">
+                                        <i className="fas fa-exclamation-triangle me-2"></i>
+                                        <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to manage service status.
+                                        <br />
+                                        <small>Required: Script Rank 14 or higher, or Google Admin access</small>
+                                    </div>
                                 )}
-                                <Button variant="primary" onClick={handleUpdateServiceStatus} disabled={isUpdatingDb || isLoadingStatus}>
-                                    {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : "Update Statuses"}
-                                </Button>
                             </div>
                         </div>
                     )}
@@ -313,7 +393,9 @@ const AdminDashboard = ({
                         <div className="card">
                             <div className="card-header">Site Lockdown</div>
                             <div className="card-body">
-                                <div className="form-check form-switch mb-3">
+                                {hasLockdownAccess ? (
+                                    <>
+                                        <div className="form-check form-switch mb-3">
                                     <input
                                         className="form-check-input"
                                         type="checkbox"
@@ -377,9 +459,18 @@ const AdminDashboard = ({
                                         ))}
                                     </div>
                                 </div>
-                                <Button variant="primary" onClick={handleUpdateLockdownStatus} disabled={isUpdatingDb}>
-                                    {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : "Update Lockdown Status"}
-                                </Button>
+                                        <Button variant="primary" onClick={handleUpdateLockdownStatus} disabled={isUpdatingDb}>
+                                            {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : "Update Lockdown Status"}
+                                        </Button>
+                                    </>
+                                ) : (
+                                    <div className="alert alert-danger">
+                                        <i className="fas fa-exclamation-triangle me-2"></i>
+                                        <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to manage site lockdown.
+                                        <br />
+                                        <small>Required: Script Rank 14 or higher, or Google Admin access</small>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
@@ -438,7 +529,9 @@ const AdminDashboard = ({
                         <div className="card">
                             <div className="card-header">Bingo Management</div>
                             <div className="card-body">
-                                <div className="form-group mb-3">
+                                {hasBingoAccess ? (
+                                    <>
+                                        <div className="form-group mb-3">
                                     <label>Select Bingo Type:</label>
                                     <select
                                         value={selectedAdminBingoType}
@@ -499,12 +592,21 @@ const AdminDashboard = ({
                                 </Button>
                                 <Button
                                     variant="warning"
-                                    onClick={() => setShowReviewPhrasesModal(true)}
-                                    disabled={isUpdatingDb}
-                                    className="mt-2"
-                                >
-                                    <i className="fas fa-inbox"></i> Review Phrase Requests
-                                </Button>
+                                            onClick={() => setShowReviewPhrasesModal(true)}
+                                            disabled={isUpdatingDb}
+                                            className="mt-2"
+                                        >
+                                            <i className="fas fa-inbox"></i> Review Phrase Requests
+                                        </Button>
+                                    </>
+                                ) : (
+                                    <div className="alert alert-danger">
+                                        <i className="fas fa-exclamation-triangle me-2"></i>
+                                        <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to manage bingo activities.
+                                        <br />
+                                        <small>Required: Script Rank 14 or higher, or Google Admin access</small>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
@@ -512,11 +614,22 @@ const AdminDashboard = ({
                         <div className="card">
                             <div className="card-header">User Management</div>
                             <div className="card-body">
-                                <Button variant="primary" onClick={() => setShowUserManagementModal(true)}>
-                                    <i className="fas fa-users-cog"></i> Manage Users
-                                </Button>
+                                {hasUsersAccess ? (
+                                    <>
+                                        <Button variant="primary" onClick={() => setShowUserManagementModal(true)}>
+                                            <i className="fas fa-users-cog"></i> Manage Users
+                                        </Button>
+                                        <UserStats currentUser={currentUser} />
+                                    </>
+                                ) : (
+                                    <div className="alert alert-danger">
+                                        <i className="fas fa-exclamation-triangle me-2"></i>
+                                        <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to manage users.
+                                        <br />
+                                        <small>Required: Script Rank 14 or higher, or Google Admin access</small>
+                                    </div>
+                                )}
                             </div>
-                            <UserStats currentUser={currentUser} />
                         </div>
                     )}
                     {selectedSection === 'webhooks' && (
@@ -603,6 +716,11 @@ const AdminDashboard = ({
                                         Please log in with your GTA World account to access webhook management features.
                                     </div>
                                 )}
+
+                                <hr />
+
+                                {/* Webhook Logs Section */}
+                                <WebhookLogs refreshTrigger={logRefreshTrigger} />
                             </div>
                         </div>
                     )}
@@ -621,10 +739,21 @@ const AdminDashboard = ({
                                                     <div className="alert alert-success d-flex align-items-center mb-3">
                                                         <i className="fas fa-check-circle me-2"></i>
                                                         <div>
-                                                            <strong>Connected as:</strong> {gtaWorldUser?.username || gtaWorldUser?.name || currentUser?.email || 'Unknown'}
+                                                            <strong>Connected as:</strong> {(() => {
+                                                                if (gtaWorldUser?.isFactionMember && gtaWorldUser?.faction) {
+                                                                    const characterName = (gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? 
+                                                                        `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : 
+                                                                        gtaWorldUser.faction.characterName;
+                                                                    return characterName ? `${characterName} (${gtaWorldUser.username})` : gtaWorldUser.username;
+                                                                }
+                                                                return gtaWorldUser?.username || gtaWorldUser?.name || currentUser?.email || 'Unknown';
+                                                            })()}
                                                             <br />
                                                             <small className="text-muted">
-                                                                User ID: {gtaWorldUser?.id || currentUser?.uid} | Last login: {new Date().toLocaleDateString()}
+                                                                User ID: {gtaWorldUser?.id || currentUser?.uid} | 
+                                                                {gtaWorldUser?.isFactionMember && gtaWorldUser?.faction?.scriptRank !== undefined ? 
+                                                                    ` Script Rank: ${gtaWorldUser.faction.scriptRank} |` : ''} 
+                                                                Last login: {new Date().toLocaleDateString()}
                                                             </small>
                                                         </div>
                                                     </div>                                                    {/* Faction Status */}
@@ -967,6 +1096,69 @@ const AdminDashboard = ({
                                     <div className="alert alert-info">
                                         <i className="fas fa-info-circle me-2"></i>
                                         Please log in with your GTA World account to access database management features.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    {selectedSection === 'rankPermissions' && (
+                        <div className="card">
+                            <div className="card-header">
+                                <i className="fas fa-user-shield me-2"></i>
+                                Rank Permissions Management
+                            </div>
+                            <div className="card-body">
+                                {hasRankPermissionsAccess ? (
+                                    <div>
+                                        <div className="alert alert-info">
+                                            <i className="fas fa-info-circle me-2"></i>
+                                            <strong>Rank Permissions Editor</strong>
+                                            <p className="mb-0 mt-2">Configure which ranks have access to different admin panel sections.</p>
+                                        </div>
+                                        
+                                        <div className="row">
+                                            <div className="col-md-6">
+                                                <h6>Current Permission Levels</h6>
+                                                <div className="list-group">
+                                                    <div className="list-group-item">
+                                                        <strong>Faction Data Upload:</strong> Rank 10+
+                                                    </div>
+                                                    <div className="list-group-item">
+                                                        <strong>Database Editor:</strong> Rank 12+
+                                                    </div>
+                                                    <div className="list-group-item">
+                                                        <strong>Service Status & Lockdown:</strong> Rank 14+
+                                                    </div>
+                                                    <div className="list-group-item">
+                                                        <strong>Bingo Management:</strong> Rank 14+
+                                                    </div>
+                                                    <div className="list-group-item">
+                                                        <strong>User Management:</strong> Rank 14+
+                                                    </div>
+                                                    <div className="list-group-item">
+                                                        <strong>Rank Permissions:</strong> Rank 15+
+                                                    </div>
+                                                    <div className="list-group-item">
+                                                        <strong>Google Admin Override:</strong> Email Login Only
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="col-md-6">
+                                                <h6>Permission Configuration</h6>
+                                                <div className="alert alert-warning">
+                                                    <i className="fas fa-construction me-2"></i>
+                                                    <strong>Coming Soon</strong>
+                                                    <p className="mb-0 mt-2">Dynamic permission configuration interface will be available in a future update.</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="alert alert-danger">
+                                        <i className="fas fa-exclamation-triangle me-2"></i>
+                                        <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to manage rank permissions.
+                                        <br />
+                                        <small>Required: Script Rank 15 or higher, or Google Admin access</small>
                                     </div>
                                 )}
                             </div>

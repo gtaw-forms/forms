@@ -14,10 +14,8 @@ import * as Sentry from "@sentry/react";
 import CctvRequestWebhookModal from './CctvRequestWebhookModal'; // Import the new modal
 import UserManagementModal from './UserManagementModal';
 import AdminDashboard from './AdminDashboard';
-import OAuthTokenExchangeModal from './OAuthTokenExchangeModal';
-import UserDataExchangeModal from './UserDataExchangeModal';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
-import { isGoogleAuthenticated, getGoogleUser } from '../../services/gtaWorldAuth';
+import { isGoogleAuthenticated, getGoogleUser, logout as gtaLogout } from '../../services/gtaWorldAuth';
 
 
 const recruitmentCategories = {
@@ -88,7 +86,7 @@ const getUserContext = () => {
     return { userAgent, timeZone };
 };
 
-const sendAdminActionWebhook = async (adminEmail, action, details, categoryName = null, userAgent = "N/A", userTimezone = "N/A") => {
+const sendAdminActionWebhook = async (adminEmail, action, details, categoryName = null, userAgent = "N/A", userTimezone = "N/A", oauthUsername = null, characterData = null) => {
     const webhookURL = process.env.REACT_APP_ADMIN_ACTION_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DEV_WEBHOOK;
     if (!webhookURL) {
         console.warn("Admin action webhook URL not configured. Skipping log.");
@@ -96,18 +94,62 @@ const sendAdminActionWebhook = async (adminEmail, action, details, categoryName 
         return;
     }
 
+    // Use OAuth username if available, otherwise fall back to email
+    const userIdentifier = oauthUsername ? `${oauthUsername} (${adminEmail})` : (adminEmail || "Unknown");
+
     // Simplified description for a cleaner look
-    const description = categoryName
-        ? `**Action:** ${action || "Unknown Action"}\n**Admin:** ${adminEmail || "Unknown"}\n**Category:** ${categoryName}`
-        : `**Action:** ${action || "Unknown Action"}\n**Admin:** ${adminEmail || "Unknown"}`;
+    let description = categoryName
+        ? `**Action:** ${action || "Unknown Action"}\n**Admin:** ${userIdentifier}\n**Category:** ${categoryName}`
+        : `**Action:** ${action || "Unknown Action"}\n**Admin:** ${userIdentifier}`;
+
+    // Add character information if available
+    if (characterData && characterData.debugInfo) {
+        const { debugInfo } = characterData;
+        if (debugInfo.foundMember && debugInfo.charactersChecked?.length > 0) {
+            const primaryCharacter = characterData.faction;
+            description += `\n**Primary Character:** ${primaryCharacter?.characterName || 'Unknown'} (ID: ${primaryCharacter?.characterId || 'N/A'}) - Rank ${primaryCharacter?.scriptRank || 'N/A'}`;
+            
+            if (debugInfo.charactersChecked.length > 1) {
+                description += `\n**All Characters:** ${debugInfo.charactersChecked.length} total`;
+            }
+        }
+    }
+
+    const fields = [
+        { name: "Details", value: `\`\`\`${details.substring(0, 1000)}\`\`\``, inline: false }
+    ];
+
+    // Add detailed character information as a separate field if available
+    if (characterData && characterData.debugInfo?.charactersChecked?.length > 0) {
+        const characterDetails = characterData.debugInfo.charactersChecked.map((char, index) => {
+            return `${index + 1}. ${char.name || 'Unknown'} (ID: ${char.id || 'N/A'})`;
+        }).join('\n');
+        
+        const factionMembers = characterData.debugInfo.charactersChecked.filter(char => 
+            characterData.faction && char.id === characterData.faction.characterId
+        );
+        
+        let characterField = `**All Characters (${characterData.debugInfo.charactersChecked.length}):**\n${characterDetails}`;
+        
+        if (characterData.debugInfo.foundMember) {
+            characterField += `\n\n**PHMC Member:** ${characterData.faction?.characterName || 'Unknown'} (Rank ${characterData.faction?.scriptRank || 'N/A'})`;
+            characterField += `\n**Access Level:** ${characterData.accessLevel || 'none'}`;
+        } else {
+            characterField += `\n\n**PHMC Status:** Not a faction member`;
+        }
+        
+        fields.push({ 
+            name: "Character Information", 
+            value: characterField.substring(0, 1024), // Discord field limit
+            inline: false 
+        });
+    }
 
     const embed = {
         title: "Admin Action Logged",
         color: 0xFFA500, // Orange
         description: description,
-        fields: [
-            { name: "Details", value: `\`\`\`${details.substring(0, 1000)}\`\`\``, inline: false },
-        ],
+        fields: fields,
         timestamp: new Date().toISOString(),
         footer: { text: `PHMC Tools | ${userTimezone}` }
     };
@@ -147,12 +189,14 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
     const [error, setError] = useState('');
     const [currentUser, setCurrentUser] = useState(null);
     const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+    const [isLoggingOut, setIsLoggingOut] = useState(false);
 
     // GTA World authentication hook
     const { 
         user: gtaAuthUser, 
         isAuthenticated: isGtaAuthenticated, 
-        isLoading: gtaAuthLoading 
+        isLoading: gtaAuthLoading,
+        username: gtaAuthUsername
     } = useGtaWorldAuth();
 
     // GTA World login is now handled by the unified authentication service
@@ -171,7 +215,12 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
     const [showRenameKeyModal, setShowRenameKeyModal] = useState(false);
     const [roleToRenameKeyDetails, setRoleToRenameKeyDetails] = useState(null);
 
-    const [desktopNotificationPermission, setDesktopNotificationPermission] = useState(Notification.permission);
+    // Initialize desktop notification permission with browser support check
+    const [desktopNotificationPermission, setDesktopNotificationPermission] = useState(() => {
+        return (typeof Notification !== 'undefined' && 'permission' in Notification) 
+            ? Notification.permission 
+            : 'unsupported';
+    });
 
 
     const [showCctvWebhookModal, setShowCctvWebhookModal] = useState(false);
@@ -362,7 +411,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                 return false;
             } else {
                 if (showInAppNotification) showInAppNotification('CCTV Test Webhook sent successfully!', "check-circle");
-                sendAdminActionWebhook(currentUser?.email, "Sent CCTV Test Webhook", `Sent a test webhook for a CCTV request to the dev channel.`, "Developer Testing", userAgent, timeZone);
+                sendAdminActionWebhook(currentUser?.email, "Sent CCTV Test Webhook", `Sent a test webhook for a CCTV request to the dev channel.`, "Developer Testing", userAgent, timeZone, gtaAuthUsername);
                 return true;
             }
         } catch (error) {
@@ -375,8 +424,8 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
 
     useEffect(() => {
         const updatePermissionStatus = () => {
-            console.log("[Desktop Notify] Permission status changed to:", Notification.permission);
-            setDesktopNotificationPermission(Notification.permission);
+            console.log("[Desktop Notify] Permission status changed to:", typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
+            setDesktopNotificationPermission(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
         };
         if ("permissions" in navigator && typeof navigator.permissions.query === "function") {
             navigator.permissions.query({ name: 'notifications' }).then(function (permissionStatus) {
@@ -385,11 +434,11 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                 permissionStatus.onchange = updatePermissionStatus;
             }).catch(err => {
                 console.warn("[Desktop Notify] Error querying notification permissions, falling back to Notification.permission:", err);
-                setDesktopNotificationPermission(Notification.permission);
+                setDesktopNotificationPermission(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
             });
         } else {
-            console.log("[Desktop Notify] navigator.permissions.query not supported, using Notification.permission directly. Initial status:", Notification.permission);
-            setDesktopNotificationPermission(Notification.permission);
+            console.log("[Desktop Notify] navigator.permissions.query not supported, using Notification.permission directly. Initial status:", typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
+            setDesktopNotificationPermission(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
         }
         return () => {
             if ("permissions" in navigator && typeof navigator.permissions.query === "function") {
@@ -457,7 +506,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                     adminUserEmail: user.email
                 }));
                 
-                sendAdminActionWebhook(user.email, "Admin Login", "User successfully logged in to the Admin Panel.", null, userAgent, timeZone);
+                sendAdminActionWebhook(user.email, "Admin Login", "User successfully logged in to the Admin Panel.", null, userAgent, timeZone, gtaAuthUsername, gtaAuthUser);
                 if (showInAppNotification) showInAppNotification(`Welcome, ${user.email}!`, "check-circle");
             } else if (!isLoggedIn && wasLoggedIn) {
                 // User just logged out
@@ -471,7 +520,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                 sessionStorage.removeItem('google-admin-user');
                 sessionStorage.removeItem('admin-auth-context');
                 
-                sendAdminActionWebhook(loggedOutEmail, "Admin Logout", "User successfully logged out from the Admin Panel.", null, userAgent, timeZone);
+                sendAdminActionWebhook(loggedOutEmail, "Admin Logout", "User successfully logged out from the Admin Panel.", null, userAgent, timeZone, gtaAuthUsername, gtaAuthUser);
                 if (showInAppNotification) showInAppNotification(`Logged out from Admin Panel.`, "info-circle");
             } else if (isLoggedIn && wasLoggedIn) {
                 // User is still logged in (e.g., component re-rendered)
@@ -509,6 +558,63 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
         return () => unsubscribe();
     }, [setFormData, showInAppNotification]);
 
+    // Monitor GTA World OAuth authentication changes
+    const prevGtaAuthStateRef = useRef(null);
+    useEffect(() => {
+        const wasGtaAuthenticated = prevGtaAuthStateRef.current;
+        const isNowGtaAuthenticated = isGtaAuthenticated && gtaAuthUser;
+        const { userAgent, timeZone } = getUserContext();
+
+        // Handle GTA World OAuth login
+        if (isNowGtaAuthenticated && !wasGtaAuthenticated && !gtaAuthLoading) {
+            console.log('[GTA OAuth Login] User successfully authenticated via GTA World OAuth');
+            
+            const oauthUserEmail = gtaAuthUser.username;
+            const characterName = gtaAuthUser.faction?.characterName || gtaAuthUser.username;
+            const scriptRank = gtaAuthUser.faction?.scriptRank;
+            
+            // Send OAuth login webhook
+            sendAdminActionWebhook(
+                oauthUserEmail,
+                "Admin OAuth Login",
+                `GTA World OAuth user successfully logged in to Admin Panel.\nCharacter: ${characterName}\n${scriptRank ? `Script Rank: ${scriptRank}` : 'No rank data'}`,
+                null,
+                userAgent,
+                timeZone,
+                gtaAuthUsername
+            );
+
+            if (showInAppNotification) {
+                showInAppNotification(`Welcome, ${gtaAuthUser.username}! OAuth login successful.`, "check-circle");
+            }
+        }
+
+        // Handle GTA World OAuth logout
+        if (!isNowGtaAuthenticated && wasGtaAuthenticated && !gtaAuthLoading) {
+            console.log('[GTA OAuth Logout] User logged out from GTA World OAuth');
+            
+            // Try to get the username from previous state or fallback
+            const loggedOutUsername = prevGtaAuthStateRef.current?.username || 'Unknown OAuth User';
+            
+            sendAdminActionWebhook(
+                loggedOutUsername,
+                "Admin OAuth Logout",
+                "GTA World OAuth user logged out from Admin Panel.",
+                null,
+                userAgent,
+                timeZone,
+                loggedOutUsername
+            );
+
+            if (showInAppNotification) {
+                showInAppNotification(`OAuth logout completed.`, "info-circle");
+            }
+        }
+
+        // Update the previous state reference
+        prevGtaAuthStateRef.current = isNowGtaAuthenticated ? gtaAuthUser : null;
+    }, [isGtaAuthenticated, gtaAuthUser, gtaAuthLoading, gtaAuthUsername, showInAppNotification]);
+
     useEffect(() => {
         if (currentUser && selectedRecruitmentCategory && recruitmentCategories[selectedRecruitmentCategory]) {
             fetchRecruitmentDataForCategory(selectedRecruitmentCategory);
@@ -541,7 +647,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
             });
             // --- MODIFICATION END ---
 
-            sendAdminActionWebhook(email, "Admin Login Failed", `Attempted login with email: ${email}. Error: ${err.message}`, null, userAgent, timeZone);
+            sendAdminActionWebhook(email, "Admin Login Failed", `Attempted login with email: ${email}. Error: ${err.message}`, null, userAgent, timeZone, gtaAuthUsername);
             if (showInAppNotification) showInAppNotification(`Login failed: ${err.message}`, "error");
         }
     };
@@ -555,13 +661,79 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
 
     const handleLogout = async () => {
         setError('');
+        setIsLoggingOut(true); // CRITICAL SECURITY FIX: Immediately flag logout to hide admin content
         const { userAgent, timeZone } = getUserContext(); // Capture user context
+        
+        // Determine logout type for webhook
+        const logoutType = isGtaAuthenticated ? 'GTA World OAuth' : 
+                          isGoogleAuthenticated() ? 'Google Admin' : 'Firebase Email';
+        const userIdentifier = unifiedCurrentUser?.email || unifiedCurrentUser?.displayName || "Unknown User";
+        
         try {
-            await signOut(auth);
+            // Log the logout attempt
+            console.log(`[Admin Logout] Logging out ${logoutType} user: ${userIdentifier}`);
+            
+            // Firebase logout
+            if (currentUser) {
+                await signOut(auth);
+                console.log('[Admin Logout] Firebase auth signed out');
+            }
+            
+            // GTA World logout (clears session storage)
+            if (isGtaAuthenticated || isGoogleAuthenticated()) {
+                gtaLogout();
+                console.log('[Admin Logout] GTA World session cleared');
+            }
+            
+            // CRITICAL SECURITY FIX: Immediately clear local state to prevent admin panel access
+            setCurrentUser(null);
+            setError('');
+            setEmail('');
+            setPassword('');
+            console.log('[Admin Logout] Local admin state cleared');
+            
+            // Send success webhook
+            sendAdminActionWebhook(
+                userIdentifier, 
+                "Admin Logout Successful", 
+                `Successfully logged out from ${logoutType} authentication.`, 
+                null, 
+                userAgent, 
+                timeZone
+            );
+            
+            if (showInAppNotification) {
+                showInAppNotification(`Successfully logged out from ${logoutType}`, "check-circle");
+            }
+            
+            // CRITICAL SECURITY FIX: Immediate redirect after logout
+            console.log('[Admin Logout] Initiating immediate redirect to home page');
+            setTimeout(() => {
+                window.location.href = '/forms';
+            }, 500); // Small delay to allow webhook to send
+            
         } catch (err) {
+            console.error('[Admin Logout] Error during logout:', err);
             setError(err.message || "Failed to logout.");
-            sendAdminActionWebhook(currentUser?.email || "Unknown User", "Admin Logout Failed", `Failed to log out. Error: ${err.message}`, null, userAgent, timeZone);
-            if (showInAppNotification) showInAppNotification(`Logout failed: ${err.message}`, "error");
+            
+            sendAdminActionWebhook(
+                userIdentifier, 
+                "Admin Logout Failed", 
+                `Failed to log out from ${logoutType}. Error: ${err.message}`, 
+                null, 
+                userAgent, 
+                timeZone
+            );
+            
+            if (showInAppNotification) {
+                showInAppNotification(`Logout failed: ${err.message}`, "error");
+            }
+            
+            // CRITICAL SECURITY FIX: Even on error, redirect to prevent admin panel access
+            console.log('[Admin Logout] Logout failed, but redirecting for security');
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 1000); // Slightly longer delay to show error message
         }
     };
 
@@ -745,28 +917,28 @@ Key: ${savedRoleData.originalKey}`,
         setRoleToEdit(null);
         setShowRoleModal(true);
         const { userAgent, timeZone } = getUserContext(); // Capture user context
-        sendAdminActionWebhook(currentUser?.email || "Unknown User", "Opened Add Role Modal", "Admin opened the modal to add a new role.", recruitmentCategories[selectedRecruitmentCategory]?.displayName, userAgent, timeZone);
+        sendAdminActionWebhook(currentUser?.email || "Unknown User", "Opened Add Role Modal", "Admin opened the modal to add a new role.", recruitmentCategories[selectedRecruitmentCategory]?.displayName, userAgent, timeZone, gtaAuthUsername);
     };
 
     const handleEditRoleClick = (roleKey, roleData) => {
         setRoleToEdit({ ...roleData, originalKey: roleKey });
         setShowRoleModal(true);
         const { userAgent, timeZone } = getUserContext(); // Capture user context
-        sendAdminActionWebhook(currentUser?.email || "Unknown User", "Opened Edit Role Modal", `Admin opened the modal to edit role: ${roleData.displayName || roleKey}`, recruitmentCategories[selectedRecruitmentCategory]?.displayName, userAgent, timeZone);
+        sendAdminActionWebhook(currentUser?.email || "Unknown User", "Opened Edit Role Modal", `Admin opened the modal to edit role: ${roleData.displayName || roleKey}`, recruitmentCategories[selectedRecruitmentCategory]?.displayName, userAgent, timeZone, gtaAuthUsername);
     };
 
     const handleCloseRoleModal = () => {
         setShowRoleModal(false);
         setRoleToEdit(null);
         const { userAgent, timeZone } = getUserContext(); // Capture user context
-        sendAdminActionWebhook(currentUser?.email || "Unknown User", "Closed Role Modal", "Admin closed the role add/edit modal.", recruitmentCategories[selectedRecruitmentCategory]?.displayName, userAgent, timeZone);
+        sendAdminActionWebhook(currentUser?.email || "Unknown User", "Closed Role Modal", "Admin closed the role add/edit modal.", recruitmentCategories[selectedRecruitmentCategory]?.displayName, userAgent, timeZone, gtaAuthUsername);
     };
 
     const handleRenameRoleKeyClick = (roleKey, roleData) => {
         setRoleToRenameKeyDetails({ key: roleKey, data: roleData });
         setShowRenameKeyModal(true);
         const { userAgent, timeZone } = getUserContext(); // Capture user context
-        sendAdminActionWebhook(currentUser?.email || "Unknown User", "Opened Rename Role Key Modal", `Admin opened the modal to rename key for role: ${roleData.displayName || roleKey}`, recruitmentCategories[selectedRecruitmentCategory]?.displayName, userAgent, timeZone);
+        sendAdminActionWebhook(currentUser?.email || "Unknown User", "Opened Rename Role Key Modal", `Admin opened the modal to rename key for role: ${roleData.displayName || roleKey}`, recruitmentCategories[selectedRecruitmentCategory]?.displayName, userAgent, timeZone, gtaAuthUsername);
     };
 
     const handleRoleKeyRenamed = () => {
@@ -787,12 +959,12 @@ Key: ${savedRoleData.originalKey}`,
     const handleEnableDesktopNotifications = async () => {
         console.log("[Desktop Notify] 'Enable Desktop Notifications' button clicked.");
         const granted = await requestNotificationPermission();
-        const currentPermission = Notification.permission;
+        const currentPermission = typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
         console.log("[Desktop Notify] Permission after request:", currentPermission, "(Granted flag:", granted, ")");
         setDesktopNotificationPermission(currentPermission);
         const { userAgent, timeZone } = getUserContext(); // Capture user context
         if (currentUser?.email) {
-            sendAdminActionWebhook(unifiedCurrentUser?.email || "Unknown User", "Desktop Notification Preference Changed", `Permission status: ${currentPermission}${granted ? ' (Granted by user)' : ' (Not granted or dismissed)'}`, null, userAgent, timeZone);
+            sendAdminActionWebhook(unifiedCurrentUser?.email || "Unknown User", "Desktop Notification Preference Changed", `Permission status: ${currentPermission}${granted ? ' (Granted by user)' : ' (Not granted or dismissed)'}`, null, userAgent, timeZone, gtaAuthUsername);
         }
         if (granted) {
             if (showInAppNotification) showInAppNotification("Desktop notifications enabled for this site! Please ensure your OS settings also allow notifications from your browser.", "check-circle", 7000);
@@ -814,7 +986,7 @@ Key: ${savedRoleData.originalKey}`,
         if (!webhookURL) {
             if (showInAppNotification) showInAppNotification('Admin Webhook URL (PHMC_DISCORD) not configured.', 'error');
             Sentry.captureMessage("Admin Custom Webhook URL (PHMC_DISCORD) not configured for AdminAuthAndActions", "error");
-            sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", "Webhook URL not configured.", null, userAgent, timeZone);
+            sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", "Webhook URL not configured.", null, userAgent, timeZone, gtaAuthUsername);
             return false;
         }
         try {
@@ -831,12 +1003,12 @@ Key: ${savedRoleData.originalKey}`,
                     extra: { statusText: response.statusText, responseBody: errorText }
                 });
                 if (showInAppNotification) showInAppNotification(`Failed to send admin webhook. Status: ${response.status}`, 'error');
-                sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", `Status: ${response.status}, Error: ${errorText}`, null, userAgent, timeZone);
+                sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", `Status: ${response.status}, Error: ${errorText}`, null, userAgent, timeZone, gtaAuthUsername);
                 return false;
             } else {
                 if (showInAppNotification) showInAppNotification('Admin webhook message sent successfully!', "check-circle");
                 // setShowAdminCustomWebhookModal(false); // REMOVED - state no longer exists
-                sendAdminActionWebhook(currentUser?.email || "Unknown User", "Sent Admin Custom Webhook", "Admin successfully sent a custom webhook to the Admin Action channel.", null, userAgent, timeZone);
+                sendAdminActionWebhook(currentUser?.email || "Unknown User", "Sent Admin Custom Webhook", "Admin successfully sent a custom webhook to the Admin Action channel.", null, userAgent, timeZone, gtaAuthUsername);
                 logWebhookToFirebase('Admin Custom Webhook Sent', { admin: currentUser?.email, title: payloadFromModal.embeds[0].title });
                 return true;
             }
@@ -844,7 +1016,7 @@ Key: ${savedRoleData.originalKey}`,
             console.error('Error sending admin custom webhook:', error);
             Sentry.captureException(error, { extra: { context: 'Admin Custom Webhook Submission Fetch (AdminAuthAndActions)' } });
             if (showInAppNotification) showInAppNotification('A network error occurred sending the admin webhook.', "error");
-            sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", `Network Error: ${error.message}`, null, userAgent, timeZone);
+            sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", `Network Error: ${error.message}`, null, userAgent, timeZone, gtaAuthUsername);
             return false;
         }
     };
@@ -1109,69 +1281,6 @@ Key: ${savedRoleData.originalKey}`,
     };
 
 
-
-
-
-
-
-    const handleOpenDevWebhookModal = () => {
-        // setDevWebhookTitle(''); // REMOVED - state no longer exists
-        // setDevWebhookMessage(''); // REMOVED - state no longer exists
-        // setShowDevWebhookModal(true); // REMOVED - state no longer exists
-        const { userAgent, timeZone } = getUserContext();
-        sendAdminActionWebhook(currentUser?.email || "Unknown User", "Opened Dev Webhook Modal", "Admin opened the modal to send a custom webhook to the Dev channel.", null, userAgent, timeZone);
-    };
-
-    const handleDevWebhookSubmit = async (payloadFromModal) => {
-        const webhookURLIdentifier = "REACT_APP_DEV_WEBHOOK";
-        const webhookURL = process.env.REACT_APP_DEV_WEBHOOK;
-        const { userAgent, timeZone } = getUserContext();
-
-        if (!webhookURL) {
-            if (showInAppNotification) showInAppNotification('Dev Webhook URL (REACT_APP_DEV_WEBHOOK) not configured.', 'error');
-            Sentry.captureMessage("Dev Webhook URL (REACT_APP_DEV_WEBHOOK) not configured", "error");
-            sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Dev Custom Webhook", "Webhook URL not configured.", null, userAgent, timeZone);
-            return false;
-        }
-        try {
-            const response = await fetch(webhookURL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payloadFromModal),
-            });
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`Failed to send Dev webhook. Status: ${response.status}`, errorText);
-                Sentry.captureMessage(`Dev Discord webhook failed: ${response.status}`, {
-                    level: 'error',
-                    extra: { statusText: response.statusText, responseBody: errorText }
-                });
-                if (showInAppNotification) showInAppNotification(`Failed to send Dev webhook. Status: ${response.status}`, 'error');
-                sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Dev Custom Webhook", `Status: ${response.status}, Error: ${errorText}`, null, userAgent, timeZone);
-                return false;
-            } else {
-                if (showInAppNotification) showInAppNotification('Dev webhook message sent successfully!', "check-circle");
-                // setShowDevWebhookModal(false); // REMOVED - state no longer exists
-                sendAdminActionWebhook(currentUser?.email || "Unknown User", "Sent Dev Custom Webhook", "Admin successfully sent a custom webhook to the Dev channel.", null, userAgent, timeZone);
-                return true;
-            }
-        } catch (error) {
-            console.error('Error sending Dev webhook:', error);
-            Sentry.captureException(error, { extra: { context: 'Dev Webhook Submission Fetch' } });
-            if (showInAppNotification) showInAppNotification('A network error occurred sending the Dev webhook.', "error");
-            sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Dev Custom Webhook", `Network Error: ${error.message}`, null, userAgent, timeZone);
-            return false;
-        }
-    };
-
-
-    const handleOpenCoronerWebhookModal = () => {
-        // setCoronerWebhookTitle(''); // REMOVED - state no longer exists
-        // setCoronerWebhookMessage(''); // REMOVED - state no longer exists
-        // setShowCoronerWebhookModal(true); // REMOVED - state no longer exists
-        const { userAgent, timeZone } = getUserContext(); // Capture user context
-        sendAdminActionWebhook(currentUser?.email || "Unknown User", "Opened Coroner Webhook Modal", "Admin opened the modal to send a custom webhook to the Coroner Updates channel.", null, userAgent, timeZone);
-    };
     const [showMarkdownModal, setShowMarkdownModal] = useState(false);
 
     const handleCoronerWebhookSubmit = async (payloadFromModal) => {
@@ -1219,6 +1328,24 @@ Key: ${savedRoleData.originalKey}`,
 
 
 
+    // CRITICAL SECURITY FIX: Check if user is logging out first
+    if (isLoggingOut) {
+        return (
+            <div className="container mt-5 text-center">
+                <div className="card">
+                    <div className="card-body">
+                        <i className="fas fa-sign-out-alt fa-3x text-warning mb-3"></i>
+                        <h4>Signing Out...</h4>
+                        <p>You are being logged out for security. Redirecting to home page...</p>
+                        <div className="spinner-border text-primary" role="status">
+                            <span className="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     // Check if either loading state is active
     if (isLoadingAuth || gtaAuthLoading) {
         return <p>Verifying authentication...</p>;
@@ -1230,7 +1357,7 @@ Key: ${savedRoleData.originalKey}`,
 
     // Create a unified current user object for components that expect it
     const unifiedCurrentUser = currentUser || (isGtaAuthenticated && gtaAuthUser ? {
-        email: gtaAuthUser.username + '@gtaworld.auth',
+        email: gtaAuthUser.username,
         uid: gtaAuthUser.id?.toString() || 'gta-user',
         displayName: gtaAuthUser.username,
         isGtaAuth: true,

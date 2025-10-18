@@ -11,8 +11,13 @@ const GtaCallback = () => {
     const location = useLocation();
     const navigate = useNavigate();
     const { login } = useAuth();
+    const hasHandledCallback = React.useRef(false);
 
     useEffect(() => {
+        if (hasHandledCallback.current) {
+            return;
+        }
+        hasHandledCallback.current = true;
         const handleCallback = async () => {
             try {
                 const searchParams = new URLSearchParams(location.search);

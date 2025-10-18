@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Form, Button, InputGroup, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import './phmc-tooltips.css';
 import ImagePreview from '../components/ImagePreview';
+import CharacterSelector from '../components/CharacterSelector';
 
 // CollapsibleHeader copied from PatientAdvanced.js
 const CollapsibleHeader = ({ title, isOpen, onToggle, sectionId }) => (
@@ -40,13 +41,32 @@ const BasicPatientFile = ({
     isUploading,
 }) => {
     // Collapsible section state
-
-        const [isGeneralInfoOpen, setIsGeneralInfoOpen] = useState(true);
-        const [isContactInfoOpen, setIsContactInfoOpen] = useState(true);
-        const [isMedicalHistoryOpen, setIsMedicalHistoryOpen] = useState(true);
-        const [isPaymentInfoOpen, setIsPaymentInfoOpen] = useState(true);
-        const [activeSection, setActiveSection] = useState('general-info');
-        // Payment/Exempt radio state
+    const [isGeneralInfoOpen, setIsGeneralInfoOpen] = useState(true);
+    const [isContactInfoOpen, setIsContactInfoOpen] = useState(true);
+    const [isMedicalHistoryOpen, setIsMedicalHistoryOpen] = useState(true);
+    const [isPaymentInfoOpen, setIsPaymentInfoOpen] = useState(true);
+    const [activeSection, setActiveSection] = useState('general-info');
+    
+    // Character selection state
+    const [selectedCharacter, setSelectedCharacter] = useState(null);
+    
+    // Character selection handler
+    const handleCharacterSelect = (character) => {
+        setSelectedCharacter(character);
+        
+        // Auto-populate patient name field with character's full name
+        if (character && character.fullName) {
+            const syntheticEvent = {
+                target: {
+                    name: 'patientName',
+                    value: character.fullName
+                }
+            };
+            handleChange(syntheticEvent);
+        }
+    };
+    
+    // Payment/Exempt radio state
         const isPayNow = formData.payNow === true || formData.payNow === 'true';
         const isExempt = formData.isExempt === true || formData.isExempt === 'true';
         const calculateCost = () => {
@@ -84,25 +104,48 @@ const BasicPatientFile = ({
                             />
                         </OverlayTrigger>
                         </div>
-                        <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}> {/* Added marginTop */}
-
-                            <OverlayTrigger
-                                placement="top"
-                                overlay={<Tooltip id="tooltip-patientTitle" className="phmc-tooltip">Select the patient's title (Mr, Ms, etc).</Tooltip>}
-                            >
-                                <Form.Select
-                                    name="patientTitle"
-                                    value={formData.patientTitle}
-                                    onChange={handleChange}
-                                    required
-                                    className={`form-control ${!formData.patientTitle ? 'is-invalid' : ''}`}
+                        
+                        {/* Character Selector and Patient Title - Inline */}
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '1rem', marginBottom: '1rem' }}>
+                            <div style={{ flex: '2' }}>
+                                <CharacterSelector 
+                                    onCharacterSelect={handleCharacterSelect}
+                                    selectedCharacterId={selectedCharacter?.id}
+                                    label="Select Character (Login with GTAW to see your characters)"
+                                    forceDropdown={true}
+                                />
+                            </div>
+                            <div style={{ flex: '1' }}>
+                                <OverlayTrigger
+                                    placement="top"
+                                    overlay={<Tooltip id="tooltip-patientTitle" className="phmc-tooltip">Select the patient's title (Mr, Ms, etc).</Tooltip>}
                                 >
-                                    <option value="" disabled>Title</option>
-                                    {patientTitleOptions.map((option) => (
-                                        <option key={option.value} value={option.value}>{option.label}</option>
-                                    ))}
-                                </Form.Select>
-                            </OverlayTrigger>
+                                    <div>
+                                        <label style={{ marginBottom: '0.5rem', display: 'block' }}>Title</label>
+                                        <Form.Select
+                                            name="patientTitle"
+                                            value={formData.patientTitle}
+                                            onChange={handleChange}
+                                            required
+                                            className={`form-control ${!formData.patientTitle ? 'is-invalid' : ''}`}
+                                            style={{
+                                                padding: '8px',
+                                                border: '1px solid #ccc',
+                                                borderRadius: '4px',
+                                                fontSize: '14px'
+                                            }}
+                                        >
+                                            <option value="" disabled>Title</option>
+                                            {patientTitleOptions.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </Form.Select>
+                                    </div>
+                                </OverlayTrigger>
+                            </div>
+                        </div>
+                        
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}> {/* Added marginTop */}
                             <OverlayTrigger
                                 placement="top"
                                 overlay={<Tooltip id="tooltip-patientName" className="phmc-tooltip">Enter the patient's full name.</Tooltip>}

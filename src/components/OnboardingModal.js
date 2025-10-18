@@ -6,6 +6,8 @@ import { database } from '../firebase';
 import { ref, get, set } from 'firebase/database';
 import { useWebhooks } from '../hooks/useWebhooks';
 import * as Sentry from "@sentry/react";
+import GtaWorldLoginButton from './Auth/GtaWorldLoginButton';
+import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
 
 // Step definitions for the onboarding flow
 const ONBOARDING_STEPS = {
@@ -55,6 +57,9 @@ const OnboardingModal = ({
 }) => {
     // Initialize webhook functions
     const { logWebhookToFirebase } = useWebhooks({}, { sha: 'onboarding' }, showNotification);
+    
+    // GTAW Authentication hook
+    const { user: gtaWorldUser, isAuthenticated: isGtaAuthenticated, isLoading: gtaLoading } = useGtaWorldAuth();
     const [currentStep, setCurrentStep] = useState(ONBOARDING_STEPS.WELCOME);
     const [selectedUserType, setSelectedUserType] = useState(null);
     const [selectedRole, setSelectedRole] = useState(null);
@@ -444,6 +449,48 @@ const OnboardingModal = ({
         }
     };
 
+    const handleGtawLogin = async (userData) => {
+        try {
+            console.log('[Onboarding] GTAW login successful:', userData);
+            
+            // Check if user is a PHMC faction member
+            const isFactionMember = userData?.faction && userData.faction.characterName;
+            
+            if (isFactionMember) {
+                const characterName = (userData.faction.firstname && userData.faction.lastname) ? 
+                    `${userData.faction.firstname} ${userData.faction.lastname}` : 
+                    userData.faction.characterName;
+                
+                // Send webhook notification for GTAW login
+                await sendAccountCreationWebhook({
+                    name: characterName,
+                    role: userData.faction.rank || 'Unknown',
+                    userType: getUserTypeLabel(selectedUserType),
+                    scriptRank: userData.faction.scriptRank,
+                    action: 'gtaw_oauth_login'
+                }, selectedUserType === USER_TYPES.CORONER);
+                
+                setLoggedIn(true);
+                showNotification(`Successfully logged in via GTAW as ${characterName}!`, 'success');
+                
+                // Auto-progress to next step after successful login
+                setTimeout(() => {
+                    setCurrentStep(ONBOARDING_STEPS.FORM_PREVIEW);
+                }, 1500);
+            } else {
+                showNotification('GTAW login successful, but you are not a PHMC faction member. Proceeding with standard access.', 'warning');
+                setLoggedIn(true);
+                // Still allow progression for non-faction members
+                setTimeout(() => {
+                    setCurrentStep(ONBOARDING_STEPS.FORM_PREVIEW);
+                }, 1500);
+            }
+        } catch (error) {
+            console.error('Error during GTAW login:', error);
+            showNotification(`Error during GTAW login: ${error.message}`, 'error');
+        }
+    };
+
     const getStepNumber = () => {
         const steps = [ONBOARDING_STEPS.WELCOME, ONBOARDING_STEPS.USER_TYPE, ONBOARDING_STEPS.ROLE_SPECIFIC, ONBOARDING_STEPS.FORM_PREVIEW, ONBOARDING_STEPS.PRIVACY_POLICY, ONBOARDING_STEPS.COMPLETE];
         const totalSteps = selectedUserType === USER_TYPES.PHMC_STAFF || selectedUserType === USER_TYPES.CORONER ? 6 : 5;
@@ -740,9 +787,9 @@ const OnboardingModal = ({
                     <div style={accountPromptStyle}>
                         <p style={accountPromptTextStyle}>
                             <i className="fas fa-user-plus" style={promptIconStyle}></i>
-                            Would you like to create a staff account or login with an existing one?
+                            Would you like to create a staff account, login with an existing one, or use GTAW OAuth?
                         </p>
-                        <div style={{display: 'flex', gap: '10px', justifyContent: 'center'}}>
+                        <div style={{display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap'}}>
                             <Button 
                                 variant="outline-primary" 
                                 onClick={() => setShowAccountCreation(true)}
@@ -781,6 +828,30 @@ const OnboardingModal = ({
                             >
                                 Login
                             </Button>
+                            <GtaWorldLoginButton
+                                variant="outline-warning"
+                                returnPath={window.location.hash || '#/'}
+                                onSuccess={handleGtawLogin}
+                                onError={(error) => showNotification(`GTAW Login failed: ${error}`, 'error')}
+                                disabled={gtaLoading || isGtaAuthenticated}
+                                style={{
+                                    borderColor: '#ffc107',
+                                    color: '#ffc107',
+                                    backgroundColor: 'transparent'
+                                }}
+                            >
+                                {isGtaAuthenticated ? (
+                                    <>
+                                        <i className="fas fa-check me-2"></i>
+                                        GTAW Connected
+                                    </>
+                                ) : (
+                                    <>
+                                        <i className="fab fa-steam me-2"></i>
+                                        Login with GTAW
+                                    </>
+                                )}
+                            </GtaWorldLoginButton>
                         </div>
                     </div>
                 </div>
@@ -938,9 +1009,9 @@ const OnboardingModal = ({
                     <div style={accountPromptStyle}>
                         <p style={accountPromptTextStyle}>
                             <i className="fas fa-user-plus" style={promptIconStyle}></i>
-                            Would you like to create a coroner account or login with an existing one?
+                            Would you like to create a coroner account, login with an existing one, or use GTAW OAuth?
                         </p>
-                        <div style={{display: 'flex', gap: '10px', justifyContent: 'center'}}>
+                        <div style={{display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap'}}>
                             <Button 
                                 variant="outline-primary" 
                                 onClick={() => setShowAccountCreation(true)}
@@ -979,6 +1050,30 @@ const OnboardingModal = ({
                             >
                                 Login
                             </Button>
+                            <GtaWorldLoginButton
+                                variant="outline-warning"
+                                returnPath={window.location.hash || '#/'}
+                                onSuccess={handleGtawLogin}
+                                onError={(error) => showNotification(`GTAW Login failed: ${error}`, 'error')}
+                                disabled={gtaLoading || isGtaAuthenticated}
+                                style={{
+                                    borderColor: '#ffc107',
+                                    color: '#ffc107',
+                                    backgroundColor: 'transparent'
+                                }}
+                            >
+                                {isGtaAuthenticated ? (
+                                    <>
+                                        <i className="fas fa-check me-2"></i>
+                                        GTAW Connected
+                                    </>
+                                ) : (
+                                    <>
+                                        <i className="fab fa-steam me-2"></i>
+                                        Login with GTAW
+                                    </>
+                                )}
+                            </GtaWorldLoginButton>
                         </div>
                     </div>
                 </div>
