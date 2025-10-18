@@ -148,20 +148,6 @@ const BasicPatientFile = ({
                         <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}> {/* Added marginTop */}
                             <OverlayTrigger
                                 placement="top"
-                                overlay={<Tooltip id="tooltip-patientName" className="phmc-tooltip">Enter the patient's full name.</Tooltip>}
-                            >
-                                <Form.Control
-                                    type="text"
-                                    name="patientName"
-                                    value={formData.patientName}
-                                    onChange={handleChange}
-                                    placeholder="Patient Name"
-                                    required
-                                    className={`form-control ${!formData.patientName ? 'is-invalid' : ''}`}
-                                />
-                            </OverlayTrigger>
-                            <OverlayTrigger
-                                placement="top"
                                 overlay={<Tooltip id="tooltip-patientDOB" className="phmc-tooltip">Patient's date of birth.</Tooltip>}
                             >
                                 <Form.Control

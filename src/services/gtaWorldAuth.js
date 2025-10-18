@@ -179,14 +179,45 @@ export const initiateGtaWorldLogin = (options = {}) => {
  * @param {string} state - State parameter for CSRF protection
  * @param {Function} onSuccess - Success callback function
  * @param {Function} onError - Error callback function
+ * @param {Function} onProgress - Progress callback function (optional)
  */
-export const handleOAuthCallback = async (code, state, onSuccess, onError) => {
+export const handleOAuthCallback = async (code, state, onSuccess, onError, onProgress) => {
+    // Performance monitoring setup
+    const perfStart = performance.now();
+    const perfMetrics = {
+        sessionId: Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+        startTime: perfStart,
+        phases: {},
+        userAgent: navigator?.userAgent || 'unknown',
+        timestamp: new Date().toISOString()
+    };
+    
+    const logPhase = (phase, startTime) => {
+        const duration = performance.now() - startTime;
+        perfMetrics.phases[phase] = Math.round(duration);
+        console.log(`[Perf] ${phase}: ${duration.toFixed(2)}ms`);
+        return duration;
+    };
+    
     try {
         console.info('[GTA Auth] Processing OAuth callback');
+        console.log(`[Perf] OAuth session started [${perfMetrics.sessionId}]`);
+        
+        // Progress: Starting OAuth flow
+        onProgress?.({ 
+            step: 'initializing', 
+            message: 'Starting authentication...', 
+            progress: 10 
+        });
 
+        // Phase: Validation
+        const validationStart = performance.now();
+        
         // Check if the same callback is already being processed
         const callbackKey = `callback-${code}-${state}`;
         const lockKey = sessionStorage.getItem(STORAGE_KEYS.OAUTH_REQUEST_LOCK);
+        
+        logPhase('validation', validationStart);
         
         if (lockKey === callbackKey) {
             console.warn('[GTA Auth] Duplicate callback detected, ignoring...');
@@ -258,8 +289,20 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError) => {
             codeAge: `${Math.round((Date.now() - storedOAuthData.timestamp) / 1000)}s`
         });
 
+        // Progress: Starting token exchange
+        onProgress?.({ 
+            step: 'token_exchange', 
+            message: 'Exchanging authorization code for access token...', 
+            progress: 30 
+        });
+        
+        // Phase: Token Exchange
+        const tokenStart = performance.now();
+        
         // Exchange code for tokens using Firebase function
         const result = await exchangeAuthCodeForToken(code, storedOAuthData.redirectUri);
+        
+        logPhase('token_exchange', tokenStart);
 
         console.debug('[GTA Auth] Token exchange completed:', {
             success: result.success,
@@ -316,177 +359,193 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError) => {
                     return result;
                 }
                 
+                // Progress: Processing character data
+                onProgress?.({ 
+                    step: 'character_processing', 
+                    message: 'Processing character information...', 
+                    progress: 60 
+                });
+                
+                // Phase: Character Processing
+                const charStart = performance.now();
+                
+                // Declare characterIds in broader scope for error handling
+                let characterIds = [];
+                
                 try {
-                    const checkFactionMembership = httpsCallable(functions, 'checkFactionMembership');
+                    const batchCheckFactionMembership = httpsCallable(functions, 'batchCheckFactionMembership');
                     const factionCallId = Date.now() + '-' + Math.random().toString(36).substr(2, 5);
                     const factionStartTime = Date.now();
+                    const factionApiStart = performance.now();
                     
-                    // Get all possible character IDs to check
-                    const characterIdsToCheck = [];
+                    // Extract character IDs from character array (optimized - single pass)
+                    const characterNames = [];
                     
-                    // Note: Not adding main user ID (memberid) as faction database uses individual character IDs
+                    for (const char of characterArray) {
+                        if (char && char.id) {
+                            characterIds.push(parseInt(char.id));
+                            characterNames.push(char.name || `${char.firstname || ''} ${char.lastname || ''}`.trim());
+                        }
+                    }
+                    
                     console.log(`🔍 [GTA Auth] Main user info:`, {
                         userId: result.userData.id,
                         username: result.userData.username,
                         note: 'This is the memberid, not used for faction lookup - we need individual character IDs'
                     });
                     
-                    // Add character IDs from character array (note: API uses 'character', not 'characters')
-                    console.log(`📝 [GTA Auth] Processing character array for faction checks:`, {
+                    console.log(`📝 [GTA Auth] Processing character array for BATCH faction check:`, {
                         arrayLength: characterArray.length,
-                        characters: characterArray.map((char, index) => ({
-                            index,
-                            id: char.id,
-                            firstname: char.firstname,
-                            lastname: char.lastname,
-                            memberid: char.memberid,
-                            fullName: `${char.firstname || ''} ${char.lastname || ''}`.trim()
-                        }))
+                        validCharacters: characterIds.length,
+                        characterIds: characterIds,
+                        characterNames: characterNames
                     });
                     
-                    characterArray.forEach((char, index) => {
-                        // Use the character's individual ID (not memberid) as this is what the faction database uses
-                        if (char.id && !characterIdsToCheck.find(c => c.id === parseInt(char.id))) {
-                            const characterName = char.name || `${char.firstname || ''} ${char.lastname || ''}`.trim();
-                            characterIdsToCheck.push({
-                                id: parseInt(char.id), // This is the specific character ID (e.g., 5573, 12154, 123285)
-                                source: 'character_specific_id',
-                                name: characterName,
-                                firstname: char.firstname,
-                                lastname: char.lastname,
-                                memberid: char.memberid // Keep memberid for reference but don't use for lookup
-                            });
+                    // Check for cached faction data first
+                    const cacheKey = `factionData_364_${characterIds.join('_')}`;
+                    const cachedData = sessionStorage.getItem(cacheKey);
+                    let batchResult = null;
+                    let usedCache = false;
+                    
+                    if (cachedData) {
+                        try {
+                            const parsed = JSON.parse(cachedData);
+                            const cacheAge = Date.now() - parsed.timestamp;
+                            const cacheValidDuration = 30 * 60 * 1000; // 30 minutes
                             
-                            console.log(`📝 [GTA Auth] Added character ${index + 1} for faction check:`, {
-                                characterId: char.id,
-                                characterName: characterName,
-                                firstname: char.firstname,
-                                lastname: char.lastname,
-                                memberid: char.memberid,
-                                note: 'Using character.id (not memberid) for faction database lookup'
+                            if (cacheAge < cacheValidDuration) {
+                                // Progress: Using cached faction data
+                                onProgress?.({ 
+                                    step: 'faction_check', 
+                                    message: 'Using cached faction data...', 
+                                    progress: 80 
+                                });
+                                
+                                // Phase: Faction Check (Cache Hit)
+                                const factionCacheStart = performance.now();
+                                logPhase('faction_cache_hit', factionCacheStart);
+                                
+                                console.log(`💾 [GTA Auth] Using cached faction data [${factionCallId}]:`, {
+                                    cacheKey,
+                                    cacheAge: `${Math.round(cacheAge / 1000)}s`,
+                                    cacheValidFor: `${Math.round((cacheValidDuration - cacheAge) / 1000)}s more`,
+                                    characterIds: characterIds,
+                                    cachedMembersCount: parsed.data?.summary?.totalMembers || 0
+                                });
+                                batchResult = parsed;
+                                usedCache = true;
+                            } else {
+                                console.log(`�️ [GTA Auth] Cached faction data expired [${factionCallId}]:`, {
+                                    cacheKey,
+                                    cacheAge: `${Math.round(cacheAge / 1000)}s`,
+                                    expiredBy: `${Math.round((cacheAge - cacheValidDuration) / 1000)}s`,
+                                    note: 'Will fetch fresh data'
+                                });
+                                sessionStorage.removeItem(cacheKey);
+                            }
+                        } catch (cacheError) {
+                            console.warn(`⚠️ [GTA Auth] Invalid cached data, removing [${factionCallId}]:`, cacheError.message);
+                            sessionStorage.removeItem(cacheKey);
+                        }
+                    }
+                    
+                    if (!batchResult) {
+                        console.log(`�🔥 [GTA Auth] BATCH checking faction membership [${factionCallId}]:`, {
+                            function: 'batchCheckFactionMembership',
+                            factionId: 364,
+                            characterIds: characterIds,
+                            characterCount: characterIds.length,
+                            timestamp: factionStartTime,
+                            cacheStatus: 'cache miss - fetching fresh data'
+                        });
+                        
+                        // Single batch call instead of multiple individual calls
+                        batchResult = await batchCheckFactionMembership({ 
+                            characterIds: characterIds,
+                            factionId: 364 // PHMC faction ID
+                        });
+                        
+                        // Complete faction API call phase
+                        logPhase('faction_api_call', factionApiStart);
+                        
+                        // Cache the result for future use (compressed)
+                        if (batchResult.data?.success) {
+                            const cacheData = {
+                                data: {
+                                    success: batchResult.data.success,
+                                    // Store only essential result data, not full response
+                                    results: batchResult.data.results?.map(r => ({
+                                        characterId: r.characterId,
+                                        isMember: r.isMember,
+                                        character: r.isMember ? {
+                                            characterId: r.character?.characterId,
+                                            characterName: r.character?.characterName,
+                                            scriptRank: r.character?.scriptRank,
+                                            rank: r.character?.rank
+                                        } : null,
+                                        permissions: r.permissions,
+                                        accessLevel: r.accessLevel
+                                    })) || [],
+                                    summary: batchResult.data.summary
+                                },
+                                timestamp: Date.now()
+                            };
+                            sessionStorage.setItem(cacheKey, JSON.stringify(cacheData));
+                            console.log(`💾 [GTA Auth] Cached faction data [${factionCallId}]:`, {
+                                cacheKey,
+                                cachedMembersCount: batchResult.data?.summary?.totalMembers || 0,
+                                validUntil: new Date(Date.now() + 30 * 60 * 1000).toLocaleTimeString()
                             });
                         }
-                    });
-                    
-                    console.log(`🔥 [GTA Auth] Checking faction membership for specific character IDs [${factionCallId}]:`, {
-                        function: 'checkFactionMembership',
-                        factionId: 364,
-                        characterCount: characterIdsToCheck.length,
-                        characterDetails: characterIdsToCheck.map(char => ({
-                            id: char.id,
-                            name: char.name,
-                            firstname: char.firstname,
-                            lastname: char.lastname,
-                            source: char.source
-                        })),
-                        databasePath: characterIdsToCheck.map(char => `/factions/364/members/${char.id}`),
-                        timestamp: factionStartTime
-                    });
+                    }
                     
                     let finalFactionResult = { data: { isMember: false, character: null } };
                     let foundMember = false;
-                    let allFactionMembers = []; // Track all faction members to find highest rank
                     
-                    // Check each character for faction membership
-                    for (const characterInfo of characterIdsToCheck) {
-                        try {
-                            console.log(`🔍 [GTA Auth] Checking specific character ID ${characterInfo.id}:`, {
-                                characterId: characterInfo.id,
-                                characterName: characterInfo.name,
-                                firstname: characterInfo.firstname,
-                                lastname: characterInfo.lastname,
-                                memberid: characterInfo.memberid,
-                                databasePath: `/factions/364/members/${characterInfo.id}`,
-                                note: 'Looking up by character.id, not memberid'
-                            });
+                    if (batchResult.data?.success && batchResult.data?.results) {
+                        const factionMembers = batchResult.data.results.filter(result => result.isMember);
+                        
+                        if (factionMembers.length > 0) {
+                            foundMember = true;
                             
-                            const factionResult = await checkFactionMembership({ 
-                                characterId: characterInfo.id,
-                                factionId: 364 // PHMC faction ID
-                            });
+                            // Select highest-ranking member (already handled by batch function)
+                            const highestRankMember = batchResult.data.summary?.highestRankingMember;
                             
-                            console.log(`📋 [GTA Auth] Character ${characterInfo.id} faction lookup result:`, {
-                                characterId: characterInfo.id,
-                                characterName: characterInfo.name,
-                                firstname: characterInfo.firstname,
-                                lastname: characterInfo.lastname,
-                                isMember: factionResult.data?.isMember,
-                                accessLevel: factionResult.data?.accessLevel,
-                                scriptRank: factionResult.data?.character?.scriptRank,
-                                rank: factionResult.data?.character?.rank,
-                                message: factionResult.data?.message,
-                                databasePath: `/factions/364/members/${characterInfo.id}`
-                            });
-                            
-                            if (factionResult.data?.isMember) {
-                                console.log(`✅ [GTA Auth] Found PHMC member! Character ID ${characterInfo.id}:`, {
-                                    characterId: characterInfo.id,
-                                    characterName: characterInfo.name,
-                                    firstname: characterInfo.firstname,
-                                    lastname: characterInfo.lastname,
-                                    rank: factionResult.data.character?.rank,
-                                    scriptRank: factionResult.data.character?.scriptRank,
-                                    accessLevel: factionResult.data.accessLevel,
-                                    memberid: characterInfo.memberid,
-                                    note: 'Successfully matched character ID in PHMC database'
-                                });
+                            if (highestRankMember) {
+                                finalFactionResult = { data: highestRankMember };
                                 
-                                // Store this faction member for comparison
-                                allFactionMembers.push({
-                                    factionResult,
-                                    characterInfo,
-                                    scriptRank: factionResult.data.character?.scriptRank || 0
+                                console.log(`🏆 [GTA Auth] Selected highest-ranking character from batch:`, {
+                                    characterId: highestRankMember.character.characterId,
+                                    characterName: highestRankMember.character.characterName,
+                                    scriptRank: highestRankMember.character.scriptRank,
+                                    rank: highestRankMember.character.rank,
+                                    accessLevel: highestRankMember.accessLevel,
+                                    totalFactionMembers: factionMembers.length
                                 });
-                                foundMember = true;
-                                // Don't break - continue checking all characters to find highest rank
+                            } else {
+                                // Fallback to first found member
+                                finalFactionResult = { data: factionMembers[0] };
                             }
-                        } catch (charError) {
-                            console.warn(`⚠️ [GTA Auth] Error checking character ${characterInfo.id}:`, charError.message);
                         }
                     }
                     
-                    // Select the highest-ranking faction member
-                    if (allFactionMembers.length > 0) {
-                        // Sort by scriptRank descending to get highest rank first
-                        allFactionMembers.sort((a, b) => (b.scriptRank || 0) - (a.scriptRank || 0));
-                        const highestRankMember = allFactionMembers[0];
-                        finalFactionResult = highestRankMember.factionResult;
-                        
-                        console.log(`🏆 [GTA Auth] Selected highest-ranking character:`, {
-                            selectedCharacterId: highestRankMember.characterInfo.id,
-                            selectedCharacterName: highestRankMember.characterInfo.name,
-                            selectedScriptRank: highestRankMember.scriptRank,
-                            selectedRank: highestRankMember.factionResult.data.character?.rank,
-                            totalFactionMembers: allFactionMembers.length,
-                            allMembers: allFactionMembers.map(member => ({
-                                id: member.characterInfo.id,
-                                name: member.characterInfo.name,
-                                scriptRank: member.scriptRank,
-                                rank: member.factionResult.data.character?.rank
-                            })),
-                            note: 'Using highest scriptRank character instead of first found'
-                        });
-                    }
+                    // Calculate faction duration first
+                    const factionEndTime = Date.now();
+                    const factionDuration = factionEndTime - factionStartTime;
                     
-                    const factionDuration = Date.now() - factionStartTime;
-                    console.log(`🏁 [GTA Auth] All faction checks completed [${factionCallId}]:`, {
-                        duration: factionDuration,
-                        charactersChecked: characterIdsToCheck.length,
-                        foundMember,
-                        finalResult: finalFactionResult.data
-                    });
-                    
-                    // Enhance user data with faction information
+                    // Enhance user data with faction information (optimized object construction)
+                    const factionData = finalFactionResult.data;
                     result.userData = {
                         ...result.userData,
-                        faction: finalFactionResult.data.isMember ? finalFactionResult.data.character : null,
-                        permissions: finalFactionResult.data.permissions || [],
-                        accessLevel: finalFactionResult.data.accessLevel || 'none',
-                        factionInfo: finalFactionResult.data.factionInfo || null,
-                        isFactionMember: finalFactionResult.data.isMember,
+                        faction: factionData.isMember ? factionData.character : null,
+                        permissions: factionData.permissions || [],
+                        accessLevel: factionData.accessLevel || 'none',
+                        factionInfo: factionData.factionInfo || null,
+                        isFactionMember: factionData.isMember,
                         // Add debugging info about which characters were checked
                         debugInfo: {
-                            charactersChecked: characterIdsToCheck,
+                            charactersChecked: characterIds.length,
+                            characterIds: characterIds,
                             foundMember,
                             factionCheckDuration: factionDuration
                         }
@@ -499,15 +558,48 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError) => {
                         accessLevel: result.userData.accessLevel,
                         permissionCount: result.userData.permissions.length,
                         factionCharacter: result.userData.faction,
-                        charactersChecked: characterIdsToCheck.length,
+                        charactersChecked: characterIds.length,
                         debugInfo: result.userData.debugInfo
                     });
                     
+                    console.log(`⏱️ [GTA Auth] BATCH faction membership check completed [${factionCallId}]:`, {
+                        duration: `${factionDuration}ms`,
+                        durationSeconds: `${(factionDuration / 1000).toFixed(2)}s`,
+                        foundMember: foundMember,
+                        totalCharactersChecked: characterIds.length,
+                        factionMembersFound: batchResult.data?.summary?.totalMembers || 0,
+                        selectedResult: foundMember ? {
+                            characterId: finalFactionResult.data?.character?.characterId,
+                            rank: finalFactionResult.data?.character?.rank,
+                            scriptRank: finalFactionResult.data?.character?.scriptRank,
+                            accessLevel: finalFactionResult.data?.accessLevel
+                        } : null,
+                        note: foundMember ? 'Member access granted' : 'No faction membership found',
+                        dataSource: usedCache ? 'cached data (no API call)' : 'fresh API call',
+                        batchOptimization: 'Single batch call instead of individual character checks'
+                    });
+                    
+                    // Store compact faction result in session (optimized for size)
+                    sessionStorage.setItem('factionResult', JSON.stringify({
+                        m: foundMember, // isMember (compressed key)
+                        d: finalFactionResult.data?.character ? {
+                            id: finalFactionResult.data.character.characterId,
+                            name: finalFactionResult.data.character.characterName,
+                            rank: finalFactionResult.data.character.scriptRank,
+                            access: finalFactionResult.data.accessLevel
+                        } : null, // Essential data only
+                        t: Date.now(), // timestamp
+                        c: usedCache, // cached flag
+                        dur: Math.round(factionDuration) // duration in ms
+                    }));
+
                 } catch (factionError) {
-                    console.warn('[GTA Auth] Faction check failed, continuing without faction data:', {
+                    console.warn('[GTA Auth] BATCH faction check failed, continuing without faction data:', {
                         error: factionError.message,
                         code: factionError.code,
-                        details: factionError.details
+                        details: factionError.details,
+                        characterIds: characterIds,
+                        batchFunction: 'batchCheckFactionMembership'
                     });
                     // Continue without faction data - user can still authenticate but won't have faction permissions
                     result.userData.faction = null;
@@ -518,11 +610,50 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError) => {
                 }
             }
             
-            // Store enhanced user data and tokens
-            sessionStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(result.userData));
+            // Store optimized user data (remove debug info to reduce size)
+            const compactUserData = {
+                ...result.userData,
+                debugInfo: undefined, // Remove debug info to save space
+                // Compress character array if present
+                character: result.userData.character ? result.userData.character.map(char => ({
+                    id: char.id,
+                    firstname: char.firstname,
+                    lastname: char.lastname,
+                    // Remove other fields to reduce storage size
+                })) : undefined
+            };
+            
+            sessionStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(compactUserData));
             sessionStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, result.accessToken);
             
             console.info('[GTA Auth] Authentication successful');
+            
+            // Complete performance tracking
+            const totalDuration = performance.now() - perfStart;
+            perfMetrics.totalDuration = Math.round(totalDuration);
+            perfMetrics.success = true;
+            
+            // Log comprehensive performance metrics
+            console.log(`[Perf] OAuth completed successfully [${perfMetrics.sessionId}]:`, {
+                totalDuration: `${totalDuration.toFixed(2)}ms`,
+                phases: perfMetrics.phases,
+                efficiency: totalDuration < 10000 ? 'excellent' : totalDuration < 20000 ? 'good' : 'needs improvement',
+                cacheUsed: result.userData?.debugInfo?.usedCache || false
+            });
+            
+            // Progress: Complete
+            onProgress?.({ 
+                step: 'complete', 
+                message: 'Authentication successful!', 
+                progress: 100,
+                metrics: {
+                    totalTime: Math.round(totalDuration),
+                    phases: perfMetrics.phases
+                }
+            });
+            
+            // Store performance metrics for analysis
+            storePerformanceMetrics(perfMetrics);
             
             // Clear stored OAuth state only after successful authentication
             sessionStorage.removeItem(STORAGE_KEYS.OAUTH_STATE);
@@ -536,12 +667,70 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError) => {
         }
 
     } catch (error) {
+        // Track error performance metrics
+        const totalDuration = performance.now() - perfStart;
+        perfMetrics.totalDuration = Math.round(totalDuration);
+        perfMetrics.success = false;
+        perfMetrics.error = error.message;
+        
         console.error('[GTA Auth] OAuth callback error:', error);
+        console.log(`[Perf] OAuth failed [${perfMetrics.sessionId}]:`, {
+            totalDuration: `${totalDuration.toFixed(2)}ms`,
+            phases: perfMetrics.phases,
+            error: error.message
+        });
+        
+        // Progress: Error occurred
+        onProgress?.({ 
+            step: 'error', 
+            message: 'Authentication failed. Analyzing error...', 
+            progress: 0,
+            error: true,
+            metrics: {
+                totalTime: Math.round(totalDuration),
+                phases: perfMetrics.phases
+            }
+        });
+        
+        // Store error metrics for analysis
+        storePerformanceMetrics(perfMetrics);
+        
+        // Determine if error is retryable
+        const isRetryable = isRetryableError(error);
+        const retryAttempts = sessionStorage.getItem('oauth_retry_count') || '0';
+        const maxRetries = 2;
+        
+        if (isRetryable && parseInt(retryAttempts) < maxRetries) {
+            const newRetryCount = parseInt(retryAttempts) + 1;
+            sessionStorage.setItem('oauth_retry_count', newRetryCount.toString());
+            
+            console.log(`[GTA Auth] Retryable error detected, attempt ${newRetryCount}/${maxRetries}:`, error.message);
+            
+            onProgress?.({ 
+                step: 'retry', 
+                message: `Retrying authentication (attempt ${newRetryCount}/${maxRetries})...`, 
+                progress: 15,
+                retry: true
+            });
+            
+            // Wait a bit before retrying
+            setTimeout(() => {
+                handleOAuthCallback(code, state, onSuccess, onError, onProgress);
+            }, 1000 * newRetryCount); // Exponential backoff: 1s, 2s
+            
+            return;
+        } else {
+            // Clear retry count after max attempts or non-retryable error
+            sessionStorage.removeItem('oauth_retry_count');
+        }
+        
         Sentry.captureException(error, {
             extra: { 
                 context: 'GTA World OAuth Callback',
                 code: code?.substring(0, 10) + '...',
-                state 
+                state,
+                retryAttempts: parseInt(retryAttempts),
+                isRetryable
             }
         });
 
@@ -550,8 +739,16 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError) => {
         sessionStorage.removeItem(STORAGE_KEYS.AUTH_CODE);
         sessionStorage.removeItem(STORAGE_KEYS.OAUTH_REQUEST_LOCK);
 
+        // Enhanced error messages
+        const userFriendlyMessage = getUserFriendlyErrorMessage(error);
+        
         if (onError) {
-            onError(error.message || 'Authentication failed');
+            onError(userFriendlyMessage, {
+                originalError: error.message,
+                isRetryable,
+                retryAttempts: parseInt(retryAttempts),
+                canRetryManually: isRetryable
+            });
         }
     }
 };
@@ -600,12 +797,19 @@ const exchangeAuthCodeForToken = async (code, redirectUri) => {
                 
                 let result;
                 try {
-                    result = await exchangeFunction({
+                    // Add client-side timeout for Firebase function call
+                    const timeoutPromise = new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('Firebase function call timed out after 20 seconds')), 20000)
+                    );
+                    
+                    const exchangePromise = exchangeFunction({
                         code,
                         redirectUri,
                         clientId: GTA_WORLD_CONFIG.CLIENT_ID
                         // Client secret is handled server-side for security
                     });
+                    
+                    result = await Promise.race([exchangePromise, timeoutPromise]);
                     
                     const firebaseDuration = Date.now() - firebaseStartTime;
                     console.log(`✅ [GTA Auth] Firebase function completed [${firebaseCallId}]:`, {
@@ -1267,6 +1471,225 @@ export const refreshFactionData = async () => {
     } catch (error) {
         console.error('[GTA Auth] Failed to refresh faction data:', error);
         throw error;
+    }
+};
+
+/**
+ * Determines if an error is retryable
+ * @param {Error} error - The error to analyze
+ * @returns {boolean} - Whether the error is retryable
+ */
+const isRetryableError = (error) => {
+    if (!error) return false;
+    
+    const retryablePatterns = [
+        /timeout/i,
+        /network/i,
+        /connection/i,
+        /fetch/i,
+        /ENOTFOUND/i,
+        /ECONNREFUSED/i,
+        /ETIMEDOUT/i,
+        /AbortError/i,
+        /502|503|504/,  // Server errors
+        /deadline.{0,10}exceeded/i,
+        /unavailable/i
+    ];
+    
+    const errorMessage = error.message || error.toString();
+    const errorCode = error.code || '';
+    
+    return retryablePatterns.some(pattern => 
+        pattern.test(errorMessage) || pattern.test(errorCode)
+    );
+};
+
+/**
+ * Converts technical errors to user-friendly messages
+ * @param {Error} error - The error to convert
+ * @returns {string} - User-friendly error message
+ */
+const getUserFriendlyErrorMessage = (error) => {
+    if (!error) return 'An unknown error occurred during authentication.';
+    
+    const errorMessage = error.message || error.toString();
+    
+    if (errorMessage.includes('timeout') || errorMessage.includes('AbortError')) {
+        return 'Authentication timed out. The GTA World servers may be busy. Please try again.';
+    }
+    
+    if (errorMessage.includes('network') || errorMessage.includes('fetch') || errorMessage.includes('ENOTFOUND')) {
+        return 'Network connection error. Please check your internet connection and try again.';
+    }
+    
+    if (errorMessage.includes('invalid_request') || errorMessage.includes('revoked')) {
+        return 'This login session has expired or was already used. Please start the login process again.';
+    }
+    
+    if (errorMessage.includes('invalid_grant')) {
+        return 'The login session has expired. Please try logging in again.';
+    }
+    
+    if (errorMessage.includes('invalid_client')) {
+        return 'Authentication service configuration error. Please contact support.';
+    }
+    
+    if (errorMessage.includes('502') || errorMessage.includes('503') || errorMessage.includes('504')) {
+        return 'GTA World servers are temporarily unavailable. Please try again in a few moments.';
+    }
+    
+    if (errorMessage.includes('deadline') || errorMessage.includes('unavailable')) {
+        return 'Authentication service is temporarily unavailable. Please try again.';
+    }
+    
+    // Fallback for unknown errors
+    return 'Authentication failed. Please try again or contact support if the problem persists.';
+};
+
+/**
+ * Clean up old session storage data to prevent memory bloat
+ */
+const cleanupSessionStorage = () => {
+    try {
+        const keysToCheck = [];
+        
+        // Find all faction cache keys
+        for (let i = 0; i < sessionStorage.length; i++) {
+            const key = sessionStorage.key(i);
+            if (key?.startsWith('factionData_')) {
+                keysToCheck.push(key);
+            }
+        }
+        
+        // Remove expired cache entries
+        const now = Date.now();
+        const maxAge = 30 * 60 * 1000; // 30 minutes
+        
+        keysToCheck.forEach(key => {
+            try {
+                const data = JSON.parse(sessionStorage.getItem(key) || '{}');
+                if (data.timestamp && (now - data.timestamp) > maxAge) {
+                    sessionStorage.removeItem(key);
+                    console.log(`[Storage Cleanup] Removed expired cache: ${key}`);
+                }
+            } catch {
+                // Remove corrupted entries
+                sessionStorage.removeItem(key);
+            }
+        });
+        
+        // Limit total session storage size (rough estimate)
+        const totalSize = Object.keys(sessionStorage).reduce((size, key) => {
+            return size + (sessionStorage.getItem(key)?.length || 0);
+        }, 0);
+        
+        if (totalSize > 1024 * 1024) { // 1MB limit
+            console.warn('[Storage Cleanup] Session storage size exceeding 1MB, consider clearing old data');
+        }
+        
+    } catch (error) {
+        console.warn('[Storage Cleanup] Error during cleanup:', error);
+    }
+};
+
+// Run cleanup periodically
+if (typeof window !== 'undefined') {
+    // Clean up on page load
+    cleanupSessionStorage();
+    
+    // Set up periodic cleanup every 10 minutes
+    setInterval(cleanupSessionStorage, 10 * 60 * 1000);
+}
+
+/**
+ * Store performance metrics for analysis and optimization
+ * @param {Object} metrics - Performance metrics object
+ */
+const storePerformanceMetrics = (metrics) => {
+    try {
+        const perfKey = 'oauth_performance_metrics';
+        const existing = JSON.parse(sessionStorage.getItem(perfKey) || '[]');
+        
+        // Keep only the last 10 entries to prevent storage bloat
+        const updated = [...existing, metrics].slice(-10);
+        
+        sessionStorage.setItem(perfKey, JSON.stringify(updated));
+        
+        // Log performance summary for immediate feedback
+        const avgTime = updated.reduce((sum, m) => sum + (m.totalDuration || 0), 0) / updated.length;
+        const successRate = updated.filter(m => m.success).length / updated.length * 100;
+        
+        console.log(`[Perf Summary] Last ${updated.length} OAuth attempts: avg ${avgTime.toFixed(0)}ms, ${successRate.toFixed(0)}% success`);
+        
+        // Alert if performance is degrading
+        if (metrics.totalDuration > 15000) {
+            console.warn(`[Perf Alert] Slow OAuth detected: ${metrics.totalDuration}ms - investigate bottlenecks`);
+        }
+        
+    } catch (error) {
+        console.warn('[Perf] Failed to store performance metrics:', error);
+    }
+};
+
+/**
+ * Get performance analytics for debugging
+ * @returns {Object} Performance analytics
+ */
+export const getOAuthPerformanceAnalytics = () => {
+    try {
+        const metrics = JSON.parse(sessionStorage.getItem('oauth_performance_metrics') || '[]');
+        
+        if (metrics.length === 0) {
+            return { message: 'No performance data available' };
+        }
+        
+        const successful = metrics.filter(m => m.success);
+        const failed = metrics.filter(m => !m.success);
+        
+        const analytics = {
+            totalAttempts: metrics.length,
+            successfulAttempts: successful.length,
+            failedAttempts: failed.length,
+            successRate: `${(successful.length / metrics.length * 100).toFixed(1)}%`,
+            averageTime: {
+                all: `${(metrics.reduce((s, m) => s + (m.totalDuration || 0), 0) / metrics.length).toFixed(0)}ms`,
+                successful: successful.length > 0 ? `${(successful.reduce((s, m) => s + m.totalDuration, 0) / successful.length).toFixed(0)}ms` : 'N/A'
+            },
+            phaseBreakdown: {},
+            commonErrors: {},
+            performanceGrade: 'unknown'
+        };
+        
+        // Calculate phase averages
+        if (successful.length > 0) {
+            const phases = ['validation', 'token_exchange', 'character_processing', 'faction_check'];
+            phases.forEach(phase => {
+                const phaseTimes = successful
+                    .map(m => m.phases?.[phase])
+                    .filter(t => t !== undefined);
+                if (phaseTimes.length > 0) {
+                    analytics.phaseBreakdown[phase] = `${(phaseTimes.reduce((s, t) => s + t, 0) / phaseTimes.length).toFixed(0)}ms`;
+                }
+            });
+        }
+        
+        // Analyze errors
+        failed.forEach(m => {
+            const errorType = m.error?.split(' ')[0] || 'Unknown';
+            analytics.commonErrors[errorType] = (analytics.commonErrors[errorType] || 0) + 1;
+        });
+        
+        // Performance grading
+        const avgTime = successful.reduce((s, m) => s + m.totalDuration, 0) / successful.length;
+        if (avgTime < 8000) analytics.performanceGrade = 'A (Excellent)';
+        else if (avgTime < 12000) analytics.performanceGrade = 'B (Good)';
+        else if (avgTime < 20000) analytics.performanceGrade = 'C (Acceptable)';
+        else analytics.performanceGrade = 'D (Needs Improvement)';
+        
+        return analytics;
+        
+    } catch (error) {
+        return { error: 'Failed to analyze performance data', details: error.message };
     }
 };
 
