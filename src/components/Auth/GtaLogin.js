@@ -18,13 +18,13 @@ const GtaLogin = () => {
         // Check for both Firebase and GTA World authentication
         if (user) {
             console.log('[GtaLogin] Firebase user authenticated, redirecting to admin:', user.email);
-            navigate('/admin');
+            navigate('/forms');
         } else if (isGtaAuthenticated && gtaUser) {
             console.log('[GtaLogin] GTA World user authenticated, redirecting to home:', {
                 username: gtaUser.username,
                 characterId: gtaUser.id
             });
-            navigate('/');
+            navigate('/forms');
         }
     }, [user, isGtaAuthenticated, gtaUser, navigate]);
 

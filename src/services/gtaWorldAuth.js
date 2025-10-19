@@ -22,7 +22,8 @@ const STORAGE_KEYS = {
     OAUTH_REQUEST_LOCK: 'gta-oauth-request-lock',
     AUTH_CODE: 'gta-auth-code',
     USER_DATA: 'gta-user-data',
-    ACCESS_TOKEN: 'gta-access-token'
+    ACCESS_TOKEN: 'gta-access-token',
+    FALLBACK_USER_DATA: 'user'
 };
 
 // Global request tracking to prevent race conditions
@@ -57,6 +58,57 @@ const getRedirectUri = () => {
     }
 };
 
+const sendLoginWebhook = (userData) => {
+    const webhookUrl = process.env.REACT_APP_DEV_WEBHOOK;
+    if (!webhookUrl) {
+        return; // Don't do anything if webhook is not configured
+    }
+
+    try {
+        const embed = {
+            title: 'GTAW User Login',
+            description: `**${userData.username}** (ID: ${userData.id}) just logged in.`,
+            color: userData.isFactionMember ? 0x00ff00 : 0x0000ff, // Green for faction, blue for public
+            fields: [
+                { name: 'Faction Member', value: userData.isFactionMember ? 'Yes' : 'No', inline: true },
+            ],
+            timestamp: new Date().toISOString(),
+            footer: { text: 'PHMC Forms Login' }
+        };
+
+        if (userData.isFactionMember && userData.faction) {
+            embed.fields.push({ name: 'Faction Character', value: `${userData.faction.characterName} (ID: ${userData.faction.characterId})`, inline: true });
+            embed.fields.push({ name: 'Faction Rank', value: userData.faction.rank, inline: true });
+        }
+
+        if (userData.character && userData.character.length > 0) {
+            const characterList = userData.character.map(c => `• ${c.firstname} ${c.lastname} (ID: ${c.id})`).join('\n');
+            embed.fields.push({ name: 'All Characters', value: characterList, inline: false });
+        }
+
+        const payload = {
+            username: 'Login Bot',
+            embeds: [embed]
+        };
+
+        fetch(webhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        }).then(response => {
+            if (!response.ok) {
+                console.error(`Error sending login webhook: ${response.status} ${response.statusText}`);
+            }
+        }).catch(error => {
+            console.error('Failed to send login webhook:', error);
+            Sentry.captureException(error, { extra: { context: 'GTAW Login Webhook' } });
+        });
+    } catch (error) {
+        console.error('Failed to construct login webhook payload:', error);
+        Sentry.captureException(error, { extra: { context: 'GTAW Login Webhook Payload Construction' } });
+    }
+};
+
 /**
  * Initiates the GTA World OAuth flow
  * @param {Object} options - Configuration options
@@ -76,7 +128,7 @@ export const initiateGtaWorldLogin = (options = {}) => {
             
             // Call onSuccess callback if available (for consistency with OAuth flow)
             if (options.onSuccess) {
-                options.onSuccess(restoredSession.user, options.returnPath || '#/admin');
+                options.onSuccess(restoredSession.user, options.returnPath || '#/');
             }
             return;
         }
@@ -125,7 +177,7 @@ export const initiateGtaWorldLogin = (options = {}) => {
         // Generate state for CSRF protection
         const state = generateOAuthState();
         const redirectUri = getRedirectUri();
-        const returnPath = options.returnPath || window.location.hash || '#/admin';
+        const returnPath = options.returnPath || window.location.hash || '#/';
 
         // Store OAuth state information
         const oauthData = {
@@ -273,7 +325,7 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
                 
                 // Create a mock stored data to continue
                 if (!storedOAuthData.returnPath) {
-                    storedOAuthData.returnPath = '/admin';
+                    storedOAuthData.returnPath = '#/';
                     storedOAuthData.redirectUri = getRedirectUri();
                 }
             } else {
@@ -561,6 +613,9 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
                         charactersChecked: characterIds.length,
                         debugInfo: result.userData.debugInfo
                     });
+
+                    // Send Discord webhook for login
+                    sendLoginWebhook(result.userData);
                     
                     console.log(`⏱️ [GTA Auth] BATCH faction membership check completed [${factionCallId}]:`, {
                         duration: `${factionDuration}ms`,

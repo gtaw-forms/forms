@@ -94,7 +94,6 @@ const AgencySelector = lazy(() => import('./components/AgencySelector'));
 const OnboardingModal = lazy(() => import('./components/OnboardingModal'));
 const Footer = lazy(() => import('./components/Footer'));
 const HeaderInfo = lazy(() => import('./components/HeaderInfo'));
-const CoronerTipsModal = lazy(() => import('./components/CoronerTipsModal'));
 const BusinessCardModal = lazy(() => import('./components/BusinessCardModal'));
 const EmsAmaModal = lazy(() => import('./components/EmsAmaModal'));
 const EasterEggModal = lazy(() => import('./components/EasterEggModal'));
@@ -126,7 +125,6 @@ function MainApp({
         showEmployeeModal, setShowEmployeeModal,
         showEmsAmaModal, setShowEmsAmaModal,
         showBusinessCard, setShowBusinessCard,
-        showCoronerTips, setShowCoronerTips,
         showAgencyGroupSelectorModal, setShowAgencyGroupSelectorModal,
         showCctvRequestModal, setShowCctvRequestModal,
         showPHMCModal, setShowPHMCModal,
@@ -184,96 +182,84 @@ function MainApp({
         const currentPath = window.location.hash || '#/';
         const isOnHomepage = currentPath === '#/' || currentPath === '#';
         const isOnAdminPage = currentPath.startsWith('#/admin');
+        const isOnFormPage = currentPath.startsWith('#/form');
+        const isOnAuthPage = currentPath.includes('/auth/') || currentPath.includes('/callback');
+        
+        // Enhanced logging for redirect path determination
+        console.log('🧭 [GTAW Login] Redirect Path Analysis:', {
+            currentPath,
+            fullUrl: window.location.href,
+            pathname: window.location.pathname,
+            search: window.location.search,
+            hash: window.location.hash,
+            isOnHomepage,
+            isOnAdminPage,
+            isOnFormPage,
+            isOnAuthPage,
+            userAgent: navigator.userAgent.substring(0, 100),
+            timestamp: new Date().toISOString()
+        });
         
         // Return to the current page unless it's a problematic path
         let returnPath = currentPath;
+        let redirectReason = 'preserve_current_path';
         
-        // For problematic paths (like callback routes), default to homepage if came from homepage, otherwise admin
+        // For problematic paths (like callback routes), always default to homepage for security
         if (currentPath.includes('/auth/') || currentPath.includes('/callback')) {
-            returnPath = isOnHomepage ? '#/' : '#/admin';
-        } else if (isOnAdminPage) {
-            returnPath = '#/admin'; // Always return admin users to admin panel
+            returnPath = '#/'; // Always return to homepage from auth/callback routes
+            redirectReason = 'auth_callback_security_default';
+        } else {
+            // SIMPLIFIED: Always redirect ALL GTAW logins to homepage, never admin
+            returnPath = '#/'; // Always return to homepage for GTAW authentication
+            redirectReason = 'simplified_gtaw_always_homepage';
         }
         // For homepage and form pages, preserve the current path
         
-        console.log('[GTAW Login] Initiating login with return path:', returnPath);
+        console.log('🎯 [GTAW Login] Final redirect decision:', {
+            originalPath: currentPath,
+            returnPath,
+            redirectReason,
+            pathChanged: currentPath !== returnPath,
+            initiatingAction: 'user_login_request'
+        });
+        
+        // Additional verification logging
+        if (isOnHomepage && returnPath !== '#/') {
+            console.error('🚨 [GTAW Login] CRITICAL BUG: On homepage but returnPath is not #/', {
+                currentPath,
+                returnPath,
+                isOnHomepage,
+                redirectReason,
+                allConditions: {
+                    isOnHomepage,
+                    isOnAdminPage,
+                    isOnFormPage,
+                    isOnAuthPage
+                }
+            });
+        }
+        
+        // Store redirect intent for tracking
+        sessionStorage.setItem('gta-login-intent', JSON.stringify({
+            originalPath: currentPath,
+            returnPath,
+            redirectReason,
+            timestamp: Date.now(),
+            userAgent: navigator.userAgent.substring(0, 100)
+        }));
+        
+        // Final verification before calling gtaLogin
+        console.log('🚀 [GTAW Login] About to call gtaLogin with:', {
+            returnPath,
+            expectedBehavior: isOnHomepage ? 'Should redirect to homepage' : `Should redirect to ${returnPath}`,
+            gtaLoginFunction: typeof gtaLogin
+        });
         
         // Call the original login function with proper return path
         gtaLogin({ returnPath });
     };
 
-    // Handle GTAW account sync with saved reports
-    const handleGtawSync = async () => {
-        if (!gtaWorldUser || !isPhmcMember) {
-            showNotification('You must be logged in as a PHMC member to sync reports.', 'exclamation-triangle');
-            return;
-        }
-        
-        setIsSyncing(true);
-        setSyncResult(null);
-        
-        try {
-            showNotification('Starting GTAW account sync...', 'info-circle');
-            
-            // Enhanced sync with safety options
-            const result = await syncGtawAccountWithReports(gtaWorldUser, {
-                createBackup: true,      // Always create backup for safety
-                validateUpdates: true,   // Validate before applying changes
-                maxRetries: 3,          // Retry failed updates
-                dryRun: false           // Set to true for testing
-            });
-            
-            setSyncResult(result);
-            
-            if (result.success) {
-                showNotification(
-                    `${result.message} - ${result.stats.matches} character matches found.`,
-                    'check-circle'
-                );
-                
-                // Show backup info for user confidence
-                if (result.details?.backupId) {
-                    setTimeout(() => {
-                        showNotification(
-                            `Backup created: ${result.details.backupId.slice(-8)} (for rollback if needed)`,
-                            'shield-alt',
-                            5000
-                        );
-                    }, 2000);
-                }
-                
-                // If reports were updated, show detailed stats
-                if (result.stats.updatedReports > 0) {
-                    setTimeout(() => {
-                        showNotification(
-                            `Sync Stats: ${result.stats.updatedReports} reports updated across ${result.stats.updatedAuthors} authors`,
-                            'info-circle'
-                        );
-                    }, 4000);
-                }
-            } else {
-                showNotification(`Sync failed: ${result.message}`, 'times-circle');
-                
-                // Show rollback option if backup exists
-                if (result.canRollback && result.backupInfo) {
-                    setTimeout(() => {
-                        showNotification(
-                            `If needed, backup ${result.backupInfo.slice(-8)} can be restored via admin panel`,
-                            'undo',
-                            8000
-                        );
-                    }, 3000);
-                }
-            }
-        } catch (error) {
-            console.error('GTAW sync error:', error);
-            showNotification(`Sync error: ${error.message}`, 'times-circle');
-            setSyncResult({ success: false, message: error.message });
-        } finally {
-            setIsSyncing(false);
-        }
-    };
-
+    
     // Show welcome notification for GTA World OAuth users
     useEffect(() => {
         if (isGtaAuthenticated && gtaWorldUser && gtaWorldUser.username && !hasShownGtaWelcome) {
@@ -332,13 +318,13 @@ function MainApp({
             const characterName = gtaWorldUser.faction?.characterName || 
                                  (gtaWorldUser.faction?.firstname && gtaWorldUser.faction?.lastname ? 
                                   `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : null);
-            
+
             if (characterName && !formData.phmcEmployee && !formData.coronerEmployee) {
                 // First, try to find exact match in PHMC staff
                 let matchedEmployee = phmcListData.find(employee => 
                     employee.name && employee.name.toLowerCase() === characterName.toLowerCase()
                 );
-                
+
                 if (matchedEmployee) {
                     setFormData(prev => ({
                         ...prev,
@@ -346,7 +332,7 @@ function MainApp({
                         phmcEmployeeLastName: matchedEmployee.lastName || '',
                         phmcRank: matchedEmployee.category || matchedEmployee.rank || ''
                     }));
-                    
+
                     console.log('[Auto-fill] Auto-populated PHMC employee field:', {
                         characterName,
                         matchedName: matchedEmployee.name,
@@ -354,7 +340,7 @@ function MainApp({
                         rank: gtaWorldUser.faction?.scriptRank,
                         category: matchedEmployee.category
                     });
-                    
+
                     setTimeout(() => {
                         showNotification(
                             `Auto-filled PHMC employee: ${matchedEmployee.name}`,
@@ -364,12 +350,12 @@ function MainApp({
                     }, 1000);
                     return;
                 }
-                
+
                 // If not found in PHMC, try coroner staff
                 matchedEmployee = coronerListData.find(employee => 
                     employee.name && employee.name.toLowerCase() === characterName.toLowerCase()
                 );
-                
+
                 if (matchedEmployee) {
                     setFormData(prev => ({
                         ...prev,
@@ -379,7 +365,7 @@ function MainApp({
                         coronerDiscord: matchedEmployee.discord || '',
                         coronerPHNumber: matchedEmployee.phNumber || '50056'
                     }));
-                    
+
                     console.log('[Auto-fill] Auto-populated Coroner employee field:', {
                         characterName,
                         matchedName: matchedEmployee.name,
@@ -387,7 +373,7 @@ function MainApp({
                         rank: gtaWorldUser.faction?.scriptRank,
                         coronerRank: matchedEmployee.rank
                     });
-                    
+
                     setTimeout(() => {
                         showNotification(
                             `Auto-filled Coroner employee: ${matchedEmployee.name}`,
@@ -397,7 +383,7 @@ function MainApp({
                     }, 1000);
                     return;
                 }
-                
+
                 // If exact match not found, show informative message
                 console.log('[Auto-fill] No employee match found for character:', {
                     characterName,
@@ -405,7 +391,7 @@ function MainApp({
                     availablePhmcStaff: phmcListData.length,
                     availableCoronerStaff: coronerListData.length
                 });
-                
+
                 setTimeout(() => {
                     showNotification(
                         `Character "${characterName}" not found in employee database. Please select manually.`,
@@ -415,13 +401,44 @@ function MainApp({
                 }, 1000);
             }
         }
-    }, [isGtaAuthenticated, isPhmcMember, gtaWorldUser, formData.phmcEmployee, formData.coronerEmployee, phmcListData, coronerListData, showNotification, setFormData]);
+
+        // --- Auto-sync reports after PHMC Employee authentication ---
+        if (isGtaAuthenticated && isPhmcMember && gtaWorldUser) {
+            // Only sync if not already syncing and not just logged out
+            if (!isSyncing && !syncResult) {
+                (async () => {
+                    setIsSyncing(true);
+                    try {
+                        showNotification('Auto-syncing reports with GTAW account...', 'info-circle');
+                        const result = await syncGtawAccountWithReports(gtaWorldUser, {
+                            createBackup: true,
+                            validateUpdates: true,
+                            maxRetries: 3,
+                            dryRun: false
+                        });
+                        setSyncResult(result);
+                        if (result.success) {
+                            showNotification(`Auto-sync complete: ${result.message} (${result.stats.updatedReports} updated)`, 'check-circle');
+                        } else {
+                            showNotification(`Auto-sync failed: ${result.message}`, 'times-circle');
+                        }
+                    } catch (error) {
+                        console.error('Auto-sync error:', error);
+                        showNotification(`Auto-sync error: ${error.message}`, 'times-circle');
+                    } finally {
+                        setIsSyncing(false);
+                    }
+                })();
+            }
+        }
+    }, [isGtaAuthenticated, isPhmcMember, gtaWorldUser, formData.phmcEmployee, formData.coronerEmployee, phmcListData, coronerListData, showNotification, setFormData, isSyncing, syncResult]);
 
 
     // Onboarding detection and initialization
     useEffect(() => {
         const onboardingCompleteFlag = localStorage.getItem('onboardingComplete');
         const userPreferences = localStorage.getItem('userOnboardingPreferences');
+        const savedProgress = localStorage.getItem('onboardingProgress');
         
         if (userPreferences) {
             try {
@@ -434,13 +451,35 @@ function MainApp({
             }
         }
         
+        // Check if user has saved onboarding progress and is returning from GTAW OAuth
+        if (savedProgress && !onboardingCompleteFlag) {
+            try {
+                const progress = JSON.parse(savedProgress);
+                // If user was awaiting OAuth and is now authenticated, resume onboarding
+                if (progress.awaitingGtawOAuth && isGtaAuthenticated) {
+                    setShowOnboarding(true);
+                    setOnboardingComplete(false);
+                    return;
+                }
+                // If user has progress but isn't authenticated yet, still show onboarding to continue
+                if (progress.currentStep) {
+                    setShowOnboarding(true);
+                    setOnboardingComplete(false);
+                    return;
+                }
+            } catch (error) {
+                console.warn('Failed to parse onboarding progress:', error);
+                localStorage.removeItem('onboardingProgress');
+            }
+        }
+        
         // Show onboarding for first-time users
         if (!onboardingCompleteFlag && !userPreferences) {
             setShowOnboarding(true);
         } else {
             setOnboardingComplete(true);
         }
-    }, []);
+    }, [isGtaAuthenticated]);
 
     const handleOnboardingComplete = (preferences) => {
         setUserOnboardingPreferences(preferences);
@@ -846,6 +885,7 @@ const getBBCodeContent = () => {
         loadReportForUser,
         handleReportSelectedForAttachment,
         onAttachReportSummaryRequest,
+        onParseDecedentRequest,
         deleteReportForUser,
         showRareEasterEggDirectly,
         toggleSavedReports,
@@ -856,7 +896,8 @@ const getBBCodeContent = () => {
         handleShowPositionInfo,
         pendingReportAttachmentCallback,
         reportSelectionFilter,
-        setReportSelectionFilter
+        setReportSelectionFilter,
+        preselectedEmployeeType
     } = useReportManagement(
         formData,
         setFormData,
@@ -1051,26 +1092,6 @@ const getBBCodeContent = () => {
     };
 
 
-    // --- Updated useEffect for CoronerTipsModal ---
-    useEffect(() => {
-        const isCoronerForm = [1, 2, 18].includes(bbCodeVersion);
-        // Check localStorage *here* to prevent automatic showing
-        const shouldHidePermanently = localStorage.getItem('hideCoronerTipsModal') === 'true';
-
-        // Only set state to show automatically if it's a coroner form AND not permanently hidden
-        if (isCoronerForm && !shouldHidePermanently) {
-            setShowCoronerTips(true);
-        } else {
-            // Ensure it's hidden if not a coroner form or if permanently hidden
-            // This prevents it from staying open if the user switches away from a coroner form
-            // while the modal is open AND they haven't clicked "Don't show again".
-            setShowCoronerTips(false);
-        }
-
-    }, [bbCodeVersion]); // Re-run only when bbCodeVersion changes
-        useEffect(() => {
-        localStorage.setItem('bbCodeVersion', bbCodeVersion.toString());
-    }, [bbCodeVersion]);
 
 
     useEffect(() => {
@@ -1396,8 +1417,6 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                     onSkip={handleOnboardingSkip}
                     formDefinitions={formDefinitions}
                     showNotification={showNotification}
-                    phmcList={phmcListData}
-                    coronerList={coronerListData}
                 />
                 <AgencyGroupSelectorModal
                 show={showAgencyGroupSelectorModal && !selectedAgencyGroup && onboardingComplete}
@@ -1451,13 +1470,6 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             />
             {seasonalEffectsEnabled && effect}
 
-
-        <CoronerTipsModal
-            show={showCoronerTips}
-            onClose={() => {
-                setShowCoronerTips(false);
-            }}
-        />
 
         <EmsAmaModal
                 show={showEmsAmaModal}
@@ -1624,17 +1636,6 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                         
                     })()}
 
-                    {(bbCodeVersion === 1 || bbCodeVersion === 2 || bbCodeVersion === 18) && (
-
-                    <Button
-                    variant="secondary"
-                type="button"
-                className="changelog-button"
-                onClick={() => setShowCoronerTips(true)} // This button click ALWAYS sets show to true
-            >
-                Coroner Tips
-            </Button>
-                    )}
 </div>
 
                     <div className="button-group">
@@ -1779,6 +1780,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                         coronerRecruitmentDetails={coronerRecruitmentDetails}
                     showNotification={showNotification}
                     onAttachReportSummaryRequest={onAttachReportSummaryRequest}
+                    onParseDecedentRequest={onParseDecedentRequest}
 
                                     />
                                 ) : (
@@ -1827,19 +1829,6 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                         </Button>
                         
                         {/* Sync Saved Reports Button - Only for PHMC Members */}
-                        {isPhmcMember && (
-                            <Button
-                                type="button"
-                                variant="info"
-                                className="changelog-button"
-                                onClick={handleGtawSync}
-                                disabled={isSyncing}
-                                title={`Sync your saved reports with GTAW account (${characterName || 'PHMC Member'})`}
-                            >
-                                <i className={isSyncing ? "fas fa-spinner fa-spin" : "fas fa-sync-alt"}></i>
-                                {isSyncing ? 'Syncing...' : 'Sync Reports'}
-                            </Button>
-                        )}
                     </>
                 )}
                 
@@ -2051,11 +2040,18 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                 savedReports={savedReports}
                 reportsForSelectedUser={savedReports}
                 loadReport={loadReportForUser}
+                loadReportForUser={loadReportForUser}
                 deleteReportForUser={deleteReportForUser}
                 author={getCurrentReportAuthor(formData)}
-                isLoading={isLoadingUserReports}
+                isLoadingReports={isLoadingUserReports}
                 onAttachReportSelectedForAttachment={handleReportSelectedForAttachment}
                 reportSelectionFilter={reportSelectionFilter}
+                pendingReportAttachmentCallback={pendingReportAttachmentCallback}
+                showNotification={showNotification}
+                currentCoronerEmployee={formData.coronerEmployee}
+                currentPhmcEmployee={formData.phmcEmployee}
+                preselectedEmployeeType={preselectedEmployeeType}
+                bbCodeVersion={bbCodeVersion}
                 versionNames={versionNames}
                 onEmployeeSelect={(employeeValue) => {
                     // Handle employee selection
@@ -2079,12 +2075,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                         })).sort((a, b) => a.label.localeCompare(b.label))
                     }
                 ]}
-                currentPhmcEmployee={formData.phmcEmployee}
-                currentCoronerEmployee={formData.coronerEmployee}
-                showNotification={showNotification}
                 removeNotification={removeNotification}
-                bbCodeVersion={bbCodeVersion}
-                handleReportSelectedForAttachment={handleReportSelectedForAttachment}
             />
 
             

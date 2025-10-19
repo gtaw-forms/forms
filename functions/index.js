@@ -1623,7 +1623,7 @@ function getPermissionsForRank(scriptRank) {
         14: ['admin_full_access', 'upload_faction_data', 'manage_department_reports', 'view_all_members', 'access_audit_logs', 'manage_webhooks'],
         13: ['admin_limited_access', 'manage_department_reports', 'view_department_members', 'create_reports', 'view_audit_logs'],
         12: ['admin_limited_access', 'manage_own_reports', 'view_department_members', 'create_reports'],
-        11: ['view_own_reports', 'create_reports', 'view_team_members'],
+        11: ['view_own_reports', 'create_reports', 'view_team_members', 'manage_webhooks'],
         10: ['view_own_reports', 'create_basic_reports']
     };
     
