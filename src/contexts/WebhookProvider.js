@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useCallback } from 'react';
 import * as Sentry from "@sentry/react";
 import { useWebhooks } from '../hooks/useWebhooks';
 import { useImageUpload } from '../hooks/useImageUpload';
-import { useNotifications } from './NotificationContext';
+import { useNotification } from './NotificationContext';
 
 const WebhookContext = createContext();
 
@@ -19,7 +19,7 @@ export const WebhookProvider = ({ children, commitInfo }) => {
     const [webhookMessage, setWebhookMessage] = useState('');
     const [mediaUrls, setMediaUrls] = useState([]);
     const [isUploading, setIsUploading] = useState(false);
-    const { showNotification } = useNotifications();
+    const { showNotification } = useNotification();
 
     const { handlePhmcWebhookSubmit, handleWebhookSubmit } = useWebhooks({}, commitInfo, showNotification);
     const { handleImageUpload: uploadImage } = useImageUpload(showNotification);

@@ -14,7 +14,6 @@ export const ModalProvider = ({ children }) => {
     const [showEmployeeModal, setShowEmployeeModal] = useState(false);
     const [showEmsAmaModal, setShowEmsAmaModal] = useState(false);
     const [showBusinessCard, setShowBusinessCard] = useState(false);
-    const [showCoronerTips, setShowCoronerTips] = useState(false);
     const [showAgencyGroupSelectorModal, setShowAgencyGroupSelectorModal] = useState(false);
     const [showCctvRequestModal, setShowCctvRequestModal] = useState(false);
     const [showPHMCModal, setShowPHMCModal] = useState(false);
@@ -34,7 +33,6 @@ export const ModalProvider = ({ children }) => {
         showEmployeeModal, setShowEmployeeModal,
         showEmsAmaModal, setShowEmsAmaModal,
         showBusinessCard, setShowBusinessCard,
-        showCoronerTips, setShowCoronerTips,
         showAgencyGroupSelectorModal, setShowAgencyGroupSelectorModal,
         showCctvRequestModal, setShowCctvRequestModal,
         showPHMCModal, setShowPHMCModal,

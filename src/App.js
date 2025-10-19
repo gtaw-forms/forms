@@ -275,7 +275,7 @@ const initialFormData = {
                     <h2>An unexpected fatal error occurred</h2>
                     <p><strong>Please post this error information in the PHMC Discord server:</strong></p>
                     <div style={{ 
-                        backgroundColor: '#f8f9fa', 
+                        backgroundColor: '#114170ff', 
                         border: '1px solid #dee2e6', 
                         borderRadius: '4px', 
                         padding: '15px', 

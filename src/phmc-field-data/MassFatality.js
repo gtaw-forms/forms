@@ -264,6 +264,7 @@ const MassFatality = ({
     requestingAgencyOptions,
     currentUtcTime,
     coronerGroupedOptions,
+    onParseDecedentRequest,
 }) => {
     const generateEvidenceLockerID = () => {
         const today = new Date();
@@ -296,6 +297,108 @@ const MassFatality = ({
         setFormData(prevFormData => ({
             ...prevFormData,
             decedents: [...(prevFormData.decedents || []), { ...defaultDecedent, collapsed: false }]
+        }));
+    };
+
+    const parseDecedentFromReport = (reportData) => {
+        if (!reportData || !reportData.data) return;
+        
+        const reportFormData = reportData.data;
+        const newDecedent = { ...defaultDecedent, collapsed: false };
+        
+        console.log('=== PARSING DECEDENT REPORT ===');
+        console.log('Available fields in report:', Object.keys(reportFormData));
+        
+        // Map report data to decedent fields
+        if (reportFormData.decedentName) {
+            newDecedent.decedentName = reportFormData.decedentName;
+            console.log('decedentName -', reportFormData.decedentName);
+        }
+        if (reportFormData.decedentOOC) {
+            newDecedent.decedentOOC = reportFormData.decedentOOC;
+            console.log('decedentOOC -', reportFormData.decedentOOC);
+        }
+        
+        // Try multiple possible field names for Pronounced Time of Death
+        if (reportFormData.pronouncedTimeOfDeath) {
+            // Check if pronouncedTimeOfDeath is just time (HH:MM format) and needs date added
+            const timeValue = reportFormData.pronouncedTimeOfDeath;
+            if (timeValue && timeValue.match(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)) {
+                // It's just time format, try to combine with dateTime field for date
+                if (reportFormData.dateTime && reportFormData.dateTime.includes('T')) {
+                    // dateTime contains full datetime, extract date part
+                    const datePart = reportFormData.dateTime.split('T')[0];
+                    const combinedDateTime = `${datePart}T${timeValue}`;
+                    newDecedent.pronouncedTimeOfDeath = combinedDateTime;
+                    console.log('pronouncedTimeOfDeath (time + date from dateTime) -', combinedDateTime, 'from time:', timeValue, 'date extracted from:', reportFormData.dateTime);
+                } else if (reportFormData.dateTime && reportFormData.dateTime.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                    // dateTime is just a date
+                    const combinedDateTime = `${reportFormData.dateTime}T${timeValue}`;
+                    newDecedent.pronouncedTimeOfDeath = combinedDateTime;
+                    console.log('pronouncedTimeOfDeath (time + date) -', combinedDateTime, 'from time:', timeValue, 'date:', reportFormData.dateTime);
+                } else {
+                    // Just use the time as-is
+                    newDecedent.pronouncedTimeOfDeath = timeValue;
+                    console.log('pronouncedTimeOfDeath (time only, no date found) -', timeValue);
+                }
+            } else {
+                // It's already a full datetime
+                newDecedent.pronouncedTimeOfDeath = timeValue;
+                console.log('pronouncedTimeOfDeath (direct full datetime) -', timeValue);
+            }
+        } else if (reportFormData.date && reportFormData.dateTime) {
+            // Death Reports use separate date and dateTime fields - combine them
+            const combinedDateTime = `${reportFormData.date}T${reportFormData.dateTime}`;
+            newDecedent.pronouncedTimeOfDeath = combinedDateTime;
+            console.log('pronouncedTimeOfDeath (combined date + dateTime) -', combinedDateTime, 'from date:', reportFormData.date, 'time:', reportFormData.dateTime);
+        } else if (reportFormData.dateTime) {
+            // Fallback to just dateTime if it's a full datetime
+            newDecedent.pronouncedTimeOfDeath = reportFormData.dateTime;
+            console.log('pronouncedTimeOfDeath (from dateTime only) -', reportFormData.dateTime);
+        } else if (reportFormData.timeOfDeath) {
+            newDecedent.pronouncedTimeOfDeath = reportFormData.timeOfDeath;
+            console.log('pronouncedTimeOfDeath (from timeOfDeath) -', reportFormData.timeOfDeath);
+        } else {
+            console.log('pronouncedTimeOfDeath - NO MATCH FOUND (available date:', reportFormData.date, 'dateTime:', reportFormData.dateTime, ')');
+        }
+        
+        if (reportFormData.typeOfDeath) {
+            newDecedent.typeOfDeath = reportFormData.typeOfDeath;
+            console.log('typeOfDeath -', reportFormData.typeOfDeath);
+        }
+        if (reportFormData.placeOfDeath) {
+            newDecedent.placeOfDeath = reportFormData.placeOfDeath;
+            console.log('placeOfDeath -', reportFormData.placeOfDeath);
+        }
+        if (reportFormData.mannerOfDeath) {
+            newDecedent.mannerOfDeath = reportFormData.mannerOfDeath;
+            console.log('mannerOfDeath -', reportFormData.mannerOfDeath);
+        }
+        if (reportFormData.probableCauseOfDeath) {
+            newDecedent.probableCauseOfDeath = reportFormData.probableCauseOfDeath;
+            console.log('probableCauseOfDeath -', reportFormData.probableCauseOfDeath);
+        }
+        if (reportFormData.synopsis) {
+            newDecedent.synopsis = reportFormData.synopsis;
+            console.log('synopsis -', reportFormData.synopsis);
+        }
+        if (reportFormData.scenePhotos) {
+            newDecedent.scenePhotos = reportFormData.scenePhotos;
+            console.log('scenePhotos -', reportFormData.scenePhotos);
+        }
+        if (reportFormData.additionalImages) {
+            newDecedent.additionalImages = reportFormData.additionalImages;
+            console.log('additionalImages -', reportFormData.additionalImages);
+        }
+        
+        console.log('=== FINAL PARSED DECEDENT ===');
+        console.log(newDecedent);
+        console.log('================================');
+        
+        // Add the new decedent to the form data
+        setFormData(prevFormData => ({
+            ...prevFormData,
+            decedents: [...(prevFormData.decedents || []), newDecedent]
         }));
     };
 
@@ -428,9 +531,27 @@ const MassFatality = ({
                 
             </Form.Group>
 
-            <Button variant="primary" onClick={addDecedent} style={{ marginBottom: '1rem' }}>
-                Add New Decedent
-            </Button>
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '1rem' }}>
+                <Button variant="primary" onClick={addDecedent}>
+                    Add New Decedent
+                </Button>
+                <Button 
+                    variant="info" 
+                    onClick={() => {
+                        // Custom implementation for parsing decedent reports
+                        // We want to filter for Death Reports (v1) and Autopsy Reports (v4)
+                        if (onParseDecedentRequest) {
+                            onParseDecedentRequest((reportData) => {
+                                console.log('Selected decedent report data for parsing:', reportData);
+                                parseDecedentFromReport(reportData);
+                            });
+                        }
+                    }}
+                >
+                    <i className="fas fa-file-import" style={{ marginRight: '5px' }}></i>
+                    Parse Decedent Report
+                </Button>
+            </div>
             {(formData.decedents || []).map((dec, idx) => (
                 <div key={idx}>
                     <CollapsibleHeader
