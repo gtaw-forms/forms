@@ -80,8 +80,8 @@ const OAuthUrlDiagnostic = () => {
             </div>
             
             <div style={{ marginTop: '20px' }}>
-                <button onClick={() => window.location.href = '/#/admin'}>
-                    Continue to Admin
+                <button onClick={() => window.location.href = '/#/' }>
+                    Continue to Homepage
                 </button>
                 <button onClick={() => navigator.clipboard.writeText(JSON.stringify(urlInfo, null, 2))} style={{ marginLeft: '10px' }}>
                     Copy Diagnostic Data
