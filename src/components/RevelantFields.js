@@ -5,7 +5,7 @@ const getRelevantFields = (bbCodeVersion) => {
                 'coronerRank', 'placeOfDeath', 'department', 'dateTime', 'coronerEmployee',
                 'coronerBadge', 'decedentName', 'decedentOOC', 'pronouncedTimeOfDeath',
                 'synopsis', 'probableCauseOfDeath', 'mannerOfDeath', 'typeOfDeath',
-                'scenePhotos', 'additionalImages', 'requestingOfficer',
+                'scenePhotos', 'additionalImages', 'requestingOfficer', 'time',
             ];
         case 2: // Email Generator
             return [

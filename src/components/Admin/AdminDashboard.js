@@ -11,6 +11,8 @@ import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import useFactionPermissions from '../../hooks/useFactionPermissions';
 import { isGoogleAuthenticated, getGoogleUser } from '../../services/gtaWorldAuth';
 import { runOAuthDiagnostics, testFirebaseFunctions, testProfileRetrieval, logEnvironmentInfo } from '../../services/firebaseDebug';
+import WebhookManager from './WebhookManager';
+import { WebhookProvider } from '../../contexts/WebhookProvider';
 
 const AdminDashboard = ({
     currentUser,
@@ -72,11 +74,11 @@ const AdminDashboard = ({
     customWebhookSending,
     customWebhookResult,
     handleSendCustomWebhook,
-    logRefreshTrigger
+    logRefreshTrigger,
+    setLogRefreshTrigger
 }) => {
 
     const [selectedSection, setSelectedSection] = useState('serviceStatus');
-    const [testWebhookData, setTestWebhookData] = useState({ title: '', message: '', selectedWebhook: null });
     const [diagnosticsResult, setDiagnosticsResult] = useState(null);
     const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
     const navigate = useNavigate();
@@ -182,18 +184,18 @@ const AdminDashboard = ({
     };
 
     const handleTestWebhook = async (webhook) => {
-        if (!testWebhookData.title || !testWebhookData.message) {
-            alert('Please fill in both title and message fields');
-            return;
-        }
-
         try {
             const payload = {
+                username: "PHMC Test",
+                avatar_url: 'https://i.ibb.co/0pgw9hHm/phmc.png',
                 embeds: [{
-                    title: testWebhookData.title,
-                    description: testWebhookData.message,
-                    color: 3447003,
-                    timestamp: new Date().toISOString()
+                    title: "🧪 Webhook Test",
+                    description: `This is a test message for the webhook: **${webhook.name}**\n\nWebhook Type: ${webhook.type}\nTest Time: ${new Date().toLocaleString()}`,
+                    color: 0x00FF00,
+                    timestamp: new Date().toISOString(),
+                    footer: {
+                        text: 'PHMC Form Generator - Admin Panel Test'
+                    }
                 }]
             };
 
@@ -204,14 +206,13 @@ const AdminDashboard = ({
             });
 
             if (response.ok) {
-                alert('Test webhook sent successfully!');
-                setTestWebhookData({ title: '', message: '', selectedWebhook: null });
+                showInAppNotification && showInAppNotification(`Test webhook sent successfully to ${webhook.name}!`, 'success');
             } else {
-                alert(`Failed to send webhook: ${response.status}`);
+                showInAppNotification && showInAppNotification(`Failed to send test webhook: ${response.status}`, 'error');
             }
         } catch (error) {
             console.error('Error sending test webhook:', error);
-            alert('Error sending test webhook');
+            showInAppNotification && showInAppNotification('Error sending test webhook', 'error');
         }
     };
 
@@ -634,71 +635,118 @@ const AdminDashboard = ({
                     )}
                     {selectedSection === 'webhooks' && (
                         <div className="card">
-                            <div className="card-header">Webhook Management</div>
+                            <div className="card-header">
+                                <div className="d-flex justify-content-between align-items-center">
+                                    <h5 className="mb-0">Webhook Management</h5>
+                                                                        <h5 className="mb-0">AAAAAA</h5>
+
+                                    <div className="badge bg-secondary">
+                                        {webhooks.length} webhook{webhooks.length !== 1 ? 's' : ''} configured
+                                    </div>
+                                </div>
+                            </div>
                             <div className="card-body">
                                 {isGtaAuthenticated || currentUser ? (
                                     hasWebhookAccess ? (
-                                        <div>
-                                            <div className="mb-4">
-                                                <h5>{newWebhook.id ? 'Edit Webhook' : 'Add New Webhook'}</h5>
-                                                {newWebhook.id && (
-                                                    <div className="alert alert-info py-2 mb-3">
-                                                        <i className="fas fa-info-circle me-2"></i>
-                                                        Editing webhook: <strong>{newWebhook.name}</strong>
-                                                        <button 
-                                                            type="button" 
-                                                            className="btn btn-sm btn-outline-secondary ms-2"
-                                                            onClick={() => setNewWebhook({ name: '', url: '', type: 'coronerAlerts' })}
-                                                        >
-                                                            Cancel Edit
-                                                        </button>
+                                        <div className="row">
+                                            {/* Left Column - Send Webhook */}
+                                            <div className="col-md-6">
+                                                <div className="card h-100">
+                                                    <div className="card-header bg-primary text-white">
+                                                        <h6 className="mb-0">
+                                                            <i className="fas fa-paper-plane me-2"></i>
+                                                            Send Webhook
+                                                        </h6>
                                                     </div>
-                                                )}
-                                                <div className="form-group mb-2">
-                                                    <label>Webhook Name</label>
-                                                    <input
-                                                        type="text"
-                                                        className="form-control"
-                                                        placeholder="e.g., Discord Notifications"
-                                                        value={newWebhook.name}
-                                                        onChange={(e) => setNewWebhook(prev => ({ ...prev, name: e.target.value }))}
-                                                    />
+                                                    <div className="card-body">
+                                                        <WebhookProvider>
+                                                            <WebhookManager />
+                                                        </WebhookProvider>
+                                                    </div>
                                                 </div>
-                                                <div className="form-group mb-2">
-                                                    <label>Webhook URL</label>
-                                                    <input
-                                                        type="url"
-                                                        className="form-control"
-                                                        placeholder="https://discord.com/api/webhooks/..."
-                                                        value={newWebhook.url}
-                                                        onChange={(e) => setNewWebhook(prev => ({ ...prev, url: e.target.value }))}
-                                                    />
-                                                </div>
-                                                <div className="form-group mb-3">
-                                                    <label>Event Type</label>
-                                                    <select
-                                                        className="form-select"
-                                                        value={newWebhook.type}
-                                                        onChange={(e) => setNewWebhook(prev => ({ ...prev, type: e.target.value }))}
-                                                    >
-                                                        <option value="coronerAlerts">Coroner Alerts</option>
-                                                        <option value="phmcAlerts">PHMC Alerts</option>
-                                                        <option value="dev">local dev discord</option>
-                                                    </select>
-                                                </div>
-                                                <div className="d-flex gap-2">
-                                                    <Button variant="primary" onClick={handleAddWebhook} disabled={isUpdatingWebhooks}>
-                                                        {isUpdatingWebhooks ? <Spinner as="span" animation="border" size="sm" /> : (newWebhook.id ? "Update Webhook" : "Add Webhook")}
-                                                    </Button>
-                                                    {newWebhook.id && (
-                                                        <Button 
-                                                            variant="secondary" 
-                                                            onClick={() => setNewWebhook({ name: '', url: '', type: 'coronerAlerts' })}
-                                                            disabled={isUpdatingWebhooks}
-                                                        >
-                                                            Cancel
-                                                        </Button>
-                                                    )}
+                                            </div>
+
+                                            {/* Right Column - Webhook Management */}
+                                            <div className="col-md-6">
+                                                <div className="card h-100">
+                                                    <div className="card-header bg-success text-white">
+                                                        <h6 className="mb-0">
+                                                            <i className="fas fa-cogs me-2"></i>
+                                                            {newWebhook.id ? 'Edit Webhook' : 'Add New Webhook'}
+                                                        </h6>
+                                                    </div>
+                                                    <div className="card-body">
+                                                        {newWebhook.id && (
+                                                            <div className="alert alert-info py-2 mb-3">
+                                                                <i className="fas fa-info-circle me-2"></i>
+                                                                Editing: <strong>{newWebhook.name}</strong>
+                                                                <button 
+                                                                    type="button" 
+                                                                    className="btn btn-sm btn-outline-secondary ms-2"
+                                                                    onClick={() => setNewWebhook({ name: '', url: '', type: 'coronerAlerts' })}
+                                                                >
+                                                                    Cancel
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                        <div className="form-group mb-3">
+                                                            <label className="form-label">Webhook Name</label>
+                                                            <input
+                                                                type="text"
+                                                                className="form-control"
+                                                                placeholder="e.g., Discord Notifications"
+                                                                value={newWebhook.name}
+                                                                onChange={(e) => setNewWebhook(prev => ({ ...prev, name: e.target.value }))}
+                                                            />
+                                                        </div>
+                                                        <div className="form-group mb-3">
+                                                            <label className="form-label">Webhook URL</label>
+                                                            <input
+                                                                type="url"
+                                                                className="form-control"
+                                                                placeholder="https://discord.com/api/webhooks/..."
+                                                                value={newWebhook.url}
+                                                                onChange={(e) => setNewWebhook(prev => ({ ...prev, url: e.target.value }))}
+                                                            />
+                                                        </div>
+                                                        <div className="form-group mb-3">
+                                                            <label className="form-label">Event Type</label>
+                                                            <select
+                                                                className="form-select"
+                                                                value={newWebhook.type}
+                                                                onChange={(e) => setNewWebhook(prev => ({ ...prev, type: e.target.value }))}
+                                                            >
+                                                                <option value="coronerAlerts">Coroner Alerts</option>
+                                                                <option value="phmcAlerts">PHMC Alerts</option>
+                                                                <option value="dev">local dev discord</option>
+                                                            </select>
+                                                        </div>
+                                                        <div className="d-flex gap-2">
+                                                            <Button 
+                                                                variant={newWebhook.id ? "warning" : "primary"} 
+                                                                onClick={handleAddWebhook} 
+                                                                disabled={isUpdatingWebhooks || !newWebhook.name || !newWebhook.url}
+                                                            >
+                                                                {isUpdatingWebhooks ? (
+                                                                    <Spinner as="span" animation="border" size="sm" />
+                                                                ) : (
+                                                                    <>
+                                                                        <i className={`fas ${newWebhook.id ? 'fa-save' : 'fa-plus'} me-2`}></i>
+                                                                        {newWebhook.id ? "Update" : "Add"} Webhook
+                                                                    </>
+                                                                )}
+                                                            </Button>
+                                                            {newWebhook.id && (
+                                                                <Button 
+                                                                    variant="secondary" 
+                                                                    onClick={() => setNewWebhook({ name: '', url: '', type: 'coronerAlerts' })}
+                                                                    disabled={isUpdatingWebhooks}
+                                                                >
+                                                                    Cancel
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -717,10 +765,101 @@ const AdminDashboard = ({
                                     </div>
                                 )}
 
-                                <hr />
+                                {/* Existing Webhooks List */}
+                                {(isGtaAuthenticated || currentUser) && hasWebhookAccess && (
+                                    <div className="mt-4">
+                                        <div className="card">
+                                            <div className="card-header bg-info text-white">
+                                                <h6 className="mb-0">
+                                                    <i className="fas fa-list me-2"></i>
+                                                    Existing Webhooks ({webhooks.length})
+                                                </h6>
+                                            </div>
+                                            <div className="card-body">
+                                                {webhooks.length > 0 ? (
+                                                    <div className="table-responsive">
+                                                        <table className="table table-sm table-hover">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>Name</th>
+                                                                    <th>Type</th>
+                                                                    <th>URL</th>
+                                                                    <th>Actions</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {webhooks.map((webhook) => (
+                                                                    <tr key={webhook.id}>
+                                                                        <td>
+                                                                            <strong>{webhook.name}</strong>
+                                                                        </td>
+                                                                        <td>
+                                                                            <span className={`badge ${webhook.type === 'dev' ? 'bg-warning' : webhook.type === 'coronerAlerts' ? 'bg-danger' : 'bg-primary'}`}>
+                                                                                {webhook.type}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td>
+                                                                            <small className="text-muted" title={webhook.url}>
+                                                                                {webhook.url.length > 40 ? `${webhook.url.substring(0, 40)}...` : webhook.url}
+                                                                            </small>
+                                                                        </td>
+                                                                        <td>
+                                                                            <div className="btn-group btn-group-sm">
+                                                                                <button
+                                                                                    className="btn btn-outline-primary"
+                                                                                    onClick={() => handleTestWebhook(webhook)}
+                                                                                    disabled={isUpdatingWebhooks}
+                                                                                    title="Test this webhook"
+                                                                                >
+                                                                                    <i className="fas fa-paper-plane"></i>
+                                                                                </button>
+                                                                                <button
+                                                                                    className="btn btn-outline-warning"
+                                                                                    onClick={() => setNewWebhook(webhook)}
+                                                                                    disabled={isUpdatingWebhooks}
+                                                                                    title="Edit this webhook"
+                                                                                >
+                                                                                    <i className="fas fa-edit"></i>
+                                                                                </button>
+                                                                                <button
+                                                                                    className="btn btn-outline-danger"
+                                                                                    onClick={() => handleDeleteWebhook(webhook.id)}
+                                                                                    disabled={isUpdatingWebhooks}
+                                                                                    title="Delete this webhook"
+                                                                                >
+                                                                                    <i className="fas fa-trash"></i>
+                                                                                </button>
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-center text-muted py-3">
+                                                        <i className="fas fa-inbox fa-2x mb-2"></i>
+                                                        <p>No webhooks configured yet. Add one above to get started.</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Webhook Logs Section */}
-                                <WebhookLogs refreshTrigger={logRefreshTrigger} />
+                                {(isGtaAuthenticated || currentUser) && hasWebhookAccess && (
+                                    <div className="mt-4">
+                                        <div className="card">
+                                            <div className="card-body p-0">
+                                                <WebhookLogs 
+                                                    refreshTrigger={logRefreshTrigger} 
+                                                    onRefresh={() => setLogRefreshTrigger(prev => prev + 1)}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
@@ -999,27 +1138,6 @@ const AdminDashboard = ({
                                             </div>
                                         </div>
                                     )}
-                                </div>
-                                <div className="mb-3">
-                                    <Button 
-                                        variant="info" 
-                                        onClick={() => setShowOAuthTokenExchangeModal(true)} 
-                                        title="Manual OAuth token exchange for testing"
-                                        disabled={!hasAdminAccess}
-                                    >
-                                        <i className="fas fa-exchange-alt me-2"></i>
-                                        OAuth Token Exchange (Legacy)
-                                    </Button>
-                                    <Button 
-                                        variant="info" 
-                                        onClick={() => setShowUserDataExchangeModal(true)} 
-                                        className="ms-2"
-                                        disabled={!hasAdminAccess}
-                                        title={hasAdminAccess ? "Access user data exchange" : "Requires admin access permission"}
-                                    >
-                                        <i className="fas fa-user-secret me-2"></i>
-                                        User Data Exchange
-                                    </Button>
                                 </div>
                                 <div className="mb-3">
                                     <Button 

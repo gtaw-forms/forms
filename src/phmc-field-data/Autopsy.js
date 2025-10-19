@@ -4,7 +4,7 @@ import Select from 'react-select';
 import AutopsyDiagramModal from '../components/AutopsyDiagramModal';
 import * as Sentry from "@sentry/react";
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
-import { getCharacterName, getCharacterID } from '../utils/characterUtils';
+import { getCharacterName } from '../utils/characterUtils';
 
 const EmployeeCredentialsSection = ({ 
     formData, 
@@ -16,16 +16,24 @@ const EmployeeCredentialsSection = ({
 }) => {
     const { user: gtaWorldUser, isAuthenticated: isGtaAuthenticated } = useGtaWorldAuth();
     const [useGtawName, setUseGtawName] = useState(false);
-        // Declare field names first (before useEffect)
+    
+    // Detect localhost/development environment
+    const isDevelopmentEnvironment =
+        window.location.hostname === 'localhost' ||
+        window.location.hostname.startsWith('192.168.') ||
+        window.location.hostname.startsWith('10.') ||
+        window.location.hostname.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./); 
+    
+    // Declare field names first (before useEffect)
     const employeeNameField = `${employeeType}Employee`;
     const employeeBadgeField = `${employeeType}Badge`;
     const employeeRankField = `${employeeType}Rank`;
     const employeeDiscordField = `${employeeType}Discord`;
     const employeePHNumberField = `${employeeType}PHNumber`;
 
-    // Automatically enable GTAW credentials when user is authenticated
+    // Automatically enable GTAW credentials when user is authenticated and not in development
     useEffect(() => {
-        if (isGtaAuthenticated && gtaWorldUser && !useGtawName) {
+        if (isGtaAuthenticated && gtaWorldUser && !isDevelopmentEnvironment && !useGtawName) {
             // Check if we have a valid character name
             const gtawCharacterName = gtaWorldUser.faction ? 
                 ((gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? 
@@ -35,7 +43,21 @@ const EmployeeCredentialsSection = ({
             
             if (gtawCharacterName) {
                 setUseGtawName(true);
-                
+            }
+        }
+    }, [isGtaAuthenticated, gtaWorldUser, isDevelopmentEnvironment, useGtawName]);
+    
+    // Populate GTAW credentials when useGtawName is enabled
+    useEffect(() => {
+        if (useGtawName && isGtaAuthenticated && gtaWorldUser) {
+            // Check if we have a valid character name
+            const gtawCharacterName = gtaWorldUser.faction ? 
+                ((gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? 
+                    `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : 
+                    gtaWorldUser.faction.characterName || gtaWorldUser.username) : 
+                gtaWorldUser.username;
+            
+            if (gtawCharacterName) {
                 // Clean rank by removing dashes and extra text
                 const cleanRank = gtaWorldUser?.faction?.rank ? 
                     gtaWorldUser.faction.rank.split('-')[0].trim() : 'GTAW User';
@@ -50,46 +72,10 @@ const EmployeeCredentialsSection = ({
                 }));
             }
         }
-    }, [isGtaAuthenticated, gtaWorldUser, useGtawName, setFormData]);
+    }, [useGtawName, isGtaAuthenticated, gtaWorldUser, setFormData]);
 
     // Get GTAW character name if available
     const gtawCharacterName = isGtaAuthenticated && gtaWorldUser ? getCharacterName(gtaWorldUser) : null;
-
-    const handleGtawToggle = () => {
-        if (!useGtawName && gtawCharacterName) {
-            // Switch to GTAW name
-            setUseGtawName(true);
-            
-            // Clean rank by removing dashes and extra text
-            const cleanRank = gtaWorldUser?.faction?.rank ? 
-                gtaWorldUser.faction.rank.split('-')[0].trim() : 'GTAW User';
-            
-            // Get character ID from the character array
-            const characterArray = gtaWorldUser?.userData?.character || gtaWorldUser?.userData?.characters || [];
-            const firstCharacter = Array.isArray(characterArray) ? characterArray[0] : null;
-            const characterId = firstCharacter?.id || gtaWorldUser?.id || '';
-            
-            setFormData(prev => ({
-                ...prev,
-                [employeeNameField]: gtawCharacterName,
-                [employeeBadgeField]: characterId, // Use actual character ID as badge number
-                [employeeRankField]: cleanRank,
-                [employeeDiscordField]: gtaWorldUser?.username || '',
-                [employeePHNumberField]: '50056'
-            }));
-        } else {
-            // Switch back to Firebase selection
-            setUseGtawName(false);
-            setFormData(prev => ({
-                ...prev,
-                [employeeNameField]: '',
-                [employeeBadgeField]: '',
-                [employeeRankField]: '',
-                [employeeDiscordField]: '',
-                [employeePHNumberField]: '50056'
-            }));
-        }
-    };
 
     return (
         <>
@@ -108,24 +94,39 @@ const EmployeeCredentialsSection = ({
                     <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i>
                     Missing Name?
                 </button>
-                {isGtaAuthenticated && gtawCharacterName && (
+            </div>
+            
+            {/* Show GTAW toggle button if authenticated or in development */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                {(isGtaAuthenticated && gtawCharacterName) && (
                     <button
                         type="button"
-                        onClick={handleGtawToggle}
-                        className="close-button"
+                        onClick={() => setUseGtawName(!useGtawName)}
+                        className="btn btn-outline-light"
                         style={{
-                            padding: '0.25rem 0.5rem',
-                            fontSize: '0.8rem',
-                            lineHeight: '1.2',
-                            backgroundColor: useGtawName ? '#28a745' : '#007bff',
-                            color: 'white',
-                            border: 'none'
+                            padding: '0.375rem 0.75rem',
+                            fontSize: '0.875rem',
+                            border: useGtawName ? '1px solid #28a745' : '1px solid #6c757d',
+                            color: useGtawName ? '#28a745' : '#6c757d'
                         }}
                         title={useGtawName ? `Using GTAW: ${gtawCharacterName}` : `Use GTAW name: ${gtawCharacterName}`}
                     >
                         <i className={`fas ${useGtawName ? 'fa-check' : 'fa-user'}`} style={{ marginRight: '5px' }}></i>
                         {useGtawName ? 'Using GTAW' : 'Use GTAW'}
                     </button>
+                )}
+                {isDevelopmentEnvironment && !isGtaAuthenticated && (
+                    <div style={{ 
+                        padding: '5px 10px', 
+                        backgroundColor: '#ffc107', 
+                        color: '#000', 
+                        borderRadius: '4px',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold'
+                    }}>
+                        <i className="fas fa-code" style={{ marginRight: '5px' }}></i>
+                        Development Mode: Manual Selection Enabled
+                    </div>
                 )}
             </div>
             
@@ -144,7 +145,7 @@ const EmployeeCredentialsSection = ({
                     <div style={{ color: '#eeeeeeb0' }}>
                         <strong>Name:</strong> {gtawCharacterName}<br/>
                         <strong>Username:</strong> {gtaWorldUser?.username}<br/>
-                        <strong>Badge Number:</strong> {gtaWorldUser?.character.id}<br/>
+                        <strong>Badge Number:</strong> {gtaWorldUser?.character?.id || gtaWorldUser?.id}<br/>
                         {gtaWorldUser?.faction?.rank && (
                             <><strong>Rank:</strong> {gtaWorldUser.faction.rank.split('-')[0].trim()}<br/></>
                         )}
@@ -153,38 +154,85 @@ const EmployeeCredentialsSection = ({
                 </div>
             ) : (
                 <Select
-                    name="coronerEmployee"
+                    name={employeeNameField}
                     value={coronerGroupedOptions
                         .flatMap(group => group.options)
-                        .find(option => option.value === formData.coronerEmployee) || null}
-                    onChange={(selectedOption) => handleSelectChange(selectedOption, { name: 'coronerEmployee' })}
+                        .find(option => option.value === formData[employeeNameField]) || null}
+                    onChange={(selectedOption, actionMeta) => handleSelectChange(selectedOption, actionMeta)}
                     options={coronerGroupedOptions}
                     isClearable
                     placeholder="Search or select coroner..."
-                    className={`form-control ${!formData.coronerEmployee ? 'is-invalid' : ''}`}
-                    styles={{ 
+                    className={`form-control ${!formData[employeeNameField] ? 'is-invalid' : ''}`}
+                    styles={{
                         control: (base, state) => ({
                             ...base,
                             backgroundColor: '#16202c',
                             color: '#eeeeeeb0',
-                            borderColor: !formData.coronerEmployee && state.isFocused ? '#dc3545' :
-                                         !formData.coronerEmployee ? '#dc3545' :
+                            borderColor: !formData[employeeNameField] && state.isFocused ? '#dc3545' :
+                                         !formData[employeeNameField] ? '#dc3545' :
                                          state.isFocused ? '#86b7fe' : '#6c757d',
                             '&:hover': {
-                                borderColor: !formData.coronerEmployee ? '#dc3545' : '#86b7fe'
+                                borderColor: !formData[employeeNameField] ? '#dc3545' : '#86b7fe'
                             },
-                            boxShadow: !formData.coronerEmployee && state.isFocused ? '0 0 0 0.25rem rgba(220, 53, 69, 0.25)' :
-                                       state.isFocused ? '0 0 0 0.25rem rgba(13, 110, 253, 0.25)' : null,
+                            boxShadow: state.isFocused ? '0 0 0 0.2rem rgba(13, 110, 253, 0.25)' : null,
+                            minHeight: '38px'
                         }),
-                        menu: (base) => ({ ...base, backgroundColor: '#16202c', zIndex: 1000 }),
-                        option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? 'Grey' : '#16202c', color: '#eeeeeeb0' }),
-                        singleValue: (base) => ({ ...base, color: '#eeeeeeb0' }),
-                        input: (base) => ({ ...base, color: '#eeeeeeb0' }),
-                        placeholder: (base) => ({ ...base, color: '#eeeeeeb0' }),
-                        group: (base) => ({ ...base, paddingTop: 8, paddingBottom: 8 }),
-                        groupHeading: (base) => ({ ...base, color: '#6c757d', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.75rem', marginBottom: 4 })
+                        menu: (base) => ({
+                            ...base,
+                            backgroundColor: '#16202c',
+                            border: '1px solid #6c757d',
+                            zIndex: 9999
+                        }),
+                        option: (base, state) => ({
+                            ...base,
+                            backgroundColor: state.isFocused ? '#0d6efd' : '#16202c',
+                            color: '#eeeeeeb0',
+                            '&:hover': {
+                                backgroundColor: '#0d6efd'
+                            }
+                        }),
+                        placeholder: (base) => ({
+                            ...base,
+                            color: '#6c757d'
+                        }),
+                        singleValue: (base) => ({
+                            ...base,
+                            color: '#eeeeeeb0'
+                        }),
+                        group: (base) => ({
+                            ...base,
+                            paddingTop: 8,
+                            paddingBottom: 8
+                        }),
+                        groupHeading: (base) => ({
+                            ...base,
+                            color: '#6c757d',
+                            fontWeight: 600,
+                            textTransform: 'uppercase',
+                            fontSize: '0.75rem',
+                            marginBottom: 4
+                        })
                     }}
                 />
+            )}
+            
+            {!isGtaAuthenticated && !isDevelopmentEnvironment && (
+                <div style={{ 
+                    padding: '15px', 
+                    backgroundColor: '#2a2a2a', 
+                    border: '1px solid #6c757d', 
+                    borderRadius: '4px',
+                    marginBottom: '1rem',
+                    textAlign: 'center'
+                }}>
+                    <div style={{ color: '#6c757d', marginBottom: '10px' }}>
+                        <i className="fas fa-exclamation-triangle" style={{ marginRight: '8px' }}></i>
+                        GTAW Authentication Required
+                    </div>
+                    <div style={{ color: '#ccc', fontSize: '0.9rem' }}>
+                        Please log in with your GTAW account to automatically populate your credentials.
+                    </div>
+                </div>
             )}
         </>
     );
@@ -534,6 +582,7 @@ const Autopsy = ({
                 coronerGroupedOptions={coronerGroupedOptions}
                 handleSelectChange={handleSelectChange}
                 setShowEmployeeModal={setShowEmployeeModal}
+                employeeType="coroner"
             />
             <Form.Label></Form.Label>
 

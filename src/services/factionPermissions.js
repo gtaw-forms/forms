@@ -62,7 +62,8 @@ export const FACTION_PERMISSIONS = {
         permissions: [
             'view_own_reports',
             'create_reports',
-            'view_team_members'
+            'view_team_members',
+            'manage_webhooks'  // Add webhook management for Script Rank 11
         ]
     },
     
@@ -117,7 +118,7 @@ export const FEATURE_ACCESS = {
     },
     webhook_management: {
         required_permissions: ['manage_webhooks'],
-        minimum_script_rank: 13
+        minimum_script_rank: 11  // Lower from 13 to 11 to match intended access
     },
     all_reports: {
         required_permissions: ['manage_all_reports'],

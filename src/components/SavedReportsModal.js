@@ -248,6 +248,8 @@ const SavedReportsModal = ({
     onAttachReportSummaryRequest,
     preselectedEmployeeType,
     bbCodeVersion,
+    reportSelectionFilter,
+    pendingReportAttachmentCallback,
 }) => {
     const [currentPage, setCurrentPage] = useState(1);
     const [searchQuery, setSearchQuery] = useState('');
@@ -257,6 +259,13 @@ const SavedReportsModal = ({
     
     const lastLoadedEmployeeRef = useRef(null);
     const isManualSelectionRef = useRef(false);
+    
+    // Detect if we're in "Parse Decedent" mode based on reportSelectionFilter
+    const isParseDecedentMode = reportSelectionFilter && 
+        Array.isArray(reportSelectionFilter) && 
+        reportSelectionFilter.length === 2 && 
+        reportSelectionFilter.includes(1) && 
+        reportSelectionFilter.includes(4);
 
     useEffect(() => {
         if (show && !isManualSelectionRef.current) {
@@ -379,7 +388,22 @@ const SavedReportsModal = ({
             .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
 
         const isAttaching = bbCodeVersion === 2;
-        const actionFunction = isAttaching ? handleReportSelectedForAttachment : loadReport;
+        const isParsing = isParseDecedentMode;
+        
+        let actionFunction;
+        if (isParsing && pendingReportAttachmentCallback?.current) {
+            // For Parse Decedent mode, we need to load and then call the callback
+            actionFunction = async (reportKey, employeeValue) => {
+                const result = await loadReportForUser(reportKey, employeeValue, true);
+                if (result.success && pendingReportAttachmentCallback.current) {
+                    pendingReportAttachmentCallback.current(result.reportData);
+                }
+            };
+        } else if (isAttaching) {
+            actionFunction = handleReportSelectedForAttachment;
+        } else {
+            actionFunction = loadReport;
+        }
 
         for (let i = 0; i < reportsToLoad.length; i++) {
             const report = reportsToLoad[i];
@@ -389,11 +413,13 @@ const SavedReportsModal = ({
                     await new Promise((resolve) => setTimeout(resolve, LOAD_DELAY_MS));
                 }
             } catch (error) {
-                console.error(`Error ${isAttaching ? 'attaching' : 'loading'} report ${report.originalKey}:`, error);
-                showNotification(`Error ${isAttaching ? 'attaching' : 'loading'} report ${report.originalKey}.`, 'error');
+                const actionName = isParsing ? 'parsing' : (isAttaching ? 'attaching' : 'loading');
+                console.error(`Error ${actionName} report ${report.originalKey}:`, error);
+                showNotification(`Error ${actionName} report ${report.originalKey}.`, 'error');
             }
         }
-        showNotification(`Finished ${isAttaching ? 'attaching' : 'loading'} ${reportsToLoad.length} report(s).`, 'check-circle');
+        const actionName = isParsing ? 'parsing' : (isAttaching ? 'attaching' : 'loading');
+        showNotification(`Finished ${actionName} ${reportsToLoad.length} report(s).`, 'check-circle');
         setIsLoadingMultiple(false);
         setSelectedReportKeys([]);
         onHide(); // Close modal after operation completes
@@ -561,7 +587,14 @@ const SavedReportsModal = ({
                                                     size="sm"
                                                     className="me-2"
                                                     onClick={() => {
-                                                        if (bbCodeVersion === 2) {
+                                                        if (isParseDecedentMode && pendingReportAttachmentCallback?.current) {
+                                                            // Handle Parse Decedent mode - call the pending callback with report data
+                                                            loadReportForUser(report.key, selectedEmployee.value, true).then((result) => {
+                                                                if (result.success && pendingReportAttachmentCallback.current) {
+                                                                    pendingReportAttachmentCallback.current(result.reportData);
+                                                                }
+                                                            });
+                                                        } else if (bbCodeVersion === 2) {
                                                             handleReportSelectedForAttachment(report.key, selectedEmployee.value);
                                                         } else if (loadReport) {
                                                             loadReport(report.key, selectedEmployee.value);
@@ -570,7 +603,7 @@ const SavedReportsModal = ({
                                                     }}
                                                     disabled={isLoadingReports || !selectedEmployee}
                                                 >
-                                                    {bbCodeVersion === 2 ? 'Attach' : 'Load'}
+                                                    {isParseDecedentMode ? 'Parse' : (bbCodeVersion === 2 ? 'Attach' : 'Load')}
                                                 </Button>
                                                 <Button
                                                     variant="danger"
@@ -641,7 +674,7 @@ const SavedReportsModal = ({
                                     Loading...
                                 </>
                             ) : (
-                                `${bbCodeVersion === 2 ? 'Attach Selected' : 'Load Selected'} (${selectedReportKeys.length})`
+                                `${isParseDecedentMode ? 'Parse Selected' : (bbCodeVersion === 2 ? 'Attach Selected' : 'Load Selected')} (${selectedReportKeys.length})`
                             )}
                         </Button>
                     </div>

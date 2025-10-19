@@ -2,8 +2,6 @@
 import { useState, useEffect } from 'react';
 import { Button, Form } from 'react-bootstrap';
 import { formDefinitions } from '../formDefinitions';
-import { database } from '../firebase';
-import { ref, get, set } from 'firebase/database';
 import { useWebhooks } from '../hooks/useWebhooks';
 import * as Sentry from "@sentry/react";
 import GtaWorldLoginButton from './Auth/GtaWorldLoginButton';
@@ -51,9 +49,7 @@ const OnboardingModal = ({
     onComplete, 
     onSkip,
     formDefinitions: formDefs = formDefinitions,
-    showNotification = () => {}, // Add showNotification prop with default fallback
-    phmcList = [], // Add phmcList prop
-    coronerList = [] // Add coronerList prop
+    showNotification = () => {}
 }) => {
     // Initialize webhook functions
     const { logWebhookToFirebase } = useWebhooks({}, { sha: 'onboarding' }, showNotification);
@@ -64,45 +60,72 @@ const OnboardingModal = ({
     const [selectedUserType, setSelectedUserType] = useState(null);
     const [selectedRole, setSelectedRole] = useState(null);
     const [recommendedForms, setRecommendedForms] = useState([]);
-    const [showAccountCreation, setShowAccountCreation] = useState(false);
-    const [accountData, setAccountData] = useState({
-        firstName: '',
-        lastName: '',
-        discord: '',
-        rank: '',
-        badge: '',
-        phNumber: ''
-    });
-    const [isCreatingAccount, setIsCreatingAccount] = useState(false);
-    const [accountCreated, setAccountCreated] = useState(false);
-    const [showLogin, setShowLogin] = useState(false);
-    const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
-    const [isLoggingIn, setIsLoggingIn] = useState(false);
-    const [loggedIn, setLoggedIn] = useState(false);
+    // track whether user initiated GTAW OAuth from onboarding
+    const [awaitingGtawOAuth, setAwaitingGtawOAuth] = useState(false);
 
     // Reset state when modal opens
     useEffect(() => {
         if (show) {
-            setCurrentStep(ONBOARDING_STEPS.WELCOME);
-            setSelectedUserType(null);
-            setSelectedRole(null);
+            // Try to restore progress from localStorage
+            const saved = localStorage.getItem('onboardingProgress');
+            if (saved) {
+                try {
+                    const data = JSON.parse(saved);
+                    if (data.currentStep) setCurrentStep(data.currentStep);
+                    if (data.selectedUserType) setSelectedUserType(data.selectedUserType);
+                    if (data.selectedRole) setSelectedRole(data.selectedRole);
+                    if (typeof data.awaitingGtawOAuth === 'boolean') setAwaitingGtawOAuth(data.awaitingGtawOAuth);
+                } catch (e) {
+                    console.warn('Failed to parse onboardingProgress; resetting.', e);
+                    localStorage.removeItem('onboardingProgress');
+                    setCurrentStep(ONBOARDING_STEPS.WELCOME);
+                    setSelectedUserType(null);
+                    setSelectedRole(null);
+                    setAwaitingGtawOAuth(false);
+                }
+            } else {
+                setCurrentStep(ONBOARDING_STEPS.WELCOME);
+                setSelectedUserType(null);
+                setSelectedRole(null);
+                setAwaitingGtawOAuth(false);
+            }
             setRecommendedForms([]);
-            setShowAccountCreation(false);
-            setShowLogin(false);
-            setSelectedEmployeeId('');
-            setLoggedIn(false);
-            setAccountData({
-                firstName: '',
-                lastName: '',
-                discord: '',
-                rank: '',
-                badge: '',
-                phNumber: ''
-            });
-            setIsCreatingAccount(false);
-            setAccountCreated(false);
         }
     }, [show]);
+
+    // If the user returns from OAuth and we were awaiting, advance accordingly
+    useEffect(() => {
+        if (!show) return;
+        if (awaitingGtawOAuth && isGtaAuthenticated) {
+            console.log('[Onboarding] User returned from GTAW OAuth, checking faction status...');
+            
+            // Check if user is a PHMC faction member
+            const isFactionMember = gtaWorldUser?.faction && gtaWorldUser.faction.characterName;
+            
+            if (isFactionMember) {
+                const characterName = (gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? 
+                    `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : 
+                    gtaWorldUser.faction.characterName;
+                
+                console.log('[Onboarding] PHMC faction member detected:', characterName);
+                showNotification(`Welcome back, ${characterName}! Your GTAW account has been connected.`, 'success');
+            } else {
+                console.log('[Onboarding] Non-faction member, proceeding with standard access');
+                showNotification('GTAW login successful, but you are not a PHMC faction member. Proceeding with standard access.', 'warning');
+            }
+            
+            // Clear awaiting state and update progress
+            setAwaitingGtawOAuth(false);
+            persistProgress({ awaitingGtawOAuth: false });
+            
+            // Auto-advance to form preview step after OAuth success
+            setTimeout(() => {
+                setCurrentStep(ONBOARDING_STEPS.FORM_PREVIEW);
+                persistProgress({ currentStep: ONBOARDING_STEPS.FORM_PREVIEW });
+            }, 1500); // Give user time to read the notification
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [awaitingGtawOAuth, isGtaAuthenticated, show, gtaWorldUser]);
 
     // Update recommended forms when user type changes
     useEffect(() => {
@@ -122,6 +145,7 @@ const OnboardingModal = ({
         switch (currentStep) {
             case ONBOARDING_STEPS.WELCOME:
                 setCurrentStep(ONBOARDING_STEPS.USER_TYPE);
+                persistProgress({ currentStep: ONBOARDING_STEPS.USER_TYPE });
                 break;
             case ONBOARDING_STEPS.USER_TYPE:
                 if (selectedUserType === USER_TYPES.PHMC_STAFF || selectedUserType === USER_TYPES.CORONER) {
@@ -129,15 +153,19 @@ const OnboardingModal = ({
                 } else {
                     setCurrentStep(ONBOARDING_STEPS.FORM_PREVIEW);
                 }
+                persistProgress({ currentStep: selectedUserType === USER_TYPES.PHMC_STAFF || selectedUserType === USER_TYPES.CORONER ? ONBOARDING_STEPS.ROLE_SPECIFIC : ONBOARDING_STEPS.FORM_PREVIEW });
                 break;
             case ONBOARDING_STEPS.ROLE_SPECIFIC:
                 setCurrentStep(ONBOARDING_STEPS.FORM_PREVIEW);
+                persistProgress({ currentStep: ONBOARDING_STEPS.FORM_PREVIEW });
                 break;
             case ONBOARDING_STEPS.FORM_PREVIEW:
                 setCurrentStep(ONBOARDING_STEPS.PRIVACY_POLICY);
+                persistProgress({ currentStep: ONBOARDING_STEPS.PRIVACY_POLICY });
                 break;
             case ONBOARDING_STEPS.PRIVACY_POLICY:
                 setCurrentStep(ONBOARDING_STEPS.COMPLETE);
+                persistProgress({ currentStep: ONBOARDING_STEPS.COMPLETE });
                 break;
             case ONBOARDING_STEPS.COMPLETE:
                 handleComplete();
@@ -151,22 +179,28 @@ const OnboardingModal = ({
         switch (currentStep) {
             case ONBOARDING_STEPS.USER_TYPE:
                 setCurrentStep(ONBOARDING_STEPS.WELCOME);
+                persistProgress({ currentStep: ONBOARDING_STEPS.WELCOME });
                 break;
             case ONBOARDING_STEPS.ROLE_SPECIFIC:
                 setCurrentStep(ONBOARDING_STEPS.USER_TYPE);
+                persistProgress({ currentStep: ONBOARDING_STEPS.USER_TYPE });
                 break;
             case ONBOARDING_STEPS.FORM_PREVIEW:
                 if (selectedUserType === USER_TYPES.PHMC_STAFF || selectedUserType === USER_TYPES.CORONER) {
                     setCurrentStep(ONBOARDING_STEPS.ROLE_SPECIFIC);
+                    persistProgress({ currentStep: ONBOARDING_STEPS.ROLE_SPECIFIC });
                 } else {
                     setCurrentStep(ONBOARDING_STEPS.USER_TYPE);
+                    persistProgress({ currentStep: ONBOARDING_STEPS.USER_TYPE });
                 }
                 break;
             case ONBOARDING_STEPS.PRIVACY_POLICY:
                 setCurrentStep(ONBOARDING_STEPS.FORM_PREVIEW);
+                persistProgress({ currentStep: ONBOARDING_STEPS.FORM_PREVIEW });
                 break;
             case ONBOARDING_STEPS.COMPLETE:
                 setCurrentStep(ONBOARDING_STEPS.PRIVACY_POLICY);
+                persistProgress({ currentStep: ONBOARDING_STEPS.PRIVACY_POLICY });
                 break;
             default:
                 break;
@@ -175,8 +209,7 @@ const OnboardingModal = ({
 
     const handleComplete = () => {
         // Get logged-in user data if available
-        const loggedInUser = loggedIn ? 
-            [...(phmcList || []), ...(coronerList || [])].find(emp => emp.name === selectedEmployeeId) : null;
+        const isFactionMember = gtaWorldUser?.faction && gtaWorldUser.faction.characterName;
         
         // Determine default form based on user type and role
         let defaultForm = 1; // Default fallback
@@ -202,25 +235,23 @@ const OnboardingModal = ({
             onboardingComplete: true,
             completedAt: new Date().toISOString(),
             defaultForm: defaultForm,
-            // Include user account info if logged in or account created
-            ...(loggedInUser && { 
+            // Include user account info if GTAW linked
+            ...(isFactionMember && gtaWorldUser && { 
                 userAccount: {
-                    name: loggedInUser.name,
-                    category: loggedInUser.category || loggedInUser.rank,
+                    name: (gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : gtaWorldUser.faction.characterName,
+                    category: gtaWorldUser.faction.rank || 'PHMC',
                     type: selectedUserType === USER_TYPES.CORONER ? 'coroner' : 'phmc'
                 }
-            }),
-            ...(accountCreated && {
-                accountCreated: true,
-                newAccount: true
             })
         };
 
         // Save preferences to localStorage
         localStorage.setItem('userOnboardingPreferences', JSON.stringify(preferences));
         localStorage.setItem('onboardingComplete', 'true');
+        // Clear onboarding progress since we're done
+        localStorage.removeItem('onboardingProgress');
 
-        // Send webhook notification for onboarding completion
+    // Send webhook notification for onboarding completion
         sendOnboardingCompletionWebhook(preferences);
 
         // Call completion callback
@@ -243,7 +274,7 @@ const OnboardingModal = ({
                     { name: "Role", value: preferences.role ? getRoleLabel(preferences.role) : 'Not specified', inline: true },
                     { name: "Recommended Forms", value: `${preferences.recommendedForms.length} forms`, inline: true },
                     { name: "Categories Access", value: preferences.allowedCategories.join(', '), inline: false },
-                    { name: "Account Status", value: preferences.userAccount ? 'Logged In' : (preferences.accountCreated ? 'Account Created' : 'No Account'), inline: true },
+                    { name: "Account Status", value: preferences.userAccount ? 'GTAW Connected' : 'No Account', inline: true },
                     ...(preferences.userAccount ? [{ name: "User Account", value: `${preferences.userAccount.name} (${preferences.userAccount.category})`, inline: true }] : [])
                 ],
                 timestamp: new Date().toISOString(),
@@ -281,174 +312,9 @@ const OnboardingModal = ({
     const handleSkip = () => {
         localStorage.setItem('onboardingComplete', 'true');
         localStorage.setItem('onboardingSkipped', 'true');
+        localStorage.removeItem('onboardingProgress');
         onSkip();
     };
-
-    const handleAccountDataChange = (e) => {
-        setAccountData({
-            ...accountData,
-            [e.target.name]: e.target.value
-        });
-    };
-
-    const handleCreateAccount = async () => {
-        setIsCreatingAccount(true);
-        try {
-            const isCoroner = selectedUserType === USER_TYPES.CORONER;
-            const requiredFields = isCoroner
-                ? ['firstName', 'discord', 'rank', 'badge']
-                : ['firstName', 'lastName', 'rank'];
-
-            const emptyFields = requiredFields.filter(field => !accountData[field]?.trim());
-            if (emptyFields.length > 0) {
-                showNotification(`Please fill in all required fields: ${emptyFields.join(', ')}`, 'warning');
-                setIsCreatingAccount(false);
-                return;
-            }
-
-            const newStaffMemberName = isCoroner 
-                ? accountData.firstName
-                : `${accountData.firstName} ${accountData.lastName}`.trim();
-
-            const newStaffMember = isCoroner ? {
-                name: newStaffMemberName,
-                discord: accountData.discord,
-                rank: accountData.rank,
-                badge: accountData.badge,
-                phNumber: accountData.phNumber || "",
-                category: accountData.rank,
-            } : {
-                name: newStaffMemberName,
-                lastName: accountData.lastName,
-                rank: accountData.rank,
-                category: accountData.rank,
-            };
-
-            const listRef = ref(database, isCoroner ? 'staff/coroner' : 'staff/phmc');
-            const snapshot = await get(listRef);
-            const currentStaff = snapshot.exists() ? snapshot.val() : [];
-
-            const isDuplicate = currentStaff.some(member => 
-                member.name.toLowerCase() === newStaffMember.name.toLowerCase());
-            if (isDuplicate) {
-                showNotification(`Staff member with name "${newStaffMember.name}" already exists.`, 'warning');
-                setIsCreatingAccount(false);
-                return;
-            }
-
-            const updatedStaff = [...currentStaff, newStaffMember];
-            await set(listRef, updatedStaff);
-            
-            // Send webhook notification for account creation
-            await sendAccountCreationWebhook(newStaffMember, isCoroner);
-            
-            setAccountCreated(true);
-            showNotification(`Successfully created account for ${newStaffMember.name}!`, 'success');
-            
-            // Auto-progress to next step after successful account creation
-            setTimeout(() => {
-                setCurrentStep(ONBOARDING_STEPS.FORM_PREVIEW);
-            }, 1500);
-        } catch (error) {
-            console.error('Error creating account:', error);
-            showNotification(`Error creating account: ${error.message}`, 'error');
-        } finally {
-            setIsCreatingAccount(false);
-        }
-    };
-
-    const sendAccountCreationWebhook = async (staffMember, isCoroner) => {
-        try {
-            const webhookURL = process.env.REACT_APP_DEV_WEBHOOK;
-            if (!webhookURL) {
-                console.warn('Dev webhook URL not configured for account creation notifications.');
-                return;
-            }
-
-            const embed = {
-                title: `👤 New ${isCoroner ? 'Coroner' : 'PHMC Staff'} Account Created`,
-                color: isCoroner ? 0x8b0000 : 0x007bff, // Red for coroner, blue for PHMC
-                fields: [
-                    { name: "Name", value: staffMember.name, inline: true },
-                    { name: "Rank/Position", value: staffMember.rank || staffMember.category, inline: true },
-                    ...(isCoroner ? [
-                        { name: "Discord", value: staffMember.discord, inline: true },
-                        { name: "Badge Number", value: staffMember.badge, inline: true },
-                        ...(staffMember.phNumber ? [{ name: "PH Number", value: staffMember.phNumber, inline: true }] : [])
-                    ] : [
-                        { name: "Last Name", value: staffMember.lastName, inline: true }
-                    ]),
-                    { name: "Account Type", value: isCoroner ? 'Coroner Staff' : 'Hospital Staff', inline: true },
-                    { name: "Created Via", value: 'Onboarding System', inline: true }
-                ],
-                timestamp: new Date().toISOString(),
-                footer: {
-                    text: "PHMC Forms - Account Creation"
-                }
-            };
-
-            const payload = {
-                username: "Account Bot",
-                embeds: [embed]
-            };
-
-            const response = await fetch(webhookURL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(payload)
-            });
-
-            if (response.ok) {
-                console.log('Account creation webhook sent successfully');
-                // Log to Firebase
-                await logWebhookToFirebase('account_creation', payload);
-            } else {
-                console.error('Failed to send account creation webhook:', response.status);
-            }
-        } catch (error) {
-            console.error('Error sending account creation webhook:', error);
-            Sentry.captureException(error, { extra: { context: 'Account Creation Webhook' } });
-        }
-    };
-
-    const handleLogin = async () => {
-        if (!selectedEmployeeId) {
-            showNotification('Please select an employee to login as.', 'warning');
-            return;
-        }
-        
-        setIsLoggingIn(true);
-        
-        try {
-            // Find the selected employee
-            const allEmployees = [...(phmcList || []), ...(coronerList || [])];
-            const selectedEmployee = allEmployees.find(emp => emp.name === selectedEmployeeId);
-            
-            // Send webhook notification for login
-            await sendAccountCreationWebhook({
-                name: selectedEmployee?.name || 'Unknown',
-                role: selectedEmployee?.category || selectedEmployee?.rank || 'Unknown',
-                userType: getUserTypeLabel(selectedUserType),
-                action: 'login'
-            }, selectedUserType === USER_TYPES.CORONER);
-            
-            setLoggedIn(true);
-            showNotification(`Successfully logged in as ${selectedEmployee?.name || 'Employee'}!`, 'success');
-            
-            // Auto-progress to next step after successful login
-            setTimeout(() => {
-                setCurrentStep(ONBOARDING_STEPS.FORM_PREVIEW);
-            }, 1500);
-        } catch (error) {
-            console.error('Error during login:', error);
-            showNotification(`Error during login: ${error.message}`, 'error');
-        } finally {
-            setIsLoggingIn(false);
-        }
-    };
-
     const handleGtawLogin = async (userData) => {
         try {
             console.log('[Onboarding] GTAW login successful:', userData);
@@ -461,34 +327,42 @@ const OnboardingModal = ({
                     `${userData.faction.firstname} ${userData.faction.lastname}` : 
                     userData.faction.characterName;
                 
-                // Send webhook notification for GTAW login
-                await sendAccountCreationWebhook({
-                    name: characterName,
-                    role: userData.faction.rank || 'Unknown',
-                    userType: getUserTypeLabel(selectedUserType),
-                    scriptRank: userData.faction.scriptRank,
-                    action: 'gtaw_oauth_login'
-                }, selectedUserType === USER_TYPES.CORONER);
-                
-                setLoggedIn(true);
                 showNotification(`Successfully logged in via GTAW as ${characterName}!`, 'success');
                 
                 // Auto-progress to next step after successful login
                 setTimeout(() => {
                     setCurrentStep(ONBOARDING_STEPS.FORM_PREVIEW);
+                    persistProgress({ currentStep: ONBOARDING_STEPS.FORM_PREVIEW });
                 }, 1500);
             } else {
                 showNotification('GTAW login successful, but you are not a PHMC faction member. Proceeding with standard access.', 'warning');
-                setLoggedIn(true);
                 // Still allow progression for non-faction members
                 setTimeout(() => {
                     setCurrentStep(ONBOARDING_STEPS.FORM_PREVIEW);
+                    persistProgress({ currentStep: ONBOARDING_STEPS.FORM_PREVIEW });
                 }, 1500);
             }
         } catch (error) {
             console.error('Error during GTAW login:', error);
             showNotification(`Error during GTAW login: ${error.message}`, 'error');
         }
+    };
+
+    // Persist progress helper
+    const persistProgress = (updates = {}) => {
+        const savedRaw = localStorage.getItem('onboardingProgress');
+        let base = {};
+        if (savedRaw) {
+            try { base = JSON.parse(savedRaw) || {}; } catch { base = {}; }
+        }
+        const next = {
+            currentStep,
+            selectedUserType,
+            selectedRole,
+            awaitingGtawOAuth,
+            ...updates
+        };
+        localStorage.setItem('onboardingProgress', JSON.stringify({ ...base, ...next }));
     };
 
     const getStepNumber = () => {
@@ -642,117 +516,6 @@ const OnboardingModal = ({
 
     const renderRoleSpecificStep = () => {
         if (selectedUserType === USER_TYPES.PHMC_STAFF) {
-            if (showAccountCreation) {
-                return (
-                    <div style={stepContentStyle}>
-                        <h2 style={stepTitleStyle}>Create Your PHMC Staff Account</h2>
-                        <p style={stepDescriptionStyle}>
-                            Fill in your details to create your staff account:
-                        </p>
-                        <div style={accountFormStyle}>
-                            <div style={formRowStyle}>
-                                <Form.Control
-                                    type="text"
-                                    name="firstName"
-                                    value={accountData.firstName}
-                                    onChange={handleAccountDataChange}
-                                    placeholder="First Name *"
-                                    style={formInputStyle}
-                                />
-                                <Form.Control
-                                    type="text"
-                                    name="lastName"
-                                    value={accountData.lastName}
-                                    onChange={handleAccountDataChange}
-                                    placeholder="Last Name *"
-                                    style={formInputStyle}
-                                />
-                            </div>
-                            <Form.Control
-                                type="text"
-                                name="rank"
-                                value={accountData.rank}
-                                onChange={handleAccountDataChange}
-                                placeholder="Rank/Position *"
-                                style={formInputStyle}
-                            />
-                            <div style={accountActionsStyle}>
-                                <Button 
-                                    variant="outline-secondary" 
-                                    onClick={() => setShowAccountCreation(false)}
-                                    style={skipAccountButtonStyle}
-                                >
-                                    Skip Account Creation
-                                </Button>
-                                <Button 
-                                    variant="primary" 
-                                    onClick={handleCreateAccount}
-                                    disabled={isCreatingAccount}
-                                    style={createAccountButtonStyle}
-                                >
-                                    {isCreatingAccount ? 'Creating...' : 'Create Account'}
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-                );
-            }
-
-            // Show login form for PHMC Staff
-            if (showLogin) {
-                return (
-                    <div style={stepContentStyle}>
-                        <h2 style={stepTitleStyle}>Login to Your PHMC Staff Account</h2>
-                        <p style={stepDescriptionStyle}>
-                            Select your name from the list below:
-                        </p>
-                        
-                        <div style={{margin: '20px 0'}}>
-                            <Form.Group>
-                                <Form.Label style={{fontWeight: 'bold', marginBottom: '10px'}}>
-                                    Select Your Name:
-                                </Form.Label>
-                                <Form.Select 
-                                    value={selectedEmployeeId}
-                                    onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                                    style={{
-                                        padding: '10px',
-                                        borderRadius: '5px',
-                                        border: '1px solid #ddd',
-                                        fontSize: '16px'
-                                    }}
-                                >
-                                    <option value="">Choose your name...</option>
-                                    {phmcList && phmcList.map((employee, index) => (
-                                        <option key={index} value={employee.name}>
-                                            {employee.name} - {employee.category || employee.rank || 'PHMC Staff'}
-                                        </option>
-                                    ))}
-                                </Form.Select>
-                            </Form.Group>
-                        </div>
-
-                        <div style={{display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '30px'}}>
-                            <Button 
-                                variant="secondary" 
-                                onClick={() => setShowLogin(false)}
-                                style={{padding: '10px 20px'}}
-                            >
-                                Back
-                            </Button>
-                            <Button 
-                                variant="success" 
-                                onClick={handleLogin}
-                                disabled={!selectedEmployeeId || isLoggingIn}
-                                style={{padding: '10px 20px'}}
-                            >
-                                {isLoggingIn ? 'Logging in...' : 'Login'}
-                            </Button>
-                        </div>
-                    </div>
-                );
-            }
-
             return (
                 <div style={stepContentStyle}>
                     <h2 style={stepTitleStyle}>What's your primary role at PHMC?</h2>
@@ -787,52 +550,18 @@ const OnboardingModal = ({
                     <div style={accountPromptStyle}>
                         <p style={accountPromptTextStyle}>
                             <i className="fas fa-user-plus" style={promptIconStyle}></i>
-                            Would you like to create a staff account, login with an existing one, or use GTAW OAuth?
+                            Connect your GTAW account to personalize your PHMC access.
                         </p>
                         <div style={{display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap'}}>
-                            <Button 
-                                variant="outline-primary" 
-                                onClick={() => setShowAccountCreation(true)}
-                                style={{
-                                    borderColor: '#007bff',
-                                    color: '#007bff',
-                                    backgroundColor: 'transparent'
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.target.style.backgroundColor = '#007bff';
-                                    e.target.style.color = '#fff';
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.target.style.backgroundColor = 'transparent';
-                                    e.target.style.color = '#007bff';
-                                }}
-                            >
-                                Create Staff Account
-                            </Button>
-                            <Button 
-                                variant="outline-success" 
-                                onClick={() => setShowLogin(true)}
-                                style={{
-                                    borderColor: '#28a745',
-                                    color: '#28a745',
-                                    backgroundColor: 'transparent'
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.target.style.backgroundColor = '#28a745';
-                                    e.target.style.color = '#fff';
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.target.style.backgroundColor = 'transparent';
-                                    e.target.style.color = '#28a745';
-                                }}
-                            >
-                                Login
-                            </Button>
                             <GtaWorldLoginButton
                                 variant="outline-warning"
                                 returnPath={window.location.hash || '#/'}
                                 onSuccess={handleGtawLogin}
                                 onError={(error) => showNotification(`GTAW Login failed: ${error}`, 'error')}
+                                onInitiate={() => {
+                                    setAwaitingGtawOAuth(true);
+                                    persistProgress({ awaitingGtawOAuth: true, currentStep, selectedUserType, selectedRole });
+                                }}
                                 disabled={gtaLoading || isGtaAuthenticated}
                                 style={{
                                     borderColor: '#ffc107',
@@ -859,135 +588,6 @@ const OnboardingModal = ({
         }
 
         if (selectedUserType === USER_TYPES.CORONER) {
-            if (showAccountCreation) {
-                return (
-                    <div style={stepContentStyle}>
-                        <h2 style={stepTitleStyle}>Create Your Coroner Account</h2>
-                        <p style={stepDescriptionStyle}>
-                            Fill in your details to create your coroner account:
-                        </p>
-                        <div style={accountFormStyle}>
-                            <div style={formRowStyle}>
-                                <Form.Control
-                                    type="text"
-                                    name="firstName"
-                                    value={accountData.firstName}
-                                    onChange={handleAccountDataChange}
-                                    placeholder="Name *"
-                                    style={formInputStyle}
-                                />
-                                <Form.Control
-                                    type="text"
-                                    name="discord"
-                                    value={accountData.discord}
-                                    onChange={handleAccountDataChange}
-                                    placeholder="Discord Name *"
-                                    style={formInputStyle}
-                                />
-                            </div>
-                            <div style={formRowStyle}>
-                                <Form.Control
-                                    type="text"
-                                    name="rank"
-                                    value={accountData.rank}
-                                    onChange={handleAccountDataChange}
-                                    placeholder="Rank/Position *"
-                                    style={formInputStyle}
-                                />
-                                <Form.Control
-                                    type="text"
-                                    name="badge"
-                                    value={accountData.badge}
-                                    onChange={handleAccountDataChange}
-                                    placeholder="Badge Number *"
-                                    style={formInputStyle}
-                                />
-                            </div>
-                            <Form.Control
-                                type="text"
-                                name="phNumber"
-                                value={accountData.phNumber}
-                                onChange={handleAccountDataChange}
-                                placeholder="PH Number (Optional)"
-                                style={formInputStyle}
-                            />
-                            <div style={accountActionsStyle}>
-                                <Button 
-                                    variant="outline-secondary" 
-                                    onClick={() => setShowAccountCreation(false)}
-                                    style={skipAccountButtonStyle}
-                                >
-                                    Skip Account Creation
-                                </Button>
-                                <Button 
-                                    variant="primary" 
-                                    onClick={handleCreateAccount}
-                                    disabled={isCreatingAccount}
-                                    style={createAccountButtonStyle}
-                                >
-                                    {isCreatingAccount ? 'Creating...' : 'Create Account'}
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-                );
-            }
-
-            // Show login form for Coroner
-            if (showLogin) {
-                return (
-                    <div style={stepContentStyle}>
-                        <h2 style={stepTitleStyle}>Login to Your Coroner Account</h2>
-                        <p style={stepDescriptionStyle}>
-                            Select your name from the list below:
-                        </p>
-                        
-                        <div style={{margin: '20px 0'}}>
-                            <Form.Group>
-                                <Form.Label style={{fontWeight: 'bold', marginBottom: '10px'}}>
-                                    Select Your Name:
-                                </Form.Label>
-                                <Form.Select 
-                                    value={selectedEmployeeId}
-                                    onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                                    style={{
-                                        padding: '10px',
-                                        borderRadius: '5px',
-                                        border: '1px solid #ddd',
-                                        fontSize: '16px'
-                                    }}
-                                >
-                                    <option value="">Choose your name...</option>
-                                    {coronerList && coronerList.map((employee, index) => (
-                                        <option key={index} value={employee.name}>
-                                            {employee.name} - {employee.category || employee.rank || 'Coroner'}
-                                        </option>
-                                    ))}
-                                </Form.Select>
-                            </Form.Group>
-                        </div>
-
-                        <div style={{display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '30px'}}>
-                            <Button 
-                                variant="secondary" 
-                                onClick={() => setShowLogin(false)}
-                                style={{padding: '10px 20px'}}
-                            >
-                                Back
-                            </Button>
-                            <Button 
-                                variant="success" 
-                                onClick={handleLogin}
-                                disabled={!selectedEmployeeId || isLoggingIn}
-                                style={{padding: '10px 20px'}}
-                            >
-                                {isLoggingIn ? 'Logging in...' : 'Login'}
-                            </Button>
-                        </div>
-                    </div>
-                );
-            }
-
             return (
                 <div style={stepContentStyle}>
                     <h2 style={stepTitleStyle}>Welcome, Coroner!</h2>
@@ -1009,52 +609,18 @@ const OnboardingModal = ({
                     <div style={accountPromptStyle}>
                         <p style={accountPromptTextStyle}>
                             <i className="fas fa-user-plus" style={promptIconStyle}></i>
-                            Would you like to create a coroner account, login with an existing one, or use GTAW OAuth?
+                            Connect your GTAW account to personalize your Coroner access.
                         </p>
                         <div style={{display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap'}}>
-                            <Button 
-                                variant="outline-primary" 
-                                onClick={() => setShowAccountCreation(true)}
-                                style={{
-                                    borderColor: '#007bff',
-                                    color: '#007bff',
-                                    backgroundColor: 'transparent'
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.target.style.backgroundColor = '#007bff';
-                                    e.target.style.color = '#fff';
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.target.style.backgroundColor = 'transparent';
-                                    e.target.style.color = '#007bff';
-                                }}
-                            >
-                                Create Coroner Account
-                            </Button>
-                            <Button 
-                                variant="outline-success" 
-                                onClick={() => setShowLogin(true)}
-                                style={{
-                                    borderColor: '#28a745',
-                                    color: '#28a745',
-                                    backgroundColor: 'transparent'
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.target.style.backgroundColor = '#28a745';
-                                    e.target.style.color = '#fff';
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.target.style.backgroundColor = 'transparent';
-                                    e.target.style.color = '#28a745';
-                                }}
-                            >
-                                Login
-                            </Button>
                             <GtaWorldLoginButton
                                 variant="outline-warning"
                                 returnPath={window.location.hash || '#/'}
                                 onSuccess={handleGtawLogin}
                                 onError={(error) => showNotification(`GTAW Login failed: ${error}`, 'error')}
+                                onInitiate={() => {
+                                    setAwaitingGtawOAuth(true);
+                                    persistProgress({ awaitingGtawOAuth: true, currentStep, selectedUserType, selectedRole });
+                                }}
                                 disabled={gtaLoading || isGtaAuthenticated}
                                 style={{
                                     borderColor: '#ffc107',
@@ -1203,10 +769,10 @@ const OnboardingModal = ({
                 return selectedUserType !== null;
             case ONBOARDING_STEPS.ROLE_SPECIFIC:
                 if (selectedUserType === USER_TYPES.PHMC_STAFF) {
-                    return selectedRole !== null || showAccountCreation || (showLogin && selectedEmployeeId) || accountCreated || loggedIn;
+                    return selectedRole !== null;
                 }
                 if (selectedUserType === USER_TYPES.CORONER) {
-                    return true || showAccountCreation || (showLogin && selectedEmployeeId) || accountCreated || loggedIn;
+                    return true; // Coroner can always proceed from role specific step
                 }
                 return selectedRole !== null;
             case ONBOARDING_STEPS.FORM_PREVIEW:
@@ -1613,45 +1179,6 @@ const backButtonStyle = {
 
 const nextButtonStyle = {
     minWidth: '120px'
-};
-
-// Account creation styles
-const accountFormStyle = {
-    maxWidth: '500px',
-    margin: '0 auto',
-    textAlign: 'left'
-};
-
-const formRowStyle = {
-    display: 'flex',
-    gap: '15px',
-    marginBottom: '15px'
-};
-
-const formInputStyle = {
-    backgroundColor: '#2a2a2a',
-    color: '#fff',
-    border: '1px solid #444',
-    borderRadius: '6px',
-    padding: '10px',
-    marginBottom: '15px'
-};
-
-const accountActionsStyle = {
-    display: 'flex',
-    gap: '15px',
-    justifyContent: 'center',
-    marginTop: '20px'
-};
-
-const skipAccountButtonStyle = {
-    borderColor: '#6c757d',
-    color: '#6c757d'
-};
-
-const createAccountButtonStyle = {
-    backgroundColor: '#007bff',
-    borderColor: '#007bff'
 };
 
 const accountPromptStyle = {

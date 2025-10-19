@@ -456,28 +456,51 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
             if (showInAppNotification) showInAppNotification("Invalid recruitment category selected.", "error");
             return;
         }
+        
         setIsLoadingRecruitmentData(true);
         const categoryConfig = recruitmentCategories[categoryKey];
-        try {
-            const dataRef = ref(database, categoryConfig.path);
-            const snapshot = await get(dataRef);
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                setCurrentRecruitmentData(data);
-                setFormData(prev => ({ ...prev, adminDisplayData: data, adminSelectedCategoryName: categoryConfig.displayName }));
-            } else {
-                setCurrentRecruitmentData({});
-                setFormData(prev => ({ ...prev, adminDisplayData: null, adminSelectedCategoryName: categoryConfig.displayName }));
-                if (showInAppNotification) showInAppNotification(`No data found for ${categoryConfig.displayName}.`, "warning");
+        
+        // Add retry logic for Firebase connection issues
+        let retryCount = 0;
+        const maxRetries = 3;
+        
+        while (retryCount < maxRetries) {
+            try {
+                console.log(`[Recruitment Data] Fetching data for ${categoryConfig.displayName} (attempt ${retryCount + 1}/${maxRetries})`);
+                
+                const dataRef = ref(database, categoryConfig.path);
+                const snapshot = await get(dataRef);
+                
+                if (snapshot.exists()) {
+                    const data = snapshot.val();
+                    console.log(`[Recruitment Data] Successfully loaded ${Object.keys(data).length} positions for ${categoryConfig.displayName}`);
+                    setCurrentRecruitmentData(data);
+                    setFormData(prev => ({ ...prev, adminDisplayData: data, adminSelectedCategoryName: categoryConfig.displayName }));
+                    break; // Success - exit retry loop
+                } else {
+                    console.warn(`[Recruitment Data] No data found at path: ${categoryConfig.path}`);
+                    setCurrentRecruitmentData({});
+                    setFormData(prev => ({ ...prev, adminDisplayData: null, adminSelectedCategoryName: categoryConfig.displayName }));
+                    if (showInAppNotification) showInAppNotification(`No positions found for ${categoryConfig.displayName}. The database may be empty or the path may be incorrect.`, "warning");
+                    break; // No data is not a retry-able error
+                }
+            } catch (dbError) {
+                retryCount++;
+                console.error(`[Recruitment Data] Error fetching data for ${categoryConfig.displayName} (attempt ${retryCount}/${maxRetries}):`, dbError);
+                
+                if (retryCount >= maxRetries) {
+                    // Final attempt failed
+                    if (showInAppNotification) showInAppNotification(`Failed to load recruitment data for ${categoryConfig.displayName} after ${maxRetries} attempts. Please check your internet connection and try again.`, "error");
+                    setCurrentRecruitmentData({});
+                    setFormData(prev => ({ ...prev, adminDisplayData: null, adminSelectedCategoryName: categoryConfig.displayName }));
+                } else {
+                    // Wait before retrying (exponential backoff)
+                    await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+                }
             }
-        } catch (dbError) {
-            console.error(`Error fetching data for ${categoryConfig.displayName}:`, dbError);
-            if (showInAppNotification) showInAppNotification(`Failed to load data for ${categoryConfig.displayName}.`, "error");
-            setCurrentRecruitmentData({});
-            setFormData(prev => ({ ...prev, adminDisplayData: null, adminSelectedCategoryName: categoryConfig.displayName }));
-        } finally {
-            setIsLoadingRecruitmentData(false);
         }
+        
+        setIsLoadingRecruitmentData(false);
     }, [setFormData, showInAppNotification]);
     const [webhookMessage, setWebhookMessage] = useState('');
 
@@ -1585,6 +1608,7 @@ Key: ${savedRoleData.originalKey}`,
                 customWebhookResult={customWebhookResult}
                 handleSendCustomWebhook={handleSendCustomWebhook}
                 logRefreshTrigger={logRefreshTrigger}
+                setLogRefreshTrigger={setLogRefreshTrigger}
             />
 
             {selectedRecruitmentCategory && recruitmentCategories[selectedRecruitmentCategory] && (

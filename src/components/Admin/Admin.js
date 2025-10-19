@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 
 const Admin = ({ formData, setFormData, showNotification }) => {
     const [commitInfo, setCommitInfo] = useState({ sha: '', date: null, error: null });
+    const [hasLoggedUnauthorizedAccess, setHasLoggedUnauthorizedAccess] = useState(false);
     
     // Firebase Authentication context
     const { currentUser } = useAuth();
@@ -165,8 +166,11 @@ const Admin = ({ formData, setFormData, showNotification }) => {
     const hasPhmcAccess = isPhmcMember || isGmailUser;
     
     if (!hasPhmcAccess && isGtaAuthenticated && !gtaAuthLoading) {
-        // Log unauthorized access attempt
+        // Log unauthorized access attempt (only once per session)
         const logUnauthorizedAccess = async () => {
+            // Prevent multiple webhook calls for the same session
+            if (hasLoggedUnauthorizedAccess) return;
+            
             try {
                 const webhookURL = process.env.REACT_APP_ADMIN_ACTION_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DEV_WEBHOOK;
                 if (webhookURL) {
@@ -182,12 +186,19 @@ const Admin = ({ formData, setFormData, showNotification }) => {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ embeds: [embed] })
                     });
+                    
+                    // Mark as logged to prevent duplicate calls
+                    setHasLoggedUnauthorizedAccess(true);
                 }
             } catch (error) {
                 console.error('Failed to log unauthorized access:', error);
             }
         };
-        logUnauthorizedAccess();
+        
+        // Only log if we haven't already for this session
+        if (!hasLoggedUnauthorizedAccess) {
+            logUnauthorizedAccess();
+        }
         
         return (
             <div style={{ textAlign: 'center', padding: '2rem' }}>
@@ -197,7 +208,7 @@ const Admin = ({ formData, setFormData, showNotification }) => {
                 <div style={{ marginTop: '2rem', display: 'flex', gap: '1rem', justifyContent: 'center' }}>
                     <button 
                         className="btn btn-primary"
-                        onClick={() => window.location.href = '/'}
+                        onClick={() => window.location.href = '/forms'}
                         style={{ minWidth: '120px' }}
                     >
                         Go to Home

@@ -226,8 +226,32 @@ export const useReportManagement = (
             return { success: false, error: message };
         }
 
+
         const sanitizedAuthorId = comprehensiveSanitize(currentAuthor);
-        const sanitizedKey = key.trim().replace(/[.#$[\/ \]]+/g, '_') + '_' + Date.now();
+        // Check for duplicate report by decedentName and decedentOOC
+        let duplicateKey = null;
+        let duplicateReport = null;
+        for (const report of savedReports) {
+            // Check for match by decedentName and decedentOOC
+            const data = report.data || {};
+            if (
+                (data.decedentName && formData.decedentName && data.decedentName === formData.decedentName) &&
+                ((data.decedentOOC || '') === (formData.decedentOOC || ''))
+            ) {
+                duplicateKey = report.originalKey;
+                duplicateReport = report;
+                break;
+            }
+        }
+
+        // If duplicate found, override its key
+        let sanitizedKey;
+        if (duplicateKey) {
+            // Use the same key as the duplicate, but update timestamp for uniqueness
+            sanitizedKey = duplicateReport && duplicateReport.sanitizedKey ? duplicateReport.sanitizedKey : duplicateKey.trim().replace(/[.#$[\/ \]]+/g, '_') + '_' + Date.now();
+        } else {
+            sanitizedKey = key.trim().replace(/[.#$[\/ \]]+/g, '_') + '_' + Date.now();
+        }
 
         // --- Easter Egg Logic ---
         const currentSavedCountForAuthor = savedReports.filter(r => r.authorName === currentAuthor).length;
@@ -290,11 +314,15 @@ export const useReportManagement = (
         try {
             const reportRef = ref(database, reportPath);
             await set(reportRef, reportDataToSave);
-            
-            const successMessage = isGtaAuthenticated && gtaWorldUser ? 
-                `Report "${key}" saved for ${currentAuthor} to Firebase with GTAW data!` :
-                `Report "${key}" saved for ${currentAuthor} to Firebase!`;
-            
+
+            let successMessage;
+            if (duplicateKey) {
+                successMessage = `Duplicate report found for "${formData.decedentName}". Overridden and saved!`;
+            } else {
+                successMessage = isGtaAuthenticated && gtaWorldUser ?
+                    `Report "${key}" saved for ${currentAuthor} to Firebase with GTAW data!` :
+                    `Report "${key}" saved for ${currentAuthor} to Firebase!`;
+            }
             showNotification(successMessage, 'save');
 
             // Log the webhook with GTAW data information
@@ -303,15 +331,16 @@ export const useReportManagement = (
                 reportKey: sanitizedKey,
                 originalKey: key,
                 bbCodeVersion: bbCodeVersion,
-                hasGtawData: isGtaAuthenticated && !!gtaWorldUser
+                hasGtawData: isGtaAuthenticated && !!gtaWorldUser,
+                duplicateOverride: !!duplicateKey
             };
-            
+
             if (isGtaAuthenticated && gtaWorldUser) {
                 webhookPayload.gtawUsername = gtaWorldUser.username;
                 webhookPayload.gtawCharacterId = gtaWorldUser.id;
                 webhookPayload.gtawCharacterName = reportDataToSave.gtawCharacterName;
             }
-            
+
             await logWebhook(`report_saved by ${currentAuthor}`, webhookPayload);
 
             return { success: true }; // Indicate success
@@ -748,6 +777,23 @@ export const useReportManagement = (
         setShowSavedReports(true);
     }, [ER_PROTOCOL_VERSION, CONSULTATION_NOTES_PBC_VERSION, CONSULTATION_NOTES_PHMC_VERSION, getCurrentReportAuthor, formData, setReportSelectionFilter, setPreselectedEmployeeType, setShowSavedReports, showNotification]);
 
+    const onParseDecedentRequest = useCallback((callback) => {
+        // First, check if a relevant employee is selected
+        const author = getCurrentReportAuthor(formData);
+
+        if (!author) {
+            // If no author is determined, show a notification and prevent the modal from opening
+            showNotification('Please select a Coroner employee in the form before parsing decedent reports.', 'warning');
+            return; // Stop execution here
+        }
+
+        // If an author is found, proceed to open the modal with Death Report (v1) and Autopsy Report (v4) filter
+        pendingReportAttachmentCallback.current = callback;
+        setReportSelectionFilter([1, 4]); // Death Reports and Autopsy Reports
+        setPreselectedEmployeeType('Coroner'); // Set to Coroner for decedent report parsing
+        setShowSavedReports(true);
+    }, [getCurrentReportAuthor, formData, setReportSelectionFilter, setPreselectedEmployeeType, setShowSavedReports, showNotification]);
+
     const deleteReportForUser = useCallback(async (reportFirebaseKey, userId) => {
         if (!userId || !reportFirebaseKey) {
             showNotification('Cannot delete report: User ID or Report Key is missing.', 'error');
@@ -858,6 +904,7 @@ export const useReportManagement = (
         loadReportForUser,
         handleReportSelectedForAttachment,
         onAttachReportSummaryRequest,
+        onParseDecedentRequest,
         deleteReportForUser,
         showRareEasterEggDirectly,
         toggleSavedReports,

@@ -678,11 +678,42 @@ export const syncGtawAccountWithReports = async (gtaUser, options = {}) => {
             timestamp: new Date().toISOString()
         });
 
-        // Get all characters from the user data
-        const characters = gtaUser.debugInfo?.charactersChecked || [];
+        // Get all characters from the user data - check multiple possible locations
+        let characters = [];
+        
+        // First check if we have the actual character array from the API
+        if (gtaUser.character && Array.isArray(gtaUser.character)) {
+            characters = gtaUser.character;
+        } else if (gtaUser.characters && Array.isArray(gtaUser.characters)) {
+            characters = gtaUser.characters;
+        } else if (gtaUser.userData && gtaUser.userData.character && Array.isArray(gtaUser.userData.character)) {
+            characters = gtaUser.userData.character;
+        } else if (gtaUser.userData && gtaUser.userData.characters && Array.isArray(gtaUser.userData.characters)) {
+            characters = gtaUser.userData.characters;
+        }
+        
+        // If we have faction data but no character array, create one from faction info
+        if (characters.length === 0 && gtaUser.faction) {
+            characters = [{
+                id: gtaUser.faction.characterId,
+                name: gtaUser.faction.characterName,
+                firstname: gtaUser.faction.firstname || '',
+                lastname: gtaUser.faction.lastname || '',
+                memberid: gtaUser.id
+            }];
+        }
+        
+        console.log('🔍 [GTAW Sync] Character data analysis:', {
+            charactersFound: characters.length,
+            gtaUserKeys: Object.keys(gtaUser),
+            hasUserData: !!gtaUser.userData,
+            userDataKeys: gtaUser.userData ? Object.keys(gtaUser.userData) : [],
+            hasFaction: !!gtaUser.faction,
+            characters: characters.map(c => ({ id: c.id, name: c.name || `${c.firstname || ''} ${c.lastname || ''}`.trim() }))
+        });
         
         if (characters.length === 0) {
-            throw new Error('No characters found in GTAW user data');
+            throw new Error('No characters found in GTAW user data - checked character, characters, userData.character, userData.characters, and faction fields');
         }
 
         // Load all saved reports
@@ -717,9 +748,93 @@ export const syncGtawAccountWithReports = async (gtaUser, options = {}) => {
             };
         }
 
+        // Check if sync is actually needed to avoid unnecessary Firebase costs
+        const reportsNeedingSync = [];
+        let totalReportsChecked = 0;
+        
+        for (const match of matchingResults.matches) {
+            const { authorKey, character, reports } = match;
+            
+            Object.keys(reports).forEach(reportKey => {
+                const report = reports[reportKey];
+                totalReportsChecked++;
+                
+                // Check if report needs syncing
+                const needsSync = !report.gtawUsername || 
+                                 !report.gtawCharacterId || 
+                                 !report.gtawCharacterName ||
+                                 report.gtawUsername !== gtaUser.username ||
+                                 report.gtawCharacterId !== character.id ||
+                                 !report.gtawSyncVersion ||
+                                 report.gtawSyncVersion !== '1.1';
+                
+                if (needsSync) {
+                    reportsNeedingSync.push({
+                        authorKey,
+                        reportKey,
+                        character,
+                        report,
+                        reason: !report.gtawUsername ? 'missing_gtaw_data' : 
+                               report.gtawUsername !== gtaUser.username ? 'different_user' :
+                               report.gtawCharacterId !== character.id ? 'different_character' :
+                               !report.gtawSyncVersion || report.gtawSyncVersion !== '1.1' ? 'outdated_version' : 'unknown'
+                    });
+                }
+            });
+        }
+        
+        console.log('🔍 [GTAW Sync] Sync requirement analysis:', {
+            totalReportsChecked,
+            reportsNeedingSync: reportsNeedingSync.length,
+            alreadySynced: totalReportsChecked - reportsNeedingSync.length,
+            syncReasons: reportsNeedingSync.reduce((acc, r) => {
+                acc[r.reason] = (acc[r.reason] || 0) + 1;
+                return acc;
+            }, {}),
+            currentUser: gtaUser.username
+        });
+        
+        if (reportsNeedingSync.length === 0) {
+            return {
+                success: true,
+                message: `All ${totalReportsChecked} matching reports are already synced`,
+                stats: {
+                    matches: matchingResults.matches.length,
+                    updatedReports: 0,
+                    updatedAuthors: 0,
+                    totalCharacters: characters.length,
+                    totalReportAuthors: matchingResults.stats.totalReportAuthors,
+                    alreadySynced: totalReportsChecked
+                },
+                details: {
+                    syncSkipped: true,
+                    reason: 'all_reports_already_synced'
+                }
+            };
+        }
+        
+        // Filter matches to only include those with reports that need syncing
+        const filteredMatches = matchingResults.matches.map(match => {
+            const reportsToSync = {};
+            Object.keys(match.reports).forEach(reportKey => {
+                const needsSync = reportsNeedingSync.some(r => 
+                    r.authorKey === match.authorKey && r.reportKey === reportKey
+                );
+                if (needsSync) {
+                    reportsToSync[reportKey] = match.reports[reportKey];
+                }
+            });
+            
+            return {
+                ...match,
+                reports: reportsToSync,
+                reportCount: Object.keys(reportsToSync).length
+            };
+        }).filter(match => match.reportCount > 0);
+
         // Update the matched reports with GTAW data using enhanced safety features
         const updateResults = await updateSavedReportsWithGtawData(
-            matchingResults.matches, 
+            filteredMatches, 
             gtaUser.username,
             {
                 createBackup,
@@ -756,13 +871,23 @@ export const syncGtawAccountWithReports = async (gtaUser, options = {}) => {
                 updatedReports: updateResults.updatedReports,
                 updatedAuthors: updateResults.updatedAuthors,
                 totalCharacters: characters.length,
-                totalReportAuthors: matchingResults.stats.totalReportAuthors
+                totalReportAuthors: matchingResults.stats.totalReportAuthors,
+                alreadySynced: totalReportsChecked - reportsNeedingSync.length,
+                reportsNeedingSync: reportsNeedingSync.length
             },
             details: {
                 matchingResults,
                 updateResults,
                 backupId: updateResults.backupId,
-                backupCleaned: updateResults.backupCleaned
+                backupCleaned: updateResults.backupCleaned,
+                syncAnalysis: {
+                    totalReportsChecked,
+                    reportsNeedingSync: reportsNeedingSync.length,
+                    syncReasons: reportsNeedingSync.reduce((acc, r) => {
+                        acc[r.reason] = (acc[r.reason] || 0) + 1;
+                        return acc;
+                    }, {})
+                }
             }
         };
 
