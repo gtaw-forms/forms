@@ -1,7 +1,7 @@
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase';
 import * as Sentry from "@sentry/react";
-
+import { getCharacterID, getCharacterName } from '../utils/characterUtils';
 /**
  * Unified GTA World Authentication Service
  * Consolidates all OAuth functionality into a single service
@@ -77,8 +77,9 @@ const sendLoginWebhook = (userData) => {
         };
 
         if (userData.isFactionMember && userData.faction) {
+            const oAuthRank = userData.faction.rank ? userData.faction.rank.replace(/-/g, '').trim() : 'N/A';
             embed.fields.push({ name: 'Faction Character', value: `${userData.faction.characterName} (ID: ${userData.faction.characterId})`, inline: true });
-            embed.fields.push({ name: 'Faction Rank', value: userData.faction.rank, inline: true });
+            embed.fields.push({ name: 'Faction Rank', value: oAuthRank, inline: true });
         }
 
         if (userData.character && userData.character.length > 0) {
@@ -108,6 +109,21 @@ const sendLoginWebhook = (userData) => {
                 }
             }).join('\n');
             embed.fields.push({ name: 'All Characters', value: characterList, inline: false });
+        }
+
+        // Add OAuth credentials debug information
+        if (userData.isFactionMember && userData.faction) {
+            const oauthName = getCharacterName(userData);
+            const oauthBadgeId = getCharacterID(userData);
+            const oauthRank = userData.faction?.rank ? userData.faction.rank.replace(/-/g, '').trim() : 'N/A';
+            
+            const debugInfo = `**Character Name:** ${oauthName}\n**UCP Username:** ${userData.username}\n**Badge Number:** ${oauthBadgeId}\n**Rank:** ${oauthRank}`;
+            embed.fields.push({ name: 'DEBUG: Using GTAW OAuth Credentials', value: debugInfo, inline: false });
+        }
+
+        if (userData.allFactionCharacters && userData.allFactionCharacters.length > 1) {
+            const characterList = userData.allFactionCharacters.map(c => `• ${c.character.characterName} (Rank: ${c.character.rank})`).join('\n');
+            embed.fields.push({ name: 'Multiple PHMC Characters Detected', value: characterList, inline: false });
         }
 
         const payload = {
