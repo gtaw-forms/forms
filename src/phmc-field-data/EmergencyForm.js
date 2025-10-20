@@ -225,8 +225,8 @@ const EmployeeCredentialsSection = ({
                         Using GTAW OAuth Credentials
                     </div>
                     <div style={{ color: '#eeeeeeb0' }}>
-                        <strong>Name:</strong> {gtawCharacterName}<br/>
-                        <strong>Username:</strong> {gtaWorldUser?.username}<br/>
+                        <strong>Character Name:</strong> {gtawCharacterName}<br/>
+                        <strong>UCP User:</strong> {gtaWorldUser?.username}<br/>
                         <strong>Badge Number:</strong> {gtaWorldUser?.userData?.factionData?.characterId || gtaWorldUser?.character?.id || gtaWorldUser?.id || 'N/A'}<br/>
                         {gtaWorldUser?.faction?.rank && (
                             <><strong>Rank:</strong> {gtaWorldUser.faction.rank.split('-')[0].trim()}<br/></>

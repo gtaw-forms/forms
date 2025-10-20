@@ -26,34 +26,9 @@ const EmployeeCredentialsSection = ({
     const employeeDiscordField = `${employeeType}Discord`;
     const employeePHNumberField = `${employeeType}PHNumber`;
     
-    // Automatically enable GTAW credentials when user is authenticated
-    useEffect(() => {
-        if (isGtaAuthenticated && gtaWorldUser && !useGtawName) {
-            // Check if we have a valid character name
-            const gtawCharacterName = gtaWorldUser.faction ? 
-                ((gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? 
-                    `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : 
-                    gtaWorldUser.faction.characterName || gtaWorldUser.username) : 
-                gtaWorldUser.username;
-            
-            if (gtawCharacterName) {
-                setUseGtawName(true);
-                
-                // Clean rank by removing dashes and extra text
-                const cleanRank = gtaWorldUser?.faction?.rank ? 
-                    gtaWorldUser.faction.rank.split('-')[0].trim() : 'GTAW User';
-                
-                setFormData(prev => ({
-                    ...prev,
-                    [employeeNameField]: gtawCharacterName,
-                    [employeeBadgeField]: gtaWorldUser?.character?.id || gtaWorldUser?.id || '', 
-                    [employeeRankField]: cleanRank,
-                    [employeeDiscordField]: gtaWorldUser?.username || '',
-                    [employeePHNumberField]: '50056'
-                }));
-            }
-        }
-    }, [isGtaAuthenticated, gtaWorldUser, useGtawName, setFormData, employeeNameField, employeeBadgeField, employeeRankField, employeeDiscordField, employeePHNumberField]);
+    // Note: For Medical Release forms, we don't automatically enable GTAW credentials
+    // because patients should manually select which practitioner they saw
+    // The GTAW button is still available if PHMC staff are filling out the form
 
     // Get GTAW character name if available
     const gtawCharacterName = isGtaAuthenticated && gtaWorldUser ? getCharacterName(gtaWorldUser) : null;
@@ -64,10 +39,7 @@ const EmployeeCredentialsSection = ({
             setUseGtawName(true);
             
             // Clean rank by removing dashes and extra text
-            const cleanRank = gtaWorldUser?.faction?.rank ? 
-                gtaWorldUser.faction.rank.split('-')[0].trim() : 'GTAW User';
-            
-            setFormData(prev => ({
+                const cleanRank = gtaWorldUser?.faction?.rank || 'GTAW User';            setFormData(prev => ({
                 ...prev,
                 [employeeNameField]: gtawCharacterName,
                 [employeeBadgeField]: gtaWorldUser?.id || '', // Use character ID as badge number
@@ -153,8 +125,8 @@ const EmployeeCredentialsSection = ({
                         Using GTAW OAuth Credentials
                     </div>
                     <div style={{ color: '#eeeeeeb0' }}>
-                        <strong>Name:</strong> {gtawCharacterName}<br/>
-                        <strong>Username:</strong> {gtaWorldUser?.username}<br/>
+                        <strong>Character Name:</strong> {gtawCharacterName}<br/>
+                        <strong>UCP User:</strong> {gtaWorldUser?.username}<br/>
                         <strong>Badge Number:</strong> {gtaWorldUser?.character.id}<br/>
                         {gtaWorldUser?.faction?.rank && (
                             <><strong>Rank:</strong> {gtaWorldUser.faction.rank.split('-')[0].trim()}<br/></>
@@ -162,7 +134,7 @@ const EmployeeCredentialsSection = ({
                         <small style={{ color: '#6c757d' }}>Click "Use GTAW" again to switch back to database selection</small>
                     </div>
                 </div>
-            ) : isDevelopmentEnvironment ? (
+            ) : (
                 <Select
                     name={employeeNameField}
                     value={groupedOptions
@@ -220,25 +192,6 @@ const EmployeeCredentialsSection = ({
                         })
                     }}
                 />
-            ) : null}
-            
-            {!useGtawName && !isGtaAuthenticated && !isDevelopmentEnvironment && (
-                <div style={{ 
-                    padding: '15px', 
-                    backgroundColor: '#2a2a2a', 
-                    border: '1px solid #6c757d', 
-                    borderRadius: '4px',
-                    marginBottom: '1rem',
-                    textAlign: 'center'
-                }}>
-                    <div style={{ color: '#6c757d', marginBottom: '10px' }}>
-                        <i className="fas fa-exclamation-triangle" style={{ marginRight: '8px' }}></i>
-                        GTAW Authentication Required
-                    </div>
-                    <div style={{ color: '#ccc', fontSize: '0.9rem' }}>
-                        Please log in with your GTAW account to automatically populate your credentials.
-                    </div>
-                </div>
             )}
         </>
     );
