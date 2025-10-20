@@ -4,7 +4,7 @@ import Select from 'react-select';
 import AutopsyDiagramModal from '../components/AutopsyDiagramModal';
 import * as Sentry from "@sentry/react";
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
-import { getCharacterName } from '../utils/characterUtils';
+import { getCharacterName, getCharacterID } from '../utils/characterUtils';
 
 const EmployeeCredentialsSection = ({ 
     formData, 
@@ -35,11 +35,7 @@ const EmployeeCredentialsSection = ({
     useEffect(() => {
         if (isGtaAuthenticated && gtaWorldUser && !isDevelopmentEnvironment && !useGtawName) {
             // Check if we have a valid character name
-            const gtawCharacterName = gtaWorldUser.faction ? 
-                ((gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? 
-                    `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : 
-                    gtaWorldUser.faction.characterName || gtaWorldUser.username) : 
-                gtaWorldUser.username;
+            const gtawCharacterName = getCharacterName(gtaWorldUser);
             
             if (gtawCharacterName) {
                 setUseGtawName(true);
@@ -51,21 +47,16 @@ const EmployeeCredentialsSection = ({
     useEffect(() => {
         if (useGtawName && isGtaAuthenticated && gtaWorldUser) {
             // Check if we have a valid character name
-            const gtawCharacterName = gtaWorldUser.faction ? 
-                ((gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? 
-                    `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : 
-                    gtaWorldUser.faction.characterName || gtaWorldUser.username) : 
-                gtaWorldUser.username;
+            const gtawCharacterName = getCharacterName(gtaWorldUser);
             
             if (gtawCharacterName) {
-                // Clean rank by removing dashes and extra text
-                const cleanRank = gtaWorldUser?.faction?.rank ? 
-                    gtaWorldUser.faction.rank.split('-')[0].trim() : 'GTAW User';
+                // Use full rank without truncation
+                const cleanRank = gtaWorldUser?.faction?.rank || 'GTAW User';
                 
                 setFormData(prev => ({
                     ...prev,
                     coronerEmployee: gtawCharacterName,
-                    coronerBadge: gtaWorldUser?.character?.id || gtaWorldUser?.id || '', 
+                    coronerBadge: getCharacterID(gtaWorldUser) || '', 
                     coronerRank: cleanRank,
                     coronerDiscord: gtaWorldUser?.username || '',
                     coronerPHNumber: '50056'
@@ -143,11 +134,11 @@ const EmployeeCredentialsSection = ({
                         Using GTAW OAuth Credentials
                     </div>
                     <div style={{ color: '#eeeeeeb0' }}>
-                        <strong>Name:</strong> {gtawCharacterName}<br/>
-                        <strong>Username:</strong> {gtaWorldUser?.username}<br/>
-                        <strong>Badge Number:</strong> {gtaWorldUser?.character?.id || gtaWorldUser?.id}<br/>
+                        <strong>Character Name:</strong> {gtawCharacterName}<br/>
+                        <strong>UCP User:</strong> {gtaWorldUser?.username}<br/>
+                        <strong>Badge Number:</strong> {getCharacterID(gtaWorldUser)}<br/>
                         {gtaWorldUser?.faction?.rank && (
-                            <><strong>Rank:</strong> {gtaWorldUser.faction.rank.split('-')[0].trim()}<br/></>
+                            <><strong>Rank:</strong> {gtaWorldUser.faction.rank.replace(/-/g, '').trim()}<br/></>
                         )}
                         <small style={{ color: '#6c757d' }}>Click "Use GTAW" again to switch back to database selection</small>
                     </div>
