@@ -1,6 +1,6 @@
 const generateConsultationNotesPHMC = (formData) => {
     const {
-        lastName,
+        phmcEmployee,
         phmcRank,
         patientID,
         date,
@@ -12,6 +12,13 @@ const generateConsultationNotesPHMC = (formData) => {
         // patientAdvise, // This seems unused
         scenePhotos, // Used for Medication section now
     } = formData;
+
+    // Handle OAuth fields that might be N/A or undefined
+    // Extract last name from full name (phmcEmployee contains the full name)
+    const fullName = phmcEmployee && phmcEmployee !== 'N/A' ? phmcEmployee : '';
+    const lastName = fullName ? fullName.split(' ').pop() : '';
+    const cleanLastName = lastName || '[Signature Required]';
+    const cleanRank = phmcRank && phmcRank !== 'N/A' ? phmcRank : '[Rank Required]';
 
     // --- Custom Handling for scenePhotos (Medication) ---
     let medicationBBCode = '[i]No medication details provided.[/i]'; // Default fallback
@@ -41,7 +48,7 @@ PATIENT ID: ${patientID || 'N/A'}
 
 Date: ${date || 'N/A'}
 
-Signed: ${phmcRank || 'N/A'} ${lastName || 'N/A'}
+Signed: ${cleanRank} ${cleanLastName}
 [/center][td][center][img]https://i.ibb.co/0pgw9hHm/phmc.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PILLBOX HILL MEDICAL CENTER[/b]
 ELGIN AVE. / STRAWBERRY AVE.
 PO BOX 742
