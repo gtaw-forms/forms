@@ -152,7 +152,7 @@ const EmployeeCredentialsSection = ({
                         <small style={{ color: '#6c757d' }}>Click "Use GTAW" again to switch back to database selection</small>
                     </div>
                 </div>
-            ) : (
+            ) : isDevelopmentEnvironment ? (
                 <Select
                     name={employeeNameField}
                     value={coronerGroupedOptions
@@ -214,9 +214,9 @@ const EmployeeCredentialsSection = ({
                         })
                     }}
                 />
-            )}
+            ) : null}
             
-            {!isGtaAuthenticated && !isDevelopmentEnvironment && (
+            {!useGtawName && !isGtaAuthenticated && !isDevelopmentEnvironment && (
                 <div style={{ 
                     padding: '15px', 
                     backgroundColor: '#2a2a2a', 
@@ -584,7 +584,6 @@ const Autopsy = ({
                 setShowEmployeeModal={setShowEmployeeModal}
                 employeeType="coroner"
             />
-            <Form.Label></Form.Label>
 
             {/* Autopsy Diagram Modal Instance */}
             <AutopsyDiagramModal

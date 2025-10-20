@@ -1,6 +1,6 @@
 const generateEmergencyProtocol = (formData) => {
     const {
-        lastName,
+        phmcEmployee,
         phmcRank,
         patientID,
         date,
@@ -17,6 +17,10 @@ const generateEmergencyProtocol = (formData) => {
         patientInjuryMechanism,
         prescriptionImage
     } = formData;
+    const fullName = phmcEmployee && phmcEmployee !== 'N/A' ? phmcEmployee : '';
+    const lastName = fullName ? fullName.split(' ').pop() : '';
+    const cleanLastName = lastName || '[Signature Required]';
+    const cleanRank = phmcRank && phmcRank !== 'N/A' ? phmcRank : '[Rank Required]';
 
     // --- Imaging Section Logic ---
     let imagingSectionBBCode = '';
@@ -56,7 +60,7 @@ PATIENT ID: ${patientID || 'N/A'}
 
 Date: ${date || 'N/A'}
 
-Signed: ${phmcRank || 'N/A'} ${lastName || 'N/A'}
+Signed: ${cleanRank} ${cleanLastName}
 [/center][td][center][img]https://i.ibb.co/0pgw9hHm/phmc.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PILLBOX HILL MEDICAL CENTER[/b]
 ELGIN AVE. / STRAWBERRY AVE.
 PO BOX 742

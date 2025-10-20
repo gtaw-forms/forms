@@ -24,10 +24,14 @@ const defaultDecedent = {
     morgueStatus: 'false',
     collapsed: false, // Added for collapsable functionality
 };
+
+// Check if we're in development environment
+const isDevelopmentEnvironment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
 const EmployeeCredentialsSection = ({ 
     formData, 
     setFormData, 
-    coronerGroupedOptions, 
+    groupedOptions, 
     handleSelectChange, 
     setShowEmployeeModal,
     employeeType
@@ -143,6 +147,19 @@ const EmployeeCredentialsSection = ({
                         {useGtawName ? 'Using GTAW' : 'Use GTAW'}
                     </button>
                 )}
+                {isDevelopmentEnvironment && !isGtaAuthenticated && (
+                    <div style={{ 
+                        padding: '5px 10px', 
+                        backgroundColor: '#ffc107', 
+                        color: '#000', 
+                        borderRadius: '4px',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold'
+                    }}>
+                        <i className="fas fa-code" style={{ marginRight: '5px' }}></i>
+                        Development Mode: Manual Selection Enabled
+                    </div>
+                )}
             </div>
             
             {useGtawName ? (
@@ -167,30 +184,29 @@ const EmployeeCredentialsSection = ({
                         <small style={{ color: '#6c757d' }}>Click "Use GTAW" again to switch back to database selection</small>
                     </div>
                 </div>
-            ) : (
+            ) : isDevelopmentEnvironment ? (
                 <Select
-                    name="coronerEmployee"
-                    value={coronerGroupedOptions
+                    name={employeeNameField}
+                    value={groupedOptions
                         .flatMap(group => group.options)
-                        .find(option => option.value === formData.coronerEmployee) || null}
-                    // Corrected onChange handler:
-                    onChange={(selectedOption) => handleSelectChange(selectedOption, 'coronerEmployee')}
-                    options={coronerGroupedOptions}
+                        .find(option => option.value === formData[employeeNameField]) || null}
+                    onChange={(selectedOption) => handleSelectChange(selectedOption, { name: employeeNameField })}
+                    options={groupedOptions}
                     isClearable
-                    placeholder="Search or select coroner..."
-                    className={`form-control ${!formData.coronerEmployee ? 'is-invalid' : ''}`}
+                    placeholder={`Search or select ${employeeType}...`}
+                    className={`form-control ${!formData[employeeNameField] ? 'is-invalid' : ''}`}
                     styles={{ 
                         control: (base, state) => ({
                             ...base,
                             backgroundColor: '#16202c',
                             color: '#eeeeeeb0',
-                            borderColor: !formData.coronerEmployee && state.isFocused ? '#dc3545' :
-                                         !formData.coronerEmployee ? '#dc3545' :
+                            borderColor: !formData[employeeNameField] && state.isFocused ? '#dc3545' :
+                                         !formData[employeeNameField] ? '#dc3545' :
                                          state.isFocused ? '#86b7fe' : '#6c757d',
                             '&:hover': {
-                                borderColor: !formData.coronerEmployee ? '#dc3545' : '#86b7fe'
+                                borderColor: !formData[employeeNameField] ? '#dc3545' : '#86b7fe'
                             },
-                            boxShadow: !formData.coronerEmployee && state.isFocused ? '0 0 0 0.25rem rgba(220, 53, 69, 0.25)' :
+                            boxShadow: !formData[employeeNameField] && state.isFocused ? '0 0 0 0.25rem rgba(220, 53, 69, 0.25)' :
                                        state.isFocused ? '0 0 0 0.25rem rgba(13, 110, 253, 0.25)' : null,
                         }),
                         menu: (base) => ({ ...base, backgroundColor: '#16202c', zIndex: 1000 }),
@@ -202,10 +218,30 @@ const EmployeeCredentialsSection = ({
                         groupHeading: (base) => ({ ...base, color: '#6c757d', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.75rem', marginBottom: 4 })
                     }}
                 />
+            ) : null}
+            
+            {!useGtawName && !isGtaAuthenticated && !isDevelopmentEnvironment && (
+                <div style={{ 
+                    padding: '15px', 
+                    backgroundColor: '#2a2a2a', 
+                    border: '1px solid #6c757d', 
+                    borderRadius: '4px',
+                    marginBottom: '1rem',
+                    textAlign: 'center'
+                }}>
+                    <div style={{ color: '#6c757d', marginBottom: '10px' }}>
+                        <i className="fas fa-exclamation-triangle" style={{ marginRight: '8px' }}></i>
+                        GTAW Authentication Required
+                    </div>
+                    <div style={{ color: '#ccc', fontSize: '0.9rem' }}>
+                        Please log in with your GTAW account to automatically populate your credentials.
+                    </div>
+                </div>
             )}
         </>
     );
 };
+
 
 const isDecedentComplete = (dec) => {
     return (

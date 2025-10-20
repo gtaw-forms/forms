@@ -1,6 +1,6 @@
     const generateMentalHealthPBC = (formData) => {
         const {
-            lastName,
+            phmcEmployee,
             patientID,
             phmcRank,
             date,
@@ -10,13 +10,19 @@
             patientMedicine,
             patientProcedure,
         } = formData;
+    // Handle OAuth fields that might be N/A or undefined
+    // Extract last name from full name (phmcEmployee contains the full name)
+    const fullName = phmcEmployee && phmcEmployee !== 'N/A' ? phmcEmployee : '';
+    const lastName = fullName ? fullName.split(' ').pop() : '';
+    const cleanLastName = lastName || '[Signature Required]';
+    const cleanRank = phmcRank && phmcRank !== 'N/A' ? phmcRank : '[Rank Required]';
 
         let bbCode = `[divbox=white][table][tr][td][center][br][/br][br][/br][b]Session Notes[/b]
 
 PATIENT ${patientID}
 
 Date: ${date}
-Signed: ${phmcRank} ${lastName}
+Signed: ${cleanRank} ${cleanLastName}
 [/center][td][center][img]https://i.ibb.co/fdGgxDH1/LkRKav2.png[/img][/center][td][center][br][/br][br][/br][size=100][b]PALETO BAY CLINIC[/b]
 PALETO BAY BLVD.
 PO BOX 685

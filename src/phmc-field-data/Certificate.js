@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Form, Button, InputGroup } from 'react-bootstrap';
 import Select from 'react-select';
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
+import { getCharacterName } from '../utils/characterUtils';
 
 const EmployeeCredentialsSection = ({ 
     formData, 
@@ -14,19 +15,32 @@ const EmployeeCredentialsSection = ({
     const { user: gtaWorldUser, isAuthenticated: isGtaAuthenticated } = useGtaWorldAuth();
     const [useGtawName, setUseGtawName] = useState(false);
     
-    // Automatically enable GTAW credentials when user is authenticated
+    // Detect localhost/development environment
+    const isDevelopmentEnvironment =
+        window.location.hostname === 'localhost' ||
+        window.location.hostname.startsWith('192.168.') ||
+        window.location.hostname.startsWith('10.') ||
+        window.location.hostname.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./); 
+    
+    // Automatically enable GTAW credentials when user is authenticated and not in development
     useEffect(() => {
-        if (isGtaAuthenticated && gtaWorldUser && !useGtawName) {
+        if (isGtaAuthenticated && gtaWorldUser && !isDevelopmentEnvironment && !useGtawName) {
             // Check if we have a valid character name
-            const gtawCharacterName = gtaWorldUser.faction ? 
-                ((gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? 
-                    `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : 
-                    gtaWorldUser.faction.characterName || gtaWorldUser.username) : 
-                gtaWorldUser.username;
+            const gtawCharacterName = getCharacterName(gtaWorldUser);
             
             if (gtawCharacterName) {
                 setUseGtawName(true);
-                
+            }
+        }
+    }, [isGtaAuthenticated, gtaWorldUser, isDevelopmentEnvironment, useGtawName]);
+    
+    // Populate GTAW credentials when useGtawName is enabled
+    useEffect(() => {
+        if (useGtawName && isGtaAuthenticated && gtaWorldUser) {
+            // Check if we have a valid character name
+            const gtawCharacterName = getCharacterName(gtaWorldUser);
+            
+            if (gtawCharacterName) {
                 // Clean rank by removing dashes and extra text
                 const cleanRank = gtaWorldUser?.faction?.rank ? 
                     gtaWorldUser.faction.rank.split('-')[0].trim() : 'GTAW User';
@@ -41,45 +55,10 @@ const EmployeeCredentialsSection = ({
                 }));
             }
         }
-    }, [isGtaAuthenticated, gtaWorldUser, useGtawName, setFormData]);
+    }, [useGtawName, isGtaAuthenticated, gtaWorldUser, setFormData]);
 
     // Get GTAW character name if available
-    const gtawCharacterName = isGtaAuthenticated && gtaWorldUser && gtaWorldUser.faction ? 
-        ((gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? 
-            `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : 
-            gtaWorldUser.faction.characterName || gtaWorldUser.username) : 
-        (isGtaAuthenticated && gtaWorldUser ? gtaWorldUser.username : null);
-
-    const handleGtawToggle = () => {
-        if (!useGtawName && gtawCharacterName) {
-            // Switch to GTAW name
-            setUseGtawName(true);
-            
-            // Clean rank by removing dashes and extra text
-            const cleanRank = gtaWorldUser?.faction?.rank ? 
-                gtaWorldUser.faction.rank.split('-')[0].trim() : 'GTAW User';
-            
-            setFormData(prev => ({
-                ...prev,
-                coronerEmployee: gtawCharacterName,
-                coronerBadge: gtaWorldUser?.id || '', // Use character ID as badge number
-                coronerRank: cleanRank,
-                coronerDiscord: gtaWorldUser?.username || '',
-                coronerPHNumber: '50056'
-            }));
-        } else {
-            // Switch back to Firebase selection
-            setUseGtawName(false);
-            setFormData(prev => ({
-                ...prev,
-                coronerEmployee: '',
-                coronerBadge: '',
-                coronerRank: '',
-                coronerDiscord: '',
-                coronerPHNumber: '50056'
-            }));
-        }
-    };
+    const gtawCharacterName = isGtaAuthenticated && gtaWorldUser ? getCharacterName(gtaWorldUser) : null;
 
     return (
         <>
@@ -89,29 +68,48 @@ const EmployeeCredentialsSection = ({
                     type="button"
                     onClick={() => setShowEmployeeModal(true)}
                     className="close-button"
-                    style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', lineHeight: '1.2' }}
+                    style={{
+                        padding: '0.25rem 0.5rem',
+                        fontSize: '0.8rem',
+                        lineHeight: '1.2'
+                    }}
                 >
                     <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i>
                     Missing Name?
                 </button>
-                {isGtaAuthenticated && gtawCharacterName && (
+            </div>
+            
+            {/* Show GTAW toggle button if authenticated or in development */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                {(isGtaAuthenticated && gtawCharacterName) && (
                     <button
                         type="button"
-                        onClick={handleGtawToggle}
-                        className="close-button"
+                        onClick={() => setUseGtawName(!useGtawName)}
+                        className="btn btn-outline-light"
                         style={{
-                            padding: '0.25rem 0.5rem',
-                            fontSize: '0.8rem',
-                            lineHeight: '1.2',
-                            backgroundColor: useGtawName ? '#28a745' : '#007bff',
-                            color: 'white',
-                            border: 'none'
+                            padding: '0.375rem 0.75rem',
+                            fontSize: '0.875rem',
+                            border: useGtawName ? '1px solid #28a745' : '1px solid #6c757d',
+                            color: useGtawName ? '#28a745' : '#6c757d'
                         }}
                         title={useGtawName ? `Using GTAW: ${gtawCharacterName}` : `Use GTAW name: ${gtawCharacterName}`}
                     >
                         <i className={`fas ${useGtawName ? 'fa-check' : 'fa-user'}`} style={{ marginRight: '5px' }}></i>
                         {useGtawName ? 'Using GTAW' : 'Use GTAW'}
                     </button>
+                )}
+                {isDevelopmentEnvironment && !isGtaAuthenticated && (
+                    <div style={{ 
+                        padding: '5px 10px', 
+                        backgroundColor: '#ffc107', 
+                        color: '#000', 
+                        borderRadius: '4px',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold'
+                    }}>
+                        <i className="fas fa-code" style={{ marginRight: '5px' }}></i>
+                        Development Mode: Manual Selection Enabled
+                    </div>
                 )}
             </div>
             
@@ -130,7 +128,7 @@ const EmployeeCredentialsSection = ({
                     <div style={{ color: '#eeeeeeb0' }}>
                         <strong>Name:</strong> {gtawCharacterName}<br/>
                         <strong>Username:</strong> {gtaWorldUser?.username}<br/>
-                        <strong>Badge Number:</strong> {gtaWorldUser?.character.id}<br/>
+                        <strong>Badge Number:</strong> {gtaWorldUser?.character?.id || gtaWorldUser?.id}<br/>
                         {gtaWorldUser?.faction?.rank && (
                             <><strong>Rank:</strong> {gtaWorldUser.faction.rank.split('-')[0].trim()}<br/></>
                         )}
@@ -171,6 +169,25 @@ const EmployeeCredentialsSection = ({
                         groupHeading: (base) => ({ ...base, color: '#6c757d', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.75rem', marginBottom: 4 })
                     }}
                 />
+            )}
+            
+            {!isGtaAuthenticated && !isDevelopmentEnvironment && (
+                <div style={{ 
+                    padding: '15px', 
+                    backgroundColor: '#2a2a2a', 
+                    border: '1px solid #6c757d', 
+                    borderRadius: '4px',
+                    marginBottom: '1rem',
+                    textAlign: 'center'
+                }}>
+                    <div style={{ color: '#6c757d', marginBottom: '10px' }}>
+                        <i className="fas fa-exclamation-triangle" style={{ marginRight: '8px' }}></i>
+                        GTAW Authentication Required
+                    </div>
+                    <div style={{ color: '#ccc', fontSize: '0.9rem' }}>
+                        Please log in with your GTAW account to automatically populate your credentials.
+                    </div>
+                </div>
             )}
         </>
     );

@@ -2,8 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { useData } from '../contexts/DataContext';
 import { Form, Button } from 'react-bootstrap';
 import Select from 'react-select';
-import { getCharacterName, getCharacterID } from '../utils/characterUtils';
+import { getCharacterName } from '../utils/characterUtils';
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
+
+// Check if we're in development environment
+const isDevelopmentEnvironment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
 const customSelectStyles = {
     control: (base, state) => ({
@@ -198,6 +201,19 @@ const EmployeeCredentialsSection = ({
                         {useGtawName ? 'Using GTAW' : 'Use GTAW'}
                     </button>
                 )}
+                {isDevelopmentEnvironment && !isGtaAuthenticated && (
+                    <div style={{ 
+                        padding: '5px 10px', 
+                        backgroundColor: '#ffc107', 
+                        color: '#000', 
+                        borderRadius: '4px',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold'
+                    }}>
+                        <i className="fas fa-code" style={{ marginRight: '5px' }}></i>
+                        Development Mode: Manual Selection Enabled
+                    </div>
+                )}
             </div>
             
             {useGtawName ? (
@@ -222,7 +238,7 @@ const EmployeeCredentialsSection = ({
                         <small style={{ color: '#6c757d' }}>Click "Use GTAW" again to switch back to database selection</small>
                     </div>
                 </div>
-            ) : (
+            ) : isDevelopmentEnvironment ? (
                 <Select
                     name="coronerEmployee"
                     value={coronerGroupedOptions
@@ -235,6 +251,25 @@ const EmployeeCredentialsSection = ({
                     className={`form-control ${!formData.coronerEmployee ? 'is-invalid' : ''}`}
                     styles={customSelectStyles}
                 />
+            ) : null}
+            
+            {!useGtawName && !isGtaAuthenticated && !isDevelopmentEnvironment && (
+                <div style={{ 
+                    padding: '15px', 
+                    backgroundColor: '#2a2a2a', 
+                    border: '1px solid #6c757d', 
+                    borderRadius: '4px',
+                    marginBottom: '1rem',
+                    textAlign: 'center'
+                }}>
+                    <div style={{ color: '#6c757d', marginBottom: '10px' }}>
+                        <i className="fas fa-exclamation-triangle" style={{ marginRight: '8px' }}></i>
+                        GTAW Authentication Required
+                    </div>
+                    <div style={{ color: '#ccc', fontSize: '0.9rem' }}>
+                        Please log in with your GTAW account to automatically populate your credentials.
+                    </div>
+                </div>
             )}
         </>
     );
