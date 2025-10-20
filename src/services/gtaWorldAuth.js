@@ -82,7 +82,31 @@ const sendLoginWebhook = (userData) => {
         }
 
         if (userData.character && userData.character.length > 0) {
-            const characterList = userData.character.map(c => `• ${c.firstname} ${c.lastname} (ID: ${c.id})`).join('\n');
+            const characterList = userData.character.map(c => {
+                // Handle both formats: {firstname, lastname, id} and {id, name}
+                if (c.name) {
+                    return `• ${c.name} (ID: ${c.id})`;
+                } else if (c.firstname && c.lastname) {
+                    return `• ${c.firstname} ${c.lastname} (ID: ${c.id})`;
+                } else {
+                    return `• Character ID: ${c.id}`;
+                }
+            }).join('\n');
+            embed.fields.push({ name: 'All Characters', value: characterList, inline: false });
+        }
+        
+        // Also check for characters in alternate locations (characters vs character)
+        if (userData.characters && userData.characters.length > 0) {
+            const characterList = userData.characters.map(c => {
+                // Handle both formats: {firstname, lastname, id} and {id, name}
+                if (c.name) {
+                    return `• ${c.name} (ID: ${c.id})`;
+                } else if (c.firstname && c.lastname) {
+                    return `• ${c.firstname} ${c.lastname} (ID: ${c.id})`;
+                } else {
+                    return `• Character ID: ${c.id}`;
+                }
+            }).join('\n');
             embed.fields.push({ name: 'All Characters', value: characterList, inline: false });
         }
 
@@ -125,6 +149,9 @@ export const initiateGtaWorldLogin = (options = {}) => {
                 characterId: restoredSession.user.id,
                 restoredAt: new Date(restoredSession.restoredAt).toISOString()
             });
+            
+            // Send Discord webhook for session restoration login
+            sendLoginWebhook(restoredSession.user);
             
             // Call onSuccess callback if available (for consistency with OAuth flow)
             if (options.onSuccess) {
