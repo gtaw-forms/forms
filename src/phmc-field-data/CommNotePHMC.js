@@ -4,6 +4,9 @@ import Select from 'react-select'; // Make sure react-select is imported
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
 import { getCharacterName, getCharacterID } from '../utils/characterUtils';
 
+// Check if we're in development environment
+const isDevelopmentEnvironment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
 const EmployeeCredentialsSection = ({ 
     formData, 
     setFormData, 
@@ -88,7 +91,7 @@ const EmployeeCredentialsSection = ({
                 <button
                     type="button"
                     onClick={() => setShowEmployeeModal(true)}
-                    className="close-button" // Consider a more specific class if needed
+                    className="close-button"
                     style={{
                         padding: '0.25rem 0.5rem',
                         fontSize: '0.8rem',
@@ -117,6 +120,19 @@ const EmployeeCredentialsSection = ({
                         {useGtawName ? 'Using GTAW' : 'Use GTAW'}
                     </button>
                 )}
+                {isDevelopmentEnvironment && !isGtaAuthenticated && (
+                    <div style={{ 
+                        padding: '5px 10px', 
+                        backgroundColor: '#ffc107', 
+                        color: '#000', 
+                        borderRadius: '4px',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold'
+                    }}>
+                        <i className="fas fa-code" style={{ marginRight: '5px' }}></i>
+                        Development Mode: Manual Selection Enabled
+                    </div>
+                )}
             </div>
             
             {useGtawName ? (
@@ -134,14 +150,14 @@ const EmployeeCredentialsSection = ({
                     <div style={{ color: '#eeeeeeb0' }}>
                         <strong>Name:</strong> {gtawCharacterName}<br/>
                         <strong>Username:</strong> {gtaWorldUser?.username}<br/>
-                        <strong>Badge Number:</strong> {gtaWorldUser?.character.id}<br/>
+                        <strong>Badge Number:</strong> {getCharacterID(gtaWorldUser)}<br/>
                         {gtaWorldUser?.faction?.rank && (
                             <><strong>Rank:</strong> {gtaWorldUser.faction.rank.split('-')[0].trim()}<br/></>
                         )}
                         <small style={{ color: '#6c757d' }}>Click "Use GTAW" again to switch back to database selection</small>
                     </div>
                 </div>
-            ) : (
+            ) : isDevelopmentEnvironment ? (
                 <Select
                     name={employeeNameField}
                     value={groupedOptions
@@ -152,40 +168,48 @@ const EmployeeCredentialsSection = ({
                     isClearable
                     placeholder={`Search or select ${employeeType}...`}
                     className={`form-control ${!formData[employeeNameField] ? 'is-invalid' : ''}`}
-                    styles={{ // Keep the styles for react-select
-                        control: (base) => ({
+                    styles={{ 
+                        control: (base, state) => ({
                             ...base,
                             backgroundColor: '#16202c',
                             color: '#eeeeeeb0',
-                            borderColor: '#30363d',
+                            borderColor: !formData[employeeNameField] && state.isFocused ? '#dc3545' :
+                                         !formData[employeeNameField] ? '#dc3545' :
+                                         state.isFocused ? '#86b7fe' : '#6c757d',
                             '&:hover': {
-                                borderColor: '#30363d'
-                            }
+                                borderColor: !formData[employeeNameField] ? '#dc3545' : '#86b7fe'
+                            },
+                            boxShadow: !formData[employeeNameField] && state.isFocused ? '0 0 0 0.25rem rgba(220, 53, 69, 0.25)' :
+                                       state.isFocused ? '0 0 0 0.25rem rgba(13, 110, 253, 0.25)' : null,
                         }),
-                        menu: (base) => ({
-                            ...base,
-                            backgroundColor: '#16202c',
-                            zIndex: 1000
-                        }),
-                        option: (base, state) => ({
-                            ...base,
-                            backgroundColor: state.isFocused ? 'Grey' : '#16202c',
-                            color: '#eeeeeeb0'
-                        }),
-                        singleValue: (base) => ({
-                            ...base,
-                            color: '#eeeeeeb0'
-                        }),
-                        input: (base) => ({
-                            ...base,
-                            color: '#eeeeeeb0'
-                        }),
-                        placeholder: (base) => ({
-                            ...base,
-                            color: '#eeeeeeb0'
-                        })
+                        menu: (base) => ({ ...base, backgroundColor: '#16202c', zIndex: 1000 }),
+                        option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? 'Grey' : '#16202c', color: '#eeeeeeb0' }),
+                        singleValue: (base) => ({ ...base, color: '#eeeeeeb0' }),
+                        input: (base) => ({ ...base, color: '#eeeeeeb0' }),
+                        placeholder: (base) => ({ ...base, color: '#eeeeeeb0' }),
+                        group: (base) => ({ ...base, paddingTop: 8, paddingBottom: 8 }),
+                        groupHeading: (base) => ({ ...base, color: '#6c757d', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.75rem', marginBottom: 4 })
                     }}
                 />
+            ) : null}
+            
+            {!useGtawName && !isGtaAuthenticated && !isDevelopmentEnvironment && (
+                <div style={{ 
+                    padding: '15px', 
+                    backgroundColor: '#2a2a2a', 
+                    border: '1px solid #6c757d', 
+                    borderRadius: '4px',
+                    marginBottom: '1rem',
+                    textAlign: 'center'
+                }}>
+                    <div style={{ color: '#6c757d', marginBottom: '10px' }}>
+                        <i className="fas fa-exclamation-triangle" style={{ marginRight: '8px' }}></i>
+                        GTAW Authentication Required
+                    </div>
+                    <div style={{ color: '#ccc', fontSize: '0.9rem' }}>
+                        Please log in with your GTAW account to automatically populate your credentials.
+                    </div>
+                </div>
             )}
         </>
     );
