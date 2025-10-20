@@ -20,6 +20,7 @@ import { useSettings } from './contexts/SettingsProvider';
 import { useWebhooks } from './hooks/useWebhooks';
 import { useImageUpload } from './hooks/useImageUpload';
 import useGtaWorldAuth from './hooks/useGtaWorldAuth';
+import useDynamicStaffIntegration from './hooks/useDynamicStaffIntegration';
 import { useLockdown } from './contexts/LockdownContext';
 import LockdownBanner from './components/LockdownBanner';
 import LockdownDialog from './components/LockdownDialog';
@@ -170,8 +171,26 @@ function MainApp({
         nurseRecruitmentDetails,
         coronerRecruitmentDetails,
         isLoadingData,
-        loading
+        loading,
+        refreshSegments
     } = useData();
+    
+    // Dynamic staff integration - automatically add authenticated GTAW users to Firebase
+    useDynamicStaffIntegration(
+        gtaWorldUser,
+        isGtaAuthenticated,
+        phmcListData,
+        coronerListData,
+        showNotification,
+        () => {
+            // Refresh staff data (includes both PHMC and coroner)
+            refreshSegments(['staff']);
+        },
+        () => {
+            // Refresh staff data (includes both PHMC and coroner)
+            refreshSegments(['staff']);
+        }
+    );
     
     // Enhanced GTAW login handler with loading notification
     const handleGtawLogin = () => {

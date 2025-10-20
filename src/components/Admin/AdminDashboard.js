@@ -309,9 +309,9 @@ const AdminDashboard = ({
                                 <div className="row">
                                     <div className="col-md-6">
                                         <h6 className="text-primary">Character Information</h6>
-                                        <p className="mb-1"><strong>Name:</strong> {factionData.characterName}</p>
+                                        <p className="mb-1"><strong>Character Name:</strong> {factionData.characterName}</p>
                                         <p className="mb-1"><strong>Character ID:</strong> {factionData.characterId}</p>
-                                        <p className="mb-1"><strong>Username:</strong> {gtaWorldUser.username}</p>
+                                        <p className="mb-1"><strong>UCP User:</strong> {gtaWorldUser.username}</p>
                                     </div>
                                     <div className="col-md-6">
                                         <h6 className="text-primary">PHMC Status</h6>

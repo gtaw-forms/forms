@@ -63,9 +63,7 @@ const EmployeeCredentialsSection = ({
             setUseGtawName(true);
             
             // Clean rank by removing dashes and extra text
-            const cleanRank = gtaWorldUser?.faction?.rank ? 
-                gtaWorldUser.faction.rank.split('-')[0].trim() : 'GTAW User';
-            
+const cleanRank = gtaWorldUser?.faction?.rank || 'GTAW User';            
             setFormData(prev => ({
                 ...prev,
                 [employeeNameField]: gtawCharacterName,
@@ -152,8 +150,8 @@ const EmployeeCredentialsSection = ({
                         Using GTAW OAuth Credentials
                     </div>
                     <div style={{ color: '#eeeeeeb0' }}>
-                        <strong>Name:</strong> {gtawCharacterName}<br/>
-                        <strong>Username:</strong> {gtaWorldUser?.username}<br/>
+                        <strong>Character Name:</strong> {gtawCharacterName}<br/>
+                        <strong>UCP User:</strong> {gtaWorldUser?.username}<br/>
                         <strong>Badge Number:</strong> {getCharacterID(gtaWorldUser)}<br/>
                         {gtaWorldUser?.faction?.rank && (
                             <><strong>Rank:</strong> {gtaWorldUser.faction.rank.split('-')[0].trim()}<br/></>
