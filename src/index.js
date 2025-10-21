@@ -59,9 +59,49 @@ const processDiscordErrorQueue = async () => {
  * Creates and queues a Discord embed for an unhandled error.
  * @param {object} errorDetails - Details about the caught error.
  */
+// --- Enhanced Rate Limiting for Discord Error Webhook ---
+const ERROR_RATE_LIMIT_WINDOW = 5 * 60 * 1000; // 5 minutes for duplicate check
+const MAX_ERRORS_PER_WINDOW = 10; // Max errors in the rolling window
+const RATE_LIMIT_DURATION = 60 * 1000; // 1 minute rolling window
+let lastDiscordErrorStack = '';
+let errorTimestamps = []; // Stores timestamps of recent errors for rate limiting
+
 export const sendDiscordErrorWebhook = (errorDetails) => {
     const now = Date.now();
-    lastDiscordErrorMessage = errorDetails.message;
+
+    // Filter timestamps to the current window
+    errorTimestamps = errorTimestamps.filter(timestamp => (now - timestamp) < RATE_LIMIT_DURATION);
+
+    // Check if the rate limit is exceeded
+    if (errorTimestamps.length >= MAX_ERRORS_PER_WINDOW) {
+        console.warn(`[Discord Error Webhook] Rate limit exceeded. Suppressing error:`, errorDetails.message);
+        return;
+    }
+
+    const errorMessage = String(errorDetails.message || '').substring(0, 1000);
+    const errorStack = String(errorDetails.stack || '').substring(0, 1000);
+
+    // Normalize error message by removing common prefixes like "TypeError:", "ReferenceError:", etc.
+    const normalizeErrorMessage = (msg) => {
+        return msg.replace(/^(TypeError|ReferenceError|SyntaxError|RangeError|URIError|EvalError|InternalError):\s*/i, '');
+    };
+    const normalizedErrorMessage = normalizeErrorMessage(errorMessage);
+
+    // If the normalized error message is identical to the last sent, and within the window, skip sending
+    if (
+        normalizedErrorMessage === normalizeErrorMessage(lastDiscordErrorMessage) &&
+        (now - lastDiscordErrorTimestamp) < ERROR_RATE_LIMIT_WINDOW
+    ) {
+        // Optionally, log to console for debugging
+        console.warn('[Discord Error Webhook] Duplicate error suppressed:', errorMessage);
+        return;
+    }
+
+    // Add new error timestamp
+    errorTimestamps.push(now);
+
+    lastDiscordErrorMessage = errorMessage;
+    lastDiscordErrorStack = errorStack;
     lastDiscordErrorTimestamp = now;
 
     // Try to get the Sentry event ID if available
@@ -73,19 +113,18 @@ export const sendDiscordErrorWebhook = (errorDetails) => {
     }
 
     const embed = {
-        
         title: errorDetails.isButtonClickError ? "🚨 Button Click Error 🚨" : "🚨 Unhandled Application Error 🚨",
         description: "An unhandled error was caught by the global error handler.",
         color: isSentryBlocked ? 0xFFA500 : 0xDE354C, // Orange if Sentry is blocked, Red otherwise
         fields: [
             { name: "Error Type", value: errorDetails.isButtonClickError ? "UI Button Interaction" : "General", inline: true },
             { name: "Sentry Status", value: isSentryBlocked ? "⚠️ Blocked / Unreachable" : "✅ Active", inline: true },
-            { name: "Error Message", value: `\`${String(errorDetails.message).substring(0, 1000)}\``, inline: false },
+            { name: "Error Message", value: `\`${errorMessage}\``, inline: false },
             { name: "Source File", value: errorDetails.source || "N/A", inline: true },
             { name: "Line", value: errorDetails.lineno || "N/A", inline: true },
             { name: "Column", value: errorDetails.colno || "N/A", inline: true },
             { name: "User Agent", value: `\`${navigator.userAgent}\``, inline: false },
-            { name: "Stack Trace", value: `\`${String(errorDetails.stack).substring(0, 1000)}\``, inline: false },
+            { name: "Stack Trace", value: `\`${errorStack}\``, inline: false },
             sentryEventId ? { name: "Sentry Trace/Event ID", value: `\`${sentryEventId}\``, inline: false } : null,
         ].filter(Boolean),
         timestamp: new Date().toISOString(),
@@ -94,6 +133,7 @@ export const sendDiscordErrorWebhook = (errorDetails) => {
     discordErrorWebhookQueue.push({ content: '<@228306972204597248>', embeds: [embed] });
     processDiscordErrorQueue(); // Start processing the queue if it's not already running
 };
+
 
 
 init({

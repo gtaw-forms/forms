@@ -7,82 +7,11 @@ import { getCharacterName, getCharacterID } from '../utils/characterUtils';
 
 // Check if we're in development environment
 const isDevelopmentEnvironment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const customSelectStyles = {
-    control: (base, state) => ({
-        ...base,
-        minHeight: '38px',
-        backgroundColor: '#16202c',
-        color: '#eeeeeeb0',
-        borderColor: state.isFocused ? '#86b7fe' : '#30363d',
-        boxShadow: state.isFocused ? '0 0 0 0.25rem rgba(13, 110, 253, 0.25)' : null,
-        '&:hover': {
-            borderColor: '#86b7fe'
-        }
-    }),
-    menu: (base) => ({
-        ...base,
-        backgroundColor: '#16202c',
-        zIndex: 1000,
-        border: '1px solid #30363d',
-        borderRadius: '0.375rem'
-    }),
-    option: (base, state) => ({
-        ...base,
-        backgroundColor: state.isFocused ? '#30363d' : '#16202c',
-        color: '#eeeeeeb0',
-        padding: '0.5rem 1rem',
-        '&:hover': {
-            backgroundColor: '#30363d'
-        }
-    }),
-    multiValue: (base) => ({
-        ...base,
-        backgroundColor: '#30363d',
-        color: '#eeeeeeb0'
-    }),
-    multiValueLabel: (base) => ({
-        ...base,
-        color: '#eeeeeeb0'
-    }),
-    multiValueRemove: (base) => ({
-        ...base,
-        color: '#6c757d',
-        '&:hover': {
-            backgroundColor: '#dc3545',
-            color: '#fff'
-        }
-    }),
-    input: (base) => ({
-        ...base,
-        color: '#eeeeeeb0'
-    }),
-    placeholder: (base) => ({
-        ...base,
-        color: '#6c757d'
-    }),
-    singleValue: (base) => ({
-        ...base,
-        color: '#eeeeeeb0'
-    }),
-    group: (base) => ({
-        ...base,
-        paddingTop: 8,
-        paddingBottom: 8
-    }),
-    groupHeading: (base) => ({
-        ...base,
-        color: '#6c757d',
-        fontWeight: 600,
-        textTransform: 'uppercase',
-        fontSize: '0.75rem',
-        marginBottom: 4
-    })
-};
 
 const EmployeeCredentialsSection = ({ 
     formData, 
     setFormData, 
-    coronerGroupedOptions,
+    groupedOptions,
     handleSelectChange, 
     setShowEmployeeModal,
     employeeType
@@ -230,15 +159,15 @@ const cleanRank = gtaWorldUser?.faction?.rank || 'GTAW User';
             ) : isDevelopmentEnvironment ? (
                 <Select
                     name="coronerEmployee"
-                    value={coronerGroupedOptions
+                    value={groupedOptions
                         .flatMap(group => group.options)
                         .find(option => option.value === formData.coronerEmployee) || null}
                     onChange={(selectedOption, actionMeta) => handleSelectChange(selectedOption, actionMeta)}
-                    options={coronerGroupedOptions}
+                    options={groupedOptions}
                     isClearable
-                    placeholder="Search or select coroner..."
+                    placeholder="Search or select ..."
                     className={`form-control ${!formData.coronerEmployee ? 'is-invalid' : ''}`}
-                    styles={customSelectStyles}
+                    classNamePrefix="react-select"
                 />
             ) : null}
             

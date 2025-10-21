@@ -11,42 +11,52 @@ const isDevelopmentEnvironment = window.location.hostname === 'localhost' || win
 const EmployeeCredentialsSection = ({ 
     formData, 
     setFormData, 
-    groupedOptions,
+    groupedOptions, 
     handleSelectChange, 
     setShowEmployeeModal,
-    employeeType
+    employeeType = 'coroner'
 }) => {
-    const { user: gtaWorldUser, isAuthenticated: isGtaAuthenticated } = useGtaWorldAuth();
+    const {
+        user: gtaWorldUser,
+        isAuthenticated: isGtaAuthenticated,
+        canSwapCharacters,
+        swapCharacter,
+        swappableCharacters,
+        factionData
+    } = useGtaWorldAuth();
+
     const [useGtawName, setUseGtawName] = useState(false);
-    
-    // Declare field names first (before useEffect)
-    const employeeNameField = `${employeeType}Employee`;
+        const employeeNameField = `${employeeType}Employee`;
     const employeeBadgeField = `${employeeType}Badge`;
     const employeeRankField = `${employeeType}Rank`;
     const employeeDiscordField = `${employeeType}Discord`;
     const employeePHNumberField = `${employeeType}PHNumber`;
+
+    const isDevelopmentEnvironment =
+        window.location.hostname === 'localhost' ||
+        window.location.hostname.startsWith('192.168.') ||
+        window.location.hostname.startsWith('10.') ||
+        window.location.hostname.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./); 
     
-    // Automatically enable GTAW credentials when user is authenticated
     useEffect(() => {
         if (isGtaAuthenticated && gtaWorldUser && !useGtawName) {
             // Check if we have a valid character name
-            const gtawCharacterName = gtaWorldUser.faction ? 
-                ((gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? 
-                    `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : 
-                    gtaWorldUser.faction.characterName || gtaWorldUser.username) : 
-                gtaWorldUser.username;
+            const gtawCharacterName = getCharacterName(gtaWorldUser);
             
-            if (gtawCharacterName) {
+            if (gtawCharacterName && gtawCharacterName !== 'GTAW User') {
                 setUseGtawName(true);
                 
-                // Clean rank by removing dashes and extra text
+                // Clean rank by removing dashes
                 const cleanRank = gtaWorldUser?.faction?.rank ? 
-                    gtaWorldUser.faction.rank.split('-')[0].trim() : 'GTAW User';
+                    gtaWorldUser.faction.rank.replace(/-/g, '').trim() : 'GTAW User';
+                
+                // Get character data using helper function
+                const characterId = getCharacterID(gtaWorldUser);
                 
                 setFormData(prev => ({
                     ...prev,
                     [employeeNameField]: gtawCharacterName,
-                    [employeeBadgeField]: gtaWorldUser?.character?.id || gtaWorldUser?.id || '', 
+                    [employeeBadgeField]: characterId, 
                     [employeeRankField]: cleanRank,
                     [employeeDiscordField]: gtaWorldUser?.username || '',
                     [employeePHNumberField]: '50056'
@@ -54,43 +64,35 @@ const EmployeeCredentialsSection = ({
             }
         }
     }, [isGtaAuthenticated, gtaWorldUser, useGtawName, setFormData, employeeNameField, employeeBadgeField, employeeRankField, employeeDiscordField, employeePHNumberField]);
-
-    // Get GTAW character name if available
-    const gtawCharacterName = isGtaAuthenticated && gtaWorldUser ? getCharacterName(gtaWorldUser) : null;
-
-    const handleGtawToggle = () => {
-        if (!useGtawName && gtawCharacterName) {
-            // Switch to GTAW name
-            setUseGtawName(true);
-            
-            // Clean rank by removing dashes and extra text
-const cleanRank = gtaWorldUser?.faction?.rank || 'GTAW User';            
+    
+    useEffect(() => {
+        if (useGtawName && isGtaAuthenticated && gtaWorldUser && factionData) {
+            const cleanRank = factionData.rank ? factionData.rank.split('-')[0].trim() : 'GTAW User';
             setFormData(prev => ({
                 ...prev,
-                [employeeNameField]: gtawCharacterName,
-                [employeeBadgeField]: gtaWorldUser?.id || '', // Use character ID as badge number
-                [employeeRankField]: cleanRank,
-                [employeeDiscordField]: gtaWorldUser?.username || '',
-                [employeePHNumberField]: '50056'
-            }));
-        } else {
-            // Switch back to Firebase selection
-            setUseGtawName(false);
-            setFormData(prev => ({
-                ...prev,
-                [employeeNameField]: '',
-                [employeeBadgeField]: '',
-                [employeeRankField]: '',
-                [employeeDiscordField]: '',
-                [employeePHNumberField]: '50056'
+                coronerEmployee: factionData.characterName,
+                coronerBadge: factionData.characterId || '',
+                coronerRank: cleanRank,
+                coronerDiscord: gtaWorldUser?.username || '',
+                coronerPHNumber: '50056'
             }));
         }
+    }, [factionData, useGtawName, isGtaAuthenticated, gtaWorldUser, setFormData]);
+
+    const gtawCharacterName = factionData?.characterName || null;
+
+    const handleSwap = () => {
+        if (!canSwapCharacters) return;
+        const currentIndex = swappableCharacters.findIndex(c => c.character.characterId === factionData.characterId);
+        const nextIndex = (currentIndex + 1) % swappableCharacters.length;
+        const nextCharacterId = swappableCharacters[nextIndex].character.characterId;
+        swapCharacter(nextCharacterId);
     };
 
     return (
         <>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
-                <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
+                <Form.Label style={{ marginBottom: 0 }}>Employee Name</Form.Label>
                 <button
                     type="button"
                     onClick={() => setShowEmployeeModal(true)}
@@ -104,23 +106,30 @@ const cleanRank = gtaWorldUser?.faction?.rank || 'GTAW User';
                     <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i>
                     Missing Name?
                 </button>
-                {isGtaAuthenticated && gtawCharacterName && (
+            </div>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                {(isGtaAuthenticated && gtawCharacterName) && (
                     <button
                         type="button"
-                        onClick={handleGtawToggle}
-                        className="close-button"
+                        onClick={() => setUseGtawName(!useGtawName)}
+                        className="btn btn-outline-light"
                         style={{
-                            padding: '0.25rem 0.5rem',
-                            fontSize: '0.8rem',
-                            lineHeight: '1.2',
-                            backgroundColor: useGtawName ? '#28a745' : '#007bff',
-                            color: 'white',
-                            border: 'none'
+                            padding: '0.375rem 0.75rem',
+                            fontSize: '0.875rem',
+                            border: useGtawName ? '1px solid #28a745' : '1px solid #6c757d',
+                            color: useGtawName ? '#28a745' : '#6c757d'
                         }}
                         title={useGtawName ? `Using GTAW: ${gtawCharacterName}` : `Use GTAW name: ${gtawCharacterName}`}
                     >
                         <i className={`fas ${useGtawName ? 'fa-check' : 'fa-user'}`} style={{ marginRight: '5px' }}></i>
                         {useGtawName ? 'Using GTAW' : 'Use GTAW'}
+                    </button>
+                )}
+                {canSwapCharacters && useGtawName && (
+                    <button type="button" onClick={handleSwap} className="btn btn-outline-info" style={{ padding: '0.375rem 0.75rem', fontSize: '0.875rem' }}>
+                        <i className="fas fa-random" style={{ marginRight: '5px' }}></i>
+                        Switch Employee
                     </button>
                 )}
                 {isDevelopmentEnvironment && !isGtaAuthenticated && (
@@ -153,9 +162,9 @@ const cleanRank = gtaWorldUser?.faction?.rank || 'GTAW User';
                     <div style={{ color: '#eeeeeeb0' }}>
                         <strong>Character Name:</strong> {gtawCharacterName}<br/>
                         <strong>UCP User:</strong> {gtaWorldUser?.username}<br/>
-                        <strong>Badge Number:</strong> {getCharacterID(gtaWorldUser)}<br/>
-                        {gtaWorldUser?.faction?.rank && (
-                            <><strong>Rank:</strong> {gtaWorldUser.faction.rank.split('-')[0].trim()}<br/></>
+                        <strong>Badge Number:</strong> {factionData?.characterId || gtaWorldUser?.id}<br/>
+                        {factionData?.rank && (
+                            <><strong>Rank:</strong> {factionData.rank.split('-')[0].trim()}<br/></>
                         )}
                         <small style={{ color: '#6c757d' }}>Click "Use GTAW" again to switch back to database selection</small>
                     </div>

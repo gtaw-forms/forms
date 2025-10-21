@@ -38,8 +38,11 @@ const EmployeeCredentialsSection = ({
             if (gtawCharacterName) {
                 setUseGtawName(true);
                 
-                // Use full rank without truncation
-                const cleanRank = gtaWorldUser?.faction?.rank || 'GTAW User';
+                const cleanRank = gtaWorldUser?.faction?.rank ? 
+                    gtaWorldUser.faction.rank.replace(/-/g, '').trim() : 'GTAW User';
+                
+                // Get character data using helper function
+                const characterId = getCharacterID(gtaWorldUser);
                 
                 setFormData(prev => ({
                     ...prev,
