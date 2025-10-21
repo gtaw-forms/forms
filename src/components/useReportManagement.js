@@ -229,30 +229,16 @@ export const useReportManagement = (
 
 
         const sanitizedAuthorId = comprehensiveSanitize(currentAuthor);
-        // Check for duplicate report by decedentName and decedentOOC
-        let duplicateKey = null;
-        let duplicateReport = null;
-        for (const report of savedReports) {
-            // Check for match by decedentName and decedentOOC
-            const data = report.data || {};
-            if (
-                (data.decedentName && formData.decedentName && data.decedentName === formData.decedentName) &&
-                ((data.decedentOOC || '') === (formData.decedentOOC || ''))
-            ) {
-                duplicateKey = report.originalKey;
-                duplicateReport = report;
-                break;
-            }
+        // Check for duplicate report by originalKey
+        const duplicateReport = savedReports.find(report => report.originalKey === key);
+
+        if (duplicateReport) {
+            const message = `A report with this identifying key already exists and cannot be saved again.`;
+            showNotification(message, 'error');
+            return { success: false, error: message };
         }
 
-        // If duplicate found, override its key
-        let sanitizedKey;
-        if (duplicateKey) {
-            // Use the same key as the duplicate, but update timestamp for uniqueness
-            sanitizedKey = duplicateReport && duplicateReport.sanitizedKey ? duplicateReport.sanitizedKey : duplicateKey.trim().replace(/[.#$[\/ \]]+/g, '_') + '_' + Date.now();
-        } else {
-            sanitizedKey = key.trim().replace(/[.#$[\/ \]]+/g, '_') + '_' + Date.now();
-        }
+        const sanitizedKey = key.trim().replace(/[.#$[\/ \]]+/g, '_') + '_' + Date.now();
 
         // --- Easter Egg Logic ---
         const currentSavedCountForAuthor = savedReports.filter(r => r.authorName === currentAuthor).length;
@@ -312,14 +298,9 @@ export const useReportManagement = (
             const reportRef = ref(database, reportPath);
             await set(reportRef, reportDataToSave);
 
-            let successMessage;
-            if (duplicateKey) {
-                successMessage = `Duplicate report found for "${formData.decedentName}". Overridden and saved!`;
-            } else {
-                successMessage = isGtaAuthenticated && gtaWorldUser ?
-                    `Report "${key}" saved for ${currentAuthor} to Firebase with GTAW data!` :
-                    `Report "${key}" saved for ${currentAuthor} to Firebase!`;
-            }
+            const successMessage = isGtaAuthenticated && gtaWorldUser ?
+                `Report "${key}" saved for ${currentAuthor} to Firebase with GTAW data!` :
+                `Report "${key}" saved for ${currentAuthor} to Firebase!`;
             showNotification(successMessage, 'save');
 
             // Log the webhook with GTAW data information
@@ -329,7 +310,7 @@ export const useReportManagement = (
                 originalKey: key,
                 bbCodeVersion: bbCodeVersion,
                 hasGtawData: isGtaAuthenticated && !!gtaWorldUser,
-                duplicateOverride: !!duplicateKey
+                duplicateOverride: false
             };
 
             if (isGtaAuthenticated && gtaWorldUser) {

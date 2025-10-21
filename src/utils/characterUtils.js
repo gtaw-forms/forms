@@ -11,7 +11,7 @@ export const getCharacterData = (gtaWorldUser) => {
             userData: gtaWorldUser.userData,
             characterArray: gtaWorldUser?.userData?.character || gtaWorldUser?.userData?.characters || gtaWorldUser?.character || gtaWorldUser?.characters,
             fullRank: gtaWorldUser?.faction?.rank,
-            cleanedRank: gtaWorldUser?.faction?.rank ? gtaWorldUser.faction.rank.replace(/-/g, '').trim() : null
+            cleanedRank: gtaWorldUser?.faction?.rank ? gtaWorldUser.faction.rank.replace(/-/g, ' ').trim() : null
         });
         window.gtawDebugLogged = true;
     }
@@ -116,7 +116,7 @@ export const getDatabaseRank = (gtaWorldUser, phmcListData = [], coronerListData
 // Helper function to clean rank by removing dash characters
 export const cleanRank = (rank) => {
     if (!rank) return 'GTAW User';
-    return rank.replace(/-/g, '').trim();
+    return rank.replace(/-/g, ' ').trim();
 };
 
 // Helper function to get display rank (database rank if available, otherwise cleaned faction rank)

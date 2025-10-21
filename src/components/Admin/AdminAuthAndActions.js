@@ -232,8 +232,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
     const [logRefreshTrigger, setLogRefreshTrigger] = useState(0);
     
     const [showUserManagementModal, setShowUserManagementModal] = useState(false);
-    const [showOAuthTokenExchangeModal, setShowOAuthTokenExchangeModal] = useState(false);
-    const [showUserDataExchangeModal, setShowUserDataExchangeModal] = useState(false);
 
     const [formGeneratorStatus, setFormGeneratorStatus] = useState('');
     const [alternativeFormGeneratorStatus, setAlternativeFormGeneratorStatus] = useState('');
@@ -1348,7 +1346,6 @@ Key: ${savedRoleData.originalKey}`,
             return false;
         }
     };
-
 
 
     // CRITICAL SECURITY FIX: Check if user is logging out first

@@ -89,7 +89,7 @@ const EmployeeCredentialsSection = ({
     return (
         <>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
-                <Form.Label style={{ marginBottom: 0 }}>Coroner Issuing Certificate</Form.Label>
+                <Form.Label style={{ marginBottom: 0 }}>Employee Name</Form.Label>
                 <button
                     type="button"
                     onClick={() => setShowEmployeeModal(true)}
@@ -242,9 +242,10 @@ const Certificate = ({
             <EmployeeCredentialsSection 
                 formData={formData}
                 setFormData={setFormData}
-                coronerGroupedOptions={coronerGroupedOptions}
+                groupedOptions={coronerGroupedOptions}
                 handleSelectChange={handleSelectChange}
                 setShowEmployeeModal={setShowEmployeeModal}
+                employeeType="coroner"
             />
             <Form.Label></Form.Label>
 
