@@ -287,6 +287,10 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
         timestamp: new Date().toISOString()
     };
     
+    // Declare batchResult and characterIds here to ensure they are in scope
+    let batchResult = null;
+    let characterIds = [];
+
     const logPhase = (phase, startTime) => {
         const duration = performance.now() - startTime;
         perfMetrics.phases[phase] = Math.round(duration);
@@ -499,7 +503,6 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
                     // Check for cached faction data first
                     const cacheKey = `factionData_364_${characterIds.join('_')}`;
                     const cachedData = sessionStorage.getItem(cacheKey);
-                    let batchResult = null;
                     let usedCache = false;
                     
                     if (cachedData) {
@@ -718,7 +721,15 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
                     firstname: char.firstname,
                     lastname: char.lastname,
                     // Remove other fields to reduce storage size
-                })) : undefined
+                })) : undefined,
+                allFactionCharacters: batchResult.data?.results?.filter(r => r.isMember).map(r => ({
+                    character: {
+                        characterId: r.character?.characterId,
+                        characterName: r.character?.characterName,
+                        scriptRank: r.character?.scriptRank,
+                        rank: r.character?.rank
+                    }
+                })) || []
             };
             
             sessionStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(compactUserData));
