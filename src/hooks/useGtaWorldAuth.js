@@ -59,7 +59,7 @@ export const useGtaWorldAuth = () => {
         }
     }, [user]);
 
-    const swappableCharacters = user?.allFactionCharacters?.length > 1 ? user.allFactionCharacters : [];
+    const swappableCharacters = user?.allFactionCharacters || [];
     // --- END POC ---
 
     useEffect(() => {
@@ -174,12 +174,22 @@ export const useGtaWorldAuth = () => {
                     state,
                     (userData, returnPath) => {
                         const serviceCallDuration = Date.now() - serviceCallStart;
+                        console.log('🎯 [useGtaWorldAuth] handleOAuthCallback onSuccess called:', {
+                            duration: serviceCallDuration,
+                            hasUserData: !!userData,
+                            username: userData?.username,
+                            returnPath
+                        });
                         setUser(userData);
                         setIsLoading(false);
                         resolve({ userData, returnPath });
                     },
                     (errorMessage) => {
                         const serviceCallDuration = Date.now() - serviceCallStart;
+                        console.error('❌ [useGtaWorldAuth] handleOAuthCallback onError called:', {
+                            duration: serviceCallDuration,
+                            errorMessage
+                        });
                         setError(errorMessage);
                         setIsLoading(false);
                         reject(new Error(errorMessage));

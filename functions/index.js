@@ -246,13 +246,75 @@ export const dailyTaskHandler = onSchedule({
 const oauthCodeCache = new Map();
 const CACHE_EXPIRY = 5 * 60 * 1000; // 5 minutes
 
+/**
+ * Proxies requests to the GTA World API to bypass CORS issues.
+ * This function is called from the client-side to make authenticated requests
+ * to ucp.gta.world/api endpoints.
+ */
+/* export const proxyGtaWorldApi = onCall({
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000'
+    ]
+}, async (request) => {
+    const { endpoint, accessToken, method = 'GET', body = null, headers = {}, skipAuthCheck = false } = request.data;
+
+    // Allow skipping auth check for session validation calls
+    if (!skipAuthCheck && !request.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+    }
+
+    if (!endpoint || !accessToken) {
+        throw new functions.https.HttpsError('invalid-argument', 'Endpoint and accessToken are required.');
+    }
+
+    const GTA_WORLD_API_BASE_URL = 'https://global.gta.world/api';
+    const targetUrl = `${GTA_WORLD_API_BASE_URL}${endpoint}`;
+
+    console.log(`[Proxy] Proxying request to GTA World API: ${method} ${targetUrl}`);
+
+    try {
+        const fetchOptions = {
+            method: method,
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+                'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions Proxy)', // Identify proxy
+                ...headers
+            },
+        };
+
+        if (body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
+            fetchOptions.body = JSON.stringify(body);
+        }
+
+        const response = await fetch(targetUrl, fetchOptions);
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`[Proxy] Proxy request to ${targetUrl} failed: ${response.status} ${response.statusText} - ${errorText}`);
+            throw new functions.https.HttpsError('unavailable', `GTA World API responded with an error: ${response.status} ${response.statusText} - ${errorText}`);
+        }
+
+        const responseData = await response.json();
+        console.log(`[Proxy] Successfully proxied request to ${targetUrl}`);
+        return { success: true, data: responseData };
+
+    } catch (error) {
+        console.error(`[Proxy] Error in proxyGtaWorldApi for endpoint ${endpoint}:`, error);
+        throw new functions.https.HttpsError('internal', 'Failed to proxy request to GTA World API.', error.message);
+    }
+});
+ */
 export const exchangeAuthCodeForToken = onCall({ 
     secrets: ["GTAWORLD_CLIENT_ID", "GTAWORLD_CLIENT_SECRET"],
     cors: [
         'https://ancad-studios.github.io',
         'http://localhost:3000',
         'https://gtaw-forms.github.io',
-        'https://phmc-tools.gta.world'
+        'https://phmc-tools.gta.world',
+        'https://global.gta.world'
     ]
 }, async (request) => {
     const data = request.data;
@@ -373,8 +435,31 @@ export const exchangeAuthCodeForToken = onCall({
         
         clearTimeout(tokenTimeout);
 
-        const tokenData = await tokenResponse.json();
         console.log('[OAuth] Token response status:', tokenResponse.status);
+        console.log('[OAuth] Token response headers:', Object.fromEntries(tokenResponse.headers.entries()));
+
+        // Get response text first to check if it's HTML or JSON
+        const tokenResponseText = await tokenResponse.text();
+        console.log('[OAuth] Raw token response:', {
+            status: tokenResponse.status,
+            statusText: tokenResponse.statusText,
+            contentType: tokenResponse.headers.get('content-type'),
+            textLength: tokenResponseText.length,
+            startsWithHTML: tokenResponseText.trim().startsWith('<'),
+            firstChars: tokenResponseText.substring(0, 200)
+        });
+
+        let tokenData;
+        try {
+            tokenData = JSON.parse(tokenResponseText);
+        } catch (parseError) {
+            console.error('[OAuth] Failed to parse token response as JSON:', {
+                error: parseError.message,
+                responseText: tokenResponseText.substring(0, 1000),
+                isHTML: tokenResponseText.includes('<html>') || tokenResponseText.includes('<!DOCTYPE')
+            });
+            throw new functions.https.HttpsError('internal', 'GTA World API returned invalid response (HTML instead of JSON)');
+        }
 
         if (!tokenResponse.ok) {
             console.error('[OAuth] Token exchange failed:', tokenData);
@@ -590,7 +675,8 @@ export const getTokenForSecrets = onCall({
         'https://ancad-studios.github.io',
         'http://localhost:3000',
         'https://gtaw-forms.github.io',
-        'https://phmc-tools.gta.world'
+        'https://phmc-tools.gta.world',
+        'https://global.gta.world'
     ]
 }, async (request) => {
     console.log('🔧 [Token Setup] Starting token retrieval for Firebase Secrets setup');
@@ -614,7 +700,7 @@ export const getTokenForSecrets = onCall({
             code: code,
         });
 
-        const tokenResponse = await fetch('https://ucp.gta.world/oauth/token', {
+        const tokenResponse = await fetch('https://global.gta.world/oauth/token', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
@@ -691,7 +777,8 @@ export const getManagedGtaWorldToken = onCall({
     cors: [
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',
-        'http://localhost:3000'
+        'http://localhost:3000',
+        'https://global.gta.world'
     ]
 }, async (request) => {
     console.log('[Managed Token] Getting persistent access token');
@@ -716,7 +803,7 @@ export const getManagedGtaWorldToken = onCall({
     try {
         // First, try to validate the existing token
         console.log('[Managed Token] Validating existing persistent token');
-        const validationResponse = await fetch('https://ucp.gta.world/api/user', {
+        const validationResponse = await fetch('https://global.gta.world/api/user', {
             headers: {
                 'Authorization': `Bearer ${persistentToken}`,
                 'Accept': 'application/json',
@@ -749,7 +836,7 @@ export const getManagedGtaWorldToken = onCall({
                     'OAuth credentials not configured for token refresh');
             }
             
-            const refreshResponse = await fetch('https://ucp.gta.world/oauth/token', {
+            const refreshResponse = await fetch('https://global.gta.world/oauth/token', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -829,7 +916,7 @@ export const getProfileWithManagedToken = onCall({
     }
     
     try {
-        const userResponse = await fetch('https://ucp.gta.world/api/user', {
+        const userResponse = await fetch('https://global.gta.world/api/user', {
             headers: {
                 'Authorization': `Bearer ${persistentToken}`,
                 'Accept': 'application/json',
@@ -903,7 +990,7 @@ export const validateGtaWorldToken = onCall({
     try {
         console.log('[Token Validation] Validating token with GTA World API');
         
-        const userResponse = await fetch('https://ucp.gta.world/api/user', {
+        const userResponse = await fetch('https://global.gta.world/api/user', {
             headers: {
                 'Authorization': `Bearer ${accessToken}`,
                 'Accept': 'application/json',
@@ -999,7 +1086,7 @@ export const getCachedGtaWorldProfile = onCall({
         
         // Make fresh API call
         console.log('[Cached Profile] Making fresh API call');
-        const userResponse = await fetch('https://ucp.gta.world/api/user', {
+        const userResponse = await fetch('https://global.gta.world/api/user', {
             headers: {
                 'Authorization': `Bearer ${accessToken}`,
                 'Accept': 'application/json',
@@ -1063,7 +1150,8 @@ export const getGtaWorldProfile = onCall({
     cors: [
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',
-        'http://localhost:3000'
+        'http://localhost:3000',
+        'https://global.gta.world'
     ]
 }, async (request) => {
     console.log('[Profile Test] Starting profile retrieval via Firebase Function');
@@ -1080,7 +1168,7 @@ export const getGtaWorldProfile = onCall({
             tokenPrefix: accessToken.substring(0, 20) + '...'
         });
         
-        const userResponse = await fetch('https://ucp.gta.world/api/user', {
+        const userResponse = await fetch('https://global.gta.world/api/user', {
             headers: {
                 'Authorization': `Bearer ${accessToken}`,
                 'Accept': 'application/json',
@@ -1334,7 +1422,7 @@ export const batchCheckFactionMembership = onCall({
     if (accessToken && !skipTokenValidation) {
         try {
             console.log('[Batch Faction Check] Validating access token');
-            const tokenValidation = await fetch('https://ucp.gta.world/api/user', {
+            const tokenValidation = await fetch('https://global.gta.world/api/user', {
                 headers: {
                     'Authorization': `Bearer ${accessToken}`,
                     'Accept': 'application/json',
@@ -1516,7 +1604,7 @@ export const checkFactionMembership = onCall({
     if (accessToken && !skipTokenValidation) {
         try {
             console.log('[Faction Check] Validating access token');
-            const tokenValidation = await fetch('https://ucp.gta.world/api/user', {
+            const tokenValidation = await fetch('https://global.gta.world/api/user', {
                 headers: {
                     'Authorization': `Bearer ${accessToken}`,
                     'Accept': 'application/json',
