@@ -4,6 +4,7 @@ import { database } from '../firebase'; // Assuming this path
 import { ref, get, set, remove } from 'firebase/database';
 import * as Sentry from "@sentry/react";
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
+import { getCharacterName, getCharacterID } from '../utils/characterUtils';
 
 const comprehensiveSanitize = (str) => {
     if (!str) return '';
@@ -292,12 +293,8 @@ export const useReportManagement = (
         // Automatically add GTAW character data if user is authenticated with OAuth
         if (isGtaAuthenticated && gtaWorldUser) {
             reportDataToSave.gtawUsername = gtaWorldUser.username;
-            reportDataToSave.gtawCharacterId = gtaWorldUser.id;
-            reportDataToSave.gtawCharacterName = gtaWorldUser.faction ? 
-                ((gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? 
-                    `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : 
-                    gtaWorldUser.faction.characterName || gtaWorldUser.username) : 
-                gtaWorldUser.username;
+            reportDataToSave.gtawCharacterId = getCharacterID(gtaWorldUser); // Use utility function to get correct character ID
+            reportDataToSave.gtawCharacterName = getCharacterName(gtaWorldUser); // Use utility function to get correct character name
             reportDataToSave.gtawSyncTimestamp = new Date().toISOString();
             reportDataToSave.gtawSyncVersion = '1.1';
             
@@ -337,8 +334,8 @@ export const useReportManagement = (
 
             if (isGtaAuthenticated && gtaWorldUser) {
                 webhookPayload.gtawUsername = gtaWorldUser.username;
-                webhookPayload.gtawCharacterId = gtaWorldUser.id;
-                webhookPayload.gtawCharacterName = reportDataToSave.gtawCharacterName;
+                webhookPayload.gtawCharacterId = getCharacterID(gtaWorldUser); // Use utility function to get correct character ID
+                webhookPayload.gtawCharacterName = getCharacterName(gtaWorldUser); // Use utility function to get correct character name
             }
 
             await logWebhook(`report_saved by ${currentAuthor}`, webhookPayload);

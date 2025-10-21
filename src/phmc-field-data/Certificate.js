@@ -3,13 +3,15 @@ import React, { useState, useEffect } from 'react';
 import { Form, Button, InputGroup } from 'react-bootstrap';
 import Select from 'react-select';
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
+import { getCharacterName, getCharacterID } from '../utils/characterUtils';
 
 const EmployeeCredentialsSection = ({ 
     formData, 
     setFormData, 
-    coronerGroupedOptions, 
+    groupedOptions, 
     handleSelectChange, 
-    setShowEmployeeModal 
+    setShowEmployeeModal,
+    employeeType = 'coroner'
 }) => {
     const {
         user: gtaWorldUser,
@@ -21,7 +23,12 @@ const EmployeeCredentialsSection = ({
     } = useGtaWorldAuth();
 
     const [useGtawName, setUseGtawName] = useState(false);
-    
+        const employeeNameField = `${employeeType}Employee`;
+    const employeeBadgeField = `${employeeType}Badge`;
+    const employeeRankField = `${employeeType}Rank`;
+    const employeeDiscordField = `${employeeType}Discord`;
+    const employeePHNumberField = `${employeeType}PHNumber`;
+
     const isDevelopmentEnvironment =
         window.location.hostname === 'localhost' ||
         window.location.hostname.startsWith('192.168.') ||
@@ -29,13 +36,31 @@ const EmployeeCredentialsSection = ({
         window.location.hostname.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./); 
     
     useEffect(() => {
-        if (isGtaAuthenticated && gtaWorldUser && !isDevelopmentEnvironment && !useGtawName) {
-            const gtawCharacterName = factionData?.characterName || null;
-            if (gtawCharacterName) {
+        if (isGtaAuthenticated && gtaWorldUser && !useGtawName) {
+            // Check if we have a valid character name
+            const gtawCharacterName = getCharacterName(gtaWorldUser);
+            
+            if (gtawCharacterName && gtawCharacterName !== 'GTAW User') {
                 setUseGtawName(true);
+                
+                // Clean rank by removing dashes
+                const cleanRank = gtaWorldUser?.faction?.rank ? 
+                    gtaWorldUser.faction.rank.replace(/-/g, '').trim() : 'GTAW User';
+                
+                // Get character data using helper function
+                const characterId = getCharacterID(gtaWorldUser);
+                
+                setFormData(prev => ({
+                    ...prev,
+                    [employeeNameField]: gtawCharacterName,
+                    [employeeBadgeField]: characterId, 
+                    [employeeRankField]: cleanRank,
+                    [employeeDiscordField]: gtaWorldUser?.username || '',
+                    [employeePHNumberField]: '50056'
+                }));
             }
         }
-    }, [isGtaAuthenticated, gtaWorldUser, isDevelopmentEnvironment, useGtawName, factionData]);
+    }, [isGtaAuthenticated, gtaWorldUser, useGtawName, setFormData, employeeNameField, employeeBadgeField, employeeRankField, employeeDiscordField, employeePHNumberField]);
     
     useEffect(() => {
         if (useGtawName && isGtaAuthenticated && gtaWorldUser && factionData) {
@@ -141,29 +166,29 @@ const EmployeeCredentialsSection = ({
                         <small style={{ color: '#6c757d' }}>Click "Use GTAW" again to switch back to database selection</small>
                     </div>
                 </div>
-            ) : (
+            ) : isDevelopmentEnvironment ? (
                 <Select
-                    name="coronerEmployee"
-                    value={coronerGroupedOptions
+                    name={employeeNameField}
+                    value={groupedOptions
                         .flatMap(group => group.options)
-                        .find(option => option.value === formData.coronerEmployee) || null}
-                    onChange={(selectedOption, actionMeta) => handleSelectChange(selectedOption, actionMeta)}
-                    options={coronerGroupedOptions}
+                        .find(option => option.value === formData[employeeNameField]) || null}
+                    onChange={(selectedOption) => handleSelectChange(selectedOption, { name: employeeNameField })}
+                    options={groupedOptions}
                     isClearable
-                    placeholder="Search or select coroner..."
-                    className={`form-control ${!formData.coronerEmployee ? 'is-invalid' : ''}`}
-                    styles={{
+                    placeholder={`Search or select ${employeeType}...`}
+                    className={`form-control ${!formData[employeeNameField] ? 'is-invalid' : ''}`}
+                    styles={{ 
                         control: (base, state) => ({
                             ...base,
                             backgroundColor: '#16202c',
                             color: '#eeeeeeb0',
-                            borderColor: !formData.coronerEmployee && state.isFocused ? '#dc3545' :
-                                         !formData.coronerEmployee ? '#dc3545' :
+                            borderColor: !formData[employeeNameField] && state.isFocused ? '#dc3545' :
+                                         !formData[employeeNameField] ? '#dc3545' :
                                          state.isFocused ? '#86b7fe' : '#6c757d',
                             '&:hover': {
-                                borderColor: !formData.coronerEmployee ? '#dc3545' : '#86b7fe'
+                                borderColor: !formData[employeeNameField] ? '#dc3545' : '#86b7fe'
                             },
-                            boxShadow: !formData.coronerEmployee && state.isFocused ? '0 0 0 0.25rem rgba(220, 53, 69, 0.25)' :
+                            boxShadow: !formData[employeeNameField] && state.isFocused ? '0 0 0 0.25rem rgba(220, 53, 69, 0.25)' :
                                        state.isFocused ? '0 0 0 0.25rem rgba(13, 110, 253, 0.25)' : null,
                         }),
                         menu: (base) => ({ ...base, backgroundColor: '#16202c', zIndex: 1000 }),
@@ -175,9 +200,9 @@ const EmployeeCredentialsSection = ({
                         groupHeading: (base) => ({ ...base, color: '#6c757d', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.75rem', marginBottom: 4 })
                     }}
                 />
-            )}
+            ) : null}
             
-            {!isGtaAuthenticated && !isDevelopmentEnvironment && (
+            {!useGtawName && !isGtaAuthenticated && !isDevelopmentEnvironment && (
                 <div style={{ 
                     padding: '15px', 
                     backgroundColor: '#2a2a2a', 
