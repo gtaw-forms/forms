@@ -1331,13 +1331,21 @@ export const validateSession = async () => {
             return { valid: false, error: 'Not authenticated' };
         }
 
-        // Optionally validate the token by making a test API call
-        const userData = await makeAuthenticatedRequest('/user');
-        
-        return { 
-            valid: true, 
-            userData 
-        };
+        // Instead of making a direct API call, check if we have valid stored user data.
+        // The initial authentication flow already fetches and stores this data via Firebase function,
+        // so a direct client-side call to /user is redundant and causes CORS issues.
+        const currentUser = getCurrentUser();
+        if (currentUser && currentUser.id && currentUser.username) {
+            console.debug('[GTA Auth] Session validated using stored user data.');
+            return { 
+                valid: true, 
+                userData: currentUser 
+            };
+        } else {
+            console.warn('[GTA Auth] Stored user data is incomplete or invalid, session considered invalid.');
+            logout(); // Clear potentially corrupted session
+            return { valid: false, error: 'Incomplete user data in session' };
+        }
 
     } catch (error) {
         console.error('[GTA Auth] Session validation failed:', error);

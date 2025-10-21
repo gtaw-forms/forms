@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 
 const UnifiedGtaCallback = () => {
   const [status, setStatus] = useState('processing');
   const [error, setError] = useState(null);
   const location = useLocation();
+  const navigate = useNavigate();
   const { processCallback } = useGtaWorldAuth();
 
   useEffect(() => {
@@ -29,12 +30,23 @@ const UnifiedGtaCallback = () => {
 
     (async () => {
       try {
+        console.log('🎯 [UnifiedGtaCallback] Starting processCallback with:', { code: code?.substring(0, 10) + '...', state });
         await processCallback(code, state);
+        console.log('✅ [UnifiedGtaCallback] processCallback completed successfully');
         setStatus('success');
+        console.log('🔄 [UnifiedGtaCallback] Setting up navigation to homepage in 800ms');
         setTimeout(() => {
-          window.location.href = '/forms/';
+          console.log('🚀 [UnifiedGtaCallback] Navigating to homepage (preserving sessionStorage)');
+          console.log('📦 [UnifiedGtaCallback] SessionStorage before navigation:', {
+            userData: !!sessionStorage.getItem('gtaworld_user_data'),
+            accessToken: !!sessionStorage.getItem('gtaworld_access_token'),
+            storageKeys: Object.keys(sessionStorage)
+          });
+          // Use React Router navigate to preserve sessionStorage
+          navigate('/', { replace: true });
         }, 800);
       } catch (err) {
+        console.error('❌ [UnifiedGtaCallback] processCallback failed:', err);
         setStatus('error');
         setError(err.message || 'Authentication failed');
       }
@@ -84,7 +96,7 @@ const UnifiedGtaCallback = () => {
             <p className="mb-3">{error}</p>
             <hr />
             <div className="d-flex gap-2 justify-content-center">
-              <button className="btn btn-primary" onClick={() => window.location.href = '/forms/'}>
+              <button className="btn btn-primary" onClick={() => navigate('/', { replace: true })}>
                 <i className="fas fa-home me-2"></i>
                 Return to Homepage
               </button>
