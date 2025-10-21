@@ -9,69 +9,88 @@ import { getCharacterName, getCharacterID } from '../utils/characterUtils';
 const EmployeeCredentialsSection = ({ 
     formData, 
     setFormData, 
-    coronerGroupedOptions, 
+    groupedOptions, 
     handleSelectChange, 
     setShowEmployeeModal,
-    employeeType
+    employeeType = 'coroner'
 }) => {
-    const { user: gtaWorldUser, isAuthenticated: isGtaAuthenticated } = useGtaWorldAuth();
+    const {
+        user: gtaWorldUser,
+        isAuthenticated: isGtaAuthenticated,
+        canSwapCharacters,
+        swapCharacter,
+        swappableCharacters,
+        factionData
+    } = useGtaWorldAuth();
+
     const [useGtawName, setUseGtawName] = useState(false);
-    
-    // Detect localhost/development environment
+        const employeeNameField = `${employeeType}Employee`;
+    const employeeBadgeField = `${employeeType}Badge`;
+    const employeeRankField = `${employeeType}Rank`;
+    const employeeDiscordField = `${employeeType}Discord`;
+    const employeePHNumberField = `${employeeType}PHNumber`;
+
     const isDevelopmentEnvironment =
         window.location.hostname === 'localhost' ||
         window.location.hostname.startsWith('192.168.') ||
         window.location.hostname.startsWith('10.') ||
         window.location.hostname.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./); 
     
-    // Declare field names first (before useEffect)
-    const employeeNameField = `${employeeType}Employee`;
-    const employeeBadgeField = `${employeeType}Badge`;
-    const employeeRankField = `${employeeType}Rank`;
-    const employeeDiscordField = `${employeeType}Discord`;
-    const employeePHNumberField = `${employeeType}PHNumber`;
-
-    // Automatically enable GTAW credentials when user is authenticated and not in development
     useEffect(() => {
-        if (isGtaAuthenticated && gtaWorldUser && !isDevelopmentEnvironment && !useGtawName) {
+        if (isGtaAuthenticated && gtaWorldUser && !useGtawName) {
             // Check if we have a valid character name
             const gtawCharacterName = getCharacterName(gtaWorldUser);
             
-            if (gtawCharacterName) {
+            if (gtawCharacterName && gtawCharacterName !== 'GTAW User') {
                 setUseGtawName(true);
-            }
-        }
-    }, [isGtaAuthenticated, gtaWorldUser, isDevelopmentEnvironment, useGtawName]);
-    
-    // Populate GTAW credentials when useGtawName is enabled
-    useEffect(() => {
-        if (useGtawName && isGtaAuthenticated && gtaWorldUser) {
-            // Check if we have a valid character name
-            const gtawCharacterName = getCharacterName(gtaWorldUser);
-            
-            if (gtawCharacterName) {
-                // Use full rank without truncation
-                const cleanRank = gtaWorldUser?.faction?.rank || 'GTAW User';
+                
+                // Clean rank by removing dashes
+                const cleanRank = gtaWorldUser?.faction?.rank ? 
+                    gtaWorldUser.faction.rank.replace(/-/g, '').trim() : 'GTAW User';
+                
+                // Get character data using helper function
+                const characterId = getCharacterID(gtaWorldUser);
                 
                 setFormData(prev => ({
                     ...prev,
-                    coronerEmployee: gtawCharacterName,
-                    coronerBadge: getCharacterID(gtaWorldUser) || '', 
-                    coronerRank: cleanRank,
-                    coronerDiscord: gtaWorldUser?.username || '',
-                    coronerPHNumber: '50056'
+                    [employeeNameField]: gtawCharacterName,
+                    [employeeBadgeField]: characterId, 
+                    [employeeRankField]: cleanRank,
+                    [employeeDiscordField]: gtaWorldUser?.username || '',
+                    [employeePHNumberField]: '50056'
                 }));
             }
         }
-    }, [useGtawName, isGtaAuthenticated, gtaWorldUser, setFormData]);
+    }, [isGtaAuthenticated, gtaWorldUser, useGtawName, setFormData, employeeNameField, employeeBadgeField, employeeRankField, employeeDiscordField, employeePHNumberField]);
+    
+    useEffect(() => {
+        if (useGtawName && isGtaAuthenticated && gtaWorldUser && factionData) {
+            const cleanRank = factionData.rank ? factionData.rank.split('-')[0].trim() : 'GTAW User';
+            setFormData(prev => ({
+                ...prev,
+                coronerEmployee: factionData.characterName,
+                coronerBadge: factionData.characterId || '',
+                coronerRank: cleanRank,
+                coronerDiscord: gtaWorldUser?.username || '',
+                coronerPHNumber: '50056'
+            }));
+        }
+    }, [factionData, useGtawName, isGtaAuthenticated, gtaWorldUser, setFormData]);
 
-    // Get GTAW character name if available
-    const gtawCharacterName = isGtaAuthenticated && gtaWorldUser ? getCharacterName(gtaWorldUser) : null;
+    const gtawCharacterName = factionData?.characterName || null;
+
+    const handleSwap = () => {
+        if (!canSwapCharacters) return;
+        const currentIndex = swappableCharacters.findIndex(c => c.character.characterId === factionData.characterId);
+        const nextIndex = (currentIndex + 1) % swappableCharacters.length;
+        const nextCharacterId = swappableCharacters[nextIndex].character.characterId;
+        swapCharacter(nextCharacterId);
+    };
 
     return (
         <>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
-                <Form.Label style={{ marginBottom: 0 }}>Employee Credentials</Form.Label>
+                <Form.Label style={{ marginBottom: 0 }}>Employee Name</Form.Label>
                 <button
                     type="button"
                     onClick={() => setShowEmployeeModal(true)}
@@ -87,7 +106,6 @@ const EmployeeCredentialsSection = ({
                 </button>
             </div>
             
-            {/* Show GTAW toggle button if authenticated or in development */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
                 {(isGtaAuthenticated && gtawCharacterName) && (
                     <button
@@ -104,6 +122,12 @@ const EmployeeCredentialsSection = ({
                     >
                         <i className={`fas ${useGtawName ? 'fa-check' : 'fa-user'}`} style={{ marginRight: '5px' }}></i>
                         {useGtawName ? 'Using GTAW' : 'Use GTAW'}
+                    </button>
+                )}
+                {canSwapCharacters && useGtawName && (
+                    <button type="button" onClick={handleSwap} className="btn btn-outline-info" style={{ padding: '0.375rem 0.75rem', fontSize: '0.875rem' }}>
+                        <i className="fas fa-random" style={{ marginRight: '5px' }}></i>
+                        Switch Employee
                     </button>
                 )}
                 {isDevelopmentEnvironment && !isGtaAuthenticated && (
@@ -136,9 +160,9 @@ const EmployeeCredentialsSection = ({
                     <div style={{ color: '#eeeeeeb0' }}>
                         <strong>Character Name:</strong> {gtawCharacterName}<br/>
                         <strong>UCP User:</strong> {gtaWorldUser?.username}<br/>
-                        <strong>Badge Number:</strong> {getCharacterID(gtaWorldUser)}<br/>
-                        {gtaWorldUser?.faction?.rank && (
-                            <><strong>Rank:</strong> {gtaWorldUser.faction.rank.replace(/-/g, '').trim()}<br/></>
+                        <strong>Badge Number:</strong> {factionData?.characterId || gtaWorldUser?.id}<br/>
+                        {factionData?.rank && (
+                            <><strong>Rank:</strong> {factionData.rank.split('-')[0].trim()}<br/></>
                         )}
                         <small style={{ color: '#6c757d' }}>Click "Use GTAW" again to switch back to database selection</small>
                     </div>
@@ -146,15 +170,15 @@ const EmployeeCredentialsSection = ({
             ) : isDevelopmentEnvironment ? (
                 <Select
                     name={employeeNameField}
-                    value={coronerGroupedOptions
+                    value={groupedOptions
                         .flatMap(group => group.options)
                         .find(option => option.value === formData[employeeNameField]) || null}
-                    onChange={(selectedOption, actionMeta) => handleSelectChange(selectedOption, actionMeta)}
-                    options={coronerGroupedOptions}
+                    onChange={(selectedOption) => handleSelectChange(selectedOption, { name: employeeNameField })}
+                    options={groupedOptions}
                     isClearable
-                    placeholder="Search or select coroner..."
+                    placeholder={`Search or select ${employeeType}...`}
                     className={`form-control ${!formData[employeeNameField] ? 'is-invalid' : ''}`}
-                    styles={{
+                    styles={{ 
                         control: (base, state) => ({
                             ...base,
                             backgroundColor: '#16202c',
@@ -165,44 +189,16 @@ const EmployeeCredentialsSection = ({
                             '&:hover': {
                                 borderColor: !formData[employeeNameField] ? '#dc3545' : '#86b7fe'
                             },
-                            boxShadow: state.isFocused ? '0 0 0 0.2rem rgba(13, 110, 253, 0.25)' : null,
-                            minHeight: '38px'
+                            boxShadow: !formData[employeeNameField] && state.isFocused ? '0 0 0 0.25rem rgba(220, 53, 69, 0.25)' :
+                                       state.isFocused ? '0 0 0 0.25rem rgba(13, 110, 253, 0.25)' : null,
                         }),
-                        menu: (base) => ({
-                            ...base,
-                            backgroundColor: '#16202c',
-                            border: '1px solid #6c757d',
-                            zIndex: 9999
-                        }),
-                        option: (base, state) => ({
-                            ...base,
-                            backgroundColor: state.isFocused ? '#0d6efd' : '#16202c',
-                            color: '#eeeeeeb0',
-                            '&:hover': {
-                                backgroundColor: '#0d6efd'
-                            }
-                        }),
-                        placeholder: (base) => ({
-                            ...base,
-                            color: '#6c757d'
-                        }),
-                        singleValue: (base) => ({
-                            ...base,
-                            color: '#eeeeeeb0'
-                        }),
-                        group: (base) => ({
-                            ...base,
-                            paddingTop: 8,
-                            paddingBottom: 8
-                        }),
-                        groupHeading: (base) => ({
-                            ...base,
-                            color: '#6c757d',
-                            fontWeight: 600,
-                            textTransform: 'uppercase',
-                            fontSize: '0.75rem',
-                            marginBottom: 4
-                        })
+                        menu: (base) => ({ ...base, backgroundColor: '#16202c', zIndex: 1000 }),
+                        option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? 'Grey' : '#16202c', color: '#eeeeeeb0' }),
+                        singleValue: (base) => ({ ...base, color: '#eeeeeeb0' }),
+                        input: (base) => ({ ...base, color: '#eeeeeeb0' }),
+                        placeholder: (base) => ({ ...base, color: '#eeeeeeb0' }),
+                        group: (base) => ({ ...base, paddingTop: 8, paddingBottom: 8 }),
+                        groupHeading: (base) => ({ ...base, color: '#6c757d', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.75rem', marginBottom: 4 })
                     }}
                 />
             ) : null}
@@ -233,6 +229,7 @@ const Autopsy = ({
     formData,
     handleChange,
     setFormData,
+    groupedOptions,
     coronerGroupedOptions,
     handleSelectChange,
     isUploading,
@@ -567,10 +564,10 @@ const Autopsy = ({
                 placeholder="Medical Examiner's opinion on the decedent's condition and cause of death"
                 className={`form-control mb-2 ${!formData.synopsis ? 'is-invalid' : ''}`}
             />
-            <EmployeeCredentialsSection
+            <EmployeeCredentialsSection 
                 formData={formData}
                 setFormData={setFormData}
-                coronerGroupedOptions={coronerGroupedOptions}
+                groupedOptions={coronerGroupedOptions}
                 handleSelectChange={handleSelectChange}
                 setShowEmployeeModal={setShowEmployeeModal}
                 employeeType="coroner"

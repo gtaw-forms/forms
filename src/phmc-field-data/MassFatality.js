@@ -497,7 +497,7 @@ const MassFatality = ({
             <EmployeeCredentialsSection 
                 formData={formData}
                 setFormData={setFormData}
-                coronerGroupedOptions={coronerGroupedOptions}
+                coroner={coronerGroupedOptions}
                 handleSelectChange={handleSelectChange}
                 setShowEmployeeModal={setShowEmployeeModal}
             />

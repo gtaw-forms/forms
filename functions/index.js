@@ -242,6 +242,143 @@ export const dailyTaskHandler = onSchedule({
     return null;
 });
 
+// --- Weekly Duplicate Reports Cleanup Function ---
+export const weeklyDuplicateReportsCleanup = onSchedule({
+    schedule: "every monday 09:00",
+    timeZone: "UTC",
+    secrets: ["ADMIN_ACTION_WEBHOOK_URL"],
+}, async (event) => {
+    console.log(`Running weekly duplicate reports cleanup. Event ID: ${event.id}`);
+
+    const REPORTS_PATH = '/savedReports';
+    let cleanupResults = { scanned: 0, duplicatesFound: 0, duplicatesDeleted: 0, errors: [] };
+
+    try {
+        const reportsRootRef = db.ref(REPORTS_PATH);
+        const rootSnapshot = await reportsRootRef.once('value');
+
+        if (!rootSnapshot.exists()) {
+            console.log('No reports found in database.');
+            cleanupResults.errors.push('No reports found in database');
+        } else {
+            const allUserNodes = rootSnapshot.val();
+            const seenKeys = {};
+            const seenBBCode = {};
+            const duplicates = [];
+
+            // Traverse each user node and collect duplicates
+            Object.entries(allUserNodes).forEach(([userKey, userReports]) => {
+                if (!userReports || typeof userReports !== 'object') return;
+
+                Object.entries(userReports).forEach(([reportKey, report]) => {
+                    cleanupResults.scanned++;
+
+                    // Check by originalKey
+                    if (report.originalKey) {
+                        if (seenKeys[report.originalKey]) {
+                            duplicates.push({
+                                user: userKey,
+                                key: reportKey,
+                                originalKey: report.originalKey,
+                                reason: 'originalKey',
+                                duplicateOf: seenKeys[report.originalKey]
+                            });
+                        } else {
+                            seenKeys[report.originalKey] = { user: userKey, key: reportKey };
+                        }
+                    }
+
+                    // Check by BBCode
+                    if (report.bbcode) {
+                        if (seenBBCode[report.bbcode]) {
+                            duplicates.push({
+                                user: userKey,
+                                key: reportKey,
+                                bbcode: report.bbcode,
+                                reason: 'bbcode',
+                                duplicateOf: seenBBCode[report.bbcode]
+                            });
+                        } else {
+                            seenBBCode[report.bbcode] = { user: userKey, key: reportKey };
+                        }
+                    }
+                });
+            });
+
+            cleanupResults.duplicatesFound = duplicates.length;
+            console.log(`Found ${duplicates.length} duplicate reports out of ${cleanupResults.scanned} total reports`);
+
+            if (duplicates.length > 0) {
+                // Create backup before deletion
+                const backupRef = db.ref(`backups/duplicateReports/${Date.now()}`);
+                await backupRef.set({
+                    duplicates,
+                    backupTimestamp: admin.database.ServerValue.TIMESTAMP,
+                    totalScanned: cleanupResults.scanned,
+                    totalDuplicates: duplicates.length
+                });
+
+                // Delete duplicates
+                const deletePromises = duplicates.map(dup => {
+                    const delRef = db.ref(`${REPORTS_PATH}/${dup.user}/${dup.key}`);
+                    return delRef.remove();
+                });
+
+                await Promise.all(deletePromises);
+                cleanupResults.duplicatesDeleted = duplicates.length;
+
+                console.log(`Successfully deleted ${duplicates.length} duplicate reports and created backup`);
+            }
+        }
+
+    } catch (error) {
+        console.error('Error during duplicate reports cleanup:', error);
+        cleanupResults.errors.push(`Cleanup error: ${error.message}`);
+    }
+
+    // Send Discord webhook with results
+    const embed = {
+        title: "Weekly Duplicate Reports Cleanup",
+        color: cleanupResults.duplicatesDeleted > 0 ? 0xFF6B35 : 0x1E90FF,
+        fields: [
+            {
+                name: "Scan Results",
+                value: `📊 **Scanned:** ${cleanupResults.scanned} reports\n🔍 **Duplicates Found:** ${cleanupResults.duplicatesFound}\n🗑️ **Duplicates Deleted:** ${cleanupResults.duplicatesDeleted}`,
+                inline: true
+            },
+            {
+                name: "Status",
+                value: cleanupResults.duplicatesDeleted > 0
+                    ? `✅ Cleanup completed successfully. Backup created.`
+                    : cleanupResults.duplicatesFound === 0
+                        ? `✅ No duplicates found - database is clean.`
+                        : `⚠️ Duplicates found but deletion failed.`,
+                inline: false
+            }
+        ],
+        timestamp: new Date(event.timestamp).toUTCString(),
+        footer: { text: "PHMC Tools - Automated Duplicate Cleanup" }
+    };
+
+    // Add error details if any
+    if (cleanupResults.errors.length > 0) {
+        embed.fields.push({
+            name: "Errors",
+            value: cleanupResults.errors.join('\n'),
+            inline: false
+        });
+    }
+
+    try {
+        await sendWebhook({ embeds: [embed] });
+        console.log('Weekly duplicate reports cleanup completed and webhook sent.');
+    } catch (webhookError) {
+        console.error('Failed to send cleanup webhook:', webhookError);
+    }
+
+    return null;
+});
+
 // Simple in-memory cache for OAuth codes (prevents duplicate processing)
 const oauthCodeCache = new Map();
 const CACHE_EXPIRY = 5 * 60 * 1000; // 5 minutes

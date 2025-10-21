@@ -978,3 +978,85 @@ input[type="checkbox"]:checked::after {
     align-items: center;
     gap: 0.5rem;
 }
+
+/* ==========================================================================
+   React Select Global Styles
+   ========================================================================== */
+
+.react-select__control {
+    min-height: 38px !important;
+    background-color: #16202c !important;
+    color: #eeeeeeb0 !important;
+    border-color: #30363d !important;
+}
+
+.react-select__control:hover {
+    border-color: #86b7fe !important;
+}
+
+.react-select__control--is-focused {
+    border-color: #86b7fe !important;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25) !important;
+}
+
+.react-select__menu {
+    background-color: #16202c !important;
+    z-index: 1000 !important;
+    border: 1px solid #30363d !important;
+    border-radius: 0.375rem !important;
+}
+
+.react-select__option {
+    background-color: #16202c !important;
+    color: #eeeeeeb0 !important;
+    padding: 0.5rem 1rem !important;
+}
+
+.react-select__option:hover,
+.react-select__option--is-focused {
+    background-color: #30363d !important;
+}
+
+.react-select__multi-value {
+    background-color: #30363d !important;
+    color: #eeeeeeb0 !important;
+}
+
+.react-select__multi-value__label {
+    color: #eeeeeeb0 !important;
+}
+
+.react-select__multi-value__remove {
+    color: #6c757d !important;
+}
+
+.react-select__multi-value__remove:hover {
+    background-color: #dc3545 !important;
+    color: #fff !important;
+}
+
+.react-select__input {
+    color: #eeeeeeb0 !important;
+}
+
+.react-select__placeholder {
+    color: #6c757d !important;
+}
+
+.react-select__single-value {
+    color: #eeeeeeb0 !important;
+}
+
+.react-select__group {
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+}
+
+.react-select__group-heading {
+    color: #6c757d !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    font-size: 0.75rem !important;
+    margin-bottom: 4px !important;
+}
+
