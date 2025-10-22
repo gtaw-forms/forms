@@ -59,6 +59,14 @@ export const useGtaWorldAuth = () => {
         }
     }, [user]);
 
+    const updateFactionData = useCallback((updatedData) => {
+        setActiveCharacter(updatedData);
+        setUser(prevUser => ({
+            ...prevUser,
+            faction: updatedData,
+        }));
+    }, []);
+
     const swappableCharacters = user?.allFactionCharacters || [];
     // --- END POC ---
 
@@ -271,6 +279,7 @@ export const useGtaWorldAuth = () => {
         swappableCharacters: swappableCharacters,
         swapCharacter,
         canSwapCharacters: swappableCharacters.length > 0,
+        updateFactionData,
     };
 };
 
