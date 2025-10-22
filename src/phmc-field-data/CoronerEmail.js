@@ -4,6 +4,10 @@ import { Form, Button } from 'react-bootstrap';
 import Select from 'react-select';
 import { getCharacterName, getCharacterID } from '../utils/characterUtils';
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
+import DiscordNameModal from '../components/DiscordNameModal';
+import { database } from '../firebase';
+import { ref, update } from 'firebase/database';
+import { useNotification } from '../contexts/NotificationContext';
 
 
 const EmployeeCredentialsSection = ({ 
@@ -14,17 +18,23 @@ const EmployeeCredentialsSection = ({
     setShowEmployeeModal,
     employeeType = 'coroner'
 }) => {
+    const { showNotification } = useNotification();
+
     const {
         user: gtaWorldUser,
         isAuthenticated: isGtaAuthenticated,
         canSwapCharacters,
         swapCharacter,
         swappableCharacters,
-        factionData
+        factionData,
+        updateFactionData, // Get the update function
     } = useGtaWorldAuth();
 
     const [useGtawName, setUseGtawName] = useState(false);
-        const employeeNameField = `${employeeType}Employee`;
+    const [showDiscordModal, setShowDiscordModal] = useState(false);
+    const [customDiscordName, setCustomDiscordName] = useState('');
+
+    const employeeNameField = `${employeeType}Employee`;
     const employeeBadgeField = `${employeeType}Badge`;
     const employeeRankField = `${employeeType}Rank`;
     const employeeDiscordField = `${employeeType}Discord`;
@@ -36,6 +46,15 @@ const EmployeeCredentialsSection = ({
         window.location.hostname.startsWith('10.') ||
         window.location.hostname.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./); 
     
+    useEffect(() => {
+        if (isGtaAuthenticated && gtaWorldUser && factionData) {
+            const savedDiscordName = localStorage.getItem(`discordName_${factionData.characterId}`);
+            if (savedDiscordName) {
+                setCustomDiscordName(savedDiscordName);
+            }
+        }
+    }, [isGtaAuthenticated, gtaWorldUser, factionData]);
+
     useEffect(() => {
         if (isGtaAuthenticated && gtaWorldUser && !useGtawName) {
             // Check if we have a valid character name
@@ -56,12 +75,12 @@ const EmployeeCredentialsSection = ({
                     [employeeNameField]: gtawCharacterName,
                     [employeeBadgeField]: characterId, 
                     [employeeRankField]: cleanRank,
-                    [employeeDiscordField]: gtaWorldUser?.username || '',
+                    [employeeDiscordField]: customDiscordName || gtaWorldUser?.username || '',
                     [employeePHNumberField]: '50056'
                 }));
             }
         }
-    }, [isGtaAuthenticated, gtaWorldUser, useGtawName, setFormData, employeeNameField, employeeBadgeField, employeeRankField, employeeDiscordField, employeePHNumberField]);
+    }, [isGtaAuthenticated, gtaWorldUser, useGtawName, setFormData, employeeNameField, employeeBadgeField, employeeRankField, employeeDiscordField, employeePHNumberField, customDiscordName]);
     
     useEffect(() => {
         if (useGtawName && isGtaAuthenticated && gtaWorldUser && factionData) {
@@ -71,24 +90,53 @@ const EmployeeCredentialsSection = ({
                 coronerEmployee: factionData.characterName,
                 coronerBadge: factionData.characterId || '',
                 coronerRank: cleanRank,
-                coronerDiscord: gtaWorldUser?.username || '',
+                coronerDiscord: customDiscordName || gtaWorldUser?.username || '',
                 coronerPHNumber: '50056'
             }));
         }
-    }, [factionData, useGtawName, isGtaAuthenticated, gtaWorldUser, setFormData]);
+    }, [factionData, useGtawName, isGtaAuthenticated, gtaWorldUser, setFormData, customDiscordName]);
 
     const gtawCharacterName = factionData?.characterName || null;
 
     const handleSwap = () => {
-        if (!canSwapCharacters) return;
+        if (!canSwapCharacters || !factionData) return;
         const currentIndex = swappableCharacters.findIndex(c => c.character.characterId === factionData.characterId);
         const nextIndex = (currentIndex + 1) % swappableCharacters.length;
         const nextCharacterId = swappableCharacters[nextIndex].character.characterId;
         swapCharacter(nextCharacterId);
     };
 
+    const handleSaveDiscordName = async (newDiscordName) => {
+        if (factionData && factionData.characterId) {
+            const characterId = factionData.characterId;
+            const userRef = ref(database, `factions/364/members/${characterId}`);
+
+            try {
+                await update(userRef, { discordName: newDiscordName });
+                localStorage.setItem(`discordName_${characterId}`, newDiscordName);
+                setCustomDiscordName(newDiscordName);
+
+                // Update the local faction data context
+                const updatedFactionData = { ...factionData, discordName: newDiscordName };
+                updateFactionData(updatedFactionData);
+
+                showNotification('Discord name updated successfully!', 'success');
+            } catch (error) {
+                console.error('Error updating Discord name:', error);
+                showNotification('Failed to update Discord name. Please try again.', 'error');
+            }
+        }
+        setShowDiscordModal(false);
+    };
+
     return (
         <>
+            <DiscordNameModal
+                show={showDiscordModal}
+                handleClose={() => setShowDiscordModal(false)}
+                handleSave={handleSaveDiscordName}
+                currentDiscordName={customDiscordName || gtaWorldUser?.username}
+            />
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
                 <Form.Label style={{ marginBottom: 0 }}>Employee Name</Form.Label>
                 <button
@@ -124,7 +172,7 @@ const EmployeeCredentialsSection = ({
                         {useGtawName ? 'Using GTAW' : 'Use GTAW'}
                     </button>
                 )}
-                {canSwapCharacters && useGtawName && (
+                {canSwapCharacters && useGtawName && factionData && (
                     <button type="button" onClick={handleSwap} className="btn btn-outline-info" style={{ padding: '0.375rem 0.75rem', fontSize: '0.875rem' }}>
                         <i className="fas fa-random" style={{ marginRight: '5px' }}></i>
                         Switch Employee
@@ -162,7 +210,12 @@ const EmployeeCredentialsSection = ({
                         <strong>UCP User:</strong> {gtaWorldUser?.username}<br/>
                         <strong>Badge Number:</strong> {factionData?.characterId || gtaWorldUser?.id}<br/>
                         {factionData?.rank && (
-                            <><strong>Rank:</strong> {factionData.rank.split('-')[0].trim()}<br/></>
+                            <>
+                                <strong>Rank:</strong> {factionData.rank.split('-')[0].trim()}<br/>
+                                <strong>Discord:</strong> {customDiscordName || gtaWorldUser?.username}
+                                <Button variant="link" size="sm" onClick={() => setShowDiscordModal(true)}>(Edit)</Button>
+                                <br/>
+                            </>
                         )}
                         <small style={{ color: '#6c757d' }}>Click "Use GTAW" again to switch back to database selection</small>
                     </div>

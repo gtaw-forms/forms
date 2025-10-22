@@ -82,7 +82,7 @@ const EmployeeCredentialsSection = ({
     const gtawCharacterName = factionData?.characterName || null;
 
     const handleSwap = () => {
-        if (!canSwapCharacters) return;
+        if (!canSwapCharacters || !factionData) return;
         const currentIndex = swappableCharacters.findIndex(c => c.character.characterId === factionData.characterId);
         const nextIndex = (currentIndex + 1) % swappableCharacters.length;
         const nextCharacterId = swappableCharacters[nextIndex].character.characterId;
@@ -126,7 +126,7 @@ const EmployeeCredentialsSection = ({
                         {useGtawName ? 'Using GTAW' : 'Use GTAW'}
                     </button>
                 )}
-                {canSwapCharacters && useGtawName && (
+                {canSwapCharacters && useGtawName && factionData && (
                     <button type="button" onClick={handleSwap} className="btn btn-outline-info" style={{ padding: '0.375rem 0.75rem', fontSize: '0.875rem' }}>
                         <i className="fas fa-random" style={{ marginRight: '5px' }}></i>
                         Switch Employee
