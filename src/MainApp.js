@@ -26,6 +26,7 @@ import LockdownBanner from './components/LockdownBanner';
 import LockdownDialog from './components/LockdownDialog';
 import { useAuth } from './contexts/AuthContext';
 import { preloadComponents } from './utils/componentPreloader';
+import { cleanRankText } from './utils/textUtils';
 // logos
 import email from './assets/email.png'
 import Civilian from './assets/Civilian.png'
@@ -117,6 +118,9 @@ function MainApp({
     removeNotification,
 }) { 
     const navigate = useNavigate();
+
+    // Use shared rank/category normalizer for consistency across app
+    const cleanRank = useCallback((text) => cleanRankText(text), []);
 
     const {
         showEmsBingoModal, setShowEmsBingoModal,
@@ -350,7 +354,7 @@ function MainApp({
                         ...prev,
                         phmcEmployee: matchedEmployee.name,
                         phmcEmployeeLastName: matchedEmployee.lastName || '',
-                        phmcRank: matchedEmployee.category || matchedEmployee.rank || ''
+                        phmcRank: cleanRank(matchedEmployee.category || matchedEmployee.rank || '')
                     }));
 
                     console.log('[Auto-fill] Auto-populated PHMC employee field:', {
@@ -381,7 +385,7 @@ function MainApp({
                         ...prev,
                         coronerEmployee: matchedEmployee.name,
                         coronerBadge: matchedEmployee.badge || '',
-                        coronerRank: matchedEmployee.rank || matchedEmployee.category || '',
+                        coronerRank: cleanRank(matchedEmployee.rank || matchedEmployee.category || ''),
                         coronerDiscord: matchedEmployee.discord || '',
                         coronerPHNumber: matchedEmployee.phNumber || '50056'
                     }));
@@ -663,7 +667,7 @@ function MainApp({
                     ...prev,
                     coronerEmployee: selectedOption.value,
                     coronerBadge: selectedOption.badge,
-                    coronerRank: selectedOption.rank,
+                    coronerRank: cleanRank(selectedOption.rank),
                     coronerDiscord: selectedOption.discord,
                 };
             } else if (name === 'coronerEmployee' && !selectedOption) {
@@ -1030,6 +1034,9 @@ const getBBCodeContent = () => {
                 // Pass GTAW OAuth data for automatic character inclusion
                 isGtaAuthenticated,
                 gtaWorldUser,
+                // Pass employee lists for correct category lookup
+                coronerListData,
+                phmcListData,
             });
         }
     }, [
@@ -1046,7 +1053,11 @@ const getBBCodeContent = () => {
         setLastWebhookIdentifier, 
         lastWebhookIdentifier, 
         database,
-        getCurrentReportAuthor
+        getCurrentReportAuthor,
+        coronerListData,
+        phmcListData,
+        isGtaAuthenticated,
+        gtaWorldUser
     ]);
 
     const currentFormDefinition = useMemo(() => getFormDefinition(bbCodeVersion), [bbCodeVersion]);
