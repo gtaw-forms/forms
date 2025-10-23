@@ -8,6 +8,7 @@ import DiscordNameModal from '../components/DiscordNameModal';
 import { database } from '../firebase';
 import { ref, update } from 'firebase/database';
 import { useNotification } from '../contexts/NotificationContext';
+import { recordInputInteraction } from '../index';
 
 
 const EmployeeCredentialsSection = ({ 
@@ -48,9 +49,10 @@ const EmployeeCredentialsSection = ({
     
     useEffect(() => {
         if (isGtaAuthenticated && gtaWorldUser && factionData) {
-            const savedDiscordName = localStorage.getItem(`discordName_${factionData.characterId}`);
-            if (savedDiscordName) {
-                setCustomDiscordName(savedDiscordName);
+            if (factionData.discordName) {
+                setCustomDiscordName(factionData.discordName);
+            } else {
+                setCustomDiscordName('');
             }
         }
     }, [isGtaAuthenticated, gtaWorldUser, factionData]);
@@ -113,7 +115,6 @@ const EmployeeCredentialsSection = ({
 
             try {
                 await update(userRef, { discordName: newDiscordName });
-                localStorage.setItem(`discordName_${characterId}`, newDiscordName);
                 setCustomDiscordName(newDiscordName);
 
                 // Update the local faction data context
@@ -305,6 +306,26 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
         }));
     }, [setFormData]);
 
+    // Enhanced handleChange to record input interactions for error reporting
+    const handleChangeWithContext = (e) => {
+        const { name, type } = e.target;
+        let inputType = 'text'; // default
+
+        if (type === 'checkbox') inputType = 'checkbox';
+        else if (type === 'radio') inputType = 'radio';
+        else if (type === 'select-one') inputType = 'select';
+        else if (type === 'textarea') inputType = 'textarea';
+
+        recordInputInteraction(inputType, name);
+        handleChange(e);
+    };
+
+    // Enhanced handleReportChange to record input interactions
+    const handleReportChangeWithContext = (index, value) => {
+        recordInputInteraction('textarea', `additionalReport_${index}`);
+        handleReportChange(index, value);
+    };
+
 
     return (
         <>
@@ -323,7 +344,7 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
                     type="text"
                     name="requestingOfficer"
                     value={formData.requestingOfficer}
-                    onChange={handleChange}
+                    onChange={handleChangeWithContext}
                     placeholder="Requesting Officer Name"
                     required
                     className={`form-control ${!formData.requestingOfficer ? 'is-invalid' : ''}`}
@@ -331,7 +352,7 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
             <Form.Select
                 name="department"
                 value={formData.department}
-                onChange={handleChange}
+                onChange={handleChangeWithContext}
                 required
                 className={`form-control ${!formData.department ? 'is-invalid' : ''}`}
                 disabled={isLoadingData || !agencyDataStore || Object.keys(agencyDataStore).length === 0}
@@ -355,7 +376,7 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
     type="text"
     name="coronerPHNumber"
     value={formData.coronerPHNumber}
-    onChange={handleChange}
+    onChange={handleChangeWithContext}
     required
     placeholder="Coroner Phone Number"
     className={`form-control ${!formData.coronerPHNumber ? 'is-invalid' : ''}`}
@@ -367,7 +388,7 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
                                         type="text"
                                         name="decedentName"
                                         value={formData.decedentName}
-                                        onChange={handleChange}
+                                        onChange={handleChangeWithContext}
                                         placeholder="Decedent's IC name"
                                         required
                                         className={`form-control ${!formData.decedentName ? 'is-invalid' : ''}`}
@@ -376,7 +397,7 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
                                     type="text"
                                     name="decedentOOC"
                                     value={formData.decedentOOC}
-                                    onChange={handleChange}
+                                    onChange={handleChangeWithContext}
                                     placeholder="Decedent's OOC name"
                                     required
                                     className={`form-control ${!formData.decedentOOC ? 'is-invalid' : ''}`}
@@ -389,7 +410,7 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
                                     as="textarea"
                                     name="deathReport"
                                     value={formData.deathReport}
-                                    onChange={handleChange}
+                                    onChange={handleChangeWithContext}
                                     placeholder="Paste Paperwork (Death Report, Mass Fatality) BBCode here"
                                     rows="2"
                                     className={`form-control ${!formData.deathReport ? 'is-invalid' : ''}`}
@@ -404,7 +425,7 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
                         <Form.Control
                             as="textarea"
                             value={report}
-                            onChange={(e) => handleReportChange(index, e.target.value)}
+                            onChange={(e) => handleReportChangeWithContext(index, e.target.value)}
                             placeholder="Paste additional coroner report here"
                             rows="4"
                             className={`form-control ${!report ? 'is-invalid' : ''}`}
