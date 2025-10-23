@@ -6,6 +6,7 @@ import { getCharacterName, getCharacterID } from '../utils/characterUtils';
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
 import DiscordNameModal from '../components/DiscordNameModal';
 import { database } from '../firebase';
+import { cleanRankText } from '../utils/textUtils';
 import { ref, update } from 'firebase/database';
 import { useNotification } from '../contexts/NotificationContext';
 import { recordInputInteraction } from '../index';
@@ -65,9 +66,9 @@ const EmployeeCredentialsSection = ({
             if (gtawCharacterName && gtawCharacterName !== 'GTAW User') {
                 setUseGtawName(true);
                 
-                // Clean rank by removing dashes
+                // Normalize rank/category using shared cleaner
                 const cleanRank = gtaWorldUser?.faction?.rank ? 
-                    gtaWorldUser.faction.rank.replace(/-/g, '').trim() : 'GTAW User';
+                    cleanRankText(gtaWorldUser.faction.rank) : 'GTAW User';
                 
                 // Get character data using helper function
                 const characterId = getCharacterID(gtaWorldUser);
@@ -86,7 +87,7 @@ const EmployeeCredentialsSection = ({
     
     useEffect(() => {
         if (useGtawName && isGtaAuthenticated && gtaWorldUser && factionData) {
-            const cleanRank = factionData.rank ? factionData.rank.split('-')[0].trim() : 'GTAW User';
+            const cleanRank = factionData.rank ? cleanRankText(factionData.rank) : 'GTAW User';
             setFormData(prev => ({
                 ...prev,
                 coronerEmployee: factionData.characterName,
@@ -212,7 +213,7 @@ const EmployeeCredentialsSection = ({
                         <strong>Badge Number:</strong> {factionData?.characterId || gtaWorldUser?.id}<br/>
                         {factionData?.rank && (
                             <>
-                                <strong>Rank:</strong> {factionData.rank.split('-')[0].trim()}<br/>
+                                <strong>Rank:</strong> {cleanRankText(factionData.rank)}<br/>
                                 <strong>Discord:</strong> {customDiscordName || gtaWorldUser?.username}
                                 <Button variant="link" size="sm" onClick={() => setShowDiscordModal(true)}>(Edit)</Button>
                                 <br/>

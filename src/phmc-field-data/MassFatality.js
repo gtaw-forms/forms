@@ -3,6 +3,7 @@ import { Form, Button, InputGroup } from 'react-bootstrap';
 import Select from 'react-select';
 import ImagePreview from '../components/ImagePreview';
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
+import { cleanRankText } from '../utils/textUtils';
 import { getCharacterName, getCharacterID } from '../utils/characterUtils';
 
 const defaultDecedent = {
@@ -60,7 +61,7 @@ const EmployeeCredentialsSection = ({
                 
                 // Clean rank by removing dashes
                 const cleanRank = gtaWorldUser?.faction?.rank ? 
-                    gtaWorldUser.faction.rank.replace(/-/g, '').trim() : 'GTAW User';
+                    cleanRankText(gtaWorldUser.faction.rank) : 'GTAW User';
                 
                 setFormData(prev => ({
                     ...prev,
@@ -178,7 +179,7 @@ const EmployeeCredentialsSection = ({
                         <strong>UCP User:</strong> {gtaWorldUser?.username}<br/>
                         <strong>Badge Number:</strong> {getCharacterID(gtaWorldUser)}<br/>
                         {gtaWorldUser?.faction?.rank && (
-                            <><strong>Rank:</strong> {gtaWorldUser.faction.rank.replace(/-/g, '').trim()}<br/></>
+                            <><strong>Rank:</strong> {cleanRankText(gtaWorldUser.faction.rank)}<br/></>
                         )}
                         <small style={{ color: '#6c757d' }}>Click "Use GTAW" again to switch back to database selection</small>
                     </div>

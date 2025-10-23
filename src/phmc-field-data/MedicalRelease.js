@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Form, Button, InputGroup } from 'react-bootstrap';
 import Select from 'react-select';
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
+import { cleanRankText } from '../utils/textUtils';
 import CharacterSelector from '../components/CharacterSelector';
 import { getCharacterName } from '../utils/characterUtils';
 
@@ -129,7 +130,7 @@ const EmployeeCredentialsSection = ({
                         <strong>UCP User:</strong> {gtaWorldUser?.username}<br/>
                         <strong>Badge Number:</strong> {gtaWorldUser?.character.id}<br/>
                         {gtaWorldUser?.faction?.rank && (
-                            <><strong>Rank:</strong> {gtaWorldUser.faction.rank.split('-')[0].trim()}<br/></>
+                            <><strong>Rank:</strong> {cleanRankText(gtaWorldUser.faction.rank)}<br/></>
                         )}
                         <small style={{ color: '#6c757d' }}>Click "Use GTAW" again to switch back to database selection</small>
                     </div>

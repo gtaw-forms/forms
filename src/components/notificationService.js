@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/react";
 import { ref, get, set, push } from 'firebase/database';
 import { database } from '../firebase';
 import getRelevantFields from './RevelantFields';
+import { cleanRankText } from '../utils/textUtils';
 
 const FORM_GENERATOR_URL = "https://phmc-tools.gta.world/";
 const ALTERNATIVE_FORM_GENERATOR_URL = "https://gtaw-forms.github.io/forms/";
@@ -614,7 +615,9 @@ const sendFormInteractionWebhookInternal = async ({
     firebaseSavedCount,
     errorMessage,
     userSavedCount,
-    savedReports
+    savedReports,
+    coronerListData = [],
+    phmcListData = []
 }) => {
     const {
         phmcEmployee,
@@ -652,7 +655,10 @@ const sendFormInteractionWebhookInternal = async ({
         }
     } else if (isPhmcForm) {
         if (phmcEmployee) {
-            userValue = `Hospital Staff ${phmcEmployee}`;
+            // Look up the employee in phmcListData to get the correct category
+            const matchedPhmcEmployee = phmcListData.find(emp => emp.name === phmcEmployee);
+            const phmcCategory = cleanRankText(matchedPhmcEmployee?.category || 'Hospital Staff');
+            userValue = `${phmcCategory} ${phmcEmployee}`;
         } else if (patientName) { // Fallback for PHMC forms if patient name is relevant
             userValue = patientName;
         } else if (patientFirstName || patientLastName) {
@@ -660,14 +666,21 @@ const sendFormInteractionWebhookInternal = async ({
         }
     } else if (isCoronerForm) {
         if (coronerEmployee) {
-            userValue = `${coronerRank || 'Coroner'} ${coronerEmployee}`;
+            // Look up the employee in coronerListData to get the correct category (not the legacy rank)
+            const matchedCoronerEmployee = coronerListData.find(emp => emp.name === coronerEmployee);
+            const coronerCategory = cleanRankText(matchedCoronerEmployee?.category || coronerRank || 'Coroner');
+            userValue = `${coronerCategory} ${coronerEmployee}`;
         }
     } else {
         // Fallback for forms that are not strictly PHMC, Coroner, or Civilian
         if (coronerEmployee) {
-            userValue = `${coronerRank || 'Coroner'} ${coronerEmployee}`;
+            const matchedCoronerEmployee = coronerListData.find(emp => emp.name === coronerEmployee);
+            const coronerCategory = cleanRankText(matchedCoronerEmployee?.category || coronerRank || 'Coroner');
+            userValue = `${coronerCategory} ${coronerEmployee}`;
         } else if (phmcEmployee) {
-            userValue = `Hospital Staff ${phmcEmployee}`;
+            const matchedPhmcEmployee = phmcListData.find(emp => emp.name === phmcEmployee);
+            const phmcCategory = cleanRankText(matchedPhmcEmployee?.category || 'Hospital Staff');
+            userValue = `${phmcCategory} ${phmcEmployee}`;
         } else if (patientFirstName || patientLastName) {
             userValue = `${patientFirstName || ''} ${patientLastName || ''}`.trim();
         } else if (patientName) {
@@ -800,6 +813,9 @@ export const handleFormCopyAndNotify = async ({
     // GTAW OAuth data for automatic character inclusion
     isGtaAuthenticated = false,
     gtaWorldUser = null,
+    // Employee lists for correct category/rank lookup
+    coronerListData = [],
+    phmcListData = [],
 }) => {
     // --- Step 1: Generate BBCode ---
     const bbCodeToCopy = getBBCodeContent();
@@ -970,6 +986,8 @@ export const handleFormCopyAndNotify = async ({
                 commitInfo,
                 firebaseSavedCount,
                 userSavedCount,
+                coronerListData,
+                phmcListData,
             });
 
             setLastWebhookIdentifier(currentIdentifier);

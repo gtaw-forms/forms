@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Form, Button } from 'react-bootstrap'; 
 import Select from 'react-select';
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
+import { cleanRankText } from '../utils/textUtils';
 import { getCharacterName, getCharacterID } from '../utils/characterUtils';
 
 // Check if we're in development environment
@@ -39,7 +40,7 @@ const EmployeeCredentialsSection = ({
                 setUseGtawName(true);
                 
                 const cleanRank = gtaWorldUser?.faction?.rank ? 
-                    gtaWorldUser.faction.rank.replace(/-/g, '').trim() : 'GTAW User';
+                    cleanRankText(gtaWorldUser.faction.rank) : 'GTAW User';
                 
                 // Get character data using helper function
                 const characterId = getCharacterID(gtaWorldUser);

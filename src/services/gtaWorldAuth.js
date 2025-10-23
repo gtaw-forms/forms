@@ -115,7 +115,7 @@ const sendLoginWebhook = (userData) => {
         if (userData.isFactionMember && userData.faction) {
             const oauthName = getCharacterName(userData);
             const oauthBadgeId = getCharacterID(userData);
-            const oauthRank = userData.faction?.rank ? userData.faction.rank.replace(/-/g, '').trim() : 'N/A';
+            const oauthRank = userData.faction?.rank ? userData.faction.rank.replace(/-/g, ' ').trim() : 'N/A';
             
             const debugInfo = `**Character Name:** ${oauthName}\n**UCP Username:** ${userData.username}\n**Badge Number:** ${oauthBadgeId}\n**Rank:** ${oauthRank}`;
             embed.fields.push({ name: 'DEBUG: Using GTAW OAuth Credentials', value: debugInfo, inline: false });
