@@ -5,20 +5,21 @@ const ImagePreview = ({ imageUrls, showPreviews = true, onImageRemove = null }) 
     const [previewUrls, setPreviewUrls] = useState([]);
     const [showCarousel, setShowCarousel] = useState(false);
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
+    const [imageErrors, setImageErrors] = useState([]);
 
-    React.useEffect(() => {
+    useEffect(() => {
         if (!imageUrls || !showPreviews) {
             setPreviewUrls([]);
             return;
         }
 
-        // Parse comma-separated URLs and filter valid image URLs
         const urls = imageUrls
             .split(',')
             .map(url => url.trim())
             .filter(url => url && isValidImageUrl(url));
         
         setPreviewUrls(urls);
+        setImageErrors([]); // Reset errors when images change
     }, [imageUrls, showPreviews]);
 
     const isValidImageUrl = (url) => {
@@ -54,14 +55,11 @@ const ImagePreview = ({ imageUrls, showPreviews = true, onImageRemove = null }) 
         const urlToRemove = previewUrls[indexToRemove];
         const updatedUrls = previewUrls.filter((_, index) => index !== indexToRemove);
         
-        // Update the text field by calling the callback
         const newImageUrlsString = updatedUrls.join(', ');
         onImageRemove(newImageUrlsString);
         
-        // Update local state
         setPreviewUrls(updatedUrls);
         
-        // Adjust current index if necessary
         if (updatedUrls.length === 0) {
             setShowCarousel(false);
         } else if (indexToRemove <= currentImageIndex) {
@@ -69,7 +67,6 @@ const ImagePreview = ({ imageUrls, showPreviews = true, onImageRemove = null }) 
         }
     }, [previewUrls, currentImageIndex, onImageRemove]);
 
-    // Keyboard navigation
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (!showCarousel) return;
@@ -93,7 +90,6 @@ const ImagePreview = ({ imageUrls, showPreviews = true, onImageRemove = null }) 
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, [showCarousel, nextImage, prevImage]);
 
-    // Prevent body scroll when carousel is open
     useEffect(() => {
         if (showCarousel) {
             document.body.style.overflow = 'hidden';
@@ -106,7 +102,6 @@ const ImagePreview = ({ imageUrls, showPreviews = true, onImageRemove = null }) 
         };
     }, [showCarousel]);
 
-    // Add fadeIn animation CSS to document
     useEffect(() => {
         const style = document.createElement('style');
         style.textContent = `
@@ -170,20 +165,21 @@ const ImagePreview = ({ imageUrls, showPreviews = true, onImageRemove = null }) 
                                 }
                             }}
                         >
-                            <img
-                                src={url}
-                                alt={`Preview ${index + 1}`}
-                                style={{
-                                    maxWidth: '100%',
-                                    maxHeight: '100%',
-                                    objectFit: 'cover'
-                                }}
-                                onClick={() => handleImageClick(url)}
-                                onError={(e) => {
-                                    e.target.style.display = 'none';
-                                    e.target.parentNode.innerHTML = '<i class="fas fa-image" style="color: #6c757d;"></i>';
-                                }}
-                            />
+                            {imageErrors.includes(url) ? (
+                                <i className="fas fa-image" style={{ color: '#6c757d' }}></i>
+                            ) : (
+                                <img
+                                    src={url}
+                                    alt={`Preview ${index + 1}`}
+                                    style={{
+                                        maxWidth: '100%',
+                                        maxHeight: '100%',
+                                        objectFit: 'cover'
+                                    }}
+                                    onClick={() => handleImageClick(url)}
+                                    onError={() => setImageErrors(prev => [...prev, url])}
+                                />
+                            )}
                             {onImageRemove && (
                                 <button
                                     className="preview-remove-btn"
@@ -248,7 +244,6 @@ const ImagePreview = ({ imageUrls, showPreviews = true, onImageRemove = null }) 
                 </div>
             </div>
 
-            {/* Full-screen Image Carousel Overlay */}
             {showCarousel && (
                 <div
                     style={{
@@ -266,7 +261,6 @@ const ImagePreview = ({ imageUrls, showPreviews = true, onImageRemove = null }) 
                     }}
                     onClick={closeCarousel}
                 >
-                    {/* Close Button */}
                     <button
                         onClick={closeCarousel}
                         style={{
@@ -298,7 +292,6 @@ const ImagePreview = ({ imageUrls, showPreviews = true, onImageRemove = null }) 
                         <i className="fas fa-times"></i>
                     </button>
 
-                    {/* Remove Button */}
                     {onImageRemove && (
                         <button
                             onClick={(e) => {
@@ -337,7 +330,6 @@ const ImagePreview = ({ imageUrls, showPreviews = true, onImageRemove = null }) 
                         </button>
                     )}
 
-                    {/* Image Counter */}
                     <div
                         style={{
                             position: 'absolute',
@@ -355,7 +347,6 @@ const ImagePreview = ({ imageUrls, showPreviews = true, onImageRemove = null }) 
                         {currentImageIndex + 1} of {previewUrls.length}
                     </div>
 
-                    {/* Previous Button */}
                     {previewUrls.length > 1 && (
                         <button
                             onClick={(e) => {
@@ -393,7 +384,6 @@ const ImagePreview = ({ imageUrls, showPreviews = true, onImageRemove = null }) 
                         </button>
                     )}
 
-                    {/* Next Button */}
                     {previewUrls.length > 1 && (
                         <button
                             onClick={(e) => {
@@ -431,7 +421,6 @@ const ImagePreview = ({ imageUrls, showPreviews = true, onImageRemove = null }) 
                         </button>
                     )}
 
-                    {/* Main Image Container */}
                     <div
                         onClick={(e) => e.stopPropagation()}
                         style={{
@@ -442,37 +431,35 @@ const ImagePreview = ({ imageUrls, showPreviews = true, onImageRemove = null }) 
                             justifyContent: 'center'
                         }}
                     >
-                        <img
-                            src={previewUrls[currentImageIndex]}
-                            alt={`Image ${currentImageIndex + 1}`}
-                            style={{
-                                maxWidth: '100%',
-                                maxHeight: '100%',
-                                objectFit: 'contain',
-                                borderRadius: '8px',
-                                boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
-                                transition: 'opacity 0.3s ease'
-                            }}
-                            onError={(e) => {
-                                e.target.style.display = 'none';
-                                e.target.parentNode.innerHTML = `
-                                    <div style="
-                                        color: white; 
-                                        text-align: center; 
-                                        padding: 40px;
-                                        background: rgba(255, 255, 255, 0.1);
-                                        border-radius: 8px;
-                                    ">
-                                        <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 16px;"></i>
-                                        <div>Failed to load image</div>
-                                        <div style="font-size: 12px; margin-top: 8px; opacity: 0.7;">${previewUrls[currentImageIndex]}</div>
-                                    </div>
-                                `;
-                            }}
-                        />
+                        {imageErrors.includes(previewUrls[currentImageIndex]) ? (
+                            <div style={{
+                                color: 'white', 
+                                textAlign: 'center', 
+                                padding: '40px',
+                                background: 'rgba(255, 255, 255, 0.1)',
+                                borderRadius: '8px'
+                            }}>
+                                <i className="fas fa-exclamation-triangle" style={{fontSize: '48px', marginBottom: '16px'}}></i>
+                                <div>Failed to load image</div>
+                                <div style={{fontSize: '12px', marginTop: '8px', opacity: 0.7}}>{previewUrls[currentImageIndex]}</div>
+                            </div>
+                        ) : (
+                            <img
+                                src={previewUrls[currentImageIndex]}
+                                alt={`Image ${currentImageIndex + 1}`}
+                                style={{
+                                    maxWidth: '100%',
+                                    maxHeight: '100%',
+                                    objectFit: 'contain',
+                                    borderRadius: '8px',
+                                    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
+                                    transition: 'opacity 0.3s ease'
+                                }}
+                                onError={() => setImageErrors(prev => [...prev, previewUrls[currentImageIndex]])}
+                            />
+                        )}
                     </div>
 
-                    {/* Thumbnail Strip (for multiple images) */}
                     {previewUrls.length > 1 && (
                         <div
                             style={{
@@ -526,19 +513,26 @@ const ImagePreview = ({ imageUrls, showPreviews = true, onImageRemove = null }) 
                                         }
                                     }}
                                 >
-                                    <img
-                                        src={url}
-                                        alt={`Thumbnail ${index + 1}`}
-                                        style={{
-                                            width: '100%',
-                                            height: '100%',
-                                            objectFit: 'cover'
-                                        }}
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setCurrentImageIndex(index);
-                                        }}
-                                    />
+                                    {imageErrors.includes(url) ? (
+                                        <div style={{width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#161b22'}}>
+                                            <i className="fas fa-image" style={{ color: '#6c757d' }}></i>
+                                        </div>
+                                    ) : (
+                                        <img
+                                            src={url}
+                                            alt={`Thumbnail ${index + 1}`}
+                                            style={{
+                                                width: '100%',
+                                                height: '100%',
+                                                objectFit: 'cover'
+                                            }}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setCurrentImageIndex(index);
+                                            }}
+                                            onError={() => setImageErrors(prev => [...prev, url])}
+                                        />
+                                    )}
                                     {onImageRemove && (
                                         <button
                                             className="thumbnail-remove-btn"

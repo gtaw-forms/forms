@@ -22,6 +22,84 @@ let isSentryBlocked = false; // Flag to track if Sentry connectivity failed
 let lastDiscordErrorMessage = '';
 let lastDiscordErrorTimestamp = 0;
 
+// --- Global Context Tracking for Error Reporting ---
+let lastInputInteraction = null; // Tracks recent input field interactions
+
+/**
+ * Automatically determines the current form type from bbCodeVersion stored in localStorage
+ * @returns {string} The form name or 'Unknown' if not found
+ */
+const getCurrentFormType = () => {
+    try {
+        const bbCodeVersion = localStorage.getItem('bbCodeVersion');
+        if (!bbCodeVersion) return 'Unknown';
+
+        const version = parseInt(bbCodeVersion, 10);
+        const versionNames = {
+            1: "Death Report",
+            2: "Coroner Email",
+            3: "Patient File - Advanced",
+            4: "Autopsy Report",
+            5: "Surgery Report",
+            6: "Physical Evaluation (PHMC)",
+            7: "Physical Evaluation (PBC)",
+            8: "Death Certificate",
+            9: "Obs Main File",
+            10: "Obs Follow Up",
+            11: "Mass Fatality Report",
+            12: "Gynecology - Main File",
+            13: "Gynecology - Add Reply",
+            14: "Mental Health - PHMC",
+            16: "Mental Health | PBC",
+            18: "Agency Feedback",
+            19: "Emergency Room Protocols",
+            20: "Consultation Notes (PHMC)",
+            21: "Consultation Notes (PBC)",
+            22: "Commentary Note (PHMC)",
+            23: "Commentary Note (PBC)",
+            24: "Medical Record Release",
+            25: "Patient File - Basic",
+            26: "Medical Record Update",
+            27: "Email Forms",
+            28: "Psychological Evaluation PHMC",
+            29: "Psychological Evaluation PBC",
+            35: "PHMC - Email Generator",
+            50: "PHMC - Physician Careers",
+            51: "PHMC - Psych Careers",
+            52: "PHMC - Admin Careers",
+            53: "PHMC - Nursing Careers",
+            54: "PHMC - Coroner Careers",
+            55: "PHMC - EMS Careers"
+        };
+
+        return versionNames[version] || `Form v${version}`;
+    } catch (error) {
+        console.warn('Error determining form type:', error);
+        return 'Unknown';
+    }
+};
+
+/**
+ * Records input field interaction for error context
+ * Usage: Call this in input change handlers to track recent interactions
+ * Example: const handleChange = (e) => { recordInputInteraction('text', e.target.name); ... };
+ * @param {string} inputType - Type of input interaction (e.g., 'text', 'select', 'checkbox')
+ * @param {string} fieldName - Name of the input field
+ */
+export const recordInputInteraction = (inputType, fieldName) => {
+    lastInputInteraction = {
+        type: inputType,
+        fieldName: fieldName,
+        timestamp: Date.now()
+    };
+    // Clear after 30 seconds
+    setTimeout(() => {
+        if (lastInputInteraction && lastInputInteraction.timestamp === lastInputInteraction.timestamp) {
+            lastInputInteraction = null;
+        }
+    }, 30000);
+};
+
 /**
  * Processes the queue of Discord error messages one by one with a delay.
  * This acts as a rate-limiter to prevent spamming the webhook.
@@ -117,13 +195,16 @@ export const sendDiscordErrorWebhook = (errorDetails) => {
         description: "An unhandled error was caught by the global error handler.",
         color: isSentryBlocked ? 0xFFA500 : 0xDE354C, // Orange if Sentry is blocked, Red otherwise
         fields: [
-            { name: "Error Type", value: errorDetails.isButtonClickError ? "UI Button Interaction" : "General", inline: true },
+            { name: "Error Type", value: errorDetails.isButtonClickError ? "UI Button Interaction" : errorDetails.isInputFieldError ? "Input Field Interaction" : "General", inline: true },
             { name: "Sentry Status", value: isSentryBlocked ? "⚠️ Blocked / Unreachable" : "✅ Active", inline: true },
+            { name: "Form Type", value: `\`${errorDetails.currentFormType || 'Unknown'}\``, inline: true },
             { name: "Error Message", value: `\`${errorMessage}\``, inline: false },
             { name: "Source File", value: errorDetails.source || "N/A", inline: true },
             { name: "Line", value: errorDetails.lineno || "N/A", inline: true },
             { name: "Column", value: errorDetails.colno || "N/A", inline: true },
             { name: "User Agent", value: `\`${navigator.userAgent}\``, inline: false },
+            errorDetails.isInputFieldError ? { name: "Input Field Type", value: `\`${errorDetails.inputFieldType}\``, inline: true } : null,
+            errorDetails.lastInputInteraction ? { name: "Last Input Interaction", value: `\`${errorDetails.lastInputInteraction.type} - ${errorDetails.lastInputInteraction.fieldName}\``, inline: true } : null,
             { name: "Stack Trace", value: `\`${errorStack}\``, inline: false },
             sentryEventId ? { name: "Sentry Trace/Event ID", value: `\`${sentryEventId}\``, inline: false } : null,
         ].filter(Boolean),
@@ -160,26 +241,54 @@ window.onerror = (message, source, lineno, colno, errorObject) => {
         return true; // Suppress this error from being processed further.
     }
 
-    // --- Button Error Detection ---
+    // --- Enhanced Error Context Detection ---
     let isButtonClickError = false;
+    let isInputFieldError = false;
+    let inputFieldType = 'Unknown';
+
     if (errorObject && typeof errorObject.stack === 'string') {
-        // Check for common patterns of event handlers in stack traces
-        if (errorObject.stack.includes('onClick') || errorObject.stack.includes('handleClick')) {
+        const stack = errorObject.stack;
+
+        // Check for button click patterns
+        if (stack.includes('onClick') || stack.includes('handleClick')) {
             isButtonClickError = true;
         }
+
+        // Check for input field interaction patterns
+        if (stack.includes('onChange') || stack.includes('handleChange') ||
+            stack.includes('onInput') || stack.includes('handleInput') ||
+            stack.includes('onBlur') || stack.includes('handleBlur')) {
+            isInputFieldError = true;
+
+            // Try to determine input type from stack trace
+            if (stack.includes('Select') || stack.includes('react-select')) {
+                inputFieldType = 'Select/Dropdown';
+            } else if (stack.includes('textarea') || stack.includes('Textarea')) {
+                inputFieldType = 'Textarea';
+            } else if (stack.includes('checkbox') || stack.includes('Checkbox')) {
+                inputFieldType = 'Checkbox';
+            } else if (stack.includes('radio') || stack.includes('Radio')) {
+                inputFieldType = 'Radio';
+            } else {
+                inputFieldType = 'Text/Input';
+            }
+        }
     }
-    // --- End Button Error Detection ---
+    // --- End Error Context Detection ---
 
     // Log the error to Firebase Analytics
     logEvent(analytics, 'exception', {
         description: message,
         fatal: true,
         is_button_error: isButtonClickError,
+        is_input_error: isInputFieldError,
         error_message: String(message).substring(0, 100),
         stack: errorObject && errorObject.stack ? String(errorObject.stack).substring(0, 100) : undefined,
         source: source || undefined,
         lineno: lineno || undefined,
-        colno: colno || undefined
+        colno: colno || undefined,
+        form_type: getCurrentFormType(),
+        input_field_type: inputFieldType
     });
 
     // Queue the error for reporting to Discord.
@@ -190,7 +299,11 @@ window.onerror = (message, source, lineno, colno, errorObject) => {
         colno,
         error: errorObject,
         stack: errorObject ? errorObject.stack : 'N/A',
-        isButtonClickError // Pass the flag to the webhook function
+        isButtonClickError,
+        isInputFieldError,
+        inputFieldType,
+        currentFormType: getCurrentFormType(),
+        lastInputInteraction
     };
     sendDiscordErrorWebhook(errorDetails);
 
