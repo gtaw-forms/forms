@@ -15,6 +15,68 @@ import { analytics } from './firebase';
 import { logEvent } from "firebase/analytics";
 import ErrorBoundary from './components/ErrorBoundary';
 
+// --- START: Chunk Loading Error Handler ---
+/**
+ * Handles "Loading chunk failed" errors with automatic retry logic
+ * This prevents issues caused by stale caches, network problems, or deployment updates
+ */
+const chunkRetryMap = new Map(); // Track retry attempts per chunk
+const MAX_CHUNK_RETRIES = 2;
+
+const handleChunkError = (error) => {
+    const chunkFailedMessage = /Loading chunk [\d]+ failed/;
+    const isChunkError = error?.message && chunkFailedMessage.test(error.message);
+    
+    if (isChunkError) {
+        const chunkId = error.message.match(/Loading chunk ([\d]+) failed/)?.[1];
+        const retryCount = chunkRetryMap.get(chunkId) || 0;
+        
+        if (retryCount < MAX_CHUNK_RETRIES) {
+            chunkRetryMap.set(chunkId, retryCount + 1);
+            console.warn(`Chunk ${chunkId} failed to load. Retry attempt ${retryCount + 1}/${MAX_CHUNK_RETRIES}. Reloading page...`);
+            
+            // Add small delay before reload to avoid rapid reload loops
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+            
+            return true; // Error handled
+        } else {
+            // Max retries exceeded - likely a real problem
+            console.error(`Chunk ${chunkId} failed to load after ${MAX_CHUNK_RETRIES} retries. This may indicate a deployment issue or network problem.`);
+            chunkRetryMap.delete(chunkId); // Clean up
+            
+            // Show user-friendly error
+            if (window.confirm(
+                'Unable to load part of the application. This might be due to a recent update.\n\n' +
+                'Click OK to clear your cache and reload, or Cancel to continue (not recommended).'
+            )) {
+                // Clear cache and reload
+                if ('caches' in window) {
+                    caches.keys().then(names => {
+                        names.forEach(name => caches.delete(name));
+                    }).finally(() => {
+                        window.location.reload(true);
+                    });
+                } else {
+                    window.location.reload(true);
+                }
+            }
+            
+            return true; // Error handled
+        }
+    }
+    
+    return false; // Not a chunk error
+};
+
+// Listen for unhandled promise rejections (where chunk errors often appear)
+window.addEventListener('unhandledrejection', (event) => {
+    if (handleChunkError(event.reason)) {
+        event.preventDefault(); // Prevent default error logging
+    }
+});
+
 // --- START: Fallback Error Reporting ---
 const discordErrorWebhookQueue = [];
 let isProcessingDiscordQueue = false;
@@ -237,8 +299,15 @@ console.log("Sentry has been initialized.");
 // --- Global Error Handling Setup ---
 window.onerror = (message, source, lineno, colno, errorObject) => {
     // Ignore common, non-critical errors that can create a lot of noise.
-    if (typeof message === 'string' && message.includes("ResizeObserver loop limit exceeded")) {
-        return true; // Suppress this error from being processed further.
+    if (typeof message === 'string') {
+        if (message.includes("ResizeObserver loop limit exceeded")) {
+            return true; // Suppress this error from being processed further.
+        }
+        
+        // Ignore chunk loading errors - they're handled by handleChunkError
+        if (message.includes("Loading chunk") && message.includes("failed")) {
+            return true; // Already handled by unhandledrejection listener
+        }
     }
 
     // --- Enhanced Error Context Detection ---

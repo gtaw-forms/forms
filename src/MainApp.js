@@ -2,7 +2,7 @@ import { useReportManagement } from './components/useReportManagement';
 import { syncGtawAccountWithReports } from './services/gtawSyncService';
 import CharacterSelectionModal from './components/CharacterSelectionModal';
 import { useNavigate } from 'react-router-dom';
-import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense, startTransition } from 'react';
 import { formDefinitions, getFormDefinition } from './formDefinitions'; 
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import { Button, Dropdown } from 'react-bootstrap';
@@ -25,6 +25,7 @@ import { useLockdown } from './contexts/LockdownContext';
 import LockdownBanner from './components/LockdownBanner';
 import LockdownDialog from './components/LockdownDialog';
 import { useAuth } from './contexts/AuthContext';
+import { preloadComponents } from './utils/componentPreloader';
 // logos
 import email from './assets/email.png'
 import Civilian from './assets/Civilian.png'
@@ -88,19 +89,19 @@ import { database } from './firebase'; // Your Firebase config
     );
 };
  */
-// Lazy-loaded components
-const SavedReportsModal = lazy(() => import('./components/SavedReportsModal'));
-const AgencyGroupSelectorModal = lazy(() => import('./components/AgencyGroupSelectorModal'));
-const AgencySelector = lazy(() => import('./components/AgencySelector'));
-const OnboardingModal = lazy(() => import('./components/OnboardingModal'));
-const Footer = lazy(() => import('./components/Footer'));
-const HeaderInfo = lazy(() => import('./components/HeaderInfo'));
-const BusinessCardModal = lazy(() => import('./components/BusinessCardModal'));
-const EmsAmaModal = lazy(() => import('./components/EmsAmaModal'));
+// Lazy-loaded components with prefetch capability
+const SavedReportsModal = lazy(() => import(/* webpackPrefetch: true */ './components/SavedReportsModal'));
+const AgencyGroupSelectorModal = lazy(() => import(/* webpackPrefetch: true */ './components/AgencyGroupSelectorModal'));
+const AgencySelector = lazy(() => import(/* webpackPrefetch: true */ './components/AgencySelector'));
+const OnboardingModal = lazy(() => import(/* webpackPreload: true */ './components/OnboardingModal'));
+const Footer = lazy(() => import(/* webpackPrefetch: true */ './components/Footer'));
+const HeaderInfo = lazy(() => import(/* webpackPreload: true */ './components/HeaderInfo'));
+const BusinessCardModal = lazy(() => import(/* webpackPrefetch: true */ './components/BusinessCardModal'));
+const EmsAmaModal = lazy(() => import(/* webpackPrefetch: true */ './components/EmsAmaModal'));
 const EasterEggModal = lazy(() => import('./components/EasterEggModal'));
-const SwitchableFormsModal = lazy(() => import('./components/SwitchableFormsModal'));
-const EmployeeModal = lazy(() => import('./components/EmployeeModal'));
-const RecruitmentStatusDisplay = lazy(() => import('./components/RecruitmentStatusDisplay'));
+const SwitchableFormsModal = lazy(() => import(/* webpackPrefetch: true */ './components/SwitchableFormsModal'));
+const EmployeeModal = lazy(() => import(/* webpackPrefetch: true */ './components/EmployeeModal'));
+const RecruitmentStatusDisplay = lazy(() => import(/* webpackPrefetch: true */ './components/RecruitmentStatusDisplay'));
 const CctvRequestWebhookModal = lazy(() => import('./components/Admin/CctvRequestWebhookModal'));
 const FeatureRequestModal = lazy(() => import('./contexts/FeatureRequestModal'));
 const FormImageLink = lazy(() => import('./components/FormImageLink'));
@@ -1379,6 +1380,53 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             options: phmcListData.map(p => ({ value: p.name, label: `${p.name} (${p.category || 'PHMC'})` }))
         }
     ].filter(group => group.options.length > 0); // Filter out empty groups if any list is empty
+    // Prefetch form components when agency group is selected
+    useEffect(() => {
+        if (!selectedAgencyGroup) return;
+        
+        // Define commonly used forms per category for intelligent prefetching
+        const formPreloadMap = {
+            'Coroner': [
+                { importFn: () => import('./phmc-field-data/deathReport'), name: 'DeathReport' },
+                { importFn: () => import('./phmc-field-data/CoronerEmail'), name: 'CoronerEmail' },
+                { importFn: () => import('./phmc-field-data/Autopsy'), name: 'Autopsy' },
+            ],
+            'PHMC': [
+                { importFn: () => import('./phmc-field-data/PhysEvalPHMC'), name: 'PhysEval' },
+                { importFn: () => import('./phmc-field-data/GeneralConsult'), name: 'GeneralConsult' },
+                { importFn: () => import('./phmc-field-data/EmergencyForm'), name: 'EmergencyForm' },
+            ],
+            'PHMC Recruitment': [
+                { importFn: () => import('./phmc-civilian-fields/Physician'), name: 'PhysicianFields' },
+                { importFn: () => import('./phmc-civilian-fields/Nursing'), name: 'NursingFields' },
+                { importFn: () => import('./phmc-civilian-fields/Ems'), name: 'EmsFields' },
+            ],
+            'Civilian Paperwork': [
+                { importFn: () => import('./phmc-field-data/BasicPatientFile'), name: 'BasicPatientFile' },
+                { importFn: () => import('./phmc-field-data/MedicalRelease'), name: 'MedicalRelease' },
+            ],
+        };
+        
+        const componentsToPreload = formPreloadMap[selectedAgencyGroup];
+        
+        if (componentsToPreload) {
+            // Prefetch components in the background using idle time
+            preloadComponents(componentsToPreload).then(() => {
+                console.log(`[Prefetch] Preloaded ${componentsToPreload.length} components for ${selectedAgencyGroup}`);
+            });
+        }
+        
+        // Also prefetch the current form if not already included
+        if ('requestIdleCallback' in window) {
+            window.requestIdleCallback(() => {
+                const definition = getFormDefinition(bbCodeVersion);
+                if (definition?.FieldComponent) {
+                    console.log('[Prefetch] Current form component ready:', bbCodeVersion);
+                }
+            }, { timeout: 2000 });
+        }
+    }, [selectedAgencyGroup, bbCodeVersion]);
+    
     // Effect to manage initial agency group selection
     useEffect(() => {
         // Skip if onboarding is not complete yet
