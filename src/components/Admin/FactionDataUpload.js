@@ -520,6 +520,7 @@ const FactionDataUpload = ({ showNotification }) => {
                             Upload CSV
                         </span>
                     }>
+                    Hello! Please grab a copy of the faction CSV from the GTAWorld UCP and upload it here to manage faction data. <a href="https://ucp.gta.world/view/faction/364">Expand by 'all' and then get CSV, paste it in here.</a>
                         {activeTab === 'upload' && (
                             <>
                                 {uploadStatus === 'idle' && renderUploadArea()}

@@ -3,6 +3,7 @@ import { Form, InputGroup, Button } from 'react-bootstrap';
 import Select from 'react-select';
 import ImagePreview from '../components/ImagePreview';
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
+import { cleanRankText } from '../utils/textUtils';
 import { getCharacterName, getCharacterID } from '../utils/characterUtils';
 
 // Check if we're in development environment
@@ -41,7 +42,7 @@ const EmployeeCredentialsSection = ({
                 
                 // Clean rank by removing dashes
                 const cleanRank = gtaWorldUser?.faction?.rank ? 
-                    gtaWorldUser.faction.rank.replace(/-/g, '').trim() : 'GTAW User';
+                    cleanRankText(gtaWorldUser.faction.rank) : 'GTAW User';
                 
                 setFormData(prev => ({
                     ...prev,

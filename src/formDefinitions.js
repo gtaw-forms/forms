@@ -1,5 +1,5 @@
 // src/formDefinitions.js
-import React, { lazy } from 'react';
+import { lazy } from 'react';
 
 // Lazy load form field components
 // Admin component can be loaded normally as it's a distinct route/view
@@ -24,7 +24,6 @@ import generateCoroner from './phmc-recruitment-generators/generateCoroner';
 import generateEMS from './phmc-recruitment-generators/generateEMS';
 
 // Import your icons
-import corpse from './assets/corpse.png';
 import folder from './assets/folder.png';
 import autopsy from './assets/autopsy.png';
 import deathCertificate from './assets/death-certificate.png';
