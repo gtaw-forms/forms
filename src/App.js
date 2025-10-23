@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense } from 'react';
+import { useState, Suspense } from 'react';
 import { HashRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { NotificationProvider, useNotification } from './contexts/NotificationContext';
@@ -13,8 +13,8 @@ import UnifiedGtaCallback from './components/Auth/UnifiedGtaCallback';
 import OAuthUrlDiagnostic from './components/Auth/OAuthUrlDiagnostic';
 import ProtectedRoute from './components/Auth/ProtectedRoute';
 
-const MainApp = lazy(() => import('./MainApp'));
-const Admin = lazy(() => import('./components/Admin/Admin'));
+import MainApp from './MainApp';
+import Admin from './components/Admin/Admin';
 
 function App() {
     const [formData, setFormData] = useState({});
