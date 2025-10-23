@@ -60,21 +60,32 @@ const getShuffledPhrases = (phrases) => {
 };
 
 const sendWebhook = async (payload) => {
-    // --- MODIFICATION: Use process.env to access the secret/environment variable
     const webhookURL = process.env.ADMIN_ACTION_WEBHOOK_URL;
     if (!webhookURL) {
-        // --- MODIFICATION: Updated warning message
-        console.warn("Webhook URL not found. Please set the ADMIN_ACTION_WEBHOOK_URL secret for this function.");
-        return;
+        console.error("FATAL: ADMIN_ACTION_WEBHOOK_URL secret is not set or not accessible. Webhook cannot be sent.");
+        return false;
     }
+    
+    console.log(`Webhook URL is configured. Length: ${webhookURL.length}. Sending payload.`);
+
     try {
-        await fetch(webhookURL, {
+        const response = await fetch(webhookURL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
         });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`Error sending webhook. Status: ${response.status} ${response.statusText}. Response: ${errorText}`);
+            return false;
+        } else {
+            console.log("Webhook sent successfully.");
+            return true;
+        }
     } catch (error) {
         console.error("Error sending webhook from Cloud Function:", error);
+        return false;
     }
 };
 
@@ -235,9 +246,13 @@ export const dailyTaskHandler = onSchedule({
         footer: { text: "PHMC Tools - Scheduled Cloud Function (v2)" }
     };
 
-    await sendWebhook({ embeds: [embed] });
+    const webhookSuccess = await sendWebhook({ embeds: [embed] });
 
-    console.log('Daily task handler finished successfully.');
+    if (webhookSuccess) {
+        console.log('Daily task handler finished successfully and dispatched webhook.');
+    } else {
+        console.error('Daily task handler finished, but failed to dispatch webhook.');
+    }
 
     return null;
 });
@@ -369,11 +384,12 @@ export const weeklyDuplicateReportsCleanup = onSchedule({
         });
     }
 
-    try {
-        await sendWebhook({ embeds: [embed] });
+    const webhookSuccess = await sendWebhook({ embeds: [embed] });
+
+    if (webhookSuccess) {
         console.log('Weekly duplicate reports cleanup completed and webhook sent.');
-    } catch (webhookError) {
-        console.error('Failed to send cleanup webhook:', webhookError);
+    } else {
+        console.error('Weekly duplicate reports cleanup completed, but failed to send webhook.');
     }
 
     return null;
