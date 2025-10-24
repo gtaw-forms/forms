@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { Card, Button, Alert, Table, Badge, Spinner, Tabs, Tab } from 'react-bootstrap';
 import { useDropzone } from 'react-dropzone';
 import { httpsCallable } from 'firebase/functions';
-import { ref, get } from 'firebase/database';
+import { ref, get, set } from 'firebase/database';
 import { functions, database } from '../../firebase';
 import * as Sentry from "@sentry/react";
 
@@ -316,6 +316,16 @@ const FactionDataUpload = ({ showNotification }) => {
 
         try {
             console.log('[Faction Upload] Uploading to Firebase...');
+            // Hard-clear previous members to avoid stale entries and unnecessary storage
+            try {
+                showNotification && showNotification('Clearing previous faction member records…', 'info');
+                await set(ref(database, 'factions/364/members'), null);
+                console.log('[Faction Upload] Cleared existing factions/364/members');
+            } catch (clearErr) {
+                console.warn('[Faction Upload] Failed to clear existing members before upload:', clearErr);
+                // Proceed with upload even if clear fails, but inform user
+                showNotification && showNotification('Warning: Could not clear previous records. Proceeding with upload.', 'warning');
+            }
             
             const uploadFactionData = httpsCallable(functions, 'uploadFactionData');
             const result = await uploadFactionData({
