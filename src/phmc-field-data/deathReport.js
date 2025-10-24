@@ -4,6 +4,7 @@ import Select from 'react-select';
 import ImagePreview from '../components/ImagePreview';
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
 import { getCharacterName, getCharacterID } from '../utils/characterUtils';
+import { cleanRankText } from '../utils/textUtils';
 
 const EmployeeCredentialsSection = ({ 
     formData, 
@@ -43,8 +44,8 @@ const EmployeeCredentialsSection = ({
             if (gtawCharacterName && gtawCharacterName !== 'GTAW User') {
                 setUseGtawName(true);
                 
-                // Clean rank by removing dashes
-                const cleanRank = factionData.rank ? factionData.rank.trim() : 'GTAW User';
+                // Normalize rank/category safely
+                const cleanRank = factionData?.rank ? cleanRankText(factionData.rank) : 'GTAW User';
                 
                 // Get character data using helper function
                 const characterId = getCharacterID(gtaWorldUser);
@@ -63,7 +64,7 @@ const EmployeeCredentialsSection = ({
     
     useEffect(() => {
         if (useGtawName && isGtaAuthenticated && gtaWorldUser && factionData) {
-            const cleanRank = factionData.rank ? factionData.rank.trim() : 'GTAW User';
+            const cleanRank = factionData?.rank ? cleanRankText(factionData.rank) : 'GTAW User';
             setFormData(prev => ({
                 ...prev,
                 coronerEmployee: factionData.characterName,
@@ -161,7 +162,7 @@ const EmployeeCredentialsSection = ({
                         <strong>UCP User:</strong> {gtaWorldUser?.username}<br/>
                         <strong>Badge Number:</strong> {factionData?.characterId || gtaWorldUser?.id}<br/>
                         {factionData?.rank && (
-                            <><strong>Rank:</strong> {factionData.rank.trim()}<br/></>
+                            <><strong>Rank:</strong> {cleanRankText(factionData.rank)}<br/></>
                         )}
                         <small style={{ color: '#6c757d' }}>Click "Use GTAW" again to switch back to database selection</small>
                     </div>
