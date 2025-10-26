@@ -4,7 +4,6 @@ import Select from 'react-select';
 import './phmc-tooltips.css'; // Assuming you have a tooltip component
 import ImagePreview from '../components/ImagePreview';
 import CharacterSelector from '../components/CharacterSelector';
-// Helper component for collapsible section headers - Copied from Nursing.js
 const CollapsibleHeader = ({ title, isOpen, onToggle, sectionId }) => (
     <Button
         variant="link"
