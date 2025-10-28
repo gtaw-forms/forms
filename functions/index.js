@@ -59,13 +59,15 @@ const getShuffledPhrases = (phrases) => {
     return array;
 };
 
+
 const sendWebhook = async (payload) => {
+    // Use process.env for secrets in Firebase Functions v2
     const webhookURL = process.env.ADMIN_ACTION_WEBHOOK_URL;
     if (!webhookURL) {
         console.error("FATAL: ADMIN_ACTION_WEBHOOK_URL secret is not set or not accessible. Webhook cannot be sent.");
         return false;
     }
-    
+
     console.log(`Webhook URL is configured. Length: ${webhookURL.length}. Sending payload.`);
 
     try {
@@ -242,7 +244,7 @@ export const dailyTaskHandler = onSchedule({
             { name: "Phrase Request Deletion", value: `\`\`\n${deletionDetails.trim() || "No phrase request actions taken."}\n\`\`
 `, inline: false },
         ],
-        timestamp: new Date(event.timestamp).toUTCString(),
+        timestamp: new Date().toISOString(),
         footer: { text: "PHMC Tools - Scheduled Cloud Function (v2)" }
     };
 
@@ -257,13 +259,13 @@ export const dailyTaskHandler = onSchedule({
     return null;
 });
 
-// --- Weekly Duplicate Reports Cleanup Function ---
-export const weeklyDuplicateReportsCleanup = onSchedule({
-    schedule: "every monday 09:00",
+// --- Daily Cleaning Task ---
+export const dailyCleaningTask = onSchedule({
+    schedule: "every day 09:00",
     timeZone: "UTC",
     secrets: ["ADMIN_ACTION_WEBHOOK_URL"],
 }, async (event) => {
-    console.log(`Running weekly duplicate reports cleanup. Event ID: ${event.id}`);
+    console.log(`Running daily cleaning task. Event ID: ${event.id}`);
 
     const REPORTS_PATH = '/savedReports';
     let cleanupResults = { scanned: 0, duplicatesFound: 0, duplicatesDeleted: 0, errors: [] };
@@ -325,7 +327,8 @@ export const weeklyDuplicateReportsCleanup = onSchedule({
 
             if (duplicates.length > 0) {
                 // Create backup before deletion
-                const backupRef = db.ref(`backups/duplicateReports/${Date.now()}`);
+                const backupTimestamp = Date.now();
+                const backupRef = db.ref(`backups/duplicateReports/${backupTimestamp}`);
                 await backupRef.set({
                     duplicates,
                     backupTimestamp: admin.database.ServerValue.TIMESTAMP,
@@ -343,6 +346,77 @@ export const weeklyDuplicateReportsCleanup = onSchedule({
                 cleanupResults.duplicatesDeleted = duplicates.length;
 
                 console.log(`Successfully deleted ${duplicates.length} duplicate reports and created backup`);
+
+                // Delete the backup immediately after successful cleanup
+                try {
+                    await backupRef.remove();
+                    console.log('Successfully deleted temporary backup after cleanup');
+                } catch (backupDeleteError) {
+                    console.error('Error deleting temporary backup:', backupDeleteError);
+                    // Don't fail the entire operation if backup deletion fails
+                }
+
+                // Clean up old backups (older than 30 days) to prevent storage bloat
+                try {
+                    const backupsRef = db.ref('backups/duplicateReports');
+                    const oldBackupsSnapshot = await backupsRef.once('value');
+
+                    if (oldBackupsSnapshot.exists()) {
+                        const allBackups = oldBackupsSnapshot.val();
+                        const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000); // 30 days in milliseconds
+                        const oldBackupKeys = [];
+
+                        Object.keys(allBackups).forEach(backupKey => {
+                            const backupTimestampValue = parseInt(backupKey);
+                            if (!isNaN(backupTimestampValue) && backupTimestampValue < thirtyDaysAgo) {
+                                oldBackupKeys.push(backupKey);
+                            }
+                        });
+
+                        if (oldBackupKeys.length > 0) {
+                            console.log(`Cleaning up ${oldBackupKeys.length} old backup(s) older than 30 days`);
+                            const cleanupPromises = oldBackupKeys.map(key => {
+                                return db.ref(`backups/duplicateReports/${key}`).remove();
+                            });
+                            await Promise.all(cleanupPromises);
+                            console.log(`Successfully cleaned up ${oldBackupKeys.length} old backup(s)`);
+                        }
+                    }
+                } catch (cleanupError) {
+                    console.error('Error during old backup cleanup:', cleanupError);
+                    // Don't fail the entire operation if cleanup fails
+                }
+
+                // Clean up old webhook logs (older than 3 days)
+                try {
+                    const webhook_logsRef = db.ref('webhook_logs');
+                    const oldLogsSnapshot = await webhook_logsRef.once('value');
+
+                    if (oldLogsSnapshot.exists()) {
+                        const allLogs = oldLogsSnapshot.val();
+                        const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000); // 3 days in milliseconds
+                        const oldLogKeys = [];
+
+                        Object.keys(allLogs).forEach(logKey => {
+                            const logTimestamp = parseInt(logKey);
+                            if (!isNaN(logTimestamp) && logTimestamp < threeDaysAgo) {
+                                oldLogKeys.push(logKey);
+                            }
+                        });
+
+                        if (oldLogKeys.length > 0) {
+                            console.log(`Cleaning up ${oldLogKeys.length} webhook log(s) older than 3 days`);
+                            const cleanupPromises = oldLogKeys.map(key => {
+                                return db.ref(`webhook_logs/${key}`).remove();
+                            });
+                            await Promise.all(cleanupPromises);
+                            console.log(`Successfully cleaned up ${oldLogKeys.length} webhook log(s)`);
+                        }
+                    }
+                } catch (logCleanupError) {
+                    console.error('Error during webhook log cleanup:', logCleanupError);
+                    // Don't fail the entire operation if cleanup fails
+                }
             }
         }
 
@@ -353,26 +427,26 @@ export const weeklyDuplicateReportsCleanup = onSchedule({
 
     // Send Discord webhook with results
     const embed = {
-        title: "Weekly Duplicate Reports Cleanup",
+        title: "Daily Cleaning Task",
         color: cleanupResults.duplicatesDeleted > 0 ? 0xFF6B35 : 0x1E90FF,
         fields: [
             {
-                name: "Scan Results",
+                name: "Duplicate Reports Scan Results",
                 value: `📊 **Scanned:** ${cleanupResults.scanned} reports\n🔍 **Duplicates Found:** ${cleanupResults.duplicatesFound}\n🗑️ **Duplicates Deleted:** ${cleanupResults.duplicatesDeleted}`,
                 inline: true
             },
             {
                 name: "Status",
                 value: cleanupResults.duplicatesDeleted > 0
-                    ? `✅ Cleanup completed successfully. Backup created.`
+                    ? `✅ Cleanup completed successfully. Temporary backup deleted after cleanup.`
                     : cleanupResults.duplicatesFound === 0
                         ? `✅ No duplicates found - database is clean.`
                         : `⚠️ Duplicates found but deletion failed.`,
                 inline: false
             }
         ],
-        timestamp: new Date(event.timestamp).toUTCString(),
-        footer: { text: "PHMC Tools - Automated Duplicate Cleanup" }
+        timestamp: event?.timestamp ? new Date(event.timestamp).toISOString() : new Date().toISOString(),
+        footer: { text: "PHMC Tools - Automated Daily Cleaning" }
     };
 
     // Add error details if any
@@ -387,9 +461,9 @@ export const weeklyDuplicateReportsCleanup = onSchedule({
     const webhookSuccess = await sendWebhook({ embeds: [embed] });
 
     if (webhookSuccess) {
-        console.log('Weekly duplicate reports cleanup completed and webhook sent.');
+        console.log('Daily cleaning task completed and webhook sent.');
     } else {
-        console.error('Weekly duplicate reports cleanup completed, but failed to send webhook.');
+        console.error('Daily cleaning task completed, but failed to send webhook.');
     }
 
     return null;
@@ -928,9 +1002,10 @@ export const getTokenForSecrets = onCall({
 export const getManagedGtaWorldToken = onCall({
     secrets: ["GTAWORLD_PERSISTENT_TOKEN", "GTAWORLD_REFRESH_TOKEN", "GTAWORLD_CLIENT_ID", "GTAWORLD_CLIENT_SECRET"],
     cors: [
+        'https://ancad-studios.github.io',
+        'http://localhost:3000',
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',
-        'http://localhost:3000',
         'https://global.gta.world'
     ]
 }, async (request) => {
