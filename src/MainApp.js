@@ -993,7 +993,7 @@ const getBBCodeContent = () => {
                 commitInfo,
                 database,
                 getCurrentReportAuthor,
-                // Pass GTAW OAuth data for automatic character inclusion
+                // Pas trueW OAuth data for automatic character inclusion
                 isGtaAuthenticated,
                 gtaWorldUser,
                 // Pass employee lists for correct category lookup
@@ -1024,6 +1024,49 @@ const getBBCodeContent = () => {
 
     const currentFormDefinition = useMemo(() => getFormDefinition(bbCodeVersion), [bbCodeVersion]);
     const FieldComponent = currentFormDefinition ? currentFormDefinition.FieldComponent : null;
+
+    const isFormAuthorized = useMemo(() => {
+        if (!currentFormDefinition) return true;
+        const { requiredFaction, requiredRank, isPHMC } = currentFormDefinition;
+        if (!requiredFaction && !requiredRank && !isPHMC) return true;
+
+        const checkLocalStorage = () => {
+            try {
+                const storedProfile = localStorage.getItem('phmc_gtaw_oauth_profile');
+                if (storedProfile) {
+                    const profile = JSON.parse(storedProfile);
+                    return {
+                        isFactionMember: profile.isFactionMember === true,
+                        rank: profile.rank || 0
+                    };
+                }
+            } catch (error) {
+                console.error("Error reading or parsing localStorage item 'phmc_gtaw_oauth_profile':", error);
+            }
+            return { isFactionMember: false, rank: 0 };
+        };
+
+        const localStorageData = checkLocalStorage();
+        const isPhmcMemberValue = isPhmcMember || localStorageData.isFactionMember;
+        const userRank = gtaWorldUser?.faction?.rank || localStorageData.rank || 0;
+
+        // Check faction membership
+        if (requiredFaction && requiredFaction.includes('PHMC') && !isPhmcMemberValue) {
+            return false;
+        }
+
+        // Check rank requirement
+        if (requiredRank && userRank < requiredRank) {
+            return false;
+        }
+
+        // Legacy isPHMC check
+        if (isPHMC && !isPhmcMemberValue) {
+            return false;
+        }
+
+        return true;
+    }, [bbCodeVersion, isPhmcMember, gtaWorldUser]);
     if (selectedAgencyGroup && !FieldComponent && !isLoadingData) {
         const warningMessage = `No FieldComponent found for bbCodeVersion: ${bbCodeVersion} in group: ${selectedAgencyGroup}.`;
         console.warn(`[App.js] ${warningMessage}`, currentFormDefinition);
@@ -1066,10 +1109,8 @@ const getBBCodeContent = () => {
         { version: 16, name: "Mental Health | PBC", icon: phmcpaletobay }
     ];
     const civilianFormsSubGroup = [
-        { version: 24, name: "Medical Record Release", icon: Civilian },
-        { version: 25, name: "Basic Patient File", icon: nurse }, // Assuming nurse icon for basic
-        { version: 3, name: "Detailed Patient File", icon: nurse }, // Assuming nurse icon for advanced
-        { version: 26, name: "Update Medical Records", icon: Civilian},
+        { version: 24, name: "Medical Records", icon: Civilian },
+        { version: 25, name: "Patient Files", icon: nurse }, // Assuming nurse icon for basic
     ];
     const phmcInternalEmails = [
     { version: 24, name: "Internal Email", icon: Civilian },
@@ -1371,7 +1412,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             ],
             'Civilian Paperwork': [
                 { importFn: () => import('./phmc-field-data/BasicPatientFile'), name: 'BasicPatientFile' },
-                { importFn: () => import('./phmc-field-data/MedicalRelease'), name: 'MedicalRelease' },
+                { importFn: () => import('./phmc-field-data/MedicalRecords'), name: 'MedicalRecords' },
             ],
         };
         
@@ -1712,6 +1753,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                             <form> 
                                 <Suspense fallback={<LoadingSpinner />}>
                                     {FieldComponent ? (
+                                        isFormAuthorized ? (
                                         <FieldComponent
                                             formData={formData}
                                             handleChange={handleChange}
@@ -1818,6 +1860,11 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                     onParseDecedentRequest={onParseDecedentRequest}
 
                                     />
+                                     ) : (
+                                        <div className="alert alert-danger" role="alert">
+                                            You must be a logged-in PHMC employee to access this form.
+                                        </div>
+                                    )
                                 ) : (
                                     <p>Please select an agency group and then a form type.</p>
                                 )}
@@ -1945,6 +1992,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
     handleMissingEmployeeSubmit={handleMissingEmployeeSubmit}
 />            
                                         
+ {isFormAuthorized && (
  <div className="bbcode-section">
     {getBBCodeContent()?.length > 30000 && (
         <div className={`char-counter ${getBBCodeContent()?.length > 60000 ? 'char-counter-warning' : ''}`}>
@@ -1968,7 +2016,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
         </Button>
         <Button
             type="button"
-            onClick={toggleSavedReports}
+            onClick={handleCopyAndNotifyWrapper}
             className="control-button"
         >
             <i className="fas fa-save"></i>
@@ -2042,6 +2090,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
         civilianPaperworkImage={civilianPaperworkImage}
     />
 </div>
+        )}
                     {selectedAgencyGroup === 'PHMC' && (
                         <BusinessCardModal
                             show={showBusinessCard}
