@@ -50,8 +50,9 @@ function HeaderInfo() {
                         className="discord-link"
                     >
                         Discord  <i className="fab fa-discord"></i>
-                    </a>❄️❄️
+                    </a>❄️❄️ <br /> Developer requests can be forwarded to `fr0stydev` on Discord
                 </span>
+                PHMC Employees shall sign in to view all forms. Non-PHMC users may use the form generator without signing in. <br />
             </div>
         </div>
     );
