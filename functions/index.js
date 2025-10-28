@@ -93,7 +93,29 @@ const sendWebhook = async (payload) => {
 
 const scheduleDeletion = async (request) => {
     const requestId = request.id;
-    const processedAt = new Date(request.processedAt);
+    let processedAt;
+
+    try {
+        // Safely parse the processedAt timestamp
+        if (request.processedAt && typeof request.processedAt === 'number') {
+            processedAt = new Date(request.processedAt);
+        } else if (request.processedAt && typeof request.processedAt === 'string') {
+            processedAt = new Date(request.processedAt);
+        } else {
+            console.warn(`Invalid processedAt for request ${requestId}:`, request.processedAt);
+            return; // Skip this request if timestamp is invalid
+        }
+
+        // Check if the date is valid
+        if (isNaN(processedAt.getTime())) {
+            console.warn(`Invalid date created for request ${requestId}:`, request.processedAt);
+            return; // Skip this request if date is invalid
+        }
+    } catch (error) {
+        console.error(`Error parsing processedAt for request ${requestId}:`, error);
+        return; // Skip this request if parsing fails
+    }
+
     const now = new Date();
     const timeDiff = now.getTime() - processedAt.getTime();
     const daysDiff = Math.floor(timeDiff / (1000 * 3600 * 24));
@@ -120,7 +142,6 @@ const scheduleDeletion = async (request) => {
                      { name: "Requested By", value: request.requestedBy, inline: true },
                      { name: "Phrase", value: request.phrase, inline: false },
                  ],
-                 timestamp: new Date().toISOString(),
                  footer: { text: "PHMC Tools - Scheduled Cleanup" }
              };
              await sendWebhook({ embeds: [embed] });
@@ -244,7 +265,6 @@ export const dailyTaskHandler = onSchedule({
             { name: "Phrase Request Deletion", value: `\`\`\n${deletionDetails.trim() || "No phrase request actions taken."}\n\`\`
 `, inline: false },
         ],
-        timestamp: new Date().toISOString(),
         footer: { text: "PHMC Tools - Scheduled Cloud Function (v2)" }
     };
 
@@ -445,7 +465,6 @@ export const dailyCleaningTask = onSchedule({
                 inline: false
             }
         ],
-        timestamp: event?.timestamp ? new Date(event.timestamp).toISOString() : new Date().toISOString(),
         footer: { text: "PHMC Tools - Automated Daily Cleaning" }
     };
 

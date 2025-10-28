@@ -479,7 +479,7 @@ const OnboardingModal = ({
                     </p>
                 </button>
 
-                <button
+{/*                 <button
                     style={{
                         ...userTypeButtonStyle,
                         ...(selectedUserType === USER_TYPES.RECRUITMENT ? selectedButtonStyle : {}),
@@ -494,7 +494,7 @@ const OnboardingModal = ({
                         I'm applying for a position at PHMC (physician, nurse, admin, etc.)
                     </p>
                 </button>
-
+ */}
                 <button
                     style={{
                         ...userTypeButtonStyle,
