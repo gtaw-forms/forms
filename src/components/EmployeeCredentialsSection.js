@@ -260,6 +260,8 @@ const EmployeeCredentialsSection = ({
       [employeeDiscordField]: savedProfile.username || pref.discord || '',
       [employeePHNumberField]: pref.phNumber || '50056',
     }));
+    // Set local Discord state for edit button
+    setCustomDiscordName(savedProfile.username || pref.discord || '');
     setUsingSavedProfile(true);
     setUseGtawName(true); // Show the "Using GTAW OAuth Credentials" panel after using saved profile
   };
@@ -330,17 +332,13 @@ const EmployeeCredentialsSection = ({
             Using GTAW OAuth Credentials
           </div>
           <div style={{ color: '#eeeeeeb0' }}>
-            <strong>Character Name:</strong> {gtawCharacterName}<br />
-            <strong>UCP User:</strong> {gtaWorldUser?.username}<br />
-            <strong>Badge Number:</strong> {factionData?.characterId || gtaWorldUser?.id}<br />
-            {factionData?.rank && (
-              <>
-                <strong>Rank:</strong> {cleanRankText(factionData.rank)}<br />
-              </>
-            )}
+            <strong>Character Name:</strong> {usingSavedProfile ? formData[employeeNameField] : gtawCharacterName}<br />
+            <strong>UCP User:</strong> {usingSavedProfile ? formData[employeeDiscordField] : gtaWorldUser?.username}<br />
+            <strong>Badge Number:</strong> {usingSavedProfile ? formData[employeeBadgeField] : (factionData?.characterId || gtaWorldUser?.id)}<br />
+            <strong>Rank:</strong> {usingSavedProfile ? formData[employeeRankField] : (factionData?.rank ? cleanRankText(factionData.rank) : '')}<br />
             {enableDiscordEdit && (
               <>
-                <strong>Discord:</strong> {customDiscordName || gtaWorldUser?.username}
+                <strong>Discord:</strong> {usingSavedProfile ? formData[employeeDiscordField] : (customDiscordName || gtaWorldUser?.username)}
                 <Button variant="link" size="sm" onClick={() => setShowDiscordModal(true)}>(Edit)</Button>
                 <br />
               </>

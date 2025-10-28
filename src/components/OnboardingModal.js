@@ -37,7 +37,7 @@ const FORM_CATEGORIES = {
 
 // Recommended forms for each user type
 const RECOMMENDED_FORMS = {
-    [USER_TYPES.CIVILIAN]: [24, 25, 3, 26], // Medical Release, Basic Patient File, Advanced Patient File
+    [USER_TYPES.CIVILIAN]: [24, 25], // Medical Release, Basic Patient File, Advanced Patient File
     [USER_TYPES.PHMC_STAFF]: [ 5, 6, 14, 19, 20, 22, 27], // Forensic Services, Surgical Ops, Physical Eval, ER Protocol, General Consultation
     [USER_TYPES.CORONER]: [1, 2, 4, 8, 11, 37, 27], // Forensic Services, Coroner Email, Autopsy, Certificate, Mass Fatality
     [USER_TYPES.RECRUITMENT]: [50, 51, 52, 53, 54, 55], // All recruitment forms
@@ -459,7 +459,7 @@ const OnboardingModal = ({
                     <i className="fas fa-user-md" style={userTypeIconStyle}></i>
                     <h4 style={userTypeButtonTitleStyle}>PHMC Staff</h4>
                     <p style={userTypeButtonDescStyle}>
-                        I work at PHMC and create medical reports, consultations, and patient documentation
+                        I work at PHMC and create medical reports, consultations, and patient documentation. <strong>Requires PHMC faction membership.</strong>
                     </p>
                 </button>
 
@@ -475,7 +475,7 @@ const OnboardingModal = ({
                     <i className="fas fa-search" style={userTypeIconStyle}></i>
                     <h4 style={userTypeButtonTitleStyle}>Coroner</h4>
                     <p style={userTypeButtonDescStyle}>
-                        I handle forensic services, death reports, autopsies, and coroner investigations
+                        I handle forensic services, death reports, autopsies, and coroner investigations. <strong>Requires PHMC faction membership.</strong>
                     </p>
                 </button>
 
@@ -670,6 +670,12 @@ const OnboardingModal = ({
                 <p style={moreFormsTextStyle}>
                     + {recommendedForms.length - 6} more forms available for your role
                 </p>
+            )}
+            {(selectedUserType === USER_TYPES.PHMC_STAFF || selectedUserType === USER_TYPES.CORONER) && (
+                <div style={phmcRequirementNoteStyle}>
+                    <i className="fas fa-shield-alt" style={requirementIconStyle}></i>
+                    <span><strong>Note:</strong> PHMC forms require active PHMC faction membership and appropriate rank to access.</span>
+                </div>
             )}
             <div style={previewNoteStyle}>
                 <i className="fas fa-info-circle" style={noteIconStyle}></i>
@@ -1272,6 +1278,24 @@ const privacyListStyle = {
     color: '#e9ecef',
     paddingLeft: '20px',
     marginBottom: '15px'
+};
+
+const phmcRequirementNoteStyle = {
+    background: '#2a4a2a',
+    borderRadius: '6px',
+    padding: '15px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    marginTop: '20px',
+    fontSize: '0.9rem',
+    color: '#d4edda',
+    border: '1px solid #28a745'
+};
+
+const requirementIconStyle = {
+    color: '#28a745',
+    fontSize: '1.1rem'
 };
 
 export default OnboardingModal;

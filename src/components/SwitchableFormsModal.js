@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react'; // Added useState
 import { Button, Image } from 'react-bootstrap';
 import { getPrimaryFormsForUserType } from '../formDefinitions';
+import useFactionPermissions from '../hooks/useFactionPermissions';
 
 // Style definitions (consistent with AgencySelector)
 const modalOverlayStyle = {
@@ -169,6 +170,7 @@ const SwitchableFormsModal = ({
     formDefinitions,
     userPreferences // Add user preferences prop
 }) => {
+    const { factionInfo } = useFactionPermissions();
     // State to track whether to show personalized or all forms
     const [showPersonalizedForms, setShowPersonalizedForms] = useState(true);
     
@@ -201,6 +203,13 @@ const SwitchableFormsModal = ({
     const filteredForms = userPreferences ? formsToDisplay.filter(form => {
         // If no userTypes specified on form, show to everyone
         if (!form.userTypes) return true;
+
+        const hasRequiredFaction = !form.requiredFaction || (factionInfo && form.requiredFaction.includes(factionInfo.name));
+        const hasRequiredRank = !form.requiredRank || (factionInfo && factionInfo.rank >= form.requiredRank);
+
+        if (form.isPHMC && (!hasRequiredFaction || !hasRequiredRank)) {
+            return false;
+        }
         
         // Check if user's type is allowed for this form
         return form.userTypes.includes(userPreferences.userType);

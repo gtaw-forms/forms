@@ -39,40 +39,7 @@ const ServiceStatusIndicator = ({ status }) => {
         </div>
     );
 };
-
-function HeaderInfo({ commitInfo }) {
-    const [serviceStatus, setServiceStatus] = useState('');
-    const [isProduction, setIsProduction] = useState(false);
-    const [statusKey, setStatusKey] = useState('');
-
-    useEffect(() => {
-        const currentUrl = window.location.href;
-        if (currentUrl.startsWith(FORM_GENERATOR_URL)) {
-            setIsProduction(true);
-            setStatusKey('formGeneratorStatus');
-        } else if (currentUrl.startsWith(ALTERNATIVE_FORM_GENERATOR_URL)) {
-            setIsProduction(true);
-            setStatusKey('alternativeFormGeneratorStatus');
-        } else if (currentUrl.startsWith(LOCALHOST_URL)) {
-            setIsProduction(true);
-            setStatusKey('localHostStatus');
-        }
-    }, []);
-
-    useEffect(() => {
-        if (isProduction && statusKey) {
-            const statusRef = ref(database, `serviceStatus/${statusKey}`);
-            const unsubscribe = onValue(statusRef, (snapshot) => {
-                const statusData = snapshot.val();
-                setServiceStatus(statusData || '');
-            }, (error) => {
-                console.error("Error fetching service status:", error);
-                setServiceStatus('Status unavailable');
-            });
-
-            return () => unsubscribe();
-        }
-    }, [isProduction, statusKey]);
+function HeaderInfo() {
 
     return (
         <div className="header-info-wrapper">
@@ -85,7 +52,6 @@ function HeaderInfo({ commitInfo }) {
                         Discord  <i className="fab fa-discord"></i>
                     </a>❄️❄️
                 </span>
-                {isProduction && <ServiceStatusIndicator status={serviceStatus} />}
             </div>
         </div>
     );

@@ -258,17 +258,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
         });
     };
 
-    useEffect(() => {
-        const statusRef = ref(database, 'serviceStatus');
-        const unsubscribe = onValue(statusRef, (snapshot) => {
-            const statusData = snapshot.val();
-            setFormGeneratorStatus(statusData?.formGeneratorStatus || '');
-            setAlternativeFormGeneratorStatus(statusData?.alternativeFormGeneratorStatus || '');
-            setLocalHostStatus(statusData?.localHostStatus || '');
-            setIsLoadingStatus(false);
-        });
-        return () => unsubscribe();
-    }, []);
 
     // Load webhooks on component mount
     useEffect(() => {
@@ -293,43 +282,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
         return () => unsubscribe();
     }, []);
 
-    const handleUpdateServiceStatus = async () => {
-        setIsUpdatingDb(true);
-        const statusRef = ref(database, 'serviceStatus');
-        const { userAgent, timeZone } = getUserContext();
-        const newStatuses = {
-            formGeneratorStatus,
-            alternativeFormGeneratorStatus,
-            localHostStatus
-        };
-        try {
-            await update(statusRef, newStatuses);
-            showInAppNotification(`Service statuses updated.`, "check-circle");
-            sendAdminActionWebhook(
-                unifiedCurrentUser?.email || "Unknown User",
-                "Updated Service Status",
-                `Form Generator: ${formGeneratorStatus}\
-Alternative Form Generator: ${alternativeFormGeneratorStatus}\
-Localhost/Staging: ${localHostStatus}`,
-                "Service Status",
-                userAgent,
-                timeZone
-            );
-        } catch (error) {
-            console.error("Error updating service status:", error);
-            showInAppNotification("Failed to update service statuses.", "error");
-            sendAdminActionWebhook(
-                currentUser.email,
-                "Failed to Update Service Status",
-                `Error: ${error.message}`,
-                "Service Status",
-                userAgent,
-                timeZone
-            );
-        } finally {
-            setIsUpdatingDb(false);
-        }
-    };
 
     const handleUpdateLockdownStatus = async () => {
         setIsUpdatingDb(true);
@@ -1555,7 +1507,6 @@ Key: ${savedRoleData.originalKey}`,
                 setAlternativeFormGeneratorStatus={setAlternativeFormGeneratorStatus}
                 localHostStatus={localHostStatus}
                 setLocalHostStatus={setLocalHostStatus}
-                handleUpdateServiceStatus={handleUpdateServiceStatus}
                 isUpdatingDb={isUpdatingDb}
                 selectedRecruitmentCategory={selectedRecruitmentCategory}
                 setSelectedRecruitmentCategory={setSelectedRecruitmentCategory}

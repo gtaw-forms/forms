@@ -54,7 +54,7 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
 
     return (
         <>
-            <p>Please be careful when Attaching Reports, it may take some time to process. Also attaching reports will automatically add the decedent name and decedent OOC!!!</p>
+            <p>Please attach the reports, adding them in manually will NOT automatically change the BBCode. </p>
 
             <EmployeeCredentialsSection 
                 formData={formData}

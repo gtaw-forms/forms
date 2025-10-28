@@ -13,19 +13,12 @@ import { isGoogleAuthenticated, getGoogleUser } from '../../services/gtaWorldAut
 import { runOAuthDiagnostics, testFirebaseFunctions, testProfileRetrieval, logEnvironmentInfo } from '../../services/firebaseDebug';
 import WebhookManager from './WebhookManager';
 import { WebhookProvider } from '../../contexts/WebhookProvider';
+import FirebaseFunctionsTester from './FirebaseFunctionsTester';
 
 const AdminDashboard = ({
     currentUser,
     desktopNotificationPermission,
     handleEnableDesktopNotifications,
-    isLoadingStatus,
-    formGeneratorStatus,
-    setFormGeneratorStatus,
-    alternativeFormGeneratorStatus,
-    setAlternativeFormGeneratorStatus,
-    localHostStatus,
-    setLocalHostStatus,
-    handleUpdateServiceStatus,
     isUpdatingDb,
     selectedRecruitmentCategory,
     setSelectedRecruitmentCategory,
@@ -261,9 +254,6 @@ const AdminDashboard = ({
                         )}
                     </div>
                     <div className="nav-pills-flex-column">
-                        {hasServiceStatusAccess && (
-                            <button className={`nav-link ${selectedSection === 'serviceStatus' ? 'active' : ''}`} onClick={() => setSelectedSection('serviceStatus')}><i className="fas fa-server me-2"></i>Service Status</button>
-                        )}
                         {hasLockdownAccess && (
                             <button className={`nav-link ${selectedSection === 'lockdown' ? 'active' : ''}`} onClick={() => setSelectedSection('lockdown')}><i className="fas fa-lock me-2"></i>Lockdown</button>
                         )}
@@ -334,62 +324,6 @@ const AdminDashboard = ({
                                             <i className="fas fa-clock me-1"></i>
                                             Last online: {factionData.lastOnline}
                                         </small>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {selectedSection === 'serviceStatus' && (
-                        <div className="card">
-                            <div className="card-header">Service Status</div>
-                            <div className="card-body">
-                                {hasServiceStatusAccess ? (
-                                    isLoadingStatus ? (
-                                        <Spinner animation="border" size="sm" />
-                                    ) : (
-                                        <>
-                                            <div className="form-group mb-3">
-                                            <label>Form Generator Status</label>
-                                            <input
-                                                type="text"
-                                                value={formGeneratorStatus}
-                                                onChange={(e) => setFormGeneratorStatus(e.target.value)}
-                                                placeholder="e.g., Fully Updated"
-                                                className="form-control"
-                                            />
-                                        </div>
-                                        <div className="form-group mb-3">
-                                            <label>Alternative Form Generator Status</label>
-                                            <input
-                                                type="text"
-                                                value={alternativeFormGeneratorStatus}
-                                                onChange={(e) => setAlternativeFormGeneratorStatus(e.target.value)}
-                                                placeholder="e.g., Updates Delayed"
-                                                className="form-control"
-                                            />
-                                        </div>
-                                        <div className="form-group mb-3">
-                                            <label>Localhost/Staging Status</label>
-                                            <input
-                                                type="text"
-                                                value={localHostStatus}
-                                                onChange={(e) => setLocalHostStatus(e.target.value)}
-                                                placeholder="e.g., Under Development"
-                                                className="form-control"
-                                            />
-                                        </div>
-                                        <Button variant="primary" onClick={handleUpdateServiceStatus} disabled={isUpdatingDb || isLoadingStatus}>
-                                            {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : "Update Statuses"}
-                                        </Button>
-                                    </>
-                                )
-                                ) : (
-                                    <div className="alert alert-danger">
-                                        <i className="fas fa-exclamation-triangle me-2"></i>
-                                        <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to manage service status.
-                                        <br />
-                                        <small>Required: Script Rank 14 or higher, or Google Admin access</small>
                                     </div>
                                 )}
                             </div>
@@ -1166,6 +1100,9 @@ const AdminDashboard = ({
                                 }}>
                                     <i className="fas fa-bug"></i> Test Sentry Error
                                 </Button>
+                                <div className="mt-3">
+                                    <FirebaseFunctionsTester showInAppNotification={showInAppNotification} />
+                                </div>
                             </div>
                         </div>
                     )}
@@ -1248,9 +1185,6 @@ const AdminDashboard = ({
                                                     </div>
                                                     <div className="list-group-item">
                                                         <strong>Database Editor:</strong> Rank 12+
-                                                    </div>
-                                                    <div className="list-group-item">
-                                                        <strong>Service Status & Lockdown:</strong> Rank 14+
                                                     </div>
                                                     <div className="list-group-item">
                                                         <strong>Bingo Management:</strong> Rank 14+

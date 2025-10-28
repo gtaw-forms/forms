@@ -11,11 +11,10 @@ export { default as Surgical } from './Surgical';
 export { default as PhysEval } from './PhysEvalPHMC'; // Removed .js extension for consistency
 export { default as EmergencyForm } from './EmergencyForm'; // Removed .js extension for consistency
 export { default as GeneralConsult } from './GeneralConsult'; // Removed .js extension for consistency
-export { default as MedicalRelease } from './MedicalRelease'; // Removed .js extension for consistency
+export { default as MedicalRecords } from './MedicalRecords'; // Removed .js extension for consistency
 export { default as BasicPatientFile } from './BasicPatientFile'; // Removed .js extension for consistency
 export { default as Shrink } from './Shrink'; // Removed .js extension for consistency
 export { default as Autopsy } from './Autopsy'; // Removed .js extension for consistency
 export { default as Certificate } from './Certificate'; // <--- ADD THIS LINE
-export { default as MedicalUpdate } from './MedicalUpdate';
 export { default as MassFatality } from './MassFatality'; // <--- ADD THIS LINE
 export { default as DeathRecord } from './DeathRecord'; // <--- ADD THIS LINE
