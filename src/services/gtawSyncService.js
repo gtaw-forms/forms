@@ -1,10 +1,51 @@
 import { ref, get, set, update } from 'firebase/database';
 import { database } from '../firebase';
+import * as Sentry from "@sentry/react";
 
 /**
  * Service for syncing GTAW account data with saved reports
  * Enhanced with backup, validation, and rollback capabilities
  */
+
+/**
+ * Checks if an error is a Firebase permission denied error and triggers global error reporting
+ * @param {Error} error - The error to check and potentially report
+ * @param {string} context - Context information about where the error occurred
+ * @returns {boolean} True if this was a permission denied error that was reported
+ */
+const handleFirebasePermissionError = (error, context) => {
+    if (!error || !error.code) return false;
+    
+    const isPermissionDenied = error.code === 'permission-denied' || error.code === 'functions/permission-denied';
+    
+    if (isPermissionDenied) {
+        console.error(`🚨 [GTAW Sync] Firebase Permission Denied Error in ${context}:`, error);
+        
+        // Trigger global error handler to ensure this critical error reaches Discord/Sentry
+        if (window.onerror) {
+            window.onerror(
+                `Firebase Permission Denied: ${error.message}`, 
+                `gtawSyncService.js`, 
+                0, // lineno - not available in production
+                0, // colno - not available in production
+                error // error object
+            );
+        }
+        
+        // Also send to Sentry directly as backup
+        Sentry.captureException(error, {
+            extra: { 
+                context: `GTAW Sync - ${context}`,
+                errorType: 'firebase_permission_denied',
+                operation: 'sync_gtaw_reports'
+            }
+        });
+        
+        return true;
+    }
+    
+    return false;
+};
 
 /**
  * Create a backup of current saved reports before sync
@@ -34,6 +75,10 @@ export const createSyncBackup = async (gtawUsername) => {
         return null;
     } catch (error) {
         console.error('❌ [GTAW Sync] Failed to create backup:', error);
+        
+        // Check if this is a Firebase permission denied error and trigger global error reporting
+        handleFirebasePermissionError(error, 'createSyncBackup');
+        
         throw new Error(`Backup creation failed: ${error.message}`);
     }
 };
@@ -149,6 +194,10 @@ export const rollbackSyncChanges = async (backupId) => {
         
     } catch (error) {
         console.error('❌ [GTAW Sync] Rollback failed:', error);
+        
+        // Check if this is a Firebase permission denied error and trigger global error reporting
+        handleFirebasePermissionError(error, 'rollbackSyncChanges');
+        
         throw new Error(`Rollback failed: ${error.message}`);
     }
 };
@@ -185,6 +234,10 @@ export const deleteSuccessfulBackup = async (backupId) => {
             backupId,
             error: error.message
         });
+        
+        // Check if this is a Firebase permission denied error and trigger global error reporting
+        handleFirebasePermissionError(error, 'deleteSuccessfulBackup');
+        
         // Don't throw error - backup deletion failure shouldn't break the sync flow
         return false;
     }
@@ -613,6 +666,9 @@ export const updateSavedReportsWithGtawData = async (matches, gtawUsername, opti
             totalReportsUpdated
         });
         
+        // Check if this is a Firebase permission denied error and trigger global error reporting
+        handleFirebasePermissionError(error, 'updateSavedReportsWithGtawData');
+        
         // Note: We don't auto-rollback here to avoid data loss
         // Backup can be manually restored if needed
         
@@ -651,6 +707,10 @@ export const getAllSavedReports = async () => {
         }
     } catch (error) {
         console.error('❌ [GTAW Sync] Failed to load saved reports:', error);
+        
+        // Check if this is a Firebase permission denied error and trigger global error reporting
+        handleFirebasePermissionError(error, 'getAllSavedReports');
+        
         throw new Error(`Failed to load saved reports: ${error.message}`);
     }
 };
