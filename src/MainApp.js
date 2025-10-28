@@ -639,7 +639,15 @@ function MainApp({
     };
 
     const handleMainFormSelectionButtonClick = () => {
-        setShowAgencySelector(true);
+        if (isUserAuthenticated) {
+            // Authenticated users see all forms, show PHMC forms directly
+            setSelectedAgencyGroup('PHMC');
+            setShowAgencySelector(true);
+        } else {
+            // Unauthenticated users only see Civilian Paperwork, show it directly
+            setSelectedAgencyGroup('PHMC');
+            setShowAgencySelector(true);
+        }
     };
 
     const handleChange = (e) => {
@@ -1035,9 +1043,14 @@ const getBBCodeContent = () => {
                 const storedProfile = localStorage.getItem('phmc_gtaw_oauth_profile');
                 if (storedProfile) {
                     const profile = JSON.parse(storedProfile);
+                    console.log('[Auth Debug] Found stored GTAW profile:', {
+                        isFactionMember: profile.isFactionMember,
+                        rank: profile.rank,
+                        hasFactionData: !!profile.faction
+                    });
                     return {
                         isFactionMember: profile.isFactionMember === true,
-                        rank: profile.rank || 0
+                        rank: profile.rank || profile.faction?.rank || 0
                     };
                 }
             } catch (error) {
@@ -1050,23 +1063,66 @@ const getBBCodeContent = () => {
         const isPhmcMemberValue = isPhmcMember || localStorageData.isFactionMember;
         const userRank = gtaWorldUser?.faction?.rank || localStorageData.rank || 0;
 
+        console.log('[Auth Debug] Authorization check:', {
+            formDefinition: currentFormDefinition.name,
+            requiredFaction,
+            requiredRank,
+            isPHMC,
+            isPhmcMember,
+            localStorageData,
+            isPhmcMemberValue,
+            userRank,
+            willAuthorize: true // placeholder
+        });
+
         // Check faction membership
         if (requiredFaction && requiredFaction.includes('PHMC') && !isPhmcMemberValue) {
+            console.log('[Auth Debug] Failed faction check');
             return false;
         }
 
         // Check rank requirement
         if (requiredRank && userRank < requiredRank) {
+            console.log('[Auth Debug] Failed rank check:', { userRank, requiredRank });
             return false;
         }
 
         // Legacy isPHMC check
         if (isPHMC && !isPhmcMemberValue) {
+            console.log('[Auth Debug] Failed legacy isPHMC check');
             return false;
         }
 
+        console.log('[Auth Debug] Authorization granted');
         return true;
     }, [bbCodeVersion, isPhmcMember, gtaWorldUser]);
+
+    // Check if user is authenticated for form filtering
+    const isUserAuthenticated = useMemo(() => {
+        if (isGtaAuthenticated && gtaWorldUser) return true;
+
+        try {
+            const storedProfile = localStorage.getItem('phmc_gtaw_oauth_profile');
+            if (storedProfile) {
+                const profile = JSON.parse(storedProfile);
+                return profile.isFactionMember === true;
+            }
+        } catch (error) {
+            console.error("Error reading stored GTAW profile for auth check:", error);
+        }
+        return false;
+    }, [isGtaAuthenticated, gtaWorldUser]);
+
+    // Filter form definitions based on authentication status
+    const filteredFormDefinitions = useMemo(() => {
+        if (isUserAuthenticated) {
+            // Authenticated users see all forms
+            return formDefinitions;
+        } else {
+            // Unauthenticated users only see Civilian Paperwork forms
+            return formDefinitions.filter(form => form.primaryFor && form.primaryFor.includes('civilian'));
+        }
+    }, [formDefinitions, isUserAuthenticated]);
     if (selectedAgencyGroup && !FieldComponent && !isLoadingData) {
         const warningMessage = `No FieldComponent found for bbCodeVersion: ${bbCodeVersion} in group: ${selectedAgencyGroup}.`;
         console.warn(`[App.js] ${warningMessage}`, currentFormDefinition);
@@ -1564,7 +1620,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                             hideAgencySelector={hideAgencySelector}
                             setHideAgencySelector={setHideAgencySelector}
                             selectedAgencyGroup={selectedAgencyGroup}
-                            formDefinitions={formDefinitions}
+                            formDefinitions={filteredFormDefinitions}
                             physicianRecruitmentDetails={physicianRecruitmentDetails}
                             psychRecruitmentDetails={psychRecruitmentDetails}
                             adminRecruitmentDetails={adminRecruitmentDetails}
@@ -1731,8 +1787,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                             onClick={handleMainFormSelectionButtonClick} // Use the new handler
                         >
                             <i className="fas fa-exchange-alt"></i>
-                            {/* Update text to be more generic if no group is selected */}
-                            Select {selectedAgencyGroup || "Agency"} Form
+                            PHMC Forms
                         </Button>
 
                         <SwitchableFormButtons

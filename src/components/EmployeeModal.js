@@ -167,7 +167,7 @@ const EmployeeModal = ({
             const success = await sendMissingAccountWebhook(reportData);
             
             if (success) {
-                showNotification('Your missing account report has been submitted successfully. An administrator will review it soon.', 'success');
+                showNotification('Please ping Alyson Frost in the PHMC Discord for approval.', 'success');
                 
                 // Clear form after successful submission
                 setReportData({
