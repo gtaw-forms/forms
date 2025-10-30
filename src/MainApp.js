@@ -1562,6 +1562,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
     nurseRecruitmentDetails={selectOptions.nursePositionDetailsData || {}}
     coronerRecruitmentDetails={selectOptions.coronerPositionDetailsData || {}}
                     onShowCctvRequest={handleShowCctvRequestModal} // --- MODIFICATION: Pass new handler
+                    onShowBusinessCardModal={() => setShowBusinessCard(true)}
 
             />
 
@@ -1704,6 +1705,8 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                         type="button"
                         className="changelog-button"
                         onClick={() => setShowBusinessCard(prev => !prev)}
+                        disabled={!isGtaAuthenticated}
+                        title={!isGtaAuthenticated ? "Login with GTAW to access Business Card Tool" : "Generate a digital business card for PHMC/LSFD staff"}
                     >
                         <i className="fa-solid fa-address-card"></i>
                         Business Card Tool
@@ -2065,6 +2068,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             type="button"
             onClick={() => setShowBBCode(prev => !prev)}
             className="control-button"
+            disabled={!isGtaAuthenticated || isLockdownActive}
         >
             <i className={`fas ${showBBCode ? 'fa-eye-slash' : 'fa-eye'}`}></i>
             {showBBCode ? 'Hide BBCode' : 'Show BBCode'}
@@ -2073,6 +2077,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             type="button"
             onClick={handleCopyAndNotifyWrapper}
             className="control-button"
+            disabled={!isGtaAuthenticated || isLockdownActive}
         >
             <i className="fas fa-save"></i>
             Save Report
@@ -2091,6 +2096,8 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             type="button"
             onClick={handleCopyTitle}
             className="copy-button-modern"
+            disabled={!isGtaAuthenticated || isLockdownActive}
+
         >
             <i className="fas fa-copy"></i>
             Copy Title
@@ -2100,16 +2107,16 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             type="button"
             onClick={handleCopyAndNotifyWrapper}
             className="copy-button-modern"
-            disabled={isLockdownActive}
+            disabled={!isGtaAuthenticated || isLockdownActive}
             title={isLockdownActive ? 'BBCode copying is disabled during site lockdown' : ''}
         >
             <i className="fas fa-copy"></i>
             {getCopyButtonText()}
         </Button>
-
         {/* Agency Image Row: Only show for selected department */}
     </div>
-    
+            {isGtaAuthenticated ? null : <div>Please ensure you are logged in with GTA World to use copy functionality.</div>}
+
 
     {showBBCode && (
         <pre className="bbcode-output">

@@ -75,7 +75,8 @@ const AgencyGroupSelectorModal = ({
     emsRecruitmentDetails,
     nurseRecruitmentDetails,
     coronerRecruitmentDetails,
-    onShowCctvRequest
+    onShowCctvRequest,
+    onShowBusinessCardModal
 }) => {
     if (!show) {
         return null;
@@ -190,9 +191,19 @@ const AgencyGroupSelectorModal = ({
                     className="d-flex flex-column align-items-center" // Stack button rows
                     style={{gap: '0rem'}} // No gap here, handled by marginBottom on topButtonsContainerStyle
                 >
-                    {/* Container for PHMC and SAAA buttons to be side-by-side */}
-                    <div style={topButtonsContainerStyle}>
-                        <Button
+{/*                     <div style={topButtonsContainerStyle}>
+                 <Button
+                        variant="secondary"
+                        type="button"
+                        className="changelog-button"
+                        onClick={onShowBusinessCardModal}
+                    >
+                        <i className="fa-solid fa-address-card"></i>
+                        Business Card Tool
+                    </Button>
+                        
+                    </div>
+ */}                        <Button
                             variant="outline-light"
                             // MODIFICATION: Adjust flex properties for side-by-side layout
                             style={{...baseButtonStyle, flex: '1 1 0', minWidth: '0', marginBottom: '0'}}
@@ -202,9 +213,8 @@ const AgencyGroupSelectorModal = ({
                             onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                         >
                             <Image src={phmcLogo} alt="PHMC Logo" style={imageStyle} />
-                            PHMC Tools
+                            PHMC Forms
                         </Button>
-                    </div>
 
                     {/* PHMC Recruitment (Development) Button - remains as is, will take full width of its parent */}
 {/*                         <Button
@@ -265,7 +275,8 @@ const AgencyGroupSelectorModal = ({
                                 </span>
                             )}
                         </Button>
- */}                                   <Button
+ */}                                
+ {/*    <Button
                         variant="outline-light"
                         style={{
                             ...baseButtonStyle,
@@ -279,7 +290,7 @@ const AgencyGroupSelectorModal = ({
                     >
                         <i className="fas fa-shield-alt" style={{...imageStyle, fontSize: '40px'}}></i>
                         Law Enforcement Section
-                    </Button>
+                    </Button> */}
                 </div>
                 <div style={checkboxContainerStyle}>
                     <Form.Check
