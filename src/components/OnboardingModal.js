@@ -1,4 +1,3 @@
-// src/components/OnboardingModal.js
 import { useState, useEffect } from 'react';
 import { Button, Form } from 'react-bootstrap';
 import { formDefinitions } from '../formDefinitions';
@@ -394,6 +393,24 @@ const OnboardingModal = ({
         );
     };
 
+    const handleBusinessCardOnly = () => {
+        const preferences = {
+            userType: USER_TYPES.CIVILIAN,
+            role: null,
+            recommendedForms: RECOMMENDED_FORMS[USER_TYPES.CIVILIAN],
+            allowedCategories: FORM_CATEGORIES[USER_TYPES.CIVILIAN],
+            onboardingComplete: true,
+            completedAt: new Date().toISOString(),
+            defaultForm: 24,
+        };
+
+        localStorage.setItem('userOnboardingPreferences', JSON.stringify(preferences));
+        localStorage.setItem('onboardingComplete', 'true');
+        localStorage.removeItem('onboardingProgress');
+        sendOnboardingCompletionWebhook(preferences);
+        onComplete(preferences);
+    };
+
     const renderWelcomeStep = () => (
         <div style={stepContentStyle}>
             <div style={welcomeIconStyle}>
@@ -421,6 +438,9 @@ const OnboardingModal = ({
             <p style={timeEstimateStyle}>
                 <i className="fas fa-clock"></i> This should take less than 2 minutes
             </p>
+            <Button variant="secondary" onClick={handleBusinessCardOnly} style={{ marginTop: '20px' }}>
+                Just use Business Cards
+            </Button>
         </div>
     );
 
