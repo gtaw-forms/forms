@@ -229,14 +229,6 @@ export const useReportManagement = (
 
 
         const sanitizedAuthorId = comprehensiveSanitize(currentAuthor);
-        // Check for duplicate report by originalKey
-        const duplicateReport = savedReports.find(report => report.originalKey === key);
-
-        if (duplicateReport) {
-            const message = `A report with this identifying key already exists and cannot be saved again.`;
-            showNotification(message, 'error');
-            return { success: false, error: message };
-        }
 
         const sanitizedKey = key.trim().replace(/[.#$[\/ \]]+/g, '_') + '_' + Date.now();
 
@@ -309,8 +301,7 @@ export const useReportManagement = (
                 reportKey: sanitizedKey,
                 originalKey: key,
                 bbCodeVersion: bbCodeVersion,
-                hasGtawData: isGtaAuthenticated && !!gtaWorldUser,
-                duplicateOverride: false
+                hasGtawData: isGtaAuthenticated && !!gtaWorldUser
             };
 
             if (isGtaAuthenticated && gtaWorldUser) {
