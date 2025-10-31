@@ -5,7 +5,7 @@ import { NotificationProvider, useNotification } from './contexts/NotificationCo
 import { FormProvider } from './contexts/FormContext';
 import { DataProvider } from './contexts/DataContext';
 import * as Sentry from "@sentry/react";
-import { sendDiscordErrorWebhook } from './index';
+import { sendDiscordErrorWebhook } from './utils/errorUtils';
 import LoadingSpinner from './components/LoadingSpinner';
 
 import GtaLogin from './components/Auth/GtaLogin';
