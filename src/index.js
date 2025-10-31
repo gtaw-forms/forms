@@ -14,6 +14,7 @@ import * as Sentry from "@sentry/react";
 import { analytics } from './firebase';
 import { logEvent } from "firebase/analytics";
 import ErrorBoundary from './components/ErrorBoundary';
+import { sendDiscordErrorWebhook, recordInputInteraction } from './utils/errorUtils';
 
 // --- START: Chunk Loading Error Handler ---
 /**
@@ -77,15 +78,9 @@ window.addEventListener('unhandledrejection', (event) => {
     }
 });
 
-// --- START: Fallback Error Reporting ---
-const discordErrorWebhookQueue = [];
-let isProcessingDiscordQueue = false;
-let isSentryBlocked = false; // Flag to track if Sentry connectivity failed
-let lastDiscordErrorMessage = '';
-let lastDiscordErrorTimestamp = 0;
-
 // --- Global Context Tracking for Error Reporting ---
 let lastInputInteraction = null; // Tracks recent input field interactions
+let isSentryBlocked = false; // Flag to track if Sentry connectivity failed
 
 /**
  * Automatically determines the current form type from bbCodeVersion stored in localStorage
@@ -148,7 +143,7 @@ const getCurrentFormType = () => {
  * @param {string} inputType - Type of input interaction (e.g., 'text', 'select', 'checkbox')
  * @param {string} fieldName - Name of the input field
  */
-export const recordInputInteraction = (inputType, fieldName) => {
+const localRecordInputInteraction = (inputType, fieldName) => {
     lastInputInteraction = {
         type: inputType,
         fieldName: fieldName,
@@ -162,120 +157,8 @@ export const recordInputInteraction = (inputType, fieldName) => {
     }, 30000);
 };
 
-/**
- * Processes the queue of Discord error messages one by one with a delay.
- * This acts as a rate-limiter to prevent spamming the webhook.
- */
-const processDiscordErrorQueue = async () => {
-    if (isProcessingDiscordQueue || discordErrorWebhookQueue.length === 0) return;
-
-    const webhookURL = process.env.REACT_APP_ERROR_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DEV_WEBHOOK;
-    if (!webhookURL) {
-        console.error("Discord Error Webhook: URL is not configured. Cannot process queue.");
-        discordErrorWebhookQueue.length = 0; // Clear queue if no URL
-        return;
-    }
-
-    isProcessingDiscordQueue = true;
-    const payload = discordErrorWebhookQueue.shift();
-    try {
-        await fetch(webhookURL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-    } catch (e) {
-        console.error("CRITICAL: Failed to send Discord error webhook.", e);
-    } finally {
-        // Rate limit: wait 2 seconds before processing the next item.
-        setTimeout(() => {
-            isProcessingDiscordQueue = false;
-            processDiscordErrorQueue(); // Process next item
-        }, 2000);
-    }
-};
-
-/**
- * Creates and queues a Discord embed for an unhandled error.
- * @param {object} errorDetails - Details about the caught error.
- */
-// --- Enhanced Rate Limiting for Discord Error Webhook ---
-const ERROR_RATE_LIMIT_WINDOW = 5 * 60 * 1000; // 5 minutes for duplicate check
-const MAX_ERRORS_PER_WINDOW = 10; // Max errors in the rolling window
-const RATE_LIMIT_DURATION = 60 * 1000; // 1 minute rolling window
-let lastDiscordErrorStack = '';
-let errorTimestamps = []; // Stores timestamps of recent errors for rate limiting
-
-export const sendDiscordErrorWebhook = (errorDetails) => {
-    const now = Date.now();
-
-    // Filter timestamps to the current window
-    errorTimestamps = errorTimestamps.filter(timestamp => (now - timestamp) < RATE_LIMIT_DURATION);
-
-    // Check if the rate limit is exceeded
-    if (errorTimestamps.length >= MAX_ERRORS_PER_WINDOW) {
-        console.warn(`[Discord Error Webhook] Rate limit exceeded. Suppressing error:`, errorDetails.message);
-        return;
-    }
-
-    const errorMessage = String(errorDetails.message || '').substring(0, 1000);
-    const errorStack = String(errorDetails.stack || '').substring(0, 1000);
-
-    // Normalize error message by removing common prefixes like "TypeError:", "ReferenceError:", etc.
-    const normalizeErrorMessage = (msg) => {
-        return msg.replace(/^(TypeError|ReferenceError|SyntaxError|RangeError|URIError|EvalError|InternalError):\s*/i, '');
-    };
-    const normalizedErrorMessage = normalizeErrorMessage(errorMessage);
-
-    // If the normalized error message is identical to the last sent, and within the window, skip sending
-    if (
-        normalizedErrorMessage === normalizeErrorMessage(lastDiscordErrorMessage) &&
-        (now - lastDiscordErrorTimestamp) < ERROR_RATE_LIMIT_WINDOW
-    ) {
-        // Optionally, log to console for debugging
-        console.warn('[Discord Error Webhook] Duplicate error suppressed:', errorMessage);
-        return;
-    }
-
-    // Add new error timestamp
-    errorTimestamps.push(now);
-
-    lastDiscordErrorMessage = errorMessage;
-    lastDiscordErrorStack = errorStack;
-    lastDiscordErrorTimestamp = now;
-
-    // Try to get the Sentry event ID if available
-    let sentryEventId = null;
-    if (window.Sentry && window.Sentry.lastEventId) {
-        sentryEventId = window.Sentry.lastEventId();
-    } else if (Sentry && Sentry.lastEventId) {
-        sentryEventId = Sentry.lastEventId();
-    }
-
-    const embed = {
-        title: errorDetails.isButtonClickError ? "🚨 Button Click Error 🚨" : "🚨 Unhandled Application Error 🚨",
-        description: "An unhandled error was caught by the global error handler.",
-        color: isSentryBlocked ? 0xFFA500 : 0xDE354C, // Orange if Sentry is blocked, Red otherwise
-        fields: [
-            { name: "Error Type", value: errorDetails.isButtonClickError ? "UI Button Interaction" : errorDetails.isInputFieldError ? "Input Field Interaction" : "General", inline: true },
-            { name: "Sentry Status", value: isSentryBlocked ? "⚠️ Blocked / Unreachable" : "✅ Active", inline: true },
-            { name: "Form Type", value: `\`${errorDetails.currentFormType || 'Unknown'}\``, inline: true },
-            { name: "Error Message", value: `\`${errorMessage}\``, inline: false },
-            { name: "Source File", value: errorDetails.source || "N/A", inline: true },
-            { name: "Line", value: errorDetails.lineno || "N/A", inline: true },
-            { name: "Column", value: errorDetails.colno || "N/A", inline: true },
-            { name: "User Agent", value: `\`${navigator.userAgent}\``, inline: false },
-            errorDetails.isInputFieldError ? { name: "Input Field Type", value: `\`${errorDetails.inputFieldType}\``, inline: true } : null,
-            errorDetails.lastInputInteraction ? { name: "Last Input Interaction", value: `\`${errorDetails.lastInputInteraction.type} - ${errorDetails.lastInputInteraction.fieldName}\``, inline: true } : null,
-            { name: "Stack Trace", value: `\`${errorStack}\``, inline: false },
-            sentryEventId ? { name: "Sentry Trace/Event ID", value: `\`${sentryEventId}\``, inline: false } : null,
-        ].filter(Boolean),
-        timestamp: new Date().toISOString(),
-        footer: { text: "PHMC Tools - Global Error Handler" }
-    };
-    discordErrorWebhookQueue.push({ content: '<@228306972204597248>', embeds: [embed] });
-    processDiscordErrorQueue(); // Start processing the queue if it's not already running
-};
+// Export the local version for backward compatibility
+export { localRecordInputInteraction as recordInputInteraction };
 
 
 
@@ -374,7 +257,7 @@ window.onerror = (message, source, lineno, colno, errorObject) => {
         currentFormType: getCurrentFormType(),
         lastInputInteraction
     };
-    sendDiscordErrorWebhook(errorDetails);
+    sendDiscordErrorWebhook(errorDetails, isSentryBlocked);
 
     // Return false to ensure the error is still processed by other handlers (like Sentry's)
     // and the default browser console output.
