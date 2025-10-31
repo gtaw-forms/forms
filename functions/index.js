@@ -3,7 +3,6 @@ import { setGlobalOptions } from "firebase-functions/v2";
 import { onCall } from "firebase-functions/v2/https";
 import * as functions from "firebase-functions";
 import admin from "firebase-admin";
-import fetch from "node-fetch";
 
 // Initialize Firebase Admin SDK
 if (admin.apps.length === 0) {
@@ -156,13 +155,22 @@ const scheduleDeletion = async (request) => {
 // --- Scheduled Cloud Function (v2) ---
 
 // Use ESM 'export' syntax instead of 'exports.dailyTaskHandler =' 
-export const dailyTaskHandler = onSchedule({
+export const dailyMaintenanceTask = onSchedule({
     schedule: "every day 09:00",
     timeZone: "UTC",
     // --- MODIFICATION: Add the 'secrets' option to grant access to the webhook URL
     secrets: ["ADMIN_ACTION_WEBHOOK_URL"],
 }, async (event) => {
-    console.log(`Running daily task handler. Event ID: ${event.id}`);
+    console.log(`Running daily maintenance task. Event ID: ${event.id}`);
+
+    const REPORTS_PATH = '/savedReports';
+    let maintenanceResults = {
+        bingo: { success: [], noCard: [], notEnoughPhrases: [], errors: [] },
+        phraseRequests: { deleted: 0, errors: [] },
+        duplicateCleanup: { scanned: 0, duplicatesFound: 0, duplicatesDeleted: 0, errors: [] },
+        backupCleanup: { oldBackupsCleaned: 0, errors: [] },
+        webhookLogCleanup: { oldLogsCleaned: 0, errors: [] }
+    };
 
     // --- Bingo Reset Logic ---
     const BINGO_TYPES = [
@@ -170,8 +178,6 @@ export const dailyTaskHandler = onSchedule({
         { id: 'ems', name: 'EMS', path: 'EMS' },
         { id: 'coroner', name: 'Coroner', path: 'Coroner' }
     ];
-
-    const bingoResults = { success: [], noCard: [], notEnoughPhrases: [], errors: [] };
 
     await db.ref('bingo/meta').update({ lastAutoRegenTimestamp: admin.database.ServerValue.TIMESTAMP });
 
@@ -183,13 +189,13 @@ export const dailyTaskHandler = onSchedule({
         try {
             const cardSnapshot = await cardPhrasesRef.once('value');
             if (!cardSnapshot.exists()) {
-                bingoResults.noCard.push(bingoType.name);
+                maintenanceResults.bingo.noCard.push(bingoType.name);
                 return;
             }
 
             const masterSnapshot = await masterPhrasesRef.once('value');
             if (!masterSnapshot.exists()) {
-                bingoResults.notEnoughPhrases.push(`${bingoType.name} (no master list)`);
+                maintenanceResults.bingo.notEnoughPhrases.push(`${bingoType.name} (no master list)`);
                 return;
             }
 
@@ -202,71 +208,107 @@ export const dailyTaskHandler = onSchedule({
                     : [];
 
             if (masterPhrases.length < 24) {
-                bingoResults.notEnoughPhrases.push(`${bingoType.name} (${masterPhrases.length}/24)`);
+                maintenanceResults.bingo.notEnoughPhrases.push(`${bingoType.name} (${masterPhrases.length}/24)`);
                 return;
             }
 
             const shuffledPhrases = getShuffledPhrases(masterPhrases).slice(0, 24);
             await cardPhrasesRef.set(shuffledPhrases);
             await activityLogRef.remove();
-            bingoResults.success.push(bingoType.name);
+            maintenanceResults.bingo.success.push(bingoType.name);
 
         } catch (error) {
             console.error(`Error processing ${bingoType.name}:`, error);
-            bingoResults.errors.push(`${bingoType.name}: ${error.message}`);
+            maintenanceResults.bingo.errors.push(`${bingoType.name}: ${error.message}`);
         }
     }));
 
-    let bingoDetails = '';
-    if (bingoResults.success.length > 0) bingoDetails += `✅ Regenerated: ${bingoResults.success.join(', ')}\n`;
-    if (bingoResults.noCard.length > 0) bingoDetails += `➖ Skipped (Disabled): ${bingoResults.noCard.join(', ')}\n`;
-    if (bingoResults.notEnoughPhrases.length > 0) bingoDetails += `⚠️ Skipped (Not Enough Phrases): ${bingoResults.notEnoughPhrases.join(', ')}\n`;
-    if (bingoResults.errors.length > 0) bingoDetails += `❌ Errors: ${bingoResults.errors.join(', ')}\n`;
-
     // --- Phrase Request Deletion Logic ---
-       const requestsRef = db.ref('bingo/phraseRequests');
-    let deletionDetails = '';
-       try {
-           const snapshot = await requestsRef.once('value');
-           if (snapshot.exists()) {
-               const requests = snapshot.val();
-               let deletionCount = 0;
+    try {
+        const requestsRef = db.ref('bingo/phraseRequests');
+        const snapshot = await requestsRef.once('value');
+        if (snapshot.exists()) {
+            const requests = snapshot.val();
+            let deletionCount = 0;
 
-               // Collect deletion promises
-               const deletionPromises = Object.entries(requests)
-                   .map(([key, value]) => {
-                       const request = { id: key, ...value };
-                       if (request.status !== 'pending' && request.processedAt) {
-                           return scheduleDeletion(request).then(() => {
-                               deletionCount++; // Increment only on successful deletion
-                           });
-                       }
-                       return null;
-                   })
-                   .filter(Boolean);
+            // Collect deletion promises
+            const deletionPromises = Object.entries(requests)
+                .map(([key, value]) => {
+                    const request = { id: key, ...value };
+                    if (request.status !== 'pending' && request.processedAt) {
+                        return scheduleDeletion(request).then(() => {
+                            deletionCount++; // Increment only on successful deletion
+                        });
+                    }
+                    return null;
+                })
+                .filter(Boolean);
 
-               await Promise.all(deletionPromises);
-               deletionDetails = `✅ Successfully deleted ${deletionCount} phrase requests.\n`;
+            await Promise.all(deletionPromises);
+            maintenanceResults.phraseRequests.deleted = deletionCount;
+        }
+    } catch (error) {
+        console.error('Error during phrase request deletion:', error);
+        maintenanceResults.phraseRequests.errors.push(`Phrase request deletion error: ${error.message}`);
+    }
 
-           } else {
-               deletionDetails = '➖ No phrase requests found to delete.\n';
-           }
-       } catch (error) {
-           console.error('Error during deletion scheduling:', error);
-           deletionDetails = `❌ Error during phrase request deletion: ${error.message}\n`;
-       }
-
+    // Send comprehensive webhook notification with all maintenance results
     const embed = {
-        title: "Daily Task Handler",
-        color: 0x1E90FF,
+        title: "Daily Maintenance Task",
+        color: maintenanceResults.duplicates.deleted > 0 || maintenanceResults.backups.cleaned > 0 || maintenanceResults.webhookLogs.cleaned > 0 ? 0xFF6B35 : 0x1E90FF,
         fields: [
-            { name: "Bingo Reset Status", value: `\`\`\n${bingoDetails.trim() || "No bingo actions taken."}\n\`\`
-`, inline: false },
-            { name: "Phrase Request Deletion", value: `\`\`\n${deletionDetails.trim() || "No phrase request actions taken."}\n\`\`
-`, inline: false },
+            {
+                name: "🎯 Bingo Reset Status",
+                value: `\`\`\`\n${maintenanceResults.bingo.details.trim() || "No bingo actions taken."}\n\`\`\``,
+                inline: false
+            },
+            {
+                name: "📝 Phrase Request Deletion",
+                value: `\`\`\`\n${maintenanceResults.phraseRequests.details.trim() || "No phrase request actions taken."}\n\`\`\``,
+                inline: false
+            },
+            {
+                name: "🧹 Duplicate Reports Cleanup",
+                value: `📊 **Scanned:** ${maintenanceResults.duplicates.scanned} reports\n🔍 **Duplicates Found:** ${maintenanceResults.duplicates.found}\n🗑️ **Duplicates Deleted:** ${maintenanceResults.duplicates.deleted}`,
+                inline: true
+            },
+            {
+                name: "💾 Backup Cleanup",
+                value: `📁 **Old Backups Cleaned:** ${maintenanceResults.backups.cleaned}\n⏰ **Cleanup Period:** 30+ days`,
+                inline: true
+            },
+            {
+                name: "📋 Webhook Log Cleanup",
+                value: `📝 **Old Logs Cleaned:** ${maintenanceResults.webhookLogs.cleaned}\n⏰ **Cleanup Period:** 3+ days`,
+                inline: true
+            },
+            {
+                name: "📈 Overall Status",
+                value: maintenanceResults.duplicates.deleted > 0 || maintenanceResults.backups.cleaned > 0 || maintenanceResults.webhookLogs.cleaned > 0
+                    ? `✅ Maintenance completed successfully with cleanup actions.`
+                    : `✅ Maintenance completed - no cleanup actions needed.`,
+                inline: false
+            }
         ],
-        footer: { text: "PHMC Tools - Scheduled Cloud Function (v2)" }
+        footer: { text: "PHMC Tools - Automated Daily Maintenance (v2)" }
     };
+
+    // Add error details if any
+    const allErrors = [
+        ...maintenanceResults.bingo.errors,
+        ...maintenanceResults.phraseRequests.errors,
+        ...maintenanceResults.duplicates.errors,
+        ...maintenanceResults.backups.errors,
+        ...maintenanceResults.webhookLogs.errors
+    ];
+
+    if (allErrors.length > 0) {
+        embed.fields.push({
+            name: "⚠️ Errors",
+            value: allErrors.slice(0, 5).join('\n'), // Limit to first 5 errors
+            inline: false
+        });
+    }
 
     const webhookSuccess = await sendWebhook({ embeds: [embed] });
 
@@ -279,214 +321,7 @@ export const dailyTaskHandler = onSchedule({
     return null;
 });
 
-// --- Daily Cleaning Task ---
-export const dailyCleaningTask = onSchedule({
-    schedule: "every day 09:00",
-    timeZone: "UTC",
-    secrets: ["ADMIN_ACTION_WEBHOOK_URL"],
-}, async (event) => {
-    console.log(`Running daily cleaning task. Event ID: ${event.id}`);
 
-    const REPORTS_PATH = '/savedReports';
-    let cleanupResults = { scanned: 0, duplicatesFound: 0, duplicatesDeleted: 0, errors: [] };
-
-    try {
-        const reportsRootRef = db.ref(REPORTS_PATH);
-        const rootSnapshot = await reportsRootRef.once('value');
-
-        if (!rootSnapshot.exists()) {
-            console.log('No reports found in database.');
-            cleanupResults.errors.push('No reports found in database');
-        } else {
-            const allUserNodes = rootSnapshot.val();
-            const seenKeys = {};
-            const seenBBCode = {};
-            const duplicates = [];
-
-            // Traverse each user node and collect duplicates
-            Object.entries(allUserNodes).forEach(([userKey, userReports]) => {
-                if (!userReports || typeof userReports !== 'object') return;
-
-                Object.entries(userReports).forEach(([reportKey, report]) => {
-                    cleanupResults.scanned++;
-
-                    // Check by originalKey
-                    if (report.originalKey) {
-                        if (seenKeys[report.originalKey]) {
-                            duplicates.push({
-                                user: userKey,
-                                key: reportKey,
-                                originalKey: report.originalKey,
-                                reason: 'originalKey',
-                                duplicateOf: seenKeys[report.originalKey]
-                            });
-                        } else {
-                            seenKeys[report.originalKey] = { user: userKey, key: reportKey };
-                        }
-                    }
-
-                    // Check by BBCode
-                    if (report.bbcode) {
-                        if (seenBBCode[report.bbcode]) {
-                            duplicates.push({
-                                user: userKey,
-                                key: reportKey,
-                                bbcode: report.bbcode,
-                                reason: 'bbcode',
-                                duplicateOf: seenBBCode[report.bbcode]
-                            });
-                        } else {
-                            seenBBCode[report.bbcode] = { user: userKey, key: reportKey };
-                        }
-                    }
-                });
-            });
-
-            cleanupResults.duplicatesFound = duplicates.length;
-            console.log(`Found ${duplicates.length} duplicate reports out of ${cleanupResults.scanned} total reports`);
-
-            if (duplicates.length > 0) {
-                // Create backup before deletion
-                const backupTimestamp = Date.now();
-                const backupRef = db.ref(`backups/duplicateReports/${backupTimestamp}`);
-                await backupRef.set({
-                    duplicates,
-                    backupTimestamp: admin.database.ServerValue.TIMESTAMP,
-                    totalScanned: cleanupResults.scanned,
-                    totalDuplicates: duplicates.length
-                });
-
-                // Delete duplicates
-                const deletePromises = duplicates.map(dup => {
-                    const delRef = db.ref(`${REPORTS_PATH}/${dup.user}/${dup.key}`);
-                    return delRef.remove();
-                });
-
-                await Promise.all(deletePromises);
-                cleanupResults.duplicatesDeleted = duplicates.length;
-
-                console.log(`Successfully deleted ${duplicates.length} duplicate reports and created backup`);
-
-                // Delete the backup immediately after successful cleanup
-                try {
-                    await backupRef.remove();
-                    console.log('Successfully deleted temporary backup after cleanup');
-                } catch (backupDeleteError) {
-                    console.error('Error deleting temporary backup:', backupDeleteError);
-                    // Don't fail the entire operation if backup deletion fails
-                }
-
-                // Clean up old backups (older than 30 days) to prevent storage bloat
-                try {
-                    const backupsRef = db.ref('backups/duplicateReports');
-                    const oldBackupsSnapshot = await backupsRef.once('value');
-
-                    if (oldBackupsSnapshot.exists()) {
-                        const allBackups = oldBackupsSnapshot.val();
-                        const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000); // 30 days in milliseconds
-                        const oldBackupKeys = [];
-
-                        Object.keys(allBackups).forEach(backupKey => {
-                            const backupTimestampValue = parseInt(backupKey);
-                            if (!isNaN(backupTimestampValue) && backupTimestampValue < thirtyDaysAgo) {
-                                oldBackupKeys.push(backupKey);
-                            }
-                        });
-
-                        if (oldBackupKeys.length > 0) {
-                            console.log(`Cleaning up ${oldBackupKeys.length} old backup(s) older than 30 days`);
-                            const cleanupPromises = oldBackupKeys.map(key => {
-                                return db.ref(`backups/duplicateReports/${key}`).remove();
-                            });
-                            await Promise.all(cleanupPromises);
-                            console.log(`Successfully cleaned up ${oldBackupKeys.length} old backup(s)`);
-                        }
-                    }
-                } catch (cleanupError) {
-                    console.error('Error during old backup cleanup:', cleanupError);
-                    // Don't fail the entire operation if cleanup fails
-                }
-
-                // Clean up old webhook logs (older than 3 days)
-                try {
-                    const webhook_logsRef = db.ref('webhook_logs');
-                    const oldLogsSnapshot = await webhook_logsRef.once('value');
-
-                    if (oldLogsSnapshot.exists()) {
-                        const allLogs = oldLogsSnapshot.val();
-                        const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000); // 3 days in milliseconds
-                        const oldLogKeys = [];
-
-                        Object.keys(allLogs).forEach(logKey => {
-                            const logTimestamp = parseInt(logKey);
-                            if (!isNaN(logTimestamp) && logTimestamp < threeDaysAgo) {
-                                oldLogKeys.push(logKey);
-                            }
-                        });
-
-                        if (oldLogKeys.length > 0) {
-                            console.log(`Cleaning up ${oldLogKeys.length} webhook log(s) older than 3 days`);
-                            const cleanupPromises = oldLogKeys.map(key => {
-                                return db.ref(`webhook_logs/${key}`).remove();
-                            });
-                            await Promise.all(cleanupPromises);
-                            console.log(`Successfully cleaned up ${oldLogKeys.length} webhook log(s)`);
-                        }
-                    }
-                } catch (logCleanupError) {
-                    console.error('Error during webhook log cleanup:', logCleanupError);
-                    // Don't fail the entire operation if cleanup fails
-                }
-            }
-        }
-
-    } catch (error) {
-        console.error('Error during duplicate reports cleanup:', error);
-        cleanupResults.errors.push(`Cleanup error: ${error.message}`);
-    }
-
-    // Send Discord webhook with results
-    const embed = {
-        title: "Daily Cleaning Task",
-        color: cleanupResults.duplicatesDeleted > 0 ? 0xFF6B35 : 0x1E90FF,
-        fields: [
-            {
-                name: "Duplicate Reports Scan Results",
-                value: `📊 **Scanned:** ${cleanupResults.scanned} reports\n🔍 **Duplicates Found:** ${cleanupResults.duplicatesFound}\n🗑️ **Duplicates Deleted:** ${cleanupResults.duplicatesDeleted}`,
-                inline: true
-            },
-            {
-                name: "Status",
-                value: cleanupResults.duplicatesDeleted > 0
-                    ? `✅ Cleanup completed successfully. Temporary backup deleted after cleanup.`
-                    : cleanupResults.duplicatesFound === 0
-                        ? `✅ No duplicates found - database is clean.`
-                        : `⚠️ Duplicates found but deletion failed.`,
-                inline: false
-            }
-        ],
-        footer: { text: "PHMC Tools - Automated Daily Cleaning" }
-    };
-
-    // Add error details if any
-    if (cleanupResults.errors.length > 0) {
-        embed.fields.push({
-            name: "Errors",
-            value: cleanupResults.errors.join('\n'),
-            inline: false
-        });
-    }
-
-    const webhookSuccess = await sendWebhook({ embeds: [embed] });
-
-    if (webhookSuccess) {
-        console.log('Daily cleaning task completed and webhook sent.');
-    } else {
-        console.error('Daily cleaning task completed, but failed to send webhook.');
-    }
-
-    return null;
-});
 
 // Simple in-memory cache for OAuth codes (prevents duplicate processing)
 const oauthCodeCache = new Map();
