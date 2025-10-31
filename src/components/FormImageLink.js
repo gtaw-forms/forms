@@ -1,6 +1,3 @@
-// src/components/FormImageLink.js
-import React from 'react';
-
 const FormImageLink = ({
     bbCodeVersion,
     selectedAgencyGroup,
@@ -66,7 +63,7 @@ const FormImageLink = ({
             break;
         case 3:
         case 25: // This handles both bbCodeVersion 3 and 25
-            linkHref = "https://phmc.gta.world/posting.php?mode=post&f=221";
+            linkHref = "https://phmc.gta.world/posting.php?mode=post&f=332";
             imgSrc = civilianPaperworkImage;
             imgAlt = "Basic Patient File";
             linkClass = civilianPaperworkClass;
@@ -74,7 +71,7 @@ const FormImageLink = ({
             shouldRender = true;
             break;
         case 26: // This handles both bbCodeVersion 3 and 25
-            linkHref = "https://phmc.gta.world/posting.php?mode=post&f=221";
+            linkHref = "https://phmc.gta.world/posting.php?mode=post&f=332";
             imgSrc = civilianPaperworkImage;
             imgAlt = "Update Medical Records";
             linkClass = civilianPaperworkClass;

@@ -24,7 +24,6 @@ import useDynamicStaffIntegration from './hooks/useDynamicStaffIntegration';
 import { useLockdown } from './contexts/LockdownContext';
 import LockdownBanner from './components/LockdownBanner';
 import LockdownDialog from './components/LockdownDialog';
-import { useAuth } from './contexts/AuthContext';
 import { preloadComponents } from './utils/componentPreloader';
 import { cleanRankText } from './utils/textUtils';
 // logos
@@ -46,50 +45,6 @@ import 'react-bootstrap-typeahead/css/Typeahead.css';
 
 // database
 import { database } from './firebase'; // Your Firebase config
-// Debug User Bar Component
-/* const DebugUserBar = () => {
-    const { currentUser } = useAuth();
-    const { user: gtaWorldUser, isAuthenticated: isGtaAuthenticated } = useGtaWorldAuth();
-    
-    const getUserName = () => {
-        if (isGtaAuthenticated && gtaWorldUser) {
-            if (gtaWorldUser.isFactionMember && gtaWorldUser.faction) {
-                const characterName = (gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? 
-                    `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : 
-                    gtaWorldUser.faction.characterName;
-                return characterName ? `${characterName} (${gtaWorldUser.username})` : gtaWorldUser.username;
-            }
-            return gtaWorldUser.username;
-        }
-        if (currentUser) {
-            return currentUser.email;
-        }
-        return null;
-    };
-    
-    const userName = getUserName();
-    
-    if (!userName) return null;
-    
-    return (
-        <div style={{
-            position: 'fixed',
-            top: '10px',
-            right: '10px',
-            backgroundColor: '#007bff',
-            color: 'white',
-            padding: '8px 12px',
-            borderRadius: '4px',
-            fontSize: '12px',
-            fontWeight: 'bold',
-            zIndex: '9999',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-        }}>
-            DEBUG: {userName} logged in!
-        </div>
-    );
-};
- */
 // Lazy-loaded components with prefetch capability
 const SavedReportsModal = lazy(() => import(/* webpackPrefetch: true */ './components/SavedReportsModal'));
 const AgencyGroupSelectorModal = lazy(() => import(/* webpackPrefetch: true */ './components/AgencyGroupSelectorModal'));
@@ -176,7 +131,6 @@ function MainApp({
         nurseRecruitmentDetails,
         coronerRecruitmentDetails,
         isLoadingData,
-        loading,
         refreshSegments
     } = useData();
     
@@ -238,46 +192,6 @@ function MainApp({
             redirectReason = 'simplified_gtaw_always_homepage';
         }
         // For homepage and form pages, preserve the current path
-        
-        console.log('🎯 [GTAW Login] Final redirect decision:', {
-            originalPath: currentPath,
-            returnPath,
-            redirectReason,
-            pathChanged: currentPath !== returnPath,
-            initiatingAction: 'user_login_request'
-        });
-        
-        // Additional verification logging
-        if (isOnHomepage && returnPath !== '#/') {
-            console.error('🚨 [GTAW Login] CRITICAL BUG: On homepage but returnPath is not #/', {
-                currentPath,
-                returnPath,
-                isOnHomepage,
-                redirectReason,
-                allConditions: {
-                    isOnHomepage,
-                    isOnAdminPage,
-                    isOnFormPage,
-                    isOnAuthPage
-                }
-            });
-        }
-        
-        // Store redirect intent for tracking
-        sessionStorage.setItem('gta-login-intent', JSON.stringify({
-            originalPath: currentPath,
-            returnPath,
-            redirectReason,
-            timestamp: Date.now(),
-            userAgent: navigator.userAgent.substring(0, 100)
-        }));
-        
-        // Final verification before calling gtaLogin
-        console.log('🚀 [GTAW Login] About to call gtaLogin with:', {
-            returnPath,
-            expectedBehavior: isOnHomepage ? 'Should redirect to homepage' : `Should redirect to ${returnPath}`,
-            gtaLoginFunction: typeof gtaLogin
-        });
         
         // Call the original login function with proper return path
         gtaLogin({ returnPath });
@@ -583,8 +497,6 @@ function MainApp({
         authorizedBy: '',
     });
     const [staffToRemove, setStaffToRemove] = useState([]);
-    const [webhookMessage, setWebhookMessage] = useState('');
-    const [webhookTitle, setWebhookTitle] = useState('');
     const [isBbcodeRequest, setIsBbcodeRequest] = useState(false);
     const [bbcodeTitleRequest, setBbcodeTitleRequest] = useState('');
     const [bbcodeRequestText, setBbcodeRequestText] = useState('');
@@ -872,26 +784,17 @@ const getBBCodeContent = () => {
     const { 
         saveReport,
         savedReports,
-        setSavedReports,
         showSavedReports,
         setShowSavedReports,
-        
         loadUserSavedReports,
         loadReportForUser,
         handleReportSelectedForAttachment,
         onAttachReportSummaryRequest,
         onParseDecedentRequest,
         deleteReportForUser,
-        showRareEasterEggDirectly,
         toggleSavedReports,
-        showPositionInfoModal,
-        setShowPositionInfoModal,
-        currentPositionInfo,
-        setCurrentPositionInfo,
-        handleShowPositionInfo,
         pendingReportAttachmentCallback,
         reportSelectionFilter,
-        setReportSelectionFilter,
         preselectedEmployeeType
     } = useReportManagement(
         formData,
@@ -1001,10 +904,8 @@ const getBBCodeContent = () => {
                 commitInfo,
                 database,
                 getCurrentReportAuthor,
-                // Pas trueW OAuth data for automatic character inclusion
                 isGtaAuthenticated,
                 gtaWorldUser,
-                // Pass employee lists for correct category lookup
                 coronerListData,
                 phmcListData,
             });
@@ -1063,7 +964,7 @@ const getBBCodeContent = () => {
         const isPhmcMemberValue = isPhmcMember || localStorageData.isFactionMember;
         const userRank = gtaWorldUser?.faction?.rank || localStorageData.rank || 0;
 
-        console.log('[Auth Debug] Authorization check:', {
+/*         console.log('[Auth Debug] Authorization check:', {
             formDefinition: currentFormDefinition.name,
             requiredFaction,
             requiredRank,
@@ -1074,26 +975,22 @@ const getBBCodeContent = () => {
             userRank,
             willAuthorize: true // placeholder
         });
-
+ */
         // Check faction membership
         if (requiredFaction && requiredFaction.includes('PHMC') && !isPhmcMemberValue) {
-            console.log('[Auth Debug] Failed faction check');
             return false;
         }
 
         // Check rank requirement
         if (requiredRank && userRank < requiredRank) {
-            console.log('[Auth Debug] Failed rank check:', { userRank, requiredRank });
             return false;
         }
 
         // Legacy isPHMC check
         if (isPHMC && !isPhmcMemberValue) {
-            console.log('[Auth Debug] Failed legacy isPHMC check');
             return false;
         }
 
-        console.log('[Auth Debug] Authorization granted');
         return true;
     }, [bbCodeVersion, isPhmcMember, gtaWorldUser]);
 
@@ -1192,15 +1089,6 @@ const getBBCodeContent = () => {
     }, [bbCodeVersion, selectedAgencyGroup]);
 
 // Feature Request Handling
-const phmcRecruitmentFormsSubGroup = formDefinitions.filter(
-    form => form.group === "PHMC Recruitment"
-);
-
-    
-
-// Inside src/App.js
-
-
 const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmployeeName, newRank, staffToRemove, authorizedBy, missingEmployeeData, updatedStaff) => {
     await sendMissingEmployeeNotification(
         actionType,
@@ -1227,10 +1115,6 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
         showNotification("Staff data refreshed.", 'check-circle', 3000);
     }
 };
-
-
-
-
     useEffect(() => {
         // Check for a redirect from the 404 page via sessionStorage
         const redirectPath = sessionStorage.getItem('redirectPath');
@@ -1705,71 +1589,25 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                         type="button"
                         className="changelog-button"
                         onClick={() => setShowBusinessCard(prev => !prev)}
-                        disabled={!isGtaAuthenticated}
+                        disabled={(() => {
+                            if (isLockdownActive) return true;
+                            if (isGtaAuthenticated) return false;
+                            try {
+                                const storedProfile = localStorage.getItem('phmc_gtaw_oauth_profile');
+                                if (storedProfile) {
+                                    const profile = JSON.parse(storedProfile);
+                                    return profile.isFactionMember !== true;
+                                }
+                            } catch (error) {
+                                console.error("Error reading stored GTAW profile for auth check:", error);
+                            }
+                            return true;
+                        })()}
                         title={!isGtaAuthenticated ? "Login with GTAW to access Business Card Tool" : "Generate a digital business card for PHMC/LSFD staff"}
                     >
                         <i className="fa-solid fa-address-card"></i>
                         Business Card Tool
                     </Button>
-            <div className="floating-top-right-tools">
-                {selectedAgencyGroup === 'PHMC Recruitment' && (
-                    <Button
-                        variant={phmcRecruitmentOptIn ? "outline-success" : "outline-secondary"}
-                        onClick={() => handleRecruitmentOptIn(!phmcRecruitmentOptIn)}
-                        className="changelog-button" // You can use existing or new class
-                        title={phmcRecruitmentOptIn ? "Click to Opt-out of PHMC Recruitment Notifications" : "Click to Opt-in to PHMC Recruitment Notifications"}
-                    > Desktop Alert Toggle
-                        <i className={`fas ${phmcRecruitmentOptIn ? 'fa-bell-slash' : 'fa-bell'}`}></i>
-                        {/* Optionally, keep text for larger screens or use icons only */}
-                        {/* {phmcRecruitmentOptIn ? " Rec. Notifs: ON" : " Rec. Notifs: OFF"} */}
-                    </Button>
-                )}
-            </div>
-
-                    {(() => {
-                        if (selectedAgencyGroup === 'PHMC Recruitment' && formData.recruitmentPosition) {
-
-                            let currentRecruitmentDetailsSource = null;
-                            let positionDisplayNameForTitle = formData.recruitmentPosition || 'selected position';
-                            const currentFormDef = getFormDefinition(bbCodeVersion);
-
-                            if (currentFormDef?.titleKey === "phmcGeneralApplication") {
-                                currentRecruitmentDetailsSource = selectOptions.physicianRecruitmentDetails;
-                            } else if (currentFormDef?.titleKey === "phmcPsychApplication") {
-                                currentRecruitmentDetailsSource = selectOptions.psychPositionDetailsData;
-                            } else if (currentFormDef?.titleKey === "phmcAdminApplication") {
-                                currentRecruitmentDetailsSource = selectOptions.adminPositionDetailsData;
-                            } else if (currentFormDef?.titleKey === "phmcNursingApplication") {
-                                currentRecruitmentDetailsSource = selectOptions.nursePositionDetailsData;
-                            } else if (currentFormDef?.titleKey === "phmcEMSApplication") {
-                                currentRecruitmentDetailsSource = selectOptions.emsPositionDetailsData;
-                            } else if (currentFormDef?.titleKey === "phmcCoronerRecruitmentApplication") {
-                                currentRecruitmentDetailsSource = selectOptions.coronerPositionDetailsData;
-                            }
-
-                            if (currentRecruitmentDetailsSource && currentRecruitmentDetailsSource[formData.recruitmentPosition]) {
-                                positionDisplayNameForTitle = currentRecruitmentDetailsSource[formData.recruitmentPosition].displayName || formData.recruitmentPosition;
-                            }
-
-                            // Only render the button if the source data for the current form type is available
-                            if (currentRecruitmentDetailsSource) {
-                                return (
-                                    <Button
-                                        variant="info"
-                                        type="button"
-                                        className="changelog-button"
-                                        onClick={() => handleShowPositionInfo(formData.recruitmentPosition)}
-                                        title={`More info about ${positionDisplayNameForTitle}`}
-                                    >
-                                        <i className="fas fa-info-circle"></i>
-                                        Position Info
-                                    </Button>
-                                );
-                            }
-                        }
-                        return null; // Return null if conditions aren't met
-                        
-                    })()}
 
 </div>
 
@@ -2063,12 +1901,41 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
         </div>
     )}
 
+    {/* Debug logging for button disabled state */}
+    {(() => {
+        const hasSavedSession = (() => {
+            try {
+                const storedProfile = localStorage.getItem('phmc_gtaw_oauth_profile');
+                if (storedProfile) {
+                    const profile = JSON.parse(storedProfile);
+                    return profile.isFactionMember === true;
+                }
+            } catch (error) {
+                console.error("Error reading stored GTAW profile for auth check:", error);
+            }
+            return false;
+        })();
+    })()}
+
     <div className="modern-output-controls">
         <Button
             type="button"
             onClick={() => setShowBBCode(prev => !prev)}
             className="control-button"
-            disabled={!isGtaAuthenticated || isLockdownActive}
+            disabled={(() => {
+                if (isLockdownActive) return true;
+                if (isGtaAuthenticated) return false;
+                try {
+                    const storedProfile = localStorage.getItem('phmc_gtaw_oauth_profile');
+                    if (storedProfile) {
+                        const profile = JSON.parse(storedProfile);
+                        return profile.isFactionMember !== true;
+                    }
+                } catch (error) {
+                    console.error("Error reading stored GTAW profile for auth check:", error);
+                }
+                return true;
+            })()}
         >
             <i className={`fas ${showBBCode ? 'fa-eye-slash' : 'fa-eye'}`}></i>
             {showBBCode ? 'Hide BBCode' : 'Show BBCode'}
@@ -2077,7 +1944,20 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             type="button"
             onClick={handleCopyAndNotifyWrapper}
             className="control-button"
-            disabled={!isGtaAuthenticated || isLockdownActive}
+            disabled={(() => {
+                if (isLockdownActive) return true;
+                if (isGtaAuthenticated) return false;
+                try {
+                    const storedProfile = localStorage.getItem('phmc_gtaw_oauth_profile');
+                    if (storedProfile) {
+                        const profile = JSON.parse(storedProfile);
+                        return profile.isFactionMember !== true;
+                    }
+                } catch (error) {
+                    console.error("Error reading stored GTAW profile for auth check:", error);
+                }
+                return true;
+            })()}
         >
             <i className="fas fa-save"></i>
             Save Report
@@ -2096,7 +1976,20 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             type="button"
             onClick={handleCopyTitle}
             className="copy-button-modern"
-            disabled={!isGtaAuthenticated || isLockdownActive}
+            disabled={(() => {
+                if (isLockdownActive) return true;
+                if (isGtaAuthenticated) return false;
+                try {
+                    const storedProfile = localStorage.getItem('phmc_gtaw_oauth_profile');
+                    if (storedProfile) {
+                        const profile = JSON.parse(storedProfile);
+                        return profile.isFactionMember !== true;
+                    }
+                } catch (error) {
+                    console.error("Error reading stored GTAW profile for auth check:", error);
+                }
+                return true;
+            })()}
 
         >
             <i className="fas fa-copy"></i>
@@ -2107,7 +2000,20 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             type="button"
             onClick={handleCopyAndNotifyWrapper}
             className="copy-button-modern"
-            disabled={!isGtaAuthenticated || isLockdownActive}
+            disabled={(() => {
+                if (isLockdownActive) return true;
+                if (isGtaAuthenticated) return false;
+                try {
+                    const storedProfile = localStorage.getItem('phmc_gtaw_oauth_profile');
+                    if (storedProfile) {
+                        const profile = JSON.parse(storedProfile);
+                        return profile.isFactionMember !== true;
+                    }
+                } catch (error) {
+                    console.error("Error reading stored GTAW profile for auth check:", error);
+                }
+                return true;
+            })()}
             title={isLockdownActive ? 'BBCode copying is disabled during site lockdown' : ''}
         >
             <i className="fas fa-copy"></i>
@@ -2245,10 +2151,258 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
     );
 }
 
+const initialFormData = {
+    // Core user state to preserve
+    phmcEmployee: '',
+    coronerEmployee: '',
+    coronerBadge: '',
+    coronerRank: 'Forensic Attendant',
+    coronerDiscord: '',
+    coronerPHNumber: '50056',
+    lastName: '',
+    phmcRank: '',
+    // Common form fields
+    department: '',
+    dateTime: '',
+    date: '',
+    decedentName: '',
+    decedentOOC: '',
+    synopsis: '',
+    scenePhotos: '',
+    additionalImages: '',
+    patientID: '',
+    patientName: '',
+    patientAddress: '',
+    massFatality: false,
+    patientRace: '',
+    patientGender: '',
+    patientPH: '',
+    patientDiscord: '',
+    patientEmergencyContact: '',
+    patientEmergencyContactNumber: '',
+    patientEmergencyContactRelation: '',
+    decedents: [],
+    patientEmergencyContactDiscord: '',
+    patientTitle: '',
+    patientTitleOptions: '',
+    patientAllergies: '',
+    patientCurrentMedicine: '',
+    patientChronicDiseases: '',
+    patientNotes: '',
+    patientDateOfBirth: '',
+    patientBloodType: '',
+    patientChiefComplaint: '',
+    patientProcedure: '',
+    patientDiagnosis: '',
+    patientSecondaryDiagnosis: '',
+    patientMedicine: '',
+    admission: '',
+    followup: '',
+    SubmitDate: new Date().toISOString().split('T')[0],
+    patientExercise: '',
+    // Form-specific fields
+    placeOfDeath: '',
+    evidenceLockerID: '',
+    evidenceLocker: '',
+    pronouncedTimeOfDeath: '',
+    mannerOfDeath: '',
+    typeOfDeath: '',
+    showRequestingOfficerInput: false,
+    requestingOfficer: '',
+    deathReport: '',
+    additionalReports: [],
+    autopsyDate: '',
+    autopsyTime: '',
+    autopsyDeathCauses: [''],
+    autopsyAnatomicSummaryItems: [''],
+    autopsyAlbumUrl: '',
+    autopsyPhotosUnavailable: false,
+    autopsyDiagramMarkers: [],
+    autopsyDiagramImgurUrl: '',
+    externalExamination: '',
+    RadiologyResult: '',
+    deathType: '',
+    causeOfDeath: '',
+    extraStaff: [],
+    patientSummaryConsultation: '',
+    patientSummary: '',
+    surgeryProcedures: '',
+    patientConsentOption: '',
+    patientComplicationOptions: '',
+    procedureGoodOptions: '',
+    patientHeight: '',
+    patientWeight: '',
+    BodyMassIndex: '',
+    temperature: '',
+    heartRate: '',
+    breathing: '',
+    bloodPressure: '',
+    patientJob: '',
+    patientJobRisks: '',
+    patientAllergiesRisk: '',
+    patientMedicineRegular: '',
+    patientOther: '',
+    predisposition: '',
+    patientCareer: '',
+    patientImpairments: '',
+    patientTriggers: '',
+    patientFamily: '',
+    patientFam: '',
+    patientMedicalRecord: '',
+    patientVisitReason: '',
+    patientSymptoms: '',
+    patientDrugs: '',
+    patientDrugsUsage: '',
+    patientMental: '',
+    patientFamSocial: '',
+    patientLegal: '',
+    patientRelationship: '',
+    patientFindings: '',
+    patientTreatmentPlan: '',
+    patientSafety: '',
+    patientFollowUp: '',
+    patientTreatmentMedicine: '',
+    patientTherapy: '',
+    patientRiskAssessment: '',
+    Speech: '',
+    Behavior: '',
+    Appearance: '',
+    Mood: '',
+    Affect: '',
+    Risk: '',
+    ThoughtProcess: '',
+    ThoughtContent: '',
+    Insight: '',
+    Cognition: '',
+    painLevel: '',
+    findings: '',
+    lungs: '',
+    pupils: '',
+    wounds: '',
+    ecg: '',
+    sono: '',
+    lab: [],
+    bloodOxy: '',
+    assignedDepartment: '',
+    departmentLarge: '',
+    paletoClinicDepartment: '',
+    MedicalRecordsRelease: [],
+    payNow: false,
+    paymentProofPhotos: '',
+    PurposeMedicalInformationReleaseFormat: '',
+    CarePurposeMedicalInformationRelease: '',
+    patientMedInfoReleaseOther: '',
+    MedicalRecordsReleaseOther: '',
+    patientMedInfoFormatOther: '',
+    StupidDateFrom: '',
+    StupidDateTo: '',
+    patientFirstName: '',
+    patientMiddleName: '',
+    patientLastName: '',
+    patientEmail: '',
+    patientPhoneType: '',
+    patientZIP: '',
+    dnr: '',
+    dnrOrder: '',
+    attorney: '',
+    dnrOther: '',
+    attorneyName: '',
+    attorneyRelation: '',
+    attorneyPH: '',
+    maritalStatus: '',
+    numberChildren: '',
+    financialStatus: '',
+    patientSupport: '',
+    patientHarm: '',
+    patientGenetic: '',
+    patientReligion: '',
+    patientSmoker: '',
+    patientAlcohol: '',
+    patientDiet: '',
+    patientSleep: '',
+    patientSexLife: '',
+    patientHazards: '',
+    prescriptionImage: '',
+    attachedReportSummary: '',
+    emailPurpose: '',
+    emailRecipient: '',
+    dateOfVisit: '',
+    sicknessStartDate: '',
+    sicknessEndDate: '',
+    reasonForSickness: '',
+    illnessCondition: '',
+    confirmationPurpose: '',
+    phmcEmployeeSignatureImage: '',
+
+    // Recruitment Fields
+    recruitmentPosition: '',
+    applicantContactDetails: '',
+    locationPHMC: false,
+    locationPBC: false,
+    applicantMedicalConditions: '',
+    citizenUS: false,
+    citizenPermanent: false,
+    citizenNone: false,
+    eduHighSchool: false,
+    eduCertificate: false,
+    eduDiploma: false,
+    eduAssociate: false,
+    eduBachelor: false,
+    eduMaster: false,
+    eduDoctorate: false,
+    applicantSchoolName: '',
+    applicantEnrollmentTerm: '',
+    applicantMajor: '',
+    applicantLanguages: '',
+    applicantPrevEmployment: '',
+    applicantPrevDuties: '',
+    applicantPrevDismissalReason: '',
+    applicantMotivationLetter: '',
+    exemptCheckbox: false,
+    oocMedicalExperience: '',
+    oocAdminRecordLink: '',
+    oocStatsLink: '',
+        applicantTitleAndFullName: '',
+        genderMale: '',
+        genderFemale: '',
+        genderOther: '',
+        applicantGenderOtherText: '',
+        applicantDOBAndPlace: '',
+        applicantAddress: '',
+        emsLicenseLink: '',
+        emsPartTimeReason: '',
+        oocUcpName: '',
+        oocForumName: '',
+        oocDiscord: '',
+        oocTimezone: '',
+        charBackground: '',
+        oocOtherCharLicenseProof: '',
+        dfpSanFireLink: '',
+        dfpPhmcLink: '',
+        dfpLegalFactionLink: '',
+
+    // Imaging Fields
+    Imaging: [],
+    XrayResults: [],
+    ctResults: [],
+    mriResults: [],
+    ultrasoundResults: [],
+        patientTitleNew: '',
+    patientNameNew: '',
+    patientDateOfBirthNew: '',
+    patientAddressNew: '',
+    patientPHNew: '',
+    patientDiscordNew: '',
+    patientGenderNew: '',
+    patientRaceNew: '',
+
+
+};
+
 function MainAppWrapper() {
     const [formData, setFormData] = useState(() => {
         const savedFormData = localStorage.getItem('formData');
-        return savedFormData ? JSON.parse(savedFormData) : {};
+        return savedFormData ? JSON.parse(savedFormData) : initialFormData;
     });
     const [lastWebhookIdentifier, setLastWebhookIdentifier] = useState(null);
 
