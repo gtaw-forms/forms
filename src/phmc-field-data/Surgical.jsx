@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Form, Button } from 'react-bootstrap';
 import Select from 'react-select';
-import EmployeeCredentialsSection from '../components/EmployeeCredentialsSection';
+import EmployeeCredentialsSection from '../components/EmployeeCredentialsSection.jsx';
 const Surgical = ({ // Renamed component to follow PascalCase convention
             formData,
             handleChange,

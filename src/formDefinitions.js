@@ -3,8 +3,6 @@ import { lazy } from 'react';
 import { generateDevTest } from './phmc-bbcode-generators/devTest';
 
 // Lazy load form field components
-// Admin component can be loaded normally as it's a distinct route/view
-import AdminAuthAndActions from './components/Admin/AdminAuthAndActions';
 
 // Import generators normally as they are not components
 import {
@@ -43,35 +41,39 @@ import application from './assets/application.png'; // Assuming this is for SAAA
 
 // Lazy load field components with webpack magic comments for optimization
 // High priority components (commonly used forms) - prefetch
-const DeathReport = lazy(() => import(/* webpackPrefetch: true */ './phmc-field-data/deathReport'));
-const CoronerEmail = lazy(() => import(/* webpackPrefetch: true */ './phmc-field-data/CoronerEmail'));
-const PhysEval = lazy(() => import(/* webpackPrefetch: true */ './phmc-field-data/PhysEvalPHMC'));
-const GeneralConsult = lazy(() => import(/* webpackPrefetch: true */ './phmc-field-data/GeneralConsult'));
-const EmergencyForm = lazy(() => import(/* webpackPrefetch: true */ './phmc-field-data/EmergencyForm'));
-const DevTest = lazy(() => import('./phmc-field-data/devTest'));
+const DeathReport = lazy(() => import(/* webpackPrefetch: true */ './phmc-field-data/deathReport.jsx'));
+const CoronerEmail = lazy(() => import(/* webpackPrefetch: true */ './phmc-field-data/CoronerEmail.jsx'));
+const PhysEval = lazy(() => import(/* webpackPrefetch: true */ './phmc-field-data/PhysEvalPHMC.jsx'));
+const GeneralConsult = lazy(() => import(/* webpackPrefetch: true */ './phmc-field-data/GeneralConsult.jsx'));
+const EmergencyForm = lazy(() => import(/* webpackPrefetch: true */ './phmc-field-data/EmergencyForm.jsx'));
+const DevTest = lazy(() => import('./phmc-field-data/devTest.jsx'));
 
 // Medium priority components - lazy load normally
-const CommNotePHMC = lazy(() => import('./phmc-field-data/CommNotePHMC'));
-const CommNotePBC = lazy(() => import('./phmc-field-data/CommNotePBC'));
-const PatientFile = lazy(() => import('./phmc-field-data/PatientFile'));
-const MentalHealth = lazy(() => import('./phmc-field-data/MentalHealth'));
-const EmailInternal = lazy(() => import('./phmc-field-data/EmailInternal'));
-const Surgical = lazy(() => import('./phmc-field-data/Surgical'));
-const MedicalRecords = lazy(() => import('./phmc-field-data/MedicalRecords'));
-const Shrink = lazy(() => import('./phmc-field-data/Shrink'));
-const Autopsy = lazy(() => import('./phmc-field-data/Autopsy'));
-const Certificate = lazy(() => import('./phmc-field-data/Certificate'));
-const MassFatality = lazy(() => import('./phmc-field-data/MassFatality'));
-const DeathRecord = lazy(() => import('./phmc-field-data/DeathRecord'));
-const SicknessEmail = lazy(() => import('./phmc-field-data/SicknessEmail'));
+const CommNotePHMC = lazy(() => import('./phmc-field-data/CommNotePHMC.jsx'));
+const CommNotePBC = lazy(() => import('./phmc-field-data/CommNotePBC.jsx'));
+const PatientFile = lazy(() => import('./phmc-field-data/PatientFile.jsx'));
+const MentalHealth = lazy(() => import('./phmc-field-data/MentalHealth.jsx'));
+const EmailInternal = lazy(() => import('./phmc-field-data/EmailInternal.jsx'));
+const Surgical = lazy(() => import('./phmc-field-data/Surgical.jsx'));
+const MedicalRecords = lazy(() => import('./phmc-field-data/MedicalRecords.jsx'));
+const Shrink = lazy(() => import('./phmc-field-data/Shrink.jsx'));
+const Autopsy = lazy(() => import('./phmc-field-data/Autopsy.jsx'));
+const Certificate = lazy(() => import('./phmc-field-data/Certificate.jsx'));
+const MassFatality = lazy(() => import('./phmc-field-data/MassFatality.jsx'));
+const DeathRecord = lazy(() => import('./phmc-field-data/DeathRecord.jsx'));
+const SicknessEmail = lazy(() => import('./phmc-field-data/SicknessEmail.jsx'));
 
 // Lazy load recruitment field components with prefetch for popular positions
-const PhysicianFields = lazy(() => import(/* webpackPrefetch: true */ './phmc-civilian-fields/Physician'));
-const PsychFields = lazy(() => import('./phmc-civilian-fields/Psych'));
-const AdminFields = lazy(() => import('./phmc-civilian-fields/Admin'));
-const NursingFields = lazy(() => import(/* webpackPrefetch: true */ './phmc-civilian-fields/Nursing'));
-const Coroner = lazy(() => import('./phmc-civilian-fields/Coroner'));
-const Ems = lazy(() => import(/* webpackPrefetch: true */ './phmc-civilian-fields/Ems'));
+const PhysicianFields = lazy(() => import(/* webpackPrefetch: true */ './phmc-civilian-fields/Physician.jsx'));
+const PsychFields = lazy(() => import('./phmc-civilian-fields/Psych.jsx'));
+const AdminFields = lazy(() => import('./phmc-civilian-fields/Admin.jsx'));
+const NursingFields = lazy(() => import(/* webpackPrefetch: true */ './phmc-civilian-fields/Nursing.jsx'));
+const Coroner = lazy(() => import('./phmc-civilian-fields/Coroner.jsx'));
+const Ems = lazy(() => import(/* webpackPrefetch: true */ './phmc-civilian-fields/Ems.jsx'));
+
+
+// Admin component can be loaded normally as it's a distinct route/view
+import AdminAuthAndActions from './components/Admin/AdminAuthAndActions.jsx';
 
 
 export const generateAdminView = (viewData) => {

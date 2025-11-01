@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Form, Button, InputGroup } from 'react-bootstrap';
 import ImagePreview from '../components/ImagePreview';
-import EmployeeCredentialsSection from '../components/EmployeeCredentialsSection';
+import EmployeeCredentialsSection from '../components/EmployeeCredentialsSection.jsx';
 const defaultDecedent = {
     decedentName: '',
     decedentOOC: '',

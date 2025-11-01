@@ -1,7 +1,7 @@
 import React, { createContext, useState, useEffect, useContext, useCallback, useRef } from 'react';
 import { database } from '../firebase';
 import { ref, get, onChildChanged, onValue } from 'firebase/database';
-import { useNotification } from './NotificationContext';
+import { useNotification } from './NotificationContext.jsx';
 
 // Define cache segments
 const CACHE_SEGMENTS = {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Form, Button } from 'react-bootstrap';
 import Select from 'react-select'; // Make sure react-select is imported
-import EmployeeCredentialsSection from '../components/EmployeeCredentialsSection';
+import EmployeeCredentialsSection from '../components/EmployeeCredentialsSection.jsx';
 
 
 const MentalHealth = ({

@@ -259,7 +259,7 @@ const OnboardingModal = ({
 
     const sendOnboardingCompletionWebhook = async (preferences) => {
         try {
-            const webhookURL = process.env.REACT_APP_DEV_WEBHOOK;
+            const webhookURL = import.meta.env.VITE_DEV_WEBHOOK;
             if (!webhookURL) {
                 console.warn('Dev webhook URL not configured for onboarding notifications.');
                 return;

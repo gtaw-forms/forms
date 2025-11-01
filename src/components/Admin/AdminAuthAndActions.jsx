@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Form as BootstrapForm, Button, Spinner, ListGroup } from 'react-bootstrap';
-import { auth, database, db } from '../../firebase';
+import { auth, database } from '../../firebase';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { ref, get, update, remove, set, serverTimestamp, onValue, push } from "firebase/database";
 import { collection, addDoc, deleteDoc, doc, getDocs } from 'firebase/firestore'; 
@@ -87,7 +87,7 @@ const getUserContext = () => {
 };
 
 const sendAdminActionWebhook = async (adminEmail, action, details, categoryName = null, userAgent = "N/A", userTimezone = "N/A", oauthUsername = null, characterData = null) => {
-    const webhookURL = process.env.REACT_APP_ADMIN_ACTION_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DEV_WEBHOOK;
+    const webhookURL = import.meta.env.VITE_ADMIN_ACTION_DISCORD_WEBHOOK_URL || import.meta.env.VITE_DEV_WEBHOOK;
     if (!webhookURL) {
         console.warn("Admin action webhook URL not configured. Skipping log.");
         captureMessage("Admin Action Webhook URL not configured", "warning");
@@ -248,8 +248,7 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
     const prevUserUidRef = useRef(null);
 
     const logWebhookToFirebase = async (type, payload) => {
-        const db = database;
-        const logsRef = ref(db, 'webhook_logs');
+        const logsRef = ref(database, 'webhook_logs');
         const newLogRef = push(logsRef);
         await set(newLogRef, {
             type,
@@ -318,11 +317,11 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
     };
 
     const handleCctvWebhookSubmit = async (cctvData) => {
-        const webhookURL = process.env.REACT_APP_LEO_WEBHOOK_URL; // Using the general dev webhook for this test
+        const webhookURL = import.meta.env.VITE_LEO_WEBHOOK_URL; // Using the general dev webhook for this test
         const { userAgent, timeZone } = getUserContext();
 
         if (!webhookURL) {
-            if (showInAppNotification) showInAppNotification('Webhook URL (REACT_APP_LEO_WEBHOOK_URL) not configured.', 'error');
+            if (showInAppNotification) showInAppNotification('Webhook URL (VITE_LEO_WEBHOOK_URL) not configured.', 'error');
             Sentry.captureMessage("CCTV Test Webhook URL not configured", "error");
             return false; // Indicate failure
         }
@@ -952,8 +951,8 @@ Key: ${savedRoleData.originalKey}`,
     };
 
     const handleAdminCustomWebhookSubmit = async (payloadFromModal) => {
-        const webhookURLIdentifier = "REACT_APP_PHMC_DISCORD or REACT_APP_DEV_WEBHOOK";
-        const webhookURL = process.env.REACT_APP_PHMC_DISCORD || process.env.REACT_APP_DEV_WEBHOOK;
+        const webhookURLIdentifier = "VITE_PHMC_DISCORD or VITE_DEV_WEBHOOK";
+        const webhookURL = import.meta.env.VITE_PHMC_DISCORD || import.meta.env.VITE_DEV_WEBHOOK;
         const { userAgent, timeZone } = getUserContext(); // Capture user context
 
         if (!webhookURL) {
@@ -1257,8 +1256,8 @@ Key: ${savedRoleData.originalKey}`,
     const [showMarkdownModal, setShowMarkdownModal] = useState(false);
 
     const handleCoronerWebhookSubmit = async (payloadFromModal) => {
-        const webhookURLIdentifier = "REACT_APP_CORONER_DISCORD_UPDATES";
-         const webhookURL = process.env.REACT_APP_CORONER_DISCORD_UPDATES;
+        const webhookURLIdentifier = "VITE_CORONER_DISCORD_UPDATES";
+         const webhookURL = import.meta.env.VITE_CORONER_DISCORD_UPDATES;
          const { userAgent, timeZone } = getUserContext(); // Capture user context
 
         if (!webhookURL) {
