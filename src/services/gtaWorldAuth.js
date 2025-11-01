@@ -12,7 +12,7 @@ const GTA_WORLD_CONFIG = {
     AUTHORIZE_URL: 'https://ucp.gta.world/oauth/authorize',
     TOKEN_URL: 'https://ucp.gta.world/oauth/token',
     USER_API_URL: 'https://ucp.gta.world/api/user',
-    CLIENT_ID: process.env.REACT_APP_GTAWORLD_CLIENT_ID || '',
+    CLIENT_ID: import.meta.env.VITE_GTAWORLD_CLIENT_ID || '',
     FIREBASE_FUNCTION: 'exchangeAuthCodeForToken'
 };
 
@@ -59,7 +59,7 @@ const getRedirectUri = () => {
 };
 
 const sendLoginWebhook = (userData) => {
-    const webhookUrl = process.env.REACT_APP_DEV_WEBHOOK;
+    const webhookUrl = import.meta.env.VITE_DEV_WEBHOOK;
     if (!webhookUrl) {
         return; // Don't do anything if webhook is not configured
     }
@@ -362,7 +362,7 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
             });
             
             // TEMPORARY: In development/testing, allow bypass with warning
-            const isProduction = process.env.NODE_ENV === 'production';
+            const isProduction = import.meta.env.NODE_ENV === 'production';
             const isGithubPages = window.location.hostname.includes('github.io');
             
             // Allow bypass in development OR if we have a valid state but sessionStorage was cleared
@@ -1387,7 +1387,7 @@ export const validateFirebaseConfig = () => {
 
     const issues = [];
     if (!GTA_WORLD_CONFIG.CLIENT_ID) {
-        issues.push('REACT_APP_GTAWORLD_CLIENT_ID environment variable not set');
+        issues.push('VITE_GTAWORLD_CLIENT_ID environment variable not set');
     }
 
     console.info('[GTA Auth] Configuration validation:', { config, issues });

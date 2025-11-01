@@ -88,7 +88,7 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo, handleImageUp
     }, []);
 
     const sendDiscordWebhook = useCallback(async (patientSig, formDate, guardianSig, paramedicSig, generatedImageUrl, errorMessage = null) => {
-        const webhookURL = process.env.REACT_APP_DEV_WEBHOOK;
+        const webhookURL = import.meta.env.VITE_DEV_WEBHOOK;
         if (!webhookURL) {
             console.warn('Discord webhook URL is not set for AMA.');
             Sentry.captureMessage("Discord Webhook URL not set (AMA)", { level: "warning" });
