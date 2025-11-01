@@ -3,6 +3,7 @@ import { setGlobalOptions } from "firebase-functions/v2";
 import { onCall } from "firebase-functions/v2/https";
 import * as functions from "firebase-functions";
 import admin from "firebase-admin";
+import { createHash } from 'crypto';
 
 // Initialize Firebase Admin SDK
 if (admin.apps.length === 0) {
@@ -218,7 +219,7 @@ export const dailyMaintenanceTask = onSchedule({
             maintenanceResults.bingo.success.push(bingoType.name);
 
         } catch (error) {
-            console.error(`Error processing ${bingoType.name}:`, error);
+            console.error(`Error processing ${bingoType.name}: ${error?.message || String(error)}`);
             maintenanceResults.bingo.errors.push(`${bingoType.name}: ${error.message}`);
         }
     }));
@@ -248,43 +249,246 @@ export const dailyMaintenanceTask = onSchedule({
             maintenanceResults.phraseRequests.deleted = deletionCount;
         }
     } catch (error) {
-        console.error('Error during phrase request deletion:', error);
+        console.error(`Error during phrase request deletion: ${error?.message || String(error)}`);
         maintenanceResults.phraseRequests.errors.push(`Phrase request deletion error: ${error.message}`);
     }
 
+    // --- Duplicate Reports Cleanup Logic ---
+    try {
+        console.log('[Maintenance] Starting duplicate reports cleanup...');
+        const reportsRef = db.ref(REPORTS_PATH);
+        const reportsSnapshot = await reportsRef.once('value');
+
+        if (reportsSnapshot.exists()) {
+            const allReports = reportsSnapshot.val();
+            const reportHashes = new Map(); // hash -> [reportPaths]
+            let totalReportsScanned = 0;
+            let duplicatesFound = 0;
+            let duplicatesDeleted = 0;
+
+            // Scan all user directories
+            for (const [userId, userReports] of Object.entries(allReports)) {
+                if (!userReports || typeof userReports !== 'object') continue;
+
+                // Scan all reports for this user
+                for (const [reportKey, reportData] of Object.entries(userReports)) {
+                    if (!reportData || typeof reportData !== 'object') continue;
+
+                    totalReportsScanned++;
+
+                    // Create a hash based on key fields to identify duplicates
+                    const hashData = {
+                        bbCodeVersion: reportData.bbCodeVersion,
+                        bbCode: reportData.bbCode,
+                        authorName: reportData.authorName,
+                        originalKey: reportData.originalKey
+                    };
+
+                    const hash = createHash('md5').update(JSON.stringify(hashData)).digest('hex');
+                    const reportPath = `${userId}/${reportKey}`;
+
+                    if (!reportHashes.has(hash)) {
+                        reportHashes.set(hash, [reportPath]);
+                    } else {
+                        reportHashes.get(hash).push(reportPath);
+                    }
+                }
+            }
+
+            // Process duplicates - keep the most recent one, delete others
+            for (const [hash, reportPaths] of reportHashes.entries()) {
+                if (reportPaths.length > 1) {
+                    duplicatesFound += reportPaths.length - 1; // All except the first are duplicates
+
+                    // Sort by timestamp (newest first) - we need to get the actual report data
+                    const reportsWithTimestamps = await Promise.all(
+                        reportPaths.map(async (path) => {
+                            const [userId, reportKey] = path.split('/');
+                            const reportRef = db.ref(`${REPORTS_PATH}/${userId}/${reportKey}`);
+                            const snapshot = await reportRef.once('value');
+                            const data = snapshot.val();
+                            return {
+                                path,
+                                timestamp: data?.timestamp || 0,
+                                userId,
+                                reportKey
+                            };
+                        })
+                    );
+
+                    // Sort by timestamp descending (newest first)
+                    reportsWithTimestamps.sort((a, b) => b.timestamp - a.timestamp);
+
+                    // Keep the first (newest), delete the rest
+                    const toDelete = reportsWithTimestamps.slice(1);
+                    for (const report of toDelete) {
+                        try {
+                            const deleteRef = db.ref(`${REPORTS_PATH}/${report.userId}/${report.reportKey}`);
+                            await deleteRef.remove();
+                            duplicatesDeleted++;
+                            console.log(`[Maintenance] Deleted duplicate report: ${report.path}`);
+                        } catch (deleteError) {
+                            console.error(`[Maintenance] Error deleting duplicate report ${report.path}: ${deleteError?.message || String(deleteError)}`);
+                            maintenanceResults.duplicateCleanup.errors.push(`Failed to delete duplicate: ${report.path}`);
+                        }
+                    }
+                }
+            }
+
+            maintenanceResults.duplicateCleanup.scanned = totalReportsScanned;
+            maintenanceResults.duplicateCleanup.duplicatesFound = duplicatesFound;
+            maintenanceResults.duplicateCleanup.duplicatesDeleted = duplicatesDeleted;
+
+            console.log(`[Maintenance] Duplicate cleanup complete: scanned ${totalReportsScanned}, found ${duplicatesFound} duplicates, deleted ${duplicatesDeleted}`);
+        } else {
+            console.log('[Maintenance] No saved reports found to clean up');
+        }
+    } catch (error) {
+        console.error(`Error during duplicate reports cleanup: ${error?.message || String(error)}`);
+        maintenanceResults.duplicateCleanup.errors.push(`Duplicate cleanup error: ${error.message}`);
+    }
+
+    // --- Backup Cleanup Logic ---
+    try {
+        console.log('[Maintenance] Starting backup cleanup...');
+        const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000); // 3 days in milliseconds
+        let oldBackupsCleaned = 0;
+
+        // Clean faction backups
+        try {
+            const factionBackupRef = db.ref('factions');
+            const factionSnapshot = await factionBackupRef.once('value');
+
+            if (factionSnapshot.exists()) {
+                const factions = factionSnapshot.val();
+
+                for (const [factionId, factionData] of Object.entries(factions)) {
+                    if (factionData?.backups) {
+                        const backupPromises = Object.entries(factionData.backups)
+                            .map(async ([backupKey, backupData]) => {
+                                if (backupData?.backedUpAt && backupData.backedUpAt < threeDaysAgo) {
+                                    try {
+                                        const backupRef = db.ref(`factions/${factionId}/backups/${backupKey}`);
+                                        await backupRef.remove();
+                                        oldBackupsCleaned++;
+                                        console.log(`[Maintenance] Deleted old faction backup: ${factionId}/${backupKey}`);
+                                    } catch (backupError) {
+                                        console.error(`[Maintenance] Error deleting faction backup ${factionId}/${backupKey}: ${backupError?.message || String(backupError)}`);
+                                        maintenanceResults.backupCleanup.errors.push(`Failed to delete faction backup: ${factionId}/${backupKey}`);
+                                    }
+                                }
+                            });
+
+                        await Promise.all(backupPromises);
+                    }
+                }
+            }
+        } catch (factionError) {
+            console.error('Error during faction backup cleanup:', factionError);
+            maintenanceResults.backupCleanup.errors.push(`Faction backup cleanup error: ${factionError.message}`);
+        }
+
+        maintenanceResults.backupCleanup.oldBackupsCleaned = oldBackupsCleaned;
+        console.log(`[Maintenance] Backup cleanup complete: cleaned ${oldBackupsCleaned} old backups`);
+    } catch (error) {
+        console.error(`Error during backup cleanup: ${error?.message || String(error)}`);
+        maintenanceResults.backupCleanup.errors.push(`Backup cleanup error: ${error.message}`);
+    }
+
+    // --- Webhook Log Cleanup Logic ---
+    try {
+        console.log('[Maintenance] Starting webhook log cleanup...');
+        const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000); // 3 days in milliseconds
+        const webhookLogsRef = db.ref('webhook_logs');
+        const logsSnapshot = await webhookLogsRef.once('value');
+
+        let oldLogsCleaned = 0;
+
+        if (logsSnapshot.exists()) {
+            const logs = logsSnapshot.val();
+
+            const logDeletionPromises = Object.entries(logs)
+                .map(async ([logKey, logData]) => {
+                    // Check if this log is older than 3 days
+                    // First check if the key itself is a timestamp
+                    let logTimestamp = parseInt(logKey);
+                    
+                    // If key is not a timestamp, check for timestamp in the data
+                    if (isNaN(logTimestamp)) {
+                        // Check various possible timestamp locations
+                        if (logData?.timestamp) {
+                            logTimestamp = parseInt(logData.timestamp);
+                        } else if (logData?.payload?.timestamp) {
+                            logTimestamp = parseInt(logData.payload.timestamp);
+                        } else if (typeof logData === 'number') {
+                            logTimestamp = logData;
+                        }
+                    }
+                    
+                    // Delete if we found a valid timestamp that's older than 3 days
+                    if (!isNaN(logTimestamp) && logTimestamp > 0 && logTimestamp < threeDaysAgo) {
+                        try {
+                            const logRef = db.ref(`webhook_logs/${logKey}`);
+                            await logRef.remove();
+                            oldLogsCleaned++;
+                        } catch (logError) {
+                            console.error(`[Maintenance] Error deleting webhook log ${logKey}: ${logError?.message || String(logError)}`);
+                            maintenanceResults.webhookLogCleanup.errors.push(`Failed to delete webhook log: ${logKey}`);
+                        }
+                    }
+                });
+
+            await Promise.all(logDeletionPromises);
+        }
+
+        maintenanceResults.webhookLogCleanup.oldLogsCleaned = oldLogsCleaned;
+        console.log(`[Maintenance] Webhook log cleanup complete: cleaned ${oldLogsCleaned} old logs`);
+    } catch (error) {
+        console.error(`Error during webhook log cleanup: ${error?.message || String(error)}`);
+        maintenanceResults.webhookLogCleanup.errors.push(`Webhook log cleanup error: ${error.message}`);
+    }
+
     // Send comprehensive webhook notification with all maintenance results
+    const bingoDetails = [
+        `Success: ${maintenanceResults.bingo.success.join(', ') || 'None'}`,
+        `No Card: ${maintenanceResults.bingo.noCard.join(', ') || 'None'}`,
+        `Not Enough Phrases: ${maintenanceResults.bingo.notEnoughPhrases.join(', ') || 'None'}`
+    ].join('\n');
+
+    const phraseRequestsDetails = `Deleted: ${maintenanceResults.phraseRequests.deleted}`;
+
     const embed = {
         title: "Daily Maintenance Task",
-        color: maintenanceResults.duplicates.deleted > 0 || maintenanceResults.backups.cleaned > 0 || maintenanceResults.webhookLogs.cleaned > 0 ? 0xFF6B35 : 0x1E90FF,
+        color: maintenanceResults.duplicateCleanup.duplicatesDeleted > 0 || maintenanceResults.backupCleanup.oldBackupsCleaned > 0 || maintenanceResults.webhookLogCleanup.oldLogsCleaned > 0 ? 0xFF6B35 : 0x1E90FF,
         fields: [
             {
                 name: "🎯 Bingo Reset Status",
-                value: `\`\`\`\n${maintenanceResults.bingo.details.trim() || "No bingo actions taken."}\n\`\`\``,
+                value: `\`\`\`\n${bingoDetails.trim() || "No bingo actions taken."}\n\`\`\``,
                 inline: false
             },
             {
                 name: "📝 Phrase Request Deletion",
-                value: `\`\`\`\n${maintenanceResults.phraseRequests.details.trim() || "No phrase request actions taken."}\n\`\`\``,
+                value: `\`\`\`\n${phraseRequestsDetails.trim() || "No phrase request actions taken."}\n\`\`\``,
                 inline: false
             },
             {
                 name: "🧹 Duplicate Reports Cleanup",
-                value: `📊 **Scanned:** ${maintenanceResults.duplicates.scanned} reports\n🔍 **Duplicates Found:** ${maintenanceResults.duplicates.found}\n🗑️ **Duplicates Deleted:** ${maintenanceResults.duplicates.deleted}`,
+                value: `📊 **Scanned:** ${maintenanceResults.duplicateCleanup.scanned} reports\n🔍 **Duplicates Found:** ${maintenanceResults.duplicateCleanup.duplicatesFound}\n🗑️ **Duplicates Deleted:** ${maintenanceResults.duplicateCleanup.duplicatesDeleted}`,
                 inline: true
             },
             {
                 name: "💾 Backup Cleanup",
-                value: `📁 **Old Backups Cleaned:** ${maintenanceResults.backups.cleaned}\n⏰ **Cleanup Period:** 30+ days`,
+                value: `📁 **Old Backups Cleaned:** ${maintenanceResults.backupCleanup.oldBackupsCleaned}\n⏰ **Cleanup Period:** 30+ days`,
                 inline: true
             },
             {
                 name: "📋 Webhook Log Cleanup",
-                value: `📝 **Old Logs Cleaned:** ${maintenanceResults.webhookLogs.cleaned}\n⏰ **Cleanup Period:** 3+ days`,
+                value: `📝 **Old Logs Cleaned:** ${maintenanceResults.webhookLogCleanup.oldLogsCleaned}\n⏰ **Cleanup Period:** 3+ days`,
                 inline: true
             },
             {
                 name: "📈 Overall Status",
-                value: maintenanceResults.duplicates.deleted > 0 || maintenanceResults.backups.cleaned > 0 || maintenanceResults.webhookLogs.cleaned > 0
+                value: maintenanceResults.duplicateCleanup.duplicatesDeleted > 0 || maintenanceResults.backupCleanup.oldBackupsCleaned > 0 || maintenanceResults.webhookLogCleanup.oldLogsCleaned > 0
                     ? `✅ Maintenance completed successfully with cleanup actions.`
                     : `✅ Maintenance completed - no cleanup actions needed.`,
                 inline: false
@@ -297,9 +501,9 @@ export const dailyMaintenanceTask = onSchedule({
     const allErrors = [
         ...maintenanceResults.bingo.errors,
         ...maintenanceResults.phraseRequests.errors,
-        ...maintenanceResults.duplicates.errors,
-        ...maintenanceResults.backups.errors,
-        ...maintenanceResults.webhookLogs.errors
+        ...maintenanceResults.duplicateCleanup.errors,
+        ...maintenanceResults.backupCleanup.errors,
+        ...maintenanceResults.webhookLogCleanup.errors
     ];
 
     if (allErrors.length > 0) {
@@ -1145,7 +1349,7 @@ export const getCachedGtaWorldProfile = onCall({
     
     try {
         // Check if we have cached user data for this token (optional optimization)
-        const tokenHash = require('crypto').createHash('sha256').update(accessToken).digest('hex').substring(0, 16);
+        const tokenHash = createHash('sha256').update(accessToken).digest('hex').substring(0, 16);
         const cacheRef = db.ref(`tokenCache/${tokenHash}`);
         
         if (useCache) {

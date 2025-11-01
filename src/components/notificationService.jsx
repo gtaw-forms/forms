@@ -146,7 +146,7 @@ export const sendDiscordWebhookInternal = async (webhookUrl, embedData, commitIn
 };
 
 export const sendBingoNotification = async ({ scorer, bingoType, phrase, lineName, commitInfo, marked }) => {
-    const webhookUrl = process.env.REACT_APP_BINGO_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DEV_WEBHOOK;
+    const webhookUrl = import.meta.env.VITE_BINGO_DISCORD_WEBHOOK_URL || import.meta.env.VITE_DEV_WEBHOOK;
     if (!webhookUrl) {
         console.warn("Bingo webhook URL not configured. Skipping notification.");
         return;
@@ -196,7 +196,7 @@ export const sendMissingEmployeeNotification = async (
     phmcEmployee
 ) => {
     try {
-        const webhookURL = process.env.REACT_APP_DEV_WEBHOOK;
+        const webhookURL = import.meta.env.VITE_DEV_WEBHOOK;
 
         if (!webhookURL) {
             console.error('Discord webhook URL not configured for employee management.');
@@ -468,7 +468,7 @@ ${JSON.stringify(debugData, null, 2)}
 
 // NEW: Webhook for when a player requests a new phrase
 export const sendPhraseRequestNotification = async ({ requester, phrase, bingoType, commitInfo }) => {
-    const webhookUrl = process.env.REACT_APP_BINGO_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DEV_WEBHOOK;
+    const webhookUrl = import.meta.env.VITE_BINGO_DISCORD_WEBHOOK_URL || import.meta.env.VITE_DEV_WEBHOOK;
     if (!webhookUrl) {
         console.warn("Bingo webhook URL not configured. Skipping notification.");
         return;
@@ -584,7 +584,7 @@ export const handlePhmcRecruitmentCopyAndNotify = async ({
     const copied = await copyToClipboard(bbCodeToCopy, showNotification, `${formName} BBCode copied to clipboard!`);
 
     if (copied) {
-        const discordWebhookUrl = process.env.REACT_APP_PHMC_RECRUITMENT_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DEV_WEBHOOK;
+        const discordWebhookUrl = import.meta.env.VITE_PHMC_RECRUITMENT_DISCORD_WEBHOOK_URL || import.meta.env.VITE_DEV_WEBHOOK;
 
         if (discordWebhookUrl) {
             await sendPhmcRecruitmentWebhook({
@@ -911,7 +911,7 @@ export const handleFormCopyAndNotify = async ({
 
     // --- Step 4: Send Discord Webhook Notification ---
     try {
-        let discordWebhookUrl = process.env.REACT_APP_DEV_WEBHOOK;
+        let discordWebhookUrl = import.meta.env.VITE_DEV_WEBHOOK;
 
         if (discordWebhookUrl) {
             let currentIdentifier;
@@ -1026,7 +1026,7 @@ export const handleFormCopyAndNotify = async ({
 };
 export const sendErrorToDiscord = async (errorDetails) => {
     // A dedicated webhook for errors, or a fallback.
-    const webhookUrl = process.env.REACT_APP_ERROR_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DEV_WEBHOOK;
+    const webhookUrl = import.meta.env.VITE_ERROR_DISCORD_WEBHOOK_URL || import.meta.env.VITE_DEV_WEBHOOK;
 
     if (!webhookUrl) {
         console.error("Error reporting webhook URL not configured. Cannot send error report.");

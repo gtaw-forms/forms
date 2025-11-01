@@ -1,20 +1,20 @@
 import { useState, Suspense } from 'react';
 import { HashRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
-import { AuthProvider } from './contexts/AuthContext';
-import { NotificationProvider, useNotification } from './contexts/NotificationContext';
-import { FormProvider } from './contexts/FormContext';
-import { DataProvider } from './contexts/DataContext';
+import { AuthProvider } from './contexts/AuthContext.jsx';
+import { NotificationProvider, useNotification } from './contexts/NotificationContext.jsx';
+import { FormProvider } from './contexts/FormContext.jsx';
+import { DataProvider } from './contexts/DataContext.jsx';
 import * as Sentry from "@sentry/react";
 import { sendDiscordErrorWebhook } from './utils/errorUtils';
-import LoadingSpinner from './components/LoadingSpinner';
+import LoadingSpinner from './components/LoadingSpinner.jsx';
 
-import GtaLogin from './components/Auth/GtaLogin';
-import UnifiedGtaCallback from './components/Auth/UnifiedGtaCallback';
-import OAuthUrlDiagnostic from './components/Auth/OAuthUrlDiagnostic';
-import ProtectedRoute from './components/Auth/ProtectedRoute';
+import GtaLogin from './components/Auth/GtaLogin.jsx';
+import UnifiedGtaCallback from './components/Auth/UnifiedGtaCallback.jsx';
+import OAuthUrlDiagnostic from './components/Auth/OAuthUrlDiagnostic.jsx';
+import ProtectedRoute from './components/Auth/ProtectedRoute.jsx';
 
-import MainApp from './MainApp';
-import Admin from './components/Admin/Admin';
+import MainApp from './MainApp.jsx';
+import Admin from './components/Admin/Admin.jsx';
 
 function App() {
     const [formData, setFormData] = useState({});

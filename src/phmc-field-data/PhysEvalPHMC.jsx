@@ -1,5 +1,5 @@
 import { Form } from 'react-bootstrap';
-import EmployeeCredentialsSection from '../components/EmployeeCredentialsSection';
+import EmployeeCredentialsSection from '../components/EmployeeCredentialsSection.jsx';
 const PhysEval = ({
             formData,
             handleChange,
