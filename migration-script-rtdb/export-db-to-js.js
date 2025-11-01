@@ -17,7 +17,7 @@ const db = admin.database();
 async function exportSelectOptions() {
   console.log('Fetching selectOptions from Firebase...');
   const selectOptionsRef = db.ref('selectOptions');
-  const outputPath = path.join(__dirname, '../src/data-from-firebase.js'); // Output to src directory
+  const outputPath = path.join(__dirname, '../src/data-from-firebase.jsx'); // Output to src directory
 
   try {
     const snapshot = await selectOptionsRef.once('value');

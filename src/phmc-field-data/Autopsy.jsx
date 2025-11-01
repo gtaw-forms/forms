@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Form, Button, InputGroup } from 'react-bootstrap';
 import AutopsyDiagramModal from '../components/AutopsyDiagramModal';
 import * as Sentry from "@sentry/react";
-import EmployeeCredentialsSection from '../components/EmployeeCredentialsSection';
+import EmployeeCredentialsSection from '../components/EmployeeCredentialsSection.jsx';
 
 // EmployeeCredentialsSection moved to src/components/EmployeeCredentialsSection.js for reuse across forms
 
@@ -10,13 +10,11 @@ const Autopsy = ({
     formData,
     handleChange,
     setFormData,
-    groupedOptions,
     coronerGroupedOptions,
     handleSelectChange,
     isUploading,
     setShowEmployeeModal,
     showNotification,
-    commitInfo, // <-- Add commitInfo to props
     removeNotification,
     handleImageUpload
 

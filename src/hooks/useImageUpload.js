@@ -9,7 +9,7 @@ export const useImageUpload = (showNotification, setFormData) => {
         let imageUrls = [];
 
         try {
-            const imgbbApiKey = process.env.REACT_APP_IMGBB_API_KEY;
+            const imgbbApiKey = import.meta.env.VITE_IMGBB_API_KEY;
             if (!imgbbApiKey) {
                 showNotification('ImgBB API Key is not configured.', 'error');
                 setIsUploading(false);

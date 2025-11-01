@@ -14,12 +14,12 @@ export const testClientIdValidation = async () => {
     console.info('[Client ID Test] Starting validation test...');
     
     try {
-        const envClientId = process.env.REACT_APP_GTAWORLD_CLIENT_ID;
+        const envClientId = import.meta.env.VITE_GTAWORLD_CLIENT_ID;
         
         if (!envClientId) {
             return {
                 success: false,
-                error: 'REACT_APP_GTAWORLD_CLIENT_ID not configured',
+                error: 'VITE_GTAWORLD_CLIENT_ID not configured',
                 details: 'Environment variable is missing'
             };
         }
@@ -54,7 +54,7 @@ export const testClientIdValidation = async () => {
                     details: {
                         serverRejectsClientId: true,
                         providedClientId: `${envClientId.substring(0, 8)}...`,
-                        hint: 'Check if GTAWORLD_CLIENT_ID secret matches REACT_APP_GTAWORLD_CLIENT_ID'
+                        hint: 'Check if GTAWORLD_CLIENT_ID secret matches VITE_GTAWORLD_CLIENT_ID'
                     }
                 };
             } else if (testError.code === 'functions/invalid-argument' && 
@@ -412,16 +412,16 @@ export const logEnvironmentInfo = () => {
     console.group('[OAuth Environment Info]');
     
     console.info('Environment Variables:', {
-        hasClientId: !!process.env.REACT_APP_GTAWORLD_CLIENT_ID,
-        clientIdPrefix: process.env.REACT_APP_GTAWORLD_CLIENT_ID?.substring(0, 8) + '...',
-        nodeEnv: process.env.NODE_ENV,
-        publicUrl: process.env.PUBLIC_URL
+        hasClientId: !!import.meta.env.VITE_GTAWORLD_CLIENT_ID,
+        clientIdPrefix: import.meta.env.VITE_GTAWORLD_CLIENT_ID?.substring(0, 8) + '...',
+        nodeEnv: import.meta.env.NODE_ENV,
+        publicUrl: import.meta.env.PUBLIC_URL
     });
     
     console.info('Firebase Config:', {
-        hasApiKey: !!process.env.REACT_APP_FIREBASE_API_KEY,
-        authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
-        projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID
+        hasApiKey: !!import.meta.env.VITE_FIREBASE_API_KEY,
+        authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+        projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID
     });
     
     console.info('Browser Environment:', {

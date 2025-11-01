@@ -4,7 +4,7 @@ import * as Sentry from "@sentry/react";
 
 const OAuthTokenExchangeModal = ({ show, onHide, showNotification, sendAdminActionWebhook, adminUserEmail, onUserDataReceived }) => {
     const [tokenUrl, setTokenUrl] = useState('https://ucp.gta.world/oauth/token');
-    const [clientId, setClientId] = useState(process.env.REACT_APP_GTAWORLD_CLIENT_ID || '');
+    const [clientId, setClientId] = useState(import.meta.env.VITE_GTAWORLD_CLIENT_ID || '');
     const [clientSecret, setClientSecret] = useState('');
     const [redirectUri, setRedirectUri] = useState(() => {
         const isGithubPages = window.location.hostname.includes('github.io');

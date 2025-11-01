@@ -170,7 +170,7 @@ const CoronerRankModal = ({
                 updateFunction(updatedStaff); // Update state in App.js
                 showNotification(`Rank for ${selectedEmployeeName} updated to "${trimmedNewRank}" in the database.`, 'check-circle');
 
-                if (onSubmit) { // Trigger webhook via App.js's handler
+                if (onSubmit) { // Trigger webhook via App.jsx's handler
                     onSubmit({ selectedEmployee: selectedEmployeeName, newRank: trimmedNewRank, employeeType: employeeType });
                 }
                 onClose();

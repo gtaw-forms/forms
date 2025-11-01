@@ -5,7 +5,7 @@ import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
 import { cleanRankText } from '../utils/textUtils';
 import CharacterSelector from '../components/CharacterSelector';
 import { getCharacterName } from '../utils/characterUtils';
-import EmployeeCredentialsSection from '../components/EmployeeCredentialsSection';
+import EmployeeCredentialsSection from '../components/EmployeeCredentialsSection.jsx';
 
 const MedicalRecords = ({
     formData,

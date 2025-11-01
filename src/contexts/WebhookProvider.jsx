@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useCallback } from 'react';
 import * as Sentry from "@sentry/react";
 import { useWebhooks } from '../hooks/useWebhooks';
 import { useImageUpload } from '../hooks/useImageUpload';
-import { useNotification } from './NotificationContext';
+import { useNotification } from './NotificationContext.jsx';
 
 const WebhookContext = createContext();
 

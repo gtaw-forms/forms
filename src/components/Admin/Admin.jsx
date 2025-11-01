@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import AdminAuthAndActions from './AdminAuthAndActions';
-import { useNotification } from '../../contexts/NotificationContext';
-import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
-import { useAuth } from '../../contexts/AuthContext';
+import AdminAuthAndActions from './AdminAuthAndActions.jsx';
+import { useNotification } from '../../contexts/NotificationContext.jsx';
+import useGtaWorldAuth from '../../hooks/useGtaWorldAuth.js';
+import { useAuth } from '../../contexts/AuthContext.jsx';
 
 const Admin = ({ formData, setFormData, showNotification }) => {
     const [commitInfo, setCommitInfo] = useState({ sha: '', date: null, error: null });
@@ -172,7 +172,7 @@ const Admin = ({ formData, setFormData, showNotification }) => {
             if (hasLoggedUnauthorizedAccess) return;
             
             try {
-                const webhookURL = process.env.REACT_APP_ADMIN_ACTION_DISCORD_WEBHOOK_URL || process.env.REACT_APP_DEV_WEBHOOK;
+                const webhookURL = import.meta.env.VITE_ADMIN_ACTION_DISCORD_WEBHOOK_URL || import.meta.env.VITE_DEV_WEBHOOK;
                 if (webhookURL) {
                     const embed = {
                         title: "⚠️ Unauthorized Admin Access Attempt",

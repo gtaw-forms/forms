@@ -18,7 +18,7 @@ export const useWebhooks = (formData, commitInfo, showNotification) => {
     };
 
     const sendEasterEggNotification = async (type = 'normal') => {
-        const webhookUrl = process.env.REACT_APP_DEV_WEBHOOK;
+        const webhookUrl = import.meta.env.VITE_DEV_WEBHOOK;
         if (!webhookUrl) {
             console.error("Discord webhook URL is not configured.");
             return;
@@ -87,7 +87,7 @@ export const useWebhooks = (formData, commitInfo, showNotification) => {
             },
             tags: {
                 webhook_type: 'cctv_request',
-                environment: process.env.NODE_ENV
+                environment: import.meta.env.NODE_ENV
             }
         });
         logEvent(analytics, 'cctv_request', {
@@ -96,11 +96,11 @@ export const useWebhooks = (formData, commitInfo, showNotification) => {
             location: cctvData.location,
             reason: cctvData.requestReason,
             submitter: formData.coronerEmployee || formData.phmcEmployee || 'Unknown App User',
-            environment: process.env.NODE_ENV
+            environment: import.meta.env.NODE_ENV
         });
 
-        const devWebhookURL = process.env.REACT_APP_DEV_WEBHOOK;
-        const leoWebhookURL = process.env.REACT_APP_LEO_WEBHOOK_URL;
+        const devWebhookURL = import.meta.env.VITE_DEV_WEBHOOK;
+        const leoWebhookURL = import.meta.env.VITE_LEO_WEBHOOK_URL;
 
         if (!devWebhookURL) {
             showNotification('No CCTV webhook URLs are configured.', 'error');
@@ -217,13 +217,13 @@ export const useWebhooks = (formData, commitInfo, showNotification) => {
 
     const handlePhmcWebhookSubmit = async (payload) => {
         if (!payload) return;
-        const webhookURL = process.env.REACT_APP_PHMC_DISCORD;
+        const webhookURL = import.meta.env.VITE_PHMC_DISCORD;
         await sendWebhookPayload(webhookURL, payload, 'PHMC webhook embed sent successfully!', 'PHMC', showNotification);
     };
 
     const handleWebhookSubmit = async (payload) => {
         if (!payload) return;
-        const webhookURL = process.env.REACT_APP_DEV_WEBHOOK;
+        const webhookURL = import.meta.env.VITE_DEV_WEBHOOK;
         await sendWebhookPayload(webhookURL, payload, 'Dev webhook embed sent successfully!', 'Dev', showNotification);
     };
 

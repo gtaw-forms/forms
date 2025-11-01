@@ -8,7 +8,7 @@ import { getCharacterName, getCharacterID } from '../utils/characterUtils';
 import DiscordNameModal from './DiscordNameModal';
 import { database } from '../firebase';
 import { ref, update } from 'firebase/database';
-import { useNotification } from '../contexts/NotificationContext';
+import { useNotification } from '../contexts/NotificationContext.jsx';
 
 /**
  * EmployeeCredentialsSection (Universal)
@@ -376,11 +376,13 @@ const EmployeeCredentialsSection = ({
           name={employeeNameField}
           value={
             groupedOptions
-              .flatMap(group => group.options)
-              .find(option => option.value === formData[employeeNameField]) || null
+              ? groupedOptions
+                  .flatMap(group => group.options)
+                  .find(option => option.value === formData[employeeNameField]) || null
+              : null
           }
           onChange={selectedOption => handleSelectChange(selectedOption, { name: employeeNameField })}
-          options={groupedOptions}
+          options={groupedOptions || []}
           isClearable
           placeholder={`Search or select ${employeeType}...`}
           className={`form-control ${!formData[employeeNameField] ? 'is-invalid' : ''}`}

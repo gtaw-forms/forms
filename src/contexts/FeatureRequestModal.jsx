@@ -2,7 +2,7 @@ import React from 'react';
 import { Form, Button } from 'react-bootstrap';
 import './FeatureRequestModal.css';
 import * as Sentry from "@sentry/react";
-import { useNotification } from './NotificationContext';
+import { useNotification } from './NotificationContext.jsx';
 
 const FeatureRequestModal = ({
     show,
@@ -24,7 +24,7 @@ const FeatureRequestModal = ({
     const { showNotification } = useNotification();
 
     const handleFeatureRequestSubmit = async () => {
-        const webhookURL = process.env.REACT_APP_DEV_WEBHOOK;
+        const webhookURL = import.meta.env.VITE_DEV_WEBHOOK;
 
         if (!webhookURL) {
             console.error('Discord webhook URL not configured for feature requests.');

@@ -44,7 +44,7 @@ const UserManagementModal = ({ show, onHide, database, showNotification }) => {
     };
 
     const sendMigrationNotification = async (source, destination, count) => {
-        const webhookURL = process.env.REACT_APP_DEV_WEBHOOK;
+        const webhookURL = import.meta.env.VITE_DEV_WEBHOOK;
         const payload = {
             embeds: [{
                 title: "User Data Migration",

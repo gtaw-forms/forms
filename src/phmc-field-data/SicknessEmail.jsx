@@ -1,6 +1,6 @@
 import React, { useState } from 'react'; // Import useState and useEffect
 import { Form, InputGroup, Button } from 'react-bootstrap';
-import EmployeeCredentialsSection from '../components/EmployeeCredentialsSection';
+import EmployeeCredentialsSection from '../components/EmployeeCredentialsSection.jsx';
 import ImagePreview from '../components/ImagePreview';
 const SicknessEmail = ({
     formData,

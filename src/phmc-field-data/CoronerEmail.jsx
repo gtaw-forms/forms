@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useData } from '../contexts/DataContext';
+import { useData } from '../contexts/DataContext.jsx';
 import { Form, Button } from 'react-bootstrap';
 import { recordInputInteraction } from '../index';
 import EmployeeCredentialsSection from '../components/EmployeeCredentialsSection';
