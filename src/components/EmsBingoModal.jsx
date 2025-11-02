@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Modal, Button, Form, Spinner } from 'react-bootstrap';
-import Select from 'react-select';
+import { Button, Form, Spinner } from 'react-bootstrap';
+import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
 import './EmsBingoModal.css';
 import phmcLogo from '../assets/phmc.png';
 import { database } from '../firebase';
 import { ref, set, onValue, off, serverTimestamp, get, remove, push } from 'firebase/database';
 import PhraseRequestModal from './PhraseRequestModal';
 import emsBingoBackground from '../assets/EMMafia_Pride.png';
+import EmployeeCredentialsSection from './EmployeeCredentialsSection';
 
 // Function to shuffle an array (used by admin to generate new card)
 const getShuffledPhrases = (phrases) => {
@@ -68,6 +69,7 @@ const BINGO_LINE_NAMES = [
 
 // MODIFIED: Add isAdmin, sendBingoWebhook, and sendPhraseRequestWebhook props
 const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions, currentPhmcEmployee, showNotification, setShowEmployeeModal, isAdmin, sendBingoWebhook, sendPhraseRequestWebhook }) => {
+    const { user: gtawUser, isAuthenticated: isGtawAuthenticated, factionData } = useGtaWorldAuth();
     const [phrases, setPhrases] = useState([]);
     const [masterPhraseList, setMasterPhraseList] = useState([]);
     const [isLoadingPhrases, setIsLoadingPhrases] = useState(true);
@@ -121,6 +123,29 @@ const checkForBingo = useCallback((currentMarkedSquares, currentPhrases, previou
 
     return { newlyCompletedLineIndices, allCurrentlyCompleteLineIndices };
 }, []);
+
+    const handleSelectChange = (selectedOption, field) => {
+        setFormData(prev => ({ ...prev, [field.name]: selectedOption?.value || '' }));
+        setSelectedEmployee(selectedOption);
+    };
+    const [formData, setFormData] = useState({});
+
+    const employeeType = selectedBingoType ? selectedBingoType.employeeGroup.toLowerCase() : 'phmc';
+    const employeeNameField = `${employeeType}Employee`;
+
+    const filteredGroupedOptions = useMemo(() => {
+        if (!selectedBingoType) return [];
+
+        if (selectedBingoType.employeeGroup === 'PHMC') {
+            if (selectedBingoType.employeeFilter.length > 0) {
+                return phmcGroupedOptions.filter(group => selectedBingoType.employeeFilter.includes(group.label));
+            }
+            return phmcGroupedOptions;
+        } else if (selectedBingoType.employeeGroup === 'Coroner') {
+            return coronerGroupedOptions;
+        }
+        return [];
+    }, [selectedBingoType, phmcGroupedOptions, coronerGroupedOptions]);
 
     // MODIFIED: Effect to fetch master list of phrases from Firebase based on selected type
     useEffect(() => {
@@ -195,31 +220,7 @@ useEffect(() => {
     // Effect to set up selected employee when modal is shown or type changes
     useEffect(() => {
         if (show && selectedBingoType) {
-            let initialEmployee = null;
-            let storedEmployee = null;
-
-            if (selectedBingoType.id === 'er' || selectedBingoType.id === 'ems') {
-                storedEmployee = localStorage.getItem('phmcEmployee');
-            } else if (selectedBingoType.id === 'coroner') {
-                storedEmployee = localStorage.getItem('coronerEmployee');
-            }
-
-
-            if (storedEmployee && phmcGroupedOptions && selectedBingoType.employeeGroup === 'PHMC') {
-                const employeeOption = phmcGroupedOptions.flatMap(group => group.options)
-                    .find(option => option.value === storedEmployee);
-                if (employeeOption) {
-                    initialEmployee = employeeOption;
-                }
-            } else if (storedEmployee && coronerGroupedOptions && selectedBingoType.employeeGroup === 'Coroner') {
-                const employeeOption = coronerGroupedOptions.flatMap(group => group.options)
-                    .find(option => option.value === storedEmployee);
-                if (employeeOption) {
-                    initialEmployee = employeeOption;
-                }
-            }
-            setSelectedEmployee(initialEmployee);
-
+            setSelectedEmployee(null);
         } else if (!show) {
             setSelectedEmployee(null);
             setLastSeenLogId(null);
@@ -229,7 +230,42 @@ useEffect(() => {
             setCompletedBingoLines(new Set());
             setSelectedBingoType(null);
         }
-    }, [show, selectedBingoType, phmcGroupedOptions, coronerGroupedOptions]);
+    }, [show, selectedBingoType]);
+
+    // Update selectedEmployee when formData changes
+    useEffect(() => {
+        if (selectedBingoType && filteredGroupedOptions) {
+            const employeeValue = formData[employeeNameField];
+            if (employeeValue) {
+                const employeeOption = filteredGroupedOptions.flatMap(group => group.options)
+                    .find(option => option.value === employeeValue);
+                if (employeeOption) {
+                    setSelectedEmployee(employeeOption);
+                } else {
+                    // For OAuth or manual entry not in options, create a fake option
+                    setSelectedEmployee({ value: employeeValue, label: employeeValue });
+                }
+            }
+        }
+    }, [formData, employeeNameField, selectedBingoType, filteredGroupedOptions]);
+
+    const [savedProfile, setSavedProfile] = useState(() => {
+        try {
+            const raw = localStorage.getItem('phmc_gtaw_oauth_profile');
+            return raw ? JSON.parse(raw) : null;
+        } catch {
+            return null;
+        }
+    });
+
+    // Set selectedEmployee for OAuth users or cached data
+    useEffect(() => {
+        if (isGtawAuthenticated && factionData && factionData.characterName && selectedBingoType) {
+            setSelectedEmployee({ value: factionData.characterName, label: factionData.characterName });
+        } else if (!isGtawAuthenticated && savedProfile && savedProfile.preferredEmployee && savedProfile.preferredEmployee.name && selectedBingoType) {
+            setSelectedEmployee({ value: savedProfile.preferredEmployee.name, label: savedProfile.preferredEmployee.name });
+        }
+    }, [isGtawAuthenticated, factionData, selectedBingoType, savedProfile]);
 
     // Effect to listen for Firebase activity log updates and sync marked squares
 useEffect(() => {
@@ -414,7 +450,7 @@ setCompletedBingoLines(prevCompletedLines => {
 
     const handleSquareClick = useCallback(async (index, phrase) => {
         if (!selectedEmployee) {
-            showNotification('Please select your name from the dropdown before marking a square!', 'warning');
+            showNotification('Please authenticate or select your employee name before marking a square!', 'warning');
             return;
         }
         if (!selectedBingoType) {
@@ -493,43 +529,33 @@ setCompletedBingoLines(prevCompletedLines => {
 
     // NEW: Admin function to generate a new card
     const handleGenerateNewCard = async () => {
-        console.log("[Admin] handleGenerateNewCard initiated.");
         if (!isAdmin) {
-            console.log("[Admin] User is not admin. Aborting card generation.");
             showNotification("You are not authorized to perform this action.", "error");
             return;
         }
         if (!selectedBingoType) {
-            console.log("[Admin] No bingo type selected. Aborting card generation.");
             showNotification("Please select a bingo type to generate a card for.", "warning");
             return;
         }
         if (masterPhraseList.length < 24) {
-            console.log(`[Admin] Not enough phrases in master list for ${selectedBingoType.name}. Found: ${masterPhraseList.length}, Needed: 24. Aborting.`);
             showNotification(`Not enough phrases in the master list for ${selectedBingoType.name} to generate a new card (found ${masterPhraseList.length}, need 24).`, "error");
             return;
         }
 
         if (!window.confirm(`Are you sure you want to generate a new ${selectedBingoType.name} Bingo card? This will clear the current card and all progress.`)) {
-            console.log("[Admin] User cancelled card generation.");
             return;
         }
 
-        console.log(`[Admin] Generating new card for ${selectedBingoType.name}.`);
         const shuffled = getShuffledPhrases(masterPhraseList);
         const newCardPhrases = shuffled.slice(0, 24);
-        console.log("[Admin] New card phrases selected:", newCardPhrases);
 
         const cardPhrasesRef = ref(database, `bingo/cards/${selectedBingoType.path}/phrases`);
         const logRef = ref(database, `bingo/logs/${selectedBingoType.path}/activityLog`);
 
         try {
-            console.log("[Admin] Clearing old activity log...");
             await remove(logRef);
-            console.log("[Admin] Setting new card phrases...");
             await set(cardPhrasesRef, newCardPhrases);
             
-            console.log(`[Admin] New ${selectedBingoType.name} Bingo card generated successfully!`);
             showNotification(`New ${selectedBingoType.name} Bingo card generated successfully!`, 'check-circle');
         } catch (error) {
             console.error("[Admin] Error generating new card:", error);
@@ -595,32 +621,6 @@ setCompletedBingoLines(prevCompletedLines => {
         return grid;
     };
 
-    const handleEmployeeSelect = (option) => {
-        setSelectedEmployee(option);
-    };
-    const [formData, setFormData] = useState({});
-
-    const filteredEmployeeOptions = useMemo(() => {
-        if (!selectedBingoType) return [];
-
-        let employeeValue = null;
-        if (selectedBingoType.employeeGroup === 'PHMC') {
-            employeeValue = formData.phmcEmployee;
-        } else if (selectedBingoType.employeeGroup === 'Coroner') {
-            employeeValue = formData.coronerEmployee;
-        }
-
-        if (selectedBingoType.employeeGroup === 'PHMC') {
-            if (selectedBingoType.employeeFilter.length > 0) {
-                return phmcGroupedOptions.filter(group => selectedBingoType.employeeFilter.includes(group.label));
-            }
-            return phmcGroupedOptions;
-        } else if (selectedBingoType.employeeGroup === 'Coroner') {
-            return coronerGroupedOptions;
-        }
-        return [];
-    }, [selectedBingoType, phmcGroupedOptions, coronerGroupedOptions, formData.phmcEmployee, formData.coronerEmployee]);
-
     const handleSelectBingoType = (type) => {
         setSelectedBingoType(type);
     };
@@ -644,24 +644,38 @@ setCompletedBingoLines(prevCompletedLines => {
         onHide();
     };
 
+    if (!show) {
+        return null;
+    }
+
     return (
-        <Modal show={show} onHide={onHide} size="xl" centered dialogClassName="bingo-modal-dialog">
-            <Modal.Header closeVariant="white">
-                {selectedBingoType && (
-                    <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={handleBackToSelection}
-                        className="bingo-back-button"
+        <div className="modal-overlay" onClick={onHide}>
+            <div className="bingo-modal-dialog" onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
+                    
+                    {selectedBingoType && (
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleBackToSelection}
+                            className="bingo-back-button"
+                        >
+                            <i className="fas fa-arrow-left"></i> Back
+                        </Button>
+                    )}
+                    <h4 className="bingo-title w-100 text-center">
+                        {selectedBingoType ? `${selectedBingoType.name} Bingo!` : "Select Bingo Type"}
+                    </h4>
+                    <button
+                        type="button"
+                        className="modal-close-btn"
+                        onClick={onHide}
+                        aria-label="Close"
                     >
-                        <i className="fas fa-arrow-left"></i> Back
-                    </Button>
-                )}
-                <Modal.Title className="bingo-title w-100 text-center">
-                    {selectedBingoType ? `${selectedBingoType.name} Bingo!` : "Select Bingo Type"}
-                </Modal.Title>
-            </Modal.Header>
-            <Modal.Body className={isEmsBingoActive ? 'ems-bingo-body-background' : ''}>
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div className={`modal-body ${isEmsBingoActive ? 'ems-bingo-body-background' : ''}`}>
                 {selectedBingoType ? (
                     <div className="bingo-content-wrapper">
                         <div className="bingo-main-section">
@@ -670,39 +684,23 @@ setCompletedBingoLines(prevCompletedLines => {
                             </div>
                         </div>
                         <div className="bingo-sidebar">
-                            {selectedEmployee && (
+                            {(isGtawAuthenticated && factionData) || (!isGtawAuthenticated && savedProfile) ? (
+                                <div>
+                                    <h5>Playing as: {(isGtawAuthenticated && factionData) ? factionData.characterName : (savedProfile?.preferredEmployee?.name || 'Unknown')}</h5>
+                                </div>
+                            ) : selectedEmployee ? (
                                 <h5 className="welcome-message">Welcome {selectedEmployee.value}!</h5>
-                            )}
-                            {!selectedEmployee && (
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Select Your Name to Play:</Form.Label>
-                                    <Select
-                                        name="phmcEmployeeBingo"
-                                        value={selectedEmployee}
-                                        onChange={handleEmployeeSelect}
-                                        options={filteredEmployeeOptions}
-                                        isClearable
-                                        placeholder="Select your name..."
-                                        className="react-select-container"
-                                        classNamePrefix="react-select"
-                                        styles={{
-                                            control: (base) => ({ ...base, backgroundColor: '#16202c', color: '#eeeeeeb0', borderColor: '#30363d', '&:hover': { borderColor: '#30363d' } }),
-                                            menu: (base) => ({ ...base, backgroundColor: '#16202c', zIndex: 1000 }),
-                                            option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? 'Grey' : '#16202c', color: '#eeeeeeb0' }),
-                                            singleValue: (base) => ({ ...base, color: '#eeeeeeb0' }),
-                                            input: (base) => ({ ...base, color: '#eeeeeeb0' }),
-                                            placeholder: (base) => ({ ...base, color: '#eeeeeeb0' })
-                                        }}
-                                    />
-                                    <small className="form-text text-muted mt-1">
-                                        <span
-                                            onClick={handleOpenEmployeeModal}
-                                            style={{ cursor: 'pointer', textDecoration: 'underline' }}
-                                        >
-                                            Missing Name?
-                                        </span>
-                                    </small>
-                                </Form.Group>
+                            ) : (
+                                <EmployeeCredentialsSection
+                                    formData={formData}
+                                    setFormData={setFormData}
+                                    groupedOptions={filteredGroupedOptions}
+                                    handleSelectChange={handleSelectChange}
+                                    setShowEmployeeModal={setShowEmployeeModal}
+                                    employeeType={employeeType}
+                                    showNotification={showNotification}
+                                    context="Bingo"
+                                />
                             )}
                             <h5>Recent Activity</h5>
                             <div className="activity-log" ref={activityLogRef}>
@@ -761,41 +759,42 @@ setCompletedBingoLines(prevCompletedLines => {
                         </div>
                     </div>
                 )}
-            </Modal.Body>
-            <Modal.Footer>
-                <Button variant="info" onClick={() => setShowPhraseRequestModal(true)} className="me-auto">
-                    Request a Phrase
-                </Button>
-                {/* Re-instated isAdmin check for security */}
-                {isAdmin && selectedBingoType && (
-                    <Button
-                        variant="danger"
-                        onClick={handleGenerateNewCard}
-                        disabled={masterPhraseList.length < 24}
-                        className="ms-2"
-                        title={
-                            masterPhraseList.length < 24
-                                ? `Need ${24 - masterPhraseList.length} more phrases in master list for ${selectedBingoType?.name || 'this Bingo type'}.`
-                                : `Generate a new ${selectedBingoType?.name || 'Bingo'} Card.`
-                        }
-                    >
-                        Generate New {selectedBingoType?.name || 'Bingo'} Card
+                </div>
+                <div className="modal-footer">
+                    <Button variant="info" onClick={() => setShowPhraseRequestModal(true)} className="me-auto">
+                        Request a Phrase
                     </Button>
-                )}
-                <Button variant="secondary" onClick={onHide} className="ms-2">
-                    Close
-                </Button>
-            </Modal.Footer>
+                    {/* Re-instated isAdmin check for security */}
+                    {isAdmin && selectedBingoType && (
+                        <Button
+                            variant="danger"
+                            onClick={handleGenerateNewCard}
+                            disabled={masterPhraseList.length < 24}
+                            className="ms-2"
+                            title={
+                                masterPhraseList.length < 24
+                                    ? `Need ${24 - masterPhraseList.length} more phrases in master list for ${selectedBingoType?.name || 'this Bingo type'}.`
+                                    : `Generate a new ${selectedBingoType?.name || 'Bingo'} Card.`
+                            }
+                        >
+                            Generate New {selectedBingoType?.name || 'Bingo'} Card
+                        </Button>
+                    )}
+                    <Button variant="secondary" onClick={onHide} className="ms-2">
+                        Close
+                    </Button>
+                </div>
 
-            <PhraseRequestModal
-                show={showPhraseRequestModal}
-                onHide={() => setShowPhraseRequestModal(false)}
-                showNotification={showNotification}
-                selectedEmployee={selectedEmployee}
-                selectedBingoType={selectedBingoType}
-                sendPhraseRequestWebhook={sendPhraseRequestWebhook}
-            />
-        </Modal>
+                <PhraseRequestModal
+                    show={showPhraseRequestModal}
+                    onHide={() => setShowPhraseRequestModal(false)}
+                    showNotification={showNotification}
+                    selectedEmployee={selectedEmployee}
+                    selectedBingoType={selectedBingoType}
+                    sendPhraseRequestWebhook={sendPhraseRequestWebhook}
+                />
+            </div>
+        </div>
     );
 };
 
