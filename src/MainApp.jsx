@@ -1847,8 +1847,6 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             <EmsBingoModal
                 show={showEmsBingoModal}
                 onHide={handleHideEmsBingoModal}
-                phmcGroupedOptions={phmcGroupedOptions}
-                coronerGroupedOptions={coronerGroupedOptions}
                 currentPhmcEmployee={formData.phmcEmployee}
                 showNotification={showNotification}
                 setShowEmployeeModal={setShowEmployeeModal}
