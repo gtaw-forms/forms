@@ -1,3 +1,12 @@
+:root {
+    --bingo-primary-gradient: linear-gradient(135deg, #ff5757 0%, #ff8c42 100%);
+    --bingo-primary-color: rgba(255, 87, 87, 0.5);
+    --bingo-primary-color-light: rgba(255, 87, 87, 0.3);
+    --bingo-primary-color-strong: rgba(255, 87, 87, 0.6);
+    --bingo-card-bg: linear-gradient(135deg, #1e2530 0%, #16202c 100%);
+    --bingo-border-color: rgba(72, 79, 88, 0.5);
+}
+
 .bingo-modal-dialog {
     position: fixed;
     top: 0;
@@ -31,7 +40,7 @@
 
 .bingo-modal-dialog .modal-header {
     background: linear-gradient(135deg, #1a1f2e 0%, #0d1117 100%);
-    border-bottom: 2px solid rgba(255, 87, 87, 0.3);
+    border-bottom: 2px solid var(--bingo-primary-color-light);
     flex-shrink: 0;
     justify-content: center;
     position: relative;
@@ -42,7 +51,7 @@
 .bingo-title {
     font-family: 'Segoe UI', 'Arial', sans-serif;
     font-weight: 800;
-    background: linear-gradient(135deg, #ff5757 0%, #ff8c42 100%);
+    background: var(--bingo-primary-gradient);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -104,7 +113,7 @@
     grid-template-rows: repeat(5, auto);
     gap: 8px;
     background: linear-gradient(135deg, #1a1f2e 0%, #0d1117 100%);
-    border: 2px solid rgba(255, 87, 87, 0.3);
+    border: 2px solid var(--bingo-primary-color-light);
     padding: 12px;
     border-radius: 12px;
     flex-grow: 1;
@@ -113,8 +122,8 @@
 }
 
 .bingo-square {
-    background: linear-gradient(135deg, #1e2530 0%, #16202c 100%);
-    border: 2px solid rgba(72, 79, 88, 0.5);
+    background: var(--bingo-card-bg);
+    border: 2px solid var(--bingo-border-color);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -141,9 +150,21 @@
 
 .bingo-square:hover {
     background: linear-gradient(135deg, #2a3542 0%, #1e2835 100%);
-    border-color: rgba(255, 87, 87, 0.6);
+    border-color: var(--bingo-primary-color-strong);
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(255, 87, 87, 0.2);
+}
+
+/* Accessibility: Respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+    .bingo-square:hover,
+    .btn:hover,
+    .activity-item:hover,
+    .bingo-back-button:hover,
+    .bingo-type-button:hover,
+    .new-messages-indicator:hover {
+        transform: none;
+    }
 }
 
 .bingo-square::after {
@@ -203,7 +224,7 @@
 .bingo-sidebar {
     flex: 1;
     background: linear-gradient(135deg, #1a1f2e 0%, #0d1117 100%);
-    border: 2px solid rgba(72, 79, 88, 0.5);
+    border: 2px solid var(--bingo-border-color);
     border-radius: 12px;
     padding: 20px;
     display: flex;
@@ -218,7 +239,7 @@
 .bingo-sidebar h5 {
     color: #f7fafc;
     margin-bottom: 16px;
-    border-bottom: 2px solid rgba(255, 87, 87, 0.3);
+    border-bottom: 2px solid var(--bingo-primary-color-light);
     padding-bottom: 12px;
     font-weight: 700;
     letter-spacing: 0.5px;
@@ -231,8 +252,8 @@
 }
 
 .activity-item {
-    background: linear-gradient(135deg, #1e2530 0%, #16202c 100%);
-    border: 1px solid rgba(72, 79, 88, 0.5);
+    background: var(--bingo-card-bg);
+    border: 1px solid var(--bingo-border-color);
     border-left: 3px solid #58a6ff;
     border-radius: 8px;
     padding: 12px 14px;
@@ -265,7 +286,7 @@
 
 .bingo-modal-dialog .modal-footer {
     background: linear-gradient(135deg, #1a1f2e 0%, #0d1117 100%);
-    border-top: 2px solid rgba(255, 87, 87, 0.3);
+    border-top: 2px solid var(--bingo-primary-color-light);
     justify-content: center;
     flex-shrink: 0;
     padding: 20px;
@@ -282,7 +303,7 @@
 }
 
 .bingo-modal-dialog .modal-footer .btn-primary {
-    background: linear-gradient(135deg, #ff5757 0%, #ff8c42 100%);
+    background: var(--bingo-primary-gradient);
     border: none;
 }
 
@@ -327,14 +348,14 @@
 
 /* Custom styles for react-select */
 .react-select-container .react-select__control {
-    background: linear-gradient(135deg, #1e2530 0%, #16202c 100%) !important;
-    border: 2px solid rgba(72, 79, 88, 0.5) !important;
+    background: var(--bingo-card-bg) !important;
+    border: 2px solid var(--bingo-border-color) !important;
     color: #e2e8f0 !important;
     border-radius: 8px !important;
     transition: all 0.3s ease !important;
 }
 .react-select-container .react-select__control:hover {
-    border-color: rgba(255, 87, 87, 0.6) !important;
+    border-color: var(--bingo-primary-color-strong) !important;
     box-shadow: 0 2px 8px rgba(255, 87, 87, 0.2) !important;
 }
 .react-select-container .react-select__single-value {
@@ -350,8 +371,8 @@
     color: #cbd5e0 !important;
 }
 .react-select-container .react-select__menu {
-    background: linear-gradient(135deg, #1e2530 0%, #16202c 100%) !important;
-    border: 2px solid rgba(72, 79, 88, 0.5) !important;
+    background: var(--bingo-card-bg) !important;
+    border: 2px solid var(--bingo-border-color) !important;
     border-radius: 8px !important;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
 }
@@ -364,7 +385,7 @@
     background: linear-gradient(135deg, #2a3542 0%, #1e2835 100%) !important;
 }
 .react-select-container .react-select__option--is-selected {
-    background: linear-gradient(135deg, #ff5757 0%, #ff8c42 100%) !important;
+    background: var(--bingo-primary-gradient) !important;
     color: white !important;
 }
 
@@ -510,7 +531,7 @@
     gap: 8px;
     align-items: center;
     justify-content: center;
-    border: 2px solid rgba(255, 87, 87, 0.5);
+    border: 2px solid var(--bingo-primary-color);
     box-shadow: 0 4px 8px rgba(255, 87, 87, 0.2);
 }
 
@@ -522,7 +543,7 @@
 }
 .bingo-square.free-space .free-space-text {
     font-weight: 800;
-    background: linear-gradient(135deg, #ff5757 0%, #ff8c42 100%);
+    background: var(--bingo-primary-gradient);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -562,18 +583,18 @@
 }
 
 .bingo-phrases-textarea {
-    background: linear-gradient(135deg, #1e2530 0%, #16202c 100%) !important;
+    background: var(--bingo-card-bg) !important;
     color: #e2e8f0 !important;
-    border: 2px solid rgba(72, 79, 88, 0.5) !important;
+    border: 2px solid var(--bingo-border-color) !important;
     border-radius: 8px !important;
     transition: all 0.3s ease !important;
-    /* Ensure Bootstrap's default focus styles don't override too harshly */
-    &:focus {
-        background: linear-gradient(135deg, #252d3d 0%, #1c222e 100%) !important;
-        color: #e2e8f0 !important;
-        border-color: rgba(255, 87, 87, 0.6) !important;
-        box-shadow: 0 0 0 0.25rem rgba(255, 87, 87, 0.25) !important;
-    }
+}
+
+.bingo-phrases-textarea:focus {
+    background: linear-gradient(135deg, #252d3d 0%, #1c222e 100%) !important;
+    color: #e2e8f0 !important;
+    border-color: var(--bingo-primary-color-strong) !important;
+    box-shadow: 0 0 0 0.25rem rgba(255, 87, 87, 0.25) !important;
 }
 
 /* Type selection buttons styling */
@@ -597,7 +618,7 @@
 }
 
 .bingo-type-button {
-    background: linear-gradient(135deg, #ff5757 0%, #ff8c42 100%) !important;
+    background: var(--bingo-primary-gradient) !important;
     border: none !important;
     border-radius: 12px !important;
     padding: 16px 32px !important;
