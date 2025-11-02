@@ -46,18 +46,18 @@ import 'react-bootstrap-typeahead/css/Typeahead.css';
 // database
 import { database } from './firebase'; // Your Firebase config
 // Lazy-loaded components with prefetch capability
-const SavedReportsModal = lazy(() => import(/* webpackPrefetch: true */ './components/SavedReportsModal'));
-const AgencyGroupSelectorModal = lazy(() => import(/* webpackPrefetch: true */ './components/AgencyGroupSelectorModal'));
-const AgencySelector = lazy(() => import(/* webpackPrefetch: true */ './components/AgencySelector'));
-const OnboardingModal = lazy(() => import(/* webpackPreload: true */ './components/OnboardingModal'));
-const Footer = lazy(() => import(/* webpackPrefetch: true */ './components/Footer'));
-const HeaderInfo = lazy(() => import(/* webpackPreload: true */ './components/HeaderInfo'));
-const BusinessCardModal = lazy(() => import(/* webpackPrefetch: true */ './components/BusinessCardModal'));
-const EmsAmaModal = lazy(() => import(/* webpackPrefetch: true */ './components/EmsAmaModal'));
+const SavedReportsModal = lazy(() => import('./components/SavedReportsModal'));
+const AgencyGroupSelectorModal = lazy(() => import('./components/AgencyGroupSelectorModal'));
+const AgencySelector = lazy(() => import('./components/AgencySelector'));
+const OnboardingModal = lazy(() => import('./components/OnboardingModal'));
+const Footer = lazy(() => import('./components/Footer'));
+const HeaderInfo = lazy(() => import('./components/HeaderInfo'));
+const BusinessCardModal = lazy(() => import('./components/BusinessCardModal'));
+const EmsAmaModal = lazy(() => import('./components/EmsAmaModal'));
 const EasterEggModal = lazy(() => import('./components/EasterEggModal'));
-const SwitchableFormsModal = lazy(() => import(/* webpackPrefetch: true */ './components/SwitchableFormsModal'));
-const EmployeeModal = lazy(() => import(/* webpackPrefetch: true */ './components/EmployeeModal'));
-const RecruitmentStatusDisplay = lazy(() => import(/* webpackPrefetch: true */ './components/RecruitmentStatusDisplay'));
+const SwitchableFormsModal = lazy(() => import('./components/SwitchableFormsModal'));
+const EmployeeModal = lazy(() => import('./components/EmployeeModal'));
+const RecruitmentStatusDisplay = lazy(() => import('./components/RecruitmentStatusDisplay'));
 const CctvRequestWebhookModal = lazy(() => import('./components/Admin/CctvRequestWebhookModal'));
 const FeatureRequestModal = lazy(() => import('./contexts/FeatureRequestModal.jsx'));
 const FormImageLink = lazy(() => import('./components/FormImageLink'));
