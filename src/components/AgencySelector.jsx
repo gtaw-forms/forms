@@ -86,17 +86,23 @@ const AgencySelector = ({
     };
 
     // Filter forms based on user preferences (existing functionality)
-    const filteredFormDefinitions = userPreferences 
+    const filteredFormDefinitions = userPreferences
         ? formDefinitions.filter(form => {
             // If no userTypes specified on form, show to everyone
             if (!form.userTypes) return true;
-            
-            // Check if user's type is allowed for this form
-            return form.userTypes.includes(userPreferences.userType);
-        })
-        : formDefinitions;
 
-    // Get forms for the selected agency group - include all forms (no longer hiding sub-forms)
+            // Check if user's type is allowed for this form
+            const isAllowedByUserType = form.userTypes.includes(userPreferences.userType);
+
+            // Special case: Allow LEO users to see forms in their recommended list
+            // even if 'leo' is not in the form's userTypes array
+            const isRecommendedForLeo = userPreferences.userType === 'leo' &&
+                                      userPreferences.recommendedForms &&
+                                      userPreferences.recommendedForms.includes(form.version);
+
+            return isAllowedByUserType || isRecommendedForLeo;
+        })
+        : formDefinitions;    // Get forms for the selected agency group - include all forms (no longer hiding sub-forms)
     const agencyGroupForms = filteredFormDefinitions
         .filter(form => form.group === selectedAgencyGroup && !form.name.includes('(PBC)'));
     

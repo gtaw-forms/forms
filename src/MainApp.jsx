@@ -420,6 +420,7 @@ function MainApp({
     }, [isGtaAuthenticated]);
 
     const handleOnboardingComplete = (preferences) => {
+        console.log(`[ONBOARDING_LOG] handleOnboardingComplete called - UserType: ${preferences.userType}, NotificationType: ${preferences.userType === 'leo' ? 'SKIPPED_LEO' : 'GENERIC_WELCOME'}`);
         setUserOnboardingPreferences(preferences);
         setOnboardingComplete(true);
         setShowOnboarding(false);
@@ -436,10 +437,22 @@ function MainApp({
             localStorage.setItem('selectedForm', preferences.defaultForm.toString());
         }
         
-        showNotification(`Welcome! Your interface has been customized for ${preferences.userType} users.`, 'check-circle');
-    };
-
-    const handleOnboardingSkip = () => {
+        // Show appropriate notification based on user type and onboarding path
+        if (preferences.userType === 'leo' && !preferences.quickAccess) {
+            // LEO users who went through full onboarding get the LEO-specific notification
+            console.log(`[ONBOARDING_LOG] Showing notification - UserType: LEO, NotificationType: LEO_ACCESS_CONFIGURED, Message: "LEO access granted! Sign in with GTA World and click the 'CCTV Request' button in the Tools menu."`);
+            showNotification(
+                'LEO access granted! Sign in with GTA World and click the \'CCTV Request\' top menu.',
+                'shield-alt',
+                8000
+            );
+        } else if (preferences.userType !== 'leo') {
+            // All other user types get the generic welcome notification
+            console.log(`[ONBOARDING_LOG] Showing notification - UserType: ${preferences.userType}, NotificationType: GENERIC_WELCOME, Message: "Welcome! Your interface has been customized for ${preferences.userType} users."`);
+            showNotification(`Welcome! Your interface has been customized for ${preferences.userType} users.`, 'check-circle');
+        }
+        // LEO users who used quick access (quickAccess: true) don't get any notification here
+    };    const handleOnboardingSkip = () => {
         setShowOnboarding(false);
         setOnboardingComplete(true);
         showNotification('Onboarding skipped. You can restart it anytime from the Tools menu.', 'info-circle');
@@ -518,7 +531,6 @@ function MainApp({
     // Get webhooks functions
     const { 
         sendEasterEggNotification,
-        handleCctvWebhookSubmit,
     } = useWebhooks(formData, commitInfo, showNotification);
     // Get image upload functions
     const { isUploading, handleImageUpload } = useImageUpload(showNotification, setFormData);
@@ -699,6 +711,7 @@ const getBBCodeContent = () => {
                 // Ensure positionDetailsData is always an object, even if specificPositionData is null/undefined
                 positionDetailsData: specificPositionData || {},
                 agencyDataStore: agencyDataStore, // Pass agencyDataStore
+                isLoadingData: isLoadingData, // Pass isLoadingData
             };
             return definition.generator(generatorArgs);
         }
@@ -932,7 +945,30 @@ const getBBCodeContent = () => {
     ]);
 
     const currentFormDefinition = useMemo(() => getFormDefinition(bbCodeVersion), [bbCodeVersion]);
-    const FieldComponent = currentFormDefinition ? currentFormDefinition.FieldComponent : null;
+    const [FieldComponent, setFieldComponent] = useState(null);
+    const [isComponentLoading, setIsComponentLoading] = useState(false);
+
+    // Dynamically load the component when the form definition changes
+    useEffect(() => {
+        if (currentFormDefinition?.componentLoader) {
+            setIsComponentLoading(true);
+            console.log('[Component Loading] Loading component for version:', bbCodeVersion, 'definition:', currentFormDefinition.name);
+            currentFormDefinition.componentLoader()
+                .then(component => {
+                    console.log('[Component Loading] Successfully loaded component for version:', bbCodeVersion);
+                    setFieldComponent(() => component.default || component);
+                    setIsComponentLoading(false);
+                })
+                .catch(error => {
+                    console.error('[Component Loading] Error loading component for version:', bbCodeVersion, error);
+                    setFieldComponent(null);
+                    setIsComponentLoading(false);
+                });
+        } else {
+            console.log('[Component Loading] No component loader for version:', bbCodeVersion);
+            setFieldComponent(null);
+        }
+    }, [currentFormDefinition]);
 
     const isFormAuthorized = useMemo(() => {
         if (!currentFormDefinition) return true;
@@ -1020,15 +1056,24 @@ const getBBCodeContent = () => {
             return formDefinitions.filter(form => form.primaryFor && form.primaryFor.includes('civilian'));
         }
     }, [formDefinitions, isUserAuthenticated]);
-    if (selectedAgencyGroup && !FieldComponent && !isLoadingData) {
-        const warningMessage = `No FieldComponent found for bbCodeVersion: ${bbCodeVersion} in group: ${selectedAgencyGroup}.`;
-        console.warn(`[App.js] ${warningMessage}`, currentFormDefinition);
+    if (selectedAgencyGroup && !FieldComponent && !isLoadingData && !isComponentLoading) {
+        const warningMessage = `No componentLoader found for bbCodeVersion: ${bbCodeVersion} in group: ${selectedAgencyGroup}.`;
+        console.warn(`[App.js] ${warningMessage}`, {
+            bbCodeVersion: bbCodeVersion,
+            selectedAgencyGroup: selectedAgencyGroup,
+            hasCurrentFormDefinition: !!currentFormDefinition,
+            formName: currentFormDefinition?.name,
+            hasComponentLoader: !!currentFormDefinition?.componentLoader,
+            isLoadingData: isLoadingData
+        });
         Sentry.captureMessage(warningMessage, {
             level: 'warning',
             extra: {
                 bbCodeVersion: bbCodeVersion,
                 selectedAgencyGroup: selectedAgencyGroup,
-                currentFormDefinition: currentFormDefinition || 'Not found', // Ensure currentFormDefinition is not undefined for Sentry
+                hasCurrentFormDefinition: !!currentFormDefinition,
+                formName: currentFormDefinition?.name,
+                hasComponentLoader: !!currentFormDefinition?.componentLoader,
                 isLoadingData: isLoadingData
             }
         });
@@ -1369,8 +1414,8 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
         if ('requestIdleCallback' in window) {
             window.requestIdleCallback(() => {
                 const definition = getFormDefinition(bbCodeVersion);
-                if (definition?.FieldComponent) {
-                    console.log('[Prefetch] Current form component ready:', bbCodeVersion);
+                if (definition?.componentLoader) {
+                    console.log('[Prefetch] Current form component loader ready:', bbCodeVersion);
                 }
             }, { timeout: 2000 });
         }
@@ -1473,8 +1518,9 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             <CctvRequestWebhookModal
                 show={showCctvRequestModal}
                 onHide={handleHideCctvRequestModal} // Ensure this uses the new handler
-                onSubmit={handleCctvWebhookSubmit}
                 showNotification={showNotification}
+                commitInfo={commitInfo}
+                formData={formData}
             />
 
             <EasterEggModal
@@ -1656,6 +1702,8 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                                             commitInfo={commitInfo}
                                             // Pass all necessary props from App.js state and selectOptions
                                             setFormData={setFormData}                                        
+                                            agencyDataStore={agencyDataStore}
+                                            isLoadingData={isLoadingData}
                                             typeOfDeathOptions={selectOptions.typeOfDeathOptions || []}
                                             mannerOfDeathOptions={selectOptions.mannerOfDeathOptions || []}
                                             requestingAgencyOptions={selectOptions.requestingAgenciesOptions || []}
@@ -1810,6 +1858,20 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                     </>
                 )}
                 
+                {/* CCTV Request Button - Only for LEO users */}
+                {userOnboardingPreferences?.userType === 'leo' && (
+                    <Button
+                        type="button"
+                        variant="info"
+                        className="changelog-button"
+                        onClick={() => setShowCctvRequestModal(true)}
+                        title="Request CCTV footage access"
+                    >
+                        <i className="fas fa-video"></i>
+                        CCTV Request
+                    </Button>
+                )}
+                
                 <Button
                     type="button"
                     variant="warning"
@@ -1847,8 +1909,6 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             <EmsBingoModal
                 show={showEmsBingoModal}
                 onHide={handleHideEmsBingoModal}
-                phmcGroupedOptions={phmcGroupedOptions}
-                coronerGroupedOptions={coronerGroupedOptions}
                 currentPhmcEmployee={formData.phmcEmployee}
                 showNotification={showNotification}
                 setShowEmployeeModal={setShowEmployeeModal}
