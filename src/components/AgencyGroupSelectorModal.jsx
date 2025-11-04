@@ -276,7 +276,7 @@ const AgencyGroupSelectorModal = ({
                             )}
                         </Button>
  */}                                
- {/*    <Button
+   <Button
                         variant="outline-light"
                         style={{
                             ...baseButtonStyle,
@@ -290,7 +290,7 @@ const AgencyGroupSelectorModal = ({
                     >
                         <i className="fas fa-shield-alt" style={{...imageStyle, fontSize: '40px'}}></i>
                         Law Enforcement Section
-                    </Button> */}
+                    </Button>
                 </div>
                 <div style={checkboxContainerStyle}>
                     <Form.Check
