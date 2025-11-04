@@ -21,6 +21,7 @@ const USER_TYPES = {
     CIVILIAN: 'civilian',
     PHMC_STAFF: 'phmcStaff',
     CORONER: 'coroner',
+    LEO: 'leo',
     RECRUITMENT: 'recruitment',
     OTHER: 'other'
 };
@@ -30,6 +31,7 @@ const FORM_CATEGORIES = {
     [USER_TYPES.CIVILIAN]: ['PHMC'],
     [USER_TYPES.PHMC_STAFF]: ['PHMC'],
     [USER_TYPES.CORONER]: ['PHMC'],
+    [USER_TYPES.LEO]: ['PHMC'],
     [USER_TYPES.RECRUITMENT]: ['PHMC Recruitment'],
     [USER_TYPES.OTHER]: ['PHMC', 'PHMC Recruitment']
 };
@@ -39,6 +41,7 @@ const RECOMMENDED_FORMS = {
     [USER_TYPES.CIVILIAN]: [24, 25], // Medical Release, Basic Patient File, Advanced Patient File
     [USER_TYPES.PHMC_STAFF]: [ 5, 6, 14, 19, 20, 22, 27], // Forensic Services, Surgical Ops, Physical Eval, ER Protocol, General Consultation
     [USER_TYPES.CORONER]: [1, 2, 4, 8, 11, 37, 27], // Forensic Services, Coroner Email, Autopsy, Certificate, Mass Fatality
+    [USER_TYPES.LEO]: [24, 25], // Medical Records, Patient Files (for investigations), CCTV access via modal
     [USER_TYPES.RECRUITMENT]: [50, 51, 52, 53, 54, 55], // All recruitment forms
     [USER_TYPES.OTHER]: 'ALL_FORMS' // Show all available forms
 };
@@ -207,6 +210,7 @@ const OnboardingModal = ({
     };
 
     const handleComplete = () => {
+        console.log(`[ONBOARDING_LOG] handleComplete called - UserType: ${selectedUserType}, NotificationType: FULL_ONBOARDING_COMPLETE`);
         // Get logged-in user data if available
         const isFactionMember = gtaWorldUser?.faction && gtaWorldUser.faction.characterName;
         
@@ -222,6 +226,8 @@ const OnboardingModal = ({
                          20; // General Consultation for others
         } else if (selectedUserType === USER_TYPES.CORONER) {
             defaultForm = 1; // Forensic Services
+        } else if (selectedUserType === USER_TYPES.LEO) {
+            defaultForm = 24; // Medical Records for investigations
         } else if (selectedUserType === USER_TYPES.RECRUITMENT) {
             defaultForm = 50; // Physician recruitment (first recruitment form)
         }
@@ -309,6 +315,7 @@ const OnboardingModal = ({
     };
 
     const handleSkip = () => {
+        console.log(`[ONBOARDING_LOG] handleSkip called - UserType: SKIPPED, NotificationType: ONBOARDING_SKIPPED`);
         localStorage.setItem('onboardingComplete', 'true');
         localStorage.setItem('onboardingSkipped', 'true');
         localStorage.removeItem('onboardingProgress');
@@ -394,6 +401,7 @@ const OnboardingModal = ({
     };
 
     const handleBusinessCardOnly = () => {
+        console.log(`[ONBOARDING_LOG] handleBusinessCardOnly called - UserType: CIVILIAN, NotificationType: BUSINESS_CARD_ONLY`);
         const preferences = {
             userType: USER_TYPES.CIVILIAN,
             role: null,
@@ -410,6 +418,7 @@ const OnboardingModal = ({
         sendOnboardingCompletionWebhook(preferences);
         onComplete(preferences);
     };
+
 
     const renderWelcomeStep = () => (
         <div style={stepContentStyle}>
@@ -441,6 +450,7 @@ const OnboardingModal = ({
             <Button variant="secondary" onClick={handleBusinessCardOnly} style={{ marginTop: '20px' }}>
                 Just use Business Cards
             </Button>
+
         </div>
     );
 
@@ -496,6 +506,22 @@ const OnboardingModal = ({
                     <h4 style={userTypeButtonTitleStyle}>Coroner</h4>
                     <p style={userTypeButtonDescStyle}>
                         I handle forensic services, death reports, autopsies, and coroner investigations. <strong>Requires PHMC faction membership.</strong>
+                    </p>
+                </button>
+
+                <button
+                    style={{
+                        ...userTypeButtonStyle,
+                        ...(selectedUserType === USER_TYPES.LEO ? selectedButtonStyle : {}),
+                        backgroundColor: selectedUserType === USER_TYPES.LEO ? '#1a3a5c' : '#2a2a2a',
+                        borderColor: selectedUserType === USER_TYPES.LEO ? '#007bff' : '#444'
+                    }}
+                    onClick={() => setSelectedUserType(USER_TYPES.LEO)}
+                >
+                    <i className="fas fa-shield-alt" style={userTypeIconStyle}></i>
+                    <h4 style={userTypeButtonTitleStyle}>Law Enforcement</h4>
+                    <p style={userTypeButtonDescStyle}>
+                        I need to request access to CCTV footage for investigations.
                     </p>
                 </button>
 
@@ -766,6 +792,7 @@ const OnboardingModal = ({
             [USER_TYPES.CIVILIAN]: 'Civilian',
             [USER_TYPES.PHMC_STAFF]: 'PHMC Staff',
             [USER_TYPES.CORONER]: 'Coroner',
+            [USER_TYPES.LEO]: 'Law Enforcement',
             [USER_TYPES.RECRUITMENT]: 'Job Applicant',
             [USER_TYPES.OTHER]: 'Multiple Roles'
         };
