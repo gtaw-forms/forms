@@ -67,7 +67,7 @@ export const useGtaWorldAuth = () => {
         }));
     }, []);
 
-    const swappableCharacters = user?.allFactionCharacters || [];
+    const swappableCharacters = user?.character || user?.characters || [];
     // --- END POC ---
 
     useEffect(() => {

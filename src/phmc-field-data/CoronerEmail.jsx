@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { useData } from '../contexts/DataContext.jsx';
 import { Form, Button } from 'react-bootstrap';
 import { recordInputInteraction } from '../index';
 import EmployeeCredentialsSection from '../components/EmployeeCredentialsSection';
@@ -17,11 +16,12 @@ const CoronerEmail = ({ // Renamed component to follow PascalCase convention
     addReport,
     removeReport,
     handleReportChange,
-    toggleSavedReports 
+    toggleSavedReports,
+    agencyDataStore, // Receive as prop instead of using hook
+    isLoadingData // Receive as prop instead of using hook
 }) => {
 
-    // Get agencyDataStore from context
-    const { agencyDataStore, isLoadingData } = useData();
+    // Removed useData hook call
 
     useEffect(() => {
         setFormData(prev => ({
