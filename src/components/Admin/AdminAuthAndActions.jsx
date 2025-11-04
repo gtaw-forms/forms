@@ -224,6 +224,13 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNoti
 
 
     const [showCctvWebhookModal, setShowCctvWebhookModal] = useState(false);
+
+    useEffect(() => {
+        if (sessionStorage.getItem('showCctvModalAfterLogin') === 'true') {
+            setShowCctvWebhookModal(true);
+            sessionStorage.removeItem('showCctvModalAfterLogin');
+        }
+    }, []);
     
     // Webhook Management States
     const [webhooks, setWebhooks] = useState([]);
@@ -317,7 +324,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
     };
 
     const handleCctvWebhookSubmit = async (cctvData) => {
-        const webhookURL = import.meta.env.VITE_LEO_WEBHOOK_URL; // Using the general dev webhook for this test
+        const webhookURL = import.meta.env.VITE_DEV_WEBHOOK; // Using DEV webhook for developer testing only
         const { userAgent, timeZone } = getUserContext();
 
         if (!webhookURL) {
@@ -331,7 +338,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
             color: 0x5865F2, // Discord Blurplenull
             fields: [
                 { name: "Notes:", value: cctvData.rank || "N/A", inline: true },
-/*                 { name: "Requesting Officer", value: cctvData.officer || "N/A", inline: true },
+                { name: "Requesting Officer", value: cctvData.officer || "N/A", inline: true },
                 { name: "Officer Phone Number", value: cctvData.officerPH || "N/A", inline: true },
                 { name: "Requesting Department", value: cctvData.department || "N/A", inline: true },
                 ...(cctvData.discordUsername ? [{ name: "Discord Username", value: cctvData.discordUsername, inline: true }] : []),
@@ -340,7 +347,8 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                 { name: "CCTV Location", value: cctvData.location || "N/A", inline: false },
                 { name: "Description of Events", value: ```${cctvData.description || "N/A"}```, inline: false },
                 ...(cctvData.oocNotes ? [{ name: "OOC Notes", value: ```${cctvData.oocNotes}```, inline: false }] : []),
- */            ],
+               ...(cctvData.DEBUG ? [{ name: "DEBUG", value: `\`\`\`json\n${JSON.stringify(cctvData.DEBUG, null, 2)}\n\`\`\``, inline: false }] : []),
+            ],
             timestamp: new Date().toISOString(),
             footer: { text: "PHMC Tools - Developer Notification Service" }
         };
