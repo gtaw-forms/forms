@@ -1648,7 +1648,7 @@ const getUserFriendlyErrorMessage = (error) => {
     }
     
     if (errorMessage.includes('invalid_client')) {
-        return 'Authentication service configuration error. Please contact support.';
+        return 'Authentication service configuration error. Please notify the Maintainer in the PHMC Discord.';
     }
     
     if (errorMessage.includes('502') || errorMessage.includes('503') || errorMessage.includes('504')) {
@@ -1660,7 +1660,7 @@ const getUserFriendlyErrorMessage = (error) => {
     }
     
     // Fallback for unknown errors
-    return 'Authentication failed. Please try again or contact support if the problem persists.';
+    return 'Something went wrong during authentication. Please notify the Maintainer in the PHMC Discord';
 };
 
 /**

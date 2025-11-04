@@ -75,109 +75,7 @@ export const useWebhooks = (formData, commitInfo, showNotification) => {
         }
     };
 
-    const handleCctvWebhookSubmit = async (cctvData) => {
-        Sentry.captureMessage('CCTV Request Submitted', {
-            level: 'info',
-            extra: {
-                officer: cctvData.officer,
-                department: cctvData.department,
-                location: cctvData.location,
-                reason: cctvData.requestReason,
-                submitter: formData.coronerEmployee || formData.phmcEmployee || 'Unknown App User'
-            },
-            tags: {
-                webhook_type: 'cctv_request',
-                environment: import.meta.env.NODE_ENV
-            }
-        });
-        logEvent(analytics, 'cctv_request', {
-            officer: cctvData.officer,
-            department: cctvData.department,
-            location: cctvData.location,
-            reason: cctvData.requestReason,
-            submitter: formData.coronerEmployee || formData.phmcEmployee || 'Unknown App User',
-            environment: import.meta.env.NODE_ENV
-        });
 
-        const devWebhookURL = import.meta.env.VITE_DEV_WEBHOOK;
-        const leoWebhookURL = import.meta.env.VITE_LEO_WEBHOOK_URL;
-
-        if (!devWebhookURL) {
-            showNotification('No CCTV webhook URLs are configured.', 'error');
-            Sentry.captureMessage('Neither DEV nor LEO webhook URLs are configured for CCTV.', 'error');
-            return false;
-        }
-
-        const embed = {
-            title: "📹 CCTV Footage Request",
-            color: 0x007bff,
-            fields: [
-                { name: "Requesting Officer Rank", value: cctvData.rank || "N/A", inline: true },
-                { name: "Requesting Officer", value: cctvData.officer || "N/A", inline: true },
-                { name: "Officer Phone Number", value: cctvData.officerPH || "N/A", inline: true },
-                { name: "Requesting Department", value: cctvData.department || "N/A", inline: true },
-                ...(cctvData.discordUsername ? [{ name: "Discord Username", value: cctvData.discordUsername, inline: true }] : []),
-                { name: "Date/Time of Incident", value: cctvData.incidentDateTime || "N/A", inline: true },
-                { name: "Reason for Request", value: cctvData.requestReason || "N/A", inline: false },
-                { name: "CCTV Location", value: cctvData.location || "N/A", inline: false },
-                { name: "Description of Events", value: `\`\`\`${cctvData.description || "N/A"}\`\`\``, inline: false },
-                ...(cctvData.oocNotes ? [{ name: "OOC Notes", value: `\`\`\`${cctvData.oocNotes}\`\`\``, inline: false }] : []),
-            ],
-            timestamp: new Date().toISOString(),
-            footer: { text: `PHMC Tools - v${commitInfo.sha || 'N/A'}` }
-        };
-
-        const payload = JSON.stringify({
-            username: "CCTV Bot",
-            content: "New CCTV Request! Supervisor Alert: <@&860257102324301864> | Leadership Alert: <@&860257063182925874>",
-            embeds: [embed]
-        });
-        const webhookTargets = [];
-        if (devWebhookURL) webhookTargets.push({ name: 'Dev', url: devWebhookURL });
-        if (leoWebhookURL) webhookTargets.push({ name: 'LEO', url: leoWebhookURL });
-
-        const sendPromises = webhookTargets.map(target =>
-            fetch(target.url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: payload
-            }).then(async response => {
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`Request to ${target.name} failed with status ${response.status}: ${errorText}`);
-                }
-                return { name: target.name, status: 'fulfilled' };
-            })
-        );
-
-        const results = await Promise.allSettled(sendPromises);
-        let successfulSends = 0;
-
-        results.forEach((result, index) => {
-            const targetName = webhookTargets[index].name;
-            if (result.status === 'fulfilled') {
-                console.log(`Successfully sent CCTV webhook to ${targetName}.`);
-                successfulSends++;
-            } else {
-                console.error(`Failed to send CCTV webhook to ${targetName}:`, result.reason.message);
-                Sentry.captureMessage(`CCTV Webhook to ${targetName} failed`, {
-                    level: 'error',
-                    extra: { reason: result.reason.message }
-                });
-            }
-        });
-
-        if (successfulSends === webhookTargets.length) {
-            showNotification('CCTV Request sent successfully!', "check-circle");
-            return true;
-        } else if (successfulSends > 0) {
-            showNotification('CCTV Request sent, but some destinations failed.', "warning");
-            return true;
-        } else {
-            showNotification('Failed to send CCTV request to any destination.', "error");
-            return false;
-        }
-    };
 
     const sendWebhookPayload = async (webhookURL, payload, successMessage, context, notifyFunc) => {
         if (!webhookURL) {
@@ -230,7 +128,6 @@ export const useWebhooks = (formData, commitInfo, showNotification) => {
     return {
         logWebhookToFirebase,
         sendEasterEggNotification,
-        handleCctvWebhookSubmit,
         handlePhmcWebhookSubmit,
         handleWebhookSubmit,
     };
