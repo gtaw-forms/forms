@@ -14,7 +14,7 @@ import * as Sentry from "@sentry/react";
 import { analytics } from './firebase';
 import { logEvent } from "firebase/analytics";
 import ErrorBoundary from './components/ErrorBoundary';
-import { sendDiscordErrorWebhook, recordInputInteraction } from './utils/errorUtils';
+import { sendDiscordErrorWebhook } from './utils/errorUtils';
 
 // --- START: Chunk Loading Error Handler ---
 /**
@@ -136,29 +136,7 @@ const getCurrentFormType = () => {
     }
 };
 
-/**
- * Records input field interaction for error context
- * Usage: Call this in input change handlers to track recent interactions
- * Example: const handleChange = (e) => { recordInputInteraction('text', e.target.name); ... };
- * @param {string} inputType - Type of input interaction (e.g., 'text', 'select', 'checkbox')
- * @param {string} fieldName - Name of the input field
- */
-const localRecordInputInteraction = (inputType, fieldName) => {
-    lastInputInteraction = {
-        type: inputType,
-        fieldName: fieldName,
-        timestamp: Date.now()
-    };
-    // Clear after 30 seconds
-    setTimeout(() => {
-        if (lastInputInteraction && lastInputInteraction.timestamp === lastInputInteraction.timestamp) {
-            lastInputInteraction = null;
-        }
-    }, 30000);
-};
 
-// Export the local version for backward compatibility
-export { localRecordInputInteraction as recordInputInteraction };
 
 
 

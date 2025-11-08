@@ -726,26 +726,45 @@ const sendFormInteractionWebhookInternal = async ({
         fields.push({ name: "Error Details", value: errorMessage, inline: false });
     }
 
+    const validateFields = (fields) => {
+        return fields.filter(field => {
+            if (!field.name || !field.value) {
+                console.warn('Invalid field detected:', field);
+                return false;
+            }
+            if (typeof field.value !== 'string' || field.value.trim() === '') {
+                console.warn('Field value must be a non-empty string:', field);
+                return false;
+            }
+            return true;
+        });
+    };
+
+    const validatedFields = validateFields(fields);
+
     // Construct the embed object
     const embed = {
         title: statusTitle,
         description: actionMessage,
         color: statusColor,
-        fields: fields,
+        fields: validatedFields,
         timestamp: new Date().toISOString(),
         footer: {
             text: `Forms Tool | gh-pages ${commitInfo.sha || 'N/A'}`
         },
-        // --- MODIFICATION START ---
-        // Conditionally add the image to the embed if it's an Autopsy Report and the URL exists
-        ...(versionName === "Autopsy Report" && autopsyDiagramImgurUrl && { image: { url: autopsyDiagramImgurUrl } })
-        // --- MODIFICATION END ---
     };
 
-    console.log('[Discord Webhook] Sending payload:', {
+    if (versionName === "Autopsy Report" && autopsyDiagramImgurUrl) {
+        const imageUrl = Array.isArray(autopsyDiagramImgurUrl) ? autopsyDiagramImgurUrl[0] : autopsyDiagramImgurUrl;
+        if (imageUrl && typeof imageUrl === 'string') {
+            embed.image = { url: imageUrl };
+        }
+    }
+
+    console.log('[Discord Webhook] Validated payload:', {
         webhookUrl,
         embed,
-        fields
+        fields: validatedFields
     });
     try {
         const response = await fetch(webhookUrl, {
@@ -764,21 +783,18 @@ const sendFormInteractionWebhookInternal = async ({
                 extra: {
                     statusText: response.statusText,
                     responseBody: errorText,
-                    webhookTitle: statusTitle, // Use statusTitle here as embed.title might be default
+                    webhookTitle: statusTitle,
                 }
             });
-            // Optionally, you might want to return false or throw an error
         }
-        // Optionally, return true on success
     } catch (error) {
         console.error('Error sending Discord webhook:', error);
         Sentry.captureException(error, {
             extra: {
                 context: 'sendFormInteractionWebhookInternal Fetch Error',
-                webhookTitle: statusTitle, // Use statusTitle here
+                webhookTitle: statusTitle,
             }
         });
-        // Optionally, return false or throw the error
     }
 };
 

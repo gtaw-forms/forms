@@ -1,9 +1,12 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react'; // Added useCallback
-import { Button, OverlayTrigger, Tooltip, Form } from 'react-bootstrap'; // Added Form
+import React, { useState, useRef, useEffect } from 'react';
+import { Button, OverlayTrigger, Tooltip, Form } from 'react-bootstrap';
+import { Stage, Layer, Image as KonvaImage, Circle, Text, Group, Rect } from 'react-konva';
+import useImage from 'use-image';
+
 import malebodySilhouette from '../assets/male-body-silhouette.jpg';
 import femalebodySilhouette from '../assets/female-body-silhouette.png';
 
-// --- Styles (Keep existing styles) ---
+// --- Styles ---
 const modalOverlayStyle = {
     position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
     backgroundColor: 'rgba(0, 0, 0, 0.7)', display: 'flex',
@@ -47,28 +50,20 @@ const modalBodyStyle = {
 const imageContainerStyle = {
     position: 'relative',
     width: '100%',
-    flexGrow: 1, // Allow image container to take available space
+    flexGrow: 1,
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
-    overflow: 'auto', // Add scroll to container if image is larger than space
+    overflow: 'auto',
     marginBottom: '10px',
 };
-const bodyImageStyle = {
-    maxWidth: '100%',
-    maxHeight: '100%',
-    display: 'block',
-    userSelect: 'none',
-    objectFit: 'contain',
-};
 const markerControlsStyle = {
-    marginBottom: '15px', // Space below the entire controls wrapper
+    marginBottom: '15px',
     display: 'flex',
     flexWrap: 'wrap',
-    gap: '10px', // Space between buttons
+    gap: '10px',
     justifyContent: 'center',
     alignItems: 'center',
-    // flexShrink: 0 is on the wrapper div now
 };
 const modalFooterStyle = {
     borderTop: '1px solid #30363d', paddingTop: '15px', marginTop: 'auto',
@@ -77,29 +72,13 @@ const modalFooterStyle = {
     gap: '10px',
     flexShrink: 0,
 };
-const processingButtonStyle = {
-    color: '#adb5bd',
-    backgroundColor: 'rgba(52, 58, 64, 0.3)',
-    borderColor: '#495057',
-    opacity: 1,
-};
 // --- End Styles ---
 
-const loadImage = (src) => {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve(img);
-        img.onerror = (err) => reject(err);
-        img.src = src;
-    });
-};
-
-// Helper function to group and label markers
 const getGroupedLabeledMarkers = (markers) => {
     const labeledMarkers = markers.filter(m => m.label && m.label.trim() !== '');
     const grouped = labeledMarkers.reduce((acc, marker) => {
         const labelKey = marker.label.trim().toUpperCase();
-        const groupKey = `${marker.type}-${labelKey}`; // Group by type and label
+        const groupKey = `${marker.type}-${labelKey}`;
 
         if (!acc[groupKey]) {
             acc[groupKey] = [];
@@ -112,7 +91,7 @@ const getGroupedLabeledMarkers = (markers) => {
     Object.keys(grouped).sort().forEach(groupKey => {
         grouped[groupKey].sort((a, b) => a.id.localeCompare(b.id));
         grouped[groupKey].forEach((marker, index) => {
-            const prefix = String.fromCharCode(65 + index); // A, B, C...
+            const prefix = String.fromCharCode(65 + index);
             result.push({
                 ...marker,
                 displayLabel: `${marker.label.trim()}-${prefix}`
@@ -123,45 +102,43 @@ const getGroupedLabeledMarkers = (markers) => {
     return result;
 };
 
-
-
 const AutopsyDiagramModal = ({
     show,
     onHide,
     onSaveDiagram,
     initialMarkers = [],
     showNotification,
+    removeNotification,
     handleImageUpload
 }) => {
     const [markers, setMarkers] = useState([]);
     const [selectedMarkerType, setSelectedMarkerType] = useState('circle');
     const [editingMarkerId, setEditingMarkerId] = useState(null);
-    const [draggingMarker, setDraggingMarker] = useState(null); // { id, initialX, initialY, startMouseX, startMouseY, imgWidth, imgHeight }
-    const imageRef = useRef(null);
-    const imageContainerRef = useRef(null);
-    const prevShowRef = useRef(show);
-    const canvasRef = useRef(null);
-    const [bodyImage, setBodyImage] = useState(null);
+    const [inputPosition, setInputPosition] = useState(null);
+    const [selectedSilhouetteType, setSelectedSilhouetteType] = useState('male');
     const [isProcessingImage, setIsProcessingImage] = useState(false);
-    const [selectedSilhouetteType, setSelectedSilhouetteType] = useState('male'); // 'male' or 'female'
-    const wasDragging = useRef(false);
+    const [markerSizeMultiplier, setMarkerSizeMultiplier] = useState(1);
+    const notificationIdRef = useRef(null);
 
-    
+    const imageContainerRef = useRef(null);
+    const stageRef = useRef(null);
+    const prevShowRef = useRef(show);
 
-    useEffect(() => {
-        const imageToLoad = selectedSilhouetteType === 'female' ? femalebodySilhouette : malebodySilhouette;
-        loadImage(imageToLoad)
-            .then(img => setBodyImage(img))
-            .catch(err => {
-                console.error(`Failed to load ${selectedSilhouetteType} body silhouette:`, err);
-                if (selectedSilhouetteType === 'female') {
-                    loadImage(malebodySilhouette).then(setBodyImage).catch(e => console.error("Fallback to male silhouette also failed:", e));
-                }
-            });
-    }, [selectedSilhouetteType]);
+    const imageToLoad = selectedSilhouetteType === 'female' ? femalebodySilhouette : malebodySilhouette;
+    const [image, imageStatus] = useImage(imageToLoad);
 
     useEffect(() => {
         if (show && !prevShowRef.current) {
+            if (showNotification) {
+                const message = (
+                    <>
+                        <strong>Warning:</strong> Resolutions above 1440p may cause marker placement issues. Dragging markers should work correctly.
+                        <hr />
+                        Instructions: Click on the diagram to add a marker. Click a marker to remove it. Double-click a marker to edit its label. Use the buttons below to change marker types and add labels.
+                    </>
+                );
+                notificationIdRef.current = showNotification(message, 'info', 0);
+            }
             setMarkers(initialMarkers.map(marker => ({
                 ...marker,
                 label: marker.label || '',
@@ -169,69 +146,88 @@ const AutopsyDiagramModal = ({
             })));
             setEditingMarkerId(null);
         }
-        prevShowRef.current = show;
-    }, [show, initialMarkers]);
 
-    const handleImageClick = (event) => {
-        if (editingMarkerId || draggingMarker) {
-            setEditingMarkerId(null);
+        if (!show && prevShowRef.current) {
+            if (notificationIdRef.current && removeNotification) {
+                removeNotification(notificationIdRef.current);
+                notificationIdRef.current = null;
+            }
+        }
+
+        prevShowRef.current = show;
+    }, [show, initialMarkers, showNotification, removeNotification]);
+
+    useEffect(() => {
+        if (editingMarkerId && stageRef.current && image) {
+            const stage = stageRef.current;
+            const marker = markers.find(m => m.id === editingMarkerId);
+            if (!marker) {
+                setInputPosition(null);
+                return;
+            }
+
+            const container = imageContainerRef.current;
+            if (!container) return;
+
+            const stageDim = { width: stage.width(), height: stage.height() };
+            const imageSize = { width: image.width, height: image.height };
+            
+            const scaleX = stageDim.width / imageSize.width;
+            const scaleY = stageDim.height / imageSize.height;
+
+            const markerStageX = marker.x * scaleX;
+            const markerStageY = marker.y * scaleY;
+
+            const containerW = container.offsetWidth;
+            const containerH = container.offsetHeight;
+
+            const stageOffsetX = (containerW - stageDim.width) / 2;
+            const stageOffsetY = (containerH - stageDim.height) / 2;
+
+            setInputPosition({
+                top: stageOffsetY + markerStageY + 20, // +20 to be "under" the marker
+                left: stageOffsetX + markerStageX - 50, // -50 to center the 100px input
+            });
+        } else {
+            setInputPosition(null);
+        }
+    }, [editingMarkerId, markers, image, markerSizeMultiplier]);
+
+    const getRelativePointerPosition = (stage) => {
+        const pointer = stage.getPointerPosition();
+        const stageTransform = stage.getAbsoluteTransform().copy();
+        stageTransform.invert();
+        return stageTransform.point(pointer);
+    };
+
+    const handleStageClick = (e) => {
+        if (e.target !== e.target.getStage()) {
             return;
         }
 
-        const imgElement = imageRef.current;
-        const containerElement = imageContainerRef.current;
-        if (!containerElement || !imgElement || !imgElement.complete || !bodyImage) return;
-
-        // Check if the click was on the actual image, not letterboxing.
-        const imgRect = imgElement.getBoundingClientRect();
-        const naturalWidth = bodyImage.naturalWidth;
-        const naturalHeight = bodyImage.naturalHeight;
-        const naturalAspectRatio = naturalWidth / naturalHeight;
-        const elementAspectRatio = imgRect.width / imgRect.height;
-
-        let renderedWidth = imgRect.width;
-        let renderedHeight = imgRect.height;
-        let renderedContentOffsetX = 0;
-        let renderedContentOffsetY = 0;
-
-        if (naturalAspectRatio > elementAspectRatio) {
-            renderedHeight = imgRect.width / naturalAspectRatio;
-            renderedContentOffsetY = (imgRect.height - renderedHeight) / 2;
-        } else {
-            renderedWidth = imgRect.height * naturalAspectRatio;
-            renderedContentOffsetX = (imgRect.width - renderedWidth) / 2;
-        }
-
-        const clickXInImg = event.nativeEvent.offsetX;
-        const clickYInImg = event.nativeEvent.offsetY;
-
-        const clickXInImageContent = clickXInImg - renderedContentOffsetX;
-        const clickYInImageContent = clickYInImg - renderedContentOffsetY;
-
-        if (clickXInImageContent < 0 || clickXInImageContent > renderedWidth || clickYInImageContent < 0 || clickYInImageContent > renderedHeight) {
-            return; // Click was on the letterbox, so ignore it
-        }
-
-        // Now calculate the percentage relative to the container
-        const containerRect = containerElement.getBoundingClientRect();
-        const clickXInContainer = (imgRect.left - containerRect.left) + clickXInImg;
-        const clickYInContainer = (imgRect.top - containerRect.top) + clickYInImg;
-
-        let markerXPercent = (clickXInContainer / containerRect.width) * 100;
-        let markerYPercent = (clickYInContainer / containerRect.height) * 100;
-
+        const stage = e.target.getStage();
+        const pos = getRelativePointerPosition(stage);
 
         const newMarker = {
-            x: markerXPercent,
-            y: markerYPercent,
+            x: pos.x,
+            y: pos.y,
             type: selectedMarkerType,
             id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
             label: '',
-            // Default the label to the left side if the marker is on the right 20% of the image
-            labelSide: markerXPercent > 80 ? 'left' : 'right',
+            labelSide: pos.x > image.width * 0.8 ? 'left' : 'right',
         };
         setMarkers(prevMarkers => [...prevMarkers, newMarker]);
         setEditingMarkerId(newMarker.id);
+    };
+
+    const handleDragEnd = (e, id) => {
+        const newMarkers = markers.slice();
+        const marker = newMarkers.find(m => m.id === id);
+        if (marker) {
+            marker.x = e.target.x();
+            marker.y = e.target.y();
+        }
+        setMarkers(newMarkers);
     };
 
     const handleToggleLastMarkerLabelSide = () => {
@@ -240,7 +236,7 @@ const AutopsyDiagramModal = ({
             const lastLabeledMarkerIndex = prevMarkers.slice().reverse().findIndex(m => m.label && m.label.trim() !== '');
 
             if (lastLabeledMarkerIndex === -1) {
-                 if (showNotification) showNotification("No labeled marker to toggle side for. Add a label first.", "info");
+                if (showNotification) showNotification("No labeled marker to toggle side for. Add a label first.", "info");
                 return prevMarkers;
             }
             const originalIndex = prevMarkers.length - 1 - lastLabeledMarkerIndex;
@@ -254,385 +250,182 @@ const AutopsyDiagramModal = ({
         });
     };
 
-    const drawDiagramOnCanvas = useCallback(async () => {
-        if (!canvasRef.current || !bodyImage) {
-            console.error("Canvas or body image not ready for drawing.");
-            return null;
+    const exportToImage = async (includeLabels) => {
+        const stage = stageRef.current;
+        if (!stage) return null;
+
+        setEditingMarkerId(null); // Ensure input is hidden before export
+        await new Promise(resolve => setTimeout(resolve, 50)); // Wait for state to update
+
+        if (!includeLabels) {
+            stage.find('.marker-label-group').forEach(group => group.visible(false));
+            stage.draw();
         }
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
-        const sourceImage = bodyImage;
 
-        canvas.width = sourceImage.naturalWidth;
-        canvas.height = sourceImage.naturalHeight;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(sourceImage, 0, 0, canvas.width, canvas.height);
+        const dataURL = stage.toDataURL({ pixelRatio: 2 });
 
-        const markersToDraw = getGroupedLabeledMarkers(markers);
+        if (!includeLabels) {
+            stage.find('.marker-label-group').forEach(group => group.visible(true));
+            stage.draw();
+        }
 
-        markers.forEach(marker => {
-            const canvasDrawX = (marker.x / 100) * canvas.width;
-            const canvasDrawY = (marker.y / 100) * canvas.height;
+        return dataURL;
+    };
 
-            if (marker.type === 'circle') {
-                ctx.beginPath();
-                ctx.arc(canvasDrawX, canvasDrawY, 15, 0, 2 * Math.PI);
-                ctx.fillStyle = 'rgba(255, 0, 0, 0.7)';
-                ctx.fill();
-                ctx.strokeStyle = 'darkred';
-                ctx.lineWidth = 1.5;
-                ctx.stroke();
-            } else if (marker.type === 'cross') {
-                ctx.beginPath();
-                ctx.strokeStyle = 'red';
-                ctx.lineWidth = 5;
-                const crossSize = 15;
-                ctx.moveTo(canvasDrawX - crossSize, canvasDrawY - crossSize);
-                ctx.lineTo(canvasDrawX + crossSize, canvasDrawY + crossSize);
-                ctx.moveTo(canvasDrawX + crossSize, canvasDrawY - crossSize);
-                ctx.lineTo(canvasDrawX - crossSize, canvasDrawY + crossSize);
-                ctx.stroke();
-            }
-        });
-
-        markersToDraw.forEach(marker => {
-            const canvasDrawX = (marker.x / 100) * canvas.width;
-            const canvasDrawY = (marker.y / 100) * canvas.height;
-            const labelToDraw = marker.displayLabel;
-
-            if (labelToDraw) {
-                const labelFontSize = 20;
-                ctx.font = `${labelFontSize}px Arial`;
-                const textMetrics = ctx.measureText(labelToDraw);
-                const textWidth = textMetrics.width;
-                const textHeight = labelFontSize;
-                const padding = 4;
-                const labelBgWidth = textWidth + (padding * 2);
-                const labelBgHeight = textHeight + (padding * 2);
-
-                let labelTextX, labelBgX;
-                const baseOffset = 18;
-                if (marker.labelSide === 'right') {
-                    labelTextX = canvasDrawX + baseOffset;
-                    labelBgX = labelTextX - padding;
-                    ctx.textAlign = 'left';
-                } else {
-                    labelTextX = canvasDrawX - baseOffset;
-                    labelBgX = labelTextX - textWidth - padding;
-                    ctx.textAlign = 'right';
-                }
-                const labelTextY = canvasDrawY;
-                const labelBgY = labelTextY - (textHeight / 2) - padding;
-
-                ctx.fillStyle = 'rgba(50, 50, 50, 0.7)';
-                ctx.fillRect(labelBgX, labelBgY, labelBgWidth, labelBgHeight);
-
-                ctx.fillStyle = '#FFFFFF';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(labelToDraw, labelTextX, labelTextY);
-            }
-        });
-        return canvas;
-    }, [markers, bodyImage]);
-
-    const handleCopyToClipboard = useCallback(async () => {
+    const handleCopyToClipboard = async () => {
         setIsProcessingImage(true);
-        const canvas = await drawDiagramOnCanvas();
-        if (canvas && navigator.clipboard && navigator.clipboard.write) {
-            canvas.toBlob(async (blob) => {
-                if (blob) {
-                    try {
-                        await navigator.clipboard.write([ new ClipboardItem({ [blob.type]: blob }) ]);
-                        if (showNotification) showNotification('Diagram copied to clipboard!', 'check-circle');
-                    } catch (err) {
-                        console.error('Failed to copy diagram:', err);
-                        if (showNotification) showNotification('Failed to copy diagram. See console for details.', 'exclamation-triangle');
-                    }
-                } else {
-                    console.error('Failed to create image blob for clipboard.');
-                    if (showNotification) showNotification('Failed to create image blob for clipboard.', 'exclamation-triangle');
-                }
-                setIsProcessingImage(false);
-            }, 'image/png');
-        } else {
-            console.warn('Clipboard API not available or canvas drawing failed.');
-            if (showNotification) showNotification('Clipboard API not available or canvas drawing failed.', 'exclamation-triangle');
-            setIsProcessingImage(false);
+        const dataUrl = await exportToImage(true);
+        if (dataUrl) {
+            const blob = await (await fetch(dataUrl)).blob();
+            try {
+                await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+                if (showNotification) showNotification('Diagram copied to clipboard!', 'check-circle');
+            } catch (err) {
+                console.error('Failed to copy diagram:', err);
+                if (showNotification) showNotification('Failed to copy diagram. See console for details.', 'exclamation-triangle');
+            }
         }
-    }, [drawDiagramOnCanvas, showNotification]);
+        setIsProcessingImage(false);
+    };
 
-    const handleUpload = useCallback(async () => {
+    const handleUpload = async () => {
         setIsProcessingImage(true);
-        const canvas = await drawDiagramOnCanvas();
-        if (!canvas) {
-            if (showNotification) showNotification('Failed to draw diagram on canvas.', 'exclamation-triangle');
-            setIsProcessingImage(false);
-            return;
-        }
-        const dataUrl = canvas.toDataURL('image/png');
-        
-        if (handleImageUpload) {
-            const imageUrl = await handleImageUpload(dataUrl, 'autopsyDiagramImgurUrl');
-            // The handleImageUpload function now shows notifications and sets form data.
-            // If you need to do something specific with the URL in this component, you can use `imageUrl`.
-        } else {
+        const dataUrl = await exportToImage(true);
+        if (dataUrl && handleImageUpload) {
+            await handleImageUpload(dataUrl, 'autopsyDiagramImgurUrl');
+        } else if (!handleImageUpload) {
             if (showNotification) showNotification('Image upload handler is not available.', 'error');
         }
-        
         setIsProcessingImage(false);
-    }, [drawDiagramOnCanvas, showNotification, handleImageUpload]);
+    };
 
-    const handleAddLabelToLastMarker = (labelText) => {
+    const handleAddLabelToLastMarker = (text) => {
+        if (!text) return;
         setMarkers(prevMarkers => {
-            if (prevMarkers.length === 0) return prevMarkers;
+            if (prevMarkers.length === 0) {
+                if (showNotification) showNotification("Place a marker first before adding a label.", "info");
+                return prevMarkers;
+            };
             const lastMarkerIndex = prevMarkers.length - 1;
             return prevMarkers.map((marker, index) =>
-                index === lastMarkerIndex ? { ...marker, label: labelText.substring(0, 9) } : marker
+                index === lastMarkerIndex ? { ...marker, label: text.substring(0, 9) } : marker
             );
         });
-        setEditingMarkerId(null);
+    };
+
+    const handleLabelChange = (id, newLabel) => {
+        const newMarkers = markers.slice();
+        const marker = newMarkers.find(m => m.id === id);
+        if (marker) {
+            marker.label = newLabel.substring(0, 9);
+        }
+        setMarkers(newMarkers);
     };
 
     const handleRemoveMarker = (markerIdToRemove) => {
         setMarkers(prevMarkers => prevMarkers.filter(marker => marker.id !== markerIdToRemove));
-        if (editingMarkerId === markerIdToRemove) {
-            setEditingMarkerId(null);
-        }
     };
 
     const handleUndoLastMarker = () => {
-        if (markers.length > 0) {
-            const lastMarkerId = markers[markers.length - 1].id;
-            setMarkers(prev => prev.slice(0, -1));
-            if (editingMarkerId === lastMarkerId) {
-                setEditingMarkerId(null);
-            }
-        }
+        setMarkers(prev => prev.slice(0, -1));
     };
 
     const handleClearAllMarkers = () => {
-        if (markers.length > 0) {
-            setMarkers([]);
-            setEditingMarkerId(null);
-        }
+        setMarkers([]);
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (onSaveDiagram) {
-            onSaveDiagram(markers);
+            setIsProcessingImage(true);
+            const dataUrl = await exportToImage(true);
+            let imageUrl = null;
+            if (dataUrl && handleImageUpload) {
+                const uploadedUrls = await handleImageUpload(dataUrl);
+                if (uploadedUrls && uploadedUrls.length > 0) {
+                    imageUrl = uploadedUrls[0];
+                }
+            }
+            onSaveDiagram(markers, imageUrl);
+            setIsProcessingImage(false);
         }
         onHide();
     };
 
-    const handleLabelInputChange = (markerId, value) => {
-        setMarkers(prevMarkers => prevMarkers.map(marker =>
-            marker.id === markerId ? { ...marker, label: value.substring(0, 9) } : marker
-        ));
-    };
+    const increaseMarkerSize = () => setMarkerSizeMultiplier(prev => prev + 0.25);
+    const decreaseMarkerSize = () => setMarkerSizeMultiplier(prev => prev - 0.25);
 
-    const handleLabelInputBlur = () => {
-        setEditingMarkerId(null);
-    };
+    const renderMarkers = () => {
+        const labeledMarkers = getGroupedLabeledMarkers(markers);
+        const stage = stageRef.current;
+        const scale = stage ? stage.scaleX() : 1;
 
-    const handleMarkerMouseDown = (e, markerId) => {
-        e.preventDefault();
-        e.stopPropagation();
-        wasDragging.current = false;
+        const baseRadius = 9;
+        const baseCrossFontSize = 19;
+        const baseLabelFontSize = 11;
 
-        const marker = markers.find(m => m.id === markerId);
-        const imgElement = imageRef.current;
+        return markers.map(marker => {
+            const markerWithDisplayLabel = labeledMarkers.find(m => m.id === marker.id);
+            const displayLabelText = markerWithDisplayLabel?.displayLabel || marker.label;
 
-        if (!marker || !imgElement || !bodyImage) return;
+            return (
+                <Group
+                    key={marker.id}
+                    id={marker.id}
+                    x={marker.x}
+                    y={marker.y}
+                    draggable
+                    onDragEnd={(e) => handleDragEnd(e, marker.id)}
+                    onDblClick={() => setEditingMarkerId(marker.id)}
+                    scaleX={1 / scale}
+                    scaleY={1 / scale}
+                >
+                    {marker.type === 'circle' && (
+                        <Circle
+                            radius={baseRadius * markerSizeMultiplier}
+                            fill="rgba(255, 0, 0, 0.7)"
+                            stroke="darkred"
+                            strokeWidth={2}
+                            onClick={() => handleRemoveMarker(marker.id)}
+                        />
+                    )}
+                    {marker.type === 'cross' && (
+                         <Text text="X" fontSize={baseCrossFontSize * markerSizeMultiplier} fill="red" onClick={() => handleRemoveMarker(marker.id)} />
+                    )}
 
-        const imgRect = imgElement.getBoundingClientRect();
-        const naturalWidth = bodyImage.naturalWidth;
-        const naturalHeight = bodyImage.naturalHeight;
-        const naturalAspectRatio = naturalWidth / naturalHeight;
-        const elementAspectRatio = imgRect.width / imgRect.height;
+                    {displayLabelText && editingMarkerId !== marker.id && (() => {
+                        const labelFontSize = baseLabelFontSize * markerSizeMultiplier;
+                        const characterWidth = labelFontSize * 0.7;
+                        const textWidth = displayLabelText.length * characterWidth;
+                        const hPadding = 4 * markerSizeMultiplier;
+                        const vPadding = 2 * markerSizeMultiplier;
+                        const rectHeight = labelFontSize + vPadding * 2;
+                        const rectWidth = textWidth + hPadding * 2;
+                        const offset = 15 * markerSizeMultiplier;
 
-        let renderedWidth = imgRect.width;
-        let renderedHeight = imgRect.height;
-
-        if (naturalAspectRatio > elementAspectRatio) {
-            renderedHeight = imgRect.width / naturalAspectRatio;
-        } else {
-            renderedWidth = imgRect.height * naturalAspectRatio;
-        }
-
-        setDraggingMarker({
-            id: markerId,
-            initialX: marker.x,
-            initialY: marker.y,
-            startMouseX: e.clientX,
-            startMouseY: e.clientY,
-            imgWidth: renderedWidth, // Use rendered width
-            imgHeight: renderedHeight, // Use rendered height
+                        return (
+                            <Group name="marker-label-group">
+                                <Rect
+                                    x={marker.labelSide === 'right' ? offset : -offset - rectWidth}
+                                    y={-rectHeight / 2}
+                                    width={rectWidth}
+                                    height={rectHeight}
+                                    fill="rgba(0,0,0,0.7)"
+                                    cornerRadius={3}
+                                />
+                                <Text
+                                    text={displayLabelText}
+                                    x={marker.labelSide === 'right' ? offset + hPadding : -offset - rectWidth + hPadding}
+                                    y={-labelFontSize / 2}
+                                    fill="white"
+                                    fontSize={labelFontSize}
+                                />
+                            </Group>
+                        );
+                    })()}
+                </Group>
+            );
         });
     };
-
-    useEffect(() => {
-        const handleMouseMove = (e) => {
-            if (!draggingMarker) return;
-            wasDragging.current = true;
-
-            const deltaX = e.clientX - draggingMarker.startMouseX;
-            const deltaY = e.clientY - draggingMarker.startMouseY;
-
-            const deltaPercentX = (deltaX / draggingMarker.imgWidth) * 100;
-            const deltaPercentY = (deltaY / draggingMarker.imgHeight) * 100;
-
-            let newX = draggingMarker.initialX + deltaPercentX;
-            let newY = draggingMarker.initialY + deltaPercentY;
-            console.log(`Dragging: Initial Coords (%): X=${newX}, Y=${newY}`);
-
-            // Clamp values to keep the entire marker inside the image bounds.
-            const markerPixelRadius = 10; // Half of the marker's approx pixel size (e.g., 20px)
-            const paddingX = (markerPixelRadius / draggingMarker.imgWidth) * 100;
-            const paddingY = (markerPixelRadius / draggingMarker.imgHeight) * 100;
-
-            newX = Math.max(paddingX, Math.min(100 - paddingX, newX));
-            newY = Math.max(paddingY, Math.min(100 - paddingY, newY));
-            console.log(`Dragging: Clamped Coords (%): X=${newX}, Y=${newY}`);
-
-            setMarkers(currentMarkers =>
-                currentMarkers.map(m =>
-                    m.id === draggingMarker.id
-                        ? { ...m, x: newX, y: newY }
-                        : m
-                )
-            );
-        };
-
-        const handleMouseUp = () => {
-            setDraggingMarker(null);
-        };
-
-        if (draggingMarker) {
-            window.addEventListener('mousemove', handleMouseMove);
-            window.addEventListener('mouseup', handleMouseUp);
-        } else {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
-        }
-
-        return () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
-        };
-    }, [draggingMarker, markers, bodyImage]); // Add bodyImage to dependency array
-
-    const renderMarker = (marker) => {
-        const anchorPointStyle = {
-            position: 'absolute',
-            left: `${marker.x}%`,
-            top: `${marker.y}%`,
-            zIndex: 10,
-            cursor: draggingMarker && draggingMarker.id === marker.id ? 'grabbing' : 'grab',
-        };
-        const symbolBaseStyle = {
-            position: 'absolute',
-            transform: 'translate(-50%, -50%)',
-        };
-        const circleSymbolStyle = {
-            ...symbolBaseStyle,
-            width: '15px', height: '15px', backgroundColor: 'rgba(255, 0, 0, 0.7)',
-            borderRadius: '50%', border: '1px solid darkred',
-        };
-        const crossSymbolStyle = {
-            ...symbolBaseStyle,
-            color: 'red', fontSize: '20px', fontWeight: 'bold',
-            lineHeight: '1', userSelect: 'none',
-        };
-
-        const labelStyle = {
-            position: 'absolute',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            fontSize: '10px', color: '#f0f0f0', backgroundColor: 'rgba(0,0,0,0.6)',
-            padding: '1px 4px', borderRadius: '3px', whiteSpace: 'nowrap',
-            cursor: 'pointer',
-            zIndex: 1,
-        };
-
-        if (marker.labelSide === 'right') {
-            labelStyle.left = '12px';
-        } else {
-            labelStyle.right = '12px';
-        }
-
-        const labeledMarkers = getGroupedLabeledMarkers(markers);
-        const markerWithDisplayLabel = labeledMarkers.find(m => m.id === marker.id);
-        const displayLabelText = markerWithDisplayLabel?.displayLabel || marker.label;
-
-        return (
-            <div
-                key={marker.id}
-                style={anchorPointStyle}
-                onMouseDown={(e) => handleMarkerMouseDown(e, marker.id)}
-            >
-                <div
-                    style={symbolBaseStyle}
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        if (wasDragging.current) {
-                            wasDragging.current = false;
-                            return;
-                        }
-                        handleRemoveMarker(marker.id);
-                    }}
-                    role="button"
-                    aria-label={`Remove ${marker.type}`}
-                >
-                    {marker.type === 'circle' && <div style={circleSymbolStyle}></div>}
-                    {marker.type === 'cross' && <div style={crossSymbolStyle}>X</div>}
-                </div>
-
-                {editingMarkerId === marker.id ? (
-                    <Form.Control
-                        type="text"
-                        value={marker.label}
-                        onChange={(e) => handleLabelInputChange(marker.id, e.target.value)}
-                        onBlur={handleLabelInputBlur}
-                        maxLength={9}
-                        autoFocus
-                        size="sm"
-                        style={{
-                            position: 'absolute',
-                            top: '50%',
-                            transform: marker.labelSide === 'right' ? 'translateY(-50%)' : 'translate(-100%, -50%)',
-                            [marker.labelSide]: '12px',
-                            width: '80px',
-                            fontSize: '10px',
-                            padding: '1px 4px',
-                            backgroundColor: '#16202c',
-                            color: '#eeeeeeb0',
-                            borderColor: '#30363d',
-                            zIndex: 2,
-                        }}
-                        onClick={e => e.stopPropagation()}
-                        onMouseDown={e => e.stopPropagation()} // Prevent drag from starting on input
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                                e.preventDefault();
-                                handleLabelInputBlur();
-                            }
-                        }}
-                    />
-                ) : (
-                    marker.label && (
-                        <span
-                            style={labelStyle}
-                            onClick={(e) => { e.stopPropagation(); setEditingMarkerId(marker.id); }}
-                            onMouseDown={e => e.stopPropagation()} // Prevent drag from starting on label
-                        >
-                            {displayLabelText}
-                        </span>
-                    )
-                )}
-            </div>
-        );
-    };
-
 
     if (!show) return null;
 
@@ -651,9 +444,21 @@ const AutopsyDiagramModal = ({
         { short: "AMP", full: "Amputation" },
     ];
 
+    const stageDim = { width: 0, height: 0 };
+    if (image && imageContainerRef.current && image.width > 0 && image.height > 0) {
+        const container = imageContainerRef.current;
+        const containerW = container.offsetWidth;
+        const containerH = container.offsetHeight;
+        const imgW = image.width;
+        const imgH = image.height;
+
+        const scale = Math.min(containerW / imgW, containerH / imgH);
+        stageDim.width = imgW * scale;
+        stageDim.height = imgH * scale;
+    }
+
     return (
         <>
-            <canvas ref={canvasRef} style={{ display: 'none' }} />
             <div style={modalOverlayStyle} onClick={onHide}>
                 <div style={modalContentStyle} onClick={e => e.stopPropagation()}>
                     <div style={modalHeaderStyle}>
@@ -663,7 +468,7 @@ const AutopsyDiagramModal = ({
                     <div style={modalBodyStyle}>
                         <div style={{ flexShrink: 0 }}>
                             <div style={markerControlsStyle}>
-                                <Button
+                                 <Button
                                     variant={selectedSilhouetteType === 'male' ? 'info' : 'outline-info'}
                                     size="sm"
                                     onClick={() => setSelectedSilhouetteType('male')}
@@ -713,26 +518,64 @@ const AutopsyDiagramModal = ({
                         </div>
 
                         <div ref={imageContainerRef} style={imageContainerStyle}>
-                            <img
-                                ref={imageRef}
-                                src={selectedSilhouetteType === 'female' ? femalebodySilhouette : malebodySilhouette}
-                                alt={`Autopsy diagram area - ${selectedSilhouetteType}`}
-                                style={bodyImageStyle}
-                                onClick={handleImageClick}
-                            />
-                            {markers.map(marker => renderMarker(marker))}
+                            {imageStatus === 'loaded' ? (
+                                <Stage
+                                    ref={stageRef}
+                                    width={stageDim.width}
+                                    height={stageDim.height}
+                                    scaleX={stageDim.width / image.width}
+                                    scaleY={stageDim.height / image.height}
+                                    onClick={handleStageClick}
+                                >
+                                    <Layer>
+                                        <KonvaImage image={image} width={image.width} height={image.height} listening={false} />
+                                        {renderMarkers()}
+                                    </Layer>
+                                </Stage>
+                            ) : (
+                                <div>Loading image...</div>
+                            )}
+                            {inputPosition && (() => {
+                                const marker = markers.find(m => m.id === editingMarkerId);
+                                return (
+                                    <Form.Control
+                                        style={{
+                                            position: 'absolute',
+                                            top: `${inputPosition.top}px`,
+                                            left: `${inputPosition.left}px`,
+                                            width: '100px',
+                                            zIndex: 10,
+                                            backgroundColor: '#16202c',
+                                            color: '#eeeeeeb0',
+                                            borderColor: '#30363d',
+                                        }}
+                                        type="text"
+                                        value={marker?.label || ''}
+                                        onChange={(e) => handleLabelChange(editingMarkerId, e.target.value)}
+                                        onBlur={() => setEditingMarkerId(null)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                setEditingMarkerId(null);
+                                            }
+                                        }}
+                                        autoFocus
+                                        size="sm"
+                                    />
+                                )
+                            })()}
                         </div>
-                        <small style={{ color: '#8b949e', flexShrink: 0 }}>
-                            Click diagram to add a marker. Drag marker to reposition. Click marker symbol to remove.
-                        </small>
                     </div>
                     <div style={modalFooterStyle}>
-                        <Button variant="outline-info" size="sm" onClick={handleCopyToClipboard} disabled={isProcessingImage || !bodyImage || !canvasRef.current} style={isProcessingImage ? processingButtonStyle : {}}>
+                        <Button variant="outline-info" size="sm" onClick={handleCopyToClipboard} disabled={isProcessingImage || imageStatus !== 'loaded'}>
                             {isProcessingImage ? 'Processing...' : 'Copy Diagram'}
                         </Button>
-                        <Button variant="outline-success" size="sm" onClick={handleUpload} disabled={isProcessingImage || !bodyImage || !canvasRef.current} style={isProcessingImage ? { ...processingButtonStyle, marginLeft: '10px' } : { marginLeft: '10px' }}>
+                        <Button variant="outline-success" size="sm" onClick={handleUpload} disabled={isProcessingImage || imageStatus !== 'loaded'} style={{ marginLeft: '10px' }}>
                             {isProcessingImage ? 'Processing...' : 'Upload'}
                         </Button>
+                        <Button variant="outline-secondary" size="sm" onClick={increaseMarkerSize}>Increase Marker Size</Button>
+                        <Button variant="outline-secondary" size="sm" onClick={decreaseMarkerSize}>Decrease Marker Size</Button>
                         <div style={{ flexGrow: 1 }}></div>
                         <Button variant="secondary" onClick={onHide} disabled={isProcessingImage}>Cancel</Button>
                         <Button variant="primary" onClick={handleSave} disabled={isProcessingImage} style={{marginLeft: '10px'}}>Done & Save Diagram</Button>
