@@ -490,7 +490,7 @@ input[type="checkbox"]:checked::after {
     position: fixed; /* Position relative to the viewport */
     top: 20px;       /* Distance from the top */
     right: 20px;      /* Distance from the right */
-    z-index: 1050;   /* Ensure it's above most other content (like modals) */
+    z-index: 1060;   /* Ensure it's above most other content (like modals) */
     display: flex;
     flex-direction: column; /* Stack notifications vertically */
     align-items: flex-end; /* Align notifications to the right edge of the container */
