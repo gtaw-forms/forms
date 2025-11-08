@@ -1535,11 +1535,13 @@ export const isFactionMember = () => {
  * Refresh faction membership data
  * @returns {Promise<Object>} Updated faction data
  */
-export const refreshFactionData = async () => {
+export const refreshFactionData = async (characterId) => {
     const userData = getStoredUserData();
-    if (!userData || !userData.id) {
+    if (!userData) {
         throw new Error('No authenticated user found');
     }
+
+    const idToCheck = characterId || userData.faction?.characterId || userData.id;
     
     try {
         const checkFactionMembership = httpsCallable(functions, 'checkFactionMembership');
@@ -1548,13 +1550,14 @@ export const refreshFactionData = async () => {
         
         console.log(`🔥 [GTA Auth] Refreshing faction data Firebase call [${refreshCallId}]:`, {
             function: 'checkFactionMembership',
-            characterId: parseInt(userData.id),
+            characterId: parseInt(idToCheck),
             factionId: 364,
-            timestamp: refreshStartTime
+            timestamp: refreshStartTime,
+            source: characterId ? 'explicit' : (userData.faction?.characterId ? 'session_faction' : 'session_user_id')
         });
         
         const result = await checkFactionMembership({ 
-            characterId: parseInt(userData.id),
+            characterId: parseInt(idToCheck),
             factionId: 364 // PHMC faction ID
         });
         

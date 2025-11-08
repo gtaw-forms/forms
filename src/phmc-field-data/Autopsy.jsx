@@ -16,7 +16,8 @@ const Autopsy = ({
     setShowEmployeeModal,
     showNotification,
     removeNotification,
-    handleImageUpload
+    handleImageUpload,
+    commitInfo,
 
 }) => {
 
@@ -25,10 +26,11 @@ const Autopsy = ({
     const handleOpenDiagramModal = () => setShowAutopsyDiagramModal(true);
     const handleCloseDiagramModal = () => setShowAutopsyDiagramModal(false);
 
-    const handleSaveAutopsyDiagram = (markers) => {
+    const handleSaveAutopsyDiagram = (markers, imageUrl) => {
         setFormData(prev => ({
             ...prev,
             autopsyDiagramMarkers: markers,
+            ...(imageUrl && { autopsyDiagramImgurUrl: imageUrl })
         }));
         handleCloseDiagramModal();
         if (showNotification) {
@@ -359,8 +361,8 @@ const Autopsy = ({
                onHide={handleCloseDiagramModal}
                onSaveDiagram={handleSaveAutopsyDiagram}
                handleImageUpload={handleImageUpload}
-               initialMarkers={formData.autopsyDiagramMarkers || []}
                showNotification={showNotification}
+               removeNotification={removeNotification}
             />
         </>
     );

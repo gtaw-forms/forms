@@ -1592,6 +1592,9 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                     <Dropdown.Item onClick={() => {setShowEmsAmaModal(prev => !prev); setShowToolsDropdown(false);}}>
                         <i className="fa-solid fa-truck-medical"></i> EMS AMA
                     </Dropdown.Item>
+                    <Dropdown.Item onClick={() => {setShowCctvRequestModal(true); setShowToolsDropdown(false);}}>
+                        <i className="fas fa-video"></i> LEO Access
+                    </Dropdown.Item>
                     <Dropdown.Item onClick={() => {toggleSeasonalEffects(); setShowToolsDropdown(false);}}>
                         <i className={`fas ${seasonalEffectsEnabled ? 'fa-snowflake' : 'fa-sun'}`}></i> 
                         {seasonalEffectsEnabled ? 'Disable' : 'Enable'} Seasonal Effects
