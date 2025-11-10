@@ -447,6 +447,9 @@ const OnboardingModal = ({
             <p style={timeEstimateStyle}>
                 <i className="fas fa-clock"></i> This should take less than 2 minutes
             </p>
+            <p style={timeEstimateStyle}>
+                Are you looking for a translated version for a Official GTA World Community? Reach out on Discord!
+            </p>
             <Button variant="secondary" onClick={handleBusinessCardOnly} style={{ marginTop: '20px' }}>
                 Just use Business Cards
             </Button>

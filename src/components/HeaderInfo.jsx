@@ -45,12 +45,7 @@ function HeaderInfo() {
         <div className="header-info-wrapper">
             <div className="header-info">
                 <span className="contact-info">
-                    Need help? Contact Alyson Frost on <a
-                        href="http://discord.gg/rrzJ4EeHfK"
-                        className="discord-link"
-                    >
-                        Discord  <i className="fab fa-discord"></i>
-                    </a>❄️❄️ <br /> Developer requests can be forwarded to `fr0stydev` on Discord
+                 Do you wish to have a translated version of this site? Reach out to Alyson Frost on the <i className="fab fa-discord"></i><a href="http://discord.gg/rrzJ4EeHfK">PHMC Discord</a> or contact frostydev on Discord / <a href="https://github.com/gtaw-forms/forms/issues">Github</a>!
                 </span>
                 PHMC Employees shall sign in to view all forms. Non-PHMC users may use the form generator without signing in. <br />
             </div>
