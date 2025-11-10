@@ -34,7 +34,7 @@ These instructions assume you’re setting up the project locally and deploying 
 
 ### 1. Clone the Repository
 ```
-git clone https://github.com/GTAW-PHMC/forms.git
+git clone https://github.com/Ancad-Studios/phmc-tools.git
 cd forms
 ```
 ### 2. Install Dependencies
