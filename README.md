@@ -10,7 +10,7 @@ The `.env` file has been changed, build a fresh `.env` to properly deploy this p
 ## Project Structure
 
 Here's an overview of the main directories and their purpose:
-
+```
 project-root/
 ├── public/                       # Static assets served directly, copied to /build during build
 ├── src/                          # Main React application source
@@ -26,7 +26,7 @@ project-root/
 ├── functions/                    # Firebase Functions — scheduled jobs, API key rotation, etc.
 ├── migration-script-rtdb/        # Scripts for Firebase Realtime Database migrations
 └── ...
-
+```
 
 ## Getting Started
 
