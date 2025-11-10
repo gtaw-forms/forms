@@ -12,7 +12,7 @@ import * as Sentry from "@sentry/react";
  */
 const FactionDataUpload = ({ showNotification }) => {
     const [uploadStatus, setUploadStatus] = useState('idle'); // idle, uploading, preview, success, error
-    const [csvData, setCsvData] = useState(null);
+    const [uploadedFile, setUploadedFile] = useState(null);
     const [parsedData, setParsedData] = useState(null);
     const [uploadResult, setUploadResult] = useState(null);
     const [error, setError] = useState(null);
@@ -22,6 +22,87 @@ const FactionDataUpload = ({ showNotification }) => {
     const [loadingStored, setLoadingStored] = useState(false);
     const [activeTab, setActiveTab] = useState('upload');
     const [lastUpdateInfo, setLastUpdateInfo] = useState(null);
+
+    const parseJSONFile = useCallback((file) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const text = e.target.result;
+                    let jsonData = JSON.parse(text);
+                    let isUcpFormat = false;
+
+                    if (jsonData && typeof jsonData === 'object' && jsonData.data && Array.isArray(jsonData.data)) {
+                        isUcpFormat = true;
+                        jsonData = jsonData.data;
+                    }
+
+                    if (!Array.isArray(jsonData)) {
+                        reject(new Error('JSON file must contain an array of faction members, or be a UCP export with a "data" property.'));
+                        return;
+                    }
+
+                    const parsed = [];
+                    const errors = [];
+
+                    jsonData.forEach((member, index) => {
+                        let characterId, characterName, rank, scriptRank, lastDuty, lastOnline, activity;
+
+                        if (isUcpFormat) {
+                            const idMatch = member.id ? String(member.id).match(/\/(\d+)/) : null;
+                            characterId = idMatch ? idMatch[1] : null;
+                            characterName = member.firstname && member.lastname ? `${member.firstname} ${member.lastname}` : null;
+                            rank = member.rank;
+                            scriptRank = member.scriptrank; // lowercase from UCP
+                            lastDuty = member.lastduty;
+                            lastOnline = member.lastonline;
+                            activity = member.abas;
+                        } else {
+                            // This is for the simple format I assumed before
+                            characterId = member.characterId;
+                            characterName = member.characterName;
+                            rank = member.rank;
+                            scriptRank = member.scriptRank;
+                            lastDuty = member.lastDuty;
+                            lastOnline = member.lastOnline;
+                            activity = member.activity;
+                        }
+
+                        if (!characterId || !characterName || !rank || scriptRank === undefined || scriptRank === null) {
+                            errors.push(`Row ${index + 1}: Missing or invalid data - ID: ${characterId}, Name: ${characterName}, Rank: ${rank}, ScriptRank: ${scriptRank}`);
+                            return;
+                        }
+
+                        parsed.push({
+                            characterId: parseInt(characterId),
+                            characterName,
+                            rank,
+                            scriptRank: parseInt(scriptRank),
+                            lastDuty: lastDuty || null,
+                            lastOnline: lastOnline || null,
+                            activity: activity || null,
+                            lineNumber: index + 1
+                        });
+                    });
+
+                    resolve({
+                        totalRows: jsonData.length,
+                        validRows: parsed.length,
+                        errors,
+                        data: parsed,
+                        fileName: file.name,
+                        fileSize: file.size,
+                        uploadTime: new Date().toISOString()
+                    });
+
+                } catch (error) {
+                    reject(new Error(`Failed to parse JSON: ${error.message}`));
+                }
+            };
+            reader.onerror = () => reject(new Error('Failed to read file'));
+            reader.readAsText(file);
+        });
+    }, []);
 
     // CSV file processing
     const parseCSVFile = useCallback((file) => {
@@ -262,11 +343,19 @@ const FactionDataUpload = ({ showNotification }) => {
 
         setUploadStatus('uploading');
         setError(null);
-        setCsvData(file);
+        setUploadedFile(file);
 
         try {
-            console.log('[Faction Upload] Processing CSV file:', file.name);
-            const parsed = await parseCSVFile(file);
+            let parsed;
+            const isJson = file.type === 'application/json' || file.name.toLowerCase().endsWith('.json');
+
+            if (isJson) {
+                console.log('[Faction Upload] Processing JSON file:', file.name);
+                parsed = await parseJSONFile(file);
+            } else {
+                console.log('[Faction Upload] Processing CSV file:', file.name);
+                parsed = await parseCSVFile(file);
+            }
             
             console.log('[Faction Upload] Parsed data:', {
                 totalRows: parsed.totalRows,
@@ -277,14 +366,15 @@ const FactionDataUpload = ({ showNotification }) => {
             setParsedData(parsed);
             setUploadStatus('preview');
             
+            const fileType = isJson ? 'JSON' : 'CSV';
             if (parsed.errors.length > 0) {
                 showNotification && showNotification(
-                    `CSV parsed with ${parsed.errors.length} errors. Please review before uploading.`,
+                    `${fileType} parsed with ${parsed.errors.length} errors. Please review before uploading.`,
                     'warning'
                 );
             } else {
                 showNotification && showNotification(
-                    `Successfully parsed ${parsed.validRows} faction members from CSV`,
+                    `Successfully parsed ${parsed.validRows} faction members from ${fileType}`,
                     'success'
                 );
             }
@@ -293,15 +383,16 @@ const FactionDataUpload = ({ showNotification }) => {
             console.error('[Faction Upload] Parse error:', error);
             setError(error.message);
             setUploadStatus('error');
-            showNotification && showNotification(`Failed to parse CSV: ${error.message}`, 'error');
+            showNotification && showNotification(`Failed to parse file: ${error.message}`, 'error');
         }
-    }, [parseCSVFile, showNotification]);
+    }, [parseCSVFile, parseJSONFile, showNotification]);
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,
         accept: {
             'text/csv': ['.csv'],
-            'application/vnd.ms-excel': ['.csv']
+            'application/vnd.ms-excel': ['.csv'],
+            'application/json': ['.json']
         },
         multiple: false,
         disabled: uploadStatus === 'uploading'
@@ -363,7 +454,7 @@ const FactionDataUpload = ({ showNotification }) => {
     // Reset for new upload
     const handleReset = () => {
         setUploadStatus('idle');
-        setCsvData(null);
+        setUploadedFile(null);
         setParsedData(null);
         setUploadResult(null);
         setError(null);
@@ -381,16 +472,16 @@ const FactionDataUpload = ({ showNotification }) => {
                 {uploadStatus === 'uploading' ? (
                     <>
                         <Spinner animation="border" className="mb-3" />
-                        <p className="mb-0">Processing CSV file...</p>
+                        <p className="mb-0">Processing file...</p>
                     </>
                 ) : (
                     <>
                         <i className="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
                         <p className="mb-2">
-                            {isDragActive ? 'Drop the CSV file here' : 'Drag & drop faction CSV file here, or click to select'}
+                            {isDragActive ? 'Drop the file here' : 'Drag & drop faction CSV or JSON file here, or click to select'}
                         </p>
                         <p className="text-muted small mb-0">
-                            Supports CSV files exported from GTA World UCP
+                            Supports CSV files from GTA World UCP or a custom JSON array.
                         </p>
                     </>
                 )}
@@ -527,10 +618,10 @@ const FactionDataUpload = ({ showNotification }) => {
                     <Tab eventKey="upload" title={
                         <span>
                             <i className="fas fa-upload me-2"></i>
-                            Upload CSV
+                            Upload File
                         </span>
                     }>
-                    Hello! Please grab a copy of the faction CSV from the GTAWorld UCP and upload it here to manage faction data. <a href="https://ucp.gta.world/view/faction/364">Expand by 'all' and then get CSV, paste it in here.</a>
+                    Hello! Please grab a copy of the faction CSV from the GTAWorld UCP and upload it here to manage faction data. <a href="https://ucp.gta.world/view/faction/364/populate?draw=2&columns%5B0%5D%5Bdata%5D=actions&columns%5B0%5D%5Bname%5D=actions&columns%5B0%5D%5Bsearchable%5D=true&columns%5B0%5D%5Borderable%5D=true&columns%5B0%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B0%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B1%5D%5Bdata%5D=id&columns%5B1%5D%5Bname%5D=characters.id&columns%5B1%5D%5Bsearchable%5D=true&columns%5B1%5D%5Borderable%5D=true&columns%5B1%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B1%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B2%5D%5Bdata%5D=name&columns%5B2%5D%5Bname%5D=name&columns%5B2%5D%5Bsearchable%5D=true&columns%5B2%5D%5Borderable%5D=true&columns%5B2%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B2%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B3%5D%5Bdata%5D=rank&columns%5B3%5D%5Bname%5D=rank&columns%5B3%5D%5Bsearchable%5D=true&columns%5B3%5D%5Borderable%5D=true&columns%5B3%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B3%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B4%5D%5Bdata%5D=scriptrank&columns%5B4%5D%5Bname%5D=scriptrank&columns%5B4%5D%5Bsearchable%5D=true&columns%5B4%5D%5Borderable%5D=true&columns%5B4%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B4%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B5%5D%5Bdata%5D=lastduty&columns%5B5%5D%5Bname%5D=lastduty&columns%5B5%5D%5Bsearchable%5D=true&columns%5B5%5D%5Borderable%5D=true&columns%5B5%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B5%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B6%5D%5Bdata%5D=lastonline&columns%5B6%5D%5Bname%5D=lastonline&columns%5B6%5D%5Bsearchable%5D=true&columns%5B6%5D%5Borderable%5D=true&columns%5B6%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B6%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B7%5D%5Bdata%5D=abas&columns%5B7%5D%5Bname%5D=abas&columns%5B7%5D%5Bsearchable%5D=true&columns%5B7%5D%5Borderable%5D=true&columns%5B7%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B7%5D%5Bsearch%5D%5Bregex%5D=false&order%5B0%5D%5Bcolumn%5D=3&order%5B0%5D%5Bdir%5D=desc&start=0&length=500&search%5Bvalue%5D=&search%5Bregex%5D=false&type=members&filters=&searchTerm=&_=1762736428879">Expand by 'all' and then get CSV.</a> Alternatively, you can upload a JSON file with an array of member objects.
                         {activeTab === 'upload' && (
                             <>
                                 {uploadStatus === 'idle' && renderUploadArea()}

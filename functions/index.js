@@ -1,9 +1,17 @@
-import { onSchedule } from "firebase-functions/v2/scheduler";
-import { setGlobalOptions } from "firebase-functions/v2";
-import { onCall } from "firebase-functions/v2/https";
+import {
+	onSchedule
+} from "firebase-functions/v2/scheduler";
+import {
+	setGlobalOptions
+} from "firebase-functions/v2";
+import {
+	onCall
+} from "firebase-functions/v2/https";
 import * as functions from "firebase-functions";
 import admin from "firebase-admin";
-import { createHash } from 'crypto';
+import {
+	createHash
+} from 'crypto';
 
 // Initialize Firebase Admin SDK
 if (admin.apps.length === 0) {
@@ -12,7 +20,9 @@ if (admin.apps.length === 0) {
 const db = admin.database();
 
 // Set global options for all v2 functions in this file
-setGlobalOptions({ region: "us-central1" }); // Or your preferred region
+setGlobalOptions({
+    region: "us-central1"
+}); // Or your preferred region
 
 // Helper to safely check if secrets exist during deployment
 const secretsExist = (secretNames) => {
@@ -136,14 +146,14 @@ const scheduleDeletion = async (request) => {
 
              const embed = {
                  title: "Bingo Phrase Request Deleted (Scheduled)",
-                 description: `Request ID: ${requestId} automatically deleted.`,
+                 description: `Request ID: ${requestId} automatically deleted.`, 
                  fields: [
                      { name: "Status", value: request.status, inline: true },
                      { name: "Requested By", value: request.requestedBy, inline: true },
                      { name: "Phrase", value: request.phrase, inline: false },
                  ],
                  footer: { text: "PHMC Tools - Scheduled Cleanup" }
-             };
+              };
              await sendWebhook({ embeds: [embed] });
 
         } catch (error) {
@@ -155,7 +165,7 @@ const scheduleDeletion = async (request) => {
 
 // --- Scheduled Cloud Function (v2) ---
 
-// Use ESM 'export' syntax instead of 'exports.dailyTaskHandler =' 
+// Use ESM 'export' syntax instead of 'exports.dailyTaskHandler ='
 export const dailyMaintenanceTask = onSchedule({
     schedule: "every day 09:00",
     timeZone: "UTC",
@@ -311,8 +321,8 @@ export const dailyMaintenanceTask = onSchedule({
                                 path,
                                 timestamp: data?.timestamp || 0,
                                 userId,
-                                reportKey
-                            };
+                            reportKey
+                        };
                         })
                     );
 
@@ -350,50 +360,44 @@ export const dailyMaintenanceTask = onSchedule({
 
     // --- Backup Cleanup Logic ---
     try {
-        console.log('[Maintenance] Starting backup cleanup...');
-        const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000); // 3 days in milliseconds
-        let oldBackupsCleaned = 0;
+		console.log('[Maintenance] Starting backup cleanup...');
+		const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000); // 3 days in milliseconds
+		let oldBackupsCleaned = 0;
 
-        // Clean faction backups
-        try {
-            const factionBackupRef = db.ref('factions');
-            const factionSnapshot = await factionBackupRef.once('value');
+		// Clean faction backups
+		const factionBackupRef = db.ref('factions');
+		const factionSnapshot = await factionBackupRef.once('value');
 
-            if (factionSnapshot.exists()) {
-                const factions = factionSnapshot.val();
+		if (factionSnapshot.exists()) {
+			const factions = factionSnapshot.val();
 
-                for (const [factionId, factionData] of Object.entries(factions)) {
-                    if (factionData?.backups) {
-                        const backupPromises = Object.entries(factionData.backups)
-                            .map(async ([backupKey, backupData]) => {
-                                if (backupData?.backedUpAt && backupData.backedUpAt < threeDaysAgo) {
-                                    try {
-                                        const backupRef = db.ref(`factions/${factionId}/backups/${backupKey}`);
-                                        await backupRef.remove();
-                                        oldBackupsCleaned++;
-                                        console.log(`[Maintenance] Deleted old faction backup: ${factionId}/${backupKey}`);
-                                    } catch (backupError) {
-                                        console.error(`[Maintenance] Error deleting faction backup ${factionId}/${backupKey}: ${backupError?.message || String(backupError)}`);
-                                        maintenanceResults.backupCleanup.errors.push(`Failed to delete faction backup: ${factionId}/${backupKey}`);
-                                    }
-                                }
-                            });
+			for (const [factionId, factionData] of Object.entries(factions)) {
+				if (factionData?.backups) {
+					const backupPromises = Object.entries(factionData.backups)
+						.map(async ([backupKey, backupData]) => {
+							if (backupData?.backedUpAt && backupData.backedUpAt < threeDaysAgo) {
+								try {
+									const backupRef = db.ref(`factions/${factionId}/backups/${backupKey}`);
+									await backupRef.remove();
+									oldBackupsCleaned++;
+									console.log(`[Maintenance] Deleted old faction backup: ${factionId}/${backupKey}`);
+								} catch (backupError) {
+									console.error(`[Maintenance] Error deleting faction backup ${factionId}/${backupKey}: ${backupError?.message || String(backupError)}`);
+									maintenanceResults.backupCleanup.errors.push(`Failed to delete faction backup: ${factionId}/${backupKey}`);
+								}
+							}
+						});
+					await Promise.all(backupPromises);
+				}
+			}
+		}
 
-                        await Promise.all(backupPromises);
-                    }
-                }
-            }
-        } catch (factionError) {
-            console.error('Error during faction backup cleanup:', factionError);
-            maintenanceResults.backupCleanup.errors.push(`Faction backup cleanup error: ${factionError.message}`);
-        }
-
-        maintenanceResults.backupCleanup.oldBackupsCleaned = oldBackupsCleaned;
-        console.log(`[Maintenance] Backup cleanup complete: cleaned ${oldBackupsCleaned} old backups`);
-    } catch (error) {
-        console.error(`Error during backup cleanup: ${error?.message || String(error)}`);
-        maintenanceResults.backupCleanup.errors.push(`Backup cleanup error: ${error.message}`);
-    }
+		maintenanceResults.backupCleanup.oldBackupsCleaned = oldBackupsCleaned;
+		console.log(`[Maintenance] Backup cleanup complete: cleaned ${oldBackupsCleaned} old backups`);
+	} catch (error) {
+		console.error(`Error during backup cleanup: ${error?.message || String(error)}`);
+		maintenanceResults.backupCleanup.errors.push(`Backup cleanup error: ${error.message}`);
+	}
 
     // --- Webhook Log Cleanup Logic ---
     try {
@@ -463,12 +467,18 @@ export const dailyMaintenanceTask = onSchedule({
         fields: [
             {
                 name: "🎯 Bingo Reset Status",
-                value: `\`\`\`\n${bingoDetails.trim() || "No bingo actions taken."}\n\`\`\``,
+                value: `
+${bingoDetails.trim() || "No bingo actions taken."} 
+
+`, 
                 inline: false
             },
             {
                 name: "📝 Phrase Request Deletion",
-                value: `\`\`\`\n${phraseRequestsDetails.trim() || "No phrase request actions taken."}\n\`\`\``,
+                value: `
+${phraseRequestsDetails.trim() || "No phrase request actions taken."} 
+
+`, 
                 inline: false
             },
             {
@@ -590,9 +600,9 @@ const CACHE_EXPIRY = 5 * 60 * 1000; // 5 minutes
         console.error(`[Proxy] Error in proxyGtaWorldApi for endpoint ${endpoint}:`, error);
         throw new functions.https.HttpsError('internal', 'Failed to proxy request to GTA World API.', error.message);
     }
-});
+ });
  */
-export const exchangeAuthCodeForToken = onCall({ 
+export const exchangeAuthCodeForToken = onCall({
     secrets: ["GTAWORLD_CLIENT_ID", "GTAWORLD_CLIENT_SECRET"],
     cors: [
         'https://ancad-studios.github.io',
@@ -759,6 +769,9 @@ export const exchangeAuthCodeForToken = onCall({
                         if (tokenData.hint && tokenData.hint.includes('revoked')) {
                             userFriendlyMessage = 'This login attempt has expired or was already used. Please try logging in again.';
                             errorMessage = 'Authorization code has been revoked (likely due to duplicate request)';
+                        } else if (tokenData.hint && tokenData.hint.includes('Authorization code has expired')) {
+                            userFriendlyMessage = 'Your login attempt has expired. Please try logging in again.';
+                            errorMessage = 'Authorization code has expired';
                         } else {
                             userFriendlyMessage = 'Invalid login request. Please try again.';
                         }
@@ -954,7 +967,7 @@ export const exchangeAuthCodeForToken = onCall({
  * Helper function to get access token for Firebase Secrets setup
  * This function performs OAuth and clearly logs the token for easy copying
  */
-export const getTokenForSecrets = onCall({ 
+export const getTokenForSecrets = onCall({
     secrets: ["GTAWORLD_CLIENT_ID", "GTAWORLD_CLIENT_SECRET"],
     cors: [
         'https://ancad-studios.github.io',
@@ -1037,7 +1050,7 @@ export const getTokenForSecrets = onCall({
                 tokenLength: tokenData.access_token.length
             },
             setupInstructions: [
-                `firebase functions:secrets:set GTAWORLD_PERSISTENT_TOKEN --data="${tokenData.access_token}"`,
+                `firebase functions:secrets:set GTAWORLD_PERSISTENT_TOKEN --data="${tokenData.access_token}"`, 
                 tokenData.refresh_token ? `firebase functions:secrets:set GTAWORLD_REFRESH_TOKEN --data="${tokenData.refresh_token}"` : null,
                 'firebase deploy --only functions'
             ].filter(Boolean),
@@ -1077,12 +1090,13 @@ export const getManagedGtaWorldToken = onCall({
             success: false,
             error: 'No persistent token configured',
             message: 'Please set GTAWORLD_PERSISTENT_TOKEN secret using: firebase functions:secrets:set GTAWORLD_PERSISTENT_TOKEN',
-            setupInstructions: [
-                '1. First call getTokenForSecrets to get your access token',
-                '2. Run: firebase functions:secrets:set GTAWORLD_PERSISTENT_TOKEN --data="YOUR_TOKEN"',
-                '3. Deploy functions again: firebase deploy --only functions',
-                '4. Then you can use getManagedGtaWorldToken'
-            ]
+            setupInstructions:
+                [
+                    '1. First call getTokenForSecrets to get your access token',
+                    '2. Run: firebase functions:secrets:set GTAWORLD_PERSISTENT_TOKEN --data="YOUR_TOKEN"',
+                    '3. Deploy functions again: firebase deploy --only functions',
+                    '4. Then you can use getManagedGtaWorldToken'
+                ]
         };
     }
     
@@ -1193,11 +1207,12 @@ export const getProfileWithManagedToken = onCall({
             success: false,
             error: 'No persistent token configured',
             message: 'Please set GTAWORLD_PERSISTENT_TOKEN secret first',
-            setupInstructions: [
-                '1. Call getTokenForSecrets to get your access token',
-                '2. Run: firebase functions:secrets:set GTAWORLD_PERSISTENT_TOKEN --data="YOUR_TOKEN"',
-                '3. Deploy functions: firebase deploy --only functions'
-            ]
+            setupInstructions:
+                [
+                    '1. Call getTokenForSecrets to get your access token',
+                    '2. Run: firebase functions:secrets:set GTAWORLD_PERSISTENT_TOKEN --data="YOUR_TOKEN"',
+                    '3. Deploy functions: firebase deploy --only functions'
+                ]
         };
     }
     
@@ -1824,13 +1839,13 @@ export const batchCheckFactionMembership = onCall({
                 totalCharacters: characterIds.length,
                 membersFound,
                 membersNotFound,
-                highestRankingMember: highestRankMember,
-                factionInfo: {
-                    factionId,
-                    lastUpdated: factionMetadata.lastUpdated,
-                    memberCount: factionMetadata.statistics?.validRecords || 0
-                }
-            },
+            highestRankingMember: highestRankMember,
+            factionInfo: {
+                factionId,
+                lastUpdated: factionMetadata.lastUpdated,
+                memberCount: factionMetadata.statistics?.validRecords || 0
+            }
+        },
             timestamp: new Date().toISOString()
         };
         
@@ -1995,38 +2010,232 @@ function getPermissionsForRank(scriptRank) {
     const permissionMap = {
         15: ['admin_full_access', 'upload_faction_data', 'manage_all_reports', 'view_all_members', 'configure_permissions', 'access_audit_logs', 'manage_webhooks', 'database_access'],
         14: ['admin_full_access', 'upload_faction_data', 'manage_department_reports', 'view_all_members', 'access_audit_logs', 'manage_webhooks'],
-        13: ['admin_limited_access', 'manage_department_reports', 'view_department_members', 'create_reports', 'view_audit_logs'],
-        12: ['admin_limited_access', 'manage_own_reports', 'view_department_members', 'create_reports'],
-        11: ['view_own_reports', 'create_reports', 'view_team_members', 'manage_webhooks'],
-        10: ['view_own_reports', 'create_basic_reports']
+        13: ['upload_faction_data', 'manage_department_reports', 'view_all_members'],
+        12: ['manage_own_reports', 'view_department_members'],
+        11: ['manage_own_reports', 'view_department_members'],
+        10: ['manage_own_reports', 'view_department_members'],
+        9: ['manage_own_reports', 'view_department_members'],
+        8: ['manage_own_reports', 'view_department_members'],
+        7: ['manage_own_reports', 'view_department_members'],
+        6: ['manage_own_reports', 'view_department_members'],
+        5: ['manage_own_reports', 'view_department_members'],
+        4: ['manage_own_reports', 'view_department_members'],
+        3: ['manage_own_reports', 'view_department_members'],
+        2: ['manage_own_reports', 'view_department_members'],
+        1: ['view_own_reports'],
+        0: ['view_own_reports']
     };
-    
-    // Handle ranges for lower ranks
-    if (scriptRank >= 7 && scriptRank <= 9) {
-        return ['view_own_reports', 'create_basic_reports'];
-    } else if (scriptRank >= 4 && scriptRank <= 6) {
-        return ['view_own_reports'];
-    } else if (scriptRank >= 1 && scriptRank <= 3) {
-        return ['limited_access'];
-    }
     
     return permissionMap[scriptRank] || [];
 }
 
 /**
- * Helper function to get access level based on script rank
+ * Helper function to get a simplified access level string
  */
 function getAccessLevel(scriptRank) {
-    if (scriptRank >= 15) return 'leadership';
-    if (scriptRank >= 14) return 'leadership';
-    if (scriptRank >= 13) return 'senior_management';
-    if (scriptRank >= 12) return 'middle_management';
-    if (scriptRank >= 11) return 'supervisor';
-    if (scriptRank >= 10) return 'attending';
-    if (scriptRank >= 9) return 'resident';
-    if (scriptRank >= 8) return 'upper_level';
-    if (scriptRank >= 7) return 'mid_level';
-    if (scriptRank >= 6) return 'administration';
-    if (scriptRank >= 5) return 'entry_level';
+    if (scriptRank >= 14) return 'admin';
+    if (scriptRank >= 12) return 'management';
+    if (scriptRank >= 1) return 'member';
     return 'none';
 }
+
+export const getSavedReports = onCall({
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000'
+    ]
+}, async (request) => {
+    console.log('[Saved Reports] Starting saved reports retrieval');
+    
+    const { userId } = request.data;
+    
+    if (!userId) {
+        throw new functions.https.HttpsError('invalid-argument', 'User ID is required');
+    }
+    
+    try {
+        console.log('[Saved Reports] Looking up reports for user ID:', userId);
+        
+        const sanitizedUserId = userId.trim().replace(/[.#$[\\\] ]+/g, '_');
+        const userReportsPath = `savedReports/${sanitizedUserId}`;
+        const reportsRef = db.ref(userReportsPath);
+        
+        const snapshot = await reportsRef.once('value');
+        
+        if (!snapshot.exists()) {
+            console.log('[Saved Reports] No reports found for user:', userId);
+            return {
+                success: true,
+                reports: [],
+                message: 'No reports found for this user'
+            };
+        }
+        
+        const reportsData = snapshot.val();
+        const sanitizedReports = Object.keys(reportsData).map(reportKey => {
+            const report = reportsData[reportKey];
+            return {
+                key: reportKey,
+                originalKey: report.originalKey,
+                bbCodeVersion: report.bbCodeVersion,
+                timestamp: report.timestamp,
+                authorName: report.authorName,
+            };
+        });
+        
+        console.log(`[Saved Reports] Found ${sanitizedReports.length} reports for user:`, userId);
+        
+        return {
+            success: true,
+            reports: sanitizedReports,
+            message: `Found ${sanitizedReports.length} reports`
+        };
+        
+    } catch (error) {
+        console.error('[Saved Reports] Error retrieving reports:', error);
+        
+        throw new functions.https.HttpsError('internal', 'Failed to retrieve saved reports', {
+            originalError: error.message
+        });
+    }
+});
+
+export const migrateReportsToNewStructure = onCall({
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000'
+    ]
+}, async (request) => {
+    console.log('[Migration] Starting report structure migration.');
+
+    // Security: Ensure the user is an administrator
+    // This assumes you have a custom claim 'admin' set to true for your admin users.
+    if (request.auth?.token?.admin !== true) {
+        console.warn(`[Migration] Unauthorized attempt by UID: ${request.auth?.uid}`);
+        throw new functions.https.HttpsError('permission-denied', 'You must be an admin to perform this operation.');
+    }
+
+    try {
+        const reportsRef = db.ref('savedReports');
+        const snapshot = await reportsRef.once('value');
+
+        if (!snapshot.exists()) {
+            console.log('[Migration] No reports found to migrate.');
+            return { success: true, message: 'No reports found. Nothing to migrate.', migratedCount: 0 };
+        }
+
+        const allUsersReports = snapshot.val();
+        const updates = {};
+        let migratedCount = 0;
+        let processedCount = 0;
+
+        console.log('[Migration] Scanning all user reports for old structure...');
+
+        for (const userId in allUsersReports) {
+            const userReports = allUsersReports[userId];
+            if (!userReports || typeof userReports !== 'object') continue;
+
+            for (const reportId in userReports) {
+                processedCount++;
+                const report = userReports[reportId];
+
+                // Check if the report is in the old format (has a bbCode property)
+                if (report && typeof report === 'object' && report.hasOwnProperty('bbCode')) {
+                    const bbCodeContent = report.bbCode;
+
+                    // 1. Define path for the new BBCode-only entry
+                    const bbCodePath = `/savedReportBBCode/${userId}/${reportId}`;
+                    updates[bbCodePath] = { bbCode: bbCodeContent };
+
+                    // 2. Define path to remove the bbCode from the original report
+                    const originalReportBbCodePath = `/savedReports/${userId}/${reportId}/bbCode`;
+                    updates[originalReportBbCodePath] = null; // Setting to null deletes the key in a multi-path update
+
+                    migratedCount++;
+                }
+            }
+        }
+
+        console.log(`[Migration] Scan complete. Found ${migratedCount} reports to migrate out of ${processedCount} total reports.`);
+
+        if (migratedCount > 0) {
+            console.log('[Migration] Applying multi-path update to migrate reports...');
+            await db.ref().update(updates);
+            console.log('[Migration] Multi-path update complete.');
+        } else {
+            console.log('[Migration] No reports required migration.');
+        }
+
+        return {
+            success: true,
+            message: `Migration complete. Scanned ${processedCount} reports and migrated ${migratedCount} to the new structure.`, 
+            migratedCount: migratedCount,
+            totalScanned: processedCount
+        };
+
+    } catch (error) {
+        console.error('[Migration] Error during report migration:', error);
+        throw new functions.https.HttpsError('internal', 'An error occurred during the migration process.', {
+            originalError: error.message
+        });
+    }
+});
+
+export const gtawAccountSync = onCall({
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000'
+    ]
+}, async (request) => {
+    console.log('[GTAW Account Sync] Starting account synchronization.');
+
+    // Ensure user is authenticated
+    if (!request.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Authentication required to sync GTAW account.');
+    }
+
+    const { gtaUser, options } = request.data;
+    const uid = request.auth.uid;
+
+    if (!gtaUser || !gtaUser.id || !gtaUser.username) {
+        throw new functions.https.HttpsError('invalid-argument', 'GTA World user data is missing or incomplete.');
+    }
+
+    try {
+        const userProfileRef = db.ref(`users/${uid}/gtawProfile`);
+
+        // Prepare data to save
+        const profileData = {
+            gtawId: gtaUser.id,
+            gtawUsername: gtaUser.username,
+            // Store characters if available
+            characters: gtaUser.character ? gtaUser.character.map(char => ({
+                id: char.id,
+                name: char.name || `${char.firstname || ''} ${char.lastname || ''}`.trim(),
+                // Add other relevant character data if needed
+            })) : [],
+            lastSynced: admin.database.ServerValue.TIMESTAMP,
+            syncOptions: options || {} // Store options for debugging/future use
+        };
+
+        await userProfileRef.set(profileData);
+
+        console.log(`[GTAW Account Sync] Successfully synced GTAW profile for UID: ${uid}, GTAW User: ${gtaUser.username}`);
+
+        return {
+            success: true,
+            message: `GTAW account synced successfully for ${gtaUser.username}.`,
+            gtawId: gtaUser.id,
+            uid: uid
+        };
+
+    } catch (error) {
+        console.error(`[GTAW Account Sync] Error syncing account for UID: ${uid}, GTAW User: ${gtaUser.username}:`, error);
+        throw new functions.https.HttpsError('internal', 'Failed to sync GTAW account data.', {
+            originalError: error.message
+        });
+    }
+});
