@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import { getFormDefinition } from '../formDefinitions'; // Assuming this path
 import { database } from '../firebase'; // Assuming this path
 import { ref, get, set, remove } from 'firebase/database';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import * as Sentry from "@sentry/react";
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
 import { getCharacterName, getCharacterID } from '../utils/characterUtils';
@@ -262,35 +263,66 @@ export const useReportManagement = (
         const reportDataToSave = {
             bbCodeVersion: bbCodeVersion,
             data: filterFormData(formData, bbCodeVersion),
-            bbCode: bbCodeContent,
+            // bbCode is now saved separately
             timestamp: Date.now(),
             originalKey: key,
             authorName: currentAuthor
         };
 
-        // Automatically add GTAW character data if user is authenticated with OAuth
+        // --- MODIFIED GTAW DATA HANDLING ---
+        let gtawDataFound = false;
+        let userForGtawData = null;
+
         if (isGtaAuthenticated && gtaWorldUser) {
-            reportDataToSave.gtawUsername = gtaWorldUser.username;
-            reportDataToSave.gtawCharacterId = getCharacterID(gtaWorldUser); // Use utility function to get correct character ID
-            reportDataToSave.gtawCharacterName = getCharacterName(gtaWorldUser); // Use utility function to get correct character name
+            gtawDataFound = true;
+            userForGtawData = gtaWorldUser;
+        } else {
+            const storedProfileRaw = localStorage.getItem('phmc_gtaw_oauth_profile');
+            if (storedProfileRaw) {
+                try {
+                    const storedProfile = JSON.parse(storedProfileRaw);
+                    if (storedProfile) {
+                        gtawDataFound = true;
+                        userForGtawData = storedProfile;
+                    }
+                } catch (e) {
+                    console.error("Error parsing stored GTAW profile:", e);
+                    Sentry.captureException(e, { extra: { context: 'saveReport - parsing stored profile' } });
+                }
+            }
+        }
+
+        if (gtawDataFound && userForGtawData) {
+            reportDataToSave.gtawUsername = userForGtawData.username;
+            reportDataToSave.gtawCharacterId = getCharacterID(userForGtawData);
+            reportDataToSave.gtawCharacterName = getCharacterName(userForGtawData);
             reportDataToSave.gtawSyncTimestamp = new Date().toISOString();
-            reportDataToSave.gtawSyncVersion = '1.1';
-            
-            console.log('📄 [Report Save] Automatically added GTAW data to saved report:', {
+            reportDataToSave.gtawSyncVersion = '1.2-local'; // Mark as potentially from local storage
+
+            console.log('📄 [Report Save] Added GTAW data to saved report:', {
                 username: reportDataToSave.gtawUsername,
                 characterId: reportDataToSave.gtawCharacterId,
                 characterName: reportDataToSave.gtawCharacterName,
-                author: currentAuthor
+                author: currentAuthor,
+                source: isGtaAuthenticated ? 'live' : 'local'
             });
         }
+        // --- END MODIFIED GTAW DATA HANDLING ---
 
         const reportPath = `savedReports/${sanitizedAuthorId}/${sanitizedKey}`;
+        const bbCodePath = `savedReportBBCode/${sanitizedAuthorId}/${sanitizedKey}`;
 
         try {
             const reportRef = ref(database, reportPath);
-            await set(reportRef, reportDataToSave);
+            const bbCodeRef = ref(database, bbCodePath);
 
-            const successMessage = isGtaAuthenticated && gtaWorldUser ?
+            // Save both main report data and BBCode data in parallel
+            await Promise.all([
+                set(reportRef, reportDataToSave),
+                set(bbCodeRef, { bbCode: bbCodeContent })
+            ]);
+
+            const successMessage = gtawDataFound ?
                 `Report "${key}" saved for ${currentAuthor} to Firebase with GTAW data!` :
                 `Report "${key}" saved for ${currentAuthor} to Firebase!`;
             showNotification(successMessage, 'save');
@@ -301,13 +333,13 @@ export const useReportManagement = (
                 reportKey: sanitizedKey,
                 originalKey: key,
                 bbCodeVersion: bbCodeVersion,
-                hasGtawData: isGtaAuthenticated && !!gtaWorldUser
+                hasGtawData: gtawDataFound
             };
 
-            if (isGtaAuthenticated && gtaWorldUser) {
-                webhookPayload.gtawUsername = gtaWorldUser.username;
-                webhookPayload.gtawCharacterId = getCharacterID(gtaWorldUser); // Use utility function to get correct character ID
-                webhookPayload.gtawCharacterName = getCharacterName(gtaWorldUser); // Use utility function to get correct character name
+            if (gtawDataFound && userForGtawData) {
+                webhookPayload.gtawUsername = userForGtawData.username;
+                webhookPayload.gtawCharacterId = getCharacterID(userForGtawData);
+                webhookPayload.gtawCharacterName = getCharacterName(userForGtawData);
             }
 
             await logWebhook(`report_saved by ${currentAuthor}`, webhookPayload);
@@ -354,41 +386,25 @@ export const useReportManagement = (
         setSelectedUserForSavedReports(userId);
         const loadingNotifId = showNotification(`Loading reports for ${userId}...`, 'info-circle', 0);
 
-        const sanitizedUserId = comprehensiveSanitize(userId);
-        const userReportsPath = `savedReports/${sanitizedUserId}`;
-        const reportsRef = ref(database, userReportsPath);
-
         try {
-            const snapshot = await get(reportsRef);
+            const functions = getFunctions();
+            const getSavedReports = httpsCallable(functions, 'getSavedReports');
+            const result = await getSavedReports({ userId });
+
             removeNotification(loadingNotifId);
 
-            if (snapshot.exists()) {
-                const reportsData = snapshot.val();
-                const validReports = [];
-                for (const reportKey in reportsData) {
-                    const report = reportsData[reportKey];
-                    validReports.push({
-                        key: reportKey,
-                        originalKey: report.originalKey,
-                        bbCodeVersion: report.bbCodeVersion,
-                        timestamp: report.timestamp,
-                        authorName: report.authorName,
-                        bbCode: report.bbCode,
-                    });
-                }
+            if (result.data.success) {
+                const reports = result.data.reports || [];
+                reports.sort((a, b) => b.timestamp - a.timestamp);
+                setSavedReports(reports);
 
-                validReports.sort((a, b) => b.timestamp - a.timestamp);
-                setSavedReports(validReports);
-
-                if (validReports.length > 0) {
-                    showNotification(`Loaded ${validReports.length} report(s) for ${userId}.`, 'check-circle');
+                if (reports.length > 0) {
+                    showNotification(`Loaded ${reports.length} report(s) for ${userId}.`, 'check-circle');
                 } else {
                     showNotification(`No active reports found for ${userId}.`, 'info-circle');
                 }
-
             } else {
-                setSavedReports([]);
-                showNotification(`No reports found for ${userId}.`, 'info-circle');
+                throw new Error(result.data.message || 'Failed to load reports.');
             }
         } catch (error) {
             removeNotification(loadingNotifId);
@@ -399,7 +415,7 @@ export const useReportManagement = (
         } finally {
             setIsLoadingUserReports(false);
         }
-    }, [showNotification, removeNotification, setSavedReports, setSelectedUserForSavedReports, setIsLoadingUserReports, database]);
+    }, [showNotification, removeNotification, setSavedReports, setSelectedUserForSavedReports, setIsLoadingUserReports]);
 
     const loadReportForUser = useCallback(async (reportFirebaseKey, userId, returnOnly = false) => {
         if (!userId || !reportFirebaseKey) {
@@ -409,7 +425,10 @@ export const useReportManagement = (
 
         const sanitizedUserId = comprehensiveSanitize(userId);
         const reportPath = `savedReports/${sanitizedUserId}/${reportFirebaseKey}`;
+        const bbCodePath = `savedReportBBCode/${sanitizedUserId}/${reportFirebaseKey}`;
         const reportRef = ref(database, reportPath);
+        const bbCodeRef = ref(database, bbCodePath);
+
 
         let loadingNotifId;
         if (!returnOnly) { // Only show notification if we are directly loading into the form
@@ -417,9 +436,16 @@ export const useReportManagement = (
         }
 
             try {
-                const snapshot = await get(reportRef);
-                if (snapshot.exists()) {
-                    const reportData = snapshot.val();
+                const [reportSnapshot, bbCodeSnapshot] = await Promise.all([
+                    get(reportRef),
+                    get(bbCodeRef)
+                ]);
+
+                if (reportSnapshot.exists()) {
+                    const reportData = reportSnapshot.val();
+                    // Manually add the bbCode to the reportData object
+                    reportData.bbCode = bbCodeSnapshot.exists() ? bbCodeSnapshot.val().bbCode : '';
+
                     const loadedVersion = reportData.bbCodeVersion;
                     let loadedBbCode = reportData.bbCode || '';
                     let loadedFormData = reportData.data || {};
@@ -770,9 +796,10 @@ export const useReportManagement = (
         }
 
         const sanitizedUserId = comprehensiveSanitize(userId);
-        // reportFirebaseKey is already sanitized
         const reportPath = `savedReports/${sanitizedUserId}/${reportFirebaseKey}`;
+        const bbCodePath = `savedReportBBCode/${sanitizedUserId}/${reportFirebaseKey}`;
         const reportRef = ref(database, reportPath);
+        const bbCodeRef = ref(database, bbCodePath);
 
         // Optional: Ask for confirmation before deleting
         // if (!window.confirm(`Are you sure you want to delete this report?`)) {
@@ -780,7 +807,11 @@ export const useReportManagement = (
         // }
 
         try {
-            await remove(reportRef);
+            // Delete both the main report and the BBCode in parallel
+            await Promise.all([
+                remove(reportRef),
+                remove(bbCodeRef)
+            ]);
             showNotification(`Report deleted successfully from Firebase.`, 'trash');
             // Refresh the list of saved reports for the current user
             if (selectedUserForSavedReports === userId) {

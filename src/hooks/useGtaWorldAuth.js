@@ -48,14 +48,51 @@ export const useGtaWorldAuth = () => {
     }, [user, activeCharacter]);
 
     const swapCharacter = useCallback((characterId) => {
-        if (user && user.allFactionCharacters) {
-            const characterToSet = user.allFactionCharacters.find(c => c.character.characterId === characterId);
-            if (characterToSet) {
-                setActiveCharacter(characterToSet.character);
-                console.log(`Swapped active character to: ${characterToSet.character.characterName}`);
-            } else {
-                console.error(`Character with ID ${characterId} not found for this user.`);
+        if (!user) {
+            console.error("Cannot swap character, no user found.");
+            return;
+        }
+
+        const sources = [
+            user.allFactionCharacters,
+            user.character,
+            user.characters,
+        ].filter(Array.isArray);
+
+        let characterToSetActive = null;
+
+        for (const source of sources) {
+            // Try nested structure: [{ character: { characterId: ... } }]
+            const nestedFind = source.find(c => c?.character?.characterId === characterId);
+            if (nestedFind) {
+                characterToSetActive = nestedFind.character;
+                break;
             }
+
+            // Try flat structure: [{ id: ... }]
+            const flatFind = source.find(c => c?.id === characterId);
+            if (flatFind) {
+                // This is a partial character. We need to find the full data if possible.
+                // The best source for full data is likely allFactionCharacters if it exists.
+                const fullData = user.allFactionCharacters?.find(c => c?.character?.characterId === flatFind.id)?.character;
+                if (fullData) {
+                    characterToSetActive = fullData;
+                } else {
+                    // Fallback to constructing from flat data. Rank/scriptRank will be missing.
+                    characterToSetActive = {
+                        characterId: flatFind.id,
+                        characterName: flatFind.name || `${flatFind.firstname || ''} ${flatFind.lastname || ''}`.trim(),
+                    };
+                }
+                break;
+            }
+        }
+
+        if (characterToSetActive) {
+            setActiveCharacter(characterToSetActive);
+            console.log(`Swapped active character to: ${characterToSetActive.characterName}`);
+        } else {
+            console.error(`Character with ID ${characterId} not found for this user.`);
         }
     }, [user]);
 
@@ -254,6 +291,26 @@ export const useGtaWorldAuth = () => {
         setError(null);
     }, []);
 
+    const loadFromSavedProfile = useCallback((savedProfile) => {
+        if (!savedProfile) return;
+
+        // Construct a user object from the saved profile
+        const userFromProfile = {
+            username: savedProfile.username,
+            id: savedProfile.userId,
+            isFactionMember: savedProfile.isFactionMember,
+            faction: savedProfile.faction,
+            allFactionCharacters: savedProfile.swappableCharacters,
+            character: savedProfile.swappableCharacters,
+            characters: savedProfile.swappableCharacters,
+            accessLevel: savedProfile.accessLevel,
+            permissions: savedProfile.permissions,
+        };
+        setUser(userFromProfile);
+        setActiveCharacter(savedProfile.faction);
+        setIsLoading(false);
+    }, []);
+
     return {
         user,
         isAuthenticated: !!user,
@@ -280,6 +337,7 @@ export const useGtaWorldAuth = () => {
         swapCharacter,
         canSwapCharacters: swappableCharacters.length > 0,
         updateFactionData,
+        loadFromSavedProfile,
     };
 };
 

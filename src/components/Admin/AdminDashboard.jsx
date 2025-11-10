@@ -9,6 +9,7 @@ import FactionDataUpload from './FactionDataUpload';
 import GtaWorldLoginButton from '../Auth/GtaWorldLoginButton';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import useFactionPermissions from '../../hooks/useFactionPermissions';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { isGoogleAuthenticated, getGoogleUser } from '../../services/gtaWorldAuth';
 import { runOAuthDiagnostics, testFirebaseFunctions, testProfileRetrieval, logEnvironmentInfo } from '../../services/firebaseDebug';
 import WebhookManager from './WebhookManager';
@@ -79,6 +80,7 @@ const AdminDashboard = ({
     const [selectedSection, setSelectedSection] = useState('serviceStatus');
     const [diagnosticsResult, setDiagnosticsResult] = useState(null);
     const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
+    const [isMigratingReports, setIsMigratingReports] = useState(false); // Add this state
     const navigate = useNavigate();
     
     // Use the unified GTA World auth hook
@@ -211,6 +213,44 @@ const AdminDashboard = ({
         } catch (error) {
             console.error('Error sending test webhook:', error);
             showInAppNotification && showInAppNotification('Error sending test webhook', 'error');
+        }
+    };
+
+    const handleMigrateReports = async () => {
+        if (!window.confirm("Are you sure you want to run the report migration? This operation cannot be undone.")) {
+            return;
+        }
+
+        setIsMigratingReports(true);
+        showInAppNotification && showInAppNotification('Starting report migration...', 'info');
+
+        try {
+            const functions = getFunctions();
+            const migrateReports = httpsCallable(functions, 'migrateReportsToNewStructure');
+            const result = await migrateReports();
+
+            if (result.data.success) {
+                showInAppNotification && showInAppNotification(
+                    `Migration complete: ${result.data.migratedCount} reports migrated.`,
+                    'success'
+                );
+                console.log('Migration result:', result.data);
+            } else {
+                showInAppNotification && showInAppNotification(
+                    `Migration failed: ${result.data.message || 'Unknown error'}`,
+                    'error'
+                );
+                console.error('Migration failed:', result.data);
+            }
+        } catch (error) {
+            console.error('Error calling migrateReportsToNewStructure:', error);
+            showInAppNotification && showInAppNotification(
+                `Error during migration: ${error.message}`,
+                'error'
+            );
+            Sentry.captureException(error, { extra: { context: 'handleMigrateReports' } });
+        } finally {
+            setIsMigratingReports(false);
         }
     };
 
@@ -978,6 +1018,20 @@ const AdminDashboard = ({
                                         >
                                             <i className="fas fa-network-wired me-2"></i>
                                             Test Firebase Functions
+                                        </Button>
+                                        <Button
+                                            variant="danger"
+                                            size="sm"
+                                            onClick={handleMigrateReports}
+                                            disabled={isMigratingReports || !hasAdminAccess}
+                                            title={hasAdminAccess ? "Migrate old report data to new structure" : "Requires admin access permission"}
+                                        >
+                                            {isMigratingReports ? (
+                                                <Spinner as="span" animation="border" size="sm" />
+                                            ) : (
+                                                <i className="fas fa-database me-2"></i>
+                                            )}
+                                            Migrate Reports
                                         </Button>
                                         <Button 
                                             variant="warning" 

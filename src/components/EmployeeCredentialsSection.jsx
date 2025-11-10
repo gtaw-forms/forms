@@ -41,6 +41,7 @@ const EmployeeCredentialsSection = ({
     swappableCharacters,
     factionData,
     updateFactionData,
+    loadFromSavedProfile,
   } = useGtaWorldAuth();
   const { showNotification: notifyFromContext } = useNotification?.() || {};
 
@@ -136,6 +137,26 @@ const EmployeeCredentialsSection = ({
     const badge = factionData?.characterId || getCharacterID(gtaWorldUser) || null;
     const rankRaw = factionData?.rank || gtaWorldUser?.faction?.rank || gtaWorldUser?.faction?.scriptRank || '';
     const rank = rankRaw ? cleanRankText(rankRaw) : '';
+
+    const getCharId = (c) => c?.character?.characterId ?? c?.id ?? null;
+    const getCharName = (c) => c?.character?.characterName ?? c?.name ?? null;
+
+    const normalizedSwappable = swappableCharacters.map(c => {
+      const charId = getCharId(c);
+      let charData = {
+        characterId: charId,
+        characterName: getCharName(c),
+      };
+
+      // If this is the currently active character, we have full data for it.
+      if (charId === factionData.characterId) {
+        charData = { ...charData, ...factionData };
+      }
+      
+      return { character: charData };
+    }).filter(c => c.character.characterId);
+
+
     return {
       username: gtaWorldUser?.username || null,
       userId: gtaWorldUser?.id || null,
@@ -148,6 +169,7 @@ const EmployeeCredentialsSection = ({
             scriptRank: factionData.scriptRank || null,
           }
         : null,
+      swappableCharacters: normalizedSwappable,
       preferredEmployee: {
         name,
         badge,
@@ -158,7 +180,7 @@ const EmployeeCredentialsSection = ({
       accessLevel: gtaWorldUser?.accessLevel || 'none',
       permissions: Array.isArray(gtaWorldUser?.permissions) ? gtaWorldUser.permissions : [],
       savedAt: Date.now(),
-      version: 1,
+      version: 2,
     };
   };
 
@@ -183,10 +205,24 @@ const EmployeeCredentialsSection = ({
 
   const handleSwap = () => {
     if (!canSwapCharacters || !factionData) return;
-    const currentIndex = swappableCharacters.findIndex(c => c.character.characterId === factionData.characterId);
-    const nextIndex = (currentIndex + 1) % swappableCharacters.length;
-    const nextCharacterId = swappableCharacters[nextIndex].character.characterId;
-    swapCharacter(nextCharacterId);
+
+    const getCharId = (c) => c?.character?.characterId ?? c?.id ?? null;
+
+    const validCharacters = swappableCharacters.filter(c => getCharId(c) !== null);
+
+    if (validCharacters.length < 2) {
+      return; // Not enough characters to swap
+    }
+
+    const currentIndex = validCharacters.findIndex(c => getCharId(c) === factionData.characterId);
+    
+    const nextIndex = currentIndex !== -1 ? (currentIndex + 1) % validCharacters.length : 0;
+    
+    const nextCharacterId = getCharId(validCharacters[nextIndex]);
+
+    if (nextCharacterId) {
+      swapCharacter(nextCharacterId);
+    }
   };
 
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -250,6 +286,11 @@ const EmployeeCredentialsSection = ({
 
   const handleUseSavedProfile = () => {
     if (!savedProfile) return;
+
+    if (savedProfile.version >= 2 && loadFromSavedProfile) {
+      loadFromSavedProfile(savedProfile);
+    }
+
     const pref = savedProfile.preferredEmployee || {};
     const preferredRank = pref.rank ? cleanRankText(pref.rank) : '';
     setFormData(prev => ({
