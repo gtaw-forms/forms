@@ -60,7 +60,7 @@ npm run build
 The compiled output will be available in the /build directory.
 You can deploy this folder to any production web server or hosting service.
 
-### Custom Server Deployments
+## Custom Server Deployments
 Copy the build/ folder to your production web server and configure it to serve static files (for example, using Nginx or Apache).
 
 # Important Changes
