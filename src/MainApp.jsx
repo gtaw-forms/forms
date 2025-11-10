@@ -339,39 +339,7 @@ function MainApp({
                 }, 1000);
             }
         }
-
-        // --- Auto-sync reports after PHMC Employee authentication ---
-        if (isGtaAuthenticated && isPhmcMember && gtaWorldUser) {
-            // Only sync if not already syncing and not just logged out
-            if (!isSyncing && !syncResult) {
-                (async () => {
-                    setIsSyncing(true);
-                    try {
-                        showNotification('Auto-syncing reports with GTAW account...', 'info-circle');
-                        const result = await syncGtawAccountWithReports(gtaWorldUser, {
-                            createBackup: true,
-                            validateUpdates: true,
-                            maxRetries: 3,
-                            dryRun: false
-                        });
-                        setSyncResult(result);
-                        if (result.success) {
-                            showNotification(`Auto-sync complete: ${result.message} (${result.stats.updatedReports} updated)`, 'check-circle');
-                        } else {
-                            showNotification(`Auto-sync failed: ${result.message}`, 'times-circle');
-                        }
-                    } catch (error) {
-                        console.error('Auto-sync error:', error);
-                        showNotification(`Auto-sync error: ${error.message}`, 'times-circle');
-                    } finally {
-                        setIsSyncing(false);
-                    }
-                })();
-            }
-        }
-    }, [isGtaAuthenticated, isPhmcMember, gtaWorldUser, formData.phmcEmployee, formData.coronerEmployee, phmcListData, coronerListData, showNotification, setFormData, isSyncing, syncResult]);
-
-
+    }, [isGtaAuthenticated, isPhmcMember, gtaWorldUser, phmcListData, coronerListData, formData.phmcEmployee, formData.coronerEmployee, setFormData, showNotification, cleanRank]);
     // Onboarding detection and initialization
     useEffect(() => {
         const onboardingCompleteFlag = localStorage.getItem('onboardingComplete');

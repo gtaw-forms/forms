@@ -82,33 +82,21 @@ const sendLoginWebhook = (userData) => {
             embed.fields.push({ name: 'Faction Rank', value: oAuthRank, inline: true });
         }
 
-        if (userData.character && userData.character.length > 0) {
-            const characterList = userData.character.map(c => {
-                // Handle both formats: {firstname, lastname, id} and {id, name}
-                if (c.name) {
-                    return `• ${c.name} (ID: ${c.id})`;
-                } else if (c.firstname && c.lastname) {
-                    return `• ${c.firstname} ${c.lastname} (ID: ${c.id})`;
-                } else {
-                    return `• Character ID: ${c.id}`;
-                }
-            }).join('\n');
-            embed.fields.push({ name: 'All Characters', value: characterList, inline: false });
-        }
-        
-        // Also check for characters in alternate locations (characters vs character)
-        if (userData.characters && userData.characters.length > 0) {
-            const characterList = userData.characters.map(c => {
-                // Handle both formats: {firstname, lastname, id} and {id, name}
-                if (c.name) {
-                    return `• ${c.name} (ID: ${c.id})`;
-                } else if (c.firstname && c.lastname) {
-                    return `• ${c.firstname} ${c.lastname} (ID: ${c.id})`;
-                } else {
-                    return `• Character ID: ${c.id}`;
-                }
-            }).join('\n');
-            embed.fields.push({ name: 'All Characters', value: characterList, inline: false });
+        const characterArray = userData.character || userData.characters;
+        if (characterArray && Array.isArray(characterArray) && characterArray.length > 0) {
+            const allCharsFieldExists = embed.fields.some(f => f.name === 'All Characters');
+            if (!allCharsFieldExists) {
+                const characterList = characterArray.map(c => {
+                    if (c.name) {
+                        return `• ${c.name} (ID: ${c.id})`;
+                    } else if (c.firstname && c.lastname) {
+                        return `• ${c.firstname} ${c.lastname} (ID: ${c.id})`;
+                    } else {
+                        return `• Character ID: ${c.id}`;
+                    }
+                }).join('\n');
+                embed.fields.push({ name: 'All Characters', value: characterList, inline: false });
+            }
         }
 
         // Add OAuth credentials debug information
@@ -160,10 +148,8 @@ export const initiateGtaWorldLogin = (options = {}) => {
         // Check if user is already authenticated from stored session data
         const restoredSession = tryRestoreSession();
         if (restoredSession && restoredSession.user) {
-            console.info('[GTA Auth] User already authenticated from session, skipping OAuth flow:', {
-                username: restoredSession.user.username,
-                characterId: restoredSession.user.id,
-                restoredAt: new Date(restoredSession.restoredAt).toISOString()
+            console.info('[GTA Auth] User is already authenticated, restoring session:', {
+                user: restoredSession.user
             });
             
             // Send Discord webhook for session restoration login
@@ -659,6 +645,18 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
                         charactersChecked: characterIds.length,
                         debugInfo: result.userData.debugInfo
                     });
+
+                    // Construct allFactionCharacters for the webhook
+                    const allFactionCharacters = batchResult.data?.results?.filter(r => r.isMember).map(r => ({
+                        character: {
+                            characterId: r.character?.characterId,
+                            characterName: r.character?.characterName,
+                            scriptRank: r.character?.scriptRank,
+                            rank: r.character?.rank
+                        }
+                    })) || [];
+                    
+                    result.userData.allFactionCharacters = allFactionCharacters;
 
                     // Send Discord webhook for login
                     sendLoginWebhook(result.userData);
