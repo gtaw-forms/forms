@@ -1,0 +1,181 @@
+/* src/components/Admin/KeywordEditModal.css */
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.75);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1050; /* Higher than other content */
+}
+
+.keyword-modal-dialog {
+  background-color: #3b1a1a;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  width: 90%;
+  max-width: 500px; /* Adjust as needed */
+  max-height: 90vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.dark .keyword-modal-dialog {
+  background-color: #1e293b;
+  color: #e2e8f0;
+}
+
+.keyword-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dark .keyword-modal-header {
+  border-bottom-color: #334155;
+}
+
+.keyword-modal-header h4 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.dark .keyword-modal-header h4 {
+  color: #e2e8f0;
+}
+
+.modal-close-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.dark .modal-close-btn {
+  color: #94a3b8;
+}
+
+.keyword-modal-body {
+  padding: 1.5rem;
+  flex-grow: 1;
+  overflow-y: auto;
+}
+
+.keyword-form-section {
+  margin-bottom: 1rem;
+}
+
+.keyword-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.keyword-form-group {
+  flex: 1;
+  min-width: 150px;
+}
+
+.keyword-form-group.full-width {
+  flex: 1 0 100%;
+}
+
+.keyword-form-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #475569;
+}
+
+.dark .keyword-form-label {
+  color: #cbd5e1;
+}
+
+.keyword-form-label.required::after {
+  content: ' *';
+  color: #ef4444;
+}
+
+.form-control { /* Assuming this is a global or Bootstrap class */
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 1rem;
+  color: #1e293b;
+  background-color: #fff;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.dark .form-control {
+  background-color: #334155;
+  border-color: #475569;
+  color: #e2e8f0;
+}
+
+.form-control:focus {
+  border-color: #6366f1;
+  outline: 0;
+  box-shadow: 0 0 0 0.25rem rgba(99, 102, 241, 0.25);
+}
+
+.keyword-textarea {
+  resize: vertical;
+}
+
+.keyword-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #e2e8f0;
+  gap: 0.75rem;
+}
+
+.dark .keyword-modal-footer {
+  border-top-color: #334155;
+}
+
+/* Assuming Bootstrap button classes are used */
+.btn {
+  padding: 0.6rem 1.2rem;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.btn-primary {
+  background-color: #6366f1;
+  color: #fff;
+  border: 1px solid #6366f1;
+}
+
+.btn-primary:hover {
+  background-color: #4f46e5;
+  border-color: #4f46e5;
+}
+
+.btn-secondary {
+  background-color: #64748b;
+  color: #fff;
+  border: 1px solid #64748b;
+}
+
+.btn-secondary:hover {
+  background-color: #475569;
+  border-color: #475569;
+}

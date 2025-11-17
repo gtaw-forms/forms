@@ -10,12 +10,15 @@ const LsccEditModal = ({ show, onHide, item, onSave, categories, loading: parent
     name: '',
     content: '',
     category: '',
-    images: []
+    images: [],
+    uniqueWords: []
   });
+  const [rawUniqueWordsInput, setRawUniqueWordsInput] = useState(''); // New state
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    setCurrentItem(item || { name: '', content: '', category: '', images: [] });
+    setCurrentItem(item || { name: '', content: '', category: '', images: [], uniqueWords: [] });
+    setRawUniqueWordsInput(Array.isArray(item?.uniqueWords) ? item.uniqueWords.join(', ') : '');
   }, [item]);
 const normalizeProtocols = (data) => {
   if (!Array.isArray(data)) return [];
@@ -65,34 +68,54 @@ const formatProtocolText = (text = '', images = []) => {
     return `<span style="color: #dc3545; font-weight: bold;">[Image ${index}: URL not found]</span>`;
   });
 
-  // Then, handle bullet points
+  // Then, handle bullet points and nested lists
   const lines = formattedText.split('\n');
-  let inList = false;
-  let resultHtml = [];
+  let html = [];
+  let openLists = []; // Stack to keep track of open <ul> tags
 
   lines.forEach(line => {
-    if (line.trim().startsWith('- ')) {
-      if (!inList) {
-        resultHtml.push('<ul>');
-        inList = true;
+    const trimmedLine = line.trim();
+    let currentLevel = 0;
+
+    if (trimmedLine.startsWith('>>')) {
+      currentLevel = 2;
+    } else if (trimmedLine.startsWith('>')) {
+      currentLevel = 1;
+    }
+
+    const content = trimmedLine.substring(currentLevel > 0 ? currentLevel : 0).trim();
+
+    if (currentLevel > 0) {
+      // Close lists that are at a higher level than the current line
+      while (openLists.length > currentLevel) {
+        html.push('</ul>');
+        openLists.pop();
       }
-      // Remove the bullet point marker and wrap in <li>
-      resultHtml.push(`<li>${line.trim().substring(2)}</li>`);
+      // Open new lists if the current level is deeper than the stack
+      while (openLists.length < currentLevel) {
+        html.push('<ul>');
+        openLists.push('ul');
+      }
+      html.push(`<li>${content}</li>`);
     } else {
-      if (inList) {
-        resultHtml.push('</ul>');
-        inList = false;
+      // Not a list item, close all open lists
+      while (openLists.length > 0) {
+        html.push('</ul>');
+        openLists.pop();
       }
-      // Add non-list items as paragraphs or just text
-      resultHtml.push(`<p>${line}</p>`);
+      if (trimmedLine.length > 0) {
+        html.push(`<p>${trimmedLine}</p>`);
+      }
     }
   });
 
-  if (inList) {
-    resultHtml.push('</ul>');
+  // Close any remaining open lists
+  while (openLists.length > 0) {
+    html.push('</ul>');
+    openLists.pop();
   }
 
-  return resultHtml.join('');
+  return html.join('');
 };
 
 
@@ -113,6 +136,8 @@ const handleChange = (e) => {
 
     // Optional: Clean up duplicate empty lines later on save
     setCurrentItem(prev => ({ ...prev, images: imageArray }));
+  } else if (name === 'uniqueWords') {
+    setRawUniqueWordsInput(value); // Store raw input
   } else {
     setCurrentItem(prev => ({ ...prev, [name]: value }));
   }
@@ -172,6 +197,13 @@ const handleSave = async () => {
         .filter(url => url.length > 0 && /^https?:\/\//i.test(url));
 
       targetCat.protocols.push(savedItem);
+
+      // Clean unique words on save
+      const wordsArray = rawUniqueWordsInput
+        .split(',')
+        .map(word => word.trim().toLowerCase())
+        .filter(word => word.length > 0);
+      savedItem.uniqueWords = [...new Set(wordsArray)]; // Ensure uniqueness
 
       // === 4. Clean up empty categories ===
       protocols = protocols.filter(cat => cat.protocols.length > 0);
@@ -259,7 +291,12 @@ const handleSave = async () => {
             <div className="cctv-form-row">
               <div className="cctv-form-group full-width">
                 <label className="cctv-form-label">
-                  Content (use Enter for new lines — {`{image1}`}, {`{image2}`}, etc. for images)
+                  Content (use Enter for new lines — {`{image1}`}, {`{image2}`}, etc. for images) 
+                  <br />
+                  <small>
+                    Use *asterisks* for <strong>bold</strong>, _underscores_ for <u>underline</u>,
+                    and prefix lines with &gt; or &gt;&gt; for bullet points and nested lists.
+                  </small>
                 </label>
                 <textarea
                   className="form-control cctv-textarea"
@@ -298,6 +335,21 @@ const handleSave = async () => {
                   onChange={handleChange}
                   placeholder="https://i.imgur.com/abc123.png
 https://i.imgur.com/def456.png"
+                  disabled={saving}
+                />
+              </div>
+            </div>
+
+            <div className="cctv-form-row">
+              <div className="cctv-form-group full-width">
+                <label className="cctv-form-label">Unique Words (comma-separated)</label>
+                <textarea
+                  className="form-control cctv-textarea"
+                  rows="3"
+                  name="uniqueWords"
+                  value={rawUniqueWordsInput}
+                  onChange={handleChange}
+                  placeholder="word1, word2, phrase three"
                   disabled={saving}
                 />
               </div>
