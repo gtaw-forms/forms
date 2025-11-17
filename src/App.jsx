@@ -15,6 +15,7 @@ import ProtectedRoute from './components/Auth/ProtectedRoute.jsx';
 
 import MainApp from './MainApp.jsx';
 import Admin from './components/Admin/Admin.jsx';
+import EmsDashboard from './components/ems-dashboard/EmsDashboard.jsx';
 
 function App() {
     const [formData, setFormData] = useState({});
@@ -93,6 +94,7 @@ function App() {
                                         <Route path="/auth/gta/callback" element={<UnifiedGtaCallback />} />
                                         <Route path="/auth/gta/diagnostic" element={<OAuthUrlDiagnostic />} />
                                         <Route path="/admin" element={<ProtectedRoute><Admin formData={formData} setFormData={setFormData} showNotification={showNotification} /></ProtectedRoute>} />
+                                        <Route path="/ems-dashboard" element={<ProtectedRoute><EmsDashboard /></ProtectedRoute>} />
                                         <Route path="*" element={<Navigate to="/" replace />} />
                                     </Routes>
                                 </Suspense>
