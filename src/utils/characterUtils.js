@@ -85,44 +85,37 @@ export const getCharacterID = (gtaWorldUser) => {
     return characterData ? characterData.id : gtaWorldUser?.id;
 };
 
-// Helper function to get database rank by looking up character in staff collections
-export const getDatabaseRank = (gtaWorldUser, phmcListData = [], coronerListData = []) => {
-    if (!gtaWorldUser) return null;
-    
-    const characterName = getCharacterName(gtaWorldUser);
-    if (!characterName || characterName === 'GTAW User') return null;
-    
-    // Try to find in PHMC staff first
-    const phmcEmployee = phmcListData.find(employee => 
-        employee.name && employee.name.toLowerCase() === characterName.toLowerCase()
-    );
-    
-    if (phmcEmployee) {
-        return phmcEmployee.category || phmcEmployee.rank || null;
-    }
-    
-    // Try to find in Coroner staff
-    const coronerEmployee = coronerListData.find(employee => 
-        employee.name && employee.name.toLowerCase() === characterName.toLowerCase()
-    );
-    
-    if (coronerEmployee) {
-        return coronerEmployee.rank || coronerEmployee.category || null;
-    }
-    
-    return null;
-};
-
 // Helper function to clean rank by removing dash characters
 export const cleanRank = (rank) => {
     if (!rank) return 'GTAW User';
     return rank.replace(/-/g, ' ').trim();
 };
 
-// Helper function to get display rank (database rank if available, otherwise cleaned faction rank)
-export const getDisplayRank = (gtaWorldUser, phmcListData = [], coronerListData = []) => {
+export const getDatabaseRank = (gtaWorldUser, factionsData) => {
+    if (!gtaWorldUser || !factionsData) return null;
+
+    const characterName = getCharacterName(gtaWorldUser);
+    if (!characterName || characterName === 'GTAW User') return null;
+
+    for (const factionId in factionsData) {
+        const faction = factionsData[factionId];
+        if (faction.members) {
+            const members = Object.values(faction.members);
+            const employee = members.find(member => 
+                member.characterName && member.characterName.toLowerCase() === characterName.toLowerCase()
+            );
+            if (employee) {
+                return employee.rank || null;
+            }
+        }
+    }
+    
+    return null;
+};
+
+export const getDisplayRank = (gtaWorldUser, factionsData) => {
     // Try to get database rank first
-    const dbRank = getDatabaseRank(gtaWorldUser, phmcListData, coronerListData);
+    const dbRank = getDatabaseRank(gtaWorldUser, factionsData);
     if (dbRank) return cleanRank(dbRank);
     
     // Fallback to cleaned faction rank

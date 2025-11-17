@@ -1,13 +1,16 @@
-import React, { createContext, useState, useEffect, useContext, useCallback, useRef } from 'react';
+import React, { createContext, useState, useEffect, useContext, useCallback, useRef, useMemo } from 'react';
 import { database } from '../firebase';
-import { ref, get, onChildChanged, onValue } from 'firebase/database';
+import { ref, get, onChildChanged, onValue, set } from 'firebase/database';
 import { useNotification } from './NotificationContext.jsx';
+import { useWebhooks } from '../hooks/useWebhooks';
+import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
 
 // Define cache segments
 const CACHE_SEGMENTS = {
-    STAFF: 'staff',
+    FACTIONS: 'factions',
     AGENCIES: 'agencies',
-    SELECT_OPTIONS: 'selectOptions'
+    SELECT_OPTIONS: 'selectOptions',
+    STAFF: 'staff'
 };
 
 // Define segments that should not be cached in localStorage
@@ -20,6 +23,15 @@ export const useData = () => {
 };
 
 export const DataProvider = ({ children }) => {
+    const { sendDataRequestLog } = useWebhooks();
+    const { user, isAuthenticated } = useGtaWorldAuth();
+
+    // Define consistent Coroner Categories
+    const CORONER_CATEGORIES = [
+        'Chief Boss', 'Deputy Chief Medical Examiner-Coroner', 'Supervisor', 
+        'Senior Medical Examiner', 'Medical Examiner', 'Senior Coroner Investigator', 
+        'Coroner Investigator', 'Forensic Attendant', 'Trainee Forensic-Attendant'
+    ];
     // Helper function to update all state values from data
     const updateCacheSegment = useCallback(async (segment, data) => {
         // Update memory cache
@@ -44,15 +56,15 @@ export const DataProvider = ({ children }) => {
                     console.error(`Failed to clear cache for ${segment}:`, clearError);
                 }
             }
-        } else {
+        }
+        else {
             console.log(`⏩ Skipping localStorage cache for ${segment} (excluded segment)`);
         }
 
         // Update relevant state based on segment
         switch (segment) {
-            case CACHE_SEGMENTS.STAFF:
-                setPhmcListData(data?.phmc || []);
-                setCoronerListData(data?.coroner || []);
+            case CACHE_SEGMENTS.FACTIONS:
+                setFactionsData(data || {});
                 break;
             case CACHE_SEGMENTS.AGENCIES:
                 setAgencyDataStore(data || {});
@@ -65,6 +77,9 @@ export const DataProvider = ({ children }) => {
                 setEmsRecruitmentDetails(data?.emsPositionDetailsData || {});
                 setNurseRecruitmentDetails(data?.nursePositionDetailsData || {});
                 setCoronerRecruitmentDetails(data?.coronerPositionDetailsData || {});
+                break;
+            case CACHE_SEGMENTS.STAFF:
+                setLegacyPhmcData(data?.phmc || []);
                 break;
             default:
                 console.warn(`Unknown cache segment: ${segment}`);
@@ -79,8 +94,7 @@ export const DataProvider = ({ children }) => {
         });
     };
     const { showNotification, removeNotification } = useNotification();
-    const [phmcListData, setPhmcListData] = useState([]);
-    const [coronerListData, setCoronerListData] = useState([]);
+    const [factionsData, setFactionsData] = useState({});
     const [agencyDataStore, setAgencyDataStore] = useState({});
     const [selectOptions, setSelectOptions] = useState({});
     const [physicianRecruitmentDetails, setPhysicianRecruitmentDetails] = useState({});
@@ -91,10 +105,13 @@ export const DataProvider = ({ children }) => {
     const [coronerRecruitmentDetails, setCoronerRecruitmentDetails] = useState({});
     const [isLoadingData, setIsLoadingData] = useState(true);
     const [loading, setLoading] = useState(true);
+    const [legacyPhmcData, setLegacyPhmcData] = useState([]);
+    const [isDevMode, setIsDevMode] = useState(false); // Add isDevMode state
 
     // Segmented cache for fetched data
     const dataCache = useRef({});
     const didLoadFromCache = useRef(false); // Flag to track if cache was used
+    const dataInitializedRef = useRef(false); // Flag to track if initial data load is complete
     const [dataLoaded, setDataLoaded] = useState(false);
     const firebaseListeners = useRef({});
 
@@ -105,9 +122,10 @@ export const DataProvider = ({ children }) => {
 
     // Version configuration for each segment
     const SEGMENT_VERSIONS = {
-        [CACHE_SEGMENTS.STAFF]: '1.0',
+        [CACHE_SEGMENTS.FACTIONS]: '1.0',
         [CACHE_SEGMENTS.AGENCIES]: '1.0',
-        [CACHE_SEGMENTS.SELECT_OPTIONS]: '1.0'
+        [CACHE_SEGMENTS.SELECT_OPTIONS]: '1.0',
+        [CACHE_SEGMENTS.STAFF]: '1.0'
     };
 
     const getSegmentVersion = (segment) => SEGMENT_VERSIONS[segment] || '1.0';
@@ -140,69 +158,59 @@ export const DataProvider = ({ children }) => {
         Object.values(firebaseListeners.current).forEach(unsubscribe => unsubscribe());
         firebaseListeners.current = {};
 
-        // --- Listener for staff changes ---
-        const staffRef = ref(database, CACHE_SEGMENTS.STAFF);
-        let isInitialStaffCallback = true;
-        firebaseListeners.current.staff = onValue(staffRef, (snapshot) => {
-            if (didLoadFromCache.current && isInitialStaffCallback) {
-                isInitialStaffCallback = false;
-                console.log('⏩ Skipping initial Firebase staff update because cache was used.');
-                return;
-            }
-            isInitialStaffCallback = false;
+        // --- Listener for factions changes ---
+        const factionsRef = ref(database, CACHE_SEGMENTS.FACTIONS);
+        firebaseListeners.current.factions = onValue(factionsRef, (snapshot) => {
+            if (!dataInitializedRef.current) return; // Only process updates after initial load
 
             if (snapshot.exists()) {
-                const staffData = snapshot.val();
-                if (JSON.stringify(staffData) === JSON.stringify(dataCache.current[CACHE_SEGMENTS.STAFF])) return;
-                updateCacheSegment(CACHE_SEGMENTS.STAFF, staffData);
-                console.log('🔄 Staff data updated from Firebase');
+                const factionsData = snapshot.val();
+                // Only update if data has actually changed to prevent unnecessary re-renders
+                if (JSON.stringify(factionsData) !== JSON.stringify(dataCache.current[CACHE_SEGMENTS.FACTIONS])) {
+                    updateCacheSegment(CACHE_SEGMENTS.FACTIONS, factionsData);
+                    console.log('🔄 Factions data updated from Firebase (real-time)');
+                }
             }
         });
 
         // --- Listener for agency changes ---
         const agenciesRef = ref(database, CACHE_SEGMENTS.AGENCIES);
-        let isInitialAgencyCallback = true;
         firebaseListeners.current.agencies = onValue(agenciesRef, (snapshot) => {
-            if (didLoadFromCache.current && isInitialAgencyCallback) {
-                isInitialAgencyCallback = false;
-                console.log('⏩ Skipping initial Firebase agency update because cache was used.');
-                return;
-            }
-            isInitialAgencyCallback = false;
+            if (!dataInitializedRef.current) return; // Only process updates after initial load
 
             if (snapshot.exists()) {
                 const agencyData = snapshot.val();
-                if (JSON.stringify(agencyData) === JSON.stringify(dataCache.current[CACHE_SEGMENTS.AGENCIES])) return;
-                updateCacheSegment(CACHE_SEGMENTS.AGENCIES, agencyData);
-                console.log('🔄 Agency data updated from Firebase');
+                if (JSON.stringify(agencyData) !== JSON.stringify(dataCache.current[CACHE_SEGMENTS.AGENCIES])) {
+                    updateCacheSegment(CACHE_SEGMENTS.AGENCIES, agencyData);
+                    console.log('🔄 Agency data updated from Firebase (real-time)');
+                }
             }
         });
 
         // --- Listener for select options changes ---
         const optionsRef = ref(database, CACHE_SEGMENTS.SELECT_OPTIONS);
-        let isInitialOptionsCallback = true;
         firebaseListeners.current.options = onValue(optionsRef, (snapshot) => {
-            if (didLoadFromCache.current && isInitialOptionsCallback) {
-                isInitialOptionsCallback = false;
-                console.log('⏩ Skipping initial Firebase select options update because cache was used.');
-                return;
-            }
-            isInitialOptionsCallback = false;
+            if (!dataInitializedRef.current) return; // Only process updates after initial load
 
             if (snapshot.exists()) {
                 const optionsData = snapshot.val();
-                if (JSON.stringify(optionsData) === JSON.stringify(dataCache.current[CACHE_SEGMENTS.SELECT_OPTIONS])) return;
-                updateCacheSegment(CACHE_SEGMENTS.SELECT_OPTIONS, optionsData);
-                console.log('🔄 Select options updated from Firebase');
+                if (JSON.stringify(optionsData) !== JSON.stringify(dataCache.current[CACHE_SEGMENTS.SELECT_OPTIONS])) {
+                    updateCacheSegment(CACHE_SEGMENTS.SELECT_OPTIONS, optionsData);
+                    console.log('🔄 Select options updated from Firebase (real-time)');
+                }
             }
         });
     }, [updateCacheSegment]);
+
 
     const loadData = useCallback(async (forceRefresh = false) => {
         // Check memory cache first for each segment
         if (dataLoaded && !forceRefresh && Object.values(CACHE_SEGMENTS).every(segment => 
             dataCache.current[segment] && isCacheValid(segment))) {
             console.log('📦 Using memory-cached Firebase data');
+            const size = JSON.stringify(dataCache.current).length;
+            const portions = Object.keys(dataCache.current).join(', ');
+            sendDataRequestLog('DataContext.jsx', true, 'Memory Cache', size, isAuthenticated, user?.faction?.characterName || user?.username, portions);
             setIsLoadingData(false);
             setLoading(false);
             return;
@@ -227,6 +235,9 @@ export const DataProvider = ({ children }) => {
 
             if (allSegmentsLoaded) {
                 console.log('📦 Using localStorage-cached Firebase data');
+                const size = JSON.stringify(dataCache.current).length;
+                const portions = Object.keys(dataCache.current).join(', ');
+                sendDataRequestLog('DataContext.jsx', true, 'Local Storage', size, isAuthenticated, user?.faction?.characterName || user?.username, portions);
                 updateStateWithData(dataCache.current);
                 setDataLoaded(true);
                 setIsLoadingData(false);
@@ -240,37 +251,56 @@ export const DataProvider = ({ children }) => {
         try {
             loadingNotificationId = showNotification("Data Loading...", 'spinner fa-spin', 0);
             console.log('🔄 Fetching fresh data from Firebase...');
+            
+            const segmentsToFetch = Object.values(CACHE_SEGMENTS);
+            console.log('🔄 Fetching fresh data from Firebase for segments:', segmentsToFetch);
 
-            const dbRootRef = ref(database);
-            const snapshot = await get(dbRootRef);
+            const promises = segmentsToFetch.map(segment => {
+                const segmentRef = ref(database, segment);
+                return get(segmentRef).then(snapshot => ({ segment, snapshot }));
+            });
 
-            if (snapshot.exists()) {
-                const allData = snapshot.val();
-                
+            const results = await Promise.all(promises);
+
+            const allData = {};
+            let hasData = false;
+
+            results.forEach(({ segment, snapshot }) => {
+                if (snapshot.exists()) {
+                    allData[segment] = snapshot.val();
+                    hasData = true;
+                } else {
+                    console.warn(`Segment "${segment}" does not exist in Firebase.`);
+                }
+            });
+
+            if (hasData) {
+                const size = JSON.stringify(allData).length;
+                const portions = Object.keys(allData).join(', ');
+                sendDataRequestLog('DataContext.jsx', false, 'Firebase', size, isAuthenticated, user?.faction?.characterName || user?.username, portions);
+                console.log('[DataContext] Raw data from Firebase:', allData);
+
                 // Update each cache segment independently
-                Object.entries(CACHE_SEGMENTS).forEach(([key, path]) => {
-                    if (allData[path]) {
-                        dataCache.current[path] = allData[path];
-                        if (!EXCLUDED_FROM_CACHE.includes(path)) {
+                Object.entries(allData).forEach(([path, data]) => {
+                    dataCache.current[path] = data;
+                    if (!EXCLUDED_FROM_CACHE.includes(path)) {
+                        try {
+                            localStorage.setItem(getCacheKey(path), JSON.stringify(data));
+                            localStorage.setItem(getTimestampKey(path), Date.now().toString());
+                        } catch (error) {
+                            console.warn(`Failed to cache ${path} to localStorage:`, error);
                             try {
-                                localStorage.setItem(getCacheKey(path), JSON.stringify(allData[path]));
-                                localStorage.setItem(getTimestampKey(path), Date.now().toString());
-                            } catch (error) {
-                                console.warn(`Failed to cache ${path} to localStorage:`, error);
-                                // If we hit quota, clear this segment's cache
-                                try {
-                                    localStorage.removeItem(getCacheKey(path));
-                                    localStorage.removeItem(getTimestampKey(path));
-                                } catch (clearError) {
-                                    console.error(`Failed to clear cache for ${path}:`, clearError);
-                                }
+                                localStorage.removeItem(getCacheKey(path));
+                                localStorage.removeItem(getTimestampKey(path));
+                            } catch (clearError) {
+                                console.error(`Failed to clear cache for ${path}:`, clearError);
                             }
-                        } else {
-                            console.log(`⏩ Skipping localStorage cache for ${path} (excluded segment)`);
                         }
+                    } else {
+                        console.log(`⏩ Skipping localStorage cache for ${path} (excluded segment)`);
                     }
                 });
-                
+
                 console.log('💾 Firebase data cached to localStorage by segments');
 
                 // Update all state values
@@ -283,6 +313,8 @@ export const DataProvider = ({ children }) => {
         } catch (error) {
             showNotification("An error has happened, contact the maintainer", 'error');
             console.error("Error fetching data from Realtime Database:", error);
+            const portions = Object.values(CACHE_SEGMENTS).join(', ');
+            sendDataRequestLog('DataContext.jsx', false, 'Firebase Error', 0, isAuthenticated, user?.faction?.characterName || user?.username, portions, error.message || 'Unknown Fetch Error');
         } finally {
             setIsLoadingData(false);
             setLoading(false);
@@ -292,50 +324,12 @@ export const DataProvider = ({ children }) => {
         }
     }, [
         showNotification, removeNotification,
-        setPhmcListData, setCoronerListData, setAgencyDataStore, setSelectOptions,
+        setFactionsData, setAgencyDataStore, setSelectOptions,
         setPhysicianRecruitmentDetails, setPsychRecruitmentDetails, setAdminRecruitmentDetails,
         setEmsRecruitmentDetails, setNurseRecruitmentDetails, setCoronerRecruitmentDetails,
-        setIsLoadingData, setLoading
+        setLegacyPhmcData, setIsLoadingData, setLoading,
+        isAuthenticated, user, sendDataRequestLog, dataLoaded
     ]);
-
-    // Cleanup old cache entries
-    const cleanupCache = useCallback(() => {
-        const prefix = CACHE_PREFIX + '_';
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key && key.startsWith(prefix)) {
-                // Check if this key belongs to any current segment
-                const isCurrentKey = Object.values(CACHE_SEGMENTS).some(segment => 
-                    key === getCacheKey(segment) ||
-                    key === getTimestampKey(segment) ||
-                    key === getVersionKey(segment)
-                );
-                
-                if (!isCurrentKey) {
-                    console.log(`🧹 Cleaning up old cache key: ${key}`);
-                    localStorage.removeItem(key);
-                }
-            }
-        }
-    }, []);
-
-    useEffect(() => {
-        const initialLoad = async () => {
-            await loadData();
-            // Only set up listeners after the initial data load is complete
-            if (!Object.keys(firebaseListeners.current).length) {
-                setupFirebaseListeners();
-            }
-        };
-
-        initialLoad();
-        cleanupCache(); // Clean up old cache entries
-
-        // Cleanup listeners on unmount
-        return () => {
-            Object.values(firebaseListeners.current).forEach(unsubscribe => unsubscribe());
-        };
-    }, [loadData, setupFirebaseListeners, cleanupCache]);
 
     const refreshData = useCallback(async () => {
         setDataLoaded(false); // Invalidate cache
@@ -394,9 +388,223 @@ export const DataProvider = ({ children }) => {
         }
     }, [refreshSegments]);
 
+    const coronerListData = useMemo(() => {
+        // PHMC FACTION = 364, filtered by CORONER categories
+        if ((!factionsData['364'] || !factionsData['364'].members) ) {
+            console.log('[DataContext] coronerListData: Both faction and legacy data empty');
+            return [];
+        }
+
+        // Use faction data if available, otherwise use legacy data
+        let dataSource = [];
+        if (factionsData['364'] && factionsData['364'].members) {
+            const allMembers = Object.values(factionsData['364'].members);
+            
+            const normalizedMembers = allMembers.map(member => ({
+                ...member,
+                name: member.characterName || member.name || member.displayName || member.username || 'Unknown',
+                rank: member.rank || '',
+            }));
+
+            const CORONER_KEYWORDS = ['Coroner', 'Examiner', 'Attendant'];
+            dataSource = normalizedMembers.filter(member =>
+                CORONER_KEYWORDS.some(kw => member.rank.includes(kw))
+            ).map(member => {
+                // Now that we have only coroners, find the best category for grouping
+                const category = member.rank || 'Coroner';
+                return { ...member, category };
+            });
+            console.log('[DataContext] coronerListData using FACTION data:', dataSource.length, 'members');
+        }
+        return dataSource;
+    }, [factionsData]);
+
+    const phmcListData = useMemo(() => {
+        // PHMC FACTION = 364, filtered by excluding CORONER categories
+        // Fallback to legacy /staff/phmc if faction data is empty
+        if ((!factionsData['364'] || !factionsData['364'].members) && (!legacyPhmcData || legacyPhmcData.length === 0)) {
+            console.log('[DataContext] phmcListData: Both faction and legacy data empty');
+            return [];
+        }
+
+        // Use faction data if available, otherwise use legacy data
+                let dataSource = [];
+                if (factionsData['364'] && factionsData['364'].members) {
+                    const allMembers = Object.values(factionsData['364'].members);
+                    
+                                const normalizedMembers = allMembers.map(member => ({
+                    
+                                    ...member,
+                    
+                                    name: member.characterName || member.name || member.displayName || member.username || 'Unknown',
+                    
+                                    rank: member.rank || '',
+                    
+                                }));
+                    
+                    
+                    
+                                const CORONER_KEYWORDS = ['Coroner', 'Examiner', 'Attendant'];
+                    
+                                dataSource = normalizedMembers.filter(member =>
+                    
+                                    !CORONER_KEYWORDS.some(kw => member.rank.includes(kw))
+                    
+                                ).map(member => ({ ...member, category: member.rank }));
+            
+        } else if (legacyPhmcData && legacyPhmcData.length > 0) {
+            dataSource = legacyPhmcData.filter(member => !CORONER_CATEGORIES.includes(member.category));
+        }
+
+        return dataSource;
+    }, [factionsData, legacyPhmcData]);
+    const cleanupCache = useCallback(() => {
+        const prefix = CACHE_PREFIX + '_';
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith(prefix)) {
+                // Check if this key belongs to any current segment
+                const isCurrentKey = Object.values(CACHE_SEGMENTS).some(segment => 
+                    key === getCacheKey(segment) ||
+                    key === getTimestampKey(segment) ||
+                    key === getVersionKey(segment)
+                );
+                
+                if (!isCurrentKey) {
+                    console.log(`🧹 Cleaning up old cache key: ${key}`);
+                    localStorage.removeItem(key);
+                }
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const initializeApp = async () => {
+            try {
+                console.log('[DataContext] Starting full initialization...');
+                await loadData(); // This will fetch from Firebase if cache is invalid
+                
+                if (isMounted) {
+                    console.log('[DataContext] Full initialization complete.');
+                    sessionStorage.setItem('dataContextInitialized', 'true'); // Mark session as initialized
+                    dataInitializedRef.current = true;
+                    setupFirebaseListeners();
+                }
+            } catch (error) {
+                console.error('[DataContext] Error during full initialization:', error);
+            }
+        };
+
+        const loadFromCacheAndListen = async () => {
+            try {
+                console.log('[DataContext] Session already initialized. Loading from cache...');
+                await loadData(); // This will prioritize memory/localStorage cache
+                
+                if (isMounted) {
+                    console.log('[DataContext] Loaded from cache. Setting up listeners.');
+                    dataInitializedRef.current = true;
+                    setupFirebaseListeners();
+                }
+            } catch (error) {
+                console.error('[DataContext] Error loading from cache:', error);
+            }
+        };
+
+        if (dataInitializedRef.current) {
+            console.log('[DataContext] Already initialized in this component instance. Skipping.');
+            return;
+        }
+
+        const isSessionInitialized = sessionStorage.getItem('dataContextInitialized') === 'true';
+
+        if (isSessionInitialized) {
+            loadFromCacheAndListen();
+        } else {
+            initializeApp();
+        }
+        
+        cleanupCache();
+
+        // Cleanup on unmount
+        return () => {
+            isMounted = false;
+            Object.values(firebaseListeners.current).forEach(unsubscribe => unsubscribe());
+            firebaseListeners.current = {};
+        };
+    }, []);
+
+    const phmcGroupedOptions = useMemo(() => {
+        if (!phmcListData || phmcListData.length === 0) {
+            console.log('[DataContext] phmcGroupedOptions: Empty - phmcListData has', phmcListData?.length || 0, 'items');
+            return [];
+        }
+        const grouped = Object.entries(
+            phmcListData.reduce((groups, employee) => {
+                const categoryName = employee.category || 'Uncategorized';
+                if (!groups[categoryName]) {
+                    groups[categoryName] = [];
+                }
+                groups[categoryName].push({
+                    value: employee.name,
+                    label: employee.name,
+                    category: employee.category,
+                    lastName: employee.lastName
+                });
+                return groups;
+            }, {})
+        ).map(([category, options]) => ({
+            label: category,
+            options: options.sort((a, b) => {
+                if (!a?.label || !b?.label) return 0;
+                return a.label.localeCompare(b.label);
+            })
+        })).sort((a, b) => {
+            const order = ['Leadership', 'Hospital Supervisor', 'Chief Resident', 'Physician', 'Resident Physician', 'Physician Assistant', 'Psychiatrist', 'Psychologist', 'Dentist', 'Nursing', 'Emergency Medical Services', 'Attending Physician', 'Uncategorized'];
+            return order.indexOf(a.label) - order.indexOf(b.label);
+        });
+        console.log('[DataContext] phmcGroupedOptions created:', grouped.length, 'groups');
+        return grouped;
+    }, [phmcListData]);
+
+    const coronerGroupedOptions = useMemo(() => {
+        if (!coronerListData || coronerListData.length === 0) return [];
+        return Object.entries(
+            coronerListData.reduce((groups, coroner) => {
+                const categoryName = coroner.category || 'Uncategorized';
+                if (!groups[categoryName]) {
+                    groups[categoryName] = [];
+                }
+                groups[categoryName].push({
+                    value: coroner.name, // Or a unique ID
+                    label: coroner.name,
+                    badge: coroner.badge,
+                    rank: coroner.rank,
+                    discord: coroner.discord,
+                    category: categoryName
+                    // Add other fields
+                });
+                return groups;
+            }, {})
+        ).map(([category, options]) => ({
+            label: category,
+            options: options.sort((a, b) => {
+                if (!a?.label || !b?.label) return 0;
+                return a.label.localeCompare(b.label);
+            })
+        })).sort((a, b) => { // Your existing sorting logic for coroner categories
+            const order = ['Chief Boss', 'Deputy Chief Medical Examiner-Coroner', 'Supervisor', 'Senior Medical Examiner', 'Medical Examiner', 'Senior Coroner Investigator', 'Coroner Investigator', 'Forensic Attendant', 'Trainee Forensic-Attendant', 'Developer Testing', 'Missing_Category', 'Uncategorized'];
+            return order.indexOf(a.label) - order.indexOf(b.label);
+        });
+    }, [coronerListData]);
+
     const value = {
+        factionsData,
         phmcListData,
         coronerListData,
+        phmcGroupedOptions,
+        coronerGroupedOptions,
         agencyDataStore,
         selectOptions,
         physicianRecruitmentDetails,
@@ -410,6 +618,9 @@ export const DataProvider = ({ children }) => {
         refreshData,
         refreshSegments,
         notifyDataUpdate, // Expose the notification function
+        sendDataRequestLog, // Expose the logging function
+        isDevMode,
+        setIsDevMode,
     };
 
     return (

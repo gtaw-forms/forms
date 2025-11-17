@@ -20,7 +20,6 @@ import { useSettings } from './contexts/SettingsProvider.jsx';
 import { useWebhooks } from './hooks/useWebhooks';
 import { useImageUpload } from './hooks/useImageUpload';
 import useGtaWorldAuth from './hooks/useGtaWorldAuth';
-import useDynamicStaffIntegration from './hooks/useDynamicStaffIntegration';
 import { useLockdown } from './contexts/LockdownContext';
 import LockdownBanner from './components/LockdownBanner.jsx';
 import LockdownDialog from './components/LockdownDialog';
@@ -35,7 +34,7 @@ import corpse from './assets/corpse.png'
 import tombstone from './assets/tombstone.png'
 import phmcpaletobay from './assets/phmcpaletobaylogo.png'
 import './assets/fonts/Poppins-Medium.ttf';
-
+import {ref, get} from 'firebase/database';
 
 // css fun
 import './App.css';
@@ -62,6 +61,7 @@ const CctvRequestWebhookModal = lazy(() => import('./components/Admin/CctvReques
 const FeatureRequestModal = lazy(() => import('./contexts/FeatureRequestModal.jsx'));
 const FormImageLink = lazy(() => import('./components/FormImageLink'));
 const EmsBingoModal = lazy(() => import('./components/EmsBingoModal'));
+const EmployeeDetailsModal = lazy(() => import('./components/EmployeeDetailsModal'));
 
 function MainApp({
     formData,
@@ -106,13 +106,47 @@ function MainApp({
         characterName
     } = useGtaWorldAuth();
 
+    const [isBypassActive, setIsBypassActive] = useState(false);
+    const [bypassUser, setBypassUser] = useState(null);
+    const handleBypassLogin = () => {
+        const dummyUser = {
+            username: 'DevModeUser',
+            id: 'dev-123',
+            isFactionMember: true,
+            faction: {
+                characterId: 'dev-char-456',
+                characterName: 'Dev Character',
+                firstname: 'Dev',
+                lastname: 'Character',
+                rank: 'Developer',
+                scriptRank: 999,
+            },
+            allFactionCharacters: [],
+            character: [],
+            characters: [],
+            accessLevel: 5,
+            permissions: {},
+        };
+        setBypassUser(dummyUser);
+        setIsBypassActive(true);
+        setIsDevMode(true); // Activate dev mode in DataContext
+        showNotification('Bypass Login Activated!', 'info-circle', 3000);
+    };
+
+    // Determine which user/auth state to use
+    const displayUser = isBypassActive ? bypassUser : gtaWorldUser;
+    const displayIsAuthenticated = isBypassActive || isGtaAuthenticated;
+    const displayIsPhmcMember = isBypassActive ? true : isPhmcMember;
+    const displayFactionData = isBypassActive ? bypassUser?.faction : factionData;
+    const displayCharacterName = isBypassActive ? bypassUser?.faction?.characterName : characterName;
+
     // Track if we've already shown the welcome notification to avoid showing it multiple times
     const [hasShownGtaWelcome, setHasShownGtaWelcome] = useState(false);
     
-    // GTAW Sync state
-    const [isSyncing, setIsSyncing] = useState(false);
-    const [syncResult, setSyncResult] = useState(null);
-    
+    // Track nursing employee modal state
+    const [showNursingEmployeeModal, setShowNursingEmployeeModal] = useState(false);
+    const [hasShownNursingPrompt, setHasShownNursingPrompt] = useState(false);
+        
     // Character selection state for multi-character users
     const [showCharacterSelection, setShowCharacterSelection] = useState(false);
     const [selectedPhmcCharacter, setSelectedPhmcCharacter] = useState(null);
@@ -131,25 +165,33 @@ function MainApp({
         nurseRecruitmentDetails,
         coronerRecruitmentDetails,
         isLoadingData,
-        refreshSegments
+        refreshSegments,
+        phmcGroupedOptions,
+        coronerGroupedOptions,
+        isDevMode,
+        setIsDevMode
     } = useData();
-    
-    // Dynamic staff integration - automatically add authenticated GTAW users to Firebase
-    useDynamicStaffIntegration(
-        gtaWorldUser,
-        isGtaAuthenticated,
-        phmcListData,
-        coronerListData,
-        showNotification,
-        () => {
-            // Refresh staff data (includes both PHMC and coroner)
-            refreshSegments(['staff']);
-        },
-        () => {
-            // Refresh staff data (includes both PHMC and coroner)
-            refreshSegments(['staff']);
+
+    const employeeOptions = useMemo(() => {
+        const allOptions = [];
+
+        if (phmcGroupedOptions && phmcGroupedOptions.length > 0) {
+            allOptions.push(...phmcGroupedOptions);
         }
-    );
+
+        if (coronerGroupedOptions && coronerGroupedOptions.length > 0) {
+            allOptions.push(...coronerGroupedOptions);
+        }
+
+        // Add an "Unknown" category for reports whose author is no longer in the lists
+        allOptions.push({
+            label: "Unknown",
+            options: [{ value: "Unknown", label: "Unknown (Uncategorized)" }]
+        });
+
+        return allOptions;
+    }, [phmcGroupedOptions, coronerGroupedOptions]);
+    
     
     // Enhanced GTAW login handler with loading notification
     const handleGtawLogin = () => {
@@ -200,13 +242,13 @@ function MainApp({
     
     // Show welcome notification for GTA World OAuth users
     useEffect(() => {
-        if (isGtaAuthenticated && gtaWorldUser && gtaWorldUser.username && !hasShownGtaWelcome) {
-            let welcomeMessage = `Welcome back, ${gtaWorldUser.username}!`;
+        if (displayIsAuthenticated && displayUser && displayUser.username && !hasShownGtaWelcome) {
+            let welcomeMessage = `Welcome back, ${displayUser.username}!`;
             
             // Check if user is a PHMC faction member and display their character name and rank
-            if (gtaWorldUser.isFactionMember && gtaWorldUser.faction) {
-                const characterName = (gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : (gtaWorldUser.faction.name || gtaWorldUser.username);
-                const rank = gtaWorldUser.faction.rank;
+            if (displayUser.isFactionMember && displayUser.faction) {
+                const characterName = (displayUser.faction.firstname && displayUser.faction.lastname) ? `${displayUser.faction.firstname} ${displayUser.faction.lastname}` : (displayUser.faction.name || displayUser.username);
+                const rank = displayUser.faction.rank;
                 
                 if (characterName && rank !== undefined) {
                     welcomeMessage = `Welcome back, ${characterName}! (Script Rank: ${rank})`;
@@ -220,10 +262,73 @@ function MainApp({
         }
         
         // Reset the welcome flag when user logs out
-        if (!isGtaAuthenticated && hasShownGtaWelcome) {
+        if (!displayIsAuthenticated && hasShownGtaWelcome) {
             setHasShownGtaWelcome(false);
         }
-    }, [isGtaAuthenticated, gtaWorldUser, hasShownGtaWelcome, showNotification]);
+    }, [displayIsAuthenticated, displayUser, hasShownGtaWelcome, showNotification]);
+
+    // Show nursing employee modal for users with Nurse/Nursing rank
+    useEffect(() => {
+        if (displayIsAuthenticated && displayUser && !hasShownNursingPrompt) {
+            const userRank = displayUser.faction?.rank || '';
+            if (userRank.includes('Nurse') || userRank.includes('Nursing')) {
+                // Check if employee record already exists in Firebase
+                const checkEmployeeRecord = async () => {
+                    try {
+                        const characterId = displayUser.faction?.characterId || displayUser.characterArray?.[0]?.id || displayUser.id;
+                        const employeeId = characterId ? `char_${characterId}` : null;
+                        
+                        if (employeeId) {
+                            const employeeRef = ref(database, `Nursing_Records/${employeeId}`);
+                            const snapshot = await get(employeeRef);
+                            const size = snapshot.exists() ? JSON.stringify(snapshot.val()).length : 0;
+                            sendDataRequestLog('MainApp.jsx', false, 'Firebase (checkEmployeeRecord)', size, displayIsAuthenticated, displayCharacterName);
+                            
+                            if (snapshot.exists()) {
+                                const data = snapshot.val();
+                                // Check if all details are filled out (not empty strings)
+                                const isComplete = data.name && data.surname && data.discord && 
+                                                 data.phoneNumber && data.family && data.closeFamily && data.address;
+                                
+                                if (isComplete) {
+                                    // Show update prompt notification with action button
+                                    showNotification(
+                                        'Your Employee Record is complete. Would you like to update it?',
+                                        'info-circle',
+                                        0, // No auto-dismiss since user needs to interact
+                                        [
+                                            {
+                                                label: 'Update Record',
+                                                handler: () => setShowNursingEmployeeModal(true),
+                                                variant: 'outline-primary'
+                                            }
+                                        ]
+                                    );
+                                } else {
+                                    // Show modal if record is incomplete
+                                    setShowNursingEmployeeModal(true);
+                                }
+                            } else {
+                                // Show modal if record doesn't exist
+                                setShowNursingEmployeeModal(true);
+                            }
+                        } else {
+                            // Show modal if we can't determine character ID
+                            setShowNursingEmployeeModal(true);
+                        }
+                    } catch (error) {
+                        console.error('Error checking nursing employee record:', error);
+                        // Show modal on error
+                        setShowNursingEmployeeModal(true);
+                    } finally {
+                        setHasShownNursingPrompt(true);
+                    }
+                };
+                
+                checkEmployeeRecord();
+            }
+        }
+    }, [displayIsAuthenticated, displayUser, hasShownNursingPrompt, showNotification]);
 
     // Handle character selection from modal
     const handleCharacterSelect = (character) => {
@@ -240,7 +345,7 @@ function MainApp({
         console.log('[Character Selection] User selected character:', {
             characterName,
             characterId: character.id,
-            username: gtaWorldUser?.username
+            username: displayUser?.username
         });
         
         showNotification(
@@ -252,10 +357,10 @@ function MainApp({
 
     // Enhanced auto-fill employee names for PHMC members with Firebase employee matching
     useEffect(() => {
-        if (isGtaAuthenticated && isPhmcMember && gtaWorldUser && (phmcListData.length > 0 || coronerListData.length > 0)) {
-            const characterName = gtaWorldUser.faction?.characterName || 
-                                 (gtaWorldUser.faction?.firstname && gtaWorldUser.faction?.lastname ? 
-                                  `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : null);
+        if (displayIsAuthenticated && displayIsPhmcMember && displayUser && (phmcListData.length > 0 || coronerListData.length > 0)) {
+            const characterName = displayUser.faction?.characterName || 
+                                 (displayUser.faction?.firstname && displayUser.faction?.lastname ? 
+                                  `${displayUser.faction.firstname} ${displayUser.faction.lastname}` : null);
 
             if (characterName && !formData.phmcEmployee && !formData.coronerEmployee) {
                 // First, try to find exact match in PHMC staff
@@ -274,8 +379,8 @@ function MainApp({
                     console.log('[Auto-fill] Auto-populated PHMC employee field:', {
                         characterName,
                         matchedName: matchedEmployee.name,
-                        username: gtaWorldUser.username,
-                        rank: gtaWorldUser.faction?.scriptRank,
+                        username: displayUser.username,
+                        rank: displayUser.faction?.scriptRank,
                         category: matchedEmployee.category
                     });
 
@@ -307,8 +412,8 @@ function MainApp({
                     console.log('[Auto-fill] Auto-populated Coroner employee field:', {
                         characterName,
                         matchedName: matchedEmployee.name,
-                        username: gtaWorldUser.username,
-                        rank: gtaWorldUser.faction?.scriptRank,
+                        username: displayUser.username,
+                        rank: displayUser.faction?.scriptRank,
                         coronerRank: matchedEmployee.rank
                     });
 
@@ -325,7 +430,7 @@ function MainApp({
                 // If exact match not found, show informative message
                 console.log('[Auto-fill] No employee match found for character:', {
                     characterName,
-                    username: gtaWorldUser.username,
+                    username: displayUser.username,
                     availablePhmcStaff: phmcListData.length,
                     availableCoronerStaff: coronerListData.length
                 });
@@ -339,7 +444,7 @@ function MainApp({
                 }, 1000);
             }
         }
-    }, [isGtaAuthenticated, isPhmcMember, gtaWorldUser, phmcListData, coronerListData, formData.phmcEmployee, formData.coronerEmployee, setFormData, showNotification, cleanRank]);
+    }, [displayIsAuthenticated, displayIsPhmcMember, displayUser, phmcListData, coronerListData, formData.phmcEmployee, formData.coronerEmployee, setFormData, showNotification, cleanRank]);
     // Onboarding detection and initialization
     useEffect(() => {
         const onboardingCompleteFlag = localStorage.getItem('onboardingComplete');
@@ -362,7 +467,7 @@ function MainApp({
             try {
                 const progress = JSON.parse(savedProgress);
                 // If user was awaiting OAuth and is now authenticated, resume onboarding
-                if (progress.awaitingGtawOAuth && isGtaAuthenticated) {
+                if (progress.awaitingGtawOAuth && displayIsAuthenticated) {
                     setShowOnboarding(true);
                     setOnboardingComplete(false);
                     return;
@@ -385,7 +490,7 @@ function MainApp({
         } else {
             setOnboardingComplete(true);
         }
-    }, [isGtaAuthenticated]);
+    }, [displayIsAuthenticated]);
 
     const handleOnboardingComplete = (preferences) => {
         console.log(`[ONBOARDING_LOG] handleOnboardingComplete called - UserType: ${preferences.userType}, NotificationType: ${preferences.userType === 'leo' ? 'SKIPPED_LEO' : 'GENERIC_WELCOME'}`);
@@ -499,6 +604,7 @@ function MainApp({
     // Get webhooks functions
     const { 
         sendEasterEggNotification,
+        sendDataRequestLog,
     } = useWebhooks(formData, commitInfo, showNotification);
     // Get image upload functions
     const { isUploading, handleImageUpload } = useImageUpload(showNotification, setFormData);
@@ -531,7 +637,7 @@ function MainApp({
     };
 
     const handleMainFormSelectionButtonClick = () => {
-        if (isUserAuthenticated) {
+        if (displayIsAuthenticated) {
             // Authenticated users see all forms, show PHMC forms directly
             setSelectedAgencyGroup('PHMC');
             setShowAgencySelector(true);
@@ -785,8 +891,6 @@ const getBBCodeContent = () => {
         getBBCodeContent,
         getCurrentReportAuthor,
         filterFormData,
-        coronerListData,
-        phmcListData,
         selectOptions,
         showNotification,
         removeNotification,
@@ -885,8 +989,8 @@ const getBBCodeContent = () => {
                 commitInfo,
                 database,
                 getCurrentReportAuthor,
-                isGtaAuthenticated,
-                gtaWorldUser,
+                isGtaAuthenticated: displayIsAuthenticated, // Use displayIsAuthenticated
+                gtaWorldUser: displayUser, // Use displayUser
                 coronerListData,
                 phmcListData,
             });
@@ -908,8 +1012,8 @@ const getBBCodeContent = () => {
         getCurrentReportAuthor,
         coronerListData,
         phmcListData,
-        isGtaAuthenticated,
-        gtaWorldUser
+        displayIsAuthenticated, // Dependency
+        displayUser // Dependency
     ]);
 
     const currentFormDefinition = useMemo(() => getFormDefinition(bbCodeVersion), [bbCodeVersion]);
@@ -965,15 +1069,15 @@ const getBBCodeContent = () => {
         };
 
         const localStorageData = checkLocalStorage();
-        const isPhmcMemberValue = isPhmcMember || localStorageData.isFactionMember;
-        const userRank = gtaWorldUser?.faction?.rank || localStorageData.rank || 0;
+        const isPhmcMemberValue = displayIsPhmcMember || localStorageData.isFactionMember; // Use displayIsPhmcMember
+        const userRank = displayUser?.faction?.rank || localStorageData.rank || 0; // Use displayUser
 
 /*         console.log('[Auth Debug] Authorization check:', {
             formDefinition: currentFormDefinition.name,
             requiredFaction,
             requiredRank,
             isPHMC,
-            isPhmcMember,
+            isPhmcMember: displayIsPhmcMember, // Use displayIsPhmcMember
             localStorageData,
             isPhmcMemberValue,
             userRank,
@@ -996,11 +1100,11 @@ const getBBCodeContent = () => {
         }
 
         return true;
-    }, [bbCodeVersion, isPhmcMember, gtaWorldUser]);
+    }, [bbCodeVersion, displayIsPhmcMember, displayUser]); // Add displayIsPhmcMember and displayUser as dependencies
 
     // Check if user is authenticated for form filtering
     const isUserAuthenticated = useMemo(() => {
-        if (isGtaAuthenticated && gtaWorldUser) return true;
+        if (displayIsAuthenticated && displayUser) return true; // Use displayIsAuthenticated and displayUser
 
         try {
             const storedProfile = localStorage.getItem('phmc_gtaw_oauth_profile');
@@ -1012,7 +1116,7 @@ const getBBCodeContent = () => {
             console.error("Error reading stored GTAW profile for auth check:", error);
         }
         return false;
-    }, [isGtaAuthenticated, gtaWorldUser]);
+    }, [displayIsAuthenticated, displayUser]); // Add displayIsAuthenticated and displayUser as dependencies
 
     // Filter form definitions based on authentication status
     const filteredFormDefinitions = useMemo(() => {
@@ -1204,62 +1308,6 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
     }, []); // This effect runs once on initial load
 
     // --- Add state to explicitly control dropdown visibility ---
-// Separate PHMC options
-    const phmcGroupedOptions = useMemo(() => {
-        if (!phmcListData || phmcListData.length === 0) return [];
-        return Object.entries(
-            phmcListData.reduce((groups, employee) => {
-                const categoryName = employee.category || 'Uncategorized';
-                if (!groups[categoryName]) {
-                    groups[categoryName] = [];
-                }
-                groups[categoryName].push({
-                    value: employee.name, // Or a unique ID if 'name' isn't unique
-                    label: employee.name,
-                    category: employee.category,
-                    lastName: employee.lastName
-                    // Add any other fields needed by the Select component or your logic
-                });
-                return groups;
-            }, {})
-        ).map(([category, options]) => ({
-            label: category,
-            options: options.sort((a, b) => a.label.localeCompare(b.label))
-        })).sort((a, b) => { // Your existing sorting logic for categories
-            const order = ['Leadership', 'Hospital Supervisor', 'Chief Resident', 'Physician', 'Resident Physician', 'Physician Assistant', 'Psychiatrist', 'Psychologist', 'Dentist', 'Nursing', 'Emergency Medical Services', 'Attending Physician', 'Uncategorized'];
-            return order.indexOf(a.label) - order.indexOf(b.label);
-        });
-    }, [phmcListData]);
-
-    const coronerGroupedOptions = useMemo(() => {
-        if (!coronerListData || coronerListData.length === 0) return [];
-        return Object.entries(
-            coronerListData.reduce((groups, coroner) => {
-                const categoryName = coroner.category || 'Uncategorized';
-                if (!groups[categoryName]) {
-                    groups[categoryName] = [];
-                }
-                groups[categoryName].push({
-                    value: coroner.name, // Or a unique ID
-                    label: `${coroner.name} (${coroner.rank || 'Coroner'})`,
-                    badge: coroner.badge,
-                    rank: coroner.rank,
-                    discord: coroner.discord,
-                    category: categoryName
-                    // Add other fields
-                });
-                return groups;
-            }, {})
-        ).map(([category, options]) => ({
-            label: category,
-            options: options.sort((a, b) => a.label.localeCompare(b.label))
-        })).sort((a, b) => { // Your existing sorting logic for coroner categories
-            const order = ['Chief Boss', 'Deputy Chief Medical Examiner-Coroner,', 'Supervisor', 'Senior Medical Examiner', 'Medical Examiner', 'Senior Coroner Investigator', 'Coroner Investigator', 'Forensic Attendant', 'Trainee Forensic-Attendant', 'Developer Testing', 'Missing_Category', 'Uncategorized'];
-            return order.indexOf(a.label) - order.indexOf(b.label);
-        });
-    }, [coronerListData]);
-
-
     const handleDoeChange = (type) => (e) => {
         const isChecked = e.target.checked;
 
@@ -1608,7 +1656,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                         onClick={() => setShowBusinessCard(prev => !prev)}
                         disabled={(() => {
                             if (isLockdownActive) return true;
-                            if (isGtaAuthenticated) return false;
+                            if (displayIsAuthenticated) return false; // Use displayIsAuthenticated
                             try {
                                 const storedProfile = localStorage.getItem('phmc_gtaw_oauth_profile');
                                 if (storedProfile) {
@@ -1620,7 +1668,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                             }
                             return true;
                         })()}
-                        title={!isGtaAuthenticated ? "Login with GTAW to access Business Card Tool" : "Generate a digital business card for PHMC/LSFD staff"}
+                        title={!displayIsAuthenticated ? "Login with GTAW to access Business Card Tool" : "Generate a digital business card for PHMC/LSFD staff"} // Use displayIsAuthenticated
                     >
                         <i className="fa-solid fa-address-card"></i>
                         Business Card Tool
@@ -1800,29 +1848,49 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                 <div className="output-container">
                 <div className="floating-admin-button-container">
                 {/* Login with GTAW Button */}
-                {!isGtaAuthenticated ? (
-                    <Button
-                        type="button"
-                        variant="primary"
-                        className="changelog-button"
-                        onClick={handleGtawLogin}
-                        disabled={gtaLoading}
-                        title="Login with GTA World"
-                    >
-                        <i className={gtaLoading ? "fas fa-spinner fa-spin" : "fab fa-steam"}></i>
-                        {gtaLoading ? 'Connecting...' : 'Login with GTAW'}
-                    </Button>
+                {!displayIsAuthenticated ? ( // Use displayIsAuthenticated
+                    <>
+                        <Button
+                            type="button"
+                            variant="primary"
+                            className="changelog-button"
+                            onClick={handleGtawLogin}
+                            disabled={gtaLoading}
+                            title="Login with GTA World"
+                        >
+                            <i className="fas fa-user-secret"></i>
+                            {gtaLoading ? 'Connecting...' : 'Login with GTAW'}
+                        </Button>
+{/*                         <Button
+                            type="button"
+                            variant="info"
+                            className="changelog-button"
+                            onClick={handleBypassLogin}
+                            title="Bypass Login for Development/Testing"
+                        >
+                            <i className="fas fa-user-secret"></i>
+                            Bypass Login
+                        </Button>
+ */}                   </>
                 ) : (
                     <>
                         <Button
                             type="button"
                             variant="success"
                             className="changelog-button"
-                            onClick={gtaLogout}
-                            title={`Logged in as ${gtaWorldUser?.username || 'Unknown'}. Click to logout.`}
+                            onClick={() => {
+                                if (isBypassActive) {
+                                    setIsBypassActive(false);
+                                    setIsDevMode(false); // Deactivate dev mode in DataContext
+                                    showNotification('Bypass Login Deactivated!', 'info-circle', 3000);
+                                } else {
+                                    gtaLogout();
+                                }
+                            }}
+                            title={isBypassActive ? "Bypass Active. Click to deactivate." : `Logged in as ${displayUser?.username || 'Unknown'}. Click to logout.`}
                         >
                             <i className="fas fa-user-check"></i>
-                            {gtaWorldUser?.username || 'GTAW User'}
+                            {displayUser?.username || 'GTAW User'}
                         </Button>
                         
                         {/* Sync Saved Reports Button - Only for PHMC Members */}
@@ -1854,6 +1922,16 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                     Bingo Night!
                 </Button>
                 <Button
+                    type="button"
+                    variant="primary"
+                    className="changelog-button"
+                    onClick={() => navigate('/ems-dashboard')}
+                    title="Open EMS Dashboard"
+                >
+                    <i className="fas fa-tachometer-alt"></i>
+                    EMS Dashboard
+                </Button>
+               <Button
                     type="button"
                     variant="danger"
                     className="changelog-button"
@@ -1916,7 +1994,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
     phmcGroupedOptions={phmcGroupedOptions}
     coronerGroupedOptions={coronerGroupedOptions}
     employeeOptions={combinedStaffOptions}
-    handleMissingEmployeeSubmit={handleMissingEmployeeSubmit}
+    onSubmit={handleMissingEmployeeSubmit} // Pass handleMissingEmployeeSubmit as onSubmit
 />            
                                         
  {isFormAuthorized && (
@@ -1955,7 +2033,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             className="control-button"
             disabled={(() => {
                 if (isLockdownActive) return true;
-                if (isGtaAuthenticated) return false;
+                if (displayIsAuthenticated) return false; // Use displayIsAuthenticated
                 try {
                     const storedProfile = localStorage.getItem('phmc_gtaw_oauth_profile');
                     if (storedProfile) {
@@ -1977,7 +2055,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             className="control-button"
             disabled={(() => {
                 if (isLockdownActive) return true;
-                if (isGtaAuthenticated) return false;
+                if (displayIsAuthenticated) return false; // Use displayIsAuthenticated
                 try {
                     const storedProfile = localStorage.getItem('phmc_gtaw_oauth_profile');
                     if (storedProfile) {
@@ -2009,6 +2087,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             className="copy-button-modern"
             disabled={(() => {
                 if (isLockdownActive) return true;
+                if (isDevMode) return false; // Dev mode bypasses auth
                 if (isGtaAuthenticated) return false;
                 try {
                     const storedProfile = localStorage.getItem('phmc_gtaw_oauth_profile');
@@ -2033,6 +2112,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             className="copy-button-modern"
             disabled={(() => {
                 if (isLockdownActive) return true;
+                if (isDevMode) return false; // Dev mode bypasses auth
                 if (isGtaAuthenticated) return false;
                 try {
                     const storedProfile = localStorage.getItem('phmc_gtaw_oauth_profile');
@@ -2141,22 +2221,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                         loadUserSavedReports(employeeValue);
                     }
                 }}
-                employeeOptions={[
-                    {
-                        label: 'PHMC Staff',
-                        options: phmcListData.map(p => ({
-                            value: p.name,
-                            label: `${p.name} (${p.category || 'PHMC'})`
-                        })).sort((a, b) => a.label.localeCompare(b.label))
-                    },
-                    {
-                        label: 'Coroners',
-                        options: coronerListData.map(c => ({
-                            value: c.name,
-                            label: `${c.name} (${c.rank || 'Coroner'})`
-                        })).sort((a, b) => a.label.localeCompare(b.label))
-                    }
-                ]}
+                employeeOptions={employeeOptions}
                 removeNotification={removeNotification}
             />
 
@@ -2176,6 +2241,15 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                 currentSelection={selectedPhmcCharacter}
                 title="Select PHMC Character"
             />
+            <Suspense fallback={null}>
+                <EmployeeDetailsModal
+                    show={showNursingEmployeeModal}
+                    onHide={() => setShowNursingEmployeeModal(false)}
+                    user={gtaWorldUser}
+                    phmcListData={phmcListData}
+                    showNotification={showNotification}
+                />
+            </Suspense>
             </div>
         </Suspense>
         

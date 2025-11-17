@@ -1,0 +1,200 @@
+/* src/components/ems/EmsDashboard.module.css */
+.container {
+  min-height: 100vh;
+  background: #0f172a;
+  color: #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.header h1 {
+  font-size: 2.5rem;
+  font-weight: 800;
+  background: #a1acc5;
+  -webkit-background-clip: text; /* Add this */
+  background-clip: text; /* Add this */
+  -webkit-text-fill-color: transparent;
+  margin: 0;
+}
+
+.controls {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.searchInput {
+  max-width: 400px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+}
+
+.searchInput::placeholder {
+  color: #64748b;
+}
+
+.themeToggle {
+  background: #334155;
+  color: #e2e8f0;
+  border: none;
+  border-radius: 12px;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+}
+
+.mainLayout {
+  display: flex;
+  flex: 1;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.leftPanel {
+  flex: 1;
+  min-width: 300px;
+  background: #1e293b;
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.categoryHeader {
+  background: #334155;
+  padding: 1rem;
+  border-radius: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s;
+  margin-bottom: 0.5rem;
+}
+
+.categoryHeader:hover {
+  background: #475569;
+}
+
+.protocolList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.protocolItem {
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  margin: 0.35rem 0;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #334155;
+}
+
+.protocolItem:hover {
+  background: #475569;
+  transform: translateX(4px);
+}
+
+.protocolItem.selected {
+  background: #6366f1;
+  color: white;
+  font-weight: 600;
+}
+
+.mainContent {
+  flex: 2;
+  min-width: 300px;
+  background: #1e293b;
+  border-radius: 16px;
+  padding: 2rem;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+.protocolTitle {
+  font-size: 2rem;
+  margin-bottom: 1.5rem;
+  color: #60a5fa;
+}
+
+.protocolContent {
+  font-size: 1.1rem;
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+
+.protocolImage {
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+  margin: 1.5rem 0;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+}
+
+.divider {
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #6366f1, transparent);
+  margin: 2rem 0;
+  border: none;
+}
+
+.rightPanel {
+  flex: 1;
+  min-width: 300px;
+  background: #1e293b;
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+/* ─────── LIGHT THEME – MUST COME LAST AND BE STRONGER ─────── */
+.container.light {
+  background: #f8fafc !important;
+  color: #1e293b !important;
+}
+
+.container.light .leftPanel,
+.container.light .mainContent,
+.container.light .rightPanel {
+  background: white !important;
+  color: #1e293b !important;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.08) !important;
+}
+
+.container.light .categoryHeader,
+.container.light .protocolItem {
+  background: #e2e8f0 !important;
+  color: #1e293b !important;
+}
+
+.container.light .categoryHeader:hover,
+.container.light .protocolItem:hover {
+  background: #cbd5e1 !important;
+}
+
+.container.light .protocolItem.selected {
+  background: #6366f1 !important;
+  color: white !important;
+}
+
+.container.light .searchInput,
+.container.light .themeToggle {
+  background: #f1f5f9 !important;
+  color: #1e293b !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+.container.light .searchInput::placeholder {
+  color: #64748b;
+}

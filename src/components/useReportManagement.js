@@ -7,6 +7,8 @@ import * as Sentry from "@sentry/react";
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
 import { getCharacterName, getCharacterID } from '../utils/characterUtils';
 
+import { useData } from '../contexts/DataContext';
+
 const comprehensiveSanitize = (str) => {
     if (!str) return '';
     let sanitized = str.trim().replace(/[.#$[\/ \]]+/g, '_');
@@ -29,8 +31,6 @@ export const useReportManagement = (
     getBBCodeContent,
     getCurrentReportAuthor,
     filterFormData,
-    coronerListData,
-    phmcListData,
     selectOptions,
     showNotification,
     removeNotification,
@@ -42,13 +42,28 @@ export const useReportManagement = (
     ER_PROTOCOL_VERSION,
     CONSULTATION_NOTES_PHMC_VERSION,
     CONSULTATION_NOTES_PBC_VERSION,
-    physicianRecruitmentDetails,
-    adminRecruitmentDetails,
-    emsRecruitmentDetails,
-    nurseRecruitmentDetails,
-    coronerRecruitmentDetails,
     selectedAgencyGroup
 ) => {
+    const { factionsData, coronerListData, phmcListData, sendDataRequestLog } = useData();
+
+    const findEmployeeDetails = (employeeName) => {
+        if (factionsData && factionsData['364'] && factionsData['364'].members) {
+            const allMembers = Object.values(factionsData['364'].members);
+            const employee = allMembers.find(member => 
+                (member.characterName && member.characterName === employeeName) || 
+                (member.name && member.name === employeeName)
+            );
+            if (employee) return employee;
+        }
+
+        // Fallback to legacy lists if not found in the new system
+        const legacyCoroner = coronerListData.find(c => c.name === employeeName);
+        if (legacyCoroner) return legacyCoroner;
+        
+        const legacyPhmc = phmcListData.find(p => p.name === employeeName);
+        return legacyPhmc || null;
+    };
+    
     // GTAW OAuth integration for automatic character data inclusion
     const { user: gtaWorldUser, isAuthenticated: isGtaAuthenticated } = useGtaWorldAuth();
     const [savedReports, setSavedReports] = useState([]);
@@ -322,6 +337,22 @@ export const useReportManagement = (
                 set(bbCodeRef, { bbCode: bbCodeContent })
             ]);
 
+            if (sendDataRequestLog) {
+                const reportSize = new TextEncoder().encode(JSON.stringify(reportDataToSave)).length;
+                const bbCodeSize = new TextEncoder().encode(JSON.stringify({ bbCode: bbCodeContent })).length;
+                const totalSize = reportSize + bbCodeSize;
+
+                sendDataRequestLog(
+                    'useReportManagement.js/saveReport',
+                    false, // This is a write operation, not a cache read
+                    'Firebase Write',
+                    totalSize,
+                    isGtaAuthenticated,
+                    getCharacterName(gtaWorldUser),
+                    `Report: ${reportPath} (${reportSize} bytes), BBCode: ${bbCodePath} (${bbCodeSize} bytes)`
+                );
+            }
+
             const successMessage = gtawDataFound ?
                 `Report "${key}" saved for ${currentAuthor} to Firebase with GTAW data!` :
                 `Report "${key}" saved for ${currentAuthor} to Firebase!`;
@@ -347,6 +378,18 @@ export const useReportManagement = (
             return { success: true }; // Indicate success
 
         } catch (error) {
+            if (sendDataRequestLog) {
+                sendDataRequestLog(
+                    'useReportManagement.js/saveReport',
+                    false,
+                    'Firebase Write Error',
+                    0,
+                    isGtaAuthenticated,
+                    getCharacterName(gtaWorldUser),
+                    `Report: ${reportPath}, BBCode: ${bbCodePath}`,
+                    error.message || 'Unknown Save Error'
+                );
+            }
             console.error("Error saving report to Firebase:", error);
             Sentry.captureException(error, { extra: { context: 'Firebase set report' } });
             const message = 'Something unexpected went wrong, report copied to clipboard!';
@@ -382,6 +425,9 @@ export const useReportManagement = (
             return;
         }
 
+        // --- DEBUG LOG ---
+        console.log(`[Debug] loadUserSavedReports called with userId: ${userId}`);
+
         setIsLoadingUserReports(true);
         setSelectedUserForSavedReports(userId);
         const loadingNotifId = showNotification(`Loading reports for ${userId}...`, 'info-circle', 0);
@@ -391,10 +437,33 @@ export const useReportManagement = (
             const getSavedReports = httpsCallable(functions, 'getSavedReports');
             const result = await getSavedReports({ userId });
 
+            // --- DEBUG LOG ---
+            console.log(`[Debug] Firebase function 'getSavedReports' returned for userId: ${userId}`, result.data);
+
             removeNotification(loadingNotifId);
 
             if (result.data.success) {
                 const reports = result.data.reports || [];
+                const totalSize = JSON.stringify(reports).length;
+
+                if (sendDataRequestLog) {
+                    sendDataRequestLog(
+                        'useReportManagement.js/loadUserSavedReports',
+                        false, // This is a read operation from a function, not cache
+                        'Firebase Function Call',
+                        totalSize,
+                        isGtaAuthenticated,
+                        getCharacterName(gtaWorldUser),
+                        `Loaded ${reports.length} reports for user: ${userId}`
+                    );
+                }
+
+                // --- DEBUG LOG ---
+                console.log(`[Debug] Found ${reports.length} reports for ${userId}.`);
+                if (reports.length > 0) {
+                    console.log('[Debug] Reports found:', reports.map(r => ({ key: r.key, originalKey: r.originalKey, author: r.authorName })));
+                }
+
                 reports.sort((a, b) => b.timestamp - a.timestamp);
                 setSavedReports(reports);
 
@@ -404,9 +473,33 @@ export const useReportManagement = (
                     showNotification(`No active reports found for ${userId}.`, 'info-circle');
                 }
             } else {
+                if (sendDataRequestLog) {
+                    sendDataRequestLog(
+                        'useReportManagement.js/loadUserSavedReports',
+                        false,
+                        'Firebase Function Call Error',
+                        0,
+                        isGtaAuthenticated,
+                        getCharacterName(gtaWorldUser),
+                        `Failed to load reports for user: ${userId}`,
+                        result.data.message || 'Failed to load reports.'
+                    );
+                }
                 throw new Error(result.data.message || 'Failed to load reports.');
             }
         } catch (error) {
+            if (sendDataRequestLog) {
+                sendDataRequestLog(
+                    'useReportManagement.js/loadUserSavedReports',
+                    false,
+                    'Firebase Function Call Error',
+                    0,
+                    isGtaAuthenticated,
+                    getCharacterName(gtaWorldUser),
+                    `Failed to load reports for user: ${userId}`,
+                    error.message || 'Unknown Load Error'
+                );
+            }
             removeNotification(loadingNotifId);
             console.error(`Error loading reports for user ${userId}:`, error);
             Sentry.captureException(error, { extra: { context: 'loadUserSavedReports', userId } });
@@ -415,7 +508,7 @@ export const useReportManagement = (
         } finally {
             setIsLoadingUserReports(false);
         }
-    }, [showNotification, removeNotification, setSavedReports, setSelectedUserForSavedReports, setIsLoadingUserReports]);
+    }, [showNotification, removeNotification, setSavedReports, setSelectedUserForSavedReports, setIsLoadingUserReports, sendDataRequestLog, isGtaAuthenticated, gtaWorldUser]);
 
     const loadReportForUser = useCallback(async (reportFirebaseKey, userId, returnOnly = false) => {
         if (!userId || !reportFirebaseKey) {
@@ -443,6 +536,23 @@ export const useReportManagement = (
 
                 if (reportSnapshot.exists()) {
                     const reportData = reportSnapshot.val();
+                    const bbCodeData = bbCodeSnapshot.val();
+                    
+                    if (sendDataRequestLog) {
+                        const reportSize = new TextEncoder().encode(JSON.stringify(reportData)).length;
+                        const bbCodeSize = new TextEncoder().encode(JSON.stringify(bbCodeData)).length;
+                        const totalSize = reportSize + bbCodeSize;
+
+                        sendDataRequestLog(
+                            'useReportManagement.js/loadReportForUser',
+                            false, // This is a read operation, not from cache
+                            'Firebase Read',
+                            totalSize,
+                            isGtaAuthenticated,
+                            getCharacterName(gtaWorldUser),
+                            `Report: ${reportPath} (${reportSize} bytes), BBCode: ${bbCodePath} (${bbCodeSize} bytes)`
+                        );
+                    }
                     // Manually add the bbCode to the reportData object
                     reportData.bbCode = bbCodeSnapshot.exists() ? bbCodeSnapshot.val().bbCode : '';
 
@@ -467,7 +577,7 @@ export const useReportManagement = (
                     const currentTimestamp = Date.now().toString();
 
                     if (loadedCoronerEmployee) {
-                        const coronerDetails = coronerListData.find(c => c.name === loadedCoronerEmployee);
+                        const coronerDetails = findEmployeeDetails(loadedCoronerEmployee);
                         if (coronerDetails) {
                             loadedFormData.coronerEmployee = loadedCoronerEmployee;
                             loadedFormData.coronerBadge = coronerDetails.badge || '';
@@ -505,7 +615,7 @@ export const useReportManagement = (
                     }
 
                     if (loadedPhmcEmployee) {
-                        const phmcDetails = phmcListData.find(p => p.name === loadedPhmcEmployee);
+                        const phmcDetails = findEmployeeDetails(loadedPhmcEmployee);
                         if (phmcDetails) {
                             loadedFormData.phmcEmployee = loadedPhmcEmployee;
                             loadedFormData.phmcEmployeeLastName = phmcDetails.lastName || '';
@@ -618,10 +728,34 @@ export const useReportManagement = (
                     // Always return the processed data, regardless of `returnOnly`
                     return { success: true, reportData: { ...reportData, data: loadedFormData, bbCode: loadedBbCode } };
                 } else {
+                    if (sendDataRequestLog) {
+                        sendDataRequestLog(
+                            'useReportManagement.js/loadReportForUser',
+                            false,
+                            'Firebase Read Error',
+                            0,
+                            isGtaAuthenticated,
+                            getCharacterName(gtaWorldUser),
+                            `Report: ${reportPath}, BBCode: ${bbCodePath}`,
+                            'Report not found'
+                        );
+                    }
                     if (!returnOnly) showNotification(`Report not found in Firebase: ${reportFirebaseKey}`, 'error');
                     return { success: false, message: `Report not found in Firebase: ${reportFirebaseKey}` };
                 }
             } catch (error) {
+                if (sendDataRequestLog) {
+                    sendDataRequestLog(
+                        'useReportManagement.js/loadReportForUser',
+                        false,
+                        'Firebase Read Error',
+                        0,
+                        isGtaAuthenticated,
+                        getCharacterName(gtaWorldUser),
+                        `Report: ${reportPath}, BBCode: ${bbCodePath}`,
+                        error.message || 'Unknown Load Error'
+                    );
+                }
                 console.error(`[loadReportForUser] Error loading report ${reportFirebaseKey} for user ${userId}:`, error);
                 Sentry.captureException(error, { extra: { context: 'loadReportForUser', userId, reportFirebaseKey } });
                 if (!returnOnly) showNotification(`Failed to load report: ${error.message}`, 'error');
@@ -631,7 +765,7 @@ export const useReportManagement = (
                     removeNotification(loadingNotifId);
                 }
             }
-        }, [bbCodeVersion, coronerListData, phmcListData, removeNotification, setBbCodeVersion, setFormData, showNotification]);
+        }, [bbCodeVersion, factionsData, coronerListData, phmcListData, removeNotification, setBbCodeVersion, setFormData, showNotification, sendDataRequestLog, isGtaAuthenticated, gtaWorldUser]);
 
     const handleReportSelectedForAttachment = useCallback(async (reportFirebaseKey, userId) => {
         // When multiple reports are being loaded, we need to delay closing the modal.
@@ -812,17 +946,42 @@ export const useReportManagement = (
                 remove(reportRef),
                 remove(bbCodeRef)
             ]);
+
+            if (sendDataRequestLog) {
+                sendDataRequestLog(
+                    'useReportManagement.js/deleteReportForUser',
+                    false,
+                    'Firebase Delete',
+                    0,
+                    isGtaAuthenticated,
+                    getCharacterName(gtaWorldUser),
+                    `Report: ${reportPath}, BBCode: ${bbCodePath}`
+                );
+            }
+
             showNotification(`Report deleted successfully from Firebase.`, 'trash');
             // Refresh the list of saved reports for the current user
             if (selectedUserForSavedReports === userId) {
                 loadUserSavedReports(userId);
             }
         } catch (error) {
+            if (sendDataRequestLog) {
+                sendDataRequestLog(
+                    'useReportManagement.js/deleteReportForUser',
+                    false,
+                    'Firebase Delete Error',
+                    0,
+                    isGtaAuthenticated,
+                    getCharacterName(gtaWorldUser),
+                    `Report: ${reportPath}, BBCode: ${bbCodePath}`,
+                    error.message || 'Unknown Delete Error'
+                );
+            }
             console.error(`Error deleting report ${reportFirebaseKey} for user ${userId}:`, error);
             Sentry.captureException(error, { extra: { context: 'deleteReportForUser', userId, reportFirebaseKey } });
             showNotification(`Failed to delete report: ${error.message}`, 'error');
         }
-    }, [loadUserSavedReports, selectedUserForSavedReports, showNotification]);
+    }, [loadUserSavedReports, selectedUserForSavedReports, showNotification, sendDataRequestLog, isGtaAuthenticated, gtaWorldUser]);
 
     const showRareEasterEggDirectly = useCallback(() => {
         setShowEasterEggModal(true);

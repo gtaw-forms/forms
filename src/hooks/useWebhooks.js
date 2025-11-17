@@ -113,6 +113,83 @@ export const useWebhooks = (formData, commitInfo, showNotification) => {
         }
     };
 
+    const sendDataRequestLog = async (file, cached, source, size, loggedIn, user, portions) => {
+        const webhookUrl = import.meta.env.VITE_DEV_WEBHOOK;
+        if (!webhookUrl) {
+            console.error("Discord webhook URL is not configured.");
+            return;
+        }
+
+        const fields = [
+            {
+                name: 'Cached',
+                value: cached ? 'Yes' : 'No',
+                inline: true,
+            },
+            {
+                name: 'Source',
+                value: source,
+                inline: true,
+            },
+            {
+                name: 'Approximate Size',
+                value: `${(size / 1024).toFixed(2)} KB`,
+                inline: true,
+            },
+            {
+                name: 'Logged In',
+                value: loggedIn ? 'Yes' : 'No',
+                inline: true,
+            },
+        ];
+
+        if (loggedIn && user) {
+            fields.push({
+                name: 'User',
+                value: user,
+                inline: true,
+            });
+        }
+
+        if (portions) {
+            fields.push({
+                name: 'Requested Portions',
+                value: portions,
+                inline: false,
+            });
+        }
+
+        const embed = {
+            title: 'Firebase Data Request',
+            description: `A data request was made from \`${file}\`.`,
+            fields,
+            color: cached ? 0x00FF00 : 0xFFA500,
+            timestamp: new Date().toISOString(),
+            footer: {
+                text: `PHMC Tools | Data Request Log`
+            }
+        };
+
+        try {
+            const response = await fetch(webhookUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ embeds: [embed] }),
+            });
+
+            if (!response.ok) {
+                console.error(`Error sending data request log webhook: ${response.status} ${response.statusText}`);
+            } else {
+                console.log(`Data request log sent successfully.`);
+            }
+        } catch (error) {
+            console.error(`Failed to send data request log webhook:`, error);
+            Sentry.captureException(error, { extra: { context: `sendDataRequestLog` } });
+        }
+    };
+
     const handlePhmcWebhookSubmit = async (payload) => {
         if (!payload) return;
         const webhookURL = import.meta.env.VITE_PHMC_DISCORD;
@@ -128,6 +205,7 @@ export const useWebhooks = (formData, commitInfo, showNotification) => {
     return {
         logWebhookToFirebase,
         sendEasterEggNotification,
+        sendDataRequestLog,
         handlePhmcWebhookSubmit,
         handleWebhookSubmit,
     };

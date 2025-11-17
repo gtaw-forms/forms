@@ -54,6 +54,8 @@ const EmployeeCredentialsSection = ({
   const employeeDiscordField = `${employeeType}Discord`;
   const employeePHNumberField = `${employeeType}PHNumber`;
 
+  const isCivilianForm = typeof context === 'string' && context.startsWith('[Civilian]');
+
   const isDevelopmentEnvironment =
     window.location.hostname === 'localhost' ||
     window.location.hostname.startsWith('192.168.') ||
@@ -62,7 +64,7 @@ const EmployeeCredentialsSection = ({
 
   // Initialize GTAW autofill once
   useEffect(() => {
-    if (isGtaAuthenticated && gtaWorldUser && !useGtawName) {
+    if (isGtaAuthenticated && gtaWorldUser && !useGtawName && !isCivilianForm) {
       const gtawCharacterName = getCharacterName(gtaWorldUser);
       if (gtawCharacterName && gtawCharacterName !== 'GTAW User') {
         setUseGtawName(true);
@@ -80,11 +82,11 @@ const EmployeeCredentialsSection = ({
         }));
       }
     }
-  }, [isGtaAuthenticated, gtaWorldUser, useGtawName, setFormData, employeeNameField, employeeBadgeField, employeeRankField, employeeDiscordField, employeePHNumberField, customDiscordName]);
+  }, [isGtaAuthenticated, gtaWorldUser, useGtawName, setFormData, employeeNameField, employeeBadgeField, employeeRankField, employeeDiscordField, employeePHNumberField, customDiscordName, isCivilianForm]);
 
   // Keep authed faction data in sync
   useEffect(() => {
-    if (useGtawName && isGtaAuthenticated && gtaWorldUser && factionData) {
+    if (useGtawName && isGtaAuthenticated && gtaWorldUser && factionData && !isCivilianForm) {
       const cleanRank = factionData.rank ? cleanRankText(factionData.rank) : 'GTAW User';
       setFormData(prev => ({
         ...prev,
@@ -95,7 +97,7 @@ const EmployeeCredentialsSection = ({
         [employeePHNumberField]: '50056',
       }));
     }
-  }, [factionData, useGtawName, isGtaAuthenticated, gtaWorldUser, setFormData, employeeNameField, employeeBadgeField, employeeRankField, employeeDiscordField, employeePHNumberField, customDiscordName]);
+  }, [factionData, useGtawName, isGtaAuthenticated, gtaWorldUser, setFormData, employeeNameField, employeeBadgeField, employeeRankField, employeeDiscordField, employeePHNumberField, customDiscordName, isCivilianForm]);
 
   // Sync custom discord name from faction data, when available
   useEffect(() => {
@@ -204,11 +206,16 @@ const EmployeeCredentialsSection = ({
   };
 
   const handleSwap = () => {
-    if (!canSwapCharacters || !factionData) return;
+    if (!canSwapCharacters || !factionData || !gtaWorldUser.allFactionCharacters) return;
 
     const getCharId = (c) => c?.character?.characterId ?? c?.id ?? null;
 
-    const validCharacters = swappableCharacters.filter(c => getCharId(c) !== null);
+    const factionCharacterIds = gtaWorldUser.allFactionCharacters.map(getCharId);
+
+    const validCharacters = swappableCharacters.filter(c => {
+        const charId = getCharId(c);
+        return charId !== null && factionCharacterIds.includes(charId);
+    });
 
     if (validCharacters.length < 2) {
       return; // Not enough characters to swap
@@ -340,7 +347,7 @@ const EmployeeCredentialsSection = ({
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
-        {isGtaAuthenticated && gtawCharacterName && (
+        {isGtaAuthenticated && gtawCharacterName && !isCivilianForm && (
           <button
             type="button"
             onClick={() => setUseGtawName(!useGtawName)}
@@ -358,15 +365,48 @@ const EmployeeCredentialsSection = ({
             Switch Employee
           </button>
         )}
-        {isDevelopmentEnvironment && !isGtaAuthenticated && (
+        {(isDevelopmentEnvironment || isCivilianForm) && !isGtaAuthenticated && (
           <div style={{ padding: '5px 10px', backgroundColor: '#ffc107', color: '#000', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>
             <i className="fas fa-code" style={{ marginRight: '5px' }}></i>
-            Development Mode: Manual Selection Enabled
+            {isCivilianForm ? 'Manual Selection for Patients' : 'Development Mode: Manual Selection Enabled'}
           </div>
         )}
       </div>
 
-      {useGtawName ? (
+      {(isDevelopmentEnvironment || isCivilianForm) ? (
+        <Select
+          name={employeeNameField}
+          value={
+            groupedOptions
+              ? groupedOptions
+                  .flatMap(group => group.options)
+                  .find(option => option.value === formData[employeeNameField]) || null
+              : null
+          }
+          onChange={selectedOption => handleSelectChange(selectedOption, { name: employeeNameField })}
+          options={groupedOptions || []}
+          isClearable
+          placeholder={`Search or select ${employeeType}...`}
+          className={`form-control ${!formData[employeeNameField] ? 'is-invalid' : ''}`}
+          styles={{
+            control: (base, state) => ({
+              ...base,
+              backgroundColor: '#16202c',
+              color: '#eeeeeeb0',
+              borderColor: !formData[employeeNameField] && state.isFocused ? '#dc3545' : !formData[employeeNameField] ? '#dc3545' : state.isFocused ? '#86b7fe' : '#6c757d',
+              '&:hover': { borderColor: !formData[employeeNameField] ? '#dc3545' : '#86b7fe' },
+              boxShadow: !formData[employeeNameField] && state.isFocused ? '0 0 0 0.25rem rgba(220, 53, 69, 0.25)' : state.isFocused ? '0 0 0 0.25rem rgba(13, 110, 253, 0.25)' : null,
+            }),
+            menu: base => ({ ...base, backgroundColor: '#16202c', zIndex: 1000 }),
+            option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? 'Grey' : '#16202c', color: '#eeeeeeb0' }),
+            singleValue: base => ({ ...base, color: '#eeeeeeb0' }),
+            input: base => ({ ...base, color: '#eeeeeeb0' }),
+            placeholder: base => ({ ...base, color: '#eeeeeeb0' }),
+            group: base => ({ ...base, paddingTop: 8, paddingBottom: 8 }),
+            groupHeading: base => ({ ...base, color: '#6c757d', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.75rem', marginBottom: 4 }),
+          }}
+        />
+      ) : useGtawName && !isCivilianForm ? (
         <div style={{ padding: '10px', backgroundColor: '#1a2332', border: '1px solid #28a745', borderRadius: '4px', marginBottom: '1rem' }}>
           <div style={{ color: '#28a745', fontWeight: 'bold', marginBottom: '5px' }}>
             <i className="fas fa-user-check" style={{ marginRight: '8px' }}></i>
@@ -412,39 +452,6 @@ const EmployeeCredentialsSection = ({
             </div>
           </div>
         </div>
-      ) : isDevelopmentEnvironment ? (
-        <Select
-          name={employeeNameField}
-          value={
-            groupedOptions
-              ? groupedOptions
-                  .flatMap(group => group.options)
-                  .find(option => option.value === formData[employeeNameField]) || null
-              : null
-          }
-          onChange={selectedOption => handleSelectChange(selectedOption, { name: employeeNameField })}
-          options={groupedOptions || []}
-          isClearable
-          placeholder={`Search or select ${employeeType}...`}
-          className={`form-control ${!formData[employeeNameField] ? 'is-invalid' : ''}`}
-          styles={{
-            control: (base, state) => ({
-              ...base,
-              backgroundColor: '#16202c',
-              color: '#eeeeeeb0',
-              borderColor: !formData[employeeNameField] && state.isFocused ? '#dc3545' : !formData[employeeNameField] ? '#dc3545' : state.isFocused ? '#86b7fe' : '#6c757d',
-              '&:hover': { borderColor: !formData[employeeNameField] ? '#dc3545' : '#86b7fe' },
-              boxShadow: !formData[employeeNameField] && state.isFocused ? '0 0 0 0.25rem rgba(220, 53, 69, 0.25)' : state.isFocused ? '0 0 0 0.25rem rgba(13, 110, 253, 0.25)' : null,
-            }),
-            menu: base => ({ ...base, backgroundColor: '#16202c', zIndex: 1000 }),
-            option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? 'Grey' : '#16202c', color: '#eeeeeeb0' }),
-            singleValue: base => ({ ...base, color: '#eeeeeeb0' }),
-            input: base => ({ ...base, color: '#eeeeeeb0' }),
-            placeholder: base => ({ ...base, color: '#eeeeeeb0' }),
-            group: base => ({ ...base, paddingTop: 8, paddingBottom: 8 }),
-            groupHeading: base => ({ ...base, color: '#6c757d', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.75rem', marginBottom: 4 }),
-          }}
-        />
       ) : (
         <>
           {savedProfile ? (

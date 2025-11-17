@@ -1067,10 +1067,10 @@ const exchangeAuthCodeForToken = async (code, redirectUri) => {
                     break;
                 case 'functions/deadline-exceeded':
                 case 'deadline-exceeded':
-                    userFriendlyMessage = 'Request timed out. Please try again.';
+                    userFriendlyMessage = 'The GTA World API is currently under significant load, this request has failed. Please try again later..';
                     break;
                 default:
-                    userFriendlyMessage = 'An internal error occurred. Please try again or contact support.';
+                    userFriendlyMessage = 'An internal error occurred. Please try again or contact the PHMC Discord.';
                     debugInfo = {
                         originalCode: error.code,
                         originalMessage: error.message

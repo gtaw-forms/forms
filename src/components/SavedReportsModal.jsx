@@ -272,26 +272,36 @@ const SavedReportsModal = ({
             let employeeToSelectValue = null;
             
             // First try to use the current employee based on form data
-            if (currentPhmcEmployee) {
+            if (currentPhmcEmployee && currentPhmcEmployee !== 'Unknown') {
                 employeeToSelectValue = currentPhmcEmployee;
-            } else if (currentCoronerEmployee) {
+            } else if (currentCoronerEmployee && currentCoronerEmployee !== 'Unknown') {
                 employeeToSelectValue = currentCoronerEmployee;
-            } else if (preselectedEmployeeType === 'PHMC') {
+            } else if (preselectedEmployeeType === 'PHMC' && currentPhmcEmployee !== 'Unknown') {
                 employeeToSelectValue = currentPhmcEmployee;
             } else {
-                employeeToSelectValue = currentCoronerEmployee || currentPhmcEmployee;
+                employeeToSelectValue = (currentCoronerEmployee !== 'Unknown' ? currentCoronerEmployee : null) || (currentPhmcEmployee !== 'Unknown' ? currentPhmcEmployee : null);
             }
+
+            // --- DEBUG LOG ---
+            console.log('[Debug] employeeToSelectValue determined:', employeeToSelectValue);
 
             // Find the matching employee option
             const employeeOption = employeeOptions?.flatMap(group => group.options).find(
                 (opt) => opt.value === employeeToSelectValue
             );
 
+            // --- DEBUG LOG ---
+            console.log('[Debug] employeeOption found:', employeeOption);
+
             if (employeeOption && employeeToSelectValue !== lastLoadedEmployeeRef.current) {
+                // --- DEBUG LOG ---
+                console.log('[Debug] Setting selected employee and loading reports for:', employeeOption.value);
                 setSelectedEmployee(employeeOption);
-                onEmployeeSelect(String(employeeOption.value));
+                onEmployeeSelect(employeeOption.label);
                 lastLoadedEmployeeRef.current = employeeToSelectValue;
             } else if (!employeeOption) {
+                // --- DEBUG LOG ---
+                console.log('[Debug] No employeeOption found. Clearing selection.');
                 setSelectedEmployee(null);
                 onEmployeeSelect(null);
             }
@@ -305,21 +315,22 @@ const SavedReportsModal = ({
         }
     }, [show, currentCoronerEmployee, currentPhmcEmployee, employeeOptions, preselectedEmployeeType, onEmployeeSelect]);
 
-    const handleEmployeeSelect = (selectedOption) => {
-        isManualSelectionRef.current = true;
-        setSelectedEmployee(selectedOption);
-        setSearchQuery('');
-        setCurrentPage(1);
-        setSelectedReportKeys([]);
-        if (selectedOption) {
-            onEmployeeSelect(String(selectedOption.value));
-            lastLoadedEmployeeRef.current = selectedOption.value;
-        } else {
-            onEmployeeSelect(null);
-            lastLoadedEmployeeRef.current = null;
-        }
-    };
+const handleEmployeeSelect = (selectedOption) => {
+    isManualSelectionRef.current = true;
+    setSelectedEmployee(selectedOption);
+    setSearchQuery('');
+    setCurrentPage(1);
+    setSelectedReportKeys([]);
 
+    if (selectedOption) {
+        // CRITICAL FIX: Pass the NAME (label), not the value (Discord ID)
+        onEmployeeSelect(selectedOption.label);  // ← Change from .value to .label
+        lastLoadedEmployeeRef.current = selectedOption.label;
+    } else {
+        onEmployeeSelect(null);
+        lastLoadedEmployeeRef.current = null;
+    }
+};
     const filteredEmployeeOptions = useMemo(() => {
         if (preselectedEmployeeType === 'PHMC') {
             return (employeeOptions || []).filter((group) => group.label === 'PHMC Staff');

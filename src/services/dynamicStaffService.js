@@ -29,7 +29,7 @@ const logWebhookToFirebase = async (type, payload) => {
 /**
  * Send webhook notification for dynamic staff addition
  * @param {Object} gtaWorldUser - The authenticated GTAW user
- * @param {string} staffType - Either 'phmc' or 'coroner'
+ * @param {string} staffType - Either 'phmc' or 'coroner' (for webhook display)
  * @param {string} characterName - Character name that was added
  * @param {Object} newStaffEntry - The staff entry that was created
  */
@@ -129,6 +129,8 @@ const CORONER_RANKS = [
     'coroner intern'
 ];
 
+const PHMC_FACTION_ID = '364'; // All PHMC and Coroner employees belong to this single faction.
+
 /**
  * Check if a rank indicates coroner employment
  * @param {string} rank - The rank to check
@@ -165,72 +167,77 @@ const getCharacterName = (gtaWorldUser) => {
 };
 
 /**
- * Check if user exists in Firebase staff collection
+ * Check if user exists in Firebase factions collection
  * @param {string} characterName - Name to search for
- * @param {Array} staffList - Current staff list from Firebase
- * @returns {boolean} - True if user exists in staff list
+ * @returns {Promise<boolean>} - True if user exists in staff list
  */
-const userExistsInStaff = (characterName, staffList) => {
-    if (!characterName || !staffList) return false;
-    
-    return staffList.some(staff => 
-        staff.name && staff.name.toLowerCase() === characterName.toLowerCase()
-    );
+const userExistsInFactions = async (characterName) => {
+    if (!characterName) return false;
+
+    const factionMembersRef = ref(database, `factions/${PHMC_FACTION_ID}/members`);
+    const snapshot = await get(factionMembersRef);
+
+    if (snapshot.exists()) {
+        const membersData = snapshot.val();
+        for (const memberId in membersData) {
+            const member = membersData[memberId];
+            if (member.characterName && member.characterName.toLowerCase() === characterName.toLowerCase()) {
+                return true;
+            }
+        }
+    }
+    return false;
 };
 
 /**
- * Add user to Firebase staff collection
+ * Add user to Firebase factions collection
  * @param {Object} gtaWorldUser - The authenticated GTAW user
- * @param {string} staffType - Either 'phmc' or 'coroner'
  * @param {string} characterName - Character name to add
  * @returns {Promise<boolean>} - True if successfully added
  */
-const addUserToStaff = async (gtaWorldUser, staffType, characterName) => {
+const addUserToStaff = async (gtaWorldUser, characterName) => {
     try {
-        const staffRef = ref(database, `staff/${staffType}`);
-        const snapshot = await get(staffRef);
-        
-        let currentStaff = [];
-        if (snapshot.exists()) {
-            currentStaff = snapshot.val() || [];
-        }
-        
-        // Double-check user doesn't already exist
-        if (userExistsInStaff(characterName, currentStaff)) {
-            console.log(`[DynamicStaff] User ${characterName} already exists in ${staffType} staff`);
+        const characterId = getCharacterID(gtaWorldUser);
+        const memberRef = ref(database, `factions/${PHMC_FACTION_ID}/members/${characterId}`);
+
+        // Double-check user doesn't already exist in this specific faction
+        const memberSnapshot = await get(memberRef);
+        if (memberSnapshot.exists()) {
+            console.log(`[DynamicStaff] User ${characterName} already exists in faction ${PHMC_FACTION_ID}`);
             return false;
         }
         
         // Clean rank by removing dashes
         const cleanRank = gtaWorldUser?.faction?.rank ? 
-            gtaWorldUser.faction.rank.replace(/-/g, '').trim() : 'GTAW User';
+            gtaWorldUser.faction.rank.replace(/-/g, ' ').trim() : 'GTAW User';
         
         // Create new staff entry
         const newStaffEntry = {
-            name: characterName,
-            category: cleanRank,
-            rank: cleanRank,
+            characterName: characterName,
+            rank: cleanRank, // Use 'rank' for consistency with factions data
+            scriptRank: gtaWorldUser?.faction?.rank || '', // Keep original script rank
             badge: getCharacterID(gtaWorldUser) || '',
-            discord: gtaWorldUser?.username || '',
-            phNumber: '50056',
+            discord: gtaWorldUser?.username || '', // Discord username from GTAW OAuth
+            phNumber: '50056', // Default PH number
             addedBy: 'Dynamic GTAW OAuth',
             addedDate: new Date().toISOString(),
-            characterId: getCharacterID(gtaWorldUser)
+            characterId: characterId
         };
         
-        // Add to array and update Firebase
-        const updatedStaff = [...currentStaff, newStaffEntry];
-        await set(staffRef, updatedStaff);
+        await set(memberRef, newStaffEntry);
         
-        console.log(`[DynamicStaff] Successfully added ${characterName} to ${staffType} staff:`, newStaffEntry);
+        console.log(`[DynamicStaff] Successfully added ${characterName} to faction ${PHMC_FACTION_ID}:`, newStaffEntry);
+        
+        // Determine staffType for webhook display
+        const staffTypeForWebhook = isCoronerRank(gtaWorldUser?.faction?.rank) ? 'coroner' : 'phmc'; // Determine based on rank
         
         // Send webhook notification and log to Firebase
-        await sendDynamicStaffWebhook(gtaWorldUser, staffType, characterName, newStaffEntry);
+        await sendDynamicStaffWebhook(gtaWorldUser, staffTypeForWebhook, characterName, newStaffEntry);
         
         return true;
         
     } catch (error) {
-        console.error(`[DynamicStaff] Error adding user to ${staffType} staff:`, error);
+        console.error(`[DynamicStaff] Error adding user to faction ${PHMC_FACTION_ID}:`, error);
         return false;
     }
 };
@@ -238,12 +245,10 @@ const addUserToStaff = async (gtaWorldUser, staffType, characterName) => {
 /**
  * Main function to check and dynamically add GTAW user to appropriate staff collection
  * @param {Object} gtaWorldUser - The authenticated GTAW user
- * @param {Array} phmcListData - Current PHMC staff list
- * @param {Array} coronerListData - Current coroner staff list
  * @param {Function} showNotification - Notification function
  * @returns {Promise<Object>} - Result object with success status and staff type
  */
-export const checkAndAddDynamicStaff = async (gtaWorldUser, phmcListData, coronerListData, showNotification) => {
+export const checkAndAddDynamicStaff = async (gtaWorldUser, showNotification) => {
     try {
         // Validate inputs
         if (!gtaWorldUser || !gtaWorldUser.faction) {
@@ -257,28 +262,27 @@ export const checkAndAddDynamicStaff = async (gtaWorldUser, phmcListData, corone
             return { success: false, reason: 'No valid character name' };
         }
         
-        // Check if user already exists in either collection
-        const existsInPhmc = userExistsInStaff(characterName, phmcListData);
-        const existsInCoroner = userExistsInStaff(characterName, coronerListData);
+        // Check if user already exists in the PHMC faction
+        const existsInPhmcFaction = await userExistsInFactions(characterName);
         
-        if (existsInPhmc || existsInCoroner) {
-            console.log(`[DynamicStaff] ${characterName} already exists in staff collections`);
-            return { success: false, reason: 'User already exists in staff' };
+        if (existsInPhmcFaction) {
+            console.log(`[DynamicStaff] ${characterName} already exists in PHMC faction`);
+            return { success: false, reason: 'User already exists in PHMC faction' };
         }
         
-        // Determine which collection to add to based on rank
+        // Determine staffType for notification/webhook based on rank
         const userRank = gtaWorldUser?.faction?.rank || '';
         const isCoroner = isCoronerRank(userRank);
-        const staffType = isCoroner ? 'coroner' : 'phmc';
+        const staffTypeForNotification = isCoroner ? 'coroner' : 'phmc';
         
-        console.log(`[DynamicStaff] Adding ${characterName} with rank "${userRank}" to ${staffType} staff`);
+        console.log(`[DynamicStaff] Adding ${characterName} with rank "${userRank}" to PHMC faction`);
         
-        // Add user to appropriate collection
-        const addSuccess = await addUserToStaff(gtaWorldUser, staffType, characterName);
+        // Add user to the PHMC faction
+        const addSuccess = await addUserToStaff(gtaWorldUser, characterName); // Removed factionId argument
         
         if (addSuccess && showNotification) {
             showNotification(
-                `${characterName} automatically added to ${staffType.toUpperCase()} staff database`,
+                `${characterName} automatically added to ${staffTypeForNotification.toUpperCase()} staff database`,
                 'check-circle',
                 5000
             );
@@ -286,7 +290,7 @@ export const checkAndAddDynamicStaff = async (gtaWorldUser, phmcListData, corone
         
         return { 
             success: addSuccess, 
-            staffType, 
+            staffType: staffTypeForNotification, 
             characterName,
             reason: addSuccess ? 'Successfully added to staff' : 'Failed to add to Firebase'
         };
@@ -297,30 +301,8 @@ export const checkAndAddDynamicStaff = async (gtaWorldUser, phmcListData, corone
     }
 };
 
-/**
- * Utility function to refresh staff data after dynamic addition
- * @param {string} staffType - Either 'phmc' or 'coroner'
- * @returns {Promise<Array>} - Updated staff list
- */
-export const refreshStaffData = async (staffType) => {
-    try {
-        const staffRef = ref(database, `staff/${staffType}`);
-        const snapshot = await get(staffRef);
-        
-        if (snapshot.exists()) {
-            return snapshot.val() || [];
-        }
-        return [];
-        
-    } catch (error) {
-        console.error(`[DynamicStaff] Error refreshing ${staffType} staff data:`, error);
-        return [];
-    }
-};
-
 export default {
     checkAndAddDynamicStaff,
-    refreshStaffData,
     isCoronerRank,
     getCharacterName
 };
