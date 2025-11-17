@@ -15,6 +15,7 @@ import { runOAuthDiagnostics, testFirebaseFunctions, testProfileRetrieval, logEn
 import WebhookManager from './WebhookManager';
 import { WebhookProvider } from '../../contexts/WebhookProvider';
 import FirebaseFunctionsTester from './FirebaseFunctionsTester';
+import EmployeeManager from './EmployeeManager';
 
 const AdminDashboard = ({
     currentUser,
@@ -116,6 +117,7 @@ const AdminDashboard = ({
     // Permission helper functions based on ranks and auth type
     const isEmailSignin = currentUser && !currentUser.isGtaAuth && !currentUser.isGoogleAuth;
     const scriptRank = gtaWorldUser?.faction?.scriptRank;
+    const isRank13OrHigher = scriptRank >= 13;
     const isRank14OrHigher = scriptRank >= 14;
     const isRank15OrHigher = scriptRank >= 15;
     const isRank11OrHigher = scriptRank >= 11;
@@ -126,6 +128,7 @@ const AdminDashboard = ({
     const hasBingoAccess = isGoogleAdminActive || isRank14OrHigher;
     const hasUsersAccess = isGoogleAdminActive || isRank14OrHigher;
     const hasRankPermissionsAccess = isGoogleAdminActive || isRank15OrHigher;
+    const hasEmployeeManagerAccess = isGoogleAdminActive || isRank13OrHigher;
     const canUseGoogleAdminOverride = isEmailSignin; // Only available for email signin
     
     // Override permissions for Google-authenticated users
@@ -303,6 +306,9 @@ const AdminDashboard = ({
                         )}
                         {hasUsersAccess && (
                             <button className={`nav-link ${selectedSection === 'users' ? 'active' : ''}`} onClick={() => setSelectedSection('users')}><i className="fas fa-users-cog me-2"></i>Users</button>
+                        )}
+                        {hasEmployeeManagerAccess && (
+                            <button className={`nav-link ${selectedSection === 'employeeManager' ? 'active' : ''}`} onClick={() => setSelectedSection('employeeManager')}><i className="fas fa-users me-2"></i>Employee Manager</button>
                         )}
                         <button className={`nav-link ${selectedSection === 'webhooks' ? 'active' : ''}`} onClick={() => setSelectedSection('webhooks')}><i className="fas fa-bullhorn me-2"></i>Webhooks</button>
                         <button className={`nav-link ${selectedSection === 'factions' ? 'active' : ''}`} onClick={() => setSelectedSection('factions')}><i className="fas fa-users me-2"></i>Faction Data</button>
@@ -607,6 +613,22 @@ const AdminDashboard = ({
                                         <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to manage users.
                                         <br />
                                         <small>Required: Script Rank 14 or higher, or Google Admin access</small>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    {selectedSection === 'employeeManager' && (
+                        <div className="card">
+                            <div className="card-body">
+                                {hasEmployeeManagerAccess ? (
+                                    <EmployeeManager />
+                                ) : (
+                                    <div className="alert alert-danger">
+                                        <i className="fas fa-exclamation-triangle me-2"></i>
+                                        <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to manage employees.
+                                        <br />
+                                        <small>Required: Script Rank 13 or higher, or Google Admin access</small>
                                     </div>
                                 )}
                             </div>
@@ -1034,20 +1056,6 @@ const AdminDashboard = ({
                                             Migrate Reports
                                         </Button>
                                         <Button 
-                                            variant="warning" 
-                                            size="sm"
-                                            onClick={handleRunDiagnostics}
-                                            disabled={isRunningDiagnostics || !hasAdminAccess}
-                                            title={hasAdminAccess ? "Run comprehensive OAuth diagnostics" : "Requires admin access permission"}
-                                        >
-                                            {isRunningDiagnostics ? (
-                                                <Spinner as="span" animation="border" size="sm" />
-                                            ) : (
-                                                <i className="fas fa-stethoscope me-2"></i>
-                                            )}
-                                            Run Full Diagnostics
-                                        </Button>
-                                        <Button 
                                             variant="success" 
                                             size="sm"
                                             onClick={handleTestProfile}
@@ -1197,7 +1205,7 @@ const AdminDashboard = ({
                             <div className="card-body">
                                 {isGtaAuthenticated || currentUser ? (
                                     hasDatabaseAccess ? (
-                                        <DatabaseEditor showNotification={showInAppNotification} />
+                                        <DatabaseEditor showNotification={showNotification} />
                                     ) : (
                                         <div className="alert alert-warning">
                                             <i className="fas fa-exclamation-triangle me-2"></i>
