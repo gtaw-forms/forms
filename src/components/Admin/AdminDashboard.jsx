@@ -16,7 +16,7 @@ import WebhookManager from './WebhookManager';
 import { WebhookProvider } from '../../contexts/WebhookProvider';
 import FirebaseFunctionsTester from './FirebaseFunctionsTester';
 import EmployeeManager from './EmployeeManager';
-
+import LsccManager from './LsccManager';
 const AdminDashboard = ({
     currentUser,
     desktopNotificationPermission,
@@ -121,6 +121,7 @@ const AdminDashboard = ({
     const isRank14OrHigher = scriptRank >= 14;
     const isRank15OrHigher = scriptRank >= 15;
     const isRank11OrHigher = scriptRank >= 11;
+    const hasLsccManagerAccess = isGoogleAdminActive || scriptRank >= 10;
     
     // Determine access levels for specific sections
     const hasServiceStatusAccess = isGoogleAdminActive || isRank14OrHigher;
@@ -309,6 +310,9 @@ const AdminDashboard = ({
                         )}
                         {hasEmployeeManagerAccess && (
                             <button className={`nav-link ${selectedSection === 'employeeManager' ? 'active' : ''}`} onClick={() => setSelectedSection('employeeManager')}><i className="fas fa-users me-2"></i>Employee Manager</button>
+                        )}
+                        {hasLsccManagerAccess && (
+                            <button className={`nav-link ${selectedSection === 'lscc' ? 'active' : ''}`} onClick={() => setSelectedSection('lscc')}><i className="fas fa-building me-2"></i>LSCC Panel</button>
                         )}
                         <button className={`nav-link ${selectedSection === 'webhooks' ? 'active' : ''}`} onClick={() => setSelectedSection('webhooks')}><i className="fas fa-bullhorn me-2"></i>Webhooks</button>
                         <button className={`nav-link ${selectedSection === 'factions' ? 'active' : ''}`} onClick={() => setSelectedSection('factions')}><i className="fas fa-users me-2"></i>Faction Data</button>
@@ -632,6 +636,20 @@ const AdminDashboard = ({
                                     </div>
                                 )}
                             </div>
+                        </div>
+                    )}
+                    {selectedSection === 'lscc' && (
+                            <div className="card-body">
+                                {hasLsccManagerAccess ? (
+                                    <LsccManager />
+                                ) : (
+                                    <div className="alert alert-danger">
+                                        <i className="fas fa-exclamation-triangle me-2"></i>
+                                        <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to access the LSCC Panel.
+                                        <br />
+                                        <small>Required: Script Rank 10 or higher, or Google Admin access</small>
+                                    </div>
+                                )}
                         </div>
                     )}
                     {selectedSection === 'webhooks' && (

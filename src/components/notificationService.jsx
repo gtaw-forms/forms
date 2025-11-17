@@ -668,14 +668,14 @@ const sendFormInteractionWebhookInternal = async ({
         if (coronerEmployee) {
             // Look up the employee in coronerListData to get the correct category (not the legacy rank)
             const matchedCoronerEmployee = coronerListData.find(emp => emp.name === coronerEmployee);
-            const coronerCategory = cleanRankText(matchedCoronerEmployee?.category || coronerRank || 'Coroner');
+            const coronerCategory = cleanRankText(matchedCoronerEmployee?.rank || coronerRank || 'Coroner');
             userValue = `${coronerCategory} ${coronerEmployee}`;
         }
     } else {
         // Fallback for forms that are not strictly PHMC, Coroner, or Civilian
         if (coronerEmployee) {
             const matchedCoronerEmployee = coronerListData.find(emp => emp.name === coronerEmployee);
-            const coronerCategory = cleanRankText(matchedCoronerEmployee?.category || coronerRank || 'Coroner');
+            const coronerCategory = cleanRankText(matchedCoronerEmployee?.rank || coronerRank || 'Coroner');
             userValue = `${coronerCategory} ${coronerEmployee}`;
         } else if (phmcEmployee) {
             const matchedPhmcEmployee = phmcListData.find(emp => emp.name === phmcEmployee);

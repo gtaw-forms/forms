@@ -12,6 +12,7 @@
     display: flex;
     flex-direction: column;
     align-items: stretch;
+    width: 250px; /* Explicit width for sidebar */
 }
 
 /* Force nav items to stretch full width and align left */
@@ -83,10 +84,11 @@
 }
 
 .main-content {
-    margin-left: 16.66667%;
-    padding: 20px;
+  margin-left: 250px;
+  padding: 20px;
+  width: calc(100% - 250px);
+  max-width: 100%;  /* ← Add this */
 }
-
 .sidebar-footer {
     padding: 15px;
     position: fixed;
