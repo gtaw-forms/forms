@@ -20,6 +20,38 @@ import {
 } from '@dnd-kit/sortable';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+const normalizeProtocols = (data) => {
+  if (!Array.isArray(data)) return [];
+  return data.map(cat => ({
+    ...cat,
+    protocols: Array.isArray(cat.protocols) ? cat.protocols : []
+  }));
+};
+
+const sendDiscordWebhook = async (title, description, color = 3447003, fields = []) => {
+  const webhookUrl = import.meta.env.VITE_DEV_WEBHOOK;
+  if (!webhookUrl) return; // Only skip if webhookUrl is not defined
+
+  const embed = {
+    title,
+    description,
+    color,
+    fields,
+    timestamp: new Date().toISOString(),
+    footer: { text: 'LSCC Protocol Manager • Edited by Admin' },
+  };
+
+  try {
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ embeds: [embed] }),
+    });
+  } catch (err) {
+    console.warn('Discord webhook failed (non-blocking):', err);
+  }
+};
+
 import './LsccManager.css';
 
 const SortableProtocolItem = ({ protocol, category, onEdit, onDelete }) => {
@@ -123,7 +155,27 @@ const LsccManager = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this protocol?')) return;
+    const protocolToDelete = items.flatMap(cat => cat.protocols).find(p => p.id === id);
+    if (!protocolToDelete) {
+      console.warn(`Protocol with ID ${id} not found for deletion.`);
+      return;
+    }
+
+    if (!window.confirm(`Delete protocol "${protocolToDelete.name}"?`)) return;
+
+    // Send webhook notification BEFORE deletion
+    await sendDiscordWebhook(
+      'Protocol Deletion Initiated',
+      `**${protocolToDelete.name}** is about to be deleted.`,
+      16711680, 
+      [
+        { name: 'Protocol ID', value: protocolToDelete.id, inline: true },
+        { name: 'Category', value: protocolToDelete.category || 'N/A', inline: true },
+        { name: 'Content Preview', value: protocolToDelete.content?.substring(0, 100) || 'N/A', inline: false },
+        { name: 'Full Data (for recovery)', value: '```json\n' + JSON.stringify(protocolToDelete, null, 2).substring(0, 1000) + '\n```', inline: false },
+      ]
+    );
+
     const newData = items
       .map(cat => ({ ...cat, protocols: cat.protocols.filter(p => p.id !== id) }))
       .filter(cat => cat.protocols.length > 0);
@@ -276,9 +328,9 @@ const LsccManager = () => {
       {/* Keyword Manager Modal */}
       {showKeywordManager && (
         <div className="modal-overlay" onClick={() => setShowKeywordManager(false)}>
-          <div className="cctv-modal-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 700 }}>
-            <div className="cctv-modal-header">
-              <h4>Manage Keywords</h4>
+          <div className="keyword-manager-modal-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 700 }}>
+            <div className="keyword-manager-modal-header">
+              <h4>Keywords</h4>
               <button className="modal-close-btn" onClick={() => setShowKeywordManager(false)}>×</button>
             </div>
             <div className="p-4">
@@ -321,7 +373,25 @@ const LsccManager = () => {
                           size="sm"
                           variant="danger"
                           className="ms-2"
-                          onClick={() => window.confirm(`Delete "${kw.keyword}"?`) && set(ref(database, `lscc/keywords/${id}`), null)}
+                          onClick={async () => {
+                            if (!window.confirm(`Delete keyword "${kw.keyword}"?`)) return;
+
+                            // Send webhook notification BEFORE deletion
+                            await sendDiscordWebhook(
+                              'Keyword Deletion Initiated',
+                              `**${kw.keyword}** is about to be deleted.`,
+                              16711680, // Red color for deletion
+                              [
+                                { name: 'Keyword ID', value: id, inline: true },
+                                { name: 'Definition', value: kw.definition || 'N/A', inline: false },
+                                { name: 'Tip', value: kw.tip || 'N/A', inline: false },
+                                { name: 'Full Data (for recovery)', value: '```json\n' + JSON.stringify({ id, ...kw }, null, 2).substring(0, 1000) + '\n```', inline: false },
+                              ]
+                            );
+
+                            await set(ref(database, `lscc/keywords/${id}`), null);
+                            // No need to fetchData for keywords, as it's handled by onValue listener
+                          }}
                         >
                           Delete
                         </Button>

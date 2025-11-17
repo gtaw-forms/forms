@@ -83,14 +83,16 @@ export const KeywordHighlighter = ({ children }) => {
             <div className="keyword-modal-body">
               <div style={{ marginBottom: 16 }}>
                 <strong>CONSIDER</strong>
-                                <p>                  {activeKeyword.definition || 'No definition provided.'}
+                <p>          
+                {activeKeyword.definition || 'No definition provided.'}
                 </p>
               </div>
 
               {activeKeyword.tip && (
-                <div className="determination-box">
-                  <strong>DETERMINATION</strong>
-                                    <p>                    {activeKeyword.tip}
+                <div style={{ marginBottom: 16 }}>
+                  <strong>TIP</strong>
+                  <p>
+                    {activeKeyword.tip}
                   </p>
                 </div>
               )}

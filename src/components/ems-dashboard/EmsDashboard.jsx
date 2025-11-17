@@ -10,6 +10,8 @@ const EmsDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [selectedProtocol, setSelectedProtocol] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [uniqueWordFilterTerm, setUniqueWordFilterTerm] = useState("");
+  const [showUniqueWordFilter, setShowUniqueWordFilter] = useState(false);
 const [keywords, setKeywords] = useState({});
 const [showKeywordModal, setShowKeywordModal] = useState(false);
 const [editingKeyword, setEditingKeyword] = useState(null);
@@ -43,11 +45,19 @@ setProtocols(data);
 
     return unsubscribe;
   }, []);
-  const filteredProtocols = protocols    .map((cat) => ({
+  const filteredProtocols = protocols
+    .map((cat) => ({
       ...cat,
-      protocols: cat.protocols.filter((p) =>
-        p.name.toLowerCase().includes(searchTerm.toLowerCase())
-      ),
+      protocols: cat.protocols.filter((p) => {
+        const matchesSearchTerm = p.name.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesUniqueWord = uniqueWordFilterTerm
+          ? (p.uniqueWords || []).some(word =>
+              word.toLowerCase().includes(uniqueWordFilterTerm.toLowerCase())
+            )
+          : true; // If no unique word filter term, it always matches
+
+        return matchesSearchTerm && matchesUniqueWord;
+      }),
     }))
     .filter((cat) => cat.protocols.length > 0);
 
@@ -61,36 +71,55 @@ const renderProtocolContent = (content = "", images = []) => {
       .replace(/\*([^*]+)\*/g, '<strong>$1</strong>')   // *bold*
       .replace(/_([^_]+)_/g, '<u>$1</u>');               // _underline_
 
-    // Then, handle bullet points
-    const lines = formattedText.split('\n');
-    let inList = false;
-    let resultHtml = [];
-
-    lines.forEach(line => {
-      if (line.trim().startsWith('- ')) {
-        if (!inList) {
-          resultHtml.push('<ul>');
-          inList = true;
+      // Then, handle bullet points and nested lists
+      const lines = formattedText.split('\n');
+      let html = [];
+      let openLists = []; // Stack to keep track of open <ul> tags
+    
+      lines.forEach(line => {
+        const trimmedLine = line.trim();
+        let currentLevel = 0;
+    
+        if (trimmedLine.startsWith('>>')) {
+          currentLevel = 2;
+        } else if (trimmedLine.startsWith('>')) {
+          currentLevel = 1;
         }
-        // Remove the bullet point marker and wrap in <li>
-        resultHtml.push(`<li>${line.trim().substring(2)}</li>`);
-      } else {
-        if (inList) {
-          resultHtml.push('</ul>');
-          inList = false;
+    
+        const content = trimmedLine.substring(currentLevel > 0 ? currentLevel : 0).trim();
+    
+        if (currentLevel > 0) {
+          // Close lists that are at a higher level than the current line
+          while (openLists.length > currentLevel) {
+            html.push('</ul>');
+            openLists.pop();
+          }
+          // Open new lists if the current level is deeper than the stack
+          while (openLists.length < currentLevel) {
+            html.push('<ul>');
+            openLists.push('ul');
+          }
+          html.push(`<li>${content}</li>`);
+        } else {
+          // Not a list item, close all open lists
+          while (openLists.length > 0) {
+            html.push('</ul>');
+            openLists.pop();
+          }
+          if (trimmedLine.length > 0) {
+            html.push(`<p>${trimmedLine}</p>`);
+          }
         }
-        // Add non-list items as paragraphs or just text
-        resultHtml.push(`<p>${line}</p>`);
+      });
+    
+      // Close any remaining open lists
+      while (openLists.length > 0) {
+        html.push('</ul>');
+        openLists.pop();
       }
-    });
-
-    if (inList) {
-      resultHtml.push('</ul>');
-    }
-
-    return resultHtml.join('');
-  };
-
+    
+      return html.join('');
+      };
   // Split by image placeholders while preserving them
   const parts = content.split(/(\{image\d+\})/g);
   return parts.map((part, i) => {
@@ -123,6 +152,21 @@ const renderProtocolContent = (content = "", images = []) => {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
+            <button
+              className={styles.filterButton} // You'll need to define this style
+              onClick={() => setShowUniqueWordFilter(!showUniqueWordFilter)}
+            >
+              {showUniqueWordFilter ? "Hide Unique Word Filter" : "Filter by Unique Words"}
+            </button>
+            {showUniqueWordFilter && (
+              <input
+                type="text"
+                placeholder="Filter by unique words..."
+                className={styles.searchInput} // Reusing style for now
+                value={uniqueWordFilterTerm}
+                onChange={(e) => setUniqueWordFilterTerm(e.target.value)}
+              />
+            )}
           </div>
 
           {loading ? (
