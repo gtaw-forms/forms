@@ -368,6 +368,102 @@ a {
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
 }
 
+.keyword-modal-dialog {
+    background-color: #0d1117;
+    border-radius: 8px;
+    padding: 20px;
+    width: 90%;
+    max-height: 500px;
+    max-width: 700px;
+    color: #eeeeeeb0;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    max-width: 520px;
+    margin: 10vh auto;
+    word-wrap: break-word;
+}
+
+.keyword-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #30363d;
+    margin-bottom: 15px;
+}
+
+.keyword-modal-title {
+    color: #0066cc;
+    font-weight: bold;
+    word-wrap: break-word;
+    max-width: calc(100% - 50px);
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.keyword-modal-body {
+    padding: 20px 0;
+}
+
+.keyword-modal-body strong {
+    color: #0066cc;
+    font-size: 1.1em;
+}
+
+.keyword-modal-body p {
+    margin: 8px 0 0;
+    line-height: 1.6;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+}
+
+.keyword-modal-body .determination-box {
+    background: linear-gradient(135deg, #051d2eff, #051d2eff);
+    padding: 16px;
+    border-radius: 10px;
+    border-left: 5px solid #000000ff;
+    margin-top: 20px;
+    word-wrap: break-word;
+}
+
+.keyword-modal-body .determination-box strong {
+    color: #000000ff;
+}
+
+.keyword-modal-body .determination-box p {
+    color: #000000cc;
+}
+
+.keyword-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 15px;
+    border-top: 1px solid #30363d;
+    margin-top: 15px;
+}
+
+.keyword-modal-btn {
+    background-color: #0066cc;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background-color 0.2s ease;
+}
+
+.keyword-modal-btn:hover {
+    background-color: #0056b3;
+}
+
+.keyword-modal-btn-primary {
+    background-color: #0066cc;
+}
+
+.keyword-modal-btn-primary:hover {
+    background-color: #0056b3;
+}
+
 .modal-header {
     display: flex;
     justify-content: space-between;
@@ -669,6 +765,11 @@ input[type="checkbox"]:checked::after {
 .form-select option {
     background-color: #16202c;
     color: #eeeeeeb0;
+}
+
+.patient-helper-treatment-input {
+    background: #223;
+    border: 1px solid #0066cc;
 }
 
 .reports-container {

@@ -109,6 +109,18 @@ const MassFatality = ({
 
     
 
+    useEffect(() => {
+        if (formData.placeOfDeath) {
+            setFormData(prevFormData => ({
+                ...prevFormData,
+                decedents: (prevFormData.decedents || []).map(dec => ({
+                    ...dec,
+                    placeOfDeath: prevFormData.placeOfDeath
+                }))
+            }));
+        }
+    }, [formData.placeOfDeath, setFormData]);
+
     const addDecedent = () => {
         setFormData(prevFormData => ({
             ...prevFormData,
@@ -298,6 +310,17 @@ const MassFatality = ({
                     required
                     className={`form-control ${!formData.dateTime ? 'is-invalid' : ''}`}
                 />
+                <Button
+                    variant="outline-info"
+                    onClick={() => {
+                        const now = new Date();
+                        const pad = (n) => n.toString().padStart(2, '0');
+                        const utc = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}T${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}`;
+                        handleChange({ target: { name: 'dateTime', value: utc } });
+                    }}
+                >
+                    Dispatched
+                </Button>
             <Form.Control
                 type="text"
                 name="placeOfDeath"
@@ -391,7 +414,7 @@ const MassFatality = ({
                                                             <Form.Label>Pronounced Time of Death</Form.Label>
 
                                         <div style={{ display: 'flex', gap: '10px' }}>
-                                <Form.Control type="datetime-local" value={dec.pronouncedTimeOfDeath} onChange={e => updateDecedent(idx, 'pronouncedTimeOfDeath', e.target.value)} />
+                                <Form.Control type="time" value={dec.pronouncedTimeOfDeath} onChange={e => updateDecedent(idx, 'pronouncedTimeOfDeath', e.target.value)} />
                                       <Form.Control type="text" value={dec.probableCauseOfDeath} placeholder="Probable cause of Death" onChange={e => updateDecedent(idx, 'probableCauseOfDeath', e.target.value)} />
 
                              <Form.Select value={dec.typeOfDeath} onChange={e => updateDecedent(idx, 'typeOfDeath', e.target.value)}>
@@ -403,7 +426,7 @@ const MassFatality = ({
                                 </div>   
                                                                         <div style={{ display: 'flex', gap: '10px' }}>
 
-                                <Form.Control type="text" value={dec.placeOfDeath} placeholder='Place of Death' onChange={e => updateDecedent(idx, 'placeOfDeath', e.target.value)} />
+                                <Form.Control type="text" value={dec.placeOfDeath} placeholder='Place of Death' onChange={e => updateDecedent(idx, 'placeOfDeath', e.target.value)} disabled />
                                 <Form.Select value={dec.mannerOfDeath} onChange={e => updateDecedent(idx, 'mannerOfDeath', e.target.value)}>
                                     <option value="" disabled>Select Manner of Death</option>
                                     {mannerOfDeathOptions.map(opt => (
