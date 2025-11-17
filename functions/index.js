@@ -716,7 +716,7 @@ export const exchangeAuthCodeForToken = onCall({
 
         // Add timeout to prevent hanging requests
         const tokenController = new AbortController();
-        const tokenTimeout = setTimeout(() => tokenController.abort(), 15000); // 15 second timeout
+        const tokenTimeout = setTimeout(() => tokenController.abort(), 25000); // 25 second timeout
         
         const tokenResponse = await fetch('https://ucp.gta.world/oauth/token', {
             method: 'POST',
@@ -812,7 +812,7 @@ export const exchangeAuthCodeForToken = onCall({
 
         // Add timeout to user profile request
         const userController = new AbortController();
-        const userTimeout = setTimeout(() => userController.abort(), 10000); // 10 second timeout
+        const userTimeout = setTimeout(() => userController.abort(), 30000); // 30 second timeout
         
         const userResponse = await fetch('https://ucp.gta.world/api/user', {
             headers: {
