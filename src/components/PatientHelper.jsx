@@ -1,6 +1,7 @@
 // components/PatientHelper.jsx — PHMC Blaster 1.3 (FINAL CLINICAL EDITION)
 import React, { useState } from 'react';
 import { Button, Form } from 'react-bootstrap';
+import { useNotification } from '../contexts/NotificationContext';
 
 const mechanisms = [
   'Medical (Unwell)', 'Cardiac Arrest', 'RTC', 'Fall from height', 'Assault', 
@@ -17,6 +18,8 @@ const treatments = [
 ];
 
 const PatientHelper = () => {
+  const { showNotification } = useNotification();
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [unitCallsign, setUnitCallsign] = useState('MEDIC');
   const [ageGroup, setAgeGroup] = useState('Adult');
   const [gender, setGender] = useState('Male');
@@ -88,7 +91,7 @@ const PatientHelper = () => {
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(output);
-    alert('Copied — go sound like a pro on air');
+    showNotification('Handover copied to clipboard!', 'success');
   };
 
   return (
@@ -97,6 +100,14 @@ const PatientHelper = () => {
       border: '1px solid #0066cc',
       boxShadow: '0 0 20px rgba(0, 102, 204, 0.3)'
     }}>
+      
+      <div className="card-header d-flex justify-content-between align-items-center text-light">
+        <h5 className="mb-0">Patient Handover Helper</h5>
+        <Button variant="outline-light" size="sm" onClick={() => setIsCollapsed(!isCollapsed)}>
+          {isCollapsed ? 'Show' : 'Hide'}
+        </Button>
+      </div>
+      {!isCollapsed && (
       <div className="card-body text-light">
 
         <div className="row g-3 align-items-end">
@@ -206,6 +217,7 @@ const PatientHelper = () => {
           </>
         )}
       </div>
+      )}
     </div>
   );
 };
