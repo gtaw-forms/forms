@@ -5,61 +5,95 @@ import { database as db } from "../../firebase";
 import { ref, onValue } from "firebase/database";
 import { KeywordHighlighter } from "../KeywordHighlighter";
 import PatientHelper from "../PatientHelper";
+
 const EmsDashboard = () => {
   const [protocols, setProtocols] = useState([]);
+  const [injuries, setInjuries] = useState({}); // { id: { name, words } }
+  const [selectedInjury, setSelectedInjury] = useState(null); // full injury object
+  const [showInjuryModal, setShowInjuryModal] = useState(false);
+  const [injurySearch, setInjurySearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [selectedProtocol, setSelectedProtocol] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [uniqueWordFilterTerm, setUniqueWordFilterTerm] = useState("");
-  const [showUniqueWordFilter, setShowUniqueWordFilter] = useState(false);
-const [keywords, setKeywords] = useState({});
-const [showKeywordModal, setShowKeywordModal] = useState(false);
-const [editingKeyword, setEditingKeyword] = useState(null);
   const [collapsedCategories, setCollapsedCategories] = useState({});
+  const [keywords, setKeywords] = useState({});
+  const [patientNotes, setPatientNotes] = useState("");
 
-const normalizeProtocols = (data) => {
-  if (!Array.isArray(data)) return [];
-  return data.map(cat => ({
-    ...cat,
-    protocols: Array.isArray(cat.protocols) ? cat.protocols : []
-  }));
-};
-useEffect(() => {
-  const kwRef = ref(db, 'lscc/keywords');
-  onValue(kwRef, (snap) => {
-    setKeywords(snap.val() || {});
-  });
-}, []);
+  useEffect(() => {
+    const savedNotesData = localStorage.getItem('patient notes free text');
+    if (savedNotesData) {
+      const { notes, timestamp } = JSON.parse(savedNotesData);
+      const isExpired = (Date.now() - timestamp) > 24 * 60 * 60 * 1000;
+      if (!isExpired) {
+        setPatientNotes(notes);
+      } else {
+        localStorage.removeItem('patient notes free text');
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const dataToSave = {
+      notes: patientNotes,
+      timestamp: Date.now()
+    };
+    localStorage.setItem('patient notes free text', JSON.stringify(dataToSave));
+  }, [patientNotes]);
+
   const toggleCategory = (cat) => {
     setCollapsedCategories((prev) => ({ ...prev, [cat]: !prev[cat] }));
   };
 
+  // Load data
   useEffect(() => {
     const protocolsRef = ref(db, "lscc/protocols");
-    const unsubscribe = onValue(protocolsRef, (snapshot) => {
-const data = normalizeProtocols(snapshot.val() || []);
-setProtocols(data);
-      setProtocols(data || []);
+    const unsub1 = onValue(protocolsRef, (snap) => {
+      const data = snap.val() || [];
+      const normalized = Array.isArray(data)
+        ? data.map((cat) => ({
+            ...cat,
+            protocols: Array.isArray(cat.protocols) ? cat.protocols : [],
+          }))
+        : [];
+      setProtocols(normalized);
       setLoading(false);
     });
 
-    return unsubscribe;
-  }, []);
-  const filteredProtocols = protocols
-    .map((cat) => ({
-      ...cat,
-      protocols: cat.protocols.filter((p) => {
-        const matchesSearchTerm = p.name.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesUniqueWord = uniqueWordFilterTerm
-          ? (p.uniqueWords || []).some(word =>
-              word.toLowerCase().includes(uniqueWordFilterTerm.toLowerCase())
-            )
-          : true; // If no unique word filter term, it always matches
+    const kwRef = ref(db, "lscc/keywords");
+    const unsub2 = onValue(kwRef, (snap) => setKeywords(snap.val() || {}));
 
-        return matchesSearchTerm && matchesUniqueWord;
-      }),
-    }))
+    const injRef = ref(db, "lscc/injuries");
+    const unsub3 = onValue(injRef, (snap) => setInjuries(snap.val() || {}));
+
+    return () => {
+      unsub1(); unsub2(); unsub3();
+    };
+  }, []);
+
+  // Filter protocols
+  const filteredProtocols = protocols
+    .map((cat) => {
+      let filtered = cat.protocols.filter((p) => {
+        const matchesName = p.name.toLowerCase().includes(searchTerm.toLowerCase());
+        if (!matchesName) return false;
+
+        if (!selectedInjury) return true;
+
+        const content = (p.content || "").toLowerCase();
+        const words = selectedInjury.words.toLowerCase().split(",").map(w => w.trim());
+        return words.some(word => content.includes(word));
+      });
+
+      return { ...cat, protocols: filtered };
+    })
     .filter((cat) => cat.protocols.length > 0);
+
+  // Filter injuries for modal search
+  const visibleInjuries = Object.entries(injuries)
+    .filter(([_, injury]) =>
+      injury.name.toLowerCase().includes(injurySearch.toLowerCase())
+    )
+    .sort((a, b) => a[1].name.localeCompare(b[1].name));
 
 const renderProtocolContent = (content = "", images = []) => {
   // First, let's replace the simple markdown BEFORE splitting by images
@@ -135,7 +169,7 @@ const renderProtocolContent = (content = "", images = []) => {
     return <KeywordHighlighter key={i}>{processMarkdown(part)}</KeywordHighlighter>;
   });
 };
-  return (
+return (
     <div className={`${styles.container}`}>
       <div className={styles.header}>
         <h1>LS County EMS Protocols</h1>
@@ -152,42 +186,38 @@ const renderProtocolContent = (content = "", images = []) => {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
+
+            {/* NEW: Filter by Injuries Button */}
             <button
-              className={styles.filterButton} // You'll need to define this style
-              onClick={() => setShowUniqueWordFilter(!showUniqueWordFilter)}
+              className={`${styles.filterButton} ${selectedInjury ? styles.activeFilter : ""}`}
+              onClick={() => setShowInjuryModal(true)}
             >
-              {showUniqueWordFilter ? "Hide Unique Word Filter" : "Filter by Unique Words"}
+              Filter by Injuries {selectedInjury && " (" + selectedInjury.name + ")"}
             </button>
-            {showUniqueWordFilter && (
-              <input
-                type="text"
-                placeholder="Filter by unique words..."
-                className={styles.searchInput} // Reusing style for now
-                value={uniqueWordFilterTerm}
-                onChange={(e) => setUniqueWordFilterTerm(e.target.value)}
-              />
+
+            {/* Active Filter Badge */}
+            {selectedInjury && (
+              <div className={styles.activeFilterBadge}>
+                <span>{selectedInjury.name}</span>
+                <button
+                  onClick={() => setSelectedInjury(null)}
+                  style={{ marginLeft: 8, fontSize: "1.2em" }}
+                >
+                  ×
+                </button>
+              </div>
             )}
           </div>
 
           {loading ? (
-            <div style={{ textAlign: "center", padding: "2rem" }}>
-              Loading protocols...
-            </div>
+            <div style={{ textAlign: "center", padding: "2rem" }}>Loading...</div>
           ) : (
             <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
               {filteredProtocols.map((category) => (
                 <li key={category.category}>
                   <div
                     className={`${styles.categoryHeader} ${
-                      collapsedCategories[category.category]
-                        ? styles.collapsed
-                        : ""
-                    } ${
-                      category.protocols.some(
-                        (p) => p.id === selectedProtocol?.id
-                      )
-                        ? styles.hasSelectedItem
-                        : ""
+                      collapsedCategories[category.category] ? styles.collapsed : ""
                     }`}
                     onClick={() => toggleCategory(category.category)}
                   >
@@ -199,9 +229,7 @@ const renderProtocolContent = (content = "", images = []) => {
                         <li
                           key={protocol.id}
                           className={`${styles.protocolItem} ${
-                            selectedProtocol?.id === protocol.id
-                              ? styles.selected
-                              : ""
+                            selectedProtocol?.id === protocol.id ? styles.selected : ""
                           }`}
                           onClick={() => setSelectedProtocol(protocol)}
                         >
@@ -220,39 +248,125 @@ const renderProtocolContent = (content = "", images = []) => {
         <div className={styles.mainContent}>
           {selectedProtocol ? (
             <>
-              <h1 className={styles.protocolTitle}>
-                {selectedProtocol.name}
-              </h1>
-              {renderProtocolContent(
-                selectedProtocol.content,
-                selectedProtocol.images
-              )}
+              <h1 className={styles.protocolTitle}>{selectedProtocol.name}</h1>
+              {renderProtocolContent(selectedProtocol.content, selectedProtocol.images)}
             </>
           ) : (
-            <div
-              style={{
-                textAlign: "center",
-                marginTop: "4rem",
-                fontSize: "1.5rem",
-                color: "#94a3b8",
-              }}
-            >
-              Select a protocol to view details
+            <div style={{ textAlign: "center", marginTop: "4rem", fontSize: "1.5rem", color: "#94a3b8" }}>
+              Welcome to the PHMC EMS Dashboard.<br/> You can select a protocol from the left panel to view its details here. <br/><br/> Use the search bar or injury filter to quickly find relevant protocols. <br></br> You can also use the right panel for EMS tools and patient notes. <br></br> This is still in development, if you have any suggestions please reach out to the Alyson on Discord!
             </div>
           )}
         </div>
 
-        {/* Right Panel */}
         <div className={styles.rightPanel}>
-          <h2>Patient Helper 1.0 (Alpha)</h2>
-          <p style={{ color: "#94a3b8" }}>
-            Coming soon: Quick vitals calculator, drug dosage helper, and
-            scene timer.
-            <PatientHelper />
-          </p>
+          <h2>EMS Tools</h2>
+          <textarea
+            className={styles.notesTextarea}
+            value={patientNotes}
+            onChange={(e) => setPatientNotes(e.target.value)}
+            placeholder="Enter patient notes here... (Saved for 24 hours)"
+          />
+          <PatientHelper />
+        </div>
+      </div>
+
+      {/* INJURY FILTER MODAL */}
+{showInjuryModal && (
+  <div className="modal-overlay" onClick={() => setShowInjuryModal(false)}>
+    <div
+      className="cctv-modal-dialog"
+      style={{ maxWidth: 620, borderRadius: 16 }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="cctv-modal-header" style={{ borderTopLeftRadius: 16, borderTopRightRadius: 16, background: "#1e293b", borderBottom: "1px solid #334155" }}>
+        <h4 style={{ margin: 0, color: "#e2e8f0", fontWeight: 600 }}>
+          Filter by Injury Type
+        </h4>
+        <button 
+          className="modal-close-btn" 
+          onClick={() => setShowInjuryModal(false)}
+          style={{ color: "#94a3b8" }}
+        >
+          ×
+        </button>
+      </div>
+
+      <div className="p-5" style={{ background: "#0f172a" }}>
+        {/* Search */}
+        <input
+          type="text"
+          placeholder="Search injuries..."
+          className={styles.searchInput}
+          style={{ 
+            width: "100%", 
+            marginBottom: 20,
+            background: "#1e293b",
+            border: "1px solid #334155",
+            color: "#e2e8f0",
+            padding: "12px 16px",
+            borderRadius: 12,
+            fontSize: "1rem"
+          }}
+          value={injurySearch}
+          onChange={(e) => setInjurySearch(e.target.value)}
+          autoFocus
+        />
+
+        {/* Injury List */}
+        <div style={{ maxHeight: "58vh", overflowY: "auto", borderRadius: 12, background: "#1e293b" }}>
+          {visibleInjuries.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <p>No injuries found</p>
+            </div>
+          ) : (
+            visibleInjuries.map(([id, injury]) => {
+              const isSelected = selectedInjury?.name === injury.name;
+              return (
+                <div
+                  key={id}
+                  className={`${styles.injuryOptionNew} ${isSelected ? styles.injurySelectedNew : ""}`}
+                  onClick={() => {
+                    setSelectedInjury(injury);
+                    setShowInjuryModal(false);
+                    setInjurySearch(""); // clear search
+                  }}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <div>
+                      <div className="font-semibold text-lg" style={{ color: isSelected ? "#60a5fa" : "#e2e8f0" }}>
+                        {injury.name}
+                      </div>
+                      <div className="text-sm opacity-80 mt-1" style={{ color: isSelected ? "#93c5fd" : "#94a3b8" }}>
+                        Triggers: {injury.words}
+                      </div>
+                    </div>
+                    {isSelected && (
+                      <div className="text-2xl ml-4" style={{ color: "#60a5fa" }}>✓</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="mt-6 text-center">
+          <button
+            className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl transition font-medium"
+            onClick={() => {
+              setSelectedInjury(null);
+              setShowInjuryModal(false);
+              setInjurySearch("");
+            }}
+          >
+            Clear Filter
+          </button>
         </div>
       </div>
     </div>
+  </div>
+)}    </div>
   );
 };
 
