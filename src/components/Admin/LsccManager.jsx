@@ -98,14 +98,24 @@ const LsccManager = () => {
   const [showKeywordManager, setShowKeywordManager] = useState(false);
   const [showKeywordEditModal, setShowKeywordEditModal] = useState(false);
   const [editingKeyword, setEditingKeyword] = useState(null);
-
   const [isReordering, setIsReordering] = useState(false);
 
+  // injury types
+  const [injuries, setInjuries] = useState({});
+const [showInjuryManager, setShowInjuryManager] = useState(false);
+const [showInjuryEditModal, setShowInjuryEditModal] = useState(false);
+const [editingInjury, setEditingInjury] = useState(null);
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
-
+useEffect(() => {
+  const injRef = ref(database, 'lscc/injuries');
+  const unsubscribe = onValue(injRef, (snap) => {
+    setInjuries(snap.val() || {});
+  });
+  return () => unsubscribe();
+}, []);
   // Fetch protocols
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -255,6 +265,13 @@ const LsccManager = () => {
           >
             Keywords ({Object.keys(keywords).length})
           </Button>
+          <Button
+          variant="warning"
+          onClick={() => setShowInjuryManager(true)}
+          className="me-2"
+        >
+          Injury Types ({Object.keys(injuries).length})
+        </Button>
         </div>
       </div>
 
@@ -326,68 +343,249 @@ const LsccManager = () => {
       />
 
       {/* Keyword Manager Modal */}
-      {showKeywordManager && (
-        <div className="modal-overlay" onClick={() => setShowKeywordManager(false)}>
-          <div className="cctv-modal-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 700 }}>
-            <div className="cctv-modal-header">
-              <h4>Manage Keywords</h4>
-              <button className="modal-close-btn" onClick={() => setShowKeywordManager(false)}>×</button>
-            </div>
-            <div className="p-4">
-              <Button
-                variant="success"
-                size="sm"
-                className="mb-4"
-                onClick={() => {
-                  setEditingKeyword(null);
-                  setShowKeywordManager(false);
-                  setShowKeywordEditModal(true);
-                }}
-              >
-                + Add New Keyword
-              </Button>
+{showKeywordManager && (
+  <div className="modal-overlay" onClick={() => setShowKeywordManager(false)}>
+    <div 
+      className="cctv-modal-dialog" 
+      style={{ maxWidth: 820, borderRadius: 16 }}
+      onClick={e => e.stopPropagation()}
+    >
+      {/* Header */}
+      <div style={{ 
+        background: "#1e293b", 
+        padding: "1.5rem 2rem", 
+        borderTopLeftRadius: 16,
+        borderTopRightRadius: 16,
+        borderBottom: "1px solid #334155",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center"
+      }}>
+        <h4 style={{ margin: 0, color: "#e2e8f0", fontSize: "1.5rem", fontWeight: 700 }}>
+          Manage Keywords
+        </h4>
+        <button 
+          className="modal-close-btn" 
+          onClick={() => setShowKeywordManager(false)}
+          style={{ fontSize: "1.8rem", color: "#94a3b8" }}
+        >
+          ×
+        </button>
+      </div>
 
-              <div className="border rounded p-3" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-                {Object.keys(keywords).length === 0 ? (
-                  <p className="text-muted">No keywords defined yet.</p>
-                ) : (
-                  Object.entries(keywords).map(([id, kw]) => (
-                    <div key={id} className="d-flex justify-content-between align-items-start border-bottom py-3">
-                      <div className="flex-grow-1">
-                        <h6><strong>{kw.keyword}</strong></h6>
-                        <p className="text-muted mb-1">{kw.definition}</p>
-                        {kw.tip && <small className="text-primary">Tip: {kw.tip}</small>}
+      {/* Body */}
+      <div style={{ background: "#0f172a", padding: "2rem", maxHeight: "80vh", overflowY: "auto" }}>
+        {/* Add Button */}
+        <button
+          className="mb-6 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition shadow-lg"
+          onClick={() => {
+            setEditingKeyword(null);
+            setShowKeywordManager(false);
+            setShowKeywordEditModal(true);
+          }}
+        >
+          + Add New Keyword
+        </button>
+
+        {/* List */}
+        <div style={{ display: "grid", gap: "1rem" }}>
+          {Object.keys(keywords).length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-400 text-lg">No keywords defined yet.</p>
+              <p className="text-gray-500 text-sm mt-2">Click "Add New Keyword" to start teaching the app.</p>
+            </div>
+          ) : (
+            Object.entries(keywords).map(([id, kw]) => (
+              <div
+                key={id}
+                className="bg-slate-800 rounded-xl p-5 border border-slate-700 hover:border-slate-600 transition shadow-sm"
+                style={{ wordWrap: "break-word", overflowWrap: "break-word" }}
+              >
+                <div className="flex justify-between items-start gap-5">
+                  <div className="flex-1 min-w-0">
+                    <h5 className="text-2xl font-bold text-cyan-400 mb-3">
+                      {kw.keyword || "Unnamed"}
+                    </h5>
+
+                    {kw.definition && (
+                      <div className="mb-4">
+                        <span className="text-gray-300 font-medium">Definition:</span>
+                        <p className="mt-2 text-gray-200 leading-relaxed">
+                          {kw.definition}
+                        </p>
                       </div>
-                      <div>
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            setEditingKeyword({ id, ...kw });
-                            setShowKeywordManager(false);
-                            setShowKeywordEditModal(true);
-                          }}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          className="ms-2"
-                          onClick={() => window.confirm(`Delete "${kw.keyword}"?`) && set(ref(database, `lscc/keywords/${id}`), null)}
-                        >
-                          Delete
-                        </Button>
+                    )}
+
+                    {kw.tip && (
+                      <div className="bg-emerald-900/30 border border-emerald-700 rounded-lg px-4 py-3">
+                        <span className="text-emerald-400 font-medium">Quick Tip:</span>
+                        <p className="mt-1 text-emerald-200">
+                          {kw.tip}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3 ml-4 flex-shrink-0">
+                    <button
+                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition shadow"
+                      onClick={() => {
+                        setEditingKeyword({ id, ...kw });
+                        setShowKeywordManager(false);
+                        setShowKeywordEditModal(true);
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-lg font-medium transition shadow"
+                      onClick={() => {
+                        if (window.confirm(`Delete keyword "${kw.keyword}" permanently?`)) {
+                          set(ref(database, `lscc/keywords/${id}`), null);
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
+)}{showInjuryManager && (
+  <div className="modal-overlay" onClick={() => setShowInjuryManager(false)}>
+    <div 
+      className="cctv-modal-dialog" 
+      style={{ maxWidth: 780, borderRadius: 16 }}
+      onClick={e => e.stopPropagation()}
+    >
+      {/* Header */}
+      <div style={{ 
+        background: "#1e293b", 
+        padding: "1.5rem 2rem", 
+        borderTopLeftRadius: 16,
+        borderTopRightRadius: 16,
+        borderBottom: "1px solid #334155",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center"
+      }}>
+        <h4 style={{ margin: 0, color: "#e2e8f0", fontSize: "1.5rem", fontWeight: 700 }}>
+          Manage Injury Types
+        </h4>
+        <button 
+          className="modal-close-btn" 
+          onClick={() => setShowInjuryManager(false)}
+          style={{ fontSize: "1.8rem", color: "#94a3b8" }}
+        >
+          ×
+        </button>
+      </div>
+
+      {/* Body */}
+      <div style={{ background: "#0f172a", padding: "2rem", maxHeight: "80vh", overflowY: "auto" }}>
+        {/* Add Button */}
+        <button
+          className="mb-6 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition shadow-lg"
+          onClick={() => {
+            setEditingInjury(null);
+            setShowInjuryManager(false);
+            setShowInjuryEditModal(true);
+          }}
+        >
+          + Add New Injury Type
+        </button>
+
+        {/* List */}
+        <div style={{ display: "grid", gap: "1rem" }}>
+          {Object.keys(injuries).length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-500 text-lg">No injury types defined yet.</p>
+              <p className="text-gray-600 text-sm mt-2">Click "Add New Injury Type" to get started.</p>
+            </div>
+          ) : (
+            Object.entries(injuries).map(([id, injury]) => (
+              <div
+                key={id}
+                className="bg-slate-800 rounded-xl p-5 border border-slate-700 hover:border-slate-600 transition"
+                style={{ wordWrap: "break-word", overflowWrap: "break-word" }}
+              >
+                <div className="flex justify-between items-start gap-4">
+                  <div className="flex-1 min-w-0">
+                    <h5 className="text-xl font-bold text-indigo-400 mb-2">
+                      {injury.name || "Unnamed Injury"}
+                    </h5>
+                    <div className="bg-slate-900 rounded-lg px-4 py-3 text-sm">
+                      <span className="text-gray-400 font-medium">Trigger words:</span>
+                      <div className="mt-2 text-cyan-300 font-mono break-all">
+                        {injury.words || "(none)"}
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+                  </div>
 
-      {/* Actual Keyword Edit Modal */}
+                  <div className="flex gap-3 ml-4">
+                    <button
+                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition shadow"
+                      onClick={() => {
+                        setEditingInjury({ id, ...injury });
+                        setShowInjuryManager(false);
+                        setShowInjuryEditModal(true);
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-lg font-medium transition shadow"
+                      onClick={() => {
+                        if (window.confirm(`Delete "${injury.name}" permanently?`)) {
+                          set(ref(database, `lscc/injuries/${id}`), null);
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+{/* Injury Edit Modal - Reuses KeywordEditModal with custom fields */}
+{showInjuryEditModal && (
+  <KeywordEditModal
+    show={showInjuryEditModal}
+    onHide={() => {
+      setShowInjuryEditModal(false);
+      setEditingInjury(null);
+      setShowInjuryManager(true);
+    }}
+    type="injury"
+    keyword={{
+      id: editingInjury?.id,
+      keyword: editingInjury?.name || '',
+      definition: editingInjury?.words || '',
+      tip: ''
+    }}
+    onSave={async (id, data) => {
+      const injuryData = {
+        name: data.keyword.trim(),
+        words: data.definition.trim(),
+      };
+      const path = id ? `lscc/injuries/${id}` : `lscc/injuries/${Date.now()}`;
+      await set(ref(database, path), injuryData);
+      setShowInjuryEditModal(false);
+      setEditingInjury(null);
+    }}
+  />
+)}      {/* Actual Keyword Edit Modal */}
       <KeywordEditModal
         show={showKeywordEditModal}
         onHide={() => {
