@@ -5,8 +5,8 @@ import { database } from '../../firebase';
 import { ref, get, set } from 'firebase/database';
 import './CctvRequestWebhookModal.css'; // Reuse your existing modal styles
 
-const KeywordEditModal = ({ show, onHide, keyword, onSave }) => {
-  const [form, setForm] = useState({
+const KeywordEditModal = ({ show, onHide, keyword, onSave, type = 'keyword' }) => {
+    const [form, setForm] = useState({
     keyword: '',
     definition: '',
     tip: '',
@@ -40,12 +40,15 @@ const KeywordEditModal = ({ show, onHide, keyword, onSave }) => {
 
   if (!show) return null;
 
-  return ReactDOM.createPortal(
+return ReactDOM.createPortal(
     <div className="modal-overlay" onClick={onHide}>
       <div className="keyword-modal-dialog" onClick={e => e.stopPropagation()}>
         <div className="keyword-modal-header">
           <h4 className="keyword-modal-title">
-            {keyword?.id ? 'Edit' : 'Add'} Keyword
+            {keyword?.id 
+              ? (type === 'injury' ? 'Edit Injury Type' : 'Edit Keyword')
+              : (type === 'injury' ? 'Add Injury Type' : 'Add Keyword')
+            }
           </h4>
           <button type="button" className="modal-close-btn" onClick={onHide}>×</button>
         </div>
@@ -54,45 +57,54 @@ const KeywordEditModal = ({ show, onHide, keyword, onSave }) => {
           <div className="keyword-form-section">
             <div className="keyword-form-row">
               <div className="keyword-form-group">
-                <label className="keyword-form-label required">Keyword</label>
+                <label className="keyword-form-label required">
+                  {type === 'injury' ? 'Injury Name' : 'Keyword'}
+                </label>
                 <input
                   type="text"
                   className="form-control"
                   name="keyword"
                   value={form.keyword}
                   onChange={handleChange}
-                  placeholder="e.g. ETCO2"
+                  placeholder={type === 'injury' ? "e.g. Gunshot Wound" : "e.g. ETCO2"}
                 />
               </div>
             </div>
 
             <div className="keyword-form-row">
               <div className="keyword-form-group full-width">
-                <label className="keyword-form-label required">Definition</label>
+                <label className="keyword-form-label required">
+                  {type === 'injury' ? 'Trigger Words (comma-separated)' : 'Definition'}
+                </label>
                 <textarea
                   className="form-control keyword-textarea"
-                  rows="5"
+                  rows={type === 'injury' ? "3" : "5"}
                   name="definition"
                   value={form.definition}
                   onChange={handleChange}
-                  placeholder="End-tidal carbon dioxide — measurement of CO2 at the end of exhalation..."
+                  placeholder={type === 'injury' 
+                    ? "GSW, gunshot, shooting, bullet, penetrated"
+                    : "End-tidal carbon dioxide — measurement of CO2 at the end of exhalation..."
+                  }
                 />
               </div>
             </div>
 
-            <div className="keyword-form-row">
-              <div className="keyword-form-group full-width">
-                <label className="keyword-form-label">Quick Tip (Optional)</label>
-                <textarea
-                  className="form-control keyword-textarea"
-                  rows="3"
-                  name="tip"
-                  value={form.tip}
-                  onChange={handleChange}
-                  placeholder="Normal range: 35–45 mmHg"
-                />
+            {type === 'keyword' && (
+              <div className="keyword-form-row">
+                <div className="keyword-form-group full-width">
+                  <label className="keyword-form-label">Quick Tip (Optional)</label>
+                  <textarea
+                    className="form-control keyword-textarea"
+                    rows="3"
+                    name="tip"
+                    value={form.tip}
+                    onChange={handleChange}
+                    placeholder="Normal range: 35–45 mmHg"
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
@@ -101,7 +113,10 @@ const KeywordEditModal = ({ show, onHide, keyword, onSave }) => {
             Cancel
           </button>
           <button className="btn btn-primary" onClick={handleSubmit}>
-            {keyword?.id ? 'Save Changes' : 'Create Keyword'}
+            {keyword?.id 
+              ? (type === 'injury' ? 'Save Injury' : 'Save Changes')
+              : (type === 'injury' ? 'Create Injury Type' : 'Create Keyword')
+            }
           </button>
         </div>
       </div>
