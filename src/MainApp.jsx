@@ -108,32 +108,7 @@ function MainApp({
 
     const [isBypassActive, setIsBypassActive] = useState(false);
     const [bypassUser, setBypassUser] = useState(null);
-    const handleBypassLogin = () => {
-        const dummyUser = {
-            username: 'DevModeUser',
-            id: 'dev-123',
-            isFactionMember: true,
-            faction: {
-                characterId: 'dev-char-456',
-                characterName: 'Dev Character',
-                firstname: 'Dev',
-                lastname: 'Character',
-                rank: 'Developer',
-                scriptRank: 999,
-            },
-            allFactionCharacters: [],
-            character: [],
-            characters: [],
-            accessLevel: 5,
-            permissions: {},
-        };
-        setBypassUser(dummyUser);
-        setIsBypassActive(true);
-        setIsDevMode(true); // Activate dev mode in DataContext
-        showNotification('Bypass Login Activated!', 'info-circle', 3000);
-    };
 
-    // Determine which user/auth state to use
     const displayUser = isBypassActive ? bypassUser : gtaWorldUser;
     const displayIsAuthenticated = isBypassActive || isGtaAuthenticated;
     const displayIsPhmcMember = isBypassActive ? true : isPhmcMember;
@@ -198,27 +173,13 @@ function MainApp({
         // Show loading notification
         showNotification('Please wait, this may take a moment...', 'info-circle', 10000);
         
-        // Determine return path based on current location - preserve actual path
+        // Determine return path based on current location -< preserve actual path
         const currentPath = window.location.hash || '#/';
         const isOnHomepage = currentPath === '#/' || currentPath === '#';
         const isOnAdminPage = currentPath.startsWith('#/admin');
         const isOnFormPage = currentPath.startsWith('#/form');
         const isOnAuthPage = currentPath.includes('/auth/') || currentPath.includes('/callback');
         
-        // Enhanced logging for redirect path determination
-        console.log('🧭 [GTAW Login] Redirect Path Analysis:', {
-            currentPath,
-            fullUrl: window.location.href,
-            pathname: window.location.pathname,
-            search: window.location.search,
-            hash: window.location.hash,
-            isOnHomepage,
-            isOnAdminPage,
-            isOnFormPage,
-            isOnAuthPage,
-            userAgent: navigator.userAgent.substring(0, 100),
-            timestamp: new Date().toISOString()
-        });
         
         // Return to the current page unless it's a problematic path
         let returnPath = currentPath;
@@ -239,9 +200,7 @@ function MainApp({
         gtaLogin({ returnPath });
     };
 
-    
-    // Show welcome notification for GTA World OAuth users
-    useEffect(() => {
+        useEffect(() => {
         if (displayIsAuthenticated && displayUser && displayUser.username && !hasShownGtaWelcome) {
             let welcomeMessage = `Welcome back, ${displayUser.username}!`;
             
@@ -625,15 +584,6 @@ function MainApp({
     const handleHideAgencyGroupSelectorPreference = (hide) => {
         setHideAgencyGroupSelectorPreference(hide);
         localStorage.setItem('hideAgencyGroupSelectorPreference', hide);
-    };
-
-
-
-
-    const handleRecruitmentOptIn = (optIn) => {
-        setPhmcRecruitmentOptIn(optIn);
-        localStorage.setItem('phmcRecruitmentOptIn', optIn);
-        showNotification(`PHMC Recruitment Notifications ${optIn ? 'enabled' : 'disabled'}.`, 'info');
     };
 
     const handleMainFormSelectionButtonClick = () => {
@@ -1930,6 +1880,16 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                 >
                     <i className="fas fa-tachometer-alt"></i>
                     EMS Dashboard
+                </Button>
+                <Button
+                    type="button"
+                    variant="primary"
+                    className="changelog-button"
+                    onClick={() => navigate('/form-handler')}
+                    title="Open Form Handler"
+                >
+                    <i className="fas fa-tachometer-alt"></i>
+                    Form Handler
                 </Button>
                <Button
                     type="button"

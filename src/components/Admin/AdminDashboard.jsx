@@ -17,6 +17,7 @@ import { WebhookProvider } from '../../contexts/WebhookProvider';
 import FirebaseFunctionsTester from './FirebaseFunctionsTester';
 import EmployeeManager from './EmployeeManager';
 import LsccManager from './LsccManager';
+import FormsManager from './FormsManager';
 const AdminDashboard = ({
     currentUser,
     desktopNotificationPermission,
@@ -122,7 +123,8 @@ const AdminDashboard = ({
     const isRank15OrHigher = scriptRank >= 15;
     const isRank11OrHigher = scriptRank >= 11;
     const hasLsccManagerAccess = isGoogleAdminActive || scriptRank >= 10;
-    
+    const hasFormsManagerAccess = isGoogleAdminActive || scriptRank >= 10;
+
     // Determine access levels for specific sections
     const hasServiceStatusAccess = isGoogleAdminActive || isRank14OrHigher;
     const hasLockdownAccess = isGoogleAdminActive || isRank14OrHigher;
@@ -314,6 +316,10 @@ const AdminDashboard = ({
                         {hasLsccManagerAccess && (
                             <button className={`nav-link ${selectedSection === 'lscc' ? 'active' : ''}`} onClick={() => setSelectedSection('lscc')}><i className="fas fa-building me-2"></i>LSCC Panel</button>
                         )}
+                        {hasFormsManagerAccess && (
+                            <button className={`nav-link ${selectedSection === 'forms' ? 'active' : ''}`} onClick={() => setSelectedSection('forms')}><i className="fas fa-building me-2"></i>Forms Panel</button>
+                        )}
+
                         <button className={`nav-link ${selectedSection === 'webhooks' ? 'active' : ''}`} onClick={() => setSelectedSection('webhooks')}><i className="fas fa-bullhorn me-2"></i>Webhooks</button>
                         <button className={`nav-link ${selectedSection === 'factions' ? 'active' : ''}`} onClick={() => setSelectedSection('factions')}><i className="fas fa-users me-2"></i>Faction Data</button>
                         <button className={`nav-link ${selectedSection === 'dev' ? 'active' : ''}`} onClick={() => setSelectedSection('dev')}><i className="fas fa-code me-2"></i>Developer</button>
@@ -652,6 +658,21 @@ const AdminDashboard = ({
                                 )}
                         </div>
                     )}
+                                        {selectedSection === 'forms' && (
+                            <div className="card-body">
+                                {hasFormsManagerAccess ? (
+                                    <FormsManager />
+                                ) : (
+                                    <div className="alert alert-danger">
+                                        <i className="fas fa-exclamation-triangle me-2"></i>
+                                        <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to access the Forms Panel.
+                                        <br />
+                                        <small>Required: Script Rank 10 or higher, or Google Admin access</small>
+                                    </div>
+                                )}
+                        </div>
+                    )}
+
                     {selectedSection === 'webhooks' && (
                         <div className="card">
                             <div className="card-header">
