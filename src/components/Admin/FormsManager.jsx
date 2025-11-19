@@ -11,6 +11,7 @@ const FormManager = () => {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingForm, setEditingForm] = useState(null);
+  const [previewingForm, setPreviewingForm] = useState(null);
 
   useEffect(() => {
     const formsRef = ref(database, "forms");
@@ -104,7 +105,8 @@ const FormManager = () => {
             ) : (
               filteredForms.map((form) => (
                 <div
-                  key={form.id}
+                  key={form.firebaseKey}
+                  onClick={() => setPreviewingForm(form)}
                   style={{
                     background: "#1e293b",
                     border: "1px solid #334155",
@@ -156,12 +158,58 @@ const FormManager = () => {
 
         {/* CENTER — Preview */}
         <div className={styles.mainContent}>
-          <div style={{ textAlign: "center", marginTop: "4rem", color: "#64748b" }}>
-            <h2>Select a form to preview or edit</h2>
-            <p style={{ fontSize: "1.2rem", marginTop: "1rem" }}>
-              Total Forms: <strong>{forms.length}</strong>
-            </p>
-          </div>
+          {previewingForm ? (
+            <div>
+              <h2 style={{ color: '#60a5fa', marginBottom: '2rem' }}>{previewingForm.name}</h2>
+              <div style={{ background: '#0f172a', padding: '2rem', borderRadius: 12 }}>
+                {previewingForm.fields?.map((field, index) => (
+                  <div key={index} style={{ marginBottom: '1.5rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', color: '#94a3b8' }}>
+                      {field.label}
+                    </label>
+                    {field.type === 'textarea' ? (
+                      <textarea
+                        rows={field.rows || 3}
+                        placeholder={field.placeholder || ''}
+                        style={{ width: '100%', padding: '0.8rem', background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8 }}
+                        readOnly
+                      />
+                    ) : field.type === 'select' ? (
+                      <select
+                        style={{ width: '100%', padding: '0.8rem', background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8 }}
+                        disabled
+                      >
+                        <option>{`Select options from: ${field.optionsKey}`}</option>
+                      </select>
+                    ) : (
+                      <input
+                        type={field.type || 'text'}
+                        placeholder={field.placeholder || ''}
+                        style={{ width: '100%', padding: '0.8rem', background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8 }}
+                        readOnly
+                      />
+                    )}
+                  </div>
+                ))}
+                {!previewingForm.fields || previewingForm.fields.length === 0 ? (
+                  <p style={{ color: '#64748b' }}>This form has no fields defined.</p>
+                ) : null}
+              </div>
+              <div style={{ marginTop: '2rem', borderTop: '1px solid #334155', paddingTop: '2rem' }}>
+                <h3 style={{ color: '#94a3b8' }}>BBCode Template</h3>
+                <pre style={{ background: '#0f172a', padding: '1.5rem', borderRadius: 12, color: '#e2e8f0', fontSize: '0.9rem', whiteSpace: 'pre-wrap', maxHeight: '400px', overflow: 'auto' }}>
+                  {previewingForm.template || 'No template provided.'}
+                </pre>
+              </div>
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', marginTop: '4rem', color: '#64748b' }}>
+              <h2>Select a form to preview or edit</h2>
+              <p style={{ fontSize: '1.2rem', marginTop: '1rem' }}>
+                Total Forms: <strong>{forms.length}</strong>
+              </p>
+            </div>
+          )}
         </div>
         {/* RIGHT PANEL — Stats */}
         <div className={styles.rightPanel}>
