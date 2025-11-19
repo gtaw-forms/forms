@@ -5,7 +5,8 @@ import { database as db } from "../../firebase";
 import { ref, onValue } from "firebase/database";
 import { KeywordHighlighter } from "../KeywordHighlighter";
 import PatientHelper from "../PatientHelper";
-
+import { Button } from 'react-bootstrap';
+import { useNavigate } from 'react-router-dom';
 const EmsDashboard = () => {
   const [protocols, setProtocols] = useState([]);
   const [injuries, setInjuries] = useState({}); // { id: { name, words } }
@@ -18,6 +19,7 @@ const EmsDashboard = () => {
   const [collapsedCategories, setCollapsedCategories] = useState({});
   const [keywords, setKeywords] = useState({});
   const [patientNotes, setPatientNotes] = useState("");
+  const navigate = useNavigate();
 
   useEffect(() => {
     const savedNotesData = localStorage.getItem('patient notes free text');
@@ -174,7 +176,9 @@ return (
       <div className={styles.header}>
         <h1>LS County EMS Protocols</h1>
       </div>
-
+                <div className="floating-admin-button-container">
+              <Button type="button" variant="primary" className="changelog-button" onClick={() => navigate('/')} title="Go to Home" > <i className="fas fa-home"></i>Home</Button>
+            </div>
       <div className={styles.mainLayout}>
         {/* Left Panel */}
         <div className={styles.leftPanel}>
