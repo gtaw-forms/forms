@@ -1076,3 +1076,4 @@ ${stack.substring(0, 1000)}
     // We don't have commitInfo here, so we pass an empty object.
     await sendDiscordWebhookInternal(webhookUrl, embedData, {});
 };
+
