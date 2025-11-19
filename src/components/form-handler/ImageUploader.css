@@ -1,0 +1,39 @@
+.image-uploader-container {
+    margin-bottom: 1rem;
+}
+
+.image-previews {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.image-preview {
+    position: relative;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 5px;
+}
+
+.image-preview img {
+    max-width: 100px;
+    max-height: 100px;
+    display: block;
+}
+
+.image-preview .remove-btn {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: red;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    width: 20px;
+    height: 20px;
+    font-size: 12px;
+    line-height: 20px;
+    text-align: center;
+}

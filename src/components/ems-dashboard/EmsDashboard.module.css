@@ -348,3 +348,50 @@
   background: rgba(0, 0, 0, 0.8);
   backdrop-filter: blur(8px);
 }
+.categorySelect {
+  width: 100%;
+  padding: 0.8rem 2.4rem 0.8rem 1rem;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  color: #e2e8f0;
+  font-weight: 600;
+  font-size: 1rem;
+  appearance: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 16px;
+}
+
+/* Form Handler Form List */
+.formCard {
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  margin: 0.5rem 0;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #334155;
+  border: 2px solid transparent; /* Add transparent border for smooth transition */
+}
+
+.formCard:hover {
+  background: #475569;
+  transform: translateX(4px);
+}
+
+.formCard.selected {
+  border-color: #10b981; /* A nice green color */
+  background: #1e40af; /* A slightly different background to make it pop */
+}
+
+.formTitle {
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.formCategory {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
