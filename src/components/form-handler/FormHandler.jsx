@@ -4,6 +4,7 @@ import { database } from "../../firebase";
 import { ref, onValue } from "firebase/database";
 import useGtaWorldAuth from "../../hooks/useGtaWorldAuth";
 import styles from "../ems-dashboard/EmsDashboard.module.css";
+import formStyles from './FormHandler.module.css';
 import ImageUploader from './ImageUploader';
 import { useModal } from "../../contexts/ModalProvider";
 import EmsBingoModal from '../EmsBingoModal';
@@ -35,14 +36,28 @@ const FormHandler = () => {
   const [forms, setForms] = useState([]);
   const [selectedForm, setSelectedForm] = useState(null);
   const [formValues, setFormValues] = useState({});
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [searchTerm, setSearchTerm] = useState(() => localStorage.getItem("formSearchTerm") || "");
+  const [selectedCategory, setSelectedCategory] = useState(() => localStorage.getItem("formSelectedCategory") || "All");
+  const [showRestricted, setShowRestricted] = useState(() => localStorage.getItem("formShowRestricted") === "true" || false);
   const [generatedBBCode, setGeneratedBBCode] = useState("");
   const [generatedTitle, setGeneratedTitle] = useState(""); // New state for generated title
   const [showBBCode, setShowBBCode] = useState(false);
 
   const [selectOptions, setSelectOptions] = useState({});
   const finalSelectOptions = { ...selectOptions, ...authSelectOptions };
+
+  // Save filters to localStorage
+  useEffect(() => {
+    localStorage.setItem("formSearchTerm", searchTerm);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    localStorage.setItem("formSelectedCategory", selectedCategory);
+  }, [selectedCategory]);
+  
+  useEffect(() => {
+    localStorage.setItem("formShowRestricted", String(showRestricted));
+  }, [showRestricted]);
 
   // Load selectOptions
   useEffect(() => {
@@ -86,7 +101,7 @@ const FormHandler = () => {
     const matchesSearch = form.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          form.category?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === "All" || form.category === selectedCategory;
-    if (form.factionRequired && !isPhmcMember) return false;
+    if (form.factionRequired && !isPhmcMember && !showRestricted) return false;
     return matchesSearch && matchesCategory;
   });
 
@@ -209,17 +224,7 @@ ${processedFuncString}
       }}>
         {isPhmcMember && (
           <button
-            style={{
-              padding: "12px 24px",
-              background: "#8b5cf6",
-              color: "white",
-              border: "none",
-              borderRadius: 12,
-              fontWeight: "700",
-              fontSize: "1rem",
-              boxShadow: "0 4px 12px rgba(139,92,246,0.4)",
-              cursor: "pointer"
-            }}
+            className={formStyles.topButton}
             onClick={() => window.location.href = "/admin"}
           >
             Admin Panel
@@ -227,48 +232,27 @@ ${processedFuncString}
         )}
         {isPhmcMember && (
           <button
-            style={{
-              padding: "12px 24px",
-              background: "#8b5cf6",
-              color: "white",
-              border: "none",
-              borderRadius: 12,
-              fontWeight: "700",
-              fontSize: "1rem",
-              boxShadow: "0 4px 12px rgba(139,92,246,0.4)",
-              cursor: "pointer"
-            }}
+            className={formStyles.topButton}
             onClick={() => window.location.href = "/ems-dashboard"}
           >
             EMS Dashboard
           </button>
         )}
         <button
-          style={{
-            padding: "12px 24px",
-            background: "#8b5cf6",
-            color: "white",
-            border: "none",
-            borderRadius: 12,
-            fontWeight: "700",
-            fontSize: "1rem",
-            boxShadow: "0 4px 12px rgba(139,92,246,0.4)",
-            cursor: "pointer"
-          }}
+          className={formStyles.topButton}
           onClick={() => window.location.href = "/auth/gtaworld"}
         >
           {isAuthenticated ? `Signed in as ${characterName || user?.username}` : "Sign in with GTA:W"}
         </button>
-                        <button
-                            type="button"
-                            variant="warning"
-                            className="changelog-button"
-                            onClick={() => setShowEmsBingoModal(true)}
-                            title="Open Bingo Night!"
-                        >
-                            <i className="fas fa-trophy"></i>
-                            Bingo Night!
-                        </button>
+        <button
+            type="button"
+            className={formStyles.bingoButton}
+            onClick={() => setShowEmsBingoModal(true)}
+            title="Open Bingo Night!"
+        >
+            <i className="fas fa-trophy"></i>
+            Bingo Night!
+        </button>
         
       </div>
 
@@ -298,6 +282,14 @@ ${processedFuncString}
               <option key={cat}>{cat}</option>
             ))}
           </select>
+
+          <button
+              onClick={() => setShowRestricted(prev => !prev)}
+              className={`${formStyles.filterButton} ${showRestricted ? formStyles.active : ''}`}
+              title={showRestricted ? "Hide forms requiring faction membership" : "Show forms requiring faction membership"}
+          >
+              {showRestricted ? 'Showing All Forms' : 'Show Restricted'}
+          </button>
 
           <div className={styles.formList}>
             {filteredForms.map(form => (
@@ -679,7 +671,7 @@ if (field.showIf) {
               <div style={{ textAlign: "center", margin: "3rem 0" }}>
                 <button
                   onClick={generateBBCode}
-                  style={{ padding: "1.2rem 4rem", background: "#6366f1", color: "white", border: "none", borderRadius: 16, fontSize: "1.3rem", fontWeight: "700" }}
+                  className={formStyles.generateButton}
                 >
                   Generate BBCode
                 </button>
@@ -700,7 +692,7 @@ if (field.showIf) {
 
           <button
             onClick={() => setShowBBCode(!showBBCode)}
-            style={{ width: "100%", padding: "1rem", background: "#475569", color: "white", border: "none", borderRadius: 8, marginBottom: "1rem" }}
+            className={formStyles.rightPanelButton}
           >
             {showBBCode ? "Hide" : "Show"} BBCode Preview
           </button>
@@ -708,7 +700,7 @@ if (field.showIf) {
           <button
             onClick={copyAndSaveReport}
             disabled={!generatedBBCode}
-            style={{ width: "100%", padding: "1rem", background: generatedBBCode ? "#10b981" : "#475569", color: "white", border: "none", borderRadius: 8 }}
+            className={`${formStyles.rightPanelButton} ${generatedBBCode ? formStyles.copy : ''}`}
           >
             {generatedBBCode ? "Copy BBCode + Save" : "No BBCode Yet"}
           </button>
