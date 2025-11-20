@@ -1,3 +1,5 @@
+If the Agent (Gemini) fails to replace blocks or takes significant time (over 5 minutes of thinking), stop the operation and inform the user of what block needs to be replaced.
+
 # GRIP (Grep-on-Replace-Interrupt Protocol)
 
 **Rule:** This protocol is a critical safeguard against common `replace` tool failures,
