@@ -81,25 +81,14 @@ const FormHandler = () => {
   }, []);
     const {
         showEmsBingoModal, setShowEmsBingoModal,
-        showEasterEggModal, setShowEasterEggModal,
-        easterEggType, setEasterEggType,
-        showAgencySelector, setShowAgencySelector,
-        hideAgencySelector, setHideAgencySelector,
-        showEmployeeModal, setShowEmployeeModal,
-        showEmsAmaModal, setShowEmsAmaModal,
-        showBusinessCard, setShowBusinessCard,
-        showAgencyGroupSelectorModal, setShowAgencyGroupSelectorModal,
-        showCctvRequestModal, setShowCctvRequestModal,
-        showPHMCModal, setShowPHMCModal,
-        switchableModalTitle, setSwitchableModalTitle,
-        switchableFormsList, setSwitchableFormsList,
-        showFeatureRequestModal, setShowFeatureRequestModal
     } = useModal();
+    
   const categories = ["All", ...new Set(forms.map(f => f.category || "Uncategorized"))];
 
   const filteredForms = forms.filter(form => {
     const matchesSearch = form.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         form.category?.toLowerCase().includes(searchTerm.toLowerCase());
+                         form.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         form.uniqueWords?.some(word => word.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesCategory = selectedCategory === "All" || form.category === selectedCategory;
     if (form.factionRequired && !isPhmcMember && !showRestricted) return false;
     return matchesSearch && matchesCategory;
