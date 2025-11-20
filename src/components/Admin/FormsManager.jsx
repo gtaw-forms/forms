@@ -201,6 +201,12 @@ const FormManager = () => {
                   {previewingForm.template || 'No template provided.'}
                 </pre>
               </div>
+              <div style={{ marginTop: '2rem', borderTop: '1px solid #334155', paddingTop: '2rem' }}>
+                <h3 style={{ color: '#94a3b8' }}>Title Generator Code</h3>
+                <pre style={{ background: '#0f172a', padding: '1.5rem', borderRadius: 12, color: '#e2e8f0', fontSize: '0.9rem', whiteSpace: 'pre-wrap', maxHeight: '400px', overflow: 'auto' }}>
+                  {previewingForm.titleGeneratorCode || 'No title generator code provided.'}
+                </pre>
+              </div>
             </div>
           ) : (
             <div style={{ textAlign: 'center', marginTop: '4rem', color: '#64748b' }}>

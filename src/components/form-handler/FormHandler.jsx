@@ -7,6 +7,21 @@ import styles from "../ems-dashboard/EmsDashboard.module.css";
 import ImageUploader from './ImageUploader';
 import { useModal } from "../../contexts/ModalProvider";
 import EmsBingoModal from '../EmsBingoModal';
+
+// Helper function to get current UTC time in 'YYYY-MM-DDTHH:MM' format
+const getUtcFormattedDateTime = () => {
+  const now = new Date();
+  const pad = (n) => n.toString().padStart(2, '0');
+  return `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}T${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}`;
+};
+
+// Helper function to get current UTC time in 'HH:MM' format
+const getUtcFormattedTime = () => {
+  const now = new Date();
+  const pad = (n) => n.toString().padStart(2, '0');
+  return `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}`;
+};
+
 const FormHandler = () => {
   const { 
     user, 
@@ -23,6 +38,7 @@ const FormHandler = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [generatedBBCode, setGeneratedBBCode] = useState("");
+  const [generatedTitle, setGeneratedTitle] = useState(""); // New state for generated title
   const [showBBCode, setShowBBCode] = useState(false);
 
   const [selectOptions, setSelectOptions] = useState({});
@@ -81,34 +97,85 @@ const FormHandler = () => {
   const generateBBCode = () => {
     if (!selectedForm?.template) return;
     let bbcode = selectedForm.template;
+    let title = "";
 
+    // Generate title if titleGeneratorCode exists
+    if (selectedForm.titleGeneratorCode) {
+      try {
+        const funcString = selectedForm.titleGeneratorCode;
+        const arrowIndex = funcString.indexOf('=>');
+
+        if (arrowIndex !== -1) {
+          const paramsString = funcString.substring(0, arrowIndex).trim();
+          const bodyString = funcString.substring(arrowIndex + 2).trim();
+
+          const params = (paramsString.startsWith('(') && paramsString.endsWith(')'))
+                         ? paramsString.substring(1, paramsString.length - 1).trim()
+                         : paramsString.trim();
+
+          const firstBacktickIndex = bodyString.indexOf('`');
+          const lastBacktickIndex = bodyString.lastIndexOf('`');
+
+          let actualBodyContent = bodyString;
+          if (firstBacktickIndex !== -1 && lastBacktickIndex !== -1 && firstBacktickIndex < lastBacktickIndex) {
+              actualBodyContent = bodyString.substring(firstBacktickIndex + 1, lastBacktickIndex);
+          } else {
+              console.warn("titleGeneratorCode body might not be a template literal or is malformed when using arrow function syntax:", bodyString);
+          }
+
+          const titleFn = new Function(params, `return \`${actualBodyContent}\``);
+          title = titleFn(formValues);
+
+        } else {
+          // If it's not an arrow function, assume it's just the template literal content
+          // and wrap it in a function, replacing [FORM_NAME]
+          let processedFuncString = funcString.replace(/\[FORM_NAME\]/g, selectedForm.name || '');
+          try {
+              const titleFn = new Function('formData', `return \`${processedFuncString}\``);
+              title = titleFn(formValues);
+          } catch (fnError) {
+              console.error("Error generating title from plain template string:", fnError);
+              title = `Error processing title template: ${fnError.message}`;
+          }
+        }
+      } catch (error) {
+        console.error("Error generating title with new Function():", error);
+        title = `Error generating title: ${error.message}`;
+      }
+    } else {
+      title = selectedForm.name || "Untitled Report";
+    }
+    setGeneratedTitle(title); // Set the generated title
+
+    // Replace placeholders in the BBCode template
     selectedForm.fields?.forEach(field => {
       if (field.type === "hr") {
-        bbcode += "\n[hr]\n"; // Append [hr] directly without placeholder replacement
+        bbcode = bbcode.replace(new RegExp(`{{${field.name}}}`, "g"), "\n[hr]\n");
         return; // Move to next field
       }
 
       const placeholder = `{{${field.name}}}`;
+      let replacementValue = "";
 
       if (field.type === "small_header") {
-        bbcode = bbcode.replace(new RegExp(placeholder, "g"), `[size=10][b]${field.label}[/b][/size]`);
+        replacementValue = `[size=10][b]${field.label}[/b][/size]`;
       } else {
         const value = formValues[field.name] ?? "";
 
         if (field.type === "image") {
-          if (value) { // Check if value is not empty string
-            const imageUrls = value.split(', '); // Split the comma-separated string into an array
-            const imagesBBCode = imageUrls.map(url => `[img]${url}[/img]`).join(",");
-            bbcode = bbcode.replace(new RegExp(placeholder, "g"), imagesBBCode);
+          if (value) {
+            const imageUrls = value.split(', ');
+            replacementValue = imageUrls.map(url => `[img]${url}[/img]`).join(",");
           } else {
-            bbcode = bbcode.replace(new RegExp(placeholder, "g"), "[No images]");
+            replacementValue = "[No images]";
           }
         } else if (field.type === "checkbox") {
-          bbcode = bbcode.replace(new RegExp(placeholder, "g"), value ? "Yes" : "No");
+          replacementValue = value ? "Yes" : "No";
         } else {
-          bbcode = bbcode.replace(new RegExp(placeholder, "g"), value || "");
+          replacementValue = value || "";
         }
       }
+      bbcode = bbcode.replace(new RegExp(placeholder, "g"), replacementValue);
     });
 
     setGeneratedBBCode(bbcode);
@@ -117,7 +184,8 @@ const FormHandler = () => {
 
   const copyAndSaveReport = () => {
     if (!generatedBBCode) return;
-    navigator.clipboard.writeText(generatedBBCode);
+    const fullReportContent = generatedTitle ? `[center][size=150][b]${generatedTitle}[/b][/size][/center]\n\n${generatedBBCode}` : generatedBBCode;
+    navigator.clipboard.writeText(fullReportContent);
     alert("BBCode copied to clipboard!");
   };
 
@@ -302,6 +370,12 @@ if (field.showIf) {
                         </div>
                       )}
 
+                      {field.type === "fake_line" && (
+                        <div style={{ margin: "0 8px 1.5rem", width: "calc(100% - 16px)", boxSizing: "border-box" }}>
+                          <hr style={{ borderTop: "1px dashed #334155", margin: "0", height: "1px" }} />
+                        </div>
+                      )}
+
                       {field.type === "small_header" && (
                         <div style={{ margin: "0 8px 1.5rem", width: "calc(100% - 16px)", boxSizing: "border-box" }}>
                           <h4 style={{ color: "#a78bfa", marginBottom: "1rem", marginTop: "1rem" }}>
@@ -310,7 +384,62 @@ if (field.showIf) {
                         </div>
                       )}
 
-                      {field.type !== "hr" && field.type !== "small_header" && (
+                      {field.type === "timer" && (
+                        <div
+                          style={{
+                            margin: "0 8px 1.5rem",
+                            width: (field.layout === "compact") ? "calc(20% - 16px)" : "calc(100% - 16px)",
+                            display: "inline-block",
+                            verticalAlign: "top",
+                            boxSizing: "border-box"
+                          }}
+                        >
+                          <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "600", color: "#94a3b8" }}>
+                            {field.label}
+                          </label>
+                          <input
+                            type={field.timerType || 'text'}
+                            name={field.name}
+                            value={formValues[field.name] || ""}
+                            onChange={e => handleChange(field.name, e.target.value)}
+                            style={{ width: "100%", padding: "0.8rem", background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0", borderRadius: 8 }}
+                          />
+                        </div>
+                      )}
+
+                      {field.type === "timerButton" && (
+                        <div
+                          style={{
+                            margin: "0 8px 1.5rem",
+                            width: (field.layout === "compact") ? "calc(20% - 16px)" : "calc(100% - 16px)",
+                            display: (field.layout === "compact") ? "inline-block" : "flex",
+                            alignItems: "center",
+                            gap: (field.layout === "compact") ? "0" : "6px",
+                            boxSizing: "border-box"
+                          }}
+                        >
+                          <button
+                            onClick={() => {
+                              const timeValue = field.timerType === 'datetime-local' ? getUtcFormattedDateTime() : getUtcFormattedTime();
+                              handleChange(field.timerTargetField, timeValue);
+                            }}
+                            style={{
+                              padding: "0.5rem 1rem",
+                              background: "#6366f1",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 8,
+                              fontSize: "0.9rem",
+                              fontWeight: "600",
+                              flexShrink: 0
+                            }}
+                          >
+                            {field.buttonLabel}
+                          </button>
+                        </div>
+                      )}
+
+                      {field.type !== "hr" && field.type !== "fake_line" && field.type !== "small_header" && field.type !== "timer" && field.type !== "timerButton" && (
                         <div
                           style={{
                             margin: "0 8px 1.5rem",
@@ -426,9 +555,16 @@ if (field.showIf) {
           </button>
 
           {showBBCode && generatedBBCode && (
-            <pre style={{ background: "#0f172a", padding: "1.5rem", borderRadius: 12, color: "#e2e8f0", fontSize: "0.9rem", maxHeight: "60vh", overflow: "auto", marginTop: "1rem", whiteSpace: "pre-wrap" }}>
-              {generatedBBCode}
-            </pre>
+            <>
+              {generatedTitle && (
+                <div style={{ background: "#0f172a", padding: "1.5rem", borderRadius: 12, color: "#e2e8f0", fontSize: "1.1rem", fontWeight: "700", marginBottom: "1rem", whiteSpace: "pre-wrap" }}>
+                  {generatedTitle}
+                </div>
+              )}
+              <pre style={{ background: "#0f172a", padding: "1.5rem", borderRadius: 12, color: "#e2e8f0", fontSize: "0.9rem", maxHeight: "60vh", overflow: "auto", marginTop: "1rem", whiteSpace: "pre-wrap" }}>
+                {generatedBBCode}
+              </pre>
+            </>
           )}
         </div>
       </div>
