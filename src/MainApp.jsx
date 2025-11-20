@@ -52,7 +52,6 @@ const OnboardingModal = lazy(() => import('./components/OnboardingModal'));
 const Footer = lazy(() => import('./components/Footer'));
 const HeaderInfo = lazy(() => import('./components/HeaderInfo'));
 const BusinessCardModal = lazy(() => import('./components/BusinessCardModal'));
-const EmsAmaModal = lazy(() => import('./components/EmsAmaModal'));
 const EasterEggModal = lazy(() => import('./components/EasterEggModal'));
 const SwitchableFormsModal = lazy(() => import('./components/SwitchableFormsModal'));
 const EmployeeModal = lazy(() => import('./components/EmployeeModal'));
@@ -84,7 +83,6 @@ function MainApp({
         showAgencySelector, setShowAgencySelector,
         hideAgencySelector, setHideAgencySelector,
         showEmployeeModal, setShowEmployeeModal,
-        showEmsAmaModal, setShowEmsAmaModal,
         showBusinessCard, setShowBusinessCard,
         showAgencyGroupSelectorModal, setShowAgencyGroupSelectorModal,
         showCctvRequestModal, setShowCctvRequestModal,
@@ -1207,27 +1205,6 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             handleShowCctvRequestModal();
         }
     }, []); // Empty dependency array ensures this runs only once on initial load
-    const handleHideEmsBingoModal = useCallback(() => {
-        setShowEmsBingoModal(false);
-
-        const url = new URL(window.location.href);
-
-        // Check and clean the hash.
-        if (url.hash === '#bingo') {
-            url.hash = '';
-        }
-
-        // Check and clean the path.
-        if (url.pathname.endsWith('/bingo')) {
-            url.pathname = url.pathname.replace(/bingo$/, '') || '/';
-        }
-
-        window.history.replaceState({}, document.title, url.href);
-
-    }, []);
-
-    
-
     const handleHideCctvRequestModal = useCallback(() => {
         setShowCctvRequestModal(false);
         // When the modal is closed, remove '/cctv' from the URL if it's there
@@ -1244,9 +1221,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
         const currentPath = window.location.pathname;
         const hash = window.location.hash;
 
-        if (hash === '#bingo' || currentPath.endsWith('/bingo') || (redirectedPath && redirectedPath.endsWith('/bingo'))) {
-            setShowEmsBingoModal(true);
-        } else if (currentPath.endsWith('/cctv') || (redirectedPath && redirectedPath.endsWith('/cctv'))) {
+        if (currentPath.endsWith('/cctv') || (redirectedPath && redirectedPath.endsWith('/cctv'))) {
             handleShowCctvRequestModal();
         }
 
@@ -1500,13 +1475,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             {seasonalEffectsEnabled && effect}
 
 
-        <EmsAmaModal
-                show={showEmsAmaModal}
-                onHide={() => setShowEmsAmaModal(false)}
-                showNotification={showNotification}
-                commitInfo={commitInfo}
-                handleImageUpload={handleImageUpload}
-            />
+
 
                     {showAgencySelector && ( // Only show if a group is selected
                         <AgencySelector
@@ -1554,9 +1523,6 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                     </Dropdown.Item>
                     <Dropdown.Item onClick={() => {toggleSavedReports(); setShowToolsDropdown(false);}}>
                         <i className="fas fa-save"></i> Saved Reports
-                    </Dropdown.Item>
-                    <Dropdown.Item onClick={() => {setShowEmsAmaModal(prev => !prev); setShowToolsDropdown(false);}}>
-                        <i className="fa-solid fa-truck-medical"></i> EMS AMA
                     </Dropdown.Item>
                     <Dropdown.Item onClick={() => {setShowCctvRequestModal(true); setShowToolsDropdown(false);}}>
                         <i className="fas fa-video"></i> LEO Access
@@ -1863,16 +1829,6 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                 
                 <Button
                     type="button"
-                    variant="warning"
-                    className="changelog-button"
-                    onClick={() => setShowEmsBingoModal(true)}
-                    title="Open Bingo Night!"
-                >
-                    <i className="fas fa-trophy"></i>
-                    Bingo Night!
-                </Button>
-                <Button
-                    type="button"
                     variant="primary"
                     className="changelog-button"
                     onClick={() => navigate('/ems-dashboard')}
@@ -1915,20 +1871,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
     coronerRecruitmentDetails={selectOptions.coronerPositionDetailsData || {}}
     // Pass other recruitment details objects as props when you add them
 />
-            <EmsBingoModal
-                show={showEmsBingoModal}
-                onHide={handleHideEmsBingoModal}
-                currentPhmcEmployee={formData.phmcEmployee}
-                showNotification={showNotification}
-                setShowEmployeeModal={setShowEmployeeModal}
-                isAdmin={formData.isAdminAuthenticated}
-                sendBingoWebhook={({ scorer, bingoType, phrase, lineName, marked, commitInfo: ci }) => 
-                    sendBingoNotification({ scorer, bingoType, phrase, lineName, marked, commitInfo: ci || commitInfo })
-                }
-                sendPhraseRequestWebhook={({ requester, phrase, bingoType }) => 
-                    sendPhraseRequestNotification({ requester, phrase, bingoType, commitInfo })
-                }
-            />
+
 
 <EmployeeModal
     show={showEmployeeModal}
