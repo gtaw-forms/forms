@@ -76,9 +76,12 @@ const EmsDashboard = () => {
   const filteredProtocols = protocols
     .map((cat) => {
       let filtered = cat.protocols.filter((p) => {
-        const matchesName = p.name.toLowerCase().includes(searchTerm.toLowerCase());
-        if (!matchesName) return false;
-
+        const lowerCaseSearchTerm = searchTerm.toLowerCase();
+        const matchesName = p.name.toLowerCase().includes(lowerCaseSearchTerm);
+        const matchesUniqueWords = (p.uniqueWords || []).some(word =>
+          word.toLowerCase().includes(lowerCaseSearchTerm)
+        );
+        if (!matchesName && !matchesUniqueWords) return false;
         if (!selectedInjury) return true;
 
         const content = (p.content || "").toLowerCase();
