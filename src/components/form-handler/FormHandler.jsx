@@ -123,15 +123,19 @@ const FormHandler = () => {
               console.warn("titleGeneratorCode body might not be a template literal or is malformed when using arrow function syntax:", bodyString);
           }
 
-          const titleFn = new Function(params, `return \`${actualBodyContent}\``);
+          const titleFn = new Function(params, `return 
+${actualBodyContent}
+`);
           title = titleFn(formValues);
 
         } else {
           // If it's not an arrow function, assume it's just the template literal content
           // and wrap it in a function, replacing [FORM_NAME]
-          let processedFuncString = funcString.replace(/\[FORM_NAME\]/g, selectedForm.name || '');
+          let processedFuncString = funcString.replace(/\n[FORM_NAME]\n/g, selectedForm.name || '');
           try {
-              const titleFn = new Function('formData', `return \`${processedFuncString}\``);
+              const titleFn = new Function('formData', `return 
+${processedFuncString}
+`);
               title = titleFn(formValues);
           } catch (fnError) {
               console.error("Error generating title from plain template string:", fnError);
@@ -389,12 +393,14 @@ if (field.showIf) {
                           style={{
                             margin: "0 8px 1.5rem",
                             width: (field.layout === "compact") ? "calc(20% - 16px)" : "calc(100% - 16px)",
-                            display: "inline-block",
+                            display: (field.buttonLabel) ? "flex" : "inline-block", // Use flex if button is present
                             verticalAlign: "top",
-                            boxSizing: "border-box"
+                            boxSizing: "border-box",
+                            gap: (field.buttonLabel) ? "6px" : "0", // Add gap if button is present
+                            alignItems: "center" // Align items in flex container
                           }}
                         >
-                          <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "600", color: "#94a3b8" }}>
+                          <label style={{ display: (field.buttonLabel) ? "none" : "block", marginBottom: "0.5rem", fontWeight: "600", color: "#94a3b8" }}>
                             {field.label}
                           </label>
                           <input
@@ -402,48 +408,39 @@ if (field.showIf) {
                             name={field.name}
                             value={formValues[field.name] || ""}
                             onChange={e => handleChange(field.name, e.target.value)}
-                            style={{ width: "100%", padding: "0.8rem", background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0", borderRadius: 8 }}
+                            style={{ width: (field.buttonLabel) ? "auto" : "100%", flexGrow: (field.buttonLabel) ? "1" : "0", padding: "0.8rem", background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0", borderRadius: 8 }}
                           />
+                          {field.buttonLabel && (
+                            <button
+                              onClick={() => {
+                                if (field.buttonAction === "set_current_time") {
+                                  const timeValue = field.timerType === 'datetime-local' ? getUtcFormattedDateTime() : getUtcFormattedTime();
+                                  handleChange(field.name, timeValue); // Update the timer field itself
+                                }
+                              }}
+                              style={{
+                                padding: "0.5rem 1rem",
+                                background: "#6366f1",
+                                color: "white",
+                                border: "none",
+                                borderRadius: 8,
+                                fontSize: "0.9rem",
+                                fontWeight: "600",
+                                flexShrink: 0
+                              }}
+                            >
+                              {field.buttonLabel}
+                            </button>
+                          )}
                         </div>
                       )}
 
-                      {field.type === "timerButton" && (
+                      {/* SELECT */}
+                      {field.type === "select" && (
                         <div
                           style={{
                             margin: "0 8px 1.5rem",
                             width: (field.layout === "compact") ? "calc(20% - 16px)" : "calc(100% - 16px)",
-                            display: (field.layout === "compact") ? "inline-block" : "flex",
-                            alignItems: "center",
-                            gap: (field.layout === "compact") ? "0" : "6px",
-                            boxSizing: "border-box"
-                          }}
-                        >
-                          <button
-                            onClick={() => {
-                              const timeValue = field.timerType === 'datetime-local' ? getUtcFormattedDateTime() : getUtcFormattedTime();
-                              handleChange(field.timerTargetField, timeValue);
-                            }}
-                            style={{
-                              padding: "0.5rem 1rem",
-                              background: "#6366f1",
-                              color: "white",
-                              border: "none",
-                              borderRadius: 8,
-                              fontSize: "0.9rem",
-                              fontWeight: "600",
-                              flexShrink: 0
-                            }}
-                          >
-                            {field.buttonLabel}
-                          </button>
-                        </div>
-                      )}
-
-                      {field.type !== "hr" && field.type !== "fake_line" && field.type !== "small_header" && field.type !== "timer" && field.type !== "timerButton" && (
-                        <div
-                          style={{
-                            margin: "0 8px 1.5rem",
-                            width: (field.layout === "compact" && field.type !== "checkbox") ? "calc(20% - 16px)" : "calc(100% - 16px)",
                             display: "inline-block",
                             verticalAlign: "top",
                             boxSizing: "border-box"
@@ -452,9 +449,7 @@ if (field.showIf) {
                           <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "600", color: "#94a3b8" }}>
                             {field.label}
                           </label>
-
-                          {/* SELECT */}
-                          {field.type === "select" && finalSelectOptions[field.optionsKey] && (
+                          {finalSelectOptions[field.optionsKey] && (
                             <select
                               value={formValues[field.name] || ""}
                               onChange={e => handleChange(field.name, e.target.value)}
@@ -466,50 +461,214 @@ if (field.showIf) {
                               ))}
                             </select>
                           )}
+                        </div>
+                      )}
 
-                          {/* TEXTAREA */}
-                          {field.type === "textarea" && (
-                            <textarea
-                              rows={field.rows || 4}
-                              value={formValues[field.name] || ""}
-                              onChange={e => handleChange(field.name, e.target.value)}
-                              placeholder={field.placeholder || ""}
-                              style={{ width: "100%", padding: "0.8rem", background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0", borderRadius: 8 }}
-                            />
-                          )}
+                      {/* TEXTAREA */}
+                      {field.type === "textarea" && (
+                        <div
+                          style={{
+                            margin: "0 8px 1.5rem",
+                            width: (field.layout === "compact") ? "calc(20% - 16px)" : "calc(100% - 16px)",
+                            display: "inline-block",
+                            verticalAlign: "top",
+                            boxSizing: "border-box"
+                          }}
+                        >
+                          <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "600", color: "#94a3b8" }}>
+                            {field.label}
+                          </label>
+                          <textarea
+                            rows={field.rows || 4}
+                            value={formValues[field.name] || ""}
+                            onChange={e => handleChange(field.name, e.target.value)}
+                            placeholder={field.placeholder || ""}
+                            style={{ width: "100%", padding: "0.8rem", background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0", borderRadius: 8 }}
+                          />
+                        </div>
+                      )}
 
-                          {/* IMAGE */}
-                          {field.type === "image" && (
-                            <ImageUploader
-                              images={formValues[field.name] || []}
-                              onImagesChange={imgs => handleChange(field.name, imgs)}
-                              maxImages={field.maxImages || 6}
-                            />
-                          )}
+                      {/* IMAGE */}
+                      {field.type === "image" && (
+                        <div
+                          style={{
+                            margin: "0 8px 1.5rem",
+                            width: (field.layout === "compact") ? "calc(20% - 16px)" : "calc(100% - 16px)",
+                            display: "inline-block",
+                            verticalAlign: "top",
+                            boxSizing: "border-box"
+                          }}
+                        >
+                          <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "600", color: "#94a3b8" }}>
+                            {field.label}
+                          </label>
+                          <ImageUploader
+                            images={formValues[field.name] || []}
+                            onImagesChange={imgs => handleChange(field.name, imgs)}
+                            maxImages={field.maxImages || 6}
+                          />
+                        </div>
+                      )}
 
-                          {/* CHECKBOX */}
-                          {field.type === "checkbox" && (
-                            <label style={{ display: "flex", alignItems: "center", cursor: "pointer", color: "#e2e8f0" }}>
-                              <input
-                                type="checkbox"
-                                checked={!!formValues[field.name]}
-                                onChange={e => handleChange(field.name, e.target.checked)}
-                                style={{ marginRight: "0.8rem" }}
-                              />
-                              {field.label}
-                            </label>
-                          )}
-
-                          {/* DEFAULT INPUT */}
-                          {(!field.type || field.type === "input") && (
+                      {/* CHECKBOX */}
+                      {field.type === "checkbox" && (
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            margin: "0 8px 1.5rem",
+                            width: (field.layout === "compact") ? "calc(20% - 16px)" : "calc(100% - 16px)",
+                            boxSizing: "border-box"
+                          }}
+                        >
+                          <label style={{ display: "flex", alignItems: "center", cursor: "pointer", color: "#e2e8f0" }}>
                             <input
-                              type="text"
+                              type="checkbox"
+                              checked={!!formValues[field.name]}
+                              onChange={e => handleChange(field.name, e.target.checked)}
+                              style={{ marginRight: "0.8rem" }}
+                            />
+                            {field.label}
+                          </label>
+                          {formValues[field.name] && field.associatedInputField && (
+                            <>
+                              {field.associatedInputField.type === "select" && finalSelectOptions[field.associatedInputField.optionsKey] ? (
+                                <select
+                                  value={formValues[field.associatedInputField.name] || ""}
+                                  onChange={e => handleChange(field.associatedInputField.name, e.target.value)}
+                                  style={{ width: "100%", padding: "0.8rem", background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0", borderRadius: 8 }}
+                                >
+                                  <option value="">— Select —</option>
+                                  {Object.values(finalSelectOptions[field.associatedInputField.optionsKey]).map(opt => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                  ))}
+                                </select>
+                              ) : field.associatedInputField.type === "textarea" ? (
+                                <textarea
+                                  rows={field.associatedInputField.rows || 1}
+                                  value={formValues[field.associatedInputField.name] || ""}
+                                  onChange={e => handleChange(field.associatedInputField.name, e.target.value)}
+                                  placeholder={field.associatedInputField.placeholder || ""}
+                                  style={{ width: "100%", padding: "0.8rem", background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0", borderRadius: 8 }}
+                                />
+                              ) : ( // Default to input type="text"
+                                <input
+                                  type={field.associatedInputField.type || 'text'}
+                                  name={field.associatedInputField.name}
+                                  value={formValues[field.associatedInputField.name] || ""}
+                                  onChange={e => handleChange(field.associatedInputField.name, e.target.value)}
+                                  placeholder={field.associatedInputField.placeholder || ""}
+                                  style={{ width: "100%", padding: "0.8rem", background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0", borderRadius: 8 }}
+                                />
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+
+                      {/* RADIO */}
+                      {field.type === "radio" && (
+                        <div
+                          style={{
+                            margin: "0 8px 1.5rem",
+                            width: (field.layout === "compact") ? "calc(20% - 16px)" : "calc(100% - 16px)",
+                            display: "inline-block", // Use inline-block for compact radio groups
+                            verticalAlign: "top",
+                            boxSizing: "border-box"
+                          }}
+                        >
+                          <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "600", color: "#94a3b8" }}>
+                            {field.label}
+                          </label>
+                          <div style={{ display: (field.layout === "compact") ? "inline-flex" : "flex", flexWrap: (field.layout === "compact") ? "nowrap" : "wrap", gap: "10px" }}>
+                            {field.options.map(option => (
+                              <label key={option} style={{ display: "flex", alignItems: "center", cursor: "pointer", color: "#e2e8f0" }}>
+                                <input
+                                  type="radio"
+                                  name={field.name}
+                                  value={option}
+                                  checked={formValues[field.name] === option}
+                                  onChange={e => handleChange(field.name, e.target.value)}
+                                  style={{ marginRight: "0.5rem" }}
+                                />
+                                {option}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* INPUT BUTTON COMBO */}
+                      {field.type === "input_button_combo" && (
+                        <div
+                          style={{
+                            margin: "0 8px 1.5rem",
+                            width: (field.layout === "compact") ? "calc(20% - 16px)" : "calc(100% - 16px)",
+                            display: "inline-flex", // Use inline-flex for compact
+                            flexDirection: (field.layout === "compact") ? "row" : "column", // row for compact
+                            alignItems: (field.layout === "compact") ? "center" : "stretch", // center for compact
+                            gap: "6px",
+                            verticalAlign: "top",
+                            boxSizing: "border-box"
+                          }}
+                        >
+                          <label style={{ fontWeight: "600", color: "#94a3b8", flexShrink: 0 }}>
+                            {field.label}
+                          </label>
+                          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', width: '100%' }}>
+                            <input
+                              type={field.inputType || 'text'}
+                              name={field.name}
                               value={formValues[field.name] || ""}
                               onChange={e => handleChange(field.name, e.target.value)}
-                              placeholder={field.placeholder || ""}
-                              style={{ width: "100%", padding: "0.8rem", background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0", borderRadius: 8 }}
+                              style={{ width: "100%", flexGrow: 1, padding: "0.8rem", background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0", borderRadius: 8 }}
                             />
-                          )}
+                            <button
+                              onClick={() => {
+                                if (field.buttonAction === "set_current_time") {
+                                  const timeValue = field.inputType === 'datetime-local' ? getUtcFormattedDateTime() : getUtcFormattedTime();
+                                  handleChange(field.name, timeValue);
+                                }
+                              }}
+                              style={{
+                                padding: "0.5rem 1rem",
+                                background: "#6366f1",
+                                color: "white",
+                                border: "none",
+                                borderRadius: 8,
+                                fontSize: "0.9rem",
+                                fontWeight: "600",
+                                flexShrink: 0
+                              }}
+                            >
+                              {field.buttonLabel}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* DEFAULT INPUT (if type is not explicitly set or is 'input') */}
+                      {(!field.type || field.type === "input") && (
+                        <div
+                          style={{
+                            margin: "0 8px 1.5rem",
+                            width: (field.layout === "compact") ? "calc(20% - 16px)" : "calc(100% - 16px)",
+                            display: "inline-block",
+                            verticalAlign: "top",
+                            boxSizing: "border-box"
+                          }}
+                        >
+                          <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "600", color: "#94a3b8" }}>
+                            {field.label}
+                          </label>
+                          <input
+                            type="text"
+                            value={formValues[field.name] || ""}
+                            onChange={e => handleChange(field.name, e.target.value)}
+                            placeholder={field.placeholder || ""}
+                            style={{ width: "100%", padding: "0.8rem", background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0", borderRadius: 8 }}
+                          />
                         </div>
                       )}
                     </React.Fragment>
