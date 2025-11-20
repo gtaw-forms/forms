@@ -32,6 +32,7 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
     rows: 4,
     maxImages: 6,
     optionsKey: "",
+    timerType: "", // 'datetime-local' or 'time'
     showIf: null // { field: "someField", value: true }
   });
 
@@ -72,6 +73,9 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
       rows: 4,
       maxImages: 6,
       optionsKey: "",
+      timerType: "",
+      timerTargetField: "",
+      buttonLabel: "",
       showIf: null
     });
   };
@@ -80,6 +84,8 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
     if (newField.type === "hr") {
       // No specific validation needed for HR, name is not needed
       setFields([...fields, { type: "hr" }]);
+    } else if (newField.type === "fake_line") {
+      setFields([...fields, { type: "fake_line" }]);
     } else if (newField.type === "small_header") {
       if (!newField.label) {
         alert("Header Text is required for Small Header!");
@@ -88,7 +94,20 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
       // Auto-generate name if not provided
       const finalName = newField.name || `header_${fields.length + 1}`;
       setFields([...fields, { type: "small_header", label: newField.label, name: finalName }]);
-    } else {
+    } else if (newField.type === "timerButton") {
+        if (!newField.buttonLabel || !newField.timerTargetField || !newField.timerType) {
+            alert("Button Label, Timer Type, and Target Field are required for Timer Button!");
+            return;
+        }
+        setFields([...fields, { ...newField }]);
+    } else if (newField.type === "timer") {
+        if (!newField.label || !newField.name || !newField.timerType) {
+            alert("Label, Name, and Timer Type are required for Timer!");
+            return;
+        }
+        setFields([...fields, { ...newField }]);
+    }
+    else {
       // Existing validation for other types
       if (!newField.label || !newField.name) {
         alert("Label and Name are required!");
@@ -106,6 +125,9 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
       rows: 4,
       maxImages: 6,
       optionsKey: "",
+      timerType: "",
+      timerTargetField: "",
+      buttonLabel: "",
       showIf: null
     });
     setShowConditionalBuilder(false);
@@ -195,13 +217,16 @@ const applyAdvancedCondition = () => {
           </label>
 
           <h4 style={{ color: "#60a5fa", marginTop: "2rem" }}>BBCode Template</h4>
+          <div style={{ color: "#94a3b8", fontSize: "0.9rem", marginBottom: "1rem" }}>
+            Use <code>{"{{ fieldName }}"}</code> for form fields. <br />
+            For conditional BBCode, use <code>[conditional field="hasDNR" value="true" and field="attorney" value="Yes"] TEXT [/conditional]</code>.
+            This conditional BBCode must be manually parsed when generating reports.
+          </div>
+
           <textarea rows={12} value={bbcodeTemplate} onChange={e => setBbcodeTemplate(e.target.value)} style={{ ...inputStyle, fontFamily: "monospace" }} />
 
           {/* New: Title Generator Code Input */}
           <h4 style={{ color: "#60a5fa", marginTop: "2rem" }}>Title Generator Function</h4>
-          <p style={{ color: "#94a3b8", fontSize: "0.9rem", marginBottom: "1rem" }}>
-            Enter a JavaScript function body like `(formData) => \`[TITLE] \${formData.field || 'N/A'}\``.
-          </p>
           <textarea
             rows={6}
             value={titleGeneratorCode}
@@ -219,10 +244,13 @@ const applyAdvancedCondition = () => {
               <option value="checkbox">Checkbox</option>
               <option value="image">Image Upload</option>
               <option value="hr">Horizontal Rule</option>
+              <option value="fake_line">Fake Line</option>
               <option value="small_header">Small Header</option>
+              <option value="timer">Timer Field</option>
+              <option value="timerButton">Timer Button</option>
             </select>
 
-            {newField.type !== "hr" && (
+            {newField.type !== "hr" && newField.type !== "timerButton" && (
               <input 
                 placeholder={newField.type === "small_header" ? "Header Text" : "Label"} 
                 value={newField.label} 
@@ -231,7 +259,7 @@ const applyAdvancedCondition = () => {
               />
             )}
             
-            {newField.type !== "hr" && newField.type !== "small_header" && (
+            {newField.type !== "hr" && newField.type !== "small_header" && newField.type !== "timerButton" && (
               <input 
                 placeholder="Name {{}}" 
                 value={newField.name} 
@@ -240,7 +268,7 @@ const applyAdvancedCondition = () => {
               />
             )}
 
-            {newField.type !== "hr" && newField.type !== "checkbox" && newField.type !== "select" && newField.type !== "image" && newField.type !== "small_header" && (
+            {newField.type !== "hr" && newField.type !== "checkbox" && newField.type !== "select" && newField.type !== "image" && newField.type !== "small_header" && newField.type !== "timer" && newField.type !== "timerButton" && (
               <input 
                 placeholder="Placeholder" 
                 value={newField.placeholder} 
@@ -281,6 +309,31 @@ const applyAdvancedCondition = () => {
                 onChange={e => setNewField({ ...newField, optionsKey: e.target.value })} 
                 style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
               />
+            )}
+
+            {/* New Timer fields */}
+            {(newField.type === "timer" || newField.type === "timerButton") && (
+                <select value={newField.timerType} onChange={e => setNewField({ ...newField, timerType: e.target.value })} style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}>
+                    <option value="">— Select Timer Type —</option>
+                    <option value="datetime-local">Date & Time</option>
+                    <option value="time">Time Only</option>
+                </select>
+            )}
+            {newField.type === "timerButton" && (
+              <>
+                <input 
+                  placeholder="Button Label" 
+                  value={newField.buttonLabel} 
+                  onChange={e => setNewField({ ...newField, buttonLabel: e.target.value })} 
+                  style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
+                />
+                <input 
+                  placeholder="Target Field Name (e.g., dateTime)" 
+                  value={newField.timerTargetField} 
+                  onChange={e => setNewField({ ...newField, timerTargetField: e.target.value })} 
+                  style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
+                />
+              </>
             )}
 
             <button onClick={addField} style={{ background: "#10b981", color: "white", border: "none", padding: "0.8rem", borderRadius: 8, flex: '0 0 auto' }}>Add Field</button>
@@ -370,13 +423,20 @@ const applyAdvancedCondition = () => {
                 <div>
                   {f.type === "hr" ? (
                     <span style={{ color: "#a78bfa" }}>Horizontal Rule</span>
+                  ) : f.type === "fake_line" ? (
+                    <span style={{ color: "#a78bfa" }}>Fake Line (Thinner Horizontal Rule)</span>
                   ) : f.type === "small_header" ? (
                     <span style={{ color: "#a78bfa" }}>Small Header: <strong>{f.label}</strong></span>
+                  ) : f.type === "timer" ? (
+                    <span style={{ color: "#a78bfa" }}>Timer: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> ({f.timerType})</span>
+                  ) : f.type === "timerButton" ? (
+                    <span style={{ color: "#a78bfa" }}>Timer Button: <strong>{f.buttonLabel}</strong> → Targets <code>{"{{" + f.timerTargetField + "}}"}</code> ({f.timerType})</span>
                   ) : (
                     <>
-                      <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>                  
+                      <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>
                     </>
                   )}
+                  {f.layout === "compact" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>20%</span>}
                   {f.layout === "compact" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>20%</span>}
                   {f.type === "select" && <span style={{ marginLeft: "1rem", color: "#f59e0b" }}>Options: {f.optionsKey}</span>}
                   {f.showIf && <span style={{ marginLeft: "1rem", color: "#8b5cf6" }}>Show if {f.showIf.field} = {String(f.showIf.value)}</span>}
