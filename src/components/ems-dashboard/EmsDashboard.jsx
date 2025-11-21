@@ -83,6 +83,20 @@ const EmsDashboard = () => {
             protocols: Array.isArray(cat.protocols) ? cat.protocols : [],
           }))
         : [];
+
+      // Helper to extract ID from category string
+      const extractId = (categoryString) => {
+        const match = categoryString.match(/^\[(\d+)\]/);
+        return match ? parseInt(match[1], 10) : Infinity; // Use Infinity to sort non-matching categories last
+      };
+
+      // Sort categories by ID
+      normalized.sort((a, b) => {
+        const idA = extractId(a.category);
+        const idB = extractId(b.category);
+        return idA - idB;
+      });
+
       setProtocols(normalized);
       setLoading(false);
     });
