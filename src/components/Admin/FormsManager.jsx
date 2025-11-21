@@ -164,30 +164,86 @@ const FormManager = () => {
               <div style={{ background: '#0f172a', padding: '2rem', borderRadius: 12 }}>
                 {previewingForm.fields?.map((field, index) => (
                   <div key={index} style={{ marginBottom: '1.5rem' }}>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', color: '#94a3b8' }}>
-                      {field.label}
-                    </label>
-                    {field.type === 'textarea' ? (
-                      <textarea
-                        rows={field.rows || 3}
-                        placeholder={field.placeholder || ''}
-                        style={{ width: '100%', padding: '0.8rem', background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8 }}
-                        readOnly
-                      />
-                    ) : field.type === 'select' ? (
-                      <select
-                        style={{ width: '100%', padding: '0.8rem', background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8 }}
-                        disabled
-                      >
-                        <option>{`Select options from: ${field.optionsKey}`}</option>
-                      </select>
+                    {field.type === 'hr' ? (
+                      <hr style={{ borderTop: "1px solid #334155", margin: "1rem 0" }} />
+                    ) : field.type === 'fake_line' ? (
+                      <hr style={{ borderTop: "1px dashed #334155", margin: "1rem 0" }} />
+                    ) : field.type === 'small_header' ? (
+                      <h4 style={{ color: "#a78bfa", marginBottom: "1rem" }}>{field.label}</h4>
                     ) : (
-                      <input
-                        type={field.type || 'text'}
-                        placeholder={field.placeholder || ''}
-                        style={{ width: '100%', padding: '0.8rem', background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8 }}
-                        readOnly
-                      />
+                      <>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', color: '#94a3b8' }}>
+                          {field.label}
+                          {field.displayCurrentTime && field.type === "timer" && (
+                            <span style={{ fontSize: '0.7em', marginLeft: '5px', color: '#6c757d' }}> (Server Time)</span>
+                          )}
+                        </label>
+                        {field.type === 'textarea' ? (
+                          <textarea
+                            rows={field.rows || 3}
+                            placeholder={field.placeholder || 'Textarea Input'}
+                            style={{ width: '100%', padding: '0.8rem', background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8 }}
+                            readOnly
+                          />
+                        ) : field.type === 'select' ? (
+                          <select
+                            style={{ width: '100%', padding: '0.8rem', background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8 }}
+                            disabled
+                          >
+                            <option>{`Dropdown: ${field.optionsKey || 'No Options Key'}`}</option>
+                          </select>
+                        ) : field.type === 'checkbox' ? (
+                          <div style={{ display: 'flex', alignItems: 'center', color: '#e2e8f0' }}>
+                            <input type="checkbox" readOnly style={{ marginRight: '0.5rem' }} />
+                            <span>Checkbox</span>
+                            {field.associatedInputField && (
+                              <span style={{ marginLeft: '10px', fontSize: '0.9em', color: '#94a3b8' }}>
+                                (Associated: {field.associatedInputField.type})
+                              </span>
+                            )}
+                          </div>
+                        ) : field.type === 'radio' ? (
+                          <div style={{ display: 'flex', gap: '10px', color: '#e2e8f0' }}>
+                            {field.options?.map((option, optIndex) => (
+                              <label key={optIndex} style={{ display: 'flex', alignItems: 'center' }}>
+                                <input type="radio" name={field.name} readOnly style={{ marginRight: '0.5rem' }} />
+                                {option}
+                              </label>
+                            ))}
+                            {!field.options?.length && <span style={{ color: '#94a3b8' }}>(No options defined)</span>}
+                          </div>
+                        ) : field.type === 'image' ? (
+                          <div style={{ padding: '0.8rem', background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8 }}>
+                            Image Upload (Max {field.maxImages || 6})
+                          </div>
+                        ) : field.type === 'timer' ? (
+                          <input
+                            type={field.timerType || 'text'}
+                            placeholder={`Timer: ${field.timerType || 'Text'}${field.buttonLabel ? ` (Button: ${field.buttonLabel})` : ''}`}
+                            style={{ width: '100%', padding: '0.8rem', background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8 }}
+                            readOnly
+                          />
+                        ) : field.type === 'input_button_combo' ? (
+                          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                            <input
+                              type={field.inputType || 'text'}
+                              placeholder={`Input (${field.inputType || 'text'})`}
+                              style={{ width: '100%', padding: '0.8rem', background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8 }}
+                              readOnly
+                            />
+                            <button style={{ padding: "0.5rem 1rem", background: "#6366f1", color: "white", border: "none", borderRadius: 8 }} disabled>
+                              {field.buttonLabel || 'Button'}
+                            </button>
+                          </div>
+                        ) : (
+                          <input
+                            type={field.type || 'text'} // Fallback for 'input' or unknown types
+                            placeholder={field.placeholder || 'Text Input'}
+                            style={{ width: '100%', padding: '0.8rem', background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8 }}
+                            readOnly
+                          />
+                        )}
+                      </>
                     )}
                   </div>
                 ))}

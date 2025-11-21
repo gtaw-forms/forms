@@ -5,8 +5,18 @@ import { database as db } from "../../firebase";
 import { ref, onValue } from "firebase/database";
 import { KeywordHighlighter } from "../KeywordHighlighter";
 import PatientHelper from "../PatientHelper";
-import { Button } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
+import { useNotification } from '../../contexts/NotificationContext.jsx';
+import { useWebhooks } from '../../hooks/useWebhooks';
+import { useImageUpload } from '../../hooks/useImageUpload';
+import EmsAmaModal from '../EmsAmaModal';
+import EmsBingoModal from '../EmsBingoModal'; // New import
+import { useData } from '../../contexts/DataContext.jsx'; // New import
+import { useModal } from '../../contexts/ModalProvider.jsx'; // New import
+import useGtaWorldAuth from '../../hooks/useGtaWorldAuth'; // New import
+import { sendBingoNotification, sendPhraseRequestNotification } from '../notificationService'; // New import
+import { Button } from 'react-bootstrap';
+
 const EmsDashboard = () => {
   const [protocols, setProtocols] = useState([]);
   const [injuries, setInjuries] = useState({}); // { id: { name, words } }
@@ -20,6 +30,22 @@ const EmsDashboard = () => {
   const [keywords, setKeywords] = useState({});
   const [patientNotes, setPatientNotes] = useState("");
   const navigate = useNavigate();
+
+  const [showEmsAmaModal, setShowEmsAmaModal] = useState(false);
+  const [commitInfo, setCommitInfo] = useState({ sha: 'N/A', date: null, error: null }); // Default commitInfo
+
+  const { showNotification } = useNotification();
+  const { sendDataRequestLog } = useWebhooks({}); // Pass empty object if no formData/commitInfo needed specifically for this hook's context here
+  const { isUploading, handleImageUpload } = useImageUpload(showNotification, () => {}); // Placeholder setFormData
+
+  const [showEmsBingoModal, setShowEmsBingoModal] = useState(false); // New state for Bingo Modal
+
+  const { phmcGroupedOptions, coronerGroupedOptions } = useData(); // Needed for EmsBingoModal
+  const { setShowEmployeeModal } = useModal(); // Needed for EmsBingoModal
+  const { user: gtawUser, factionData } = useGtaWorldAuth(); // Needed for EmsBingoModal (currentPhmcEmployee, isAdmin)
+
+  const currentPhmcEmployee = gtawUser?.username || factionData?.characterName || ''; // Simplified
+  const isAdmin = gtawUser?.isAdmin || false; // Simplified, assuming isAdmin comes from gtawUser
 
   useEffect(() => {
     const savedNotesData = localStorage.getItem('patient notes free text');
@@ -81,9 +107,7 @@ const EmsDashboard = () => {
         const matchesUniqueWords = (p.uniqueWords || []).some(word =>
           word.toLowerCase().includes(lowerCaseSearchTerm)
         );
-
         if (!matchesName && !matchesUniqueWords) return false;
-
         if (!selectedInjury) return true;
 
         const content = (p.content || "").toLowerCase();
@@ -183,6 +207,8 @@ return (
       </div>
                 <div className="floating-admin-button-container">
               <Button type="button" variant="primary" className="changelog-button" onClick={() => navigate('/')} title="Go to Home" > <i className="fas fa-home"></i>Home</Button>
+              <Button type="button" variant="primary" className="changelog-button" onClick={() => setShowEmsAmaModal(true)} title="Open EMS AMA Form" > <i className="fa-solid fa-truck-medical"></i> EMS AMA</Button>
+              <Button type="button" variant="warning" className="changelog-button" onClick={() => setShowEmsBingoModal(true)} title="Open Bingo Night!" > <i className="fas fa-trophy"></i> Bingo Night!</Button>
             </div>
       <div className={styles.mainLayout}>
         {/* Left Panel */}
@@ -375,7 +401,31 @@ return (
       </div>
     </div>
   </div>
-)}    </div>
+)}
+<EmsBingoModal
+  show={showEmsBingoModal}
+  onHide={() => setShowEmsBingoModal(false)}
+  phmcGroupedOptions={phmcGroupedOptions}
+  coronerGroupedOptions={coronerGroupedOptions}
+  currentPhmcEmployee={currentPhmcEmployee}
+  showNotification={showNotification}
+  setShowEmployeeModal={setShowEmployeeModal}
+  isAdmin={isAdmin}
+  sendBingoWebhook={({ scorer, bingoType, phrase, lineName, marked, commitInfo: ci }) => 
+    sendBingoNotification({ scorer, bingoType, phrase, lineName, marked, commitInfo: ci || commitInfo })
+  }
+  sendPhraseRequestWebhook={({ requester, phrase, bingoType }) => 
+    sendPhraseRequestNotification({ requester, phrase, bingoType, commitInfo })
+  }
+/>
+<EmsAmaModal
+  show={showEmsAmaModal}
+  onHide={() => setShowEmsAmaModal(false)}
+  showNotification={showNotification}
+  commitInfo={commitInfo}
+  handleImageUpload={handleImageUpload}
+/>
+    </div>
   );
 };
 
