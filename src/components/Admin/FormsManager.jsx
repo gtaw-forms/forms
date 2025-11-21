@@ -126,8 +126,22 @@ const FormManager = () => {
                   <div style={{ fontSize: "0.9rem", color: "#94a3b8", margin: "0.4rem 0" }}>
                     {form.category || "Uncategorized"}
                   </div>
-                  <div style={{ fontSize: "0.8rem", color: form.factionRequired ? "#f87171" : "#34d399" }}>
-                    {form.factionRequired ? "PHMC Only" : "Public"}
+                  <div style={{ fontSize: "0.8rem", fontWeight: "bold", ...(() => {
+                    switch (form.accessType) {
+                      case "PHMC": return { color: "#f87171" };
+                      case "Coroner": return { color: "#f59e0b" };
+                      case "Civilian": return { color: "#60a5fa" };
+                      default: return { color: "#34d399" };
+                    }
+                  })() }}>
+                    {(() => {
+                      switch (form.accessType) {
+                        case "PHMC": return "PHMC Only";
+                        case "Coroner": return "Coroner Only";
+                        case "Civilian": return "Civilian";
+                        default: return "Public";
+                      }
+                    })()}
                   </div>
 
                   <button
@@ -277,15 +291,27 @@ const FormManager = () => {
         <div className={styles.rightPanel}>
           <h2 style={{ color: "#8b5cf6" }}>Form Access Rules</h2>
           <div style={{ background: "#1e293b", padding: "1.5rem", borderRadius: 12, marginBottom: "1rem" }}>
+            <div style={{ color: "#34d399", fontWeight: "700" }}>Public</div>
+            <div style={{ color: "#94a3b8", fontSize: "0.9rem" }}>
+              Available to anyone who is authenticated.
+            </div>
+          </div>
+          <div style={{ background: "#1e293b", padding: "1.5rem", borderRadius: 12, marginBottom: "1rem" }}>
             <div style={{ color: "#f87171", fontWeight: "700" }}>PHMC Only</div>
             <div style={{ color: "#94a3b8", fontSize: "0.9rem" }}>
-              Requires GTA:W OAuth + PHMC faction membership
+              Requires PHMC faction membership.
+            </div>
+          </div>
+          <div style={{ background: "#1e293b", padding: "1.5rem", borderRadius: 12, marginBottom: "1rem" }}>
+            <div style={{ color: "#f59e0b", fontWeight: "700" }}>Coroner Only</div>
+            <div style={{ color: "#94a3b8", fontSize: "0.9rem" }}>
+              Requires Coroner role.
             </div>
           </div>
           <div style={{ background: "#1e293b", padding: "1.5rem", borderRadius: 12 }}>
-            <div style={{ color: "#34d399", fontWeight: "700" }}>Public</div>
+            <div style={{ color: "#60a5fa", fontWeight: "700" }}>Civilian</div>
             <div style={{ color: "#94a3b8", fontSize: "0.9rem" }}>
-              Available to all authenticated users
+              Available to any authenticated user.
             </div>
           </div>
         </div>

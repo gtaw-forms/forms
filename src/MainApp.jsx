@@ -600,17 +600,7 @@ function MainApp({
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
         const newValue = type === 'checkbox' ? checked : value;
-        
-        setFormData(prev => {
-            const newFormData = {
-                ...prev,
-                [name]: newValue
             };
-            // Save to localStorage immediately after state update
-            localStorage.setItem('formData', JSON.stringify(newFormData));
-            return newFormData;
-        });
-    };
 
     const handleSelectChange = (selectedOption, action) => {
         const name = typeof action === 'string' ? action : action.name;
