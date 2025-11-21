@@ -264,6 +264,7 @@ export const useReportManagement = (
         const reportDataToSave = {
             bbCodeVersion: bbCodeVersion,
             data: filterFormData(formData, bbCodeVersion),
+            isLegacy: true,
             // bbCode is now saved separately
             timestamp: Date.now(),
             originalKey: key,
