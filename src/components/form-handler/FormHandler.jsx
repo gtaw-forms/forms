@@ -15,6 +15,16 @@ import FormHandlerNavButtons from './FormHandlerNavButtons';
 
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTimeUtils';
 
+// Helper: escape HTML characters for safe insertion into DOM
+const escapeHtml = (unsafe) => {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+};
+
 const FormHandler = () => {
     let {
       user,
@@ -35,48 +45,82 @@ const FormHandler = () => {
   const [selectOptions, setSelectOptions] = useState({});
   let { agencyDataStore, phmcListData, coronerListData } = useData(); // Destructure agencyDataStore, phmcListData, coronerListData
 
+  // --- NEW STATE FOR PATIENT TYPE MANAGEMENT ---
+  const [patientType, setPatientType] = useState(() => localStorage.getItem('formPatientType') || 'gtaw'); // 'gtaw', 'civilian', 'phmc'
+  const [civilianNames, setCivilianNames] = useState(() => JSON.parse(localStorage.getItem('formCivilianNames')) || [
+    'John Doe', 'Jane Smith', 'Michael Johnson', 'Emily Davis', 'Chris Brown'
+  ]);
+  const [phmcNames, setPhmcNames] = useState(() => JSON.parse(localStorage.getItem('formPhmcNames')) || [
+    'Dr. Alyson (PHMC)', 'Dr. Bell (PHMC)', 'Nurse Carol (PHMC)', 'Paramedic Dave (PHMC)'
+  ]);
+  const [currentCivilianIndex, setCurrentCivilianIndex] = useState(() => parseInt(localStorage.getItem('formCurrentCivilianIndex'), 10) || 0);
+  const [currentPhmcIndex, setCurrentPhmcIndex] = useState(() => parseInt(localStorage.getItem('formCurrentPhmcIndex'), 10) || 0);
+  const [tempPatientName, setTempPatientName] = useState(''); // Holds the name selected by the new mechanism
+
+  // Persistence for new states
+  useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [patientType]);
+  useEffect(() => { localStorage.setItem('formCivilianNames', JSON.stringify(civilianNames)); }, [civilianNames]);
+  useEffect(() => { localStorage.setItem('formPhmcNames', JSON.stringify(phmcNames)); }, [phmcNames]);
+  useEffect(() => { localStorage.setItem('formCurrentCivilianIndex', currentCivilianIndex.toString()); }, [currentCivilianIndex]);
+  useEffect(() => { localStorage.setItem('formCurrentPhmcIndex', currentPhmcIndex.toString()); }, [currentPhmcIndex]);
+
+  // Effect to manage tempPatientName based on selections
+  useEffect(() => {
+    let nameToSet = '';
+    if (patientType === 'civilian' && civilianNames.length > 0) {
+      nameToSet = civilianNames[currentCivilianIndex];
+    } else if (patientType === 'phmc' && phmcNames.length > 0) {
+      nameToSet = phmcNames[currentPhmcIndex];
+    } else if (patientType === 'gtaw') {
+      nameToSet = characterName || '';
+    }
+    setTempPatientName(nameToSet);
+  }, [patientType, currentCivilianIndex, currentPhmcIndex, civilianNames, phmcNames, characterName]);
+
   // --- DEV OVERRIDE START ---
   // For development, we can forcefully override auth data to test different user roles.
   // Change `devMode` to "Civilian", "PHMC", "Coroner", or `null` to disable.
   const isDevelopment = process.env.NODE_ENV === 'development';
   let isCoronerForDev = null;
   if (isDevelopment) {
-    const devMode = selectedForm?.accessType; // Automatically switch based on selected form
+    const devMode = patientType; // Use the selected patientType for devMode
 
     switch (devMode) {
-      case "Civilian":
+      case "civilian":
         isAuthenticated = true;
         isPhmcMember = false;
-        characterName = "John Doe (Dev Civilian)";
+        characterName = civilianNames[currentCivilianIndex] || "John Doe (Dev Civilian)";
         factionRank = 0;
         user = { username: "civ_dev", id: 12345, ...user };
         isCoronerForDev = false;
         break;
-      case "PHMC":
+      case "phmc":
         isAuthenticated = true;
         isPhmcMember = true;
-        characterName = "Jane Smith (Dev PHMC)";
+        characterName = phmcNames[currentPhmcIndex] || "Jane Smith (Dev PHMC)";
         factionRank = 5;
         user = { username: "phmc_dev", id: 54321, ...user };
         isCoronerForDev = false;
         break;
-      case "Coroner":
-        isAuthenticated = true;
-        isPhmcMember = true;
-        characterName = "Dr. Crime (Dev Coroner)";
-        factionRank = 10;
-        user = { username: "coroner_dev", id: 666, ...user };
-        isCoronerForDev = true;
-        // Create a fake coroner entry to be found by the useEffect
-        coronerListData = [{
-            name: "Dr. Crime (Dev Coroner)",
-            rank: "Chief Dev Examiner",
-            badge: "DEV666"
-        }, ...coronerListData];
-        break;
+      case "gtaw": // Fallback for GTAW Character
       default:
-        // No override
+        // No override, use actual GTAW auth data
         break;
+    }
+    // Also handle the Coroner case from the original DEV OVERRIDE if it's set specifically
+    if (selectedForm?.accessType === "Coroner") { // If a coroner form is selected in dev mode
+      isAuthenticated = true;
+      isPhmcMember = true;
+      characterName = "Dr. Crime (Dev Coroner)";
+      factionRank = 10;
+      user = { username: "coroner_dev", id: 666, ...user };
+      isCoronerForDev = true;
+      // Create a fake coroner entry to be found by the useEffect
+      coronerListData = [{
+          name: "Dr. Crime (Dev Coroner)",
+          rank: "Chief Dev Examiner",
+          badge: "DEV666"
+      }, ...coronerListData];
     }
   }
   // --- DEV OVERRIDE END ---
@@ -85,9 +129,9 @@ const FormHandler = () => {
 
   const isCoroner = React.useMemo(() => {
     if (isCoronerForDev !== null) return isCoronerForDev; // Dev override takes precedence
-    if (!isAuthenticated || !characterName || coronerListData.length === 0) return false;
-    return coronerListData.some(coroner => coroner.name?.toLowerCase() === characterName.toLowerCase());
-  }, [isAuthenticated, characterName, coronerListData, isCoronerForDev]);
+    if (!isAuthenticated || !tempPatientName || coronerListData.length === 0) return false; // Use tempPatientName
+    return coronerListData.some(coroner => coroner.name?.toLowerCase() === tempPatientName.toLowerCase()); // Use tempPatientName
+  }, [isAuthenticated, tempPatientName, coronerListData, isCoronerForDev]);
 
   const { generatedBBCode, generatedTitle, showBBCode, setShowBBCode, generateBBCode } = useBbcodeGenerator(
     selectedForm,
@@ -152,16 +196,29 @@ const FormHandler = () => {
     if (isAuthenticated && selectedForm && (shouldBypassDataCheck || phmcListData.length > 0 || coronerListData.length > 0)) {
       let updates = {};
 
+      // Identify the name field based on form's access type
+      let nameField = '';
+      if (selectedForm.accessType === "PHMC" || selectedForm.accessType === "Coroner") {
+        nameField = 'employeeName'; // Assuming PHMC/Coroner forms use 'employeeName'
+      } else if (selectedForm.accessType === "Civilian") {
+        nameField = 'patientName'; // Assuming Civilian forms use 'patientName'
+      }
+
+      if (nameField && tempPatientName && !formValues[nameField]) {
+        updates[nameField] = tempPatientName;
+      }
+
+
       // Check if the form is a coroner form by its category, as it may not have an explicit 'coronerEmployee' field
       const isCoronerForm = selectedForm.category === 'DMEC';
       console.log(`[Auto-fill Effect] Form: "${selectedForm.name}", Category: "${selectedForm.category}", Is Coroner Form?: ${isCoronerForm}`);
 
-      if (isCoronerForm && !formValues.coronerEmployee && characterName) {
+      if (isCoronerForm && !formValues.coronerEmployee && tempPatientName) { // Use tempPatientName
         console.log("[Auto-fill Effect] Applying coroner details to formValues.");
-        updates.coronerEmployee = characterName;
+        updates.coronerEmployee = tempPatientName; // Use tempPatientName
 
         const matchedCoroner = coronerListData.find(coroner =>
-          coroner.name?.toLowerCase() === characterName.toLowerCase()
+          coroner.name?.toLowerCase() === tempPatientName.toLowerCase() // Use tempPatientName
         );
 
         if (matchedCoroner) {
@@ -169,7 +226,7 @@ const FormHandler = () => {
           updates.coronerBadge = matchedCoroner.badge || '';
         } else if (factionRank) {
           updates.coronerRank = factionRank;
-          if (shouldBypassDataCheck && characterName.includes("Dev Coroner")) {
+          if (shouldBypassDataCheck && tempPatientName.includes("Dev Coroner")) { // Use tempPatientName
               updates.coronerBadge = "DEV666_BADGE";
           } else {
               updates.coronerBadge = '';
@@ -181,49 +238,14 @@ const FormHandler = () => {
         setFormValues(prev => ({ ...prev, ...updates }));
       }
     }
-  }, [isAuthenticated, characterName, factionRank, phmcListData, coronerListData, selectedForm, formValues.coronerEmployee, setFormValues, isDevelopment]);
+  }, [isAuthenticated, tempPatientName, factionRank, phmcListData, coronerListData, selectedForm, formValues, setFormValues, isDevelopment, patientType]);
 
-    const {
-        showEmsBingoModal, setShowEmsBingoModal,
-    } = useModal();
-    
-  const categories = ["All", ...new Set(forms.map(f => f.category || "Uncategorized"))];
+    const switchCivilianName = () => {
+    setCurrentCivilianIndex((prevIndex) => (prevIndex + 1) % civilianNames.length);
+  };
 
-  const filteredForms = forms.filter(form => {
-    const matchesSearch = form.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         form.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         form.uniqueWords?.some(word => word.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesCategory = selectedCategory === "All" || form.category === selectedCategory;
-
-    // New access control logic based on form.accessType
-    if (!showRestricted) { // If restricted forms are hidden (default behavior for non-admins)
-      if (form.accessType === "Public") {
-        // Always visible
-      } else if (form.accessType === "PHMC") {
-        if (!isPhmcMember) return false;
-      } else if (form.accessType === "Coroner") {
-        if (!isCoroner) return false;
-      } else if (form.accessType === "Civilian") {
-        // For civilian forms, assume they require authentication
-        if (!isAuthenticated) return false;
-      }
-    } else { // If showRestricted is true, show all forms regardless of user role
-        // No additional filtering based on accessType here, already handled by showRestricted
-    }
-
-    return matchesSearch && matchesCategory;
-  });
-
-  const handleChange = useCallback((name, value) => {
-    setFormValues(prev => ({ ...prev, [name]: value }));
-  }, []);
-
-
-  const copyAndSaveReport = () => {
-    if (!generatedBBCode) return;
-    const fullReportContent = generatedTitle ? `[center][size=150][b]${generatedTitle}[/b][/size][/center]\n\n${generatedBBCode}` : generatedBBCode;
-    navigator.clipboard.writeText(fullReportContent);
-    alert("BBCode copied to clipboard!");
+  const switchPhmcName = () => {
+    setCurrentPhmcIndex((prevIndex) => (prevIndex + 1) % phmcNames.length);
   };
 
   return (
@@ -297,6 +319,61 @@ const FormHandler = () => {
             <>
                             <h2 style={{ color: "#60a5fa", marginBottom: "2rem" }}>{selectedForm.name}</h2>
               
+                            {/* Patient Type Selector and Name Switcher */}
+                            <div style={{ marginBottom: '1rem', padding: '1rem', border: '1px solid #334155', borderRadius: '8px' }}>
+                              <Form.Label style={{ color: '#e2e8f0' }}>Character / Patient Type</Form.Label>
+                              <div style={{ display: 'flex', gap: '15px', marginBottom: '10px' }}>
+                                <Form.Check
+                                  type="radio"
+                                  id="typeGtaw"
+                                  label="GTAW Character"
+                                  name="patientTypeSelection"
+                                  value="gtaw"
+                                  checked={patientType === 'gtaw'}
+                                  onChange={(e) => setPatientType(e.target.value)}
+                                  inline
+                                  className={formStyles.customRadio}
+                                />
+                                <Form.Check
+                                  type="radio"
+                                  id="typeCivilian"
+                                  label="Civilian"
+                                  name="patientTypeSelection"
+                                  value="civilian"
+                                  checked={patientType === 'civilian'}
+                                  onChange={(e) => setPatientType(e.target.value)}
+                                  inline
+                                  className={formStyles.customRadio}
+                                />
+                                <Form.Check
+                                  type="radio"
+                                  id="typePhmc"
+                                  label="PHMC Employee"
+                                  name="patientTypeSelection"
+                                  value="phmc"
+                                  checked={patientType === 'phmc'}
+                                  onChange={(e) => setPatientType(e.target.value)}
+                                  inline
+                                  className={formStyles.customRadio}
+                                />
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
+                                <span style={{ color: '#cbd5e1', fontSize: '1.1rem', fontWeight: 'bold' }}>
+                                  Selected: <span dangerouslySetInnerHTML={{ __html: escapeHtml(tempPatientName) }} />
+                                </span>
+                                {patientType === 'civilian' && civilianNames.length > 1 && (
+                                  <Button variant="outline-light" size="sm" onClick={switchCivilianName} title="Switch Civilian Name">
+                                    <i className="fas fa-sync-alt"></i>
+                                  </Button>
+                                )}
+                                {patientType === 'phmc' && phmcNames.length > 1 && (
+                                  <Button variant="outline-light" size="sm" onClick={switchPhmcName} title="Switch PHMC Name">
+                                    <i className="fas fa-sync-alt"></i>
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+              
                             <div style={{ margin: "0 -8px" }}>
                               {selectedForm.fields?.map((field, index) => (
                                 <FormFieldRenderer
@@ -328,7 +405,7 @@ const FormHandler = () => {
           <div style={{ background: "linear-gradient(135deg, #2d1b69, #1e1b4b)", padding: "1.5rem", borderRadius: 12, marginBottom: "1.5rem" }}>
             <h3 style={{ color: "#a78bfa", margin: "0 0 1rem" }}>Signed in as</h3>
             <div style={{ fontWeight: "700", fontSize: "1.3rem", color: "#e2e8f0" }}>
-              {characterName || user?.username || "Not signed in"}
+              {tempPatientName || user?.username || "Not signed in"}
             </div>
             {isPhmcMember && <div style={{ color: "#34d399", marginTop: "0.5rem" }}>PHMC Member • Rank {factionRank}</div>}
           </div>
