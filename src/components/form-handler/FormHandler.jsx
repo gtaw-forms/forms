@@ -18,6 +18,7 @@ import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTi
 const FormHandler = () => {
         const {
           user,
+          isAuthenticated, // Re-added
           isPhmcMember,
           characterName,
           factionRank,
@@ -31,8 +32,13 @@ const FormHandler = () => {
   const [currentUtcTime, setCurrentUtcTime] = useState(''); // New state for current UTC time
 
   const [selectOptions, setSelectOptions] = useState({});
-  const { agencyDataStore } = useData(); // Destructure agencyDataStore
+  const { agencyDataStore, phmcListData, coronerListData } = useData(); // Destructure agencyDataStore, phmcListData, coronerListData
   const finalSelectOptions = { ...selectOptions, ...authSelectOptions };
+
+  const isCoroner = React.useMemo(() => {
+    if (!isAuthenticated || !characterName || coronerListData.length === 0) return false;
+    return coronerListData.some(coroner => coroner.name?.toLowerCase() === characterName.toLowerCase());
+  }, [isAuthenticated, characterName, coronerListData]);
 
   const { generatedBBCode, generatedTitle, showBBCode, setShowBBCode, generateBBCode } = useBbcodeGenerator(
     selectedForm,
@@ -89,6 +95,38 @@ const FormHandler = () => {
 
     return () => clearInterval(intervalId);
   }, []); // Empty dependency array means this runs once on mount and cleans up on unmount
+
+  // Effect to auto-fill employee details based on OAuth data
+  useEffect(() => {
+    if (isAuthenticated && selectedForm && (phmcListData.length > 0 || coronerListData.length > 0)) {
+      const formFields = selectedForm.fields || [];
+      let updates = {};
+
+      const hasCoronerEmployeeField = formFields.some(field => field.name === "coronerEmployee");
+      if (hasCoronerEmployeeField && !formValues.coronerEmployee && characterName) {
+        updates.coronerEmployee = characterName;
+
+        // Try to find matching coroner in coronerListData
+        const matchedCoroner = coronerListData.find(coroner => 
+          coroner.name?.toLowerCase() === characterName.toLowerCase()
+        );
+
+        if (matchedCoroner) {
+          updates.coronerRank = matchedCoroner.rank || '';
+          updates.coronerBadge = matchedCoroner.badge || '';
+        } else if (factionRank) { // Fallback to factionRank if no exact match
+          updates.coronerRank = factionRank;
+        }
+      }
+
+      // Potentially add logic for phmcEmployee here if needed for other forms
+
+      if (Object.keys(updates).length > 0) {
+        setFormValues(prev => ({ ...prev, ...updates }));
+      }
+    }
+  }, [isAuthenticated, characterName, factionRank, phmcListData, coronerListData, selectedForm, formValues.coronerEmployee, setFormValues]);
+
     const {
         showEmsBingoModal, setShowEmsBingoModal,
     } = useModal();
@@ -100,7 +138,23 @@ const FormHandler = () => {
                          form.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          form.uniqueWords?.some(word => word.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesCategory = selectedCategory === "All" || form.category === selectedCategory;
-    if (form.factionRequired && !isPhmcMember && !showRestricted) return false;
+
+    // New access control logic based on form.accessType
+    if (!showRestricted) { // If restricted forms are hidden (default behavior for non-admins)
+      if (form.accessType === "Public") {
+        // Always visible
+      } else if (form.accessType === "PHMC") {
+        if (!isPhmcMember) return false;
+      } else if (form.accessType === "Coroner") {
+        if (!isCoroner) return false;
+      } else if (form.accessType === "Civilian") {
+        // For civilian forms, assume they require authentication
+        if (!isAuthenticated) return false;
+      }
+    } else { // If showRestricted is true, show all forms regardless of user role
+        // No additional filtering based on accessType here, already handled by showRestricted
+    }
+
     return matchesSearch && matchesCategory;
   });
 
