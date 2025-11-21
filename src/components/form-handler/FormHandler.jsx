@@ -140,6 +140,10 @@ const FormHandler = () => {
     agencyDataStore // Pass agencyDataStore
   );
 
+    const {
+        showEmsBingoModal, setShowEmsBingoModal,
+    } = useModal();
+    
   // Save filters to localStorage
   useEffect(() => {
     localStorage.setItem("formSearchTerm", searchTerm);
