@@ -82,7 +82,8 @@ const AdminDashboard = ({
     const [selectedSection, setSelectedSection] = useState('serviceStatus');
     const [diagnosticsResult, setDiagnosticsResult] = useState(null);
     const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
-    const [isMigratingReports, setIsMigratingReports] = useState(false); // Add this state
+    const [isMigratingReports, setIsMigratingReports] = useState(false);
+    const [isSyncingCounts, setIsSyncingCounts] = useState(false);
     const navigate = useNavigate();
     
     // Use the unified GTA World auth hook
@@ -257,6 +258,43 @@ const AdminDashboard = ({
             Sentry.captureException(error, { extra: { context: 'handleMigrateReports' } });
         } finally {
             setIsMigratingReports(false);
+        }
+    };
+
+    const handleSyncReportCounts = async () => {
+        if (!window.confirm("Are you sure you want to sync all report counts? This will recalculate and overwrite existing counts.")) {
+            return;
+        }
+
+        setIsSyncingCounts(true);
+        showInAppNotification && showInAppNotification('Starting report count sync...', 'info');
+
+        try {
+            const functions = getFunctions();
+            const syncCounts = httpsCallable(functions, 'syncReportCounts');
+            const result = await syncCounts();
+
+            if (result.data.success) {
+                showInAppNotification && showInAppNotification(
+                    `Sync complete: ${result.data.syncedUsers} users' report counts updated.`,
+                    'success'
+                );
+                console.log('Sync result:', result.data);
+            } else {
+                showInAppNotification && showInAppNotification(
+                    `Sync failed: ${result.data.message || 'Unknown error'}`,
+                    'error'
+                );
+                console.error('Sync failed:', result.data);
+            }
+        } catch (error) {
+            console.error('Error calling syncReportCounts:', error);
+            showInAppNotification && showInAppNotification(
+                `Error during sync: ${error.message}`,
+                'error'
+            );
+        } finally {
+            setIsSyncingCounts(false);
         }
     };
 
@@ -1093,6 +1131,20 @@ const AdminDashboard = ({
                                                 <i className="fas fa-database me-2"></i>
                                             )}
                                             Migrate Reports
+                                        </Button>
+                                        <Button
+                                            variant="info"
+                                            size="sm"
+                                            onClick={handleSyncReportCounts}
+                                            disabled={isSyncingCounts || !hasAdminAccess}
+                                            title={hasAdminAccess ? "Recalculate and save the total report count for every user." : "Requires admin access permission"}
+                                        >
+                                            {isSyncingCounts ? (
+                                                <Spinner as="span" animation="border" size="sm" />
+                                            ) : (
+                                                <i className="fas fa-sync me-2"></i>
+                                            )}
+                                            Sync Report Counts
                                         </Button>
                                         <Button 
                                             variant="success" 
