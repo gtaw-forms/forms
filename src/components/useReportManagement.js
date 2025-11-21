@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { getFormDefinition } from '../formDefinitions'; // Assuming this path
 import { database } from '../firebase'; // Assuming this path
-import { ref, get, set, remove } from 'firebase/database';
+import { ref, get, set, remove, runTransaction } from 'firebase/database';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import * as Sentry from "@sentry/react";
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
@@ -38,6 +38,7 @@ export const useReportManagement = (
     setEasterEggType,
     sendEasterEggNotification,
     modalCloseTimer,
+    versionNames,
     ER_PROTOCOL_VERSION,
     CONSULTATION_NOTES_PHMC_VERSION,
     CONSULTATION_NOTES_PBC_VERSION,
@@ -93,13 +94,6 @@ export const useReportManagement = (
         let key = '';
         const bbCodeContent = getBBCodeContent();
         const currentAuthor = getCurrentReportAuthor(formData);
-        const definition = getFormDefinition(bbCodeVersion);
-
-        if (!definition) {
-            const message = `Form definition not found for version ${bbCodeVersion}. Save aborted.`;
-            showNotification(message, 'error');
-            return { success: false, error: message };
-        }
 
         // --- Validation logic to determine the key ---
         if (bbCodeVersion === 1) { // Death Report
@@ -108,18 +102,21 @@ export const useReportManagement = (
                 showNotification(message, 'exclamation-circle');
                 return { success: false, error: message };
             }
+            key = `[DEATH-REPORT] ${formData.decedentOOC} - ${formData.dateTime}`;
         } else if (bbCodeVersion === 4) { // Autopsy Report
             if (!formData.decedentName || !formData.decedentOOC || !formData.autopsyDate) {
                 const message = `Please fill in Decedent IC Name, OOC Name, and Autopsy Date fields.`;
                 showNotification(message, 'exclamation-circle');
                 return { success: false, error: message };
             }
+            key = `[Autopsy] ${formData.decedentName} (${formData.decedentOOC}) - ${formData.autopsyDate}`;
         } else if (bbCodeVersion === 3) { // Detailed Patient File (PatientAdvanced)
             if (!formData.patientName || !formData.patientDateOfBirth) {
                 const message = `Please fill in Patient Name and Date of Birth fields.`;
                 showNotification(message, 'exclamation-circle');
                 return { success: false, error: message };
             }
+            key = `${formData.patientID || 'NO_ID'} - ${formData.patientName || 'NO_NAME'} - ${formData.patientDateOfBirth || 'NO_DATE'}`;
         } else if (((bbCodeVersion > 3 && bbCodeVersion <= 7) && bbCodeVersion !== 4)) { // SurgicalOps (5), PhysEval PHMC/PBC (6,7)
             let patientIdMissing = !formData.patientID;
             let dateMissing = !formData.date;
@@ -138,18 +135,21 @@ export const useReportManagement = (
                     return { success: false, error: message };
                 }
             }
+            key = `${formData.patientID || 'NO_ID'} - ${formData.patientName || 'NO_NAME'} - ${formData.date || 'NO_DATE'}`;
         } else if (bbCodeVersion === 19) { // EmergencyProtocol
             if (!formData.patientID || !formData.date) {
                 const message = `Please fill in Patient ID, and Date fields.`;
                 showNotification(message, 'exclamation-circle');
                 return { success: false, error: message };
             }
+            key = `${formData.patientID} - ${formData.lastName} - ${formData.date}`;
         } else if (bbCodeVersion === 25) { // BasicPatientFile
             if (!formData.patientName || !formData.patientDateOfBirth) {
                 const message = `Please fill in Patient Name and Date of Birth fields.`;
                 showNotification(message, 'exclamation-circle');
                 return { success: false, error: message };
             }
+            key = `${formData.patientName} - ${formData.patientDateOfBirth}`;
         } else if (bbCodeVersion === 24) { // Medical Record Release
             // This form uses registrantFullName and dateOfRequest
             if (!formData.registrantFullName || !formData.dateOfRequest) {
@@ -157,6 +157,7 @@ export const useReportManagement = (
                 showNotification(message, 'exclamation-circle');
                 return { success: false, error: message };
             }
+            key = `[Medical Release] ${formData.registrantFullName} - ${formData.dateOfRequest}`;
         }
         // --- Add more 'else if' blocks here for other specific bbCodeVersions ---
         // Example for Coroner Email (bbCodeVersion 2)
@@ -166,6 +167,7 @@ export const useReportManagement = (
                 showNotification(message, 'exclamation-circle');
                 return { success: false, error: message };
             }
+            key = `[Email] ${formData.requestingOfficer} re: ${formData.decedentName || formData.decedentOOC} - ${new Date().toISOString().split('T')[0]}`;
         }
         // Example for Agency Feedback (bbCodeVersion 18)
         else if (bbCodeVersion === 18) {
@@ -174,9 +176,10 @@ export const useReportManagement = (
                 showNotification(message, 'exclamation-circle');
                 return { success: false, error: message };
             }
+            key = `[Feedback] ${formData.department} - ${formData.dateTime}`;
         }
         // --- MODIFICATION FOR PHMC RECRUITMENT ---
-        else if (definition?.group === 'PHMC Recruitment') {
+        else if (getFormDefinition(bbCodeVersion)?.group === 'PHMC Recruitment') {
             return { success: false, error: 'PHMC Recruitment forms cannot be saved to Firebase.' };
         }
         // --- END MODIFICATION ---
@@ -193,6 +196,8 @@ export const useReportManagement = (
                 showNotification(message, 'exclamation-circle');
                 return { success: false, error: message };
             }
+            const decedentNames = decedents.map(d => d.decedentName).filter(name => name).join(', ');
+            key = `[Mass Fatality Report] - ${decedentNames} - ${(dateTime && dateTime.split('T')[0]) || 'No Date'}`;
         }
         else if (bbCodeVersion === 37) { // Death Record
             if (!formData.deathReportPostId || !formData.decedentName || !formData.dateOfDeath) {
@@ -200,28 +205,37 @@ export const useReportManagement = (
                 showNotification(message, 'exclamation-circle');
                 return { success: false, error: message };
             }
+            const caseNumber = parseCaseNumber(formData.deathReportPostId);
+            // Format date to MM-DD-YYYY
+            const formattedDate = formData.dateOfDeath ? new Date(formData.dateOfDeath).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase().replace(/,/g, '') : 'NO_DATE';
+            key = `[CASE #${caseNumber}] ${formData.decedentName} (( ${formData.decedentOOC || 'N/A'} )) | [${formattedDate}]`;
         }
-        
-        // Generate key using the form definition's titleGeneratorCode
-        if (definition.titleGeneratorCode) {
-            try {
-                // Using new Function is safer than eval for dynamic code execution
-                const titleGeneratorFn = new Function('formData', `return (${definition.titleGeneratorCode})(formData);`);
-                key = titleGeneratorFn(formData);
-            } catch (e) {
-                Sentry.captureException(e, { extra: { context: 'titleGeneratorCode execution' } });
-                showNotification('Error executing custom title generator. Please check the code.', 'error');
-                return { success: false, error: 'Error executing custom title generator.' };
-            }
-        } else {
-            // Fallback for forms without a titleGeneratorCode (e.g., legacy forms)
-            const formName = definition.name || `FormV${bbCodeVersion}`;
+        else { // Default handler for any other bbCodeVersion (includes SAAA)
+            const definition = getFormDefinition(bbCodeVersion); // Get current form definition
+
+
+            // Existing generic key generation for non-SAAA, non-PHMC Recruitment forms
+            const formName = versionNames[bbCodeVersion] || `FormV${bbCodeVersion}`;
+
+            // MODIFIED: Prioritize decedentName, then patientName, then a generic placeholder
             let identifier = formData.decedentName || formData.patientName || 'Unnamed Report';
             if (Array.isArray(identifier)) identifier = identifier.join(', ');
+
+            // MODIFIED: Ensure dateField always has a value
             const dateField = formData.date || formData.dateTime || formData.autopsyDate || 'No Date';
+
+            // MODIFIED: Removed the check that would prevent saving if identifier was empty.
+            // The identifier will now always have a value ('Unnamed Report' at minimum).
+
             key = `[${formName}] ${identifier} - ${dateField}`;
         }
-        // --- End of key generation ---
+
+        // If key is still empty, something went wrong (should be caught by validations)
+        if (!key) {
+            const message = 'Could not generate a report key. Save aborted.';
+            showNotification(message, 'error');
+            return { success: false, error: message };
+        }
 
         if (!currentAuthor) {
             const message = 'Cannot determine report author. Please ensure an employee is selected or patient name is filled if applicable for this form type.';
@@ -264,7 +278,6 @@ export const useReportManagement = (
         const reportDataToSave = {
             bbCodeVersion: bbCodeVersion,
             data: filterFormData(formData, bbCodeVersion),
-            isLegacy: true,
             // bbCode is now saved separately
             timestamp: Date.now(),
             originalKey: key,
@@ -318,10 +331,15 @@ export const useReportManagement = (
             const reportRef = ref(database, reportPath);
             const bbCodeRef = ref(database, bbCodePath);
 
-            // Save both main report data and BBCode data in parallel
+            const userReportCountRef = ref(database, `userReportCounts/${sanitizedAuthorId}/total`);
+
+            // Save both main report data and BBCode data in parallel, and increment count
             await Promise.all([
                 set(reportRef, reportDataToSave),
-                set(bbCodeRef, { bbCode: bbCodeContent })
+                set(bbCodeRef, { bbCode: bbCodeContent }),
+                runTransaction(userReportCountRef, (currentCount) => {
+                    return (currentCount || 0) + 1;
+                })
             ]);
 
             if (sendDataRequestLog) {
@@ -543,8 +561,7 @@ export const useReportManagement = (
                     // Manually add the bbCode to the reportData object
                     reportData.bbCode = bbCodeSnapshot.exists() ? bbCodeSnapshot.val().bbCode : '';
 
-                    // Ensure loadedVersion and loadedFormData are always defined
-                    const loadedVersion = reportData.bbCodeVersion || bbCodeVersion; // Fallback to current bbCodeVersion
+                    const loadedVersion = reportData.bbCodeVersion;
                     let loadedBbCode = reportData.bbCode || '';
                     let loadedFormData = reportData.data || {};
 
