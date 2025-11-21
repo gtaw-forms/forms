@@ -23,7 +23,7 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
   const [fields, setFields] = useState([]);
   const [factionRequired, setFactionRequired] = useState(false);
 
-  const [newField, setNewField] = useState({
+  const createDefaultNewField = () => ({
     type: "input",
     label: "",
     name: "",
@@ -32,14 +32,20 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
     rows: 4,
     maxImages: 6,
     optionsKey: "",
-    timerType: "", // 'datetime-local' or 'time'
-    buttonLabel: "", // label for the timer button
-    buttonAction: "", // e.g., 'set_current_time'
-    associatedInputField: null, // New: { type: 'input', name: '', placeholder: '', optionsKey: '' }
-    options: [], // New for radio buttons
-    inputType: "", // For input_button_combo
-    showIf: null // { field: "someField", value: true }
+    timerType: "",
+    buttonLabel: "",
+    buttonAction: "",
+    displayCurrentTime: false,
+    id: null, // New: Unique ID for field for editing purposes
+    associatedInputField: null,
+    options: [],
+    inputType: "",
+    showIf: null
   });
+
+  const [newField, setNewField] = useState(createDefaultNewField());
+
+  const [editingFieldIndex, setEditingFieldIndex] = useState(null); // New state to track which field is being edited
 
   const [showConditionalBuilder, setShowConditionalBuilder] = useState(false);
   const [conditionalField, setConditionalField] = useState("");
@@ -54,8 +60,15 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
       setCategory(editingForm.category || "");
       setBbcodeTemplate(editingForm.template || "");
       setTitleGeneratorCode(editingForm.titleGeneratorCode || ""); // Load existing code
-      setFields(editingForm.fields || []);
+      // Ensure all loaded fields have an 'id' for consistent editing
+      const safeFields = (editingForm.fields || []).map(f => ({
+        ...f,
+        id: f.id || `field-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` // Assign a unique ID if missing
+      }));
+      setFields(safeFields);
       setFactionRequired(!!editingForm.factionRequired);
+      setNewField(createDefaultNewField()); // Reset newField to default for adding new fields
+      setEditingFieldIndex(null); // Ensure no field is selected for editing initially
     } else {
       resetForm();
     }
@@ -69,101 +82,132 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
     setTitleGeneratorCode(""); // Reset new state
     setFields([]);
     setFactionRequired(false);
-    setNewField({
-      type: "input",
-      label: "",
-      name: "",
-      placeholder: "",
-      layout: "full",
-      rows: 4,
-      maxImages: 6,
-      optionsKey: "",
-      timerType: "",
-      associatedInputField: null, // New
-      options: [], // New for radio buttons
-      inputType: "", // For input_button_combo
-      showIf: null
-    });
+    setNewField(createDefaultNewField());
+    setEditingFieldIndex(null); // Ensure editing mode is off when resetting the form
   };
 
-  const addField = () => {
-    if (newField.type === "hr") {
-      // No specific validation needed for HR, name is not needed
-      setFields([...fields, { type: "hr" }]);
-    } else if (newField.type === "fake_line") {
-      setFields([...fields, { type: "fake_line" }]);
-    } else if (newField.type === "small_header") {
-      if (!newField.label) {
+  const saveField = () => {
+    // Assign a temporary ID if adding a new field without one
+    const fieldToSave = { ...newField };
+    if (editingFieldIndex === null && !fieldToSave.id) {
+        fieldToSave.id = `field-${Date.now()}`;
+    }
+
+    if (fieldToSave.type === "hr") {
+      setFields(prevFields => {
+        if (editingFieldIndex !== null) {
+          const updatedFields = [...prevFields];
+          updatedFields[editingFieldIndex] = { type: "hr", id: fieldToSave.id };
+          return updatedFields;
+        }
+        return [...prevFields, { type: "hr", id: fieldToSave.id }];
+      });
+    } else if (fieldToSave.type === "fake_line") {
+      setFields(prevFields => {
+        if (editingFieldIndex !== null) {
+          const updatedFields = [...prevFields];
+          updatedFields[editingFieldIndex] = { type: "fake_line", id: fieldToSave.id };
+          return updatedFields;
+        }
+        return [...prevFields, { type: "fake_line", id: fieldToSave.id }];
+      });
+    } else if (fieldToSave.type === "small_header") {
+      if (!fieldToSave.label) {
         alert("Header Text is required for Small Header!");
         return;
       }
-      // Auto-generate name if not provided
-      const finalName = newField.name || `header_${fields.length + 1}`;
-      setFields([...fields, { type: "small_header", label: newField.label, name: finalName }]);
-    } else if (newField.type === "timer") {
-        if (!newField.label || !newField.name || !newField.timerType) {
+      const finalName = fieldToSave.name || `header_${fields.length + 1}`;
+      setFields(prevFields => {
+        if (editingFieldIndex !== null) {
+          const updatedFields = [...prevFields];
+          updatedFields[editingFieldIndex] = { ...fieldToSave, name: finalName, id: fieldToSave.id };
+          return updatedFields;
+        }
+        return [...prevFields, { ...fieldToSave, name: finalName, id: fieldToSave.id }];
+      });
+    } else if (fieldToSave.type === "timer") {
+        if (!fieldToSave.label || !fieldToSave.name || !fieldToSave.timerType) {
             alert("Label, Name, and Timer Type are required for Timer!");
             return;
         }
-        if (newField.buttonLabel && !newField.buttonAction) {
+        if (fieldToSave.buttonLabel && !fieldToSave.buttonAction) {
             alert("If Button Label is provided, Button Action is required for Timer!");
             return;
         }
-        setFields([...fields, { ...newField }]);
-    } else if (newField.type === "checkbox") {
-        if (!newField.label || !newField.name) {
+        setFields(prevFields => {
+            if (editingFieldIndex !== null) {
+                const updatedFields = [...prevFields];
+                updatedFields[editingFieldIndex] = { ...fieldToSave, id: fieldToSave.id };
+                return updatedFields;
+            }
+            return [...prevFields, { ...fieldToSave, id: fieldToSave.id }];
+        });
+    } else if (fieldToSave.type === "checkbox") {
+        if (!fieldToSave.label || !fieldToSave.name) {
             alert("Label and Name are required for Checkbox!");
             return;
         }
-        if (newField.associatedInputField) {
-            if (!newField.associatedInputField.name || !newField.associatedInputField.type) {
+        if (fieldToSave.associatedInputField) {
+            if (!fieldToSave.associatedInputField.name || !fieldToSave.associatedInputField.type) {
                 alert("Associated Input Field Name and Type are required!");
                 return;
             }
-            if (newField.associatedInputField.type === "select" && !newField.associatedInputField.optionsKey) {
+            if (fieldToSave.associatedInputField.type === "select" && !fieldToSave.associatedInputField.optionsKey) {
                 alert("Associated Input Options Key is required for Select type!");
                 return;
             }
         }
-        setFields([...fields, { ...newField }]);
-    } else if (newField.type === "radio") {
-        if (!newField.label || !newField.name || newField.options.length === 0) {
+        setFields(prevFields => {
+            if (editingFieldIndex !== null) {
+                const updatedFields = [...prevFields];
+                updatedFields[editingFieldIndex] = { ...fieldToSave, id: fieldToSave.id };
+                return updatedFields;
+            }
+            return [...prevFields, { ...fieldToSave, id: fieldToSave.id }];
+        });
+    } else if (fieldToSave.type === "radio") {
+        if (!fieldToSave.label || !fieldToSave.name || fieldToSave.options.length === 0) {
             alert("Label, Name, and Options are required for Radio Buttons!");
             return;
         }
-        setFields([...fields, { ...newField }]);
-    } else if (newField.type === "input_button_combo") {
-        if (!newField.label || !newField.name || !newField.inputType || !newField.buttonLabel || !newField.buttonAction) {
+        setFields(prevFields => {
+            if (editingFieldIndex !== null) {
+                const updatedFields = [...prevFields];
+                updatedFields[editingFieldIndex] = { ...fieldToSave, id: fieldToSave.id };
+                return updatedFields;
+            }
+            return [...prevFields, { ...fieldToSave, id: fieldToSave.id }];
+        });
+    } else if (fieldToSave.type === "input_button_combo") {
+        if (!fieldToSave.label || !fieldToSave.name || !fieldToSave.inputType || !fieldToSave.buttonLabel || !fieldToSave.buttonAction) {
             alert("Label, Name, Input Type, Button Label, and Button Action are required for Input Button Combo!");
             return;
         }
-        setFields([...fields, { ...newField }]);
-    } else { // <--- ADDED curly brace here
-      // Existing validation for other types
-      if (!newField.label || !newField.name) {
+        setFields(prevFields => {
+            if (editingFieldIndex !== null) {
+                const updatedFields = [...prevFields];
+                updatedFields[editingFieldIndex] = { ...fieldToSave, id: fieldToSave.id };
+                return updatedFields;
+            }
+            return [...prevFields, { ...fieldToSave, id: fieldToSave.id }];
+        });
+    } else {
+      if (!fieldToSave.label || !fieldToSave.name) {
         alert("Label and Name are required!");
         return;
       }
-      setFields([...fields, { ...newField }]);
-    } // <--- ADDED curly brace here
+      setFields(prevFields => {
+        if (editingFieldIndex !== null) {
+          const updatedFields = [...prevFields];
+          updatedFields[editingFieldIndex] = { ...fieldToSave, id: fieldToSave.id };
+          return updatedFields;
+        }
+        return [...prevFields, { ...fieldToSave, id: fieldToSave.id }];
+      });
+    }
 
-    setNewField({
-      type: "input",
-      label: "",
-      name: "",
-      placeholder: "",
-      layout: "full",
-      rows: 4,
-      maxImages: 6,
-      optionsKey: "",
-      timerType: "",
-      buttonLabel: "",
-      buttonAction: "",
-      associatedInputField: null,
-      options: [], // Reset options for radio
-      inputType: "", // Reset inputType
-      showIf: null
-    });
+    setNewField(createDefaultNewField()); // Reset to default after saving
+    setEditingFieldIndex(null); // Exit editing mode
     setShowConditionalBuilder(false);
   };
 
@@ -182,6 +226,15 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
     [newFields[i], newFields[i + 1]] = [newFields[i + 1], newFields[i]];
     setFields(newFields);
   };
+
+  const startEditField = (fieldToEdit, index) => {
+    // Make a deep copy to avoid direct mutation of the original field in the `fields` array
+    setNewField(JSON.parse(JSON.stringify(fieldToEdit)));
+    setEditingFieldIndex(index);
+    setShowConditionalBuilder(false); // Hide conditional builder when editing field
+    setTempConditions([]); // Clear temporary conditions
+  };
+
 const addCondition = () => {
   if (!conditionalField) return;
   let value = conditionalValue === "filled" ? true : conditionalValue === "empty" ? false : exactValue;
@@ -327,6 +380,7 @@ const applyAdvancedCondition = () => {
             {newField.type !== "hr" && newField.type !== "checkbox" && newField.type !== "image" && newField.type !== "small_header" && newField.type !== "radio" && newField.type !== "input_button_combo" && (
               <select value={newField.layout || "full"} onChange={e => setNewField({ ...newField, layout: e.target.value })} style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}>
                 <option value="full">Full Width</option>
+                <option value="compact-50">Compact (50%)</option>
                 <option value="compact">Compact (20%)</option>
               </select>
             )}
@@ -378,6 +432,15 @@ const applyAdvancedCondition = () => {
                                               <option value="set_current_time">Set Current Time</option>
                                           </select>
                                         )}
+                                        <label style={{ display: "flex", alignItems: "center", color: "#e2e8f0", marginTop: "0.5rem", flex: '1 1 auto', minWidth: '150px' }}>
+                                          <input
+                                            type="checkbox"
+                                            checked={newField.displayCurrentTime}
+                                            onChange={e => setNewField({ ...newField, displayCurrentTime: e.target.checked })}
+                                            style={{ marginRight: "0.8rem" }}
+                                          />
+                                          Show Current Server Time
+                                        </label>
                                       </>
                                     )}
                         
@@ -462,7 +525,10 @@ const applyAdvancedCondition = () => {
                                         )}
                                       </div>
                                     )}            
-                        <button onClick={addField} style={{ background: "#10b981", color: "white", border: "none", padding: "0.8rem", borderRadius: 8, flex: '0 0 auto' }}>Add Field</button>
+                        <button onClick={saveField} style={{ background: "#10b981", color: "white", border: "none", padding: "0.8rem", borderRadius: 8, flex: '0 0 auto' }}>{editingFieldIndex !== null ? 'Update Field' : 'Add Field'}</button>
+                        {editingFieldIndex !== null && (
+                          <button onClick={() => { setNewField(createDefaultNewField()); setEditingFieldIndex(null); setShowConditionalBuilder(false); }} style={{ background: "#f59e0b", color: "white", border: "none", padding: "0.8rem", borderRadius: 8, flex: '0 0 auto' }}>Cancel Edit</button>
+                        )}
                       </div>
 
           {/* Conditional Builder */}
@@ -575,6 +641,7 @@ const applyAdvancedCondition = () => {
                   {f.showIf && <span style={{ marginLeft: "1rem", color: "#8b5cf6" }}>Show if {f.showIf.field} = {String(f.showIf.value)}</span>}
                 </div>
                 <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <button onClick={() => startEditField(f, i)} style={{ background: "#6366f1", color: "white", border: "none", padding: "0 1rem", borderRadius: 8 }}>Edit</button>
                   {i > 0 && <button onClick={() => moveFieldUp(i)} style={{ background: "#6366f1", color: "white", border: "none", width: 36, height: 36, borderRadius: 8 }}>Up</button>}
                   {i < fields.length - 1 && <button onClick={() => moveFieldDown(i)} style={{ background: "#6366f1", color: "white", border: "none", width: 36, height: 36, borderRadius: 8 }}>Down</button>}
                   <button onClick={() => removeField(i)} style={{ background: "#ef4444", color: "white", border: "none", padding: "0 1rem", borderRadius: 8 }}>Remove</button>
