@@ -956,7 +956,7 @@ export const handleFormCopyAndNotify = async ({
             try {
                 let userKey;
                 if (savingAsCivilian) {
-                    userKey = 'CIVILIAN'; // Directly use 'CIVILIAN' for civilian forms
+                    userKey = 'CIVILIAN';
                 } else {
                     userKey = getCurrentReportAuthor(formData);
                     if (!userKey) {
@@ -965,24 +965,22 @@ export const handleFormCopyAndNotify = async ({
                 }
                 
                 userKey = comprehensiveSanitize(userKey);
-                let userReportsRef = ref(database, `savedReports/${userKey}`);
-                let userSnapshot = await get(userReportsRef);
-
-                if (!userSnapshot.exists() && userKey.includes('_')) {
-                    const oldUserKey = userKey.replace(/_/g, ' ');
-                    userReportsRef = ref(database, `savedReports/${oldUserKey}`);
-                    userSnapshot = await get(userReportsRef);
-                }
-
-                if (userSnapshot.exists()) {
-                    const userReports = userSnapshot.val();
-                    userSavedCount = Object.keys(userReports).length;
+                const userReportCountRef = ref(database, `userReportCounts/${userKey}/total`);
+                const snapshot = await get(userReportCountRef);
+                
+                if (snapshot.exists()) {
+                    userSavedCount = snapshot.val();
                 } else {
-                    userSavedCount = 0;
+                    // If the count node doesn't exist yet, we can fall back to the old method once
+                    // to ensure counts are accurate during the transition period.
+                    const userReportsRef = ref(database, `savedReports/${userKey}`);
+                    const userSnapshot = await get(userReportsRef);
+                    userSavedCount = userSnapshot.exists() ? Object.keys(userSnapshot.val()).length : 0;
                 }
             } catch (error) {
                 console.error("Error fetching user saved reports count from Firebase:", error);
                 Sentry.captureException(error, { extra: { context: 'Firebase User Saved Reports Count' } });
+                userSavedCount = 0; // Default to 0 on error
             }
 
             let webhookActionMessage = "BBCode Copied";
