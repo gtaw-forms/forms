@@ -21,7 +21,7 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
   const [bbcodeTemplate, setBbcodeTemplate] = useState("");
   const [titleGeneratorCode, setTitleGeneratorCode] = useState(""); // New state
   const [fields, setFields] = useState([]);
-  const [factionRequired, setFactionRequired] = useState(false);
+  const [accessType, setAccessType] = useState("Public"); // New state for form access control (e.g., "Public", "PHMC", "Coroner", "Civilian")
 
   const createDefaultNewField = () => ({
     type: "input",
@@ -66,7 +66,7 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
         id: f.id || `field-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` // Assign a unique ID if missing
       }));
       setFields(safeFields);
-      setFactionRequired(!!editingForm.factionRequired);
+      setAccessType(editingForm.accessType || "Public"); // Load accessType
       setNewField(createDefaultNewField()); // Reset newField to default for adding new fields
       setEditingFieldIndex(null); // Ensure no field is selected for editing initially
     } else {
@@ -81,7 +81,7 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
     setBbcodeTemplate("");
     setTitleGeneratorCode(""); // Reset new state
     setFields([]);
-    setFactionRequired(false);
+    setAccessType("Public"); // Reset accessType
     setNewField(createDefaultNewField());
     setEditingFieldIndex(null); // Ensure editing mode is off when resetting the form
   };
@@ -273,7 +273,7 @@ const applyAdvancedCondition = () => {
       template: bbcodeTemplate,
       titleGeneratorCode, // Save the titleGeneratorCode
       fields,
-      factionRequired
+      accessType // Store accessType
     };
 
     update(ref(database, `forms/${formId}`), formData)
@@ -299,8 +299,13 @@ const applyAdvancedCondition = () => {
           <input placeholder="Category" value={category} onChange={e => setCategory(e.target.value)} style={inputStyle} />
 
           <label style={{ display: "flex", alignItems: "center", color: "#e2e8f0", margin: "1rem 0" }}>
-            <input type="checkbox" checked={factionRequired} onChange={e => setFactionRequired(e.target.checked)} style={{ marginRight: "0.8rem" }} />
-            <strong>PHMC Only</strong>
+            <strong style={{ marginRight: "1rem" }}>Access Type:</strong>
+            <select value={accessType} onChange={e => setAccessType(e.target.value)} style={{ ...inputStyle, margin: 0, width: 'auto', flexGrow: 1 }}>
+              <option value="Public">Public (Anyone)</option>
+              <option value="PHMC">PHMC Only</option>
+              <option value="Coroner">Coroner Only</option>
+              <option value="Civilian">Civilian</option>
+            </select>
           </label>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
