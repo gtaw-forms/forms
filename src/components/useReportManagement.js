@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { getFormDefinition } from '../formDefinitions'; // Assuming this path
 import { database } from '../firebase'; // Assuming this path
-import { ref, get, set, remove } from 'firebase/database';
+import { ref, get, set, remove, runTransaction } from 'firebase/database';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import * as Sentry from "@sentry/react";
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
@@ -331,10 +331,15 @@ export const useReportManagement = (
             const reportRef = ref(database, reportPath);
             const bbCodeRef = ref(database, bbCodePath);
 
-            // Save both main report data and BBCode data in parallel
+            const userReportCountRef = ref(database, `userReportCounts/${sanitizedAuthorId}/total`);
+
+            // Save both main report data and BBCode data in parallel, and increment count
             await Promise.all([
                 set(reportRef, reportDataToSave),
-                set(bbCodeRef, { bbCode: bbCodeContent })
+                set(bbCodeRef, { bbCode: bbCodeContent }),
+                runTransaction(userReportCountRef, (currentCount) => {
+                    return (currentCount || 0) + 1;
+                })
             ]);
 
             if (sendDataRequestLog) {
