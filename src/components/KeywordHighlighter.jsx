@@ -4,6 +4,16 @@ import { onValue, ref } from 'firebase/database';
 import { database } from '../firebase';
 import ReactDOM from 'react-dom';
 
+// Helper: escape HTML characters for safe insertion into DOM
+const escapeHtml = (unsafe) => {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+};
+
 // Helper: escape regex characters
 const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -31,16 +41,37 @@ export const KeywordHighlighter = ({ children }) => {
   }
 
   let content = children;
+  const finalReplacements = []; // Store the HTML for final replacement
+
   keywordList.forEach(kw => {
     try {
       const escaped = escapeRegExp(kw.keyword);
-      const regex = new RegExp(`\\b(${escaped})\\b`, 'gi');
-      content = content.replace(regex, match =>
-        `<span class="smart-keyword" data-kw="${kw.keyword.toLowerCase()}">${match}</span>`
-      );
+      // Check if the keyword contains any non-word characters that are not hyphens,
+      // as hyphens are often part of keywords and \b handles them correctly
+      const containsSpecialChars = /[^\w\s-]/.test(kw.keyword); // Exclude letters, numbers, underscore, space, hyphen
+
+      const regex = containsSpecialChars
+        ? new RegExp(`(${escaped})`, 'gi') // Match exact string if special chars are present
+        : new RegExp(`\\b(${escaped})\\b`, 'gi'); // Use word boundaries for regular words
+
+      // Replace with a temporary token
+      content = content.replace(regex, match => {
+        const escapedKeywordForData = escapeHtml(kw.keyword.toLowerCase());
+        const escapedMatchContent = escapeHtml(match);
+        const replacementHtml = `<span class="smart-keyword" data-kw="${escapedKeywordForData}">${escapedMatchContent}</span>`;
+        finalReplacements.push(replacementHtml);
+        return `__KEYWORD_TOKEN_${finalReplacements.length - 1}__`; // Return a unique token
+      });
     } catch (e) {
-      console.warn('Keyword regex failed:', kw.keyword);
+      console.warn('Keyword regex failed:', kw.keyword, e);
     }
+  });
+
+  // After all keywords are processed, replace tokens with actual HTML
+  finalReplacements.forEach((html, index) => {
+    // Need to use a regex to replace all occurrences of the same token
+    const tokenRegex = new RegExp(`__KEYWORD_TOKEN_${index}__`, 'g');
+    content = content.replace(tokenRegex, html);
   });
 
   const handleClick = (e) => {
