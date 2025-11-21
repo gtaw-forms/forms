@@ -10,6 +10,10 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
   const generateBBCode = useCallback(() => {
     if (!selectedForm?.template) return;
 
+    console.log("--- BBCode Generation Triggered ---");
+    console.log("Form Values at generation time:", formValues);
+    console.log("BBCode BEFORE generation:", generatedBBCode);
+
     let bbcode = selectedForm.template; // Initial template string
     let title = "";
 
@@ -96,15 +100,14 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
 
     processedBbcode = processedBbcode.replace(expressionPlaceholderRegex, (match, expression) => {
         try {
-            // Create a function to evaluate the extracted JavaScript expression
-            // Provide helper functions and formData in the scope
+            // Using 'with' statement for sandboxed evaluation.
+            // This allows template expressions to directly access formValues properties.
             const evalFn = new Function(
                 'formData',
                 'getDepartmentFullName',
                 'agencyDataStore',
-                `return ${expression};` // Execute the extracted expression
+                `with (formData) { return ${expression}; }`
             );
-            // Execute the function with the current context
             const result = evalFn(formValues, getDepartmentFullName, agencyDataStore);
             return result !== undefined && result !== null ? String(result) : '';
         } catch (error) {
@@ -113,6 +116,7 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
         }
     });
 
+    console.log("BBCode AFTER generation:", processedBbcode);
     setGeneratedBBCode(processedBbcode);
     setShowBBCode(true);
   }, [selectedForm, formValues, agencyDataStore]); // Added agencyDataStore to dependencies

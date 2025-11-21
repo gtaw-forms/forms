@@ -153,9 +153,11 @@ const FormFieldRenderer = ({ field, formValues, handleChange, finalSelectOptions
             >
               <option value="">— Select —</option>
               {optionsToRender.length > 0 ? (
-                optionsToRender.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))
+                optionsToRender.map((opt, index) => {
+                  const value = typeof opt === 'object' && opt !== null ? opt.value : opt;
+                  const label = typeof opt === 'object' && opt !== null ? opt.label : opt;
+                  return <option key={`${value}-${index}`} value={value}>{label}</option>;
+                })
               ) : (
                 <option value="" disabled>{warningMessage || `No options found for "${field.optionsKey}"`}</option>
               )}
@@ -214,9 +216,11 @@ const FormFieldRenderer = ({ field, formValues, handleChange, finalSelectOptions
                   style={inputStyle}
                 >
                   <option value="">— Select —</option>
-                  {Object.values(finalSelectOptions[field.associatedInputField.optionsKey]).map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
+                  {Object.values(finalSelectOptions[field.associatedInputField.optionsKey]).map((opt, index) => {
+                    const value = typeof opt === 'object' && opt !== null ? opt.value : opt;
+                    const label = typeof opt === 'object' && opt !== null ? opt.label : opt;
+                    return <option key={`${value}-${index}`} value={value}>{label}</option>
+                  })}
                 </select>
               ) : field.associatedInputField.type === "textarea" ? (
                 <textarea

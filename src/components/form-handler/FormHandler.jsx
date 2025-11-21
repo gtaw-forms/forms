@@ -16,14 +16,15 @@ import FormHandlerNavButtons from './FormHandlerNavButtons';
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTimeUtils';
 
 const FormHandler = () => {
-        const {
-          user,
-          isAuthenticated, // Re-added
-          isPhmcMember,
-          characterName,
-          factionRank,
-          selectOptions: authSelectOptions
-        } = useGtaWorldAuth();  const [forms, setForms] = useState([]);
+    let {
+      user,
+      isAuthenticated, // Re-added
+      isPhmcMember,
+      characterName,
+      factionRank,
+      selectOptions: authSelectOptions
+    } = useGtaWorldAuth();
+    const [forms, setForms] = useState([]);
   const [selectedForm, setSelectedForm] = useState(null);
   const [formValues, setFormValues] = useState({});
   const [searchTerm, setSearchTerm] = useState(() => localStorage.getItem("formSearchTerm") || "");
@@ -32,13 +33,61 @@ const FormHandler = () => {
   const [currentUtcTime, setCurrentUtcTime] = useState(''); // New state for current UTC time
 
   const [selectOptions, setSelectOptions] = useState({});
-  const { agencyDataStore, phmcListData, coronerListData } = useData(); // Destructure agencyDataStore, phmcListData, coronerListData
+  let { agencyDataStore, phmcListData, coronerListData } = useData(); // Destructure agencyDataStore, phmcListData, coronerListData
+
+  // --- DEV OVERRIDE START ---
+  // For development, we can forcefully override auth data to test different user roles.
+  // Change `devMode` to "Civilian", "PHMC", "Coroner", or `null` to disable.
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  let isCoronerForDev = null;
+  if (isDevelopment) {
+    const devMode = selectedForm?.accessType; // Automatically switch based on selected form
+
+    switch (devMode) {
+      case "Civilian":
+        isAuthenticated = true;
+        isPhmcMember = false;
+        characterName = "John Doe (Dev Civilian)";
+        factionRank = 0;
+        user = { username: "civ_dev", id: 12345, ...user };
+        isCoronerForDev = false;
+        break;
+      case "PHMC":
+        isAuthenticated = true;
+        isPhmcMember = true;
+        characterName = "Jane Smith (Dev PHMC)";
+        factionRank = 5;
+        user = { username: "phmc_dev", id: 54321, ...user };
+        isCoronerForDev = false;
+        break;
+      case "Coroner":
+        isAuthenticated = true;
+        isPhmcMember = true;
+        characterName = "Dr. Crime (Dev Coroner)";
+        factionRank = 10;
+        user = { username: "coroner_dev", id: 666, ...user };
+        isCoronerForDev = true;
+        // Create a fake coroner entry to be found by the useEffect
+        coronerListData = [{
+            name: "Dr. Crime (Dev Coroner)",
+            rank: "Chief Dev Examiner",
+            badge: "DEV666"
+        }, ...coronerListData];
+        break;
+      default:
+        // No override
+        break;
+    }
+  }
+  // --- DEV OVERRIDE END ---
+
   const finalSelectOptions = { ...selectOptions, ...authSelectOptions };
 
   const isCoroner = React.useMemo(() => {
+    if (isCoronerForDev !== null) return isCoronerForDev; // Dev override takes precedence
     if (!isAuthenticated || !characterName || coronerListData.length === 0) return false;
     return coronerListData.some(coroner => coroner.name?.toLowerCase() === characterName.toLowerCase());
-  }, [isAuthenticated, characterName, coronerListData]);
+  }, [isAuthenticated, characterName, coronerListData, isCoronerForDev]);
 
   const { generatedBBCode, generatedTitle, showBBCode, setShowBBCode, generateBBCode } = useBbcodeGenerator(
     selectedForm,
@@ -98,34 +147,41 @@ const FormHandler = () => {
 
   // Effect to auto-fill employee details based on OAuth data
   useEffect(() => {
-    if (isAuthenticated && selectedForm && (phmcListData.length > 0 || coronerListData.length > 0)) {
-      const formFields = selectedForm.fields || [];
+    const shouldBypassDataCheck = isDevelopment;
+
+    if (isAuthenticated && selectedForm && (shouldBypassDataCheck || phmcListData.length > 0 || coronerListData.length > 0)) {
       let updates = {};
 
-      const hasCoronerEmployeeField = formFields.some(field => field.name === "coronerEmployee");
-      if (hasCoronerEmployeeField && !formValues.coronerEmployee && characterName) {
+      // Check if the form is a coroner form by its category, as it may not have an explicit 'coronerEmployee' field
+      const isCoronerForm = selectedForm.category === 'DMEC';
+      console.log(`[Auto-fill Effect] Form: "${selectedForm.name}", Category: "${selectedForm.category}", Is Coroner Form?: ${isCoronerForm}`);
+
+      if (isCoronerForm && !formValues.coronerEmployee && characterName) {
+        console.log("[Auto-fill Effect] Applying coroner details to formValues.");
         updates.coronerEmployee = characterName;
 
-        // Try to find matching coroner in coronerListData
-        const matchedCoroner = coronerListData.find(coroner => 
+        const matchedCoroner = coronerListData.find(coroner =>
           coroner.name?.toLowerCase() === characterName.toLowerCase()
         );
 
         if (matchedCoroner) {
           updates.coronerRank = matchedCoroner.rank || '';
           updates.coronerBadge = matchedCoroner.badge || '';
-        } else if (factionRank) { // Fallback to factionRank if no exact match
+        } else if (factionRank) {
           updates.coronerRank = factionRank;
+          if (shouldBypassDataCheck && characterName.includes("Dev Coroner")) {
+              updates.coronerBadge = "DEV666_BADGE";
+          } else {
+              updates.coronerBadge = '';
+          }
         }
       }
-
-      // Potentially add logic for phmcEmployee here if needed for other forms
 
       if (Object.keys(updates).length > 0) {
         setFormValues(prev => ({ ...prev, ...updates }));
       }
     }
-  }, [isAuthenticated, characterName, factionRank, phmcListData, coronerListData, selectedForm, formValues.coronerEmployee, setFormValues]);
+  }, [isAuthenticated, characterName, factionRank, phmcListData, coronerListData, selectedForm, formValues.coronerEmployee, setFormValues, isDevelopment]);
 
     const {
         showEmsBingoModal, setShowEmsBingoModal,
