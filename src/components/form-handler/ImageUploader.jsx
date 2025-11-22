@@ -3,6 +3,7 @@ import * as Sentry from "@sentry/react";
 import { useNotification } from '../../contexts/NotificationContext';
 import LoadingSpinner from '../LoadingSpinner';
 import './ImageUploader.css';
+import { uploadImageToImgBB } from '../../utils/imageUploadUtils';
 
 const ImageUploader = ({ images: imagesProp, onImagesChange, maxImages = 6 }) => {
   const [isUploading, setIsUploading] = useState(false);
@@ -21,37 +22,10 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, maxImages = 6 }) =>
     setIsUploading(true);
     const uploadedImageUrls = [];
 
-    const imgbbApiKey = import.meta.env.VITE_IMGBB_API_KEY;
-    if (!imgbbApiKey) {
-      showNotification('ImgBB API Key is not configured.', 'error');
-      setIsUploading(false);
-      return;
-    }
-
     for (const file of files) {
       try {
-        const formData = new FormData();
-        const base64Image = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result.split(',')[1]);
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-        });
-        formData.append('image', base64Image);
-
-        const response = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbApiKey}`, {
-          method: 'POST',
-          body: formData,
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-          uploadedImageUrls.push(data.data.url);
-        } else {
-          console.error('ImgBB upload failed:', data.error.message);
-          showNotification(`ImgBB upload failed: ${data.error.message}`, 'exclamation-circle');
-        }
+        const url = await uploadImageToImgBB(file);
+        uploadedImageUrls.push(url);
       } catch (error) {
         console.error('Upload failed:', error);
         Sentry.captureException(error, { extra: { context: 'ImageUploader' } });
