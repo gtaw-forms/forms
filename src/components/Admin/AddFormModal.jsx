@@ -157,6 +157,7 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
                 return;
             }
         }
+        
         setFields(prevFields => {
             if (editingFieldIndex !== null) {
                 const updatedFields = [...prevFields];
@@ -191,6 +192,55 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
             }
             return [...prevFields, { ...fieldToSave, id: fieldToSave.id }];
         });
+    } else if (fieldToSave.type === "image") {
+  if (!fieldToSave.label || !fieldToSave.name) {
+    alert("Label and Name are required for Image field!");
+    return;
+  }
+
+  const imageField = {
+    ...fieldToSave,
+    type: "image",
+    maxImages: fieldToSave.maxImages || 6,
+    id: fieldToSave.id || `img-${Date.now()}`
+  };
+
+  const narrativeField = {
+    type: "textarea",
+    label: `${fieldToSave.label} - Notes`,
+    name: `${fieldToSave.name}_narrative`,
+    placeholder: "Write notes or paste screenshots here (Ctrl+V)",
+    rows: 6,
+    allowImagePaste: true,
+    linkedImageField: fieldToSave.name,
+    layout: "full",
+    id: `nar-${Date.now()}`
+  };
+
+  setFields(prevFields => {
+    if (editingFieldIndex !== null) {
+      const updated = [...prevFields];
+      updated[editingFieldIndex] = imageField;
+
+      const narrativeIndex = updated.findIndex(
+        f => f.linkedImageField === fieldToSave.name && f.type === "textarea"
+      );
+      if (narrativeIndex !== -1) {
+        updated[narrativeIndex] = {
+          ...updated[narrativeIndex],
+          label: narrativeField.label,
+          placeholder: narrativeField.placeholder
+        };
+      }
+      return updated;
+    }
+
+    return [...prevFields, imageField, narrativeField];
+  });
+
+  setNewField(createDefaultNewField());
+  setEditingFieldIndex(null);
+  return;
     } else {
       if (!fieldToSave.label || !fieldToSave.name) {
         alert("Label and Name are required!");
@@ -530,6 +580,46 @@ const applyAdvancedCondition = () => {
                                         )}
                                       </div>
                                     )}            
+                                    {(newField.type === "textarea" || newField.type === "input" || newField.type === "timer") && (
+  <div style={{ margin: "1rem 0", padding: "1rem", background: "#162032", borderRadius: 8, border: "1px dashed #334155" }}>
+    <label style={{ display: "flex", alignItems: "center", color: "#e2e8f0", marginBottom: "0.8rem" }}>
+      <input
+        type="checkbox"
+        checked={!!newField.allowImagePaste}
+        onChange={e => setNewField({ ...newField, allowImagePaste: e.target.checked })}
+        style={{ marginRight: "0.8rem" }}
+      />
+      <strong>Enable Clipboard Image Paste (Ctrl+V)</strong>
+    </label>
+    {newField.allowImagePaste && (
+      <>
+        <p style={{ margin: "0.5rem 0", fontSize: "0.9rem", color: "#94a3b8" }}>
+          Users will be able to paste screenshots directly into this field.
+        </p>
+        <label style={{ display: "block", marginTop: "0.8rem", color: "#cbd5e1" }}>
+          <strong>Target Image Field:</strong>
+          <select
+            value={newField.linkedImageField || ""}
+            onChange={e => setNewField({ ...newField, linkedImageField: e.target.value || undefined })}
+            style={{ ...inputStyle, marginTop: "0.4rem" }}
+          >
+            <option value="">→ Auto (uses field name + "_images")</option>
+            {fields
+              .filter(f => f.type === "image")
+              .map(f => (
+                <option key={f.name} value={f.name}>
+                  {f.label || f.name} ({f.name})
+                </option>
+              ))}
+          </select>
+        </label>
+        <small style={{ color: "#64748b", display: "block", marginTop: "0.4rem" }}>
+          Pasted images will be uploaded and added to this image gallery field.
+        </small>
+      </>
+    )}
+  </div>
+)}
                         <button onClick={saveField} style={{ background: "#10b981", color: "white", border: "none", padding: "0.8rem", borderRadius: 8, flex: '0 0 auto' }}>{editingFieldIndex !== null ? 'Update Field' : 'Add Field'}</button>
                         {editingFieldIndex !== null && (
                           <button onClick={() => { setNewField(createDefaultNewField()); setEditingFieldIndex(null); setShowConditionalBuilder(false); }} style={{ background: "#f59e0b", color: "white", border: "none", padding: "0.8rem", borderRadius: 8, flex: '0 0 auto' }}>Cancel Edit</button>
@@ -618,7 +708,21 @@ const applyAdvancedCondition = () => {
             <div key={i} style={{ background: "#1e293b", padding: "1rem", borderRadius: 10, marginBottom: "0.8rem", border: "1px solid #334155" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
-                  {f.type === "hr" ? (
+                  { f.type === "image" ? (
+                    <span style={{ color: "#a78bfa" }}>
+                      Image Gallery: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>
+                      <span style={{ color: "#34d399", marginLeft: "0.5rem" }}>
+                        (Auto-paired with narrative field below)
+                      </span>
+                    </span>
+                  ) : f.allowImagePaste ? (
+                    <span style={{ color: "#34d399" }}>
+                      Text + Paste: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>
+                      <span style={{ color: "#fbbf24", fontSize: "0.85rem" }}>
+                        → pastes into <strong>{f.linkedImageField}</strong>
+                      </span>
+                    </span>
+                  ) : f.type === "hr" ? (
                     <span style={{ color: "#a78bfa" }}>Horizontal Rule</span>
                   ) : f.type === "fake_line" ? (
                     <span style={{ color: "#a78bfa" }}>Fake Line (Thinner Horizontal Rule)</span>

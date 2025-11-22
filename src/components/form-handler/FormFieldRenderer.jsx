@@ -164,29 +164,43 @@ const FormFieldRenderer = ({ field, formValues, handleChange, finalSelectOptions
             </select>
         </div>
       );
-    case "textarea":
+case "textarea":
+  return (
+    <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
+      <label style={labelStyle}>{field.label}</label>
+      <textarea
+        name={field.name}                    // THIS LINE WAS MISSING!
+        rows={field.rows || 4}
+        value={formValues[field.name] || ""}
+        onChange={e => handleChange(field.name, e.target.value)}
+        placeholder={field.placeholder || ""}
+        style={inputStyle}
+        data-field={field.name}              // Optional fallback
+      />
+      {field.allowImagePaste && (
+        <div style={{
+          marginTop: "0.5rem",
+          padding: "0.6rem",
+          background: "#162032",
+          borderRadius: 6,
+          fontSize: "0.85rem",
+          color: "#94a3b8"
+        }}>
+          <strong>Pro tip:</strong> You can paste screenshots directly here with <strong>Ctrl+V</strong>
+        </div>
+      )}
+    </div>
+  );    case "image":
       return (
         <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
           <label style={labelStyle}>{field.label}</label>
-          <textarea
-            rows={field.rows || 4}
-            value={formValues[field.name] || ""}
-            onChange={e => handleChange(field.name, e.target.value)}
-            placeholder={field.placeholder || ""}
-            style={inputStyle}
-          />
-        </div>
-      );
-    case "image":
-      return (
-        <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
-          <label style={labelStyle}>{field.label}</label>
-          <ImageUploader
-            images={formValues[field.name] || []}
-            onImagesChange={imgs => handleChange(field.name, imgs)}
-            maxImages={field.maxImages || 6}
-          />
-        </div>
+<ImageUploader
+        images={formValues[field.name] || []}           // ← Always array
+        onImagesChange={(newImages) => handleChange(field.name, newImages)} // ← Save array
+        maxImages={field.maxImages || 6}
+        fieldName={field.name}
+      />
+              </div>
       );
     case "checkbox":
       return (
