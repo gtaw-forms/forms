@@ -2,17 +2,19 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { database } from "../../firebase";
 import { ref, onValue } from "firebase/database";
+import Form from 'react-bootstrap/Form';
+import Button from 'react-bootstrap/Button';
 import useGtaWorldAuth from "../../hooks/useGtaWorldAuth";
 import styles from "../ems-dashboard/EmsDashboard.module.css";
 import formStyles from './FormHandler.module.css';
-import ImageUploader from './ImageUploader';
 import { useModal } from "../../contexts/ModalProvider";
 import { useData } from "../../contexts/DataContext";
 import EmsBingoModal from '../EmsBingoModal';
 import useBbcodeGenerator from '../../hooks/useBbcodeGenerator';
 import FormFieldRenderer from './FormFieldRenderer';
 import FormHandlerNavButtons from './FormHandlerNavButtons';
-
+import { uploadImageToImgBB } from '../../utils/imageUploadUtils'; 
+import { useNotification } from '../../contexts/NotificationContext';
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTimeUtils';
 
 // Helper: escape HTML characters for safe insertion into DOM
@@ -26,27 +28,18 @@ const escapeHtml = (unsafe) => {
 };
 
 const FormHandler = () => {
-    let {
-      user,
-      isAuthenticated, // Re-added
-      isPhmcMember,
-      characterName,
-      factionRank,
-      selectOptions: authSelectOptions
-    } = useGtaWorldAuth();
-    const [forms, setForms] = useState([]);
+  // State declarations first
+  const [forms, setForms] = useState([]);
   const [selectedForm, setSelectedForm] = useState(null);
   const [formValues, setFormValues] = useState({});
   const [searchTerm, setSearchTerm] = useState(() => localStorage.getItem("formSearchTerm") || "");
   const [selectedCategory, setSelectedCategory] = useState(() => localStorage.getItem("formSelectedCategory") || "All");
   const [showRestricted, setShowRestricted] = useState(() => localStorage.getItem("formShowRestricted") === "true" || false);
-  const [currentUtcTime, setCurrentUtcTime] = useState(''); // New state for current UTC time
-
+  const [currentUtcTime, setCurrentUtcTime] = useState('');
   const [selectOptions, setSelectOptions] = useState({});
-  let { agencyDataStore, phmcListData, coronerListData } = useData(); // Destructure agencyDataStore, phmcListData, coronerListData
 
-  // --- NEW STATE FOR PATIENT TYPE MANAGEMENT ---
-  const [patientType, setPatientType] = useState(() => localStorage.getItem('formPatientType') || 'gtaw'); // 'gtaw', 'civilian', 'phmc'
+  // NEW STATE FOR PATIENT TYPE MANAGEMENT
+  const [patientType, setPatientType] = useState(() => localStorage.getItem('formPatientType') || 'gtaw');
   const [civilianNames, setCivilianNames] = useState(() => JSON.parse(localStorage.getItem('formCivilianNames')) || [
     'John Doe', 'Jane Smith', 'Michael Johnson', 'Emily Davis', 'Chris Brown'
   ]);
@@ -55,8 +48,69 @@ const FormHandler = () => {
   ]);
   const [currentCivilianIndex, setCurrentCivilianIndex] = useState(() => parseInt(localStorage.getItem('formCurrentCivilianIndex'), 10) || 0);
   const [currentPhmcIndex, setCurrentPhmcIndex] = useState(() => parseInt(localStorage.getItem('formCurrentPhmcIndex'), 10) || 0);
-  const [tempPatientName, setTempPatientName] = useState(''); // Holds the name selected by the new mechanism
+  const [tempPatientName, setTempPatientName] = useState('');
 
+  // Then other hooks
+  const { showNotification } = useNotification();
+  const [isUploading, setIsUploading] = useState(false);
+
+  let {
+    user,
+    isAuthenticated, // Re-added
+    isPhmcMember,
+    characterName,
+    factionRank,
+    selectOptions: authSelectOptions
+  } = useGtaWorldAuth();
+  let { agencyDataStore, phmcListData, coronerListData } = useData();
+
+  // GLOBAL CLIPBOARD PASTE LISTENER — WORKS IN ANY TEXTAREA
+  useEffect(() => {
+    const handlePaste = async (e) => {
+      if (!selectedForm) return;
+
+      const activeEl = document.activeElement;
+      if (!activeEl || (activeEl.tagName !== "TEXTAREA" && activeEl.tagName !== "INPUT")) return;
+
+      const fieldName = activeEl.name || activeEl.dataset.field;
+      if (!fieldName) return;
+
+      const fieldConfig = selectedForm.fields?.find(f => f.name === fieldName);
+      if (!fieldConfig?.allowImagePaste) return;
+
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let item of items) {
+        if (item.type.includes("image")) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (!file) continue;
+
+          const targetImageField = fieldConfig.linkedImageField || `${fieldName}_images`;
+
+          try {
+            setIsUploading(true);
+            const url = await uploadImageToImgBB(file);
+            setFormValues(prev => ({
+              ...prev,
+              [targetImageField]: [...(prev[targetImageField] || []), url]
+            }));
+            showNotification("Image pasted & uploaded!", "success");
+          } catch (err) {
+            console.error("Clipboard upload failed:", err);
+            showNotification("Failed to upload image from clipboard", "error");
+          } finally {
+            setIsUploading(false);
+          }
+          break;
+        }
+      }
+    };
+
+    document.addEventListener("paste", handlePaste);
+    return () => document.removeEventListener("paste", handlePaste);
+  }, [selectedForm, showNotification, setIsUploading, setFormValues]);
   // Persistence for new states
   useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [patientType]);
   useEffect(() => { localStorage.setItem('formCivilianNames', JSON.stringify(civilianNames)); }, [civilianNames]);
@@ -178,6 +232,25 @@ const FormHandler = () => {
     return () => unsub();
   }, []);
 
+  // Derive unique categories from forms and ensure "All" is present
+  const categories = React.useMemo(() => {
+    const uniqueCategories = [...new Set(forms.map(form => form.category))];
+    const sortedCategories = uniqueCategories.sort();
+    return ["All", ...sortedCategories];
+  }, [forms]);
+
+  // Filter forms based on search term, selected category, and restricted status
+  const filteredForms = React.useMemo(() => {
+    return forms.filter(form => {
+      const matchesSearchTerm = form.name && form.name.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesCategory = selectedCategory === "All" || form.category === selectedCategory;
+      const isRestricted = form.accessType === "PHMC" || form.accessType === "Coroner";
+      const passesRestriction = !showRestricted || (isRestricted ? (isAuthenticated && isPhmcMember) : true);
+
+      return matchesSearchTerm && matchesCategory && passesRestriction;
+    });
+  }, [forms, searchTerm, selectedCategory, showRestricted, isAuthenticated, isPhmcMember]);
+
   // Effect to update currentUtcTime every second
   useEffect(() => {
     const updateUtcTime = () => {
@@ -251,6 +324,26 @@ const FormHandler = () => {
   const switchPhmcName = () => {
     setCurrentPhmcIndex((prevIndex) => (prevIndex + 1) % phmcNames.length);
   };
+
+  const handleChange = useCallback((fieldName, value) => {
+    setFormValues(prevValues => ({
+      ...prevValues,
+      [fieldName]: value
+    }));
+  }, []);
+
+  const copyAndSaveReport = useCallback(async () => {
+    if (generatedBBCode) {
+      try {
+        await navigator.clipboard.writeText(generatedBBCode);
+        // Optionally, add a notification here that BBCode was copied
+        // For example: alert('BBCode copied to clipboard!');
+      } catch (err) {
+        console.error('Failed to copy BBCode: ', err);
+        // Optionally, add an error notification here
+      }
+    }
+  }, [generatedBBCode]);
 
   return (
     <div className={styles.container}>
