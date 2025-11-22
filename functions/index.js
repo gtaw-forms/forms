@@ -457,29 +457,31 @@ export const dailyMaintenanceTask = onSchedule({
     try {
         console.log('[Maintenance] Starting old reports cleanup...');
         const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
-        const reportsRef = db.ref(REPORTS_PATH);
-        const reportsSnapshot = await reportsRef.once('value');
+        const allUserIdsRef = db.ref(REPORTS_PATH); // Reference to the root of savedReports to get all user IDs
+        const allUserIdsSnapshot = await allUserIdsRef.once('value');
         let oldReportsCleaned = 0;
+        const deletionPromises = [];
 
-        if (reportsSnapshot.exists()) {
-            const allUsers = reportsSnapshot.val();
-            const promises = [];
+        if (allUserIdsSnapshot.exists()) {
+            const allUsers = allUserIdsSnapshot.val();
 
             for (const userId in allUsers) {
-                const userReports = allUsers[userId];
-                for (const reportId in userReports) {
-                    const report = userReports[reportId];
-                    if (report.timestamp && report.timestamp < sevenDaysAgo) {
-                        const reportRef = db.ref(`/savedReports/${userId}/${reportId}`);
-                        const bbCodeRef = db.ref(`/savedReportBBCode/${userId}/${reportId}`);
-                        
-                        promises.push(reportRef.remove());
-                        promises.push(bbCodeRef.remove());
+                // Query for old reports for this specific user
+                const userReportsQuery = db.ref(`/savedReports/${userId}`).orderByChild('timestamp').endAt(sevenDaysAgo);
+                const userReportsSnapshot = await userReportsQuery.once('value');
+
+                if (userReportsSnapshot.exists()) {
+                    userReportsSnapshot.forEach((reportSnapshot) => {
+                        const reportId = reportSnapshot.key;
+                        // Push deletion promises for both report and its BBCode
+                        deletionPromises.push(db.ref(`/savedReports/${userId}/${reportId}`).remove());
+                        deletionPromises.push(db.ref(`/savedReportBBCode/${userId}/${reportId}`).remove());
                         oldReportsCleaned++;
-                    }
+                    });
                 }
             }
-            await Promise.all(promises);
+
+            await Promise.all(deletionPromises); // Execute all deletions concurrently
             console.log(`[Maintenance] Old reports cleanup complete: cleaned ${oldReportsCleaned} old reports.`);
         } else {
             console.log('[Maintenance] No saved reports found to clean up.');
@@ -2335,7 +2337,11 @@ export const syncReportCounts = onCall({
             }]
         });
 
-        return { success: true, message: successMessage, syncedUsers };
+        return {
+            success: true,
+            message: successMessage,
+            syncedUsers
+        };
 
     } catch (error) {
         console.error('[Sync Counts] Error during report count sync:', error);
