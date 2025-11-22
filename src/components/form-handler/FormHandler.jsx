@@ -65,54 +65,123 @@ const FormHandler = () => {
   let { agencyDataStore, phmcListData, coronerListData } = useData();
 
   // GLOBAL CLIPBOARD PASTE LISTENER — WORKS IN ANY TEXTAREA
-  useEffect(() => {
-    const handlePaste = async (e) => {
-      if (!selectedForm) return;
+// GLOBAL CLIPBOARD PASTE — FINAL VERSION (HANDLES ALL BROWSERS)
+useEffect(() => {
+  const handlePaste = async (e) => {
+    if (!selectedForm) {
+      console.log("No form selected");
+      return;
+    }
 
-      const activeEl = document.activeElement;
-      if (!activeEl || (activeEl.tagName !== "TEXTAREA" && activeEl.tagName !== "INPUT")) return;
+    const activeEl = document.activeElement;
+    if (!activeEl || !['TEXTAREA', 'INPUT'].includes(activeEl.tagName)) {
+      console.log("Not in a text field");
+      return;
+    }
 
-      const fieldName = activeEl.name || activeEl.dataset.field;
-      if (!fieldName) return;
+    const fieldName = activeEl.name || activeEl.dataset.field;
+    if (!fieldName) {
+      console.log("No field name");
+      return;
+    }
 
-      const fieldConfig = selectedForm.fields?.find(f => f.name === fieldName);
-      if (!fieldConfig?.allowImagePaste) return;
+    const fieldConfig = selectedForm.fields?.find(f => f.name === fieldName);
+    if (!fieldConfig?.allowImagePaste) {
+      console.log(`Field ${fieldName} does not allow image paste`);
+      return;
+    }
 
-      const items = e.clipboardData?.items;
-      if (!items) return;
+    const items = e.clipboardData?.items;
+    if (!items) {
+      console.log("No clipboard items");
+      return;
+    }
 
-      for (let item of items) {
-        if (item.type.includes("image")) {
-          e.preventDefault();
-          const file = item.getAsFile();
-          if (!file) continue;
+    let imageFile = null;
 
-          const targetImageField = fieldConfig.linkedImageField || `${fieldName}_images`;
+    console.log("Paste event detected!", e.clipboardData.types);
 
-          try {
-            setIsUploading(true);
-            const url = await uploadImageToImgBB(file);
-            setFormValues(prev => ({
-              ...prev,
-              [targetImageField]: [...(prev[targetImageField] || []), url]
-            }));
-            showNotification("Image pasted & uploaded!", "success");
-          } catch (err) {
-            console.error("Clipboard upload failed:", err);
-            showNotification("Failed to upload image from clipboard", "error");
-          } finally {
-            setIsUploading(false);
-          }
+    for (let item of items) {
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file && file.type.startsWith('image/')) {
+          imageFile = file;
           break;
         }
       }
-    };
+    }
 
-    document.addEventListener("paste", handlePaste);
-    return () => document.removeEventListener("paste", handlePaste);
-  }, [selectedForm, showNotification, setIsUploading, setFormValues]);
-  // Persistence for new states
-  useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [patientType]);
+    if (!imageFile) {
+      console.log("No valid image file in clipboard");
+      return;
+    }
+
+    e.preventDefault();
+
+    const targetField = fieldConfig.linkedImageField || fieldName;
+
+    try {
+      setIsUploading(true);
+      const url = await uploadImageToImgBB(imageFile);
+
+      setFormValues(prev => {
+        const current = prev[targetField] || [];
+        const arr = Array.isArray(current)
+          ? current
+          : (typeof current === 'string' ? current.split(', ').filter(Boolean) : []);
+
+        return {
+          ...prev,
+          [targetField]: [...arr, url]
+        };
+      });
+
+showNotification("Image pasted & uploaded!", "success");
+
+// AUTO-INSERT URL INTO THE TEXTAREA (THE ONE YOU PASTED INTO)
+const activeEl = document.activeElement;
+if (activeEl && (activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'INPUT')) {
+  const currentValue = activeEl.value || "";
+  const cursorPos = activeEl.selectionStart;
+
+  // Choose format: raw URL or BBCode [img]
+  const insertText = `[img]${url}[/img]`;  // Change to just `${url}` if you prefer plain
+
+  const newValue =
+    currentValue.substring(0, cursorPos) +
+    (currentValue && !currentValue.endsWith("\n") ? "\n" : "") +
+    insertText +
+    "\n" +
+    currentValue.substring(cursorPos);
+
+  // Update textarea value
+  activeEl.value = newValue;
+
+  // Update React state so it stays after re-render
+  setFormValues(prev => ({
+    ...prev,
+    [fieldName]: newValue
+  }));
+
+  // Move cursor after inserted text
+  const newCursorPos = cursorPos + insertText.length + 2; // +2 for newlines
+  setTimeout(() => {
+    activeEl.focus();
+    activeEl.setSelectionRange(newCursorPos, newCursorPos);
+  }, 0);
+}    } catch (err) {
+      console.error("Upload failed:", err);
+      showNotification("Failed to upload image", "error");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  document.addEventListener('paste', handlePaste);
+  return () => document.removeEventListener('paste', handlePaste);
+}, [selectedForm, showNotification, setIsUploading]);
+
+useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [patientType]);
   useEffect(() => { localStorage.setItem('formCivilianNames', JSON.stringify(civilianNames)); }, [civilianNames]);
   useEffect(() => { localStorage.setItem('formPhmcNames', JSON.stringify(phmcNames)); }, [phmcNames]);
   useEffect(() => { localStorage.setItem('formCurrentCivilianIndex', currentCivilianIndex.toString()); }, [currentCivilianIndex]);
