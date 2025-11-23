@@ -94,6 +94,7 @@ export const useReportManagement = (
         let key = '';
         const bbCodeContent = getBBCodeContent();
         const currentAuthor = getCurrentReportAuthor(formData);
+        let isLegacy = false;
 
         // --- Validation logic to determine the key ---
         if (bbCodeVersion === 1) { // Death Report
@@ -103,6 +104,7 @@ export const useReportManagement = (
                 return { success: false, error: message };
             }
             key = `[DEATH-REPORT] ${formData.decedentOOC} - ${formData.dateTime}`;
+            isLegacy = true;
         } else if (bbCodeVersion === 4) { // Autopsy Report
             if (!formData.decedentName || !formData.decedentOOC || !formData.autopsyDate) {
                 const message = `Please fill in Decedent IC Name, OOC Name, and Autopsy Date fields.`;
@@ -110,6 +112,7 @@ export const useReportManagement = (
                 return { success: false, error: message };
             }
             key = `[Autopsy] ${formData.decedentName} (${formData.decedentOOC}) - ${formData.autopsyDate}`;
+            isLegacy = true;
         } else if (bbCodeVersion === 3) { // Detailed Patient File (PatientAdvanced)
             if (!formData.patientName || !formData.patientDateOfBirth) {
                 const message = `Please fill in Patient Name and Date of Birth fields.`;
@@ -117,6 +120,7 @@ export const useReportManagement = (
                 return { success: false, error: message };
             }
             key = `${formData.patientID || 'NO_ID'} - ${formData.patientName || 'NO_NAME'} - ${formData.patientDateOfBirth || 'NO_DATE'}`;
+            isLegacy = true;
         } else if (((bbCodeVersion > 3 && bbCodeVersion <= 7) && bbCodeVersion !== 4)) { // SurgicalOps (5), PhysEval PHMC/PBC (6,7)
             let patientIdMissing = !formData.patientID;
             let dateMissing = !formData.date;
@@ -136,6 +140,7 @@ export const useReportManagement = (
                 }
             }
             key = `${formData.patientID || 'NO_ID'} - ${formData.patientName || 'NO_NAME'} - ${formData.date || 'NO_DATE'}`;
+            isLegacy = true;
         } else if (bbCodeVersion === 19) { // EmergencyProtocol
             if (!formData.patientID || !formData.date) {
                 const message = `Please fill in Patient ID, and Date fields.`;
@@ -143,6 +148,7 @@ export const useReportManagement = (
                 return { success: false, error: message };
             }
             key = `${formData.patientID} - ${formData.lastName} - ${formData.date}`;
+            isLegacy = true;
         } else if (bbCodeVersion === 25) { // BasicPatientFile
             if (!formData.patientName || !formData.patientDateOfBirth) {
                 const message = `Please fill in Patient Name and Date of Birth fields.`;
@@ -150,6 +156,7 @@ export const useReportManagement = (
                 return { success: false, error: message };
             }
             key = `${formData.patientName} - ${formData.patientDateOfBirth}`;
+            isLegacy = true;
         } else if (bbCodeVersion === 24) { // Medical Record Release
             // This form uses registrantFullName and dateOfRequest
             if (!formData.registrantFullName || !formData.dateOfRequest) {
@@ -158,6 +165,7 @@ export const useReportManagement = (
                 return { success: false, error: message };
             }
             key = `[Medical Release] ${formData.registrantFullName} - ${formData.dateOfRequest}`;
+            isLegacy = true;
         }
         // --- Add more 'else if' blocks here for other specific bbCodeVersions ---
         // Example for Coroner Email (bbCodeVersion 2)
@@ -168,6 +176,7 @@ export const useReportManagement = (
                 return { success: false, error: message };
             }
             key = `[Email] ${formData.requestingOfficer} re: ${formData.decedentName || formData.decedentOOC} - ${new Date().toISOString().split('T')[0]}`;
+            isLegacy = true;
         }
         // Example for Agency Feedback (bbCodeVersion 18)
         else if (bbCodeVersion === 18) {
@@ -177,6 +186,7 @@ export const useReportManagement = (
                 return { success: false, error: message };
             }
             key = `[Feedback] ${formData.department} - ${formData.dateTime}`;
+            isLegacy = true;
         }
         // --- MODIFICATION FOR PHMC RECRUITMENT ---
         else if (getFormDefinition(bbCodeVersion)?.group === 'PHMC Recruitment') {
@@ -198,6 +208,7 @@ export const useReportManagement = (
             }
             const decedentNames = decedents.map(d => d.decedentName).filter(name => name).join(', ');
             key = `[Mass Fatality Report] - ${decedentNames} - ${(dateTime && dateTime.split('T')[0]) || 'No Date'}`;
+            isLegacy = true;
         }
         else if (bbCodeVersion === 37) { // Death Record
             if (!formData.deathReportPostId || !formData.decedentName || !formData.dateOfDeath) {
@@ -209,6 +220,7 @@ export const useReportManagement = (
             // Format date to MM-DD-YYYY
             const formattedDate = formData.dateOfDeath ? new Date(formData.dateOfDeath).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase().replace(/,/g, '') : 'NO_DATE';
             key = `[CASE #${caseNumber}] ${formData.decedentName} (( ${formData.decedentOOC || 'N/A'} )) | [${formattedDate}]`;
+            isLegacy = true;
         }
         else { // Default handler for any other bbCodeVersion (includes SAAA)
             const definition = getFormDefinition(bbCodeVersion); // Get current form definition
@@ -281,7 +293,8 @@ export const useReportManagement = (
             // bbCode is now saved separately
             timestamp: Date.now(),
             originalKey: key,
-            authorName: currentAuthor
+            authorName: currentAuthor,
+            legacy: isLegacy // Add the legacy flag
         };
 
         // --- MODIFIED GTAW DATA HANDLING ---

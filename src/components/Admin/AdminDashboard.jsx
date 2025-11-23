@@ -83,6 +83,7 @@ const AdminDashboard = ({
     const [diagnosticsResult, setDiagnosticsResult] = useState(null);
     const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
     const [isMigratingReports, setIsMigratingReports] = useState(false);
+    const [isAppendingLegacyFlag, setIsAppendingLegacyFlag] = useState(false);
     const [isSyncingCounts, setIsSyncingCounts] = useState(false);
     const navigate = useNavigate();
     
@@ -295,6 +296,44 @@ const AdminDashboard = ({
             );
         } finally {
             setIsSyncingCounts(false);
+        }
+    };
+
+    const handleAppendLegacyFlag = async () => {
+        if (!window.confirm("Are you sure you want to append the 'legacy: true' flag to all saved reports? This operation is permanent.")) {
+            return;
+        }
+
+        setIsAppendingLegacyFlag(true);
+        showInAppNotification && showInAppNotification('Starting to append legacy flag to all reports. This may take a while...', 'info');
+
+        try {
+            const functions = getFunctions();
+            const appendLegacyFlag = httpsCallable(functions, 'appendLegacyFlagToReports');
+            const result = await appendLegacyFlag();
+
+            if (result.data.success) {
+                showInAppNotification && showInAppNotification(
+                    `Successfully appended legacy flag to ${result.data.updatedReports} reports across ${result.data.updatedUsers} users.`,
+                    'success'
+                );
+                console.log('Append legacy flag result:', result.data);
+            } else {
+                showInAppNotification && showInAppNotification(
+                    `Failed to append legacy flag: ${result.data.message || 'Unknown error'}`,
+                    'error'
+                );
+                console.error('Append legacy flag failed:', result.data);
+            }
+        } catch (error) {
+            console.error('Error calling appendLegacyFlagToReports:', error);
+            showInAppNotification && showInAppNotification(
+                `Error during legacy flag append: ${error.message}`,
+                'error'
+            );
+            Sentry.captureException(error, { extra: { context: 'handleAppendLegacyFlag' } });
+        } finally {
+            setIsAppendingLegacyFlag(false);
         }
     };
 
@@ -1145,6 +1184,20 @@ const AdminDashboard = ({
                                                 <i className="fas fa-sync me-2"></i>
                                             )}
                                             Sync Report Counts
+                                        </Button>
+                                        <Button
+                                            variant="warning"
+                                            size="sm"
+                                            onClick={handleAppendLegacyFlag}
+                                            disabled={isAppendingLegacyFlag || !hasAdminAccess}
+                                            title={hasAdminAccess ? "Append 'legacy: true' to all existing reports." : "Requires admin access permission"}
+                                        >
+                                            {isAppendingLegacyFlag ? (
+                                                <Spinner as="span" animation="border" size="sm" />
+                                            ) : (
+                                                <i className="fas fa-tag me-2"></i>
+                                            )}
+                                            Append Legacy Flag
                                         </Button>
                                         <Button 
                                             variant="success" 
