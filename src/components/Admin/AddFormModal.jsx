@@ -377,7 +377,7 @@ const applyAdvancedCondition = () => {
             This conditional BBCode must be manually parsed when generating reports.
           </div>
 
-          <textarea rows={12} value={bbcodeTemplate} onChange={e => setBbcodeTemplate(e.target.value)} style={{ ...inputStyle, fontFamily: "monospace" }} />
+          <textarea rows={12} value={bbcodeTemplate} onChange={e => setBbcodeTemplate(e.target.value)} style={{ ...inputStyle, fontFamily: "monospace", maxHeight: "200px", overflowY: "auto" }} />
 
           {/* New: Title Generator Code Input */}
           <h4 style={{ color: "#60a5fa", marginTop: "2rem" }}>Title Generator Function</h4>
@@ -385,7 +385,7 @@ const applyAdvancedCondition = () => {
             rows={6}
             value={titleGeneratorCode}
             onChange={e => setTitleGeneratorCode(e.target.value)}
-            style={{ ...inputStyle, fontFamily: "monospace" }}
+            style={{ ...inputStyle, fontFamily: "monospace", maxHeight: "200px", overflowY: "auto" }}
             placeholder="(formData) => \`[FORM_NAME] \${formData.patientName || 'N/A'}\`"
           />
 
