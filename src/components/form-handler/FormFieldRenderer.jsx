@@ -1,8 +1,8 @@
-import React, { useCallback } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import ImageUploader from './ImageUploader'; // Assuming ImageUploader is in the same directory or adjust path
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTimeUtils';
 
-const FormFieldRenderer = ({ field, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore }) => {
+const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore }) => {
   // Conditional visibility logic
   if (field.showIf) {
     let shouldShow = false;
@@ -324,6 +324,60 @@ case "textarea":
           </div>
         </div>
       );
+    case "payment_button": {
+      const [step, setStep] = useState(formValues[field.name] ? 2 : 0);
+
+      const paymentValue = useMemo(() => {
+        if (selectedForm && selectedForm.name.includes('Patient File')) {
+          return 2000;
+        }
+        if (!field.paymentValueLogic) return 0;
+        try {
+          const func = new Function('formData', `return (${field.paymentValueLogic})(formData)`);
+          return func(formValues);
+        } catch (error) {
+          console.error("Error calculating payment value:", error);
+          return 0;
+        }
+      }, [field.paymentValueLogic, formValues, selectedForm]);
+
+      const handlePayment = () => {
+        const apiKey = "QpDlr9TcWwAWjs07gqq9rpqeygqBYlYMQ4bGPUmx9ILPx6vs6xflO6BIdhncCcAu";
+        const baseURL = "https://banking.gta.world/gateway";
+        const url = `${baseURL}/${apiKey}/0/${paymentValue}`;
+        
+        window.open(url, '_blank');
+        handleChange(field.name, new Date().toISOString());
+        setStep(2);
+      };
+
+      return (
+        <div style={fieldWrapperStyle}>
+          <label style={labelStyle}>{field.label}</label>
+          <div style={{ padding: '1rem', background: '#162032', borderRadius: 8 }}>
+            {step === 0 && (
+              <div>
+                <p style={{ color: "#cbd5e1", margin: "0 0 1rem" }}>Please visit <a href="https://banking.gta.world/login" target="_blank" rel="noopener noreferrer">the banking website</a> to log in before proceeding.</p>
+                <button onClick={() => setStep(1)} style={{ background: "#6366f1", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, width: '100%' }}>I have logged in, proceed to payment</button>
+              </div>
+            )}
+            {step === 1 && (
+              <div>
+                <p style={{ color: "#cbd5e1", margin: "0 0 1rem" }}>Please click the button below to make a payment of <strong>${(paymentValue).toFixed(2)}</strong> to Pillbox Hill Medical Center.</p>
+                <button onClick={handlePayment} style={{ background: "#10b981", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, width: '100%' }}>Pay Now</button>
+              </div>
+            )}
+            {step === 2 && (
+              <div style={{ color: "#34d399" }}>
+                <p style={{ margin: 0 }}>Payment link opened at:</p>
+                <strong>{new Date(formValues[field.name]).toLocaleString()}</strong>
+                <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.5rem' }}>(This confirms the payment button was clicked, not that the payment was successful. Please ensure you completed the transaction.)</p>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
     case "input":
     default:
       return (
