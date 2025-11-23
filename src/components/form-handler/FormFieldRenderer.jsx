@@ -1,6 +1,7 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import ImageUploader from './ImageUploader'; // Assuming ImageUploader is in the same directory or adjust path
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTimeUtils';
+import { useAuth } from '../../contexts/AuthContext';
 
 const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore }) => {
   // Conditional visibility logic
@@ -325,7 +326,41 @@ case "textarea":
         </div>
       );
     case "payment_button": {
-      const [step, setStep] = useState(formValues[field.name] ? 2 : 0);
+      const [step, setStep] = useState(0);
+      const { user } = useAuth();
+
+      // Effect to listen for localStorage changes from the callback tab
+      useEffect(() => {
+        const handleStorageChange = (event) => {
+          if (event.key === 'phmc-payment-confirmed') {
+            const confirmationData = JSON.parse(event.newValue);
+            // Check if this update is for this specific button instance
+            if (confirmationData && confirmationData.fieldId === field.name) {
+              handleChange(field.name, confirmationData);
+              // Clean up the confirmation key so it doesn't trigger again
+              localStorage.removeItem('phmc-payment-confirmed');
+            }
+          }
+        };
+
+        window.addEventListener('storage', handleStorageChange);
+
+        return () => {
+          window.removeEventListener('storage', handleStorageChange);
+        };
+      }, [field.name, handleChange]);
+
+      // Effect to set the initial step based on the form's data
+      useEffect(() => {
+        const value = formValues[field.name];
+        if (value && value.status === 'confirmed') {
+          setStep(3); // Payment is confirmed
+        } else if (value === 'pending_confirmation') {
+          setStep(2); // Payment is pending
+        } else {
+          setStep(0); // Initial state
+        }
+      }, [formValues, field.name]);
 
       const paymentValue = useMemo(() => {
         if (selectedForm && selectedForm.name.includes('Patient File')) {
@@ -342,12 +377,24 @@ case "textarea":
       }, [field.paymentValueLogic, formValues, selectedForm]);
 
       const handlePayment = () => {
+        if (!user) {
+          alert("Authentication error: You must be logged in to proceed with a payment.");
+          return;
+        }
+
         const apiKey = "QpDlr9TcWwAWjs07gqq9rpqeygqBYlYMQ4bGPUmx9ILPx6vs6xflO6BIdhncCcAu";
         const baseURL = "https://banking.gta.world/gateway";
         const url = `${baseURL}/${apiKey}/0/${paymentValue}`;
+
+        const pendingPayment = {
+          userId: user.uid,
+          formName: selectedForm.name,
+          fieldId: field.name,
+        };
+        localStorage.setItem('phmc-payment-pending', JSON.stringify(pendingPayment));
         
         window.open(url, '_blank');
-        handleChange(field.name, new Date().toISOString());
+        handleChange(field.name, 'pending_confirmation');
         setStep(2);
       };
 
@@ -368,10 +415,15 @@ case "textarea":
               </div>
             )}
             {step === 2 && (
+              <div style={{ color: "#f59e0b" }}>
+                <p style={{ margin: 0 }}>Waiting for payment confirmation...</p>
+                <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.5rem' }}>Once you complete the payment in the new tab, this message will update automatically.</p>
+              </div>
+            )}
+            {step === 3 && (
               <div style={{ color: "#34d399" }}>
-                <p style={{ margin: 0 }}>Payment link opened at:</p>
-                <strong>{new Date(formValues[field.name]).toLocaleString()}</strong>
-                <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.5rem' }}>(This confirms the payment button was clicked, not that the payment was successful. Please ensure you completed the transaction.)</p>
+                <p style={{ margin: 0 }}>Payment Confirmed at:</p>
+                <strong>{new Date(formValues[field.name].confirmedAt).toLocaleString()}</strong>
               </div>
             )}
           </div>
