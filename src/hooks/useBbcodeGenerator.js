@@ -19,47 +19,19 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
 
     // Generate title if titleGeneratorCode exists
     if (selectedForm.titleGeneratorCode) {
-      try {
-        const funcString = selectedForm.titleGeneratorCode;
-        const arrowIndex = funcString.indexOf('=>');
+      let titleTemplate = selectedForm.titleGeneratorCode;
 
-        if (arrowIndex !== -1) {
-          const paramsString = funcString.substring(0, arrowIndex).trim();
-          const bodyString = funcString.substring(arrowIndex + 2).trim();
+      // 1. Replace [FORM_NAME]
+      titleTemplate = titleTemplate.replace(/\[FORM_NAME\]/g, selectedForm.name || '');
 
-          const params = (paramsString.startsWith('(') && paramsString.endsWith(')'))
-                         ? paramsString.substring(1, paramsString.length - 1).trim()
-                         : paramsString.trim();
+      // 2. Replace {{variable}} placeholders
+      const expressionPlaceholderRegex = /{{\s*([a-zA-Z0-9_]+)\s*}}/g;
+      titleTemplate = titleTemplate.replace(expressionPlaceholderRegex, (match, variableName) => {
+          // Fallback to the original match (e.g., "{{PatientName}}") if value is not found
+          return formValues[variableName] !== undefined ? formValues[variableName] : match;
+      });
 
-          const firstBacktickIndex = bodyString.indexOf('`');
-          const lastBacktickIndex = bodyString.lastIndexOf('`');
-
-          let actualBodyContent = bodyString;
-          if (firstBacktickIndex !== -1 && lastBacktickIndex !== -1 && firstBacktickIndex < lastBacktickIndex) {
-              actualBodyContent = bodyString.substring(firstBacktickIndex + 1, lastBacktickIndex);
-          } else {
-              console.warn("titleGeneratorCode body might not be a template literal or is malformed when using arrow function syntax:", bodyString);
-          }
-
-          const titleFn = new Function(params, `return ${actualBodyContent}`);
-          title = titleFn(formValues);
-
-        } else {
-          // If it's not an arrow function, assume it's just the template literal content
-          // and wrap it in a function, replacing [FORM_NAME]
-          let processedFuncString = funcString.replace(/\n\[FORM_NAME\]\n/g, selectedForm.name || '');
-          try {
-              const titleFn = new Function('formData', `return ${processedFuncString}`);
-              title = titleFn(formValues);
-          } catch (fnError) {
-              console.error("Error generating title from plain template string:", fnError);
-              title = `Error processing title template: ${fnError.message}`;
-          }
-        }
-      } catch (error) {
-        console.error("Error generating title with new Function():", error);
-        title = `Error generating title: ${error.message}`;
-      }
+      title = titleTemplate;
     } else {
       title = selectedForm.name || "Untitled Report";
     }

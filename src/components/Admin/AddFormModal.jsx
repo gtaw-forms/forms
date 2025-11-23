@@ -361,7 +361,7 @@ const applyAdvancedCondition = () => {
         </div>
 
         <div style={{ padding: "2rem" }}>
-          <input placeholder="Form ID (e.g. medical_release)" value={formId} onChange={e => setFormId(e.target.value.replace(/\s/g, "_").toLowerCase())} style={inputStyle} />
+          <input placeholder="Form ID (e.g. medical_release)" value={formId} onChange={e => setFormId(e.target.value.replace(/\s/g, "_").toLowerCase())} style={inputStyle} disabled={!!editingForm} />
           <input placeholder="Form Name" value={formName} onChange={e => setFormName(e.target.value)} style={inputStyle} />
           <input placeholder="Category" value={category} onChange={e => setCategory(e.target.value)} style={inputStyle} />
 
@@ -399,16 +399,16 @@ const applyAdvancedCondition = () => {
           {/* New: Title Generator Code Input */}
           <h4 style={{ color: "#60a5fa", marginTop: "2rem" }}>Title Generator Function</h4>
           <div style={{ color: "#94a3b8", fontSize: "0.9rem", marginBottom: "1rem" }}>
-            Use a JavaScript arrow function to generate the report title. <br />
-            The function receives a <code>formData</code> object containing all form values. <br />
-            Example: <code>{"(formData) => `Report for ${formData.patientName}`"}</code>
+            Create a template for the report title. <br />
+            Use <code>[FORM_NAME]</code> for the form's name. <br />
+            Use <code>{"{{fieldName}}"}</code> for form values (e.g., <code>{"{{PatientName}}"}</code>).
           </div>
           <textarea
             rows={6}
             value={titleGeneratorCode}
             onChange={e => setTitleGeneratorCode(e.target.value)}
             style={{ ...inputStyle, fontFamily: "monospace", maxHeight: "200px", overflowY: "auto" }}
-            placeholder="(formData) => \`[FORM_NAME] \${formData.patientName || 'N/A'}\`"
+            placeholder="[FORM_NAME] - {{PatientName}}"
           />
 
           <h4 style={{ color: "#60a5fa", marginTop: "2rem" }}>Add Field</h4>
