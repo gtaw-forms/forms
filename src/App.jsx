@@ -12,6 +12,7 @@ import GtaLogin from './components/Auth/GtaLogin.jsx';
 import UnifiedGtaCallback from './components/Auth/UnifiedGtaCallback.jsx';
 import OAuthUrlDiagnostic from './components/Auth/OAuthUrlDiagnostic.jsx';
 import ProtectedRoute from './components/Auth/ProtectedRoute.jsx';
+import PaymentCallback from './components/PaymentCallback.jsx';
 
 import MainApp from './MainApp.jsx';
 import Admin from './components/Admin/Admin.jsx';
@@ -93,6 +94,7 @@ function App() {
                                         <Route path="/login" element={<GtaLogin />} />
                                         <Route path="/auth/gta/callback" element={<UnifiedGtaCallback />} />
                                         <Route path="/auth/gta/diagnostic" element={<OAuthUrlDiagnostic />} />
+                                        <Route path="/auth/gtapayment/callback/:token" element={<PaymentCallback />} />
                                         <Route path="/admin" element={<ProtectedRoute><Admin formData={formData} setFormData={setFormData} showNotification={showNotification} /></ProtectedRoute>} />
                                         <Route path="/ems-dashboard" element={<ProtectedRoute><EmsDashboard /></ProtectedRoute>} />
                                         <Route path="/form-handler" element={<ProtectedRoute><FormHandler /></ProtectedRoute>} />
