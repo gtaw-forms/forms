@@ -456,7 +456,7 @@ export const dailyMaintenanceTask = onSchedule({
     // --- Saved Reports Cleanup Logic (7 days) ---
     try {
         console.log('[Maintenance] Starting old reports cleanup...');
-        const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+        const threeHundredSixtyFiveDaysAgo = Date.now() - (365 * 24 * 60 * 60 * 1000);
         const reportsRef = db.ref(REPORTS_PATH);
         const reportsSnapshot = await reportsRef.once('value');
         let oldReportsCleaned = 0;
@@ -469,7 +469,7 @@ export const dailyMaintenanceTask = onSchedule({
                 const userReports = allUsers[userId];
                 for (const reportId in userReports) {
                     const report = userReports[reportId];
-                    if (report.timestamp && report.timestamp < sevenDaysAgo) {
+                    if (report.timestamp && report.timestamp < threeHundredSixtyFiveDaysAgo) {
                         const reportRef = db.ref(`/savedReports/${userId}/${reportId}`);
                         const bbCodeRef = db.ref(`/savedReportBBCode/${userId}/${reportId}`);
                         
@@ -493,7 +493,7 @@ export const dailyMaintenanceTask = onSchedule({
     // --- Saved Reports Cleanup Logic (7 days) ---
     try {
         console.log('[Maintenance] Starting old reports cleanup...');
-        const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+        const threeHundredSixtyFiveDaysAgo = Date.now() - (365 * 24 * 60 * 60 * 1000);
         const reportsRef = db.ref(REPORTS_PATH);
         const reportsSnapshot = await reportsRef.once('value');
         let oldReportsCleaned = 0;
@@ -506,7 +506,7 @@ export const dailyMaintenanceTask = onSchedule({
                 const userReports = allUsers[userId];
                 for (const reportId in userReports) {
                     const report = userReports[reportId];
-                    if (report.timestamp && report.timestamp < sevenDaysAgo) {
+                    if (report.timestamp && report.timestamp < threeHundredSixtyFiveDaysAgo) {
                         const reportRef = db.ref(`/savedReports/${userId}/${reportId}`);
                         const bbCodeRef = db.ref(`/savedReportBBCode/${userId}/${reportId}`);
                         
@@ -530,7 +530,7 @@ export const dailyMaintenanceTask = onSchedule({
     // --- Saved Reports Cleanup Logic (7 days) ---
     try {
         console.log('[Maintenance] Starting old reports cleanup...');
-        const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+        const threeHundredSixtyFiveDaysAgo = Date.now() - (365 * 24 * 60 * 60 * 1000);
         const reportsRef = db.ref(REPORTS_PATH);
         const reportsSnapshot = await reportsRef.once('value');
         let oldReportsCleaned = 0;
@@ -543,7 +543,7 @@ export const dailyMaintenanceTask = onSchedule({
                 const userReports = allUsers[userId];
                 for (const reportId in userReports) {
                     const report = userReports[reportId];
-                    if (report.timestamp && report.timestamp < sevenDaysAgo) {
+                    if (report.timestamp && report.timestamp < threeHundredSixtyFiveDaysAgo) {
                         const reportRef = db.ref(`/savedReports/${userId}/${reportId}`);
                         const bbCodeRef = db.ref(`/savedReportBBCode/${userId}/${reportId}`);
                         
@@ -588,7 +588,7 @@ export const dailyMaintenanceTask = onSchedule({
                 value: `${phraseRequestsDetails.trim() || "No phrase request actions taken."}`,
                 inline: false
             },
-            { name: "📜 Old Reports Cleanup (7 days)", value: `🗑️ **Old Reports Cleaned:** ${maintenanceResults.reportCleanup.oldReportsCleaned}`, inline: true }, // New field
+            { name: "📜 Old Reports Cleanup (365 days)", value: `🗑️ **Old Reports Cleaned:** ${maintenanceResults.reportCleanup.oldReportsCleaned}`, inline: true }, // New field
             {
                 name: "🧹 Duplicate Reports Cleanup",
                 value: `📊 **Scanned:** ${maintenanceResults.duplicateCleanup.scanned} reports\n🔍 **Found:** ${maintenanceResults.duplicateCleanup.duplicatesFound}\n🗑️ **Deleted:** ${maintenanceResults.duplicateCleanup.duplicatesDeleted}`,
