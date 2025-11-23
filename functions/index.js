@@ -492,79 +492,8 @@ export const dailyMaintenanceTask = onSchedule({
         maintenanceResults.reportCleanup.errors.push(`Old reports cleanup error: ${error.message}`);
     }
 
-    // --- Saved Reports Cleanup Logic (7 days) ---
-    try {
-        console.log('[Maintenance] Starting old reports cleanup...');
-        const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
-        const reportsRef = db.ref(REPORTS_PATH);
-        const reportsSnapshot = await reportsRef.once('value');
-        let oldReportsCleaned = 0;
 
-        if (reportsSnapshot.exists()) {
-            const allUsers = reportsSnapshot.val();
-            const promises = [];
 
-            for (const userId in allUsers) {
-                const userReports = allUsers[userId];
-                for (const reportId in userReports) {
-                    const report = userReports[reportId];
-                    if (report.timestamp && report.timestamp < sevenDaysAgo) {
-                        const reportRef = db.ref(`/savedReports/${userId}/${reportId}`);
-                        const bbCodeRef = db.ref(`/savedReportBBCode/${userId}/${reportId}`);
-                        
-                        promises.push(reportRef.remove());
-                        promises.push(bbCodeRef.remove());
-                        oldReportsCleaned++;
-                    }
-                }
-            }
-            await Promise.all(promises);
-            console.log(`[Maintenance] Old reports cleanup complete: cleaned ${oldReportsCleaned} old reports.`);
-        } else {
-            console.log('[Maintenance] No saved reports found to clean up.');
-        }
-        maintenanceResults.reportCleanup.oldReportsCleaned = oldReportsCleaned;
-    } catch (error) {
-        console.error(`Error during old reports cleanup: ${error?.message || String(error)}`);
-        maintenanceResults.reportCleanup.errors.push(`Old reports cleanup error: ${error.message}`);
-    }
-
-    // --- Saved Reports Cleanup Logic (7 days) ---
-    try {
-        console.log('[Maintenance] Starting old reports cleanup...');
-        const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
-        const reportsRef = db.ref(REPORTS_PATH);
-        const reportsSnapshot = await reportsRef.once('value');
-        let oldReportsCleaned = 0;
-
-        if (reportsSnapshot.exists()) {
-            const allUsers = reportsSnapshot.val();
-            const promises = [];
-
-            for (const userId in allUsers) {
-                const userReports = allUsers[userId];
-                for (const reportId in userReports) {
-                    const report = userReports[reportId];
-                    if (report.timestamp && report.timestamp < sevenDaysAgo) {
-                        const reportRef = db.ref(`/savedReports/${userId}/${reportId}`);
-                        const bbCodeRef = db.ref(`/savedReportBBCode/${userId}/${reportId}`);
-                        
-                        promises.push(reportRef.remove());
-                        promises.push(bbCodeRef.remove());
-                        oldReportsCleaned++;
-                    }
-                }
-            }
-            await Promise.all(promises);
-            console.log(`[Maintenance] Old reports cleanup complete: cleaned ${oldReportsCleaned} old reports.`);
-        } else {
-            console.log('[Maintenance] No saved reports found to clean up.');
-        }
-        maintenanceResults.reportCleanup.oldReportsCleaned = oldReportsCleaned;
-    } catch (error) {
-        console.error(`Error during old reports cleanup: ${error?.message || String(error)}`);
-        maintenanceResults.reportCleanup.errors.push(`Old reports cleanup error: ${error.message}`);
-    }
 
     // Send comprehensive webhook notification with all maintenance results
     const bingoDetails = [
@@ -1773,6 +1702,101 @@ export const uploadFactionData = onCall({
         console.error('[Faction Upload] Upload failed:', error);
         
         throw new functions.https.HttpsError('internal', 'Failed to upload faction data', {
+            originalError: error.message
+        });
+    }
+});
+
+/**
+ * Appends 'legacy: true' flag to all saved reports that don't already have it.
+ * Designed to be called from admin panel, updates in chunks to avoid rate limits.
+ */
+export const appendLegacyFlagToReports = onCall({
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000'
+    ]
+}, async (request) => {
+    console.log('[Legacy Flag Append] Starting operation to append legacy flag to reports.');
+
+    // Authentication check (optional, but recommended for admin functions)
+    // if (!request.auth || !request.auth.token.admin) { // Example: require admin claim
+    //     throw new functions.https.HttpsError('permission-denied', 'Admin access required to run this operation.');
+    // }
+
+    const REPORTS_PATH = 'savedReports';
+    const BATCH_SIZE = 50; // Number of reports to update in a single batch
+    const DELAY_MS = 1000; // Delay between batches in milliseconds
+    let totalUpdatedUsers = 0;
+    let totalUpdatedReports = 0;
+
+    try {
+        const allUsersSnapshot = await db.ref(REPORTS_PATH).once('value');
+        if (!allUsersSnapshot.exists()) {
+            console.log('[Legacy Flag Append] No reports found. Operation complete.');
+            return { success: true, updatedUsers: 0, updatedReports: 0, message: 'No reports found.' };
+        }
+
+        const allUsersData = allUsersSnapshot.val();
+        const userIds = Object.keys(allUsersData);
+        console.log(`[Legacy Flag Append] Found ${userIds.length} users with saved reports.`);
+
+        for (const userId of userIds) {
+            console.log(`[Legacy Flag Append] Processing reports for user: ${userId}`);
+            const userReportsRef = db.ref(`${REPORTS_PATH}/${userId}`);
+            const userReportsSnapshot = await userReportsRef.once('value');
+
+            if (!userReportsSnapshot.exists()) {
+                continue; // Should not happen if userId was in allUsersData, but good for safety
+            }
+
+            const reportsToUpdate = [];
+            userReportsSnapshot.forEach(reportSnap => {
+                const reportData = reportSnap.val();
+                if (!reportData.hasOwnProperty('legacy')) { // Check if 'legacy' property is missing
+                    reportsToUpdate.push({
+                        key: reportSnap.key,
+                        data: reportData
+                    });
+                }
+            });
+
+            if (reportsToUpdate.length > 0) {
+                totalUpdatedUsers++;
+                console.log(`[Legacy Flag Append] User ${userId} has ${reportsToUpdate.length} reports to update.`);
+
+                // Process reports in chunks
+                for (let i = 0; i < reportsToUpdate.length; i += BATCH_SIZE) {
+                    const batch = reportsToUpdate.slice(i, i + BATCH_SIZE);
+                    const updatePromises = batch.map(async ({ key, data }) => {
+                        const reportRef = db.ref(`${REPORTS_PATH}/${userId}/${key}`);
+                        await reportRef.update({ legacy: true });
+                        totalUpdatedReports++;
+                    });
+
+                    await Promise.all(updatePromises);
+                    console.log(`[Legacy Flag Append] Updated batch of ${batch.length} reports for user ${userId}. Total updated: ${totalUpdatedReports}`);
+
+                    // Introduce a delay between batches for rate limiting
+                    if (i + BATCH_SIZE < reportsToUpdate.length) {
+                        await new Promise(resolve => setTimeout(resolve, DELAY_MS));
+                    }
+                }
+            }
+        }
+
+        console.log(`[Legacy Flag Append] Operation finished. Total users updated: ${totalUpdatedUsers}, Total reports updated: ${totalUpdatedReports}.`);
+        return {
+            success: true,
+            updatedUsers: totalUpdatedUsers,
+            updatedReports: totalUpdatedReports,
+            message: 'Legacy flag append operation completed.'
+        };
+
+    } catch (error) {
+        console.error('[Legacy Flag Append] Error during operation:', error);
+        throw new functions.https.HttpsError('internal', 'Failed to append legacy flag to reports.', {
             originalError: error.message
         });
     }

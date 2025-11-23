@@ -47,7 +47,7 @@ const FirebaseFunctionsTester = ({ showInAppNotification }) => {
             <div className="card-body">
                 <p className="text-muted small">Scheduled functions (dailyTaskHandler, weeklyDuplicateReportsCleanup) cannot be triggered directly from the client. Use Firebase Console or CLI for manual triggers.</p>
                 
-                <h7 className="mt-3">OAuth & Token Management</h7>
+                <h4 className="mt-3">OAuth & Token Management</h4>
                 <div className="d-flex flex-wrap gap-2 mb-3">
                     <Form.Control type="text" placeholder="Auth Code" value={authCode} onChange={(e) => setAuthCode(e.target.value)} className="w-auto" />
                     <Form.Control type="text" placeholder="Redirect URI" value={redirectUri} onChange={(e) => setRedirectUri(e.target.value)} className="w-auto" />
