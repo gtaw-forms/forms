@@ -10,7 +10,7 @@ const CACHE_SEGMENTS = {
     FACTIONS: 'factions',
     AGENCIES: 'agencies',
     SELECT_OPTIONS: 'selectOptions',
-    STAFF: 'staff'
+    STAFF: 'forms'
 };
 
 // Define segments that should not be cached in localStorage
@@ -26,13 +26,8 @@ export const DataProvider = ({ children }) => {
     const { sendDataRequestLog } = useWebhooks();
     const { user, isAuthenticated } = useGtaWorldAuth();
 
-    // Define consistent Coroner Categories
-    const CORONER_CATEGORIES = [
-        'Chief Boss', 'Deputy Chief Medical Examiner-Coroner', 'Supervisor', 
-        'Senior Medical Examiner', 'Medical Examiner', 'Senior Coroner Investigator', 
-        'Coroner Investigator', 'Forensic Attendant', 'Trainee Forensic-Attendant'
-    ];
-    // Helper function to update all state values from data
+
+    const CORONER_KEYWORDS = ['Coroner', 'Examiner', 'Attendant'];
     const updateCacheSegment = useCallback(async (segment, data) => {
         // Update memory cache
         dataCache.current[segment] = data;
@@ -78,8 +73,8 @@ export const DataProvider = ({ children }) => {
                 setNurseRecruitmentDetails(data?.nursePositionDetailsData || {});
                 setCoronerRecruitmentDetails(data?.coronerPositionDetailsData || {});
                 break;
-            case CACHE_SEGMENTS.STAFF:
-                setLegacyPhmcData(data?.phmc || []);
+            case CACHE_SEGMENTS.FORMS:
+                setFormsData(data || {});
                 break;
             default:
                 console.warn(`Unknown cache segment: ${segment}`);
@@ -105,7 +100,8 @@ export const DataProvider = ({ children }) => {
     const [coronerRecruitmentDetails, setCoronerRecruitmentDetails] = useState({});
     const [isLoadingData, setIsLoadingData] = useState(true);
     const [loading, setLoading] = useState(true);
-    const [legacyPhmcData, setLegacyPhmcData] = useState([]);
+
+    const [formsData, setFormsData] = useState({});
     const [isDevMode, setIsDevMode] = useState(false); // Add isDevMode state
 
     // Segmented cache for fetched data
@@ -125,7 +121,7 @@ export const DataProvider = ({ children }) => {
         [CACHE_SEGMENTS.FACTIONS]: '1.0',
         [CACHE_SEGMENTS.AGENCIES]: '1.0',
         [CACHE_SEGMENTS.SELECT_OPTIONS]: '1.0',
-        [CACHE_SEGMENTS.STAFF]: '1.0'
+        [CACHE_SEGMENTS.FORMS]: '1.0'
     };
 
     const getSegmentVersion = (segment) => SEGMENT_VERSIONS[segment] || '1.0';
@@ -200,6 +196,20 @@ export const DataProvider = ({ children }) => {
                 }
             }
         });
+
+        // --- Listener for forms changes ---
+        const formsRef = ref(database, CACHE_SEGMENTS.FORMS);
+        firebaseListeners.current.forms = onValue(formsRef, (snapshot) => {
+            if (!dataInitializedRef.current) return; // Only process updates after initial load
+
+            if (snapshot.exists()) {
+                const formsData = snapshot.val();
+                if (JSON.stringify(formsData) !== JSON.stringify(dataCache.current[CACHE_SEGMENTS.FORMS])) {
+                    updateCacheSegment(CACHE_SEGMENTS.FORMS, formsData);
+                    console.log('🔄 Forms data updated from Firebase (real-time)');
+                }
+            }
+        });
     }, [updateCacheSegment]);
 
 
@@ -249,7 +259,7 @@ export const DataProvider = ({ children }) => {
 
         let loadingNotificationId;
         try {
-            loadingNotificationId = showNotification("Data Loading...", 'spinner fa-spin', 0);
+            loadingNotificationId = showNotification(`Data Loading from ${window.location.hostname}...`, 'spinner fa-spin', 0);
             console.log('🔄 Fetching fresh data from Firebase...');
             
             const segmentsToFetch = Object.values(CACHE_SEGMENTS);
@@ -327,7 +337,7 @@ export const DataProvider = ({ children }) => {
         setFactionsData, setAgencyDataStore, setSelectOptions,
         setPhysicianRecruitmentDetails, setPsychRecruitmentDetails, setAdminRecruitmentDetails,
         setEmsRecruitmentDetails, setNurseRecruitmentDetails, setCoronerRecruitmentDetails,
-        setLegacyPhmcData, setIsLoadingData, setLoading,
+        setIsLoadingData, setLoading, setFormsData,
         isAuthenticated, user, sendDataRequestLog, dataLoaded
     ]);
 
@@ -388,76 +398,9 @@ export const DataProvider = ({ children }) => {
         }
     }, [refreshSegments]);
 
-    const coronerListData = useMemo(() => {
-        // PHMC FACTION = 364, filtered by CORONER categories
-        if ((!factionsData['364'] || !factionsData['364'].members) ) {
-            console.log('[DataContext] coronerListData: Both faction and legacy data empty');
-            return [];
-        }
 
-        // Use faction data if available, otherwise use legacy data
-        let dataSource = [];
-        if (factionsData['364'] && factionsData['364'].members) {
-            const allMembers = Object.values(factionsData['364'].members);
-            
-            const normalizedMembers = allMembers.map(member => ({
-                ...member,
-                name: member.characterName || member.name || member.displayName || member.username || 'Unknown',
-                rank: member.rank || '',
-            }));
 
-            const CORONER_KEYWORDS = ['Coroner', 'Examiner', 'Attendant'];
-            dataSource = normalizedMembers.filter(member =>
-                CORONER_KEYWORDS.some(kw => member.rank.includes(kw))
-            ).map(member => {
-                // Now that we have only coroners, find the best category for grouping
-                const category = member.rank || 'Coroner';
-                return { ...member, category };
-            });
-            console.log('[DataContext] coronerListData using FACTION data:', dataSource.length, 'members');
-        }
-        return dataSource;
-    }, [factionsData]);
 
-    const phmcListData = useMemo(() => {
-        // PHMC FACTION = 364, filtered by excluding CORONER categories
-        // Fallback to legacy /staff/phmc if faction data is empty
-        if ((!factionsData['364'] || !factionsData['364'].members) && (!legacyPhmcData || legacyPhmcData.length === 0)) {
-            console.log('[DataContext] phmcListData: Both faction and legacy data empty');
-            return [];
-        }
-
-        // Use faction data if available, otherwise use legacy data
-                let dataSource = [];
-                if (factionsData['364'] && factionsData['364'].members) {
-                    const allMembers = Object.values(factionsData['364'].members);
-                    
-                                const normalizedMembers = allMembers.map(member => ({
-                    
-                                    ...member,
-                    
-                                    name: member.characterName || member.name || member.displayName || member.username || 'Unknown',
-                    
-                                    rank: member.rank || '',
-                    
-                                }));
-                    
-                    
-                    
-                                const CORONER_KEYWORDS = ['Coroner', 'Examiner', 'Attendant'];
-                    
-                                dataSource = normalizedMembers.filter(member =>
-                    
-                                    !CORONER_KEYWORDS.some(kw => member.rank.includes(kw))
-                    
-                                ).map(member => ({ ...member, category: member.rank }));
-            
-        } else if (legacyPhmcData && legacyPhmcData.length > 0) {
-            dataSource = legacyPhmcData.filter(member => !CORONER_CATEGORIES.includes(member.category));
-        }
-
-        return dataSource;
-    }, [factionsData, legacyPhmcData]);
     const cleanupCache = useCallback(() => {
         const prefix = CACHE_PREFIX + '_';
         for (let i = 0; i < localStorage.length; i++) {
@@ -533,78 +476,68 @@ export const DataProvider = ({ children }) => {
             Object.values(firebaseListeners.current).forEach(unsubscribe => unsubscribe());
             firebaseListeners.current = {};
         };
-    }, []);
-
-    const phmcGroupedOptions = useMemo(() => {
-        if (!phmcListData || phmcListData.length === 0) {
-            console.log('[DataContext] phmcGroupedOptions: Empty - phmcListData has', phmcListData?.length || 0, 'items');
+        }, []);
+    
+        // DEPRICATED - USE IN VERY LIMITED APPLICATIONS
+        const phmcListData = useMemo(() => {
+            // PHMC FACTION = 364, filtered by excluding CORONER categories
+            if (!factionsData['364'] || !factionsData['364'].members) {
+                console.log('[DataContext] phmcListData: Faction data empty');
+                return [];
+            }
+    
+            const allMembers = Object.values(factionsData['364'].members);
+            
+            const normalizedMembers = allMembers.map(member => ({
+                ...member,
+                name: member.characterName || member.name || member.displayName || member.username || 'Unknown',
+                rank: member.rank || '',
+            }));
+    
+            let dataSource = normalizedMembers.filter(member =>
+                !CORONER_KEYWORDS.some(kw => member.rank.includes(kw))
+            ).map(member => ({ ...member, category: member.rank }));
+            
+            return dataSource;
+        }, [factionsData]);
+            
+        // DEPRICATED - USE IN VERY LIMITED APPLICATIONS
+        const coronerListData = useMemo(() => {
+        // PHMC FACTION = 364, filtered by CORONER categories
+        if ((!factionsData['364'] || !factionsData['364'].members) ) {
+            console.log('[DataContext] coronerListData: Both faction and legacy data empty');
             return [];
         }
-        const grouped = Object.entries(
-            phmcListData.reduce((groups, employee) => {
-                const categoryName = employee.category || 'Uncategorized';
-                if (!groups[categoryName]) {
-                    groups[categoryName] = [];
-                }
-                groups[categoryName].push({
-                    value: employee.name,
-                    label: employee.name,
-                    category: employee.category,
-                    lastName: employee.lastName
-                });
-                return groups;
-            }, {})
-        ).map(([category, options]) => ({
-            label: category,
-            options: options.sort((a, b) => {
-                if (!a?.label || !b?.label) return 0;
-                return a.label.localeCompare(b.label);
-            })
-        })).sort((a, b) => {
-            const order = ['Leadership', 'Hospital Supervisor', 'Chief Resident', 'Physician', 'Resident Physician', 'Physician Assistant', 'Psychiatrist', 'Psychologist', 'Dentist', 'Nursing', 'Emergency Medical Services', 'Attending Physician', 'Uncategorized'];
-            return order.indexOf(a.label) - order.indexOf(b.label);
-        });
-        console.log('[DataContext] phmcGroupedOptions created:', grouped.length, 'groups');
-        return grouped;
-    }, [phmcListData]);
 
-    const coronerGroupedOptions = useMemo(() => {
-        if (!coronerListData || coronerListData.length === 0) return [];
-        return Object.entries(
-            coronerListData.reduce((groups, coroner) => {
-                const categoryName = coroner.category || 'Uncategorized';
-                if (!groups[categoryName]) {
-                    groups[categoryName] = [];
-                }
-                groups[categoryName].push({
-                    value: coroner.name, // Or a unique ID
-                    label: coroner.name,
-                    badge: coroner.badge,
-                    rank: coroner.rank,
-                    discord: coroner.discord,
-                    category: categoryName
-                    // Add other fields
-                });
-                return groups;
-            }, {})
-        ).map(([category, options]) => ({
-            label: category,
-            options: options.sort((a, b) => {
-                if (!a?.label || !b?.label) return 0;
-                return a.label.localeCompare(b.label);
-            })
-        })).sort((a, b) => { // Your existing sorting logic for coroner categories
-            const order = ['Chief Boss', 'Deputy Chief Medical Examiner-Coroner', 'Supervisor', 'Senior Medical Examiner', 'Medical Examiner', 'Senior Coroner Investigator', 'Coroner Investigator', 'Forensic Attendant', 'Trainee Forensic-Attendant', 'Developer Testing', 'Missing_Category', 'Uncategorized'];
-            return order.indexOf(a.label) - order.indexOf(b.label);
-        });
-    }, [coronerListData]);
+        // Use faction data if available, otherwise use legacy data
+        let dataSource = [];
+        if (factionsData['364'] && factionsData['364'].members) {
+            const allMembers = Object.values(factionsData['364'].members);
+            
+            const normalizedMembers = allMembers.map(member => ({
+                ...member,
+                name: member.characterName || member.name || member.displayName || member.username || 'Unknown',
+                rank: member.rank || '',
+            }));
+
+
+            dataSource = normalizedMembers.filter(member =>
+                CORONER_KEYWORDS.some(kw => member.rank.includes(kw))
+            ).map(member => {
+                // Now that we have only coroners, find the best category for grouping
+                const category = member.rank || 'Coroner';
+                return { ...member, category };
+            });
+            console.log('[DataContext] coronerListData using FACTION data:', dataSource.length, 'members');
+        }
+        return dataSource;
+    }, [factionsData]);
 
     const value = {
         factionsData,
+        formsData,
         phmcListData,
         coronerListData,
-        phmcGroupedOptions,
-        coronerGroupedOptions,
         agencyDataStore,
         selectOptions,
         physicianRecruitmentDetails,
