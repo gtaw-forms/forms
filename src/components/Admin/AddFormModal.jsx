@@ -192,6 +192,23 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
             }
             return [...prevFields, { ...fieldToSave, id: fieldToSave.id }];
         });
+    } else if (fieldToSave.type === "payment_button") {
+        if (!fieldToSave.label || !fieldToSave.name) {
+            alert("Label and Name are required for Payment Button!");
+            return;
+        }
+        if (!fieldToSave.paymentValueLogic) {
+            alert("Payment Value Logic is required for Payment Button!");
+            return;
+        }
+        setFields(prevFields => {
+            if (editingFieldIndex !== null) {
+                const updatedFields = [...prevFields];
+                updatedFields[editingFieldIndex] = { ...fieldToSave, id: fieldToSave.id };
+                return updatedFields;
+            }
+            return [...prevFields, { ...fieldToSave, id: fieldToSave.id }];
+        });
     } else if (fieldToSave.type === "image") {
   if (!fieldToSave.label || !fieldToSave.name) {
     alert("Label and Name are required for Image field!");
@@ -381,6 +398,11 @@ const applyAdvancedCondition = () => {
 
           {/* New: Title Generator Code Input */}
           <h4 style={{ color: "#60a5fa", marginTop: "2rem" }}>Title Generator Function</h4>
+          <div style={{ color: "#94a3b8", fontSize: "0.9rem", marginBottom: "1rem" }}>
+            Use a JavaScript arrow function to generate the report title. <br />
+            The function receives a <code>formData</code> object containing all form values. <br />
+            Example: <code>{"(formData) => `Report for ${formData.patientName}`"}</code>
+          </div>
           <textarea
             rows={6}
             value={titleGeneratorCode}
@@ -398,6 +420,7 @@ const applyAdvancedCondition = () => {
               <option value="checkbox">Checkbox</option>
               <option value="radio">Radio Button</option>
               <option value="image">Image Upload</option>
+              <option value="payment_button">Payment Button</option>
               <option value="hr">Horizontal Rule</option>
               <option value="fake_line">Fake Line</option>
               <option value="small_header">Small Header</option>
@@ -473,6 +496,7 @@ const applyAdvancedCondition = () => {
                                         <select value={newField.timerType} onChange={e => setNewField({ ...newField, timerType: e.target.value })} style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}>
                                             <option value="">— Select Timer Type —</option>
                                             <option value="datetime-local">Date & Time</option>
+                                            <option value="date">Date Only</option>
                                             <option value="time">Time Only</option>
                                         </select>
                                         <input 
@@ -529,6 +553,23 @@ const applyAdvancedCondition = () => {
                                             <option value="set_current_time">Set Current Time</option>
                                         </select>
                                       </>
+                                    )}
+
+                                    {/* New Payment Button fields */}
+                                    {newField.type === "payment_button" && (
+                                      <div style={{ flexBasis: '100%', padding: '1rem', background: '#162032', borderRadius: 8 }}>
+                                        <textarea
+                                          placeholder="Payment Value Logic (e.g., (formData) => formData.someValue * 100)"
+                                          value={newField.paymentValueLogic || ''}
+                                          onChange={e => setNewField({ ...newField, paymentValueLogic: e.target.value })}
+                                          style={{...inputStyle, width: '100%', fontFamily: 'monospace'}}
+                                          rows={3}
+                                        />
+                                        <div style={{ color: "#94a3b8", fontSize: "0.9rem", marginTop: '0.5rem' }}>
+                                            Use a JS arrow function that receives <code>formData</code> and returns the payment amount in cents.
+                                            Example: <code>(formData) - 2000</code>
+                                        </div>
+                                      </div>
                                     )}
                         
                                     {/* Associated Input Field for Checkbox */}
@@ -740,12 +781,16 @@ const applyAdvancedCondition = () => {
                     <span style={{ color: "#a78bfa" }}>Radio: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (Options: {f.options.join(', ')})</span>
                   ) : f.type === "input_button_combo" ? (
                     <span style={{ color: "#a78bfa" }}>Input Button Combo: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (Type: {f.inputType}, Button: {f.buttonLabel} ({f.buttonAction}))</span>
+                  ) : f.type === "payment_button" ? (
+                    <span style={{ color: "#a78bfa" }}>Payment Button: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (stores timestamp)</span>
                   ) : (
                     <>
                       <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>
                     </>
                   )}
-                  {f.layout === "compact" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>20%</span>}
+                  {f.layout === "full" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Full Width</span>}
+                  {f.layout === "compact-50" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Compact (50%)</span>}
+                  {f.layout === "compact" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Compact (20%)</span>}
                   {f.type === "select" && <span style={{ marginLeft: "1rem", color: "#f59e0b" }}>Options: {f.optionsKey}</span>}
                   {f.showIf && <span style={{ marginLeft: "1rem", color: "#8b5cf6" }}>Show if {f.showIf.field} = {String(f.showIf.value)}</span>}
                 </div>

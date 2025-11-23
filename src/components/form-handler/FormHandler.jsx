@@ -65,7 +65,6 @@ const FormHandler = () => {
   let { agencyDataStore, phmcListData, coronerListData } = useData();
 
   // GLOBAL CLIPBOARD PASTE LISTENER — WORKS IN ANY TEXTAREA
-// GLOBAL CLIPBOARD PASTE — FINAL VERSION (HANDLES ALL BROWSERS)
 useEffect(() => {
   const handlePaste = async (e) => {
     if (!selectedForm) {
@@ -340,51 +339,55 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
     const shouldBypassDataCheck = isDevelopment;
 
     if (isAuthenticated && selectedForm && (shouldBypassDataCheck || phmcListData.length > 0 || coronerListData.length > 0)) {
-      let updates = {};
+      setFormValues(prevFormValues => {
+        let updates = {};
 
-      // Identify the name field based on form's access type
-      let nameField = '';
-      if (selectedForm.accessType === "PHMC" || selectedForm.accessType === "Coroner") {
-        nameField = 'employeeName'; // Assuming PHMC/Coroner forms use 'employeeName'
-      } else if (selectedForm.accessType === "Civilian") {
-        nameField = 'patientName'; // Assuming Civilian forms use 'patientName'
-      }
-
-      if (nameField && tempPatientName && !formValues[nameField]) {
-        updates[nameField] = tempPatientName;
-      }
-
-
-      // Check if the form is a coroner form by its category, as it may not have an explicit 'coronerEmployee' field
-      const isCoronerForm = selectedForm.category === 'DMEC';
-      console.log(`[Auto-fill Effect] Form: "${selectedForm.name}", Category: "${selectedForm.category}", Is Coroner Form?: ${isCoronerForm}`);
-
-      if (isCoronerForm && !formValues.coronerEmployee && tempPatientName) { // Use tempPatientName
-        console.log("[Auto-fill Effect] Applying coroner details to formValues.");
-        updates.coronerEmployee = tempPatientName; // Use tempPatientName
-
-        const matchedCoroner = coronerListData.find(coroner =>
-          coroner.name?.toLowerCase() === tempPatientName.toLowerCase() // Use tempPatientName
-        );
-
-        if (matchedCoroner) {
-          updates.coronerRank = matchedCoroner.rank || '';
-          updates.coronerBadge = matchedCoroner.badge || '';
-        } else if (factionRank) {
-          updates.coronerRank = factionRank;
-          if (shouldBypassDataCheck && tempPatientName.includes("Dev Coroner")) { // Use tempPatientName
-              updates.coronerBadge = "DEV666_BADGE";
-          } else {
-              updates.coronerBadge = '';
+        // Identify the name field based on form's access type
+        let nameField = '';
+        if (selectedForm.accessType === "PHMC" || selectedForm.accessType === "Coroner") {
+          nameField = 'employeeName'; // Assuming PHMC/Coroner forms use 'employeeName'
+          // For PHMC/Coroner, only pre-fill if empty
+          if (tempPatientName && !prevFormValues[nameField]) {
+            updates[nameField] = tempPatientName;
+          }
+        } else if (selectedForm.accessType === "Civilian") {
+          nameField = 'patientName'; // Corrected case from 'PatientName'
+          // For Civilian, only update if the name is different, to prevent loops
+          if ((patientType === 'civilian' || patientType === 'gtaw') && tempPatientName && prevFormValues[nameField] !== tempPatientName) {
+            updates[nameField] = tempPatientName;
           }
         }
-      }
 
-      if (Object.keys(updates).length > 0) {
-        setFormValues(prev => ({ ...prev, ...updates }));
-      }
+        // Check if the form is a coroner form by its category
+        const isCoronerForm = selectedForm.category === 'DMEC';
+
+        if (isCoronerForm && !prevFormValues.coronerEmployee && tempPatientName) {
+          updates.coronerEmployee = tempPatientName; // Use tempPatientName
+
+          const matchedCoroner = coronerListData.find(coroner =>
+            coroner.name?.toLowerCase() === tempPatientName.toLowerCase() // Use tempPatientName
+          );
+
+          if (matchedCoroner) {
+            updates.coronerRank = matchedCoroner.rank || '';
+            updates.coronerBadge = matchedCoroner.badge || '';
+          } else if (factionRank) {
+            updates.coronerRank = factionRank;
+            if (shouldBypassDataCheck && tempPatientName.includes("Dev Coroner")) { // Use tempPatientName
+                updates.coronerBadge = "DEV666_BADGE";
+            } else {
+                updates.coronerBadge = '';
+            }
+          }
+        }
+
+        if (Object.keys(updates).length > 0) {
+          return { ...prevFormValues, ...updates };
+        }
+        return prevFormValues;
+      });
     }
-  }, [isAuthenticated, tempPatientName, factionRank, phmcListData, coronerListData, selectedForm, formValues, setFormValues, isDevelopment, patientType]);
+  }, [isAuthenticated, tempPatientName, factionRank, phmcListData, coronerListData, selectedForm, setFormValues, isDevelopment, patientType]);
 
     const switchCivilianName = () => {
     setCurrentCivilianIndex((prevIndex) => (prevIndex + 1) % civilianNames.length);
@@ -545,6 +548,7 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
                                 <FormFieldRenderer
                                   key={index}
                                   field={field}
+                                  selectedForm={selectedForm}
                                   formValues={formValues}
                                   handleChange={handleChange}
                                   finalSelectOptions={finalSelectOptions}
@@ -575,6 +579,12 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
             </div>
             {isPhmcMember && <div style={{ color: "#34d399", marginTop: "0.5rem" }}>PHMC Member • Rank {factionRank}</div>}
           </div>
+
+          {generatedTitle && (
+            <div style={{ background: "#0f172a", padding: "1.5rem", borderRadius: 12, color: "#e2e8f0", fontSize: "1.1rem", fontWeight: "700", marginBottom: "1rem", whiteSpace: "pre-wrap" }}>
+              {generatedTitle}
+            </div>
+          )}
 
           <button
             onClick={() => setShowBBCode(!showBBCode)}
