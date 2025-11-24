@@ -22,6 +22,7 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
   const [titleGeneratorCode, setTitleGeneratorCode] = useState(""); // New state
   const [fields, setFields] = useState([]);
   const [accessType, setAccessType] = useState("Public"); // New state for form access control (e.g., "Public", "PHMC", "Coroner", "Civilian")
+  const [formDescription, setFormDescription] = useState("");
 
   const createDefaultNewField = () => ({
     type: "input",
@@ -67,6 +68,7 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
       }));
       setFields(safeFields);
       setAccessType(editingForm.accessType || "Public"); // Load accessType
+      setFormDescription(editingForm.formDescription || ""); // Load form description
       setNewField(createDefaultNewField()); // Reset newField to default for adding new fields
       setEditingFieldIndex(null); // Ensure no field is selected for editing initially
     } else {
@@ -82,6 +84,7 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
     setTitleGeneratorCode(""); // Reset new state
     setFields([]);
     setAccessType("Public"); // Reset accessType
+    setFormDescription(""); // Reset form description
     setNewField(createDefaultNewField());
     setEditingFieldIndex(null); // Ensure editing mode is off when resetting the form
   };
@@ -337,6 +340,7 @@ const applyAdvancedCondition = () => {
       id: formId,
       name: formName,
       category,
+      formDescription,
       template: bbcodeTemplate,
       titleGeneratorCode, // Save the titleGeneratorCode
       fields,
@@ -364,6 +368,7 @@ const applyAdvancedCondition = () => {
           <input placeholder="Form ID (e.g. medical_release)" value={formId} onChange={e => setFormId(e.target.value.replace(/\s/g, "_").toLowerCase())} style={inputStyle} disabled={!!editingForm} />
           <input placeholder="Form Name" value={formName} onChange={e => setFormName(e.target.value)} style={inputStyle} />
           <input placeholder="Category" value={category} onChange={e => setCategory(e.target.value)} style={inputStyle} />
+          <textarea placeholder="Form Description" rows={3} value={formDescription} onChange={e => setFormDescription(e.target.value)} style={{ ...inputStyle, height: "auto" }} />
 
           <label style={{ display: "flex", alignItems: "center", color: "#e2e8f0", margin: "1rem 0" }}>
             <strong style={{ marginRight: "1rem" }}>Access Type:</strong>
@@ -739,7 +744,26 @@ const applyAdvancedCondition = () => {
 </div>
           {newField.showIf && (
             <div style={{ padding: "0.8rem", background: "#1e293b", borderRadius: 8, color: "#a78bfa", fontSize: "0.9rem" }}>
-              Show this field if <strong>{fields.find(f => f.name === newField.showIf.field)?.label || newField.showIf.field}</strong> is {newField.showIf.value === true ? "checked" : "unchecked"}
+              Show this field if {' '}
+              {newField.showIf.mode ? ( // Check if it's a complex condition
+                  <>
+                      <strong>{newField.showIf.mode.toUpperCase()}</strong> of: {' '}
+                      {newField.showIf.conditions.map((condition, idx) => (
+                          <span key={idx}>
+                              {idx > 0 && ", "}
+                              <strong>{fields.find(field => field.name === condition.field)?.label || condition.field}</strong>
+                              {' '}is{' '}
+                              {condition.value === true ? "filled" : condition.value === false ? "empty" : `"${condition.value}"`}
+                          </span>
+                      ))}
+                  </>
+              ) : ( // Simple condition
+                  <>
+                      <strong>{fields.find(field => field.name === newField.showIf.field)?.label || newField.showIf.field}</strong>
+                      {' '}is{' '}
+                      {newField.showIf.value === true ? "filled" : newField.showIf.value === false ? "empty" : `"${newField.showIf.value}"`}
+                  </>
+              )}
               <button onClick={() => setNewField({ ...newField, showIf: null })} style={{ marginLeft: "1rem", color: "#ef4444" }}>Remove</button>
             </div>
           )}
@@ -792,7 +816,30 @@ const applyAdvancedCondition = () => {
                   {f.layout === "compact-50" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Compact (50%)</span>}
                   {f.layout === "compact" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Compact (20%)</span>}
                   {f.type === "select" && <span style={{ marginLeft: "1rem", color: "#f59e0b" }}>Options: {f.optionsKey}</span>}
-                  {f.showIf && <span style={{ marginLeft: "1rem", color: "#8b5cf6" }}>Show if {f.showIf.field} = {String(f.showIf.value)}</span>}
+                  {f.showIf && (
+                    <span style={{ marginLeft: "1rem", color: "#8b5cf6" }}>
+                        Show if {' '}
+                        {f.showIf.mode ? ( // Check if it's a complex condition
+                            <>
+                                <strong>{f.showIf.mode.toUpperCase()}</strong> of: {' '}
+                                {f.showIf.conditions.map((condition, idx) => (
+                                    <span key={idx}>
+                                        {idx > 0 && ", "}
+                                        <strong>{fields.find(field => field.name === condition.field)?.label || condition.field}</strong>
+                                        {' '}is{' '}
+                                        {condition.value === true ? "filled" : condition.value === false ? "empty" : `"${condition.value}"`}
+                                    </span>
+                                ))}
+                            </>
+                        ) : ( // Simple condition
+                            <>
+                                <strong>{fields.find(field => field.name === f.showIf.field)?.label || f.showIf.field}</strong>
+                                {' '}is{' '}
+                                {f.showIf.value === true ? "filled" : f.showIf.value === false ? "empty" : `"${f.showIf.value}"`}
+                            </>
+                        )}
+                    </span>
+                  )}
                 </div>
                 <div style={{ display: "flex", gap: "0.5rem" }}>
                   <button onClick={() => startEditField(f, i)} style={{ background: "#6366f1", color: "white", border: "none", padding: "0 1rem", borderRadius: 8 }}>Edit</button>

@@ -1296,7 +1296,7 @@ const AdminDashboard = ({
                             <div className="card-body">
                                 {isGtaAuthenticated || currentUser ? (
                                     hasDatabaseAccess ? (
-                                        <DatabaseEditor showNotification={showNotification} />
+                                        <DatabaseEditor showNotification={showInAppNotification} />
                                     ) : (
                                         <div className="alert alert-warning">
                                             <i className="fas fa-exclamation-triangle me-2"></i>
