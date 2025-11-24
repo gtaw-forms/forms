@@ -4,6 +4,7 @@ import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTi
 import { useAuth } from '../../contexts/AuthContext';
 
 const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore }) => {
+  console.log(`Rendering field: ${field.name}, Value: ${formValues[field.name]}`);
   // Conditional visibility logic
   if (field.showIf) {
     let shouldShow = false;
@@ -149,7 +150,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
           <label style={labelStyle}>{field.label}</label>
             <select
               value={formValues[field.name] || ""}
-              onChange={e => handleChange(field.name, e.target.value)}
+              onChange={(e) => handleChange(field.name, e.target.value)}
               style={inputStyle}
             >
               <option value="">— Select —</option>
