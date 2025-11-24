@@ -10,7 +10,7 @@ const CACHE_SEGMENTS = {
     FACTIONS: 'factions',
     AGENCIES: 'agencies',
     SELECT_OPTIONS: 'selectOptions',
-    STAFF: 'forms'
+    FORMS: 'forms'
 };
 
 // Define segments that should not be cached in localStorage
@@ -42,14 +42,19 @@ export const DataProvider = ({ children }) => {
                 console.log(`💾 Updated cache segment: ${segment} (v${version})`);
             } catch (error) {
                 console.warn(`Failed to update cache for ${segment}:`, error);
-                // If we hit quota, clear this segment's cache
-                try {
-                    localStorage.removeItem(getCacheKey(segment));
-                    localStorage.removeItem(getTimestampKey(segment));
-                    localStorage.removeItem(getVersionKey(segment));
-                } catch (clearError) {
-                    console.error(`Failed to clear cache for ${segment}:`, clearError);
-                }
+                // If we hit quota, clear all cache segments to make space
+                console.log(`Clearing all cache segments due to storage error on segment: ${segment}`);
+                Object.values(CACHE_SEGMENTS).forEach(s => {
+                    if (!EXCLUDED_FROM_CACHE.includes(s)) {
+                        try {
+                            localStorage.removeItem(getCacheKey(s));
+                            localStorage.removeItem(getTimestampKey(s));
+                            localStorage.removeItem(getVersionKey(s));
+                        } catch (clearError) {
+                            console.error(`Failed to clear cache for segment ${s}:`, clearError);
+                        }
+                    }
+                });
             }
         }
         else {

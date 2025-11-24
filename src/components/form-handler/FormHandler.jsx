@@ -28,6 +28,12 @@ const escapeHtml = (unsafe) => {
 };
 
 const FormHandler = () => {
+  // Helper function to find a field name case-insensitively
+  const findFieldNameCaseInsensitive = (fields, targetName) => {
+    if (!fields) return null;
+    const foundField = fields.find(field => field.name?.toLowerCase() === targetName.toLowerCase());
+    return foundField ? foundField.name : null;
+  };
   // State declarations first
   const [forms, setForms] = useState([]);
   const [selectedForm, setSelectedForm] = useState(null);
@@ -342,41 +348,73 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
       setFormValues(prevFormValues => {
         let updates = {};
 
-        // Identify the name field based on form's access type
-        let nameField = '';
+        // Debugging for patient name population
+        console.log("--- Auto-fill useEffect Debug ---");
+        console.log("Current tempPatientName:", tempPatientName);
+        console.log("Selected Form Fields:", selectedForm.fields);
+
+
+        // Find the actual field names from the selectedForm's fields, case-insensitively
+        const actualPatientNameField = findFieldNameCaseInsensitive(selectedForm.fields, 'patientName');
+        const actualEmployeeNameField = findFieldNameCaseInsensitive(selectedForm.fields, 'employeeName');
+        const actualPhmcEmployeeField = findFieldNameCaseInsensitive(selectedForm.fields, 'phmcEmployee');
+        const actualCoronerEmployeeField = findFieldNameCaseInsensitive(selectedForm.fields, 'coronerEmployee');
+
+        console.log("Resolved actualPatientNameField:", actualPatientNameField);
+        console.log("Resolved actualEmployeeNameField:", actualEmployeeNameField);
+        console.log("Resolved actualPhmcEmployeeField:", actualPhmcEmployeeField);
+        console.log("Resolved actualCoronerEmployeeField:", actualCoronerEmployeeField);
+
+        // Logic for auto-filling PHMC/Coroner Employee Name
         if (selectedForm.accessType === "PHMC" || selectedForm.accessType === "Coroner") {
-          nameField = 'employeeName'; // Assuming PHMC/Coroner forms use 'employeeName'
-          // For PHMC/Coroner, only pre-fill if empty
-          if (tempPatientName && !prevFormValues[nameField]) {
-            updates[nameField] = tempPatientName;
+          // Prioritize actualPhmcEmployeeField or actualCoronerEmployeeField if they exist
+          let targetEmployeeNameField = null;
+          if (selectedForm.accessType === "PHMC" && actualPhmcEmployeeField) {
+            targetEmployeeNameField = actualPhmcEmployeeField;
+          } else if (selectedForm.accessType === "Coroner" && actualCoronerEmployeeField) {
+            targetEmployeeNameField = actualCoronerEmployeeField;
+          } else if (actualEmployeeNameField) { // Fallback to generic employeeName if specific not found
+            targetEmployeeNameField = actualEmployeeNameField;
           }
-        } else if (selectedForm.accessType === "Civilian") {
-          nameField = 'patientName'; // Corrected case from 'PatientName'
-          // For Civilian, only update if the name is different, to prevent loops
-          if ((patientType === 'civilian' || patientType === 'gtaw') && tempPatientName && prevFormValues[nameField] !== tempPatientName) {
-            updates[nameField] = tempPatientName;
+
+          if (targetEmployeeNameField && tempPatientName && !prevFormValues[targetEmployeeNameField]) {
+            updates[targetEmployeeNameField] = tempPatientName;
+          }
+        }
+        // Logic for auto-filling Civilian Patient Name
+        else if (selectedForm.accessType === "Civilian") {
+          // Use actualPatientNameField if found, otherwise fall back to a default 'patientName'
+          const targetPatientNameField = actualPatientNameField || 'patientName';
+
+          if (tempPatientName && prevFormValues[targetPatientNameField] !== tempPatientName) {
+            updates[targetPatientNameField] = tempPatientName;
           }
         }
 
-        // Check if the form is a coroner form by its category
+        // Check if the form is a coroner form by its category and explicitly handle coronerEmployee details
         const isCoronerForm = selectedForm.category === 'DMEC';
+        if (isCoronerForm && tempPatientName) { // Always attempt to set if it's a coroner form and a name is available
+          const targetCoronerEmployeeField = actualCoronerEmployeeField || 'coronerEmployee';
+          const targetCoronerRankField = 'coronerRank'; // Always use this key
+          const targetCoronerBadgeField = 'coronerBadge'; // Always use this key
 
-        if (isCoronerForm && !prevFormValues.coronerEmployee && tempPatientName) {
-          updates.coronerEmployee = tempPatientName; // Use tempPatientName
+          if (!prevFormValues[targetCoronerEmployeeField] || prevFormValues[targetCoronerEmployeeField] !== tempPatientName) {
+            updates[targetCoronerEmployeeField] = tempPatientName;
+          }
 
           const matchedCoroner = coronerListData.find(coroner =>
-            coroner.name?.toLowerCase() === tempPatientName.toLowerCase() // Use tempPatientName
+            coroner.name?.toLowerCase() === tempPatientName.toLowerCase()
           );
 
           if (matchedCoroner) {
-            updates.coronerRank = matchedCoroner.rank || '';
-            updates.coronerBadge = matchedCoroner.badge || '';
+            updates[targetCoronerRankField] = matchedCoroner.rank || '';
+            updates[targetCoronerBadgeField] = matchedCoroner.badge || '';
           } else if (factionRank) {
-            updates.coronerRank = factionRank;
-            if (shouldBypassDataCheck && tempPatientName.includes("Dev Coroner")) { // Use tempPatientName
-                updates.coronerBadge = "DEV666_BADGE";
+            updates[targetCoronerRankField] = factionRank;
+            if (shouldBypassDataCheck && tempPatientName.includes("Dev Coroner")) {
+                updates[targetCoronerBadgeField] = "DEV666_BADGE";
             } else {
-                updates.coronerBadge = '';
+                updates[targetCoronerBadgeField] = '';
             }
           }
         }
@@ -387,7 +425,7 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
         return prevFormValues;
       });
     }
-  }, [isAuthenticated, tempPatientName, factionRank, phmcListData, coronerListData, selectedForm, setFormValues, isDevelopment, patientType]);
+  }, [isAuthenticated, tempPatientName, factionRank, phmcListData, coronerListData, selectedForm, setFormValues, isDevelopment, patientType, findFieldNameCaseInsensitive]);
 
     const switchCivilianName = () => {
     setCurrentCivilianIndex((prevIndex) => (prevIndex + 1) % civilianNames.length);
@@ -487,6 +525,11 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
           ) : (
             <>
                             <h2 style={{ color: "#60a5fa", marginBottom: "2rem" }}>{selectedForm.name}</h2>
+                            {selectedForm.formDescription && (
+                                <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
+                                    {selectedForm.formDescription}
+                                </div>
+                            )}
               
                             {/* Patient Type Selector and Name Switcher */}
                             <div style={{ marginBottom: '1rem', padding: '1rem', border: '1px solid #334155', borderRadius: '8px' }}>
@@ -546,7 +589,7 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
                             <div style={{ margin: "0 -8px" }}>
                               {selectedForm.fields?.map((field, index) => (
                                 <FormFieldRenderer
-                                  key={index}
+                                  key={field.name}
                                   field={field}
                                   selectedForm={selectedForm}
                                   formValues={formValues}
