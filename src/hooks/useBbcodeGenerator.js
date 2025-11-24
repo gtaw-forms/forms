@@ -11,6 +11,7 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
     if (!selectedForm?.template) return;
 
     console.log("--- BBCode Generation Triggered ---");
+    console.log("Selected Form (including fields):", selectedForm); // Add this log
     console.log("Form Values at generation time:", formValues);
     console.log("BBCode BEFORE generation:", generatedBBCode);
 
@@ -28,7 +29,7 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
       const expressionPlaceholderRegex = /{{\s*([a-zA-Z0-9_]+)\s*}}/g;
       titleTemplate = titleTemplate.replace(expressionPlaceholderRegex, (match, variableName) => {
           // Fallback to the original match (e.g., "{{PatientName}}") if value is not found
-          return formValues[variableName] !== undefined ? formValues[variableName] : match;
+          return evaluationContext[variableName] !== undefined ? evaluationContext[variableName] : match;
       });
 
       title = titleTemplate;
@@ -37,14 +38,41 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
     }
     setGeneratedTitle(title); // Set the generated title
 
-        // Initialize processedBbcode with the selectedForm.template
-
-        let processedBbcode = selectedForm.template;
-
-    
-
-        // --- Pass 1: Evaluate [conditional] blocks ---
-
+            // Initialize processedBbcode with the selectedForm.template
+        
+            let processedBbcode = selectedForm.template;
+        
+            // Create an evaluation context that includes case-insensitive fallbacks for common fields
+            const evaluationContext = { ...formValues };
+        
+            // Dynamically add case-insensitive fallbacks for common names like 'PatientName' or 'employeeName'
+            // This will make 'PatientName' available even if the actual field is 'patientName'
+            if (formValues.patientName !== undefined && evaluationContext.PatientName === undefined) {
+                evaluationContext.PatientName = formValues.patientName;
+            }
+            if (formValues.PatientName !== undefined && evaluationContext.patientName === undefined) {
+                evaluationContext.patientName = formValues.PatientName;
+            }
+            if (formValues.employeeName !== undefined && evaluationContext.EmployeeName === undefined) {
+                evaluationContext.EmployeeName = formValues.employeeName;
+            }
+            if (formValues.EmployeeName !== undefined && evaluationContext.employeeName === undefined) {
+                evaluationContext.employeeName = formValues.EmployeeName;
+            }
+            if (formValues.phmcEmployee !== undefined && evaluationContext.PHMCEmployee === undefined) {
+                evaluationContext.PHMCEmployee = formValues.phmcEmployee;
+            }
+            if (formValues.PHMCEmployee !== undefined && evaluationContext.phmcEmployee === undefined) {
+                evaluationContext.phmcEmployee = formValues.PHMCEmployee;
+            }
+            if (formValues.coronerEmployee !== undefined && evaluationContext.CoronerEmployee === undefined) {
+                evaluationContext.CoronerEmployee = formValues.coronerEmployee;
+            }
+            if (formValues.CoronerEmployee !== undefined && evaluationContext.coronerEmployee === undefined) {
+                evaluationContext.coronerEmployee = formValues.CoronerEmployee;
+            }
+        
+            // --- Pass 1: Evaluate [conditional] blocks ---
         const conditionalRegex = /\[conditional\s+([^\]]+)\]([\s\S]*?)\[\/conditional\]/g;
 
         processedBbcode = processedBbcode.replace(conditionalRegex, (match, attrs, content) => {
@@ -93,15 +121,34 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
 
     
 
-            return conditionMet ? content : '';
-
-        });
+                        return conditionMet ? content : '';
 
     
 
-        // --- Pass 2: Replace {{fieldName}} placeholders ---
+                    }); 
 
-        selectedForm.fields?.forEach(field => {
+
+
+// --- Pass 1.6: Evaluate inline [cb:fieldName] OptionText tags ---
+// Matches [cb:fieldName] followed by optional space and then the option text
+// ([^[\r\n]+?) captures the option text non-greedily until the next '[' or newline/end.
+// Your current working regex (just make sure it has \s*)
+console.log('%c[CB DEBUG] Starting [cb:] processing pass...', 'color: cyan; font-weight: bold;');
+
+processedBbcode = processedBbcode.replace(
+  /\[cb:([a-zA-Z0-9_]+)(?:=([^\]]+))?\]\s*([^[\n\r]*)/g,
+  (match, fieldName, expectedValue, text) => {
+    const actual = String(formValues[fieldName] || '').trim();
+    const option = text.trim();
+
+    const isMatch = expectedValue 
+      ? actual === expectedValue.trim()
+      : actual === option;
+
+    return isMatch ? `[cbc] ${option}` : `[cb] ${option}`;
+  }
+);
+console.log('%c[CB DEBUG] [cb:] processing complete.', 'color: cyan; font-weight: bold;');        selectedForm.fields?.forEach(field => {
 
           // Regex to find {{fieldName}} - ensuring it doesn't accidentally match something else
 
@@ -159,31 +206,51 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
 
     
 
-        processedBbcode = processedBbcode.replace(expressionPlaceholderRegex, (match, expression) => {
+                processedBbcode = processedBbcode.replace(expressionPlaceholderRegex, (match, expression) => {
 
-            try {
+    
 
-                // Using 'with' statement for sandboxed evaluation.
+                    try {
 
-                // This allows template expressions to directly access formValues properties.
+    
 
-                const evalFn = new Function(
+                        const trimmedExpression = expression.trim(); // Trim the expression
 
-                    'formData',
+    
 
-                    'getDepartmentFullName',
+                        const evalFn = new Function(
 
-                    'agencyDataStore',
+    
 
-                    `with (formData) { return ${expression}; }`
+                            'context',
 
-                );
+    
 
-                const result = evalFn(formValues, getDepartmentFullName, agencyDataStore);
+                            'getDepartmentFullName',
 
-                return result !== undefined && result !== null ? String(result) : '';
+    
 
-            } catch (error) {
+                            'agencyDataStore',
+
+    
+
+                            `with (context) { return ${trimmedExpression}; }` // Use trimmed expression
+
+    
+
+                        );
+
+    
+
+                        const result = evalFn(evaluationContext, getDepartmentFullName, agencyDataStore);
+
+    
+
+                        return result !== undefined && result !== null ? String(result) : '';
+
+    
+
+                    } catch (error) {
 
                 console.warn(`useBbcodeGenerator: Error evaluating expression "${expression}":`, error);
 
