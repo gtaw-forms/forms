@@ -1,5 +1,5 @@
 // src/components/form-handler/FormHandler.jsx
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { database } from "../../firebase";
 import { ref, onValue } from "firebase/database";
 import Form from 'react-bootstrap/Form';
@@ -16,6 +16,8 @@ import FormHandlerNavButtons from './FormHandlerNavButtons';
 import { uploadImageToImgBB } from '../../utils/imageUploadUtils'; 
 import { useNotification } from '../../contexts/NotificationContext';
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTimeUtils';
+import { useReportManagement } from '../useReportManagement';
+import SavedReportsModal from '../SavedReportsModal';
 
 // Helper: escape HTML characters for safe insertion into DOM
 const escapeHtml = (unsafe) => {
@@ -29,11 +31,11 @@ const escapeHtml = (unsafe) => {
 
 const FormHandler = () => {
   // Helper function to find a field name case-insensitively
-  const findFieldNameCaseInsensitive = (fields, targetName) => {
+  const findFieldNameCaseInsensitive = useCallback((fields, targetName) => {
     if (!fields) return null;
     const foundField = fields.find(field => field.name?.toLowerCase() === targetName.toLowerCase());
     return foundField ? foundField.name : null;
-  };
+  }, []);
   // State declarations first
   const [forms, setForms] = useState([]);
   const [selectedForm, setSelectedForm] = useState(null);
@@ -57,7 +59,7 @@ const FormHandler = () => {
   const [tempPatientName, setTempPatientName] = useState('');
 
   // Then other hooks
-  const { showNotification } = useNotification();
+  const { showNotification, removeNotification } = useNotification();
   const [isUploading, setIsUploading] = useState(false);
 
   let {
@@ -68,7 +70,70 @@ const FormHandler = () => {
     factionRank,
     selectOptions: authSelectOptions
   } = useGtaWorldAuth();
-  let { agencyDataStore, phmcListData, coronerListData } = useData();
+  let { agencyDataStore, phmcListData, coronerListData: originalCoronerListData } = useData();
+
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  let isCoronerForDev = null;
+
+    const getCurrentReportAuthor = useCallback(() => {
+        return characterName;
+    }, [characterName]);
+
+    const finalSelectOptions = { ...selectOptions, ...authSelectOptions };
+
+    const coronerListData = useMemo(() => {
+      if (isDevelopment && selectedForm?.accessType === "Coroner") {
+          return [{
+              name: "Dr. Crime (Dev Coroner)",
+              rank: "Chief Dev Examiner",
+              badge: "DEV666"
+          }, ...originalCoronerListData];
+      }
+      return originalCoronerListData;
+    }, [isDevelopment, selectedForm, originalCoronerListData]);
+
+    const employeeOptions = useMemo(() => {
+        const phmcOptions = phmcListData.map(emp => ({ label: emp.name, value: emp.name }));
+        const coronerOptions = coronerListData.map(emp => ({ label: emp.name, value: emp.name }));
+        return [
+            { label: 'PHMC Staff', options: phmcOptions },
+            { label: 'Coroner Staff', options: coronerOptions }
+        ];
+    }, [phmcListData, coronerListData]);
+
+    const modalCloseTimer = React.useRef(null);
+
+    const { 
+        toggleSavedReports,
+        showSavedReports,
+        setShowSavedReports,
+        savedReports,
+        isLoadingUserReports,
+        loadUserSavedReports,
+        handleReportSelectedForAttachment,
+        deleteReportForUser,
+        loadReportForUser,
+        preselectedEmployeeType,
+        reportSelectionFilter,
+        pendingReportAttachmentCallback 
+    } = useReportManagement(
+        formValues,
+        setFormValues,
+        null, // bbCodeVersion is not relevant for dynamic forms
+        () => {}, // setBbCodeVersion placeholder
+        () => '', // getBBCodeContent placeholder
+        getCurrentReportAuthor,
+        () => ({}), // filterFormData placeholder
+        finalSelectOptions, // Pass finalSelectOptions
+        showNotification,
+        removeNotification,
+        () => {}, // setShowEasterEggModal placeholder
+        () => {}, // setEasterEggType placeholder
+        () => {}, // sendEasterEggNotification placeholder
+        modalCloseTimer
+    );
+
+
 
   // GLOBAL CLIPBOARD PASTE LISTENER — WORKS IN ANY TEXTAREA
 useEffect(() => {
@@ -199,17 +264,16 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
       nameToSet = civilianNames[currentCivilianIndex];
     } else if (patientType === 'phmc' && phmcNames.length > 0) {
       nameToSet = phmcNames[currentPhmcIndex];
-    } else if (patientType === 'gtaw') {
+    } else if (patientType === 'gtaw' || patientType === 'coroner') {
       nameToSet = characterName || '';
     }
     setTempPatientName(nameToSet);
   }, [patientType, currentCivilianIndex, currentPhmcIndex, civilianNames, phmcNames, characterName]);
 
-  // --- DEV OVERRIDE START ---
-  // For development, we can forcefully override auth data to test different user roles.
-  // Change `devMode` to "Civilian", "PHMC", "Coroner", or `null` to disable.
-  const isDevelopment = process.env.NODE_ENV === 'development';
-  let isCoronerForDev = null;
+
+
+
+
   if (isDevelopment) {
     const devMode = patientType; // Use the selected patientType for devMode
 
@@ -230,30 +294,21 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
         user = { username: "phmc_dev", id: 54321, ...user };
         isCoronerForDev = false;
         break;
+      case "coroner":
+        isAuthenticated = true;
+        isPhmcMember = true;
+        characterName = "Dr. Crime (Dev Coroner)";
+        factionRank = 10;
+        user = { username: "coroner_dev", id: 666, ...user };
+        isCoronerForDev = true;
+        break;
       case "gtaw": // Fallback for GTAW Character
       default:
         // No override, use actual GTAW auth data
         break;
     }
-    // Also handle the Coroner case from the original DEV OVERRIDE if it's set specifically
-    if (selectedForm?.accessType === "Coroner") { // If a coroner form is selected in dev mode
-      isAuthenticated = true;
-      isPhmcMember = true;
-      characterName = "Dr. Crime (Dev Coroner)";
-      factionRank = 10;
-      user = { username: "coroner_dev", id: 666, ...user };
-      isCoronerForDev = true;
-      // Create a fake coroner entry to be found by the useEffect
-      coronerListData = [{
-          name: "Dr. Crime (Dev Coroner)",
-          rank: "Chief Dev Examiner",
-          badge: "DEV666"
-      }, ...coronerListData];
-    }
   }
   // --- DEV OVERRIDE END ---
-
-  const finalSelectOptions = { ...selectOptions, ...authSelectOptions };
 
   const isCoroner = React.useMemo(() => {
     if (isCoronerForDev !== null) return isCoronerForDev; // Dev override takes precedence
@@ -348,22 +403,12 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
       setFormValues(prevFormValues => {
         let updates = {};
 
-        // Debugging for patient name population
-        console.log("--- Auto-fill useEffect Debug ---");
-        console.log("Current tempPatientName:", tempPatientName);
-        console.log("Selected Form Fields:", selectedForm.fields);
-
 
         // Find the actual field names from the selectedForm's fields, case-insensitively
         const actualPatientNameField = findFieldNameCaseInsensitive(selectedForm.fields, 'patientName');
         const actualEmployeeNameField = findFieldNameCaseInsensitive(selectedForm.fields, 'employeeName');
         const actualPhmcEmployeeField = findFieldNameCaseInsensitive(selectedForm.fields, 'phmcEmployee');
         const actualCoronerEmployeeField = findFieldNameCaseInsensitive(selectedForm.fields, 'coronerEmployee');
-
-        console.log("Resolved actualPatientNameField:", actualPatientNameField);
-        console.log("Resolved actualEmployeeNameField:", actualEmployeeNameField);
-        console.log("Resolved actualPhmcEmployeeField:", actualPhmcEmployeeField);
-        console.log("Resolved actualCoronerEmployeeField:", actualCoronerEmployeeField);
 
         // Logic for auto-filling PHMC/Coroner Employee Name
         if (selectedForm.accessType === "PHMC" || selectedForm.accessType === "Coroner") {
@@ -435,11 +480,16 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
     setCurrentPhmcIndex((prevIndex) => (prevIndex + 1) % phmcNames.length);
   };
 
-  const handleChange = useCallback((fieldName, value) => {
-    setFormValues(prevValues => ({
-      ...prevValues,
-      [fieldName]: value
-    }));
+  const handleChange = useCallback((fieldName, valueOrUpdater) => {
+    setFormValues(prevValues => {
+      const newValue = typeof valueOrUpdater === 'function' 
+        ? valueOrUpdater(prevValues) 
+        : valueOrUpdater;
+      return {
+        ...prevValues,
+        [fieldName]: newValue
+      };
+    });
   }, []);
 
   const copyAndSaveReport = useCallback(async () => {
@@ -460,6 +510,27 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
       <EmsBingoModal
         show={showEmsBingoModal}
         onHide={() => setShowEmsBingoModal(false)}
+      />
+      <SavedReportsModal
+        show={showSavedReports}
+        onHide={() => setShowSavedReports(false)}
+        onClose={() => setShowSavedReports(false)}
+        showNotification={showNotification}
+        reportsForSelectedUser={savedReports}
+        onEmployeeSelect={loadUserSavedReports}
+        employeeOptions={employeeOptions}
+        isLoadingReports={isLoadingUserReports}
+        loadReport={loadReportForUser}
+        deleteReportForUser={deleteReportForUser}
+        loadReportForUser={loadReportForUser}
+        handleReportSelectedForAttachment={handleReportSelectedForAttachment}
+        currentCoronerEmployee={formValues.coronerEmployee}
+        currentPhmcEmployee={formValues.phmcEmployee}
+        filterByBbCodeVersions={reportSelectionFilter}
+        preselectedEmployeeType={preselectedEmployeeType}
+        reportSelectionFilter={reportSelectionFilter}
+        pendingReportAttachmentCallback={pendingReportAttachmentCallback}
+        selectedForm={selectedForm}
       />
       <FormHandlerNavButtons />
 
@@ -568,6 +639,17 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
                                   inline
                                   className={formStyles.customRadio}
                                 />
+                                <Form.Check
+                                  type="radio"
+                                  id="typeCoroner"
+                                  label="Coroner Only"
+                                  name="patientTypeSelection"
+                                  value="coroner"
+                                  checked={patientType === 'coroner'}
+                                  onChange={(e) => setPatientType(e.target.value)}
+                                  inline
+                                  className={formStyles.customRadio}
+                                />
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
                                 <span style={{ color: '#cbd5e1', fontSize: '1.1rem', fontWeight: 'bold' }}>
@@ -597,6 +679,8 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
                                   finalSelectOptions={finalSelectOptions}
                                   currentUtcTime={currentUtcTime}
                                   agencyDataStore={agencyDataStore} // New prop
+                                  toggleSavedReports={toggleSavedReports}
+                                  showNotification={showNotification}
                                 />
                               ))}
                             </div>

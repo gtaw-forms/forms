@@ -1,3 +1,11 @@
+# CRITICAL PROJECT GUIDELINES
+
+## Refactoring Plan Adherence
+Always prioritize and strictly adhere to the instructions and phases outlined in the `@REFACTOR_PLAN.md` file. All tasks related to form management migration must be executed according to this plan.
+
+## BBCodeVersion Deprecation
+**WARNING:** The `bbCodeVersion` concept is deprecated and considered legacy. Avoid introducing or relying on `bbCodeVersion` in any new code or modifications. Prioritize using `selectedForm.name` or other dynamic form properties from Firebase instead.
+
 If the Agent (Gemini) fails to replace blocks or takes significant time (over 5 minutes of thinking), stop the operation and inform the user of what block needs to be replaced.
 
 # GRIP (Grep-on-Replace-Interrupt Protocol)
