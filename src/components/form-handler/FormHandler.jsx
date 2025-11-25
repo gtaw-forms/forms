@@ -41,12 +41,17 @@ const FormHandler = () => {
   const [selectedForm, setSelectedForm] = useState(null);
   const [formValues, setFormValues] = useState({});
   const [searchTerm, setSearchTerm] = useState(() => localStorage.getItem("formSearchTerm") || "");
-  const [selectedCategory, setSelectedCategory] = useState(() => localStorage.getItem("formSelectedCategory") || "All");
+  const [collapsedCategories, setCollapsedCategories] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("formCollapsedCategories")) || {};
+    } catch (e) {
+      console.error("Error parsing formCollapsedCategories from localStorage:", e);
+      return {};
+    }
+  });
   const [showRestricted, setShowRestricted] = useState(() => localStorage.getItem("formShowRestricted") === "true" || false);
-  const [currentUtcTime, setCurrentUtcTime] = useState('');
-  const [selectOptions, setSelectOptions] = useState({});
 
-  // NEW STATE FOR PATIENT TYPE MANAGEMENT
+  // NEW STATE FOR PATIENT TYPE MANAGEMENT - PRESERVED
   const [patientType, setPatientType] = useState(() => localStorage.getItem('formPatientType') || 'gtaw');
   const [civilianNames, setCivilianNames] = useState(() => JSON.parse(localStorage.getItem('formCivilianNames')) || [
     'John Doe', 'Jane Smith', 'Michael Johnson', 'Emily Davis', 'Chris Brown'
@@ -57,21 +62,33 @@ const FormHandler = () => {
   const [currentCivilianIndex, setCurrentCivilianIndex] = useState(() => parseInt(localStorage.getItem('formCurrentCivilianIndex'), 10) || 0);
   const [currentPhmcIndex, setCurrentPhmcIndex] = useState(() => parseInt(localStorage.getItem('formCurrentPhmcIndex'), 10) || 0);
   const [tempPatientName, setTempPatientName] = useState('');
+const [currentUtcTime, setCurrentUtcTime] = useState(getUtcFormattedDateTime());
+  const toggleCategory = (cat) => {
+    setCollapsedCategories((prev) => ({ ...prev, [cat]: !prev[cat] }));
+  };
+
+  useEffect(() => {
+    localStorage.setItem("formCollapsedCategories", JSON.stringify(collapsedCategories));
+  }, [collapsedCategories]);
 
   // Then other hooks
   const { showNotification, removeNotification } = useNotification();
   const [isUploading, setIsUploading] = useState(false);
 
-  let {
-    user,
-    isAuthenticated, // Re-added
-    isPhmcMember,
-    characterName,
-    factionRank,
-    selectOptions: authSelectOptions
-  } = useGtaWorldAuth();
-  let { agencyDataStore, phmcListData, coronerListData: originalCoronerListData } = useData();
-
+let {
+  user,
+  isAuthenticated,
+  isPhmcMember,
+  characterName,
+  factionRank,
+  selectOptions: authSelectOptions
+} = useGtaWorldAuth();
+let { 
+  agencyDataStore, 
+  phmcListData, 
+  coronerListData: originalCoronerListData,
+  selectOptions: dataContextSelectOptions  // ← Pull selectOptions from useData too!
+} = useData();
   const isDevelopment = process.env.NODE_ENV === 'development';
   let isCoronerForDev = null;
 
@@ -79,8 +96,10 @@ const FormHandler = () => {
         return characterName;
     }, [characterName]);
 
-    const finalSelectOptions = { ...selectOptions, ...authSelectOptions };
-
+const finalSelectOptions = { 
+  ...(dataContextSelectOptions || {}), 
+  ...(authSelectOptions || {}) 
+};
     const coronerListData = useMemo(() => {
       if (isDevelopment && selectedForm?.accessType === "Coroner") {
           return [{
@@ -331,10 +350,6 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
   useEffect(() => {
     localStorage.setItem("formSearchTerm", searchTerm);
   }, [searchTerm]);
-
-  useEffect(() => {
-    localStorage.setItem("formSelectedCategory", selectedCategory);
-  }, [selectedCategory]);
   
   useEffect(() => {
     localStorage.setItem("formShowRestricted", String(showRestricted));
@@ -361,24 +376,39 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
     return () => unsub();
   }, []);
 
-  // Derive unique categories from forms and ensure "All" is present
-  const categories = React.useMemo(() => {
-    const uniqueCategories = [...new Set(forms.map(form => form.category))];
-    const sortedCategories = uniqueCategories.sort();
-    return ["All", ...sortedCategories];
-  }, [forms]);
-
-  // Filter forms based on search term, selected category, and restricted status
-  const filteredForms = React.useMemo(() => {
-    return forms.filter(form => {
+  // Derive and group forms by category, and apply search/restriction filters
+  const groupedForms = React.useMemo(() => {
+    const categoriesMap = {}; // { "Category A": [], "Category B": [] }
+    
+    forms.forEach(form => {
       const matchesSearchTerm = form.name && form.name.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesCategory = selectedCategory === "All" || form.category === selectedCategory;
       const isRestricted = form.accessType === "PHMC" || form.accessType === "Coroner";
       const passesRestriction = !showRestricted || (isRestricted ? (isAuthenticated && isPhmcMember) : true);
 
-      return matchesSearchTerm && matchesCategory && passesRestriction;
+      if (matchesSearchTerm && passesRestriction) {
+        const categoryName = form.category || "Uncategorized";
+        if (!categoriesMap[categoryName]) {
+          categoriesMap[categoryName] = [];
+        }
+        categoriesMap[categoryName].push(form);
+      }
     });
-  }, [forms, searchTerm, selectedCategory, showRestricted, isAuthenticated, isPhmcMember]);
+
+    // Sort categories and forms within categories
+    const sortedCategoryNames = Object.keys(categoriesMap).sort((a, b) => {
+        // "Uncategorized" at the end
+        if (a === "Uncategorized") return 1;
+        if (b === "Uncategorized") return -1;
+        return a.localeCompare(b);
+    });
+
+    const sortedGroupedForms = {};
+    sortedCategoryNames.forEach(catName => {
+        sortedGroupedForms[catName] = categoriesMap[catName].sort((a, b) => a.name.localeCompare(b.name));
+    });
+
+    return sortedGroupedForms;
+  }, [forms, searchTerm, showRestricted, isAuthenticated, isPhmcMember]);
 
   // Effect to update currentUtcTime every second
   useEffect(() => {
@@ -550,43 +580,57 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
             onChange={e => setSearchTerm(e.target.value)}
             className={styles.searchInput}
           />
-
-          <select
-            value={selectedCategory}
-            onChange={e => setSelectedCategory(e.target.value)}
-            className={styles.categorySelect}
-          >
-            {categories.map(cat => (
-              <option key={cat}>{cat}</option>
-            ))}
-          </select>
-
           <button
-              onClick={() => setShowRestricted(prev => !prev)}
-              className={`${formStyles.filterButton} ${showRestricted ? formStyles.active : ''}`}
-              title={showRestricted ? "Hide forms requiring faction membership" : "Show forms requiring faction membership"}
+            onClick={() => setShowRestricted(prev => !prev)}
+            className={`${formStyles.filterButton} ${showRestricted ? formStyles.active : ''}`}
+            title={showRestricted ? "Hide forms requiring faction membership" : "Show forms requiring faction membership"}
           >
-              {showRestricted ? 'Showing All Forms' : 'Show Restricted'}
+            {showRestricted ? 'Showing All Forms' : 'Show Restricted'}
           </button>
 
-          <div className={styles.formList}>
-            {filteredForms.map(form => (
-              <div
-                key={form.firebaseKey}
-                onClick={() => {
-                  setSelectedForm(form);
-                  setFormValues({});
-                  setShowBBCode(false);
-                }}
-                className={`${styles.formCard} ${selectedForm?.firebaseKey === form.firebaseKey ? styles.selected : ""}`}
-              >
-                <div className={styles.formTitle}>{form.name}</div>
-                <div className={styles.formCategory}>{form.category}</div>
-              </div>
-            ))}
-          </div>
-        </div>
 
+               <div className={styles.formList}>
+                 {Object.entries(groupedForms).length === 0 ? (
+                   <div style={{ textAlign: "center", color: "#64748b", padding: "2rem" }}>
+                    No forms found
+                   </div>
+                 ) : (
+                   <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                     {Object.entries(groupedForms).map(([categoryName, formsInCategory]) => (
+                       <li key={categoryName}>
+                       <div
+                          className={`${styles.categoryHeader} ${
+                            collapsedCategories[categoryName] ? styles.collapsed : ""
+                           }`}
+                           onClick={() => toggleCategory(categoryName)}
+                         >
+                           {categoryName} ({formsInCategory.length})
+                         </div>
+                       {!collapsedCategories[categoryName] && (
+                         <ul className={styles.protocolList}> {/* Reusing protocolList style for now */}       
+                           {formsInCategory.map((form) => (
+                             <li
+                               key={form.firebaseKey}
+                               onClick={() => {
+                                 setSelectedForm(form);
+                                 setFormValues({});
+                                 setShowBBCode(false);
+                               }}
+                               className={`${styles.formCard} ${selectedForm?.firebaseKey === form.firebaseKey 
+      ? styles.selected : ""}`}
+                              >
+                               <div className={styles.formTitle}>{form.name}</div>
+                               <div className={styles.formCategory}>{form.category}</div>
+                              </li>
+                           ))}
+                         </ul>
+                        )}
+                      </li>
+                   ))}
+                  </ul>
+                )}
+           </div>
+        </div>
         {/* CENTER: Selected Form */}
         <div className={styles.mainContent}>
           {!selectedForm ? (

@@ -51,7 +51,7 @@ const FormHandlerNavButtons = () => {
       </button>
               <button
           className={formStyles.topButton}
-          onClick={() => window.location.href = "/admin"}
+          onClick={() => window.location.href = "#/admin"}
         >
           Admin
         </button>
