@@ -434,7 +434,6 @@ case "textarea":
     case "attach_report_button":
       const [attachedReportSummaries, setAttachedReportSummaries] = useState([]);
 
-      console.log("Rendering attach_report_button. toggleSavedReports prop:", toggleSavedReports);
       return (
         <div style={fieldWrapperStyle}>
           <button

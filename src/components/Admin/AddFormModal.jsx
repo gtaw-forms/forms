@@ -234,13 +234,15 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
             name: "decedentName",
             label: "Decedent Name",
             type: "text",
-            placeholder: "Full Name"
+            placeholder: "Full Name",
+            layout: "compact-50"
           },
           {
             name: "decedentOOC",
             label: "Decedent OOC",
             type: "text",
-            placeholder: "Out-of-Character Name (Optional)"
+            placeholder: "Out-of-Character Name",
+            layout: "compact-50"
           },
           {
             name: "synopsis",
@@ -254,40 +256,60 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
             label: "Probable Time of Death",
             type: "text", // Could be 'timer' with type 'datetime-local' if precise
             placeholder: "e.g., 04/20/2024 14:30",
-            layout: "compact"
+            layout: "compact-50"
           },
           {
             name: "probableCauseOfDeath",
             label: "Probable Cause of Death",
             type: "text",
             placeholder: "e.g., Gunshot Wound, Blunt Force Trauma",
-            layout: "compact"
+            layout: "compact-50"
           },
           {
             name: "mannerOfDeath",
             label: "Manner of Death",
             type: "select",
             optionsKey: "mannerOfDeathOptions",
-            layout: "compact"
+            layout: "compact-50"
           },
           {
             name: "typeOfDeath",
             label: "Type of Death",
             type: "select",
             optionsKey: "typeOfDeathOptions",
-            layout: "compact"
+            layout: "compact-50"
           },
           {
             name: "scenePhotos",
             label: "Scene Photos",
             type: "image",
-            maxImages: 6
+            maxImages: 3
+          },
+          {
+            type: "textarea",
+            label: "Scene Photos - Notes",
+            name: "scenePhotos_narrative",
+            placeholder: "Write notes or paste screenshots here (Ctrl+V)",
+            rows: 6,
+            allowImagePaste: true,
+            linkedImageField: "scenePhotos", // Links to the 'scenePhotos' image field
+            layout: "full"
           },
           {
             name: "additionalImages",
             label: "Additional Images",
             type: "image",
-            maxImages: 6
+            maxImages: 3
+          },
+          {
+            type: "textarea",
+            label: "Additional Images - Notes",
+            name: "additionalImages_narrative",
+            placeholder: "Write notes or paste screenshots here (Ctrl+V)",
+            rows: 6,
+            allowImagePaste: true,
+            linkedImageField: "additionalImages", // Links to the 'additionalImages' image field
+            layout: "full"
           }
         ];
         const decedentItemSchemaJson = JSON.stringify(defaultDecedentSchema, null, 2);
@@ -418,31 +440,42 @@ const applyAdvancedCondition = () => {
   setConditionMode("and");
   setShowConditionalBuilder(false);
 };
-  const saveForm = () => {
-    if (!formId || !formName) {
-      alert("Form ID and Name required!");
-      return;
-    }
-
-    const formData = {
-      id: formId,
-      name: formName,
-      category,
-      formDescription,
-      template: bbcodeTemplate,
-      titleGeneratorCode, // Save the titleGeneratorCode
-      fields,
-      accessType // Store accessType
+      const saveForm = () => {
+      if (!formId || !formName) {
+        alert("Form ID and Name required!");
+        return;
+      }
+  
+      const formData = {
+        id: formId,
+        name: formName,
+        category,
+        formDescription,
+        template: bbcodeTemplate,
+        titleGeneratorCode, // Save the titleGeneratorCode
+        fields,
+        accessType // Store accessType
+      };
+  
+      console.log("--- Saving Form to Firebase ---");
+      console.log("FormData being saved:", formData);
+      console.log("Fields array being saved:", formData.fields);
+      
+      formData.fields.forEach((field, index) => {
+        console.log(`Field ${index}: Name: ${field.name}, Type: ${field.type}`);
+        if (field.type === 'decedent_list') {
+          console.log(`  Decedent Item Schema for ${field.name}:`, JSON.parse(field.decedentItemSchemaJson));
+        }
+      });
+      console.log("-------------------------------");
+  
+      update(ref(database, `forms/${formId}`), formData)
+        .then(() => {
+          alert("Form saved!");
+          onClose();
+        })
+        .catch(err => alert("Error: " + err.message));
     };
-
-    update(ref(database, `forms/${formId}`), formData)
-      .then(() => {
-        alert("Form saved!");
-        onClose();
-      })
-      .catch(err => alert("Error: " + err.message));
-  };
-
   if (!show) return null;
 
   return (
@@ -563,7 +596,7 @@ const applyAdvancedCondition = () => {
                           {newField.type === "decedent_list" && (
                             <div style={{ flexBasis: '100%', padding: '1rem', background: '#162032', borderRadius: 8 }}>
                                 <div style={{ color: "#94a3b8", fontSize: "0.9rem", marginTop: '0.5rem' }}>
-                                    The decedent list will automatically include fields for Name, OOC, Synopsis, Scene Photos, and Additional Images.
+                                    The decedent list will automatically include fields for Name, OOC, Synopsis, Time/Cause/Manner/Type of Death, Scene Photos and their Notes, and Additional Images and their Notes.
                                 </div>
                             </div>
                           )}

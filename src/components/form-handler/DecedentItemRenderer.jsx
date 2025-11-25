@@ -35,10 +35,24 @@ const DecedentItemRenderer = ({
         return <input type="text" {...commonProps} />;
       case 'textarea':
         return (
-          <textarea
-            rows={subField.rows || 3}
-            {...commonProps}
-          />
+          <>
+            <textarea
+              rows={subField.rows || 3}
+              {...commonProps}
+            />
+            {subField.allowImagePaste && (
+              <div style={{
+                marginTop: "0.5rem",
+                padding: "0.6rem",
+                background: "#162032",
+                borderRadius: 6,
+                fontSize: "0.85rem",
+                color: "#94a3b8"
+              }}>
+                <strong>Pro tip:</strong> You can paste screenshots directly here with <strong>Ctrl+V</strong>
+              </div>
+            )}
+          </>
         );
       case 'image':
         return (
@@ -78,10 +92,8 @@ const DecedentItemRenderer = ({
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.8rem" }}> {/* New flex container for sub-fields */}
         {itemSchema.map((subField, idx) => {
           let flexBasisWidth = '100%';
-          if (subField.layout === 'compact-50') {
+          if (subField.layout === 'compact-50' || subField.layout === 'compact') { // Changed 'compact' to also be 50%
             flexBasisWidth = 'calc(50% - 0.4rem)'; // (100% - 1 * 0.8rem) / 2
-          } else if (subField.layout === 'compact') {
-            flexBasisWidth = 'calc(20% - 0.64rem)'; // (100% - 4 * 0.8rem) / 5
           }
           
           return (
