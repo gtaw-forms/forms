@@ -1,9 +1,10 @@
 // src/components/admin/FormManager.jsx
 import React, { useState, useEffect } from "react";
-import { database } from "../../firebase";
+import { database, deleteForm } from "../../firebase"; // Import deleteForm
 import { ref, onValue } from "firebase/database";
 import AddFormModal from "./AddFormModal";
 import styles from "../ems-dashboard/EmsDashboard.module.css";
+import { useNotification } from '../../contexts/NotificationContext'; // Import useNotification
 
 const FormManager = () => {
   const [forms, setForms] = useState([]);
@@ -12,6 +13,8 @@ const FormManager = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingForm, setEditingForm] = useState(null);
   const [previewingForm, setPreviewingForm] = useState(null);
+
+  const { showNotification } = useNotification(); // Initialize notification hook
 
   useEffect(() => {
     const formsRef = ref(database, "forms");
@@ -42,6 +45,19 @@ const FormManager = () => {
   const closeModal = () => {
     setShowAddModal(false);
     setEditingForm(null);
+  };
+
+  const handleDeleteForm = async (formId, formName, e) => {
+    e.stopPropagation(); // Prevent the form card's onClick from firing
+    if (window.confirm(`Are you sure you want to delete the form "${formName}"? This action cannot be undone.`)) {
+      try {
+        await deleteForm(formId);
+        showNotification(`Form "${formName}" deleted successfully!`, 'success');
+        setPreviewingForm(null); // Clear preview if deleted form was previewed
+      } catch (error) {
+        showNotification(`Failed to delete form "${formName}". Error: ${error.message}`, 'error');
+      }
+    }
   };
 
   return (
@@ -163,6 +179,23 @@ const FormManager = () => {
                     }}
                   >
                     Edit Form
+                  </button>
+                  <button
+                    onClick={(e) => handleDeleteForm(form.firebaseKey, form.name, e)}
+                    style={{
+                      position: "absolute",
+                      top: 12,
+                      right: 120, // Adjust right position to make space for both buttons
+                      padding: "0.5rem 1rem",
+                      background: "#ef4444", // Red color for delete
+                      color: "white",
+                      border: "none",
+                      borderRadius: 8,
+                      fontSize: "0.9rem",
+                      fontWeight: "600"
+                    }}
+                  >
+                    Delete Form
                   </button>
                 </div>
               ))
