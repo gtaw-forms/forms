@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../utils/dateTimeUtils'; // Assuming these are needed
 import { getDepartmentFullName } from '../utils/bbcodeHelpers'; // Import the helper
+import generateDecedentBBCode from '../phmc-bbcode-generators/generateMassFatality'; // Import the new function
 
 const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agencyDataStore) => { // Accept agencyDataStore
   const [generatedBBCode, setGeneratedBBCode] = useState("");
@@ -71,6 +72,18 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
             if (formValues.CoronerEmployee !== undefined && evaluationContext.coronerEmployee === undefined) {
                 evaluationContext.coronerEmployee = formValues.CoronerEmployee;
             }
+
+            // --- Handle Decedent List BBCode Generation ---
+            let generatedDecedentsBbcode = '';
+            const decedentsField = selectedForm.fields?.find(f => f.name === 'decedents' && f.type === 'decedent_list');
+            if (decedentsField && Array.isArray(formValues.decedents) && formValues.decedents.length > 0) {
+                generatedDecedentsBbcode = generateDecedentBBCode(formValues.decedents, {
+                    coronerRank: formValues.coronerRank,
+                    coronerEmployee: formValues.coronerEmployee
+                });
+            }
+            // Add the generated BBCode to the evaluation context for simple {{variable}} replacement
+            evaluationContext.decedents_array_bbcode = generatedDecedentsBbcode;
         
             // --- Pass 1: Evaluate [conditional] blocks ---
         const conditionalRegex = /\[conditional\s+([^\]]+)\]([\s\S]*?)\[\/conditional\]/g;
@@ -103,7 +116,7 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
 
             if (expectedValue !== undefined) {
 
-                let valToCompare = expectedValue;
+                let valToCompare = valToCompare;
 
                 if (expectedValue.toLowerCase() === 'true') valToCompare = true;
 
@@ -232,6 +245,8 @@ console.log('%c[CB DEBUG] [cb:] processing complete.', 'color: cyan; font-weight
 
                             'agencyDataStore',
 
+                            'generateDecedentBBCode', // Pass generateDecedentBBCode here
+
     
 
                             `with (context) { return ${trimmedExpression}; }` // Use trimmed expression
@@ -242,7 +257,15 @@ console.log('%c[CB DEBUG] [cb:] processing complete.', 'color: cyan; font-weight
 
     
 
-                        const result = evalFn(evaluationContext, getDepartmentFullName, agencyDataStore);
+                        const result = evalFn(
+
+                            evaluationContext,
+
+                            getDepartmentFullName,
+
+                            agencyDataStore,
+                            generateDecedentBBCode // Pass generateDecedentBBCode here
+                        );
 
     
 
@@ -272,3 +295,4 @@ console.log('%c[CB DEBUG] [cb:] processing complete.', 'color: cyan; font-weight
 };
 
 export default useBbcodeGenerator;
+
