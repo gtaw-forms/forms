@@ -355,16 +355,6 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
     localStorage.setItem("formShowRestricted", String(showRestricted));
   }, [showRestricted]);
 
-  // Load selectOptions
-  useEffect(() => {
-    const optionsRef = ref(database, "selectOptions");
-    const unsub = onValue(optionsRef, (snap) => {
-      const data = snap.val();
-      if (data) setSelectOptions(data);
-    });
-    return () => unsub();
-  }, []);
-
   // Load forms
   useEffect(() => {
     const formsRef = ref(database, "forms");
