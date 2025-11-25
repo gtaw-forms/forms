@@ -1519,13 +1519,14 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                      <Dropdown.Item onClick={() => {setShowFeatureRequestModal(true); setShowToolsDropdown(false);}}>
                         <i className="fas fa-bug"></i> Report Bug/Feature
                     </Dropdown.Item>
-                    <Dropdown.Item onClick={() => {toggleSavedReports(); setShowToolsDropdown(false);}}>
-                        <i className="fas fa-save"></i> Saved Reports
-                    </Dropdown.Item>
-                    <Dropdown.Item onClick={() => {setShowCctvRequestModal(true); setShowToolsDropdown(false);}}>
-                        <i className="fas fa-video"></i> LEO Access
-                    </Dropdown.Item>
-                    <Dropdown.Item onClick={() => {toggleSeasonalEffects(); setShowToolsDropdown(false);}}>
+                                        {isPhmcMember && (
+                                            <Dropdown.Item onClick={() => {toggleSavedReports(); setShowToolsDropdown(false);}}>
+                                                <i className="fas fa-save"></i> Saved Reports
+                                            </Dropdown.Item>
+                                        )}
+                                        <Dropdown.Item onClick={() => {setShowCctvRequestModal(true); setShowToolsDropdown(false);}}>
+                                            <i className="fas fa-video"></i> LEO Access
+                                        </Dropdown.Item>                    <Dropdown.Item onClick={() => {toggleSeasonalEffects(); setShowToolsDropdown(false);}}>
                         <i className={`fas ${seasonalEffectsEnabled ? 'fa-snowflake' : 'fa-sun'}`}></i> 
                         {seasonalEffectsEnabled ? 'Disable' : 'Enable'} Seasonal Effects
                     </Dropdown.Item>
