@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { database } from "../../firebase";
 import { ref, update } from "firebase/database";
+import { Form } from "react-bootstrap";
 
 const inputStyle = {
   width: "100%",
@@ -41,7 +42,8 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
     associatedInputField: null,
     options: [],
     inputType: "",
-    showIf: null
+    showIf: null,
+    decedentItemSchemaJson: "", // New: Schema for decedent list items
   });
 
   const [newField, setNewField] = useState(createDefaultNewField());
@@ -195,6 +197,19 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
             }
             return [...prevFields, { ...fieldToSave, id: fieldToSave.id }];
         });
+    } else if (fieldToSave.type === "attach_report_button") {
+        if (!fieldToSave.label || !fieldToSave.employeeType || !fieldToSave.targetField) {
+            alert("Label, Employee Type, and Target Field are required for Attach Report Button!");
+            return;
+        }
+        setFields(prevFields => {
+            if (editingFieldIndex !== null) {
+                const updatedFields = [...prevFields];
+                updatedFields[editingFieldIndex] = { ...fieldToSave, id: fieldToSave.id };
+                return updatedFields;
+            }
+            return [...prevFields, { ...fieldToSave, id: fieldToSave.id }];
+        });
     } else if (fieldToSave.type === "payment_button") {
         if (!fieldToSave.label || !fieldToSave.name) {
             alert("Label and Name are required for Payment Button!");
@@ -211,6 +226,79 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
                 return updatedFields;
             }
             return [...prevFields, { ...fieldToSave, id: fieldToSave.id }];
+        });
+    } else if (fieldToSave.type === "decedent_list") {
+        const finalName = "decedents"; // Fixed name for decedent list
+        const defaultDecedentSchema = [
+          {
+            name: "decedentName",
+            label: "Decedent Name",
+            type: "text",
+            placeholder: "Full Name"
+          },
+          {
+            name: "decedentOOC",
+            label: "Decedent OOC",
+            type: "text",
+            placeholder: "Out-of-Character Name (Optional)"
+          },
+          {
+            name: "synopsis",
+            label: "Decedent Injuries / Things of Note", // Updated label for synopsis
+            type: "textarea",
+            rows: 4,
+            placeholder: "Brief synopsis of the decedent, injuries, etc."
+          },
+          {
+            name: "pronouncedTimeOfDeath",
+            label: "Probable Time of Death",
+            type: "text", // Could be 'timer' with type 'datetime-local' if precise
+            placeholder: "e.g., 04/20/2024 14:30",
+            layout: "compact"
+          },
+          {
+            name: "probableCauseOfDeath",
+            label: "Probable Cause of Death",
+            type: "text",
+            placeholder: "e.g., Gunshot Wound, Blunt Force Trauma",
+            layout: "compact"
+          },
+          {
+            name: "mannerOfDeath",
+            label: "Manner of Death",
+            type: "select",
+            optionsKey: "mannerOfDeathOptions",
+            layout: "compact"
+          },
+          {
+            name: "typeOfDeath",
+            label: "Type of Death",
+            type: "select",
+            optionsKey: "typeOfDeathOptions",
+            layout: "compact"
+          },
+          {
+            name: "scenePhotos",
+            label: "Scene Photos",
+            type: "image",
+            maxImages: 6
+          },
+          {
+            name: "additionalImages",
+            label: "Additional Images",
+            type: "image",
+            maxImages: 6
+          }
+        ];
+        const decedentItemSchemaJson = JSON.stringify(defaultDecedentSchema, null, 2);
+
+        setFields(prevFields => {
+            if (editingFieldIndex !== null) {
+                const updatedFields = [...prevFields];
+                updatedFields[editingFieldIndex] = { type: "decedent_list", name: finalName, id: fieldToSave.id, decedentItemSchemaJson: decedentItemSchemaJson };
+                return updatedFields;
+            }
+            return [...prevFields, { type: "decedent_list", name: finalName, id: fieldToSave.id, decedentItemSchemaJson: decedentItemSchemaJson }];
         });
     } else if (fieldToSave.type === "image") {
   if (!fieldToSave.label || !fieldToSave.name) {
@@ -413,12 +501,12 @@ const applyAdvancedCondition = () => {
             value={titleGeneratorCode}
             onChange={e => setTitleGeneratorCode(e.target.value)}
             style={{ ...inputStyle, fontFamily: "monospace", maxHeight: "200px", overflowY: "auto" }}
-            placeholder="[FORM_NAME] - {{PatientName}}"
+            placeholder={`[FORM_NAME] - {{PatientName}}\n\nExample for decedents:\n(formName, formData) => {\n  let title = formName;\n  if (formData.decedents && Array.isArray(formData.decedents)) {\n    const decedentNames = formData.decedents\n      .map(dec => dec.decedentName)\n      .filter(name => name && name.trim() !== '')\n      .join(', ');\n    if (decedentNames) {\n      title += \` - \${decedentNames}\`;\n    }\n  }\n  return title;\n}`}
           />
 
           <h4 style={{ color: "#60a5fa", marginTop: "2rem" }}>Add Field</h4>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
-            <select value={newField.type} onChange={e => setNewField({ ...newField, type: e.target.value })} style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}>
+            <select value={newField.type} onChange={e => setNewField({ ...createDefaultNewField(), type: e.target.value })} style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}>
               <option value="input">Text Input</option>
               <option value="textarea">Textarea</option>
               <option value="select">Dropdown</option>
@@ -429,436 +517,470 @@ const applyAdvancedCondition = () => {
               <option value="hr">Horizontal Rule</option>
               <option value="fake_line">Fake Line</option>
               <option value="small_header">Small Header</option>
-              <option value="timer">Timer Field</option>
-              <option value="input_button_combo">Input Button Combo</option>
-            </select>
-
-            {newField.type !== "hr" && newField.type !== "timerButton" && (
-              <input 
-                placeholder={newField.type === "small_header" ? "Header Text" : "Label"} 
-                value={newField.label} 
-                onChange={e => setNewField({ ...newField, label: e.target.value })} 
-                style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
-              />
-            )}
-            
-            {newField.type !== "hr" && newField.type !== "small_header" && newField.type !== "timerButton" && (
-              <input 
-                placeholder="Name {{}}" 
-                value={newField.name} 
-                onChange={e => setNewField({ ...newField, name: e.target.value })} 
-                style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
-              />
-            )}
-
-            {newField.type !== "hr" && newField.type !== "checkbox" && newField.type !== "image" && newField.type !== "small_header" && newField.type !== "timer" && newField.type !== "radio" && newField.type !== "input_button_combo" && (
-              <input 
-                placeholder="Placeholder" 
-                value={newField.placeholder} 
-                onChange={e => setNewField({ ...newField, placeholder: e.target.value })} 
-                style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
-              />
-            )}
-
-            {newField.type !== "hr" && newField.type !== "checkbox" && newField.type !== "image" && newField.type !== "small_header" && newField.type !== "radio" && newField.type !== "input_button_combo" && (
-              <select value={newField.layout || "full"} onChange={e => setNewField({ ...newField, layout: e.target.value })} style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}>
-                <option value="full">Full Width</option>
-                <option value="compact-50">Compact (50%)</option>
-                <option value="compact">Compact (20%)</option>
-              </select>
-            )}
-
-            {newField.type === "textarea" && (
-              <input 
-                type="number" 
-                placeholder="Rows" 
-                value={newField.rows} 
-                onChange={e => setNewField({ ...newField, rows: +e.target.value || 4 })} 
-                style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
-              />
-            )}
-                        {newField.type === "image" && (
-                          <input
-                            type="number"
-                            placeholder="Max Images"
-                            value={newField.maxImages}
-                            onChange={e => setNewField({ ...newField, maxImages: +e.target.value || 6 })}
-                            style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}
-                          />
-                        )}
-                        
-                        {newField.type === "select" && (
-                          <input
-                            placeholder="Options Key (e.g. dnrTypes)"
-                            value={newField.optionsKey}
-                            onChange={e => setNewField({ ...newField, optionsKey: e.target.value })}
-                            style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}
-                          />
-                        )}                        
-                                    {/* New Timer fields */}
-                                    {newField.type === "timer" && (
-                                      <>
-                                        <select value={newField.timerType} onChange={e => setNewField({ ...newField, timerType: e.target.value })} style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}>
-                                            <option value="">— Select Timer Type —</option>
-                                            <option value="datetime-local">Date & Time</option>
-                                            <option value="date">Date Only</option>
-                                            <option value="time">Time Only</option>
-                                        </select>
-                                        <input 
-                                          placeholder="Button Label (optional)" 
-                                          value={newField.buttonLabel} 
-                                          onChange={e => setNewField({ ...newField, buttonLabel: e.target.value })} 
-                                          style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
+                            <option value="timer">Timer Field</option>
+                            <option value="input_button_combo">Input Button Combo</option>
+                            <option value="attach_report_button">Attach Report Button</option>
+                            <option value="decedent_list">Decedent List</option>
+                          </select>
+              
+                          {newField.type !== "hr" && newField.type !== "small_header" && newField.type !== "decedent_list" && (
+                            <input 
+                              placeholder={newField.type === "small_header" ? "Header Text" : "Label"} 
+                              value={newField.label} 
+                              onChange={e => setNewField({ ...newField, label: e.target.value })} 
+                              style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
+                            />
+                          )}
+                          
+                          {newField.type !== "hr" && newField.type !== "small_header" && newField.type !== "attach_report_button" && newField.type !== "decedent_list" && (
+                            <input 
+                              placeholder="Name {{}}" 
+                              value={newField.name} 
+                              onChange={e => setNewField({ ...newField, name: e.target.value })} 
+                              style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
+                            />
+                          )}
+              
+                          {newField.type === "attach_report_button" && (
+                            <>
+                              <select
+                                value={newField.employeeType}
+                                onChange={e => setNewField({ ...newField, employeeType: e.target.value })}
+                                style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}
+                              >
+                                <option value="">— Select Employee Type —</option>
+                                <option value="PHMC">PHMC</option>
+                                <option value="Coroner">Coroner</option>
+                              </select>
+                              <input
+                                placeholder="Target Field Name"
+                                value={newField.targetField}
+                                onChange={e => setNewField({ ...newField, targetField: e.target.value })}
+                                style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}
+                              />
+                            </>
+                          )}
+                          {newField.type === "decedent_list" && (
+                            <div style={{ flexBasis: '100%', padding: '1rem', background: '#162032', borderRadius: 8 }}>
+                                <div style={{ color: "#94a3b8", fontSize: "0.9rem", marginTop: '0.5rem' }}>
+                                    The decedent list will automatically include fields for Name, OOC, Synopsis, Scene Photos, and Additional Images.
+                                </div>
+                            </div>
+                          )}
+              
+                          {newField.type !== "hr" && newField.type !== "checkbox" && newField.type !== "image" && newField.type !== "small_header" && newField.type !== "timer" && newField.type !== "radio" && newField.type !== "input_button_combo" && newField.type !== "attach_report_button" && newField.type !== "decedent_list" && (
+                            <input 
+                              placeholder="Placeholder" 
+                              value={newField.placeholder} 
+                              onChange={e => setNewField({ ...newField, placeholder: e.target.value })} 
+                              style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
+                            />
+                          )}
+              
+                          {newField.type !== "hr" && newField.type !== "checkbox" && newField.type !== "image" && newField.type !== "small_header" && newField.type !== "radio" && newField.type !== "input_button_combo" && newField.type !== "attach_report_button" && (
+                            <select value={newField.layout || "full"} onChange={e => setNewField({ ...newField, layout: e.target.value })} style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}>
+                              <option value="full">Full Width</option>
+                              <option value="compact-50">Compact (50%)</option>
+                              <option value="compact">Compact (20%)</option>
+                            </select>
+                          )}
+              
+                          {newField.type === "textarea" && (
+                            <input 
+                              type="number" 
+                              placeholder="Rows" 
+                              value={newField.rows} 
+                              onChange={e => setNewField({ ...newField, rows: +e.target.value || 4 })} 
+                              style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
+                            />
+                          )}
+                                      {newField.type === "image" && (
+                                        <input
+                                          type="number"
+                                          placeholder="Max Images"
+                                          value={newField.maxImages}
+                                          onChange={e => setNewField({ ...newField, maxImages: +e.target.value || 6 })}
+                                          style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}
                                         />
-                                        {newField.buttonLabel && ( // Only show action if label is present
-                                          <select value={newField.buttonAction || ""} onChange={e => setNewField({ ...newField, buttonAction: e.target.value })} style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}>
-                                              <option value="">— Select Button Action —</option>
-                                              <option value="set_current_time">Set Current Time</option>
-                                          </select>
-                                        )}
-                                        <label style={{ display: "flex", alignItems: "center", color: "#e2e8f0", marginTop: "0.5rem", flex: '1 1 auto', minWidth: '150px' }}>
-                                          <input
-                                            type="checkbox"
-                                            checked={newField.displayCurrentTime}
-                                            onChange={e => setNewField({ ...newField, displayCurrentTime: e.target.checked })}
-                                            style={{ marginRight: "0.8rem" }}
-                                          />
-                                          Show Current Server Time
-                                        </label>
-                                      </>
-                                    )}
-                        
-                                    {/* New Radio fields */}
-                                    {newField.type === "radio" && (
-                                      <textarea
-                                        placeholder="Options (comma-separated, e.g., Option A, Option B)"
-                                        value={newField.options.join(', ')}
-                                        onChange={e => setNewField({ ...newField, options: e.target.value.split(',').map(s => s.trim()).filter(s => s) })}
-                                        style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
-                                      />
-                                    )}
-
-                                    {/* New Input Button Combo fields */}
-                                    {newField.type === "input_button_combo" && (
-                                      <>
-                                        <select value={newField.inputType} onChange={e => setNewField({ ...newField, inputType: e.target.value })} style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}>
-                                            <option value="">— Select Input Type —</option>
-                                            <option value="text">Text</option>
-                                            <option value="datetime-local">Date & Time</option>
-                                            <option value="time">Time Only</option>
-                                        </select>
-                                        <input 
-                                          placeholder="Button Label" 
-                                          value={newField.buttonLabel} 
-                                          onChange={e => setNewField({ ...newField, buttonLabel: e.target.value })} 
-                                          style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
+                                      )}
+                                      
+                                      {newField.type === "select" && (
+                                        <input
+                                          placeholder="Options Key (e.g. dnrTypes)"
+                                          value={newField.optionsKey}
+                                          onChange={e => setNewField({ ...newField, optionsKey: e.target.value })}
+                                          style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}
                                         />
-                                        <select value={newField.buttonAction || ""} onChange={e => setNewField({ ...newField, buttonAction: e.target.value })} style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}>
-                                            <option value="">— Select Button Action —</option>
-                                            <option value="set_current_time">Set Current Time</option>
-                                        </select>
-                                      </>
-                                    )}
-
-                                    {/* New Payment Button fields */}
-                                    {newField.type === "payment_button" && (
-                                      <div style={{ flexBasis: '100%', padding: '1rem', background: '#162032', borderRadius: 8 }}>
-                                        <textarea
-                                          placeholder="Payment Value Logic (e.g., (formData) => formData.someValue * 100)"
-                                          value={newField.paymentValueLogic || ''}
-                                          onChange={e => setNewField({ ...newField, paymentValueLogic: e.target.value })}
-                                          style={{...inputStyle, width: '100%', fontFamily: 'monospace'}}
-                                          rows={3}
-                                        />
-                                        <div style={{ color: "#94a3b8", fontSize: "0.9rem", marginTop: '0.5rem' }}>
-                                            Use a JS arrow function that receives <code>formData</code> and returns the payment amount in cents.
-                                            Example: <code>(formData) - 2000</code>
-                                        </div>
-                                      </div>
-                                    )}
-                        
-                                    {/* Associated Input Field for Checkbox */}
-                                    {newField.type === "checkbox" && (
-                                      <div style={{...inputStyle, flex: '1 1 auto', minWidth: '150px', border: "1px dashed #334155", padding: "1rem", margin: "0.5rem 0" }}>
-                                        <label style={{ display: "flex", alignItems: "center", color: "#e2e8f0", marginBottom: "0.5rem" }}>
-                                          <input
-                                            type="checkbox"
-                                            checked={!!newField.associatedInputField}
-                                            onChange={e => setNewField({ ...newField, associatedInputField: e.target.checked ? { type: "input", name: "", placeholder: "", optionsKey: "" } : null })}
-                                            style={{ marginRight: "0.8rem" }}
-                                          />
-                                          Has Associated Input Field
-                                        </label>
-                                        {newField.associatedInputField && (
-                                          <>
-                                            <select
-                                              value={newField.associatedInputField.type}
-                                              onChange={e => setNewField({ ...newField, associatedInputField: { ...newField.associatedInputField, type: e.target.value } })}
-                                              style={inputStyle}
-                                            >
-                                              <option value="input">Text Input</option>
-                                              <option value="textarea">Textarea</option>
-                                              <option value="select">Dropdown</option>
-                                            </select>
-                                            <input
-                                              placeholder="Associated Input Name {{}}"
-                                              value={newField.associatedInputField.name}
-                                              onChange={e => setNewField({ ...newField, associatedInputField: { ...newField.associatedInputField, name: e.target.value } })}
-                                              style={inputStyle}
-                                            />
-                                            {newField.associatedInputField.type !== "textarea" && newField.associatedInputField.type !== "select" && (
-                                              <input
-                                                placeholder="Associated Input Placeholder"
-                                                value={newField.associatedInputField.placeholder}
-                                                onChange={e => setNewField({ ...newField, associatedInputField: { ...newField.associatedInputField, placeholder: e.target.value } })}
-                                                style={inputStyle}
-                                              />
-                                            )}
-                                            {newField.associatedInputField.type === "select" && (
-                                              <input
-                                                placeholder="Associated Options Key (e.g. dnrTypes)"
-                                                value={newField.associatedInputField.optionsKey}
-                                                onChange={e => setNewField({ ...newField, associatedInputField: { ...newField.associatedInputField, optionsKey: e.target.value } })}
-                                                style={inputStyle}
-                                              />
-                                            )}
-                                          </>
-                                        )}
-                                      </div>
-                                    )}            
-                                    {(newField.type === "textarea" || newField.type === "input" || newField.type === "timer") && (
-  <div style={{ margin: "1rem 0", padding: "1rem", background: "#162032", borderRadius: 8, border: "1px dashed #334155" }}>
-    <label style={{ display: "flex", alignItems: "center", color: "#e2e8f0", marginBottom: "0.8rem" }}>
-      <input
-        type="checkbox"
-        checked={!!newField.allowImagePaste}
-        onChange={e => setNewField({ ...newField, allowImagePaste: e.target.checked })}
-        style={{ marginRight: "0.8rem" }}
-      />
-      <strong>Enable Clipboard Image Paste (Ctrl+V)</strong>
-    </label>
-    {newField.allowImagePaste && (
-      <>
-        <p style={{ margin: "0.5rem 0", fontSize: "0.9rem", color: "#94a3b8" }}>
-          Users will be able to paste screenshots directly into this field.
-        </p>
-        <label style={{ display: "block", marginTop: "0.8rem", color: "#cbd5e1" }}>
-          <strong>Target Image Field:</strong>
-          <select
-            value={newField.linkedImageField || ""}
-            onChange={e => setNewField({ ...newField, linkedImageField: e.target.value || undefined })}
-            style={{ ...inputStyle, marginTop: "0.4rem" }}
-          >
-            <option value="">→ Auto (uses field name + "_images")</option>
-            {fields
-              .filter(f => f.type === "image")
-              .map(f => (
-                <option key={f.name} value={f.name}>
-                  {f.label || f.name} ({f.name})
-                </option>
-              ))}
-          </select>
-        </label>
-        <small style={{ color: "#64748b", display: "block", marginTop: "0.4rem" }}>
-          Pasted images will be uploaded and added to this image gallery field.
-        </small>
-      </>
-    )}
-  </div>
-)}
-                        <button onClick={saveField} style={{ background: "#10b981", color: "white", border: "none", padding: "0.8rem", borderRadius: 8, flex: '0 0 auto' }}>{editingFieldIndex !== null ? 'Update Field' : 'Add Field'}</button>
-                        {editingFieldIndex !== null && (
-                          <button onClick={() => { setNewField(createDefaultNewField()); setEditingFieldIndex(null); setShowConditionalBuilder(false); }} style={{ background: "#f59e0b", color: "white", border: "none", padding: "0.8rem", borderRadius: 8, flex: '0 0 auto' }}>Cancel Edit</button>
-                        )}
-                      </div>
-
-          {/* Conditional Builder */}
-{/* ADVANCED CONDITIONAL BUILDER */}
-<div style={{ margin: "1.5rem 0", padding: "1.5rem", background: "#1e293b", borderRadius: 12, border: "1px dashed #334155" }}>
-  <button 
-    onClick={() => setShowConditionalBuilder(!showConditionalBuilder)}
-    style={{ background: "#8b5cf6", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, fontWeight: "600" }}
-  >
-    {showConditionalBuilder ? "Hide" : "Add Conditional Logic"} (AND/OR, Exact Values)
-  </button>
-
-  {showConditionalBuilder && (
-    <div style={{ marginTop: "1rem" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: "0.8rem", marginBottom: "1rem" }}>
-        <select value={conditionalField} onChange={e => setConditionalField(e.target.value)} style={inputStyle}>
-          <option value="">— Select Trigger Field —</option>
-          {fields.map(f => (
-            <option key={f.name} value={f.name}>{f.label || f.name}</option>
-          ))}
-        </select>
-
-        <select value={conditionalValue} onChange={e => setConditionalValue(e.target.value)} style={inputStyle}>
-          <option value="">— Condition —</option>
-          <option value="filled">Has ANY value</option>
-          <option value="empty">Is empty</option>
-          <option value="exact">Exact value →</option>
-        </select>
-
-        <button onClick={addCondition} style={{ background: "#10b981", color: "white", border: "none", borderRadius: 8 }}>
-          Add Rule
-        </button>
-      </div>
-
-      {conditionalValue === "exact" && (
-        <input
-          placeholder="Enter exact value (e.g. GeneralInformation)"
-          value={exactValue}
-          onChange={e => setExactValue(e.target.value)}
-          style={{ ...inputStyle, marginBottom: "1rem" }}
-        />
-      )}
-
-      {tempConditions.length > 0 && (
-        <>
-          <div style={{ margin: "1rem 0", fontWeight: "600", color: "#94a3b8" }}>
-            Show this field when:
-            <select value={conditionMode} onChange={e => setConditionMode(e.target.value)} style={{ marginLeft: "1rem", padding: "0.4rem", background: "#334155", border: "none", borderRadius: 6, color: "#e2e8f0" }}>
-              <option value="and">ALL</option>
-              <option value="or">ANY</option>
-            </select>
-            of these are true:
-          </div>
-
-          {tempConditions.map((c, i) => (
-            <div key={i} style={{ padding: "0.8rem", background: "#334155", borderRadius: 8, marginBottom: "0.5rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span>
-                <strong>{fields.find(f => f.name === c.field)?.label || c.field}</strong>
-                {c.value === true ? " is filled" : c.value === false ? " is empty" : ` = "${c.value}"`}
-              </span>
-              <button onClick={() => removeTempCondition(i)} style={{ background: "#ef4444", color: "white", border: "none", padding: "0.4rem 0.8rem", borderRadius: 6 }}>Remove</button>
-            </div>
-          ))}
-
-          <button onClick={applyAdvancedCondition} style={{ background: "#8b5cf6", color: "white", padding: "0.8rem", border: "none", borderRadius: 8, width: "100%", marginTop: "1rem" }}>
-            Apply Conditions ({tempConditions.length})
-          </button>
-        </>
-      )}
-    </div>
-  )}
-</div>
-          {newField.showIf && (
-            <div style={{ padding: "0.8rem", background: "#1e293b", borderRadius: 8, color: "#a78bfa", fontSize: "0.9rem" }}>
-              Show this field if {' '}
-              {newField.showIf.mode ? ( // Check if it's a complex condition
-                  <>
-                      <strong>{newField.showIf.mode.toUpperCase()}</strong> of: {' '}
-                      {newField.showIf.conditions.map((condition, idx) => (
-                          <span key={idx}>
-                              {idx > 0 && ", "}
-                              <strong>{fields.find(field => field.name === condition.field)?.label || condition.field}</strong>
-                              {' '}is{' '}
-                              {condition.value === true ? "filled" : condition.value === false ? "empty" : `"${condition.value}"`}
-                          </span>
-                      ))}
-                  </>
-              ) : ( // Simple condition
-                  <>
-                      <strong>{fields.find(field => field.name === newField.showIf.field)?.label || newField.showIf.field}</strong>
-                      {' '}is{' '}
-                      {newField.showIf.value === true ? "filled" : newField.showIf.value === false ? "empty" : `"${newField.showIf.value}"`}
-                  </>
-              )}
-              <button onClick={() => setNewField({ ...newField, showIf: null })} style={{ marginLeft: "1rem", color: "#ef4444" }}>Remove</button>
-            </div>
-          )}
-
-          <h4 style={{ color: "#60a5fa", marginTop: "2rem" }}>Fields ({fields.length})</h4>
-          {fields.map((f, i) => (
-            <div key={i} style={{ background: "#1e293b", padding: "1rem", borderRadius: 10, marginBottom: "0.8rem", border: "1px solid #334155" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  { f.type === "image" ? (
-                    <span style={{ color: "#a78bfa" }}>
-                      Image Gallery: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>
-                      <span style={{ color: "#34d399", marginLeft: "0.5rem" }}>
-                        (Auto-paired with narrative field below)
-                      </span>
-                    </span>
-                  ) : f.allowImagePaste ? (
-                    <span style={{ color: "#34d399" }}>
-                      Text + Paste: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>
-                      <span style={{ color: "#fbbf24", fontSize: "0.85rem" }}>
-                        → pastes into <strong>{f.linkedImageField}</strong>
-                      </span>
-                    </span>
-                  ) : f.type === "hr" ? (
-                    <span style={{ color: "#a78bfa" }}>Horizontal Rule</span>
-                  ) : f.type === "fake_line" ? (
-                    <span style={{ color: "#a78bfa" }}>Fake Line (Thinner Horizontal Rule)</span>
-                  ) : f.type === "small_header" ? (
-                    <span style={{ color: "#a78bfa" }}>Small Header: <strong>{f.label}</strong></span>
-                  ) : f.type === "timer" ? (
-                    <span style={{ color: "#a78bfa" }}>Timer: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> ({f.timerType})
-                      {f.buttonLabel && ` [Button: ${f.buttonLabel} (${f.buttonAction})]`}
-                    </span>
-                  ) : f.type === "checkbox" ? (
-                    <span style={{ color: "#a78bfa" }}>Checkbox: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>
-                      {f.associatedInputField && ` [Associated Input: ${f.associatedInputField.type} -> ${f.associatedInputField.name}]`}
-                    </span>
-                  ) : f.type === "radio" ? (
-                    <span style={{ color: "#a78bfa" }}>Radio: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (Options: {f.options.join(', ')})</span>
-                  ) : f.type === "input_button_combo" ? (
-                    <span style={{ color: "#a78bfa" }}>Input Button Combo: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (Type: {f.inputType}, Button: {f.buttonLabel} ({f.buttonAction}))</span>
-                  ) : f.type === "payment_button" ? (
-                    <span style={{ color: "#a78bfa" }}>Payment Button: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (stores timestamp)</span>
-                  ) : (
+                                      )}                        
+                                                  {/* New Timer fields */}
+                                                  {newField.type === "timer" && (
+                                                    <>
+                                                      <select value={newField.timerType} onChange={e => setNewField({ ...newField, timerType: e.target.value })} style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}>
+                                                          <option value="">— Select Timer Type —</option>
+                                                          <option value="datetime-local">Date & Time</option>
+                                                          <option value="date">Date Only</option>
+                                                          <option value="time">Time Only</option>
+                                                      </select>
+                                                      <input 
+                                                        placeholder="Button Label (optional)" 
+                                                        value={newField.buttonLabel} 
+                                                        onChange={e => setNewField({ ...newField, buttonLabel: e.target.value })} 
+                                                        style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
+                                                      />
+                                                      {newField.buttonLabel && ( // Only show action if label is present
+                                                        <select value={newField.buttonAction || ""} onChange={e => setNewField({ ...newField, buttonAction: e.target.value })} style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}>
+                                                            <option value="">— Select Button Action —</option>
+                                                            <option value="set_current_time">Set Current Time</option>
+                                                        </select>
+                                                      )}
+                                                      <label style={{ display: "flex", alignItems: "center", color: "#e2e8f0", marginTop: "0.5rem", flex: '1 1 auto', minWidth: '150px' }}>
+                                                        <input
+                                                          type="checkbox"
+                                                          checked={newField.displayCurrentTime}
+                                                          onChange={e => setNewField({ ...newField, displayCurrentTime: e.target.checked })}
+                                                          style={{ marginRight: "0.8rem" }}
+                                                        />
+                                                        Show Current Server Time
+                                                      </label>
+                                                    </>
+                                                  )}
+                                      
+                                                  {/* New Radio fields */}
+                                                  {newField.type === "radio" && (
+                                                    <textarea
+                                                      placeholder="Options (comma-separated, e.g., Option A, Option B)"
+                                                      value={newField.options.join(', ')}
+                                                      onChange={e => setNewField({ ...newField, options: e.target.value.split(',').map(s => s.trim()).filter(s => s) })}
+                                                      style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
+                                                    />
+                                                  )}
+              
+                                                  {/* New Input Button Combo fields */}
+                                                  {newField.type === "input_button_combo" && (
+                                                    <>
+                                                      <select value={newField.inputType} onChange={e => setNewField({ ...newField, inputType: e.target.value })} style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}>
+                                                          <option value="">— Select Input Type —</option>
+                                                          <option value="text">Text</option>
+                                                          <option value="datetime-local">Date & Time</option>
+                                                          <option value="time">Time Only</option>
+                                                      </select>
+                                                      <input 
+                                                        placeholder="Button Label" 
+                                                        value={newField.buttonLabel} 
+                                                        onChange={e => setNewField({ ...newField, buttonLabel: e.target.value })} 
+                                                        style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
+                                                      />
+                                                      <select value={newField.buttonAction || ""} onChange={e => setNewField({ ...newField, buttonAction: e.target.value })} style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}>
+                                                          <option value="">— Select Button Action —</option>
+                                                          <option value="set_current_time">Set Current Time</option>
+                                                      </select>
+                                                    </>
+                                                  )}
+              
+                                                  {/* New Payment Button fields */}
+                                                  {newField.type === "payment_button" && (
+                                                    <div style={{ flexBasis: '100%', padding: '1rem', background: '#162032', borderRadius: 8 }}>
+                                                      <textarea
+                                                        placeholder="Payment Value Logic (e.g., (formData) => formData.someValue * 100)"
+                                                        value={newField.paymentValueLogic || ''}
+                                                        onChange={e => setNewField({ ...newField, paymentValueLogic: e.target.value })}
+                                                        style={{...inputStyle, width: '100%', fontFamily: 'monospace'}}
+                                                        rows={3}
+                                                      />
+                                                      <div style={{ color: "#94a3b8", fontSize: "0.9rem", marginTop: '0.5rem' }}>
+                                                          Use a JS arrow function that receives <code>formData</code> and returns the payment amount in cents.
+                                                          Example: <code>(formData) - 2000</code>
+                                                      </div>
+                                                    </div>
+                                                  )}
+                                      
+                                                  {/* Associated Input Field for Checkbox */}
+                                                  {newField.type === "checkbox" && (
+                                                    <div style={{...inputStyle, flex: '1 1 auto', minWidth: '150px', border: "1px dashed #334155", padding: "1rem", margin: "0.5rem 0" }}>
+                                                      <label style={{ display: "flex", alignItems: "center", color: "#e2e8f0", marginBottom: "0.5rem" }}>
+                                                        <input
+                                                          type="checkbox"
+                                                          checked={!!newField.associatedInputField}
+                                                          onChange={e => setNewField({ ...newField, associatedInputField: e.target.checked ? { type: "input", name: "", placeholder: "", optionsKey: "" } : null })}
+                                                          style={{ marginRight: "0.8rem" }}
+                                                        />
+                                                        Has Associated Input Field
+                                                      </label>
+                                                      {newField.associatedInputField && (
+                                                        <>
+                                                          <select
+                                                            value={newField.associatedInputField.type}
+                                                            onChange={e => setNewField({ ...newField, associatedInputField: { ...newField.associatedInputField, type: e.target.value } })}
+                                                            style={inputStyle}
+                                                          >
+                                                            <option value="input">Text Input</option>
+                                                            <option value="textarea">Textarea</option>
+                                                            <option value="select">Dropdown</option>
+                                                          </select>
+                                                          <input
+                                                            placeholder="Associated Input Name {{}}"
+                                                            value={newField.associatedInputField.name}
+                                                            onChange={e => setNewField({ ...newField, associatedInputField: { ...newField.associatedInputField, name: e.target.value } })}
+                                                            style={inputStyle}
+                                                          />
+                                                          {newField.associatedInputField.type !== "textarea" && newField.associatedInputField.type !== "select" && (
+                                                            <input
+                                                              placeholder="Associated Input Placeholder"
+                                                              value={newField.associatedInputField.placeholder}
+                                                              onChange={e => setNewField({ ...newField, associatedInputField: { ...newField.associatedInputField, placeholder: e.target.value } })}
+                                                              style={inputStyle}
+                                                            />
+                                                          )}
+                                                          {newField.associatedInputField.type === "select" && (
+                                                            <input
+                                                              placeholder="Associated Options Key (e.g. dnrTypes)"
+                                                              value={newField.associatedInputField.optionsKey}
+                                                              onChange={e => setNewField({ ...newField, associatedInputField: { ...newField.associatedInputField, optionsKey: e.target.value } })}
+                                                              style={inputStyle}
+                                                            />
+                                                          )}
+                                                        </>
+                                                      )}
+                                                    </div>
+                                                  )}            
+                                                  {(newField.type === "textarea" || newField.type === "input" || newField.type === "timer") && (
+                <div style={{ margin: "1rem 0", padding: "1rem", background: "#162032", borderRadius: 8, border: "1px dashed #334155" }}>
+                  <label style={{ display: "flex", alignItems: "center", color: "#e2e8f0", marginBottom: "0.8rem" }}>
+                    <input
+                      type="checkbox"
+                      checked={!!newField.allowImagePaste}
+                      onChange={e => setNewField({ ...newField, allowImagePaste: e.target.checked })}
+                      style={{ marginRight: "0.8rem" }}
+                    />
+                    <strong>Enable Clipboard Image Paste (Ctrl+V)</strong>
+                  </label>
+                  {newField.allowImagePaste && (
                     <>
-                      <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>
+                      <p style={{ margin: "0.5rem 0", fontSize: "0.9rem", color: "#94a3b8" }}>
+                        Users will be able to paste screenshots directly into this field.
+                      </p>
+                      <label style={{ display: "block", marginTop: "0.8rem", color: "#cbd5e1" }}>
+                        <strong>Target Image Field:</strong>
+                        <select
+                          value={newField.linkedImageField || ""}
+                          onChange={e => setNewField({ ...newField, linkedImageField: e.target.value || undefined })}
+                          style={{ ...inputStyle, marginTop: "0.4rem" }}
+                        >
+                          <option value="">→ Auto (uses field name + "_images")</option>
+                          {fields
+                            .filter(f => f.type === "image")
+                            .map(f => (
+                              <option key={f.name} value={f.name}>
+                                {f.label || f.name} ({f.name})
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <small style={{ color: "#64748b", display: "block", marginTop: "0.4rem" }}>
+                        Pasted images will be uploaded and added to this image gallery field.
+                      </small>
                     </>
                   )}
-                  {f.layout === "full" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Full Width</span>}
-                  {f.layout === "compact-50" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Compact (50%)</span>}
-                  {f.layout === "compact" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Compact (20%)</span>}
-                  {f.type === "select" && <span style={{ marginLeft: "1rem", color: "#f59e0b" }}>Options: {f.optionsKey}</span>}
-                  {f.showIf && (
-                    <span style={{ marginLeft: "1rem", color: "#8b5cf6" }}>
-                        Show if {' '}
-                        {f.showIf.mode ? ( // Check if it's a complex condition
-                            <>
-                                <strong>{f.showIf.mode.toUpperCase()}</strong> of: {' '}
-                                {f.showIf.conditions.map((condition, idx) => (
-                                    <span key={idx}>
-                                        {idx > 0 && ", "}
-                                        <strong>{fields.find(field => field.name === condition.field)?.label || condition.field}</strong>
-                                        {' '}is{' '}
-                                        {condition.value === true ? "filled" : condition.value === false ? "empty" : `"${condition.value}"`}
-                                    </span>
-                                ))}
-                            </>
-                        ) : ( // Simple condition
-                            <>
-                                <strong>{fields.find(field => field.name === f.showIf.field)?.label || f.showIf.field}</strong>
-                                {' '}is{' '}
-                                {f.showIf.value === true ? "filled" : f.showIf.value === false ? "empty" : `"${f.showIf.value}"`}
-                            </>
-                        )}
-                    </span>
-                  )}
                 </div>
-                <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <button onClick={() => startEditField(f, i)} style={{ background: "#6366f1", color: "white", border: "none", padding: "0 1rem", borderRadius: 8 }}>Edit</button>
-                  {i > 0 && <button onClick={() => moveFieldUp(i)} style={{ background: "#6366f1", color: "white", border: "none", width: 36, height: 36, borderRadius: 8 }}>Up</button>}
-                  {i < fields.length - 1 && <button onClick={() => moveFieldDown(i)} style={{ background: "#6366f1", color: "white", border: "none", width: 36, height: 36, borderRadius: 8 }}>Down</button>}
-                  <button onClick={() => removeField(i)} style={{ background: "#ef4444", color: "white", border: "none", padding: "0 1rem", borderRadius: 8 }}>Remove</button>
-                </div>
+              )}
+                                      <button onClick={saveField} style={{ background: "#10b981", color: "white", border: "none", padding: "0.8rem", borderRadius: 8, flex: '0 0 auto' }}>{editingFieldIndex !== null ? 'Update Field' : 'Add Field'}</button>
+                                      {editingFieldIndex !== null && (
+                                        <button onClick={() => { setNewField(createDefaultNewField()); setEditingFieldIndex(null); setShowConditionalBuilder(false); }} style={{ background: "#f59e0b", color: "white", border: "none", padding: "0.8rem", borderRadius: 8, flex: '0 0 auto' }}>Cancel Edit</button>
+                                      )}
+                                    </div>
+              
+                        {/* Conditional Builder */}
+              {/* ADVANCED CONDITIONAL BUILDER */}
+              <div style={{ margin: "1.5rem 0", padding: "1.5rem", background: "#1e293b", borderRadius: 12, border: "1px dashed #334155" }}>
+                <button 
+                  onClick={() => setShowConditionalBuilder(!showConditionalBuilder)}
+                  style={{ background: "#8b5cf6", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, fontWeight: "600" }}
+                >
+                  {showConditionalBuilder ? "Hide" : "Add Conditional Logic"} (AND/OR, Exact Values)
+                </button>
+              
+                {showConditionalBuilder && (
+                  <div style={{ marginTop: "1rem" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: "0.8rem", marginBottom: "1rem" }}>
+                      <select value={conditionalField} onChange={e => setConditionalField(e.target.value)} style={inputStyle}>
+                        <option value="">— Select Trigger Field —</option>
+                        {fields.map(f => (
+                          <option key={f.name} value={f.name}>{f.label || f.name}</option>
+                        ))}
+                      </select>
+              
+                      <select value={conditionalValue} onChange={e => setConditionalValue(e.target.value)} style={inputStyle}>
+                        <option value="">— Condition —</option>
+                        <option value="filled">Has ANY value</option>
+                        <option value="empty">Is empty</option>
+                        <option value="exact">Exact value →</option>
+                      </select>
+              
+                      <button onClick={addCondition} style={{ background: "#10b981", color: "white", border: "none", borderRadius: 8 }}>
+                        Add Rule
+                      </button>
+                    </div>
+              
+                    {conditionalValue === "exact" && (
+                      <input
+                        placeholder="Enter exact value (e.g. GeneralInformation)"
+                        value={exactValue}
+                        onChange={e => setExactValue(e.target.value)}
+                        style={{ ...inputStyle, marginBottom: "1rem" }}
+                      />
+                    )}
+              
+                    {tempConditions.length > 0 && (
+                      <>
+                        <div style={{ margin: "1rem 0", fontWeight: "600", color: "#94a3b8" }}>
+                          Show this field when:
+                          <select value={conditionMode} onChange={e => setConditionMode(e.target.value)} style={{ marginLeft: "1rem", padding: "0.4rem", background: "#334155", border: "none", borderRadius: 6, color: "#e2e8f0" }}>
+                            <option value="and">ALL</option>
+                            <option value="or">ANY</option>
+                          </select>
+                          of these are true:
+                        </div>
+              
+                        {tempConditions.map((c, i) => (
+                          <div key={i} style={{ padding: "0.8rem", background: "#334155", borderRadius: 8, marginBottom: "0.5rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span>
+                              <strong>{fields.find(f => f.name === c.field)?.label || c.field}</strong>
+                              {c.value === true ? " is filled" : c.value === false ? " is empty" : ` = "${c.value}"`}
+                            </span>
+                            <button onClick={() => removeTempCondition(i)} style={{ background: "#ef4444", color: "white", border: "none", padding: "0.4rem 0.8rem", borderRadius: 6 }}>Remove</button>
+                          </div>
+                        ))}
+              
+                        <button onClick={applyAdvancedCondition} style={{ background: "#8b5cf6", color: "white", padding: "0.8rem", border: "none", borderRadius: 8, width: "100%", marginTop: "1rem" }}>
+                          Apply Conditions ({tempConditions.length})
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
-
-          <div style={{ marginTop: "2rem", textAlign: "center" }}>
-            <button onClick={saveForm} style={{ padding: "1rem 3rem", background: "#6366f1", color: "white", border: "none", borderRadius: 12, margin: "0 1rem" }}>Save Form</button>
-            <button onClick={onClose} style={{ padding: "1rem 3rem", background: "#475569", color: "white", border: "none", borderRadius: 12 }}>Cancel</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default AddFormModal;
+                        {newField.showIf && (
+                          <div style={{ padding: "0.8rem", background: "#1e293b", borderRadius: 8, color: "#a78bfa", fontSize: "0.9rem" }}>
+                            Show this field if {' '}
+                            {newField.showIf.mode ? ( // Check if it's a complex condition
+                                <>
+                                    <strong>{newField.showIf.mode.toUpperCase()}</strong> of: {' '}
+                                    {newField.showIf.conditions.map((condition, idx) => (
+                                        <span key={idx}>
+                                            {idx > 0 && ", "}
+                                            <strong>{fields.find(field => field.name === condition.field)?.label || condition.field}</strong>
+                                            {' '}is{' '}
+                                            {condition.value === true ? "filled" : condition.value === false ? "empty" : `"${condition.value}"`}
+                                        </span>
+                                    ))}
+                                </>
+                            ) : ( // Simple condition
+                                <>
+                                    <strong>{fields.find(field => field.name === newField.showIf.field)?.label || newField.showIf.field}</strong>
+                                    {' '}is{' '}
+                                    {newField.showIf.value === true ? "filled" : newField.showIf.value === false ? "empty" : `"${newField.showIf.value}"`}
+                                </>
+                            )}
+                            <button onClick={() => setNewField({ ...newField, showIf: null })} style={{ marginLeft: "1rem", color: "#ef4444" }}>Remove</button>
+                          </div>
+                        )}
+              
+                        <h4 style={{ color: "#60a5fa", marginTop: "2rem" }}>Fields ({fields.length})</h4>
+                        {fields.map((f, i) => (
+                          <div key={i} style={{ background: "#1e293b", padding: "1rem", borderRadius: 10, marginBottom: "0.8rem", border: "1px solid #334155" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <div>
+                                { f.type === "image" ? (
+                                  <span style={{ color: "#a78bfa" }}>
+                                    Image Gallery: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>
+                                    <span style={{ color: "#34d399", marginLeft: "0.5rem" }}>
+                                      (Auto-paired with narrative field below)
+                                    </span>
+                                  </span>
+                                ) : f.allowImagePaste ? (
+                                  <span style={{ color: "#34d399" }}>
+                                    Text + Paste: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>
+                                    <span style={{ color: "#fbbf24", fontSize: "0.85rem" }}>
+                                      → pastes into <strong>{f.linkedImageField}</strong>
+                                    </span>
+                                  </span>
+                                ) : f.type === "hr" ? (
+                                  <span style={{ color: "#a78bfa" }}>Horizontal Rule</span>
+                                ) : f.type === "fake_line" ? (
+                                  <span style={{ color: "#a78bfa" }}>Fake Line (Thinner Horizontal Rule)</span>
+                                ) : f.type === "small_header" ? (
+                                  <span style={{ color: "#a78bfa" }}>Small Header: <strong>{f.label}</strong></span>
+                                ) : f.type === "timer" ? (
+                                  <span style={{ color: "#a78bfa" }}>Timer: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> ({f.timerType})
+                                    {f.buttonLabel && ` [Button: ${f.buttonLabel} (${f.buttonAction})]`}
+                                  </span>
+                                ) : f.type === "checkbox" ? (
+                                  <span style={{ color: "#a78bfa" }}>Checkbox: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>
+                                    {f.associatedInputField && ` [Associated Input: ${f.associatedInputField.type} -> ${f.associatedInputField.name}]`}
+                                  </span>
+                                ) : f.type === "radio" ? (
+                                  <span style={{ color: "#a78bfa" }}>Radio: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (Options: {f.options.join(', ')})</span>
+                                ) : f.type === "input_button_combo" ? (
+                                  <span style={{ color: "#a78bfa" }}>Input Button Combo: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (Type: {f.inputType}, Button: {f.buttonLabel} ({f.buttonAction}))</span>
+                                ) : f.type === "payment_button" ? (
+                                  <span style={{ color: "#a78bfa" }}>Payment Button: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (stores timestamp)</span>
+                                ) : f.type === "attach_report_button" ? (
+                                  <span style={{ color: "#a78bfa" }}>Attach Report Button: <strong>{f.label}</strong> → (Filters: {f.filterVersions}, Type: {f.employeeType}, Target: {f.targetField})</span>
+                                ) : f.type === "decedent_list" ? (
+                                    <span style={{ color: "#a78bfa" }}>Decedent List: <strong>{f.name}</strong></span>
+                                ) : (
+                                  <>
+                                    <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>
+                                  </>
+                                )}
+                                {f.layout === "full" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Full Width</span>}
+                                {f.layout === "compact-50" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Compact (50%)</span>}
+                                {f.layout === "compact" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Compact (20%)</span>}
+                                {f.type === "select" && <span style={{ marginLeft: "1rem", color: "#f59e0b" }}>Options: {f.optionsKey}</span>}
+                                {f.showIf && (
+                                  <span style={{ marginLeft: "1rem", color: "#8b5cf6" }}>
+                                      Show if {' '}
+                                      {f.showIf.mode ? ( // Check if it's a complex condition
+                                          <>
+                                              <strong>{f.showIf.mode.toUpperCase()}</strong> of: {' '}
+                                              {f.showIf.conditions.map((condition, idx) => (
+                                                  <span key={idx}>
+                                                      {idx > 0 && ", "}
+                                                      <strong>{fields.find(field => field.name === condition.field)?.label || condition.field}</strong>
+                                                      {' '}is{' '}
+                                                      {condition.value === true ? "filled" : condition.value === false ? "empty" : `"${condition.value}"`}
+                                                  </span>
+                                              ))}
+                                          </>
+                                      ) : ( // Simple condition
+                                          <>
+                                              <strong>{fields.find(field => field.name === f.showIf.field)?.label || f.showIf.field}</strong>
+                                              {' '}is{' '}
+                                              {f.showIf.value === true ? "filled" : f.showIf.value === false ? "empty" : `"${f.showIf.value}"`}
+                                          </>
+                                      )}
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ display: "flex", gap: "0.5rem" }}>
+                                <button onClick={() => startEditField(f, i)} style={{ background: "#6366f1", color: "white", border: "none", padding: "0 1rem", borderRadius: 8 }}>Edit</button>
+                                {i > 0 && <button onClick={() => moveFieldUp(i)} style={{ background: "#6366f1", color: "white", border: "none", width: 36, height: 36, borderRadius: 8 }}>Up</button>}
+                                {i < fields.length - 1 && <button onClick={() => moveFieldDown(i)} style={{ background: "#6366f1", color: "white", border: "none", width: 36, height: 36, borderRadius: 8 }}>Down</button>}
+                                <button onClick={() => removeField(i)} style={{ background: "#ef4444", color: "white", border: "none", padding: "0 1rem", borderRadius: 8 }}>Remove</button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+              
+                        <div style={{ marginTop: "2rem", textAlign: "center" }}>
+                          <button onClick={saveForm} style={{ padding: "1rem 3rem", background: "#6366f1", color: "white", border: "none", borderRadius: 12, margin: "0 1rem" }}>Save Form</button>
+                          <button onClick={onClose} style={{ padding: "1rem 3rem", background: "#475569", color: "white", border: "none", borderRadius: 12 }}>Cancel</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              };
+              
+              export default AddFormModal;
+              

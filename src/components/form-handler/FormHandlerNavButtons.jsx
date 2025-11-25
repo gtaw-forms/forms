@@ -23,7 +23,7 @@ const FormHandlerNavButtons = () => {
           className={formStyles.topButton}
           onClick={() => window.location.href = "/admin"}
         >
-          Admin Panel
+          Admin
         </button>
       )}
       {isPhmcMember && (
@@ -49,6 +49,13 @@ const FormHandlerNavButtons = () => {
           <i className="fas fa-trophy"></i>
           Bingo Night!
       </button>
+              <button
+          className={formStyles.topButton}
+          onClick={() => window.location.href = "/admin"}
+        >
+          Admin
+        </button>
+
     </div>
   );
 };

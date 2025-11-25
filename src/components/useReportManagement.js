@@ -5,9 +5,11 @@ import { ref, get, set, remove, runTransaction } from 'firebase/database';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import * as Sentry from "@sentry/react";
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
+import { useFormHandler } from './form-handler/useFormHandler';
 import { getCharacterName, getCharacterID } from '../utils/characterUtils';
 
 import { useData } from '../contexts/DataContext';
+import { useModal } from '../contexts/ModalProvider';
 
 const comprehensiveSanitize = (str) => {
     if (!str) return '';
@@ -45,6 +47,7 @@ export const useReportManagement = (
     selectedAgencyGroup
 ) => {
     const { factionsData, coronerListData, phmcListData, sendDataRequestLog } = useData();
+    const formHandler = useFormHandler(showNotification);
 
     const findEmployeeDetails = (employeeName) => {
         if (factionsData && factionsData['364'] && factionsData['364'].members) {
@@ -89,6 +92,16 @@ export const useReportManagement = (
             Sentry.captureException(error, { extra: { context: 'logWebhook' } });
         }
     };
+    
+    const saveFormHandlerReport = async (reportName, bbCodeContent) => {
+        const currentAuthor = getCurrentReportAuthor(formData);
+        if (!currentAuthor) {
+            showNotification('Cannot determine report author.', 'error');
+            return { success: false, error: 'Cannot determine report author.' };
+        }
+        return await formHandler.saveReport(reportName, bbCodeContent, currentAuthor, formData, filterFormData);
+    };
+    
 
     async function saveReport() {
         let key = '';
@@ -565,17 +578,21 @@ export const useReportManagement = (
                     let loadedBbCode = reportData.bbCode || '';
                     let loadedFormData = reportData.data || {};
 
-                    if (returnOnly) {
-                        // When attaching, convert [bold] to [b]
-                        const boldMatches = (loadedBbCode.match(/\[bold\]/gi) || []).length;
-                        if (boldMatches > 0) {
-                            console.log(`[useReportManagement] Found ${boldMatches} [bold] tags. Converting to [b].`);
+                    const isFormHandlerReport = reportData.isFormHandler === true;
+
+                    if (!isFormHandlerReport) {
+                        if (returnOnly) {
+                            // When attaching, convert [bold] to [b]
+                            const boldMatches = (loadedBbCode.match(/\[bold\]/gi) || []).length;
+                            if (boldMatches > 0) {
+                                console.log(`[useReportManagement] Found ${boldMatches} [bold] tags. Converting to [b].`);
+                                loadedBbCode = loadedBbCode.replace(/\[bold\]/gi, '[b]').replace(/\[\/bold\]/gi, '[/b]');
+                                console.log(`[useReportManagement] Conversion complete.`);
+                            }
+                        } else {
+                            // When loading into the form, ensure any escaped bold tags are converted to simple [b]
                             loadedBbCode = loadedBbCode.replace(/\[bold\]/gi, '[b]').replace(/\[\/bold\]/gi, '[/b]');
-                            console.log(`[useReportManagement] Conversion complete.`);
                         }
-                    } else {
-                        // When loading into the form, ensure any escaped bold tags are converted to simple [b]
-                        loadedBbCode = loadedBbCode.replace(/\[bold\]/gi, '[b]').replace(/\[\/bold\]/gi, '[/b]');
                     }
                     const loadedCoronerEmployee = loadedFormData.coronerEmployee;
                     const loadedPhmcEmployee = loadedFormData.phmcEmployee;
@@ -726,10 +743,8 @@ export const useReportManagement = (
                                 phmcEmployee: loadedFormData.phmcEmployee || prev.phmcEmployee,
                             }));
                             setBbCodeVersion(loadedVersion);
-                            showNotification(`Report "${reportData.originalKey || reportFirebaseKey}" loaded.`, 'upload');
-                        }
-                        setShowSavedReports(false);
-                    }
+                                                    showNotification(`Report "${reportData.originalKey || reportFirebaseKey}" loaded.`, 'upload');
+                                                }                    }
                     // Always return the processed data, regardless of `returnOnly`
                     return { success: true, reportData: { ...reportData, data: loadedFormData, bbCode: loadedBbCode } };
                 } else {
@@ -1007,7 +1022,17 @@ export const useReportManagement = (
             return;
         }
 
-        const author = getCurrentReportAuthor(formData);
+        let author = null;
+        if (employeeType === 'PHMC' && formData.phmcEmployee) {
+            author = formData.phmcEmployee;
+        } else if (employeeType === 'Coroner' && formData.coronerEmployee) {
+            author = formData.coronerEmployee;
+        }
+
+        // If no author is found from the form data, try the generic author
+        if (!author) {
+            author = getCurrentReportAuthor(formData);
+        }
 
         if (author) {
             setShowSavedReports(true);
@@ -1015,7 +1040,10 @@ export const useReportManagement = (
             setReportSelectionFilter(filterVersions);
             pendingReportAttachmentCallback.current = callback;
         } else {
-            showNotification('Please select an employee in the form before viewing saved reports.', 'warning');
+            const message = employeeType
+                ? `Please select a ${employeeType} employee in the form to view their reports.`
+                : 'Please select an employee in the form before viewing saved reports.';
+            showNotification(message, 'warning');
         }
     }, [getCurrentReportAuthor, formData, setPreselectedEmployeeType, setReportSelectionFilter, setShowSavedReports, showNotification, showSavedReports]);
 
@@ -1052,33 +1080,34 @@ export const useReportManagement = (
         }
     }, [bbCodeVersion, selectOptions, selectedAgencyGroup, showNotification]);
 
-    return {
-        saveReport,
-        savedReports,
-        setSavedReports,
-        showSavedReports,
-        setShowSavedReports,
-        isLoadingUserReports,
-        setIsLoadingUserReports,
-        selectedUserForSavedReports,
-        setSelectedUserForSavedReports,
-        preselectedEmployeeType,
-        setPreselectedEmployeeType,
-        loadUserSavedReports,
-        loadReportForUser,
-        handleReportSelectedForAttachment,
-        onAttachReportSummaryRequest,
-        onParseDecedentRequest,
-        deleteReportForUser,
-        showRareEasterEggDirectly,
-        toggleSavedReports,
-        showPositionInfoModal,
-        setShowPositionInfoModal,
-        currentPositionInfo,
-        setCurrentPositionInfo,
-        handleShowPositionInfo,
-        pendingReportAttachmentCallback,
-        reportSelectionFilter,
-        setReportSelectionFilter
+        return {
+            saveReport,
+            saveFormHandlerReport,
+            savedReports,
+            setSavedReports,
+            showSavedReports,
+            setShowSavedReports,
+            isLoadingUserReports,
+            setIsLoadingUserReports,
+            selectedUserForSavedReports,
+            setSelectedUserForSavedReports,
+            preselectedEmployeeType,
+            setPreselectedEmployeeType,
+            loadUserSavedReports,
+            loadReportForUser,
+            handleReportSelectedForAttachment,
+            onAttachReportSummaryRequest,
+            onParseDecedentRequest,
+            deleteReportForUser,
+            showRareEasterEggDirectly,
+            toggleSavedReports,
+            showPositionInfoModal,
+            setShowPositionInfoModal,
+            currentPositionInfo,
+            setCurrentPositionInfo,
+            handleShowPositionInfo,
+            pendingReportAttachmentCallback,
+            reportSelectionFilter,
+            setReportSelectionFilter
+        };
     };
-};

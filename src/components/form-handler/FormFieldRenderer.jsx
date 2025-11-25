@@ -1,10 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import ImageUploader from './ImageUploader'; // Assuming ImageUploader is in the same directory or adjust path
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTimeUtils';
 import { useAuth } from '../../contexts/AuthContext';
+import DecedentItemRenderer from './DecedentItemRenderer'; // Import the new component
 
-const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore }) => {
-  console.log(`Rendering field: ${field.name}, Value: ${formValues[field.name]}`);
+const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore, toggleSavedReports, showNotification }) => {
   // Conditional visibility logic
   if (field.showIf) {
     let shouldShow = false;
@@ -428,6 +428,117 @@ case "textarea":
               </div>
             )}
           </div>
+        </div>
+      );
+    }
+    case "attach_report_button":
+      const [attachedReportSummaries, setAttachedReportSummaries] = useState([]);
+
+      console.log("Rendering attach_report_button. toggleSavedReports prop:", toggleSavedReports);
+      return (
+        <div style={fieldWrapperStyle}>
+          <button
+            onClick={() => {
+              console.log("Attach report button clicked!");
+              const callback = (reportData) => {
+                if (reportData && reportData.bbCode) {
+                  const targetField = field.targetField;
+                  // Use functional update to ensure we always get the latest state
+                  handleChange(targetField, (prevFormValues) => {
+                    const currentContent = prevFormValues[targetField] || '';
+                    const newContent = currentContent ? `${currentContent}\n\n${reportData.bbCode}` : reportData.bbCode;
+                    console.log(`[FormFieldRenderer] Attached report "${reportData.originalKey}" to field "${targetField}". New content length: ${newContent.length}`);
+                    return newContent;
+                  });
+                  if(showNotification) showNotification('Report attached!', 'success');
+                  
+                  // Add the confirmation message to the array
+                  setAttachedReportSummaries(prev => [...prev, `Report "${reportData.originalKey}" attached to "${targetField}"!`]);
+                }
+              };
+              toggleSavedReports(null, field.employeeType, callback);
+            }}
+            style={{
+              padding: "0.8rem 1.5rem",
+              background: "#17a2b8",
+              color: "white",
+              border: "none",
+              borderRadius: 8,
+              fontSize: "1rem",
+              fontWeight: "600",
+              cursor: "pointer"
+            }}
+          >
+            {field.label}
+          </button>
+          {attachedReportSummaries.length > 0 && (
+            <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#34d399' }}>
+              {attachedReportSummaries.map((summary, index) => (
+                <div key={index}>{summary}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    case "decedent_list": {
+      const decedentItemSchema = useMemo(() => {
+        try {
+          return JSON.parse(field.decedentItemSchemaJson);
+        } catch (e) {
+          console.error("Error parsing decedentItemSchemaJson:", e);
+          return [];
+        }
+      }, [field.decedentItemSchemaJson]);
+
+      const decedentList = formValues[field.name] || [];
+
+      const addDecedent = useCallback(() => {
+        const newDecedent = decedentItemSchema.reduce((acc, subField) => {
+          if (subField.type === 'image') {
+            acc[subField.name] = []; // Initialize image fields as empty arrays
+          } else {
+            acc[subField.name] = '';
+          }
+          return acc;
+        }, {});
+        handleChange(field.name, [...decedentList, newDecedent]);
+      }, [field.name, decedentList, handleChange, decedentItemSchema]);
+
+      const handleDecedentItemChange = useCallback((indexToUpdate, subFieldName, subFieldValue) => {
+        const updatedList = decedentList.map((item, idx) => {
+          if (idx === indexToUpdate) {
+            return { ...item, [subFieldName]: subFieldValue };
+          }
+          return item;
+        });
+        handleChange(field.name, updatedList);
+      }, [field.name, decedentList, handleChange]);
+
+      const removeDecedent = useCallback((indexToRemove) => {
+        const updatedList = decedentList.filter((_, idx) => idx !== indexToRemove);
+        handleChange(field.name, updatedList);
+      }, [field.name, decedentList, handleChange]);
+
+      return (
+        <div style={{ margin: "0 8px 1.5rem", width: "calc(100% - 16px)", boxSizing: "border-box" }}>
+          <label style={labelStyle}>{field.label || "Decedent List"}</label>
+          {decedentList.map((item, index) => (
+            <DecedentItemRenderer
+              key={index} // Consider a more stable key if items can be reordered
+              itemValues={item}
+              itemSchema={decedentItemSchema}
+              onItemChange={(subFieldName, subFieldValue) => handleDecedentItemChange(index, subFieldName, subFieldValue)}
+              onRemove={() => removeDecedent(index)}
+              index={index}
+              finalSelectOptions={finalSelectOptions}
+              currentUtcTime={currentUtcTime}
+              agencyDataStore={agencyDataStore}
+              showNotification={showNotification}
+            />
+          ))}
+          <button onClick={addDecedent} style={{ background: "#10b981", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, cursor: "pointer", width: "100%" }}>
+            Add Decedent
+          </button>
         </div>
       );
     }
