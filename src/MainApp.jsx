@@ -1834,7 +1834,6 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                     <i className="fas fa-tachometer-alt"></i>
                     EMS Dashboard
                 </Button>
-                {displayUser?.username === 'ItsMitch' && (
                     <Button
                         type="button"
                         variant="primary"
@@ -1845,7 +1844,6 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                         <i className="fas fa-tachometer-alt"></i>
                         Form Handler
                     </Button>
-                )}
                <Button
                     type="button"
                     variant="danger"

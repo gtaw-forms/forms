@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     initiateGtaWorldLogin,
     handleOAuthCallback,
@@ -34,67 +34,43 @@ export const useGtaWorldAuth = () => {
 
     useEffect(() => {
         if (user && user.isFactionMember) {
-            if (activeCharacter) {
-                const stillExists = user.allFactionCharacters?.find(c => c.character.characterId === activeCharacter.characterId);
+            // If activeCharacter is not set, set it to user.faction as default
+            if (!activeCharacter) {
+                setActiveCharacter(user.faction);
+            } else {
+                // If activeCharacter is set, ensure it still exists in allFactionCharacters
+                // If not, reset to user.faction (this handles cases where a character might be removed from faction)
+                const stillExists = user.allFactionCharacters?.some(c => c.character.characterId === activeCharacter.characterId);
                 if (!stillExists) {
                     setActiveCharacter(user.faction);
                 }
-            } else {
-                setActiveCharacter(user.faction);
             }
         } else {
+            // If not authenticated or not a faction member, clear activeCharacter
             setActiveCharacter(null);
         }
-    }, [user, activeCharacter]);
+    }, [user]); // Only depend on 'user'. Removed 'activeCharacter' from dependencies.
 
-    const swapCharacter = useCallback((characterId) => {
+    const swapCharacter = useCallback((character) => { // Accepts full character object
         if (!user) {
             console.error("Cannot swap character, no user found.");
             return;
         }
 
-        const sources = [
-            user.allFactionCharacters,
-            user.character,
-            user.characters,
-        ].filter(Array.isArray);
-
-        let characterToSetActive = null;
-
-        for (const source of sources) {
-            // Try nested structure: [{ character: { characterId: ... } }]
-            const nestedFind = source.find(c => c?.character?.characterId === characterId);
-            if (nestedFind) {
-                characterToSetActive = nestedFind.character;
-                break;
-            }
-
-            // Try flat structure: [{ id: ... }]
-            const flatFind = source.find(c => c?.id === characterId);
-            if (flatFind) {
-                // This is a partial character. We need to find the full data if possible.
-                // The best source for full data is likely allFactionCharacters if it exists.
-                const fullData = user.allFactionCharacters?.find(c => c?.character?.characterId === flatFind.id)?.character;
-                if (fullData) {
-                    characterToSetActive = fullData;
-                } else {
-                    // Fallback to constructing from flat data. Rank/scriptRank will be missing.
-                    characterToSetActive = {
-                        characterId: flatFind.id,
-                        characterName: flatFind.name || `${flatFind.firstname || ''} ${flatFind.lastname || ''}`.trim(),
-                    };
-                }
-                break;
-            }
+        if (!character || character.id === undefined) {
+             console.error("Invalid character object passed to swapCharacter:", character);
+             return;
         }
 
-        if (characterToSetActive) {
-            setActiveCharacter(characterToSetActive);
-            console.log(`Swapped active character to: ${characterToSetActive.characterName}`);
-        } else {
-            console.error(`Character with ID ${characterId} not found for this user.`);
-        }
-    }, [user]);
+        const characterToSetActive = character; // Use the passed character directly
+
+        setActiveCharacter(characterToSetActive);
+        setUser(prevUser => ({
+            ...prevUser,
+            faction: characterToSetActive, // Update the user's faction with the new active character
+        }));
+        console.log(`Swapped active character to: ${characterToSetActive.characterName || characterToSetActive.firstname + ' ' + characterToSetActive.lastname}`);
+    }, [user, setUser]); // Changed dependency from `user` to `user, setUser`
 
     const updateFactionData = useCallback((updatedData) => {
         setActiveCharacter(updatedData);
@@ -104,7 +80,25 @@ export const useGtaWorldAuth = () => {
         }));
     }, []);
 
-    const swappableCharacters = user?.character || user?.characters || [];
+    const swappableCharacters = useMemo(() => {
+        if (user?.allFactionCharacters && user.allFactionCharacters.length > 0) {
+            return user.allFactionCharacters.map(fc => ({
+                id: fc.character.characterId,
+                characterName: fc.character.characterName,
+                firstname: fc.character.firstname,
+                lastname: fc.character.lastname,
+                scriptRank: fc.character.scriptRank,
+            }));
+        }
+        const fallbackChars = user?.character || user?.characters || [];
+        return fallbackChars.map(char => ({
+            id: char.id,
+            characterName: char.characterName || `${char.firstname || ''} ${char.lastname || ''}`.trim(),
+            firstname: char.firstname,
+            lastname: char.lastname,
+            scriptRank: char.scriptRank || 0,
+        }));
+    }, [user]);
     // --- END POC ---
 
     useEffect(() => {
