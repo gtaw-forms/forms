@@ -83,7 +83,7 @@ const AdminDashboard = ({
     const [diagnosticsResult, setDiagnosticsResult] = useState(null);
     const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
     const [isMigratingReports, setIsMigratingReports] = useState(false);
-    const [isMigratingLegacy, setIsMigratingLegacy] = useState(false);
+    const [isAppendingLegacyFlag, setIsAppendingLegacyFlag] = useState(false);
     const [isSyncingCounts, setIsSyncingCounts] = useState(false);
     const navigate = useNavigate();
     
@@ -1198,6 +1198,20 @@ const AdminDashboard = ({
                                                 <i className="fas fa-sync me-2"></i>
                                             )}
                                             Sync Report Counts
+                                        </Button>
+                                        <Button
+                                            variant="warning"
+                                            size="sm"
+                                            onClick={handleAppendLegacyFlag}
+                                            disabled={isAppendingLegacyFlag || !hasAdminAccess}
+                                            title={hasAdminAccess ? "Append 'legacy: true' to all existing reports." : "Requires admin access permission"}
+                                        >
+                                            {isAppendingLegacyFlag ? (
+                                                <Spinner as="span" animation="border" size="sm" />
+                                            ) : (
+                                                <i className="fas fa-tag me-2"></i>
+                                            )}
+                                            Append Legacy Flag
                                         </Button>
                                         <Button 
                                             variant="success" 
