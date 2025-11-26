@@ -1,5 +1,6 @@
 // src/components/form-handler/FormHandler.jsx
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import Select from 'react-select';
 import { database } from "../../firebase";
 import { ref, onValue } from "firebase/database";
 import Form from 'react-bootstrap/Form';
@@ -181,7 +182,8 @@ const finalSelectOptions = {
         () => {}, // setShowEasterEggModal placeholder
         () => {}, // setEasterEggType placeholder
         () => {}, // sendEasterEggNotification placeholder
-        modalCloseTimer
+        modalCloseTimer,
+        selectedForm
     );
 
 
@@ -373,7 +375,20 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
     finalSelectOptions,
     agencyDataStore // Pass agencyDataStore
   );
+useEffect(() => {
+  if (!selectedForm || !generatedTitle) return;
 
+  // List of fields that can have attached reports (add more if needed)
+  const reportFields = ['deathReport', 'additionalReports', 'attachedReports', 'coronerReport'];
+
+  const hasAttachedReports = reportFields.some(field => 
+    formValues[field] && formValues[field].includes('[altspoiler=') // or any marker
+  );
+
+  if (hasAttachedReports) {
+    generateBBCode(); // ← Re-run title generation!
+  }
+}, [formValues, selectedForm, generatedTitle, generateBBCode]);
     const {
         showEmsBingoModal, setShowEmsBingoModal,
     } = useModal();

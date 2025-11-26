@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import Select from 'react-select';
 import ImageUploader from './ImageUploader'; // Assuming ImageUploader is in the same directory or adjust path
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTimeUtils';
 import { useAuth } from '../../contexts/AuthContext';
@@ -164,6 +165,107 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
                 <option value="" disabled>{warningMessage || `No options found for "${field.optionsKey}"`}</option>
               )}
             </select>
+        </div>
+      );
+    case "multi_select":
+      let multiSelectOptionsToRender = [];
+      let multiSelectWarningMessage = null;
+
+      if (field.optionsKey === "agencies") {
+        if (agencyDataStore) {
+          multiSelectOptionsToRender = Object.values(agencyDataStore).map(agency => ({
+            value: agency.shortCode,
+            label: agency.fullName
+          }));
+        } else {
+          multiSelectWarningMessage = `agencyDataStore not available for agencies options.`;
+        }
+      } else {
+        const standardOptions = finalSelectOptions[field.optionsKey];
+        if (standardOptions) {
+          multiSelectOptionsToRender = Object.values(standardOptions).map(opt => ({
+            value: typeof opt === 'object' && opt !== null ? opt.value : opt,
+            label: typeof opt === 'object' && opt !== null ? opt.label : opt,
+          }));
+        } else {
+          multiSelectWarningMessage = `optionsKey "${field.optionsKey}" not found in finalSelectOptions.`;
+        }
+      }
+
+      if (multiSelectWarningMessage) {
+        console.warn(`FormFieldRenderer: ${multiSelectWarningMessage} For field "${field.name}".`);
+      }
+
+      const customStyles = {
+        control: (provided) => ({
+          ...provided,
+          width: "100%",
+          padding: "0.2rem", // Adjusted padding to better match inputStyle's visual height
+          background: "#1e293b",
+          border: "1px solid #334155",
+          color: "#e2e8f0",
+          borderRadius: 8,
+          fontSize: "1rem",
+          minHeight: "auto", // Ensure it's not too tall by default
+        }),
+        input: (provided) => ({
+          ...provided,
+          color: "#e2e8f0",
+        }),
+        singleValue: (provided) => ({
+          ...provided,
+          color: "#e2e8f0",
+        }),
+        placeholder: (provided) => ({
+          ...provided,
+          color: "#94a3b8",
+        }),
+        option: (provided, state) => ({
+          ...provided,
+          backgroundColor: state.isFocused ? "#334155" : "#1e293b",
+          color: "#e2e8f0",
+          "&:active": {
+            backgroundColor: "#475569",
+          },
+        }),
+        menu: (provided) => ({
+          ...provided,
+          backgroundColor: "#1e293b",
+          border: "1px solid #334155",
+        }),
+        multiValue: (provided) => ({
+          ...provided,
+          backgroundColor: "#334155",
+          borderRadius: 4,
+        }),
+        multiValueLabel: (provided) => ({
+          ...provided,
+          color: "#e2e8f0",
+        }),
+        multiValueRemove: (provided) => ({
+          ...provided,
+          color: "#cbd5e1",
+          "&:hover": {
+            backgroundColor: "#ef4444",
+            color: "white",
+          },
+        }),
+      };
+
+      return (
+        <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
+          <label style={labelStyle}>{field.label}</label>
+          <Select
+            isMulti
+            name={field.name}
+            options={multiSelectOptionsToRender}
+            classNamePrefix="react-select"
+            styles={customStyles}
+            value={multiSelectOptionsToRender.filter(option => (formValues[field.name] || []).includes(option.value))}
+            onChange={(selectedOptions) => handleChange(field.name, selectedOptions ? selectedOptions.map(option => option.value) : [])}
+            placeholder={field.placeholder || "Select multiple options..."}
+            isDisabled={multiSelectWarningMessage !== null}
+          />
         </div>
       );
 case "textarea":
