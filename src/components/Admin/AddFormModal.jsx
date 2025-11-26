@@ -24,6 +24,7 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
   const [fields, setFields] = useState([]);
   const [accessType, setAccessType] = useState("Public"); // New state for form access control (e.g., "Public", "PHMC", "Coroner", "Civilian")
   const [formDescription, setFormDescription] = useState("");
+  const [isHidden, setIsHidden] = useState(false); // NEW STATE
 
   const createDefaultNewField = () => ({
     type: "input",
@@ -71,6 +72,7 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
       setFields(safeFields);
       setAccessType(editingForm.accessType || "Public"); // Load accessType
       setFormDescription(editingForm.formDescription || ""); // Load form description
+      setIsHidden(!!editingForm.isHidden); // Load isHidden
       setNewField(createDefaultNewField()); // Reset newField to default for adding new fields
       setEditingFieldIndex(null); // Ensure no field is selected for editing initially
     } else {
@@ -87,6 +89,7 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
     setFields([]);
     setAccessType("Public"); // Reset accessType
     setFormDescription(""); // Reset form description
+    setIsHidden(false); // Reset isHidden
     setNewField(createDefaultNewField());
     setEditingFieldIndex(null); // Ensure editing mode is off when resetting the form
   };
@@ -454,7 +457,8 @@ const applyAdvancedCondition = () => {
         template: bbcodeTemplate,
         titleGeneratorCode, // Save the titleGeneratorCode
         fields,
-        accessType // Store accessType
+        accessType, // Store accessType
+        isHidden // Store isHidden
       };
   
       console.log("--- Saving Form to Firebase ---");
@@ -494,11 +498,22 @@ const applyAdvancedCondition = () => {
           <label style={{ display: "flex", alignItems: "center", color: "#e2e8f0", margin: "1rem 0" }}>
             <strong style={{ marginRight: "1rem" }}>Access Type:</strong>
             <select value={accessType} onChange={e => setAccessType(e.target.value)} style={{ ...inputStyle, margin: 0, width: 'auto', flexGrow: 1 }}>
-              <option value="Public">Public (Anyone)</option>
-              <option value="PHMC">PHMC Only</option>
-              <option value="Coroner">Coroner Only</option>
-              <option value="Civilian">Civilian</option>
+              <option value="Public">Public (No Restriction)</option>
+              <option value="PHMC">PHMC Staff Only</option>
+              <option value="Coroner">Coroner / DMEC Only</option>
+              <option value="Civilian">Civilian / Patient Files</option>
             </select>
+          </label>
+
+          {/* NEW: isHidden Checkbox */}
+          <label style={{ display: "flex", alignItems: "center", color: "#e2e8f0", marginBottom: "1rem" }}>
+            <input
+              type="checkbox"
+              checked={isHidden}
+              onChange={e => setIsHidden(e.target.checked)}
+              style={{ marginRight: "0.8rem", width: 'auto' }}
+            />
+            <strong style={{ flexGrow: 1 }}>Hide Form (Localhost Devs Only)</strong>
           </label>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

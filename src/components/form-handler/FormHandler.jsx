@@ -18,6 +18,7 @@ import { useNotification } from '../../contexts/NotificationContext';
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTimeUtils';
 import { useReportManagement } from '../useReportManagement';
 import SavedReportsModal from '../SavedReportsModal';
+import OnboardingModal from '../OnboardingModal'; // NEW IMPORT
 
 // Helper: escape HTML characters for safe insertion into DOM
 const escapeHtml = (unsafe) => {
@@ -67,9 +68,40 @@ const [currentUtcTime, setCurrentUtcTime] = useState(getUtcFormattedDateTime());
     setCollapsedCategories((prev) => ({ ...prev, [cat]: !prev[cat] }));
   };
 
+  const [showOnboardingModal, setShowOnboardingModal] = useState(false); // NEW STATE
+
   useEffect(() => {
     localStorage.setItem("formCollapsedCategories", JSON.stringify(collapsedCategories));
   }, [collapsedCategories]);
+
+  // Effect to check onboarding status
+  useEffect(() => {
+    const onboardingComplete = localStorage.getItem('onboardingComplete') === 'true';
+    if (!onboardingComplete) {
+      setShowOnboardingModal(true);
+    }
+  }, []); // Empty dependency array to run only once on mount
+
+  const handleOnboardingComplete = (preferences) => {
+    localStorage.setItem('onboardingComplete', 'true');
+    setShowOnboardingModal(false);
+    // Optionally, use preferences to set initial form, etc.
+    if (preferences.defaultForm) {
+      // Find the form object in forms based on preferences.defaultForm (firebaseKey)
+      const defaultFormObj = forms.find(form => form.firebaseKey === preferences.defaultForm);
+      if (defaultFormObj) {
+        setSelectedForm(defaultFormObj);
+        setFormValues({});
+      }
+    }
+    showNotification('Welcome! Your preferences have been saved.', 'success');
+  };
+
+  const handleOnboardingSkip = () => {
+    localStorage.setItem('onboardingComplete', 'true'); // Mark as complete even if skipped
+    setShowOnboardingModal(false);
+    showNotification('Onboarding skipped. You can always set preferences later.', 'info');
+  };
 
   // Then other hooks
   const { showNotification, removeNotification } = useNotification();
@@ -368,14 +400,30 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
 
   // Derive and group forms by category, and apply search/restriction filters
   const groupedForms = React.useMemo(() => {
-    const categoriesMap = {}; // { "Category A": [], "Category B": [] }
-    
+    const categoriesMap = {};
+
     forms.forEach(form => {
       const matchesSearchTerm = form.name && form.name.toLowerCase().includes(searchTerm.toLowerCase());
       const isRestricted = form.accessType === "PHMC" || form.accessType === "Coroner";
-      const passesRestriction = !showRestricted || (isRestricted ? (isAuthenticated && isPhmcMember) : true);
+      const hasRequiredAccess = isAuthenticated && isPhmcMember; // True for devMode 'phmc'/'coroner'
 
-      if (matchesSearchTerm && passesRestriction) {
+      let shouldDisplay = false;
+
+      // Filter out hidden forms unless in development mode
+      if (form.isHidden && !isDevelopment) {
+          shouldDisplay = false; // Hidden forms are only visible in development
+      } else if (isDevelopment && isRestricted && hasRequiredAccess) {
+          shouldDisplay = true; // Authorized dev roles ALWAYS see their restricted forms (even if hidden for production)
+      } else if (!isRestricted) {
+          // If not restricted, always display
+          shouldDisplay = true;
+      } else {
+          // If restricted for a non-dev-override or unauthorized dev-override
+          // Only display if user has required access AND showRestricted is true
+          shouldDisplay = hasRequiredAccess && showRestricted;
+      }
+
+      if (matchesSearchTerm && shouldDisplay) {
         const categoryName = form.category || "Uncategorized";
         if (!categoriesMap[categoryName]) {
           categoriesMap[categoryName] = [];
@@ -398,7 +446,7 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
     });
 
     return sortedGroupedForms;
-  }, [forms, searchTerm, showRestricted, isAuthenticated, isPhmcMember]);
+  }, [forms, searchTerm, showRestricted, isAuthenticated, isPhmcMember, isDevelopment]);
 
   // Effect to update currentUtcTime every second
   useEffect(() => {
@@ -492,13 +540,21 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
     }
   }, [isAuthenticated, tempPatientName, factionRank, phmcListData, coronerListData, selectedForm, setFormValues, isDevelopment, patientType, findFieldNameCaseInsensitive]);
 
-    const switchCivilianName = () => {
+    const switchCivilianName = useCallback(() => {
     setCurrentCivilianIndex((prevIndex) => (prevIndex + 1) % civilianNames.length);
-  };
+  }, [civilianNames]);
 
-  const switchPhmcName = () => {
+  const cyclePhmcName = useCallback(() => {
     setCurrentPhmcIndex((prevIndex) => (prevIndex + 1) % phmcNames.length);
-  };
+  }, [phmcNames]);
+
+  const PATIENT_TYPES_CYCLE = ['gtaw', 'civilian', 'phmc', 'coroner'];
+
+  const cyclePatientType = useCallback(() => {
+    const currentIndex = PATIENT_TYPES_CYCLE.indexOf(patientType);
+    const nextIndex = (currentIndex + 1) % PATIENT_TYPES_CYCLE.length;
+    setPatientType(PATIENT_TYPES_CYCLE[nextIndex]);
+  }, [patientType]);
 
   const handleChange = useCallback((fieldName, valueOrUpdater) => {
     setFormValues(prevValues => {
@@ -527,6 +583,13 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
 
   return (
     <div className={styles.container}>
+      {/* NEW: OnboardingModal */}
+      <OnboardingModal
+        show={showOnboardingModal}
+        onComplete={handleOnboardingComplete}
+        onSkip={handleOnboardingSkip}
+        showNotification={showNotification}
+      />
       <EmsBingoModal
         show={showEmsBingoModal}
         onHide={() => setShowEmsBingoModal(false)}
@@ -570,13 +633,16 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
             onChange={e => setSearchTerm(e.target.value)}
             className={styles.searchInput}
           />
-          <button
-            onClick={() => setShowRestricted(prev => !prev)}
-            className={`${formStyles.filterButton} ${showRestricted ? formStyles.active : ''}`}
-            title={showRestricted ? "Hide forms requiring faction membership" : "Show forms requiring faction membership"}
-          >
-            {showRestricted ? 'Showing All Forms' : 'Show Restricted'}
-          </button>
+
+          {isDevelopment && (
+            <button
+              onClick={cyclePatientType}
+              className={`${formStyles.filterButton} ${formStyles.devModeButton}`} // Add a new style for dev mode button
+              title={`Current Dev Mode: ${patientType}`}
+            >
+              Dev Mode: {patientType.charAt(0).toUpperCase() + patientType.slice(1)}
+            </button>
+          )}
 
 
                <div className={styles.formList}>
@@ -623,6 +689,20 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
         </div>
         {/* CENTER: Selected Form */}
         <div className={styles.mainContent}>
+          {!isAuthenticated && (
+            <div style={{
+              backgroundColor: '#f8d7da', // Light red background
+              color: '#721c24', // Dark red text
+              border: '1px solid #f5c6cb', // Border color
+              borderRadius: '0.25rem',
+              padding: '1rem',
+              marginBottom: '1rem',
+              textAlign: 'center',
+              fontWeight: 'bold'
+            }}>
+              Please sign in with OAuth to Generate BBCode and Save Reports.
+            </div>
+          )}
           {!selectedForm ? (
             <div style={{ textAlign: "center", marginTop: "8rem", color: "#64748b" }}>
               <h3>Select a form from the left to begin</h3>
@@ -690,12 +770,12 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
                                   Selected: <span dangerouslySetInnerHTML={{ __html: escapeHtml(tempPatientName) }} />
                                 </span>
                                 {patientType === 'civilian' && civilianNames.length > 1 && (
-                                  <Button variant="outline-light" size="sm" onClick={switchCivilianName} title="Switch Civilian Name">
+                                  <Button variant="outline-light" size="sm" onClick={() => switchCivilianName()} title="Switch Civilian Name">
                                     <i className="fas fa-sync-alt"></i>
                                   </Button>
                                 )}
                                 {patientType === 'phmc' && phmcNames.length > 1 && (
-                                  <Button variant="outline-light" size="sm" onClick={switchPhmcName} title="Switch PHMC Name">
+                                  <Button variant="outline-light" size="sm" onClick={() => switchPhmcName()} title="Switch PHMC Name">
                                     <i className="fas fa-sync-alt"></i>
                                   </Button>
                                 )}
