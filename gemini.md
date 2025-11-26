@@ -1,58 +1,94 @@
+# CRITICAL PROJECT GUIDELINES
+
+## Refactoring Plan Adherence
+Always prioritize and strictly adhere to the instructions and phases outlined in the `@REFACTOR_PLAN.md` file. All tasks related to form management migration must be executed according to this plan.
+
+## BBCodeVersion Deprecation
+**CRITICAL WARNING: The `bbCodeVersion` concept is deprecated and considered legacy. IT MUST BE AVOIDED AT ALL COSTS IN NEW CODE OR MODIFICATIONS.** Prioritize using `selectedForm.name` or other dynamic form properties from Firebase instead. Do NOT introduce or rely on `bbCodeVersion` under any circumstances.
+
+## `cb:variable` Formatting in `src/components/Admin/AddFormModal.jsx`
+When generating or modifying BBCode within `src/components/Admin/AddFormModal.jsx` that uses `{{cb:variable}}`, always ensure the output format adheres to `[cb:variable]TEXT` with no space between `[cb:variable]` and the subsequent text. **NEVER** use `[cb:variable] Text` (with a space).
+
+If the Agent (Gemini) fails to replace blocks or takes significant time (over 5 minutes of thinking), stop the operation and inform the user of what block needs to be replaced.
+
 # GRIP (Grep-on-Replace-Interrupt Protocol)
 
+
+
 **Rule:** This protocol is a critical safeguard against common `replace` tool failures,
+
 such as those caused by file state desynchronization or ambiguous matches,
+
 as documented in gemini-cli issue [https://github.com/google-gemini/gemini-cli/issues/1028](https://github.com/google-gemini/gemini-cli/issues/1028).
 
-**Goal:** To perform code modifications robustly. When a `replace` command fails, you MUST NOT give up or enter a blind retry loop. Instead, you MUST activate this diagnostic protocol to "get a GRIP on the situation" by investigating the file's current state.
 
-## The Protocol
 
-1.  **Attempt Standard `replace`**: Always begin with a standard `replace` tool call for the requested change.
+**Goal:** To perform code modifications robustly with greater pre-emptive checks and clearer fallback paths, while providing the user with more control.
 
-    ```python
-    print(default_api.replace(file_path='path/to/file.py', old_string='old_string', new_string='new_string'))
-    ```
 
-2.  **On `replace` Failure -> Activate GRIP**: If the `replace` tool returns an error (e.g., "could not find the string to replace", "0 occurrences found", or any other failure), you MUST immediately initiate the GRIP protocol.
 
-    **Step 2a:** Your first diagnostic action is to use `Select-String` (the PowerShell equivalent of `grep`) to check if the `old_string` actually exists in the current version of the file.
+## The Revised Protocol
 
-    ```python
-    # THOUGHT: The 'replace' command failed. Activating GRIP.
-    # First, I will verify if the old_string is present in the file at all.
-    print(default_api.run_shell_command(command='Select-String -Path "path/to/file.py" -Pattern "old_string"'))
-    ```
 
-3.  **Analyze `Select-String` Results and Take Decisive Action**: Based on the output of the `Select-String` command, choose one of the following two paths. Do not deviate.
 
-### Scenario A: `Select-String` finds the `old_string`
+1.  **Pre-check for `replace` viability**:
 
-*   **Diagnosis:** The string does exist, but the `replace` tool failed for a different reason (e.g., the string is not unique, it contains special characters, etc.).
+    *   Before calling `replace`, use `Select-String` to count occurrences of `old_string`.
 
-*   **Your Action:**
+    *   **If `count == 0`**: Immediately assume `old_string` is absent. Proceed to **Scenario C**.
 
-    1.  Acknowledge that the string was found but `replace` still failed.
-    2.  Propose a more robust alternative. The primary alternative is to use a PowerShell command within `run_shell_command` to perform the replacement. Explain why this is a better choice for this situation.
-    3.  Execute the PowerShell command. **Do not re-attempt the failing `replace` command.**
+    *   **If `count > 1`**: Inform me (the agent) that `old_string` is ambiguous. Proceed to **Scenario A (Direct PowerShell)**.
 
-**Example thought process for Scenario A:**
+    *   **If `count == 1`**: Proceed to **Attempt Standard `replace`**.
 
-> My `replace` command failed, but my `Select-String` verification confirms 'old_string' is in the file. This suggests the `replace` tool is struggling with this specific pattern. As per the GRIP protocol, I will now use a more robust PowerShell command to ensure the change is applied correctly.
 
-### Scenario B: `Select-String` does NOT find the `old_string`
 
-*   **Diagnosis:** The string to be replaced is not in the file. This strongly implies the change has already been applied in a previous step, and your internal state is out of sync with the actual file.
+2.  **Attempt Standard `replace`**: Call the `replace` tool.
 
-*   **Your Action:**
+    *   **If `replace` succeeds**: Done.
 
-    1.  State clearly that the `old_string` was not found.
-    2.  Form a hypothesis: "It is likely the change has already been applied."
-    3.  Verify your hypothesis by using `Select-String` to search for the `new_string`.
-    4.  If the `new_string` is found, confirm that the task is already complete. Conclude your work on this file.
-    5.  If neither string is found, report this anomaly and ask for clarification.
-    6.  **Under no circumstances should you retry the original `replace` command.** This prevents infinite loops.
+    *   **If `replace` fails (but `count` was 1)**: This is unexpected. Re-verify `old_string` presence with `Select-String`.
 
-**Example thought process for Scenario B:**
+        *   **If `Select-String` still finds 1 occurrence**: It's a `replace` tool internal issue. Proceed to **Scenario A (Direct PowerShell)**.
 
-> My `replace` command failed. My `Select-String` verification found no occurrences of 'old_string'. This suggests the file may have been already modified. I will now use `Select-String` for the 'new_string' to confirm. ... The `Select-String` for 'new_string' was successful. This confirms the requested change is already present in the file. No further action is needed.
+        *   **If `Select-String` now finds 0 occurrences**: The file state changed unexpectedly. Proceed to **Scenario C**.
+
+        *   **If `Select-String` now finds >1 occurrences**: The file state changed unexpectedly. Proceed to **Scenario A (Direct PowerShell)**.
+
+
+
+3.  **Scenario A: Direct PowerShell Replacement (for ambiguous or `replace` tool issues)**
+
+    *   **Diagnosis**: The `old_string` exists (possibly ambiguously), but the `replace` tool is unsuitable or failed.
+
+    *   **My Action**:
+
+        1.  Acknowledge the issue (ambiguity or `replace` failure).
+
+        2.  Use `Select-String` with `context` (e.g., 5 lines before/after) to fetch a detailed surrounding snippet of the `old_string`. Present this snippet to me.
+
+        3.  Formulate a precise PowerShell command using `Get-Content | ForEach-Object { $_ -replace 'old_pattern', 'new_pattern' } | Set-Content` or equivalent.
+
+        4.  **PROPOSE THIS POWERSHELL COMMAND TO THE USER FOR CONFIRMATION**. Explain why it's necessary and its potential impact.
+
+        5.  **Execute the PowerShell command ONLY IF CONFIRMED BY THE USER.**
+
+        6.  After execution, re-read the file and verify `new_string` presence.
+
+
+
+4.  **Scenario C: `old_string` Not Found (Pre-check or Post-failure)**
+
+    *   **Diagnosis**: The `old_string` was not found in initial pre-check, or it disappeared after a `replace` attempt. This implies the change might be applied already or the file state is severely out of sync.
+
+    *   **My Action**:
+
+        1.  State clearly that `old_string` was not found.
+
+        2.  **Hypothesis**: "It is likely the change has already been applied, possibly by a previous step or manual edit."
+
+        3.  Verify this hypothesis by using `Select-String` to search for `new_string`.
+
+        4.  **If `new_string` is found**: Conclude the task is complete. No further action needed for this specific `replace`.
+
+        5.  **If `new_string` is NOT found**: Report this anomaly: "Neither the original string nor the intended new string could be found. This indicates an unexpected state in the file." Ask for user clarification or provide raw file content for inspection.
