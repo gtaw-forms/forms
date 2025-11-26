@@ -374,6 +374,19 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
   setNewField(createDefaultNewField());
   setEditingFieldIndex(null);
   return;
+    } else if (fieldToSave.type === "multi_select") { // NEW MULTI_SELECT BLOCK
+      if (!fieldToSave.label || !fieldToSave.name || !fieldToSave.optionsKey) {
+        alert("Label, Name, and Options Key are required for Dropdown (Multiple Selection)!");
+        return;
+      }
+      setFields(prevFields => {
+        if (editingFieldIndex !== null) {
+          const updatedFields = [...prevFields];
+          updatedFields[editingFieldIndex] = { ...fieldToSave, id: fieldToSave.id };
+          return updatedFields;
+        }
+        return [...prevFields, { ...fieldToSave, id: fieldToSave.id }];
+      });
     } else {
       if (!fieldToSave.label || !fieldToSave.name) {
         alert("Label and Name are required!");
@@ -520,8 +533,40 @@ const applyAdvancedCondition = () => {
             <h4 style={{ color: "#60a5fa", marginTop: "2rem" }}>BBCode Template</h4>
             <button
               onClick={() => {
-                let newTemplate = bbcodeTemplate.replace(/\$\{(.*?)(?:\|\|.*?)?\}/g, (match, p1) => `{{${p1.trim()}}}`);
+                let newTemplate = bbcodeTemplate;
+
+                // 1. NEW: Convert specific [cb{{formData.variable?.includes(...) ? ... : ''}}] patterns to {{cb:variable}}
+                newTemplate = newTemplate.replace(
+                  /\[cb\{\{\s*formData\.([a-zA-Z0-9_]+)\s*\?\.\s*includes\s*\(['"].*?['"]\)\s*\?\s*['"].*?['"]\s*:\s*['"].*?['"]\s*\}\}\]/g,
+                  (match, variableName) => `{{cb:${variableName}}}`
+                );
+
+                // 2. Convert specific [cb${formData.variable === 'value' ? 'c' : ''}] patterns to {{cb:variable}}
+                newTemplate = newTemplate.replace(
+                  /\[cb\$\{\s*formData\.([a-zA-Z0-9_]+)\s*===\s*['"].*?['"]\s*\?\s*['"].*?['"]\s*:\s*['"].*?['"]\s*\}\]/g,
+                  (match, variableName) => `{{cb:${variableName}}}`
+                );
+
+                // 3. NEW: Convert {{cb:variable}} to [cb:variable] as per new guideline
+                newTemplate = newTemplate.replace(
+                    /\{\{cb:([a-zA-Z0-9_]+)\}\}/g,
+                    (match, variableName) => `[cb:${variableName}]`
+                );
+
+                // 4. NEW: Remove space between [cb:variable] and subsequent text
+                newTemplate = newTemplate.replace(/(\[cb:[a-zA-Z0-9_]+\])\s+([^\]\[]*)/g, '$1$2');
+
+                // 5. Convert specific ternary patterns to [conditional] format
+                // Example: ${formData.admission === 'No' ? 'c' : ''} => [conditional field="admission" value="No"]c[/conditional]
+                newTemplate = newTemplate.replace(
+                  /\$\{\s*formData\.([a-zA-Z0-9_]+)\s*===\s*['"](.*?)['"]\s*\?\s*['"](.*?)['"]\s*:\s*['"]['"]\s*\}/g,
+                  (match, variable, value, truePart) => `[conditional field="${variable}" value="${value}"]${truePart}[/conditional]`
+                );
+
+                // 4. Convert general ${variable} or {{variable}} placeholders
+                newTemplate = newTemplate.replace(/\$\{(.*?)(?:\|\|.*?)?\}/g, (match, p1) => `{{${p1.trim()}}}`);
                 newTemplate = newTemplate.replace(/\{\{(.*?)(?:\|\|.*?)?\}\}/g, (match, p1) => `{{${p1.trim()}}}`);
+
                 setBbcodeTemplate(newTemplate);
               }}
               style={{ background: "#8b5cf6", color: "white", border: "none", padding: "0.5rem 1rem", borderRadius: 8, fontWeight: "600", cursor: 'pointer' }}
@@ -558,6 +603,7 @@ const applyAdvancedCondition = () => {
               <option value="input">Text Input</option>
               <option value="textarea">Textarea</option>
               <option value="select">Dropdown</option>
+              <option value="multi_select">Dropdown (Multiple Selection)</option> // NEW OPTION
               <option value="checkbox">Checkbox</option>
               <option value="radio">Radio Button</option>
               <option value="image">Image Upload</option>
@@ -571,15 +617,14 @@ const applyAdvancedCondition = () => {
                             <option value="decedent_list">Decedent List</option>
                           </select>
               
-                          {newField.type !== "hr" && newField.type !== "small_header" && newField.type !== "decedent_list" && (
-                            <input 
-                              placeholder={newField.type === "small_header" ? "Header Text" : "Label"} 
-                              value={newField.label} 
-                              onChange={e => setNewField({ ...newField, label: e.target.value })} 
-                              style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
-                            />
-                          )}
-                          
+                                                    {newField.type !== "hr" && newField.type !== "decedent_list" && (
+                                                      <input
+                                                        placeholder={newField.type === "small_header" ? "Header Text" : "Label"}
+                                                        value={newField.label}
+                                                        onChange={e => setNewField({ ...newField, label: e.target.value })}
+                                                        style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}
+                                                      />
+                                                    )}                          
                           {newField.type !== "hr" && newField.type !== "small_header" && newField.type !== "attach_report_button" && newField.type !== "decedent_list" && (
                             <input 
                               placeholder="Name {{}}" 
@@ -652,7 +697,7 @@ const applyAdvancedCondition = () => {
                                         />
                                       )}
                                       
-                                      {newField.type === "select" && (
+                                      {(newField.type === "select" || newField.type === "multi_select") && (
                                         <input
                                           placeholder="Options Key (e.g. dnrTypes)"
                                           value={newField.optionsKey}
