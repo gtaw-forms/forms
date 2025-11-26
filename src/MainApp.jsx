@@ -83,7 +83,6 @@ function MainApp({
         showAgencySelector, setShowAgencySelector,
         hideAgencySelector, setHideAgencySelector,
         showEmployeeModal, setShowEmployeeModal,
-        showEmsAmaModal, setShowEmsAmaModal,
         showBusinessCard, setShowBusinessCard,
         showAgencyGroupSelectorModal, setShowAgencyGroupSelectorModal,
         showCctvRequestModal, setShowCctvRequestModal,
@@ -1519,14 +1518,13 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                      <Dropdown.Item onClick={() => {setShowFeatureRequestModal(true); setShowToolsDropdown(false);}}>
                         <i className="fas fa-bug"></i> Report Bug/Feature
                     </Dropdown.Item>
-                                        {isPhmcMember && (
-                                            <Dropdown.Item onClick={() => {toggleSavedReports(); setShowToolsDropdown(false);}}>
-                                                <i className="fas fa-save"></i> Saved Reports
-                                            </Dropdown.Item>
-                                        )}
-                                        <Dropdown.Item onClick={() => {setShowCctvRequestModal(true); setShowToolsDropdown(false);}}>
-                                            <i className="fas fa-video"></i> LEO Access
-                                        </Dropdown.Item>                    <Dropdown.Item onClick={() => {toggleSeasonalEffects(); setShowToolsDropdown(false);}}>
+                    <Dropdown.Item onClick={() => {toggleSavedReports(); setShowToolsDropdown(false);}}>
+                        <i className="fas fa-save"></i> Saved Reports
+                    </Dropdown.Item>
+                    <Dropdown.Item onClick={() => {setShowCctvRequestModal(true); setShowToolsDropdown(false);}}>
+                        <i className="fas fa-video"></i> LEO Access
+                    </Dropdown.Item>
+                    <Dropdown.Item onClick={() => {toggleSeasonalEffects(); setShowToolsDropdown(false);}}>
                         <i className={`fas ${seasonalEffectsEnabled ? 'fa-snowflake' : 'fa-sun'}`}></i> 
                         {seasonalEffectsEnabled ? 'Disable' : 'Enable'} Seasonal Effects
                     </Dropdown.Item>
@@ -1872,6 +1870,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
     coronerRecruitmentDetails={selectOptions.coronerPositionDetailsData || {}}
     // Pass other recruitment details objects as props when you add them
 />
+
 
 <EmployeeModal
     show={showEmployeeModal}
