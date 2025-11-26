@@ -14,6 +14,7 @@ import EmsBingoModal from '../EmsBingoModal';
 import useBbcodeGenerator from '../../hooks/useBbcodeGenerator';
 import FormFieldRenderer from './FormFieldRenderer';
 import FormHandlerNavButtons from './FormHandlerNavButtons';
+import CharacterSelectionModal from '../CharacterSelectionModal';
 import { uploadImageToImgBB, uploadDataUrlToImgBB } from '../../utils/imageUploadUtils'; 
 import { useNotification } from '../../contexts/NotificationContext';
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTimeUtils';
@@ -85,6 +86,8 @@ const [currentUtcTime, setCurrentUtcTime] = useState(getUtcFormattedDateTime());
   };
 
   const [showOnboardingModal, setShowOnboardingModal] = useState(false); // NEW STATE
+  const [showCharacterSelection, setShowCharacterSelection] = useState(false); // NEW STATE
+  const [selectedPhmcCharacter, setSelectedPhmcCharacter] = useState(null); // NEW STATE
 
   useEffect(() => {
     localStorage.setItem("formCollapsedCategories", JSON.stringify(collapsedCategories));
@@ -129,7 +132,9 @@ let {
   isPhmcMember,
   characterName,
   factionRank,
-  selectOptions: authSelectOptions
+  selectOptions: authSelectOptions,
+  swappableCharacters, // CHANGED from characterArray
+  swapCharacter // ADD THIS
 } = useGtaWorldAuth();
 let { 
   agencyDataStore, 
@@ -140,9 +145,53 @@ let {
   const isDevelopment = process.env.NODE_ENV === 'development';
   let isCoronerForDev = null;
 
+  // --- DEV OVERRIDE START ---
+  let effectiveCharacterName = characterName;
+  let effectiveIsPhmcMember = isPhmcMember;
+  let effectiveFactionRank = factionRank;
+  let effectiveIsAuthenticated = isAuthenticated;
+  let effectiveUser = user;
+  let effectiveIsCoronerForDev = isCoronerForDev; // Initialize with value from outside if (isDevelopment)
+
+  if (isDevelopment) {
+    const devMode = patientType; // Use the selected patientType for devMode
+
+    switch (devMode) {
+      case "civilian":
+        effectiveIsAuthenticated = true;
+        effectiveIsPhmcMember = false;
+        effectiveCharacterName = civilianNames[currentCivilianIndex] || "John Doe (Dev Civilian)";
+        effectiveFactionRank = 0;
+        effectiveUser = { username: "civ_dev", id: 12345, ...user };
+        effectiveIsCoronerForDev = false;
+        break;
+      case "phmc":
+        effectiveIsAuthenticated = true;
+        effectiveIsPhmcMember = true;
+        effectiveCharacterName = phmcNames[currentPhmcIndex] || "Jane Smith (Dev PHMC)";
+        effectiveFactionRank = 5;
+        effectiveUser = { username: "phmc_dev", id: 54321, ...user };
+        effectiveIsCoronerForDev = false;
+        break;
+      case "coroner":
+        effectiveIsAuthenticated = true;
+        effectiveIsPhmcMember = true;
+        effectiveCharacterName = "Dr. Crime (Dev Coroner)";
+        effectiveFactionRank = 10;
+        effectiveUser = { username: "coroner_dev", id: 666, ...user };
+        effectiveIsCoronerForDev = true;
+        break;
+      case "gtaw": // Fallback for GTAW Character
+      default:
+        // No override, use actual GTAW auth data
+        break;
+    }
+  }
+  // --- DEV OVERRIDE END ---
+
     const getCurrentReportAuthor = useCallback(() => {
-        return characterName;
-    }, [characterName]);
+        return effectiveCharacterName;
+    }, [effectiveCharacterName]);
 
 const finalSelectOptions = { 
   ...(dataContextSelectOptions || {}), 
@@ -343,56 +392,16 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
     } else if (patientType === 'phmc' && phmcNames.length > 0) {
       nameToSet = phmcNames[currentPhmcIndex];
     } else if (patientType === 'gtaw' || patientType === 'coroner') {
-      nameToSet = characterName || '';
+      nameToSet = effectiveCharacterName || ''; // Changed to effectiveCharacterName
     }
     setTempPatientName(nameToSet);
-  }, [patientType, currentCivilianIndex, currentPhmcIndex, civilianNames, phmcNames, characterName]);
-
-
-
-
-
-  if (isDevelopment) {
-    const devMode = patientType; // Use the selected patientType for devMode
-
-    switch (devMode) {
-      case "civilian":
-        isAuthenticated = true;
-        isPhmcMember = false;
-        characterName = civilianNames[currentCivilianIndex] || "John Doe (Dev Civilian)";
-        factionRank = 0;
-        user = { username: "civ_dev", id: 12345, ...user };
-        isCoronerForDev = false;
-        break;
-      case "phmc":
-        isAuthenticated = true;
-        isPhmcMember = true;
-        characterName = phmcNames[currentPhmcIndex] || "Jane Smith (Dev PHMC)";
-        factionRank = 5;
-        user = { username: "phmc_dev", id: 54321, ...user };
-        isCoronerForDev = false;
-        break;
-      case "coroner":
-        isAuthenticated = true;
-        isPhmcMember = true;
-        characterName = "Dr. Crime (Dev Coroner)";
-        factionRank = 10;
-        user = { username: "coroner_dev", id: 666, ...user };
-        isCoronerForDev = true;
-        break;
-      case "gtaw": // Fallback for GTAW Character
-      default:
-        // No override, use actual GTAW auth data
-        break;
-    }
-  }
-  // --- DEV OVERRIDE END ---
+  }, [patientType, currentCivilianIndex, currentPhmcIndex, civilianNames, phmcNames, effectiveCharacterName]); // Changed dependency
 
   const isCoroner = React.useMemo(() => {
-    if (isCoronerForDev !== null) return isCoronerForDev; // Dev override takes precedence
-    if (!isAuthenticated || !tempPatientName || coronerListData.length === 0) return false; // Use tempPatientName
-    return coronerListData.some(coroner => coroner.name?.toLowerCase() === tempPatientName.toLowerCase()); // Use tempPatientName
-  }, [isAuthenticated, tempPatientName, coronerListData, isCoronerForDev]);
+    if (effectiveIsCoronerForDev !== null) return effectiveIsCoronerForDev; // Changed
+    if (!effectiveIsAuthenticated || !tempPatientName || coronerListData.length === 0) return false; // Changed
+    return coronerListData.some(coroner => coroner.name?.toLowerCase() === tempPatientName.toLowerCase());
+  }, [effectiveIsAuthenticated, tempPatientName, coronerListData, effectiveIsCoronerForDev]); // Changed dependencies
 
   const isPatientForm = useMemo(() => {
     return selectedForm?.accessType === 'Civilian' ||
@@ -401,8 +410,14 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
   }, [selectedForm]);
 
   const userHasMultiplePhmcCharacters = useMemo(() => {
-    return user?.characterArray?.length > 1;
-  }, [user]);
+    return swappableCharacters?.length > 1; // Use the destructured swappableCharacters
+  }, [swappableCharacters]); // Depend on swappableCharacters
+
+  // DEBUG LOG for swappableCharacters and userHasMultiplePhmcCharacters
+  useEffect(() => {
+    console.log("[FormHandler Debug] swappableCharacters:", swappableCharacters);
+    console.log("[FormHandler Debug] userHasMultiplePhmcCharacters:", userHasMultiplePhmcCharacters);
+  }, [swappableCharacters, userHasMultiplePhmcCharacters]);
 
   const { generatedBBCode, generatedTitle, showBBCode, setShowBBCode, generateBBCode } = useBbcodeGenerator(
     selectedForm,
@@ -456,7 +471,7 @@ useEffect(() => {
     forms.forEach(form => {
       const matchesSearchTerm = form.name && form.name.toLowerCase().includes(searchTerm.toLowerCase());
       const isRestricted = form.accessType === "PHMC" || form.accessType === "Coroner";
-      const hasRequiredAccess = isAuthenticated && (isPhmcMember || (user && user.faction));
+      const hasRequiredAccess = effectiveIsAuthenticated && (effectiveIsPhmcMember || (effectiveUser && effectiveUser.faction)); // Modified here
 
       let shouldDisplay = false;
       let reason = "Unknown reason"; // Default reason
@@ -513,7 +528,7 @@ useEffect(() => {
     });
 
     return [sortedGroupedForms, tempNotDisplayedFormsDetails]; // MODIFIED: Return both
-  }, [forms, searchTerm, isAuthenticated, isPhmcMember, isDevelopment, user]); // Removed showRestricted from dependencies
+  }, [forms, searchTerm, effectiveIsAuthenticated, effectiveIsPhmcMember, isDevelopment, effectiveUser]); // Dependencies modified here
 
   // DEBUG LOGGING START
   useEffect(() => {
@@ -522,9 +537,9 @@ useEffect(() => {
     console.log(
         "[FormHandler Debug] Auth Status:",
         {
-            isAuthenticated,
-            isPhmcMember,
-            userFaction: user?.faction,
+            isAuthenticated: effectiveIsAuthenticated,
+            isPhmcMember: effectiveIsPhmcMember,
+            userFaction: effectiveUser?.faction,
             employeeName: tempPatientName
         },
         "| Viewable Forms:",
@@ -535,7 +550,7 @@ useEffect(() => {
             notDisplayedForms: notDisplayedFormsDetails // NEW: Include reasons for forms not displayed
         }
     );
-  }, [groupedForms, notDisplayedFormsDetails, isAuthenticated, isPhmcMember, user, tempPatientName]);
+  }, [groupedForms, notDisplayedFormsDetails, effectiveIsAuthenticated, effectiveIsPhmcMember, effectiveUser, tempPatientName]);
   // DEBUG LOGGING END
 
   // DEBUG LOGGING START
@@ -545,9 +560,9 @@ useEffect(() => {
     console.log(
         "[FormHandler Debug] Auth Status:",
         {
-            isAuthenticated,
-            isPhmcMember,
-            userFaction: user?.faction,
+            isAuthenticated: effectiveIsAuthenticated,
+            isPhmcMember: effectiveIsPhmcMember,
+            userFaction: effectiveUser?.faction,
             employeeName: tempPatientName
         },
         "| Viewable Forms:",
@@ -557,7 +572,7 @@ useEffect(() => {
             formsByCategory: groupedForms
         }
     );
-  }, [groupedForms, isAuthenticated, isPhmcMember, user, tempPatientName]);
+  }, [groupedForms, effectiveIsAuthenticated, effectiveIsPhmcMember, effectiveUser, tempPatientName]);
   // DEBUG LOGGING END
 
   // Effect to update currentUtcTime every second
@@ -679,6 +694,16 @@ useEffect(() => {
       };
     });
   }, []);
+
+  const handleCharacterSelect = useCallback((character) => {
+    const characterDisplayName = character.characterName || `${character.firstname || ''} ${character.lastname || ''}`.trim();
+    setTempPatientName(characterDisplayName);
+    // setSelectedPhmcCharacter(character); // No longer needed, as swapCharacter will handle the active character
+    swapCharacter(character); // Update the active character in the auth hook
+    setShowCharacterSelection(false);
+    showNotification(`Selected character: ${characterDisplayName}`, 'check-circle', 3000);
+  }, [showNotification, swapCharacter]);
+
   const handleDiagramUpload = useCallback(async (dataUrl) => {
     try {
         const url = await uploadDataUrlToImgBB(dataUrl);
@@ -709,6 +734,15 @@ useEffect(() => {
       }
     }
   }, [generatedBBCode, selectedForm, formValues, generatedTitle, saveNewReport, showNotification]);
+
+  // NEW: handleClearForm function
+  const handleClearForm = useCallback(() => {
+    setFormValues({});
+    if (selectedForm?.firebaseKey) {
+        localStorage.removeItem(`form_progression_${selectedForm.firebaseKey}`);
+    }
+    showNotification('Form cleared!', 'info');
+  }, [setFormValues, selectedForm?.firebaseKey, showNotification]);
 
   // Determine current seasonal effect
   const { effect } = seasonalEvents({});
@@ -824,7 +858,7 @@ useEffect(() => {
         </div>
         {/* CENTER: Selected Form */}
         <div className={styles.mainContent}>
-          {!isAuthenticated && (
+          {!effectiveIsAuthenticated && (
             <div style={{
               backgroundColor: '#f8d7da', // Light red background
               color: '#721c24', // Dark red text
@@ -851,71 +885,79 @@ useEffect(() => {
                                 </div>
                             )}
               
-                            {/* Patient Type Selector and Name Switcher */}
-                            <div style={{ marginBottom: '1rem', padding: '1rem', border: '1px solid #334155', borderRadius: '8px' }}>
-                              <Form.Label style={{ color: '#e2e8f0' }}>Character / Patient Type</Form.Label>
-                              <div style={{ display: 'flex', gap: '15px', marginBottom: '10px' }}>
-                                <Form.Check
-                                  type="radio"
-                                  id="typeGtaw"
-                                  label="GTAW Character"
-                                  name="patientTypeSelection"
-                                  value="gtaw"
-                                  checked={patientType === 'gtaw'}
-                                  onChange={(e) => setPatientType(e.target.value)}
-                                  inline
-                                  className={formStyles.customRadio}
-                                />
-                                <Form.Check
-                                  type="radio"
-                                  id="typeCivilian"
-                                  label="Civilian"
-                                  name="patientTypeSelection"
-                                  value="civilian"
-                                  checked={patientType === 'civilian'}
-                                  onChange={(e) => setPatientType(e.target.value)}
-                                  inline
-                                  className={formStyles.customRadio}
-                                />
-                                <Form.Check
-                                  type="radio"
-                                  id="typePhmc"
-                                  label="PHMC Employee"
-                                  name="patientTypeSelection"
-                                  value="phmc"
-                                  checked={patientType === 'phmc'}
-                                  onChange={(e) => setPatientType(e.target.value)}
-                                  inline
-                                  className={formStyles.customRadio}
-                                />
-                                <Form.Check
-                                  type="radio"
-                                  id="typeCoroner"
-                                  label="Coroner Only"
-                                  name="patientTypeSelection"
-                                  value="coroner"
-                                  checked={patientType === 'coroner'}
-                                  onChange={(e) => setPatientType(e.target.value)}
-                                  inline
-                                  className={formStyles.customRadio}
-                                />
-                              </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
-                                <span style={{ color: '#cbd5e1', fontSize: '1.1rem', fontWeight: 'bold' }}>
-                                  Selected: <span dangerouslySetInnerHTML={{ __html: escapeHtml(tempPatientName) }} />
-                                </span>
-                                {patientType === 'civilian' && civilianNames.length > 1 && (
-                                  <Button variant="outline-light" size="sm" onClick={() => switchCivilianName()} title="Switch Civilian Name">
-                                    <i className="fas fa-sync-alt"></i>
-                                  </Button>
-                                )}
-                                {patientType === 'phmc' && phmcNames.length > 1 && (
-                                  <Button variant="outline-light" size="sm" onClick={() => switchPhmcName()} title="Switch PHMC Name">
-                                    <i className="fas fa-sync-alt"></i>
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
+                            {(isPatientForm || userHasMultiplePhmcCharacters) && (
+                                <div style={{ marginBottom: '1rem', padding: '1rem', border: '1px solid #334155', borderRadius: '8px' }}>
+                                  <Form.Label style={{ color: '#e2e8f0' }}>Character / Patient Type</Form.Label>
+                                  <div style={{ display: 'flex', gap: '15px', marginBottom: '10px' }}>
+                                    <Form.Check
+                                      type="radio"
+                                      id="typeGtaw"
+                                      label="GTAW Character"
+                                      name="patientTypeSelection"
+                                      value="gtaw"
+                                      checked={patientType === 'gtaw'}
+                                      onChange={(e) => setPatientType(e.target.value)}
+                                      inline
+                                      className={formStyles.customRadio}
+                                    />
+                                    {isDevelopment && (
+                                      <>
+                                        <Form.Check
+                                          type="radio"
+                                          id="typeCivilian"
+                                          label="Civilian"
+                                          name="patientTypeSelection"
+                                          value="civilian"
+                                          checked={patientType === 'civilian'}
+                                          onChange={(e) => setPatientType(e.target.value)}
+                                          inline
+                                          className={formStyles.customRadio}
+                                        />
+                                        <Form.Check
+                                          type="radio"
+                                          id="typePhmc"
+                                          label="PHMC Employee"
+                                          name="patientTypeSelection"
+                                          value="phmc"
+                                          checked={patientType === 'phmc'}
+                                          onChange={(e) => setPatientType(e.target.value)}
+                                          inline
+                                          className={formStyles.customRadio}
+                                        />
+                                        <Form.Check
+                                          type="radio"
+                                          id="typeCoroner"
+                                          label="Coroner Only"
+                                          name="patientTypeSelection"
+                                          value="coroner"
+                                          checked={patientType === 'coroner'}
+                                          onChange={(e) => setPatientType(e.target.value)}
+                                          inline
+                                          className={formStyles.customRadio}
+                                        />
+                                      </>
+                                    )}
+                                  </div>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
+                                                                                                                                  <span style={{ color: '#cbd5e1', fontSize: '1.1rem', fontWeight: 'bold' }}>
+                                                                                                                                    Selected: <span dangerouslySetInnerHTML={{ __html: escapeHtml(tempPatientName) }} />
+                                                                                                                                  </span>
+                                                                                                                                  {userHasMultiplePhmcCharacters && (
+                                                                                                                                    <Button variant="outline-light" size="sm" onClick={() => setShowCharacterSelection(true)} title="Switch Character">
+                                                                                                                                      <i className="fas fa-user-friends"></i>
+                                                                                                                                    </Button>
+                                                                                                                                  )}                                                                  {patientType === 'civilian' && civilianNames.length > 1 && (
+                                                                    <Button variant="outline-light" size="sm" onClick={() => switchCivilianName()} title="Switch Civilian Name">
+                                                                      <i className="fas fa-sync-alt"></i>
+                                                                    </Button>
+                                                                  )}
+                                                                  {patientType === 'phmc' && phmcNames.length > 1 && (
+                                                                    <Button variant="outline-light" size="sm" onClick={() => cyclePhmcName()} title="Switch PHMC Name">
+                                                                      <i className="fas fa-sync-alt"></i>
+                                                                    </Button>
+                                                                  )}
+                                                                </div>                                </div>
+                            )}
               
                             <div style={{ margin: "0 -8px" }}>
                               {selectedForm.fields?.map((field, index) => (
@@ -936,7 +978,13 @@ useEffect(() => {
                               ))}
                             </div>
               
-                            <div style={{ textAlign: "center", margin: "3rem 0" }}>
+                            <div style={{ textAlign: "center", margin: "3rem 0", display: "flex", justifyContent: "center", gap: "1rem" }}>
+                <button
+                  onClick={handleClearForm}
+                  className={formStyles.clearButton} // Assuming a clearButton style exists or needs to be added
+                >
+                  Clear Form
+                </button>
                 <button
                   onClick={generateBBCode}
                   className={formStyles.generateButton}
@@ -953,9 +1001,9 @@ useEffect(() => {
           <div style={{ background: "linear-gradient(135deg, #2d1b69, #1e1b4b)", padding: "1.5rem", borderRadius: 12, marginBottom: "1.5rem" }}>
             <h3 style={{ color: "#a78bfa", margin: "0 0 1rem" }}>Signed in as</h3>
             <div style={{ fontWeight: "700", fontSize: "1.3rem", color: "#e2e8f0" }}>
-              {tempPatientName || user?.username || "Not signed in"}
+              {tempPatientName || effectiveUser?.username || "Not signed in"}
             </div>
-            {isPhmcMember && <div style={{ color: "#34d399", marginTop: "0.5rem" }}>PHMC Member • Rank {factionRank}</div>}
+            {effectiveIsPhmcMember && <div style={{ color: "#34d399", marginTop: "0.5rem" }}>PHMC Member • Rank {effectiveFactionRank}</div>}
           </div>
 
 
@@ -995,6 +1043,14 @@ useEffect(() => {
           )}
         </div>
       </div>
+      <CharacterSelectionModal
+        show={showCharacterSelection}
+        onHide={() => setShowCharacterSelection(false)}
+        characters={swappableCharacters} // Use the destructured swappableCharacters
+        onCharacterSelect={handleCharacterSelect}
+        currentSelection={selectedPhmcCharacter}
+        title="Select PHMC Character"
+      />
     </div>
   );
 };
