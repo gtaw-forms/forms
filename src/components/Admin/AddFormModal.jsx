@@ -2,8 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { database } from "../../firebase";
 import { ref, update } from "firebase/database";
-import { Form } from "react-bootstrap";
-
+import Select from 'react-select';
 const inputStyle = {
   width: "100%",
   padding: "0.75rem",
@@ -57,6 +56,17 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
   const [tempConditions, setTempConditions] = useState([]);
   const [conditionMode, setConditionMode] = useState("and");
   const [exactValue, setExactValue] = useState("");
+
+  // State for Bulk Conditional Editor
+  const [showBulkEditor, setShowBulkEditor] = useState(false);
+  const [bulkSelectedFields, setBulkSelectedFields] = useState([]);
+  const [bulkShowIf, setBulkShowIf] = useState(null);
+  const [bulkTempConditions, setBulkTempConditions] = useState([]);
+  const [bulkConditionMode, setBulkConditionMode] = useState('and');
+  const [bulkConditionalField, setBulkConditionalField] = useState('');
+  const [bulkConditionalValue, setBulkConditionalValue] = useState('');
+  const [bulkExactValue, setBulkExactValue] = useState('');
+
   useEffect(() => {
     if (editingForm) {
       setFormId(editingForm.id || "");
@@ -325,6 +335,32 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
             }
             return [...prevFields, { type: "decedent_list", name: finalName, id: fieldToSave.id, decedentItemSchemaJson: decedentItemSchemaJson }];
         });
+    } else if (fieldToSave.type === "dynamic_text_list") {
+        if (!fieldToSave.label || !fieldToSave.name || !fieldToSave.buttonLabel) {
+            alert("Label, Name and Button Label are required for Dynamic Text List!");
+            return;
+        }
+        setFields(prevFields => {
+            if (editingFieldIndex !== null) {
+                const updatedFields = [...prevFields];
+                updatedFields[editingFieldIndex] = { ...fieldToSave, id: fieldToSave.id };
+                return updatedFields;
+            }
+            return [...prevFields, { ...fieldToSave, id: fieldToSave.id }];
+        });
+    } else if (fieldToSave.type === "autopsy_diagram_button") {
+        if (!fieldToSave.label || !fieldToSave.name) {
+            alert("Label and Name are required for Autopsy Diagram Button!");
+            return;
+        }
+        setFields(prevFields => {
+            if (editingFieldIndex !== null) {
+                const updatedFields = [...prevFields];
+                updatedFields[editingFieldIndex] = { ...fieldToSave, id: fieldToSave.id };
+                return updatedFields;
+            }
+            return [...prevFields, { ...fieldToSave, id: fieldToSave.id }];
+        });
     } else if (fieldToSave.type === "image") {
   if (!fieldToSave.label || !fieldToSave.name) {
     alert("Label and Name are required for Image field!");
@@ -456,6 +492,50 @@ const applyAdvancedCondition = () => {
   setConditionMode("and");
   setShowConditionalBuilder(false);
 };
+
+const addBulkCondition = () => {
+    if (!bulkConditionalField) return;
+    let value = bulkConditionalValue === "filled" ? true : bulkConditionalValue === "empty" ? false : bulkExactValue;
+    if (bulkConditionalValue === "exact" && !bulkExactValue) return alert("Enter exact value for bulk condition");
+
+    setBulkTempConditions([...bulkTempConditions, { field: bulkConditionalField, value }]);
+    setBulkConditionalField("");
+    setBulkConditionalValue("");
+    setBulkExactValue("");
+};
+
+const removeBulkTempCondition = (i) => setBulkTempConditions(bulkTempConditions.filter((_, idx) => idx !== i));
+
+const applyBulkConditionalLogic = () => {
+    if (bulkSelectedFields.length === 0) {
+        alert("Please select at least one field to apply the logic to.");
+        return;
+    }
+    if (bulkTempConditions.length === 0) {
+        alert("Please add at least one conditional rule.");
+        return;
+    }
+
+    const showIfToApply = bulkTempConditions.length === 1
+        ? { field: bulkTempConditions[0].field, value: bulkTempConditions[0].value }
+        : { mode: bulkConditionMode, conditions: bulkTempConditions };
+        
+    setFields(currentFields => 
+        currentFields.map(field => 
+            bulkSelectedFields.some(selected => selected.value === field.id)
+                ? { ...field, showIf: showIfToApply }
+                : field
+        )
+    );
+
+    // Reset bulk editor state
+    setShowBulkEditor(false);
+    setBulkSelectedFields([]);
+    setBulkTempConditions([]);
+    setBulkConditionMode('and');
+    alert(`Conditional logic applied to ${bulkSelectedFields.length} fields.`);
+};
+
       const saveForm = () => {
       if (!formId || !formName) {
         alert("Form ID and Name required!");
@@ -603,6 +683,7 @@ const applyAdvancedCondition = () => {
               <option value="input">Text Input</option>
               <option value="textarea">Textarea</option>
               <option value="select">Dropdown</option>
+              <option value="employee_select">Dropdown (Employee Select)</option>
               <option value="multi_select">Dropdown (Multiple Selection)</option> // NEW OPTION
               <option value="checkbox">Checkbox</option>
               <option value="radio">Radio Button</option>
@@ -615,6 +696,8 @@ const applyAdvancedCondition = () => {
                             <option value="input_button_combo">Input Button Combo</option>
                             <option value="attach_report_button">Attach Report Button</option>
                             <option value="decedent_list">Decedent List</option>
+                            <option value="dynamic_text_list">Dynamic Text List</option>
+                            <option value="autopsy_diagram_button">Autopsy Diagram Button</option>
                           </select>
               
                                                     {newField.type !== "hr" && newField.type !== "decedent_list" && (
@@ -631,6 +714,14 @@ const applyAdvancedCondition = () => {
                               value={newField.name} 
                               onChange={e => setNewField({ ...newField, name: e.target.value })} 
                               style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
+                            />
+                          )}
+                          {newField.type === "dynamic_text_list" && (
+                            <input
+                              placeholder="Button Label"
+                              value={newField.buttonLabel}
+                              onChange={e => setNewField({ ...newField, buttonLabel: e.target.value })}
+                              style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}
                             />
                           )}
               
@@ -927,7 +1018,9 @@ const applyAdvancedCondition = () => {
                       <>
                         <div style={{ margin: "1rem 0", fontWeight: "600", color: "#94a3b8" }}>
                           Show this field when:
-                          <select value={conditionMode} onChange={e => setConditionMode(e.target.value)} style={{ marginLeft: "1rem", padding: "0.4rem", background: "#334155", border: "none", borderRadius: 6, color: "#e2e8f0" }}>
+                          <select value={conditionMode} onChange={e => setConditionMode(e.target.value)} style={{ marginLeft: "1rem", padding: "0.4rem", background: "#334155", border: "none", borderRadius: 6, color: "#e2e8f0" }}
+                                                                    className="form-select-inline" // Add inline class
+                          >
                             <option value="and">ALL</option>
                             <option value="or">ANY</option>
                           </select>
@@ -952,6 +1045,99 @@ const applyAdvancedCondition = () => {
                   </div>
                 )}
               </div>
+            {/* NEW: Bulk Conditional Logic Builder */}
+            <div style={{ margin: "1.5rem 0", padding: "1.5rem", background: "#1e293b", borderRadius: 12, border: "1px dashed #334155" }}>
+                <button
+                    onClick={() => setShowBulkEditor(!showBulkEditor)}
+                    style={{ background: "#8b5cf6", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, fontWeight: "600" }}
+                >
+                    {showBulkEditor ? "Hide" : "Bulk Edit Conditional Logic"}
+                </button>
+
+                {showBulkEditor && (
+                    <div style={{ marginTop: "1rem" }}>
+                        <h5 style={{ color: "#a78bfa", marginBottom: "1rem" }}>Apply to Fields:</h5>
+                        <Select
+                            isMulti
+                            options={fields.map(f => ({ value: f.id, label: f.label || f.name }))}
+                            value={bulkSelectedFields}
+                            onChange={setBulkSelectedFields}
+                            styles={{
+                                control: (base) => ({ ...base, backgroundColor: '#334155', borderColor: '#475569', color: '#e2e8f0' }),
+                                multiValue: (base) => ({ ...base, backgroundColor: '#60a5fa' }),
+                                multiValueLabel: (base) => ({ ...base, color: 'white' }),
+                                option: (base, { isFocused, isSelected }) => ({ ...base, backgroundColor: isSelected ? '#60a5fa' : isFocused ? '#475569' : '#334155', color: '#e2e8f0' }),
+                                menu: (base) => ({ ...base, backgroundColor: '#334155' }),
+                                menuPortal: base => ({ ...base, zIndex: 99999 }),
+                                input: (base) => ({ ...base, color: '#e2e8f0' }),
+                                placeholder: (base) => ({ ...base, color: '#94a3b8' }),
+                            }}
+                            classNamePrefix="react-select"
+                            placeholder="Select fields..."
+                            menuPortalTarget={document.body}
+                        />
+
+                        <h5 style={{ color: "#a78bfa", margin: "1.5rem 0 1rem" }}>Conditional Rule:</h5>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: "0.8rem", marginBottom: "1rem" }}>
+                            <select value={bulkConditionalField} onChange={e => setBulkConditionalField(e.target.value)} style={inputStyle}>
+                                <option value="">— Select Trigger Field —</option>
+                                {fields.map(f => (
+                                    <option key={f.name} value={f.name}>{f.label || f.name}</option>
+                                ))}
+                            </select>
+
+                            <select value={bulkConditionalValue} onChange={e => setBulkConditionalValue(e.target.value)} style={inputStyle}>
+                                <option value="">— Condition —</option>
+                                <option value="filled">Has ANY value</option>
+                                <option value="empty">Is empty</option>
+                                <option value="exact">Exact value →</option>
+                            </select>
+
+                            <button onClick={addBulkCondition} style={{ background: "#10b981", color: "white", border: "none", borderRadius: 8 }}>
+                                Add Rule
+                            </button>
+                        </div>
+
+                        {bulkConditionalValue === "exact" && (
+                            <input
+                                placeholder="Enter exact value (e.g. GeneralInformation)"
+                                value={bulkExactValue}
+                                onChange={e => setBulkExactValue(e.target.value)}
+                                style={{ ...inputStyle, marginBottom: "1rem" }}
+                            />
+                        )}
+
+                        {bulkTempConditions.length > 0 && (
+                            <>
+                                <div style={{ margin: "1rem 0", fontWeight: "600", color: "#94a3b8" }}>
+                                    Show selected fields when:
+                                    <select value={bulkConditionMode} onChange={e => setBulkConditionMode(e.target.value)} style={{ marginLeft: "1rem", padding: "0.4rem", background: "#334155", border: "none", borderRadius: 6, color: "#e2e8f0" }}
+                                                                    className="form-select-inline" // Add inline class
+                                    >
+                                        <option value="and">ALL</option>
+                                        <option value="or">ANY</option>
+                                    </select>
+                                    of these are true:
+                                </div>
+
+                                {bulkTempConditions.map((c, i) => (
+                                    <div key={i} style={{ padding: "0.8rem", background: "#334155", borderRadius: 8, marginBottom: "0.5rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                        <span>
+                                            <strong>{fields.find(f => f.name === c.field)?.label || c.field}</strong>
+                                            {c.value === true ? " is filled" : c.value === false ? " is empty" : ` = "${c.value}"`}
+                                        </span>
+                                        <button onClick={() => removeBulkTempCondition(i)} style={{ background: "#ef4444", color: "white", border: "none", padding: "0.4rem 0.8rem", borderRadius: 6 }}>Remove</button>
+                                    </div>
+                                ))}
+
+                                <button onClick={applyBulkConditionalLogic} style={{ background: "#8b5cf6", color: "white", padding: "0.8rem", border: "none", borderRadius: 8, width: "100%", marginTop: "1rem" }}>
+                                    Apply Conditions to {bulkSelectedFields.length} Selected Fields
+                                </button>
+                            </>
+                        )}
+                    </div>
+                )}
+            </div>
                         {newField.showIf && (
                           <div style={{ padding: "0.8rem", background: "#1e293b", borderRadius: 8, color: "#a78bfa", fontSize: "0.9rem" }}>
                             Show this field if {' '}
@@ -1021,6 +1207,10 @@ const applyAdvancedCondition = () => {
                                   <span style={{ color: "#a78bfa" }}>Attach Report Button: <strong>{f.label}</strong> → (Filters: {f.filterVersions}, Type: {f.employeeType}, Target: {f.targetField})</span>
                                 ) : f.type === "decedent_list" ? (
                                     <span style={{ color: "#a78bfa" }}>Decedent List: <strong>{f.name}</strong></span>
+                                ) : f.type === "dynamic_text_list" ? (
+                                  <span style={{ color: "#a78bfa" }}>Dynamic List: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (Button: {f.buttonLabel})</span>
+                                ) : f.type === "autopsy_diagram_button" ? (
+                                  <span style={{ color: "#a78bfa" }}>Autopsy Diagram Button: <strong>{f.label}</strong> → stores URL in <code>{"{{" + f.name + "}}"}</code></span>
                                 ) : (
                                   <>
                                     <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>

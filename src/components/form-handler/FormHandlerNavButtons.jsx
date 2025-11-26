@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import formStyles from './FormHandler.module.css'; // Assuming styles are needed here
 import { useModal } from '../../contexts/ModalProvider'; // For setShowEmsBingoModal
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth'; // For auth status
+import { useSeasonalEffects } from '../../contexts/SeasonalEffectsContext'; // Import useSeasonalEffects
 
 const FormHandlerNavButtons = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated, isPhmcMember, characterName } = useGtaWorldAuth();
   const { setShowEmsBingoModal } = useModal(); // Assuming EmsBingoModal is still in MainApp or handled globally
+  const { seasonalEffectsEnabled, setSeasonalEffectsEnabled } = useSeasonalEffects(); // Use seasonal effects context
 
   return (
     <div style={{
@@ -54,6 +56,14 @@ const FormHandlerNavButtons = () => {
           onClick={() => window.location.href = "#/admin"}
         >
           Admin
+        </button>
+        {/* Seasonal Effects Toggle Button */}
+        <button
+          className={formStyles.topButton}
+          onClick={() => setSeasonalEffectsEnabled(!seasonalEffectsEnabled)}
+          title={seasonalEffectsEnabled ? "Disable Seasonal Effects" : "Enable Seasonal Effects"}
+        >
+          {seasonalEffectsEnabled ? "Effects ON" : "Effects OFF"}
         </button>
 
     </div>

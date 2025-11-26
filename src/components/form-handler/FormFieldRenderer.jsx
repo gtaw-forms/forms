@@ -3,9 +3,23 @@ import Select from 'react-select';
 import ImageUploader from './ImageUploader'; // Assuming ImageUploader is in the same directory or adjust path
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTimeUtils';
 import { useAuth } from '../../contexts/AuthContext';
+import { useData } from '../../contexts/DataContext';
 import DecedentItemRenderer from './DecedentItemRenderer'; // Import the new component
+import AutopsyDiagramModal from '../AutopsyDiagramModal'; // Import AutopsyDiagramModal
 
-const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore, toggleSavedReports, showNotification }) => {
+const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore, toggleSavedReports, showNotification, handleDiagramUpload }) => {
+  const { factionsData } = useData();
+
+  const employeeOptions = useMemo(() => {
+    if (!factionsData || !factionsData['364'] || !factionsData['364'].members) return [];
+    return Object.values(factionsData['364'].members)
+        .map(member => ({
+            value: member.characterName, // Use name as value
+            label: member.characterName 
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label)); // Sort alphabetically
+  }, [factionsData]);
+
   // Conditional visibility logic
   if (field.showIf) {
     let shouldShow = false;
@@ -268,6 +282,31 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
           />
         </div>
       );
+    case "employee_select": {
+        const customStyles = {
+            control: (provided) => ({ ...provided, width: "100%", padding: "0.2rem", background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0", borderRadius: 8, fontSize: "1rem", minHeight: "auto" }),
+            input: (provided) => ({ ...provided, color: "#e2e8f0" }),
+            singleValue: (provided) => ({ ...provided, color: "#e2e8f0" }),
+            placeholder: (provided) => ({ ...provided, color: "#94a3b8" }),
+            option: (provided, state) => ({ ...provided, backgroundColor: state.isFocused ? "#334155" : "#1e293b", color: "#e2e8f0", "&:active": { backgroundColor: "#475569" } }),
+            menu: (provided) => ({ ...provided, backgroundColor: "#1e293b", border: "1px solid #334155" }),
+        };
+        return (
+            <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
+                <label style={labelStyle}>{field.label}</label>
+                <Select
+                    name={field.name}
+                    options={employeeOptions}
+                    classNamePrefix="react-select"
+                    styles={customStyles}
+                    value={employeeOptions.find(option => option.value === formValues[field.name]) || null}
+                    onChange={(selectedOption) => handleChange(field.name, selectedOption ? selectedOption.value : '')}
+                    placeholder={field.placeholder || "Select an employee..."}
+                    isClearable
+                />
+            </div>
+        );
+    }
 case "textarea":
   return (
     <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
@@ -642,6 +681,99 @@ case "textarea":
           </button>
         </div>
       );
+    }
+    case "dynamic_text_list": {
+      const listItems = Array.isArray(formValues[field.name]) ? formValues[field.name] : [];
+
+      const addListItem = useCallback(() => {
+        handleChange(field.name, [...listItems, ""]); // Add an empty string for a new item
+      }, [field.name, listItems, handleChange]);
+
+      const handleItemChange = useCallback((indexToUpdate, value) => {
+        const updatedList = listItems.map((item, idx) => {
+          if (idx === indexToUpdate) {
+            return value;
+          }
+          return item;
+        });
+        handleChange(field.name, updatedList);
+      }, [field.name, listItems, handleChange]);
+
+      const removeListItem = useCallback((indexToRemove) => {
+        const updatedList = listItems.filter((_, idx) => idx !== indexToRemove);
+        handleChange(field.name, updatedList);
+      }, [field.name, listItems, handleChange]);
+
+      return (
+        <div style={{ ...fieldWrapperStyle }}>
+          <label style={labelStyle}>{field.label}</label>
+          {listItems.map((item, index) => (
+            <div key={index} style={{ display: "flex", alignItems: "center", marginBottom: "0.5rem" }}>
+              <input
+                type="text"
+                value={item}
+                onChange={(e) => handleItemChange(index, e.target.value)}
+                style={{ ...inputStyle, flexGrow: 1, marginRight: "0.5rem" }}
+                placeholder={`${field.label} Item ${index + 1}`}
+              />
+              <button
+                onClick={() => removeListItem(index)}
+                style={{ background: "#ef4444", color: "white", border: "none", padding: "0.5rem 0.8rem", borderRadius: 8, cursor: "pointer" }}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+          <button onClick={addListItem} style={{ background: "#10b981", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, cursor: "pointer", width: "100%" }}>
+            {field.buttonLabel || "Add Item"}
+          </button>
+        </div>
+      );
+    }
+    case "autopsy_diagram_button": {
+        const [showModal, setShowModal] = useState(false);
+        const initialMarkers = formValues[`${field.name}_markers`] || [];
+
+        return (
+            <div style={fieldWrapperStyle}>
+                <label style={labelStyle}>{field.label}</label>
+                <button
+                    onClick={() => setShowModal(true)}
+                    style={{
+                        padding: "0.8rem 1.5rem",
+                        background: "#6366f1",
+                        color: "white",
+                        border: "none",
+                        borderRadius: 8,
+                        fontSize: "1rem",
+                        fontWeight: "600",
+                        cursor: "pointer",
+                        width: "100%"
+                    }}
+                >
+                    {field.label}
+                </button>
+                {formValues[field.name] && (
+                    <div style={{ marginTop: '10px', fontSize: '0.9rem', color: '#34d399' }}>
+                        Diagram URL: <a href={formValues[field.name]} target="_blank" rel="noopener noreferrer" style={{ color: '#34d399', textDecoration: 'underline' }}>View Diagram</a>
+                    </div>
+                )}
+
+                <AutopsyDiagramModal
+                    show={showModal}
+                    onHide={() => setShowModal(false)}
+                    onSaveDiagram={(markers, imageUrl) => {
+                        handleChange(field.name, imageUrl); // Save the image URL
+                        handleChange(`${field.name}_markers`, markers); // Save the markers data
+                        setShowModal(false);
+                    }}
+                    initialMarkers={initialMarkers}
+                    showNotification={showNotification}
+                    removeNotification={() => { /* Not used by modal, but good to pass */ }}
+                    handleImageUpload={handleDiagramUpload}
+                />
+            </div>
+        );
     }
     case "input":
     default:

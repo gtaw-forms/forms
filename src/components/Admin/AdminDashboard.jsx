@@ -83,6 +83,7 @@ const AdminDashboard = ({
     const [diagnosticsResult, setDiagnosticsResult] = useState(null);
     const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
     const [isMigratingReports, setIsMigratingReports] = useState(false);
+    const [isMigratingLegacy, setIsMigratingLegacy] = useState(false);
     const [isSyncingCounts, setIsSyncingCounts] = useState(false);
     const navigate = useNavigate();
     
@@ -295,6 +296,44 @@ const AdminDashboard = ({
             );
         } finally {
             setIsSyncingCounts(false);
+        }
+    };
+
+    const handleMigrateLegacyReports = async () => {
+        if (!window.confirm("Are you sure you want to run the legacy report migration? This will add a 'legacy: true' flag to all reports in /savedReports.")) {
+            return;
+        }
+
+        setIsMigratingLegacy(true);
+        showInAppNotification && showInAppNotification('Starting legacy report migration...', 'info');
+
+        try {
+            const functions = getFunctions();
+            const migrateFunc = httpsCallable(functions, 'migrateLegacyReports');
+            const result = await migrateFunc();
+
+            if (result.data.success) {
+                showInAppNotification && showInAppNotification(
+                    `Legacy migration complete: ${result.data.migratedCount} reports flagged.`,
+                    'success'
+                );
+                console.log('Legacy migration result:', result.data);
+            } else {
+                showInAppNotification && showInAppNotification(
+                    `Legacy migration failed: ${result.data.message || 'Unknown error'}`,
+                    'error'
+                );
+                console.error('Legacy migration failed:', result.data);
+            }
+        } catch (error) {
+            console.error('Error calling migrateLegacyReports:', error);
+            showInAppNotification && showInAppNotification(
+                `Error during legacy migration: ${error.message}`,
+                'error'
+            );
+            Sentry.captureException(error, { extra: { context: 'handleMigrateLegacyReports' } });
+        } finally {
+            setIsMigratingLegacy(false);
         }
     };
 
@@ -1131,6 +1170,20 @@ const AdminDashboard = ({
                                                 <i className="fas fa-database me-2"></i>
                                             )}
                                             Migrate Reports
+                                        </Button>
+                                        <Button
+                                            variant="secondary"
+                                            size="sm"
+                                            onClick={handleMigrateLegacyReports}
+                                            disabled={isMigratingLegacy || !hasAdminAccess}
+                                            title={hasAdminAccess ? "Flag all reports in /savedReports as legacy:true" : "Requires admin access permission"}
+                                        >
+                                            {isMigratingLegacy ? (
+                                                <Spinner as="span" animation="border" size="sm" />
+                                            ) : (
+                                                <i className="fas fa-history me-2"></i>
+                                            )}
+                                            Migrate Legacy Reports
                                         </Button>
                                         <Button
                                             variant="info"
