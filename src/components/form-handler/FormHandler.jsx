@@ -394,6 +394,16 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
     return coronerListData.some(coroner => coroner.name?.toLowerCase() === tempPatientName.toLowerCase()); // Use tempPatientName
   }, [isAuthenticated, tempPatientName, coronerListData, isCoronerForDev]);
 
+  const isPatientForm = useMemo(() => {
+    return selectedForm?.accessType === 'Civilian' ||
+           selectedForm?.category?.includes('Patient') ||
+           selectedForm?.category?.includes('Medical');
+  }, [selectedForm]);
+
+  const userHasMultiplePhmcCharacters = useMemo(() => {
+    return user?.characterArray?.length > 1;
+  }, [user]);
+
   const { generatedBBCode, generatedTitle, showBBCode, setShowBBCode, generateBBCode } = useBbcodeGenerator(
     selectedForm,
     formValues,
@@ -439,28 +449,35 @@ useEffect(() => {
   }, []);
 
   // Derive and group forms by category, and apply search/restriction filters
-  const groupedForms = React.useMemo(() => {
+  const [groupedForms, notDisplayedFormsDetails] = React.useMemo(() => { // MODIFIED: Return an array
     const categoriesMap = {};
+    const tempNotDisplayedFormsDetails = []; // NEW: Array to store details of forms not displayed
 
     forms.forEach(form => {
       const matchesSearchTerm = form.name && form.name.toLowerCase().includes(searchTerm.toLowerCase());
       const isRestricted = form.accessType === "PHMC" || form.accessType === "Coroner";
-      const hasRequiredAccess = isAuthenticated && isPhmcMember; // True for devMode 'phmc'/'coroner'
+      const hasRequiredAccess = isAuthenticated && (isPhmcMember || (user && user.faction));
 
       let shouldDisplay = false;
+      let reason = "Unknown reason"; // Default reason
 
       // Filter out hidden forms unless in development mode
       if (form.isHidden && !isDevelopment) {
-          shouldDisplay = false; // Hidden forms are only visible in development
+          shouldDisplay = false;
+          reason = "Hidden form (not in dev mode)";
       } else if (isDevelopment && isRestricted && hasRequiredAccess) {
-          shouldDisplay = true; // Authorized dev roles ALWAYS see their restricted forms (even if hidden for production)
-      } else if (!isRestricted) {
-          // If not restricted, always display
           shouldDisplay = true;
-      } else {
-          // If restricted for a non-dev-override or unauthorized dev-override
-          // Only display if user has required access AND showRestricted is true
-          shouldDisplay = hasRequiredAccess && showRestricted;
+          reason = "Authorized dev role"; // Explicit reason for display
+      } else if (!isRestricted) {
+          shouldDisplay = true;
+          reason = "Not restricted"; // Explicit reason for display
+      } else { // Form is restricted
+          shouldDisplay = hasRequiredAccess; // This was the last change
+          if (!hasRequiredAccess) {
+              reason = "No permission (restricted form)";
+          } else {
+              reason = "Has permission (restricted form)"; // Explicit reason for display
+          }
       }
 
       if (matchesSearchTerm && shouldDisplay) {
@@ -469,6 +486,16 @@ useEffect(() => {
           categoriesMap[categoryName] = [];
         }
         categoriesMap[categoryName].push(form);
+      } else {
+          // If not displayed, add to tempNotDisplayedFormsDetails with the reason
+          let finalReason = reason;
+          if (!matchesSearchTerm) {
+              finalReason = `Does not match search term: "${searchTerm}"`;
+          } else if (!shouldDisplay && reason === "Unknown reason") {
+              // Catch-all for any missed scenarios
+              finalReason = "Filtering logic prevented display";
+          }
+          tempNotDisplayedFormsDetails.push({ name: form.name, reason: finalReason });
       }
     });
 
@@ -485,8 +512,53 @@ useEffect(() => {
         sortedGroupedForms[catName] = categoriesMap[catName].sort((a, b) => a.name.localeCompare(b.name));
     });
 
-    return sortedGroupedForms;
-  }, [forms, searchTerm, showRestricted, isAuthenticated, isPhmcMember, isDevelopment]);
+    return [sortedGroupedForms, tempNotDisplayedFormsDetails]; // MODIFIED: Return both
+  }, [forms, searchTerm, isAuthenticated, isPhmcMember, isDevelopment, user]); // Removed showRestricted from dependencies
+
+  // DEBUG LOGGING START
+  useEffect(() => {
+    const viewableCategories = Object.keys(groupedForms);
+    const viewableFormsCount = Object.values(groupedForms).flat().length;
+    console.log(
+        "[FormHandler Debug] Auth Status:",
+        {
+            isAuthenticated,
+            isPhmcMember,
+            userFaction: user?.faction,
+            employeeName: tempPatientName
+        },
+        "| Viewable Forms:",
+        {
+            categories: viewableCategories,
+            totalForms: viewableFormsCount,
+            formsByCategory: groupedForms,
+            notDisplayedForms: notDisplayedFormsDetails // NEW: Include reasons for forms not displayed
+        }
+    );
+  }, [groupedForms, notDisplayedFormsDetails, isAuthenticated, isPhmcMember, user, tempPatientName]);
+  // DEBUG LOGGING END
+
+  // DEBUG LOGGING START
+  useEffect(() => {
+    const viewableCategories = Object.keys(groupedForms);
+    const viewableFormsCount = Object.values(groupedForms).flat().length;
+    console.log(
+        "[FormHandler Debug] Auth Status:",
+        {
+            isAuthenticated,
+            isPhmcMember,
+            userFaction: user?.faction,
+            employeeName: tempPatientName
+        },
+        "| Viewable Forms:",
+        {
+            categories: viewableCategories,
+            totalForms: viewableFormsCount,
+            formsByCategory: groupedForms
+        }
+    );
+  }, [groupedForms, isAuthenticated, isPhmcMember, user, tempPatientName]);
+  // DEBUG LOGGING END
 
   // Effect to update currentUtcTime every second
   useEffect(() => {
