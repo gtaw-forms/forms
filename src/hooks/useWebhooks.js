@@ -122,6 +122,11 @@ export const useWebhooks = (formData, commitInfo, showNotification) => {
 
         const fields = [
             {
+                name: 'URL',
+                value: window.location.href,
+                inline: false,
+            },
+            {
                 name: 'Cached',
                 value: cached ? 'Yes' : 'No',
                 inline: true,

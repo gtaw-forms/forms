@@ -247,9 +247,9 @@ const SavedReportsModal = ({
     filterByBbCodeVersions,
     onAttachReportSummaryRequest,
     preselectedEmployeeType,
-    bbCodeVersion,
     reportSelectionFilter,
     pendingReportAttachmentCallback,
+    selectedForm,
 }) => {
     const [currentPage, setCurrentPage] = useState(1);
     const [searchQuery, setSearchQuery] = useState('');
@@ -335,6 +335,9 @@ const handleEmployeeSelect = (selectedOption) => {
         if (preselectedEmployeeType === 'PHMC') {
             return (employeeOptions || []).filter((group) => group.label === 'PHMC Staff');
         }
+        if (preselectedEmployeeType === 'Coroner') {
+            return (employeeOptions || []).filter((group) => group.label === 'Coroner Staff');
+        }
         return employeeOptions || [];
     }, [employeeOptions, preselectedEmployeeType]);
 
@@ -398,7 +401,7 @@ const handleEmployeeSelect = (selectedOption) => {
             .filter((r) => selectedReportKeys.includes(r.key))
             .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
 
-        const isAttaching = bbCodeVersion === 2;
+        const isAttaching = selectedForm?.name === 'Coroner Email';
         const isParsing = isParseDecedentMode;
         
         let actionFunction;
@@ -418,6 +421,7 @@ const handleEmployeeSelect = (selectedOption) => {
 
         for (let i = 0; i < reportsToLoad.length; i++) {
             const report = reportsToLoad[i];
+            console.log(`[SavedReportsModal] Processing report ${i + 1}/${reportsToLoad.length}: ${report.originalKey} (Action: ${isParsing ? 'Parse' : (isAttaching ? 'Attach' : 'Load')})`);
             try {
                 await actionFunction(report.key, selectedEmployee.value);
                 if (i < reportsToLoad.length - 1) {
@@ -605,7 +609,7 @@ const handleEmployeeSelect = (selectedOption) => {
                                                                     pendingReportAttachmentCallback.current(result.reportData);
                                                                 }
                                                             });
-                                                        } else if (bbCodeVersion === 2) {
+                                                        } else if (selectedForm?.name === 'Coroner Email') {
                                                             handleReportSelectedForAttachment(report.key, selectedEmployee.value);
                                                         } else if (loadReport) {
                                                             loadReport(report.key, selectedEmployee.value);
@@ -614,7 +618,7 @@ const handleEmployeeSelect = (selectedOption) => {
                                                     }}
                                                     disabled={isLoadingReports || !selectedEmployee}
                                                 >
-                                                    {isParseDecedentMode ? 'Parse' : (bbCodeVersion === 2 ? 'Attach' : 'Load')}
+                                                    {isParseDecedentMode ? 'Parse' : (selectedForm?.name === 'Coroner Email' ? 'Attach' : 'Load')}
                                                 </Button>
                                                 <Button
                                                     variant="danger"
@@ -685,7 +689,7 @@ const handleEmployeeSelect = (selectedOption) => {
                                     Loading...
                                 </>
                             ) : (
-                                `${isParseDecedentMode ? 'Parse Selected' : (bbCodeVersion === 2 ? 'Attach Selected' : 'Load Selected')} (${selectedReportKeys.length})`
+                                `${isParseDecedentMode ? 'Parse Selected' : (selectedForm?.name === 'Coroner Email' ? 'Attach Selected' : 'Load Selected')} (${selectedReportKeys.length})`
                             )}
                         </Button>
                     </div>

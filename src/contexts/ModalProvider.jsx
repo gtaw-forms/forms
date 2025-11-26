@@ -20,6 +20,7 @@ export const ModalProvider = ({ children }) => {
     const [switchableModalTitle, setSwitchableModalTitle] = useState('');
     const [switchableFormsList, setSwitchableFormsList] = useState([]);
     const [showFeatureRequestModal, setShowFeatureRequestModal] = useState(false);
+    const [showSavedReports, setShowSavedReports] = useState(false);
 
     const [showPrivacyPolicyModal, setShowPrivacyPolicyModal] = useState(false);
 
@@ -39,6 +40,7 @@ export const ModalProvider = ({ children }) => {
         switchableModalTitle, setSwitchableModalTitle,
         switchableFormsList, setSwitchableFormsList,
         showFeatureRequestModal, setShowFeatureRequestModal,
+        showSavedReports, setShowSavedReports,
 
         showPrivacyPolicyModal, setShowPrivacyPolicyModal,
     };

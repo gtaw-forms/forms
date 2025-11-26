@@ -83,53 +83,16 @@ let lastInputInteraction = null; // Tracks recent input field interactions
 let isSentryBlocked = false; // Flag to track if Sentry connectivity failed
 
 /**
- * Automatically determines the current form type from bbCodeVersion stored in localStorage
+ * Automatically determines the current form type from lastSelectedFormName stored in localStorage
  * @returns {string} The form name or 'Unknown' if not found
  */
 const getCurrentFormType = () => {
     try {
-        const bbCodeVersion = localStorage.getItem('bbCodeVersion');
-        if (!bbCodeVersion) return 'Unknown';
-
-        const version = parseInt(bbCodeVersion, 10);
-        const versionNames = {
-            1: "Death Report",
-            2: "Coroner Email",
-            3: "Patient File - Advanced",
-            4: "Autopsy Report",
-            5: "Surgery Report",
-            6: "Physical Evaluation (PHMC)",
-            7: "Physical Evaluation (PBC)",
-            8: "Death Certificate",
-            9: "Obs Main File",
-            10: "Obs Follow Up",
-            11: "Mass Fatality Report",
-            12: "Gynecology - Main File",
-            13: "Gynecology - Add Reply",
-            14: "Mental Health - PHMC",
-            16: "Mental Health | PBC",
-            18: "Agency Feedback",
-            19: "Emergency Room Protocols",
-            20: "Consultation Notes (PHMC)",
-            21: "Consultation Notes (PBC)",
-            22: "Commentary Note (PHMC)",
-            23: "Commentary Note (PBC)",
-            24: "Medical Record Release",
-            25: "Patient File - Basic",
-            26: "Medical Record Update",
-            27: "Email Forms",
-            28: "Psychological Evaluation PHMC",
-            29: "Psychological Evaluation PBC",
-            35: "PHMC - Email Generator",
-            50: "PHMC - Physician Careers",
-            51: "PHMC - Psych Careers",
-            52: "PHMC - Admin Careers",
-            53: "PHMC - Nursing Careers",
-            54: "PHMC - Coroner Careers",
-            55: "PHMC - EMS Careers"
-        };
-
-        return versionNames[version] || `Form v${version}`;
+        const lastSelectedFormName = localStorage.getItem('lastSelectedFormName');
+        if (lastSelectedFormName) {
+            return lastSelectedFormName;
+        }
+        return 'Unknown';
     } catch (error) {
         console.warn('Error determining form type:', error);
         return 'Unknown';

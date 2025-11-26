@@ -4,8 +4,8 @@ import { Button, Form } from 'react-bootstrap';
 import { useNotification } from '../contexts/NotificationContext';
 
 const mechanisms = [
-  'Medical (Unwell)', 'Cardiac Arrest', 'RTC', 'Fall from height', 'Assault', 
-  'Overdose', 'Collapse ?cause', 'Trauma', 'Burns', 'Drowning', 'Fitting', 
+  'Medical (Unwell)', 'Cardiac Arrest', 'MVA', 'Fall from height', 'Assault', 
+  'Overdose', 'Collapse', 'Trauma', 'Burns', 'Drowning', 'Fitting', 
   'Stroke', 'Anaphylaxis', 'Hypoglycaemia', 'Chest Pain', 'Difficulty Breathing',
   'Syncope', 'Abdominal Pain', 'Psychiatric', 'Obstetric'
 ];

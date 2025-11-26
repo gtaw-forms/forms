@@ -5,9 +5,11 @@ import { ref, get, set, remove, runTransaction } from 'firebase/database';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import * as Sentry from "@sentry/react";
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
+import { useFormHandler } from './form-handler/useFormHandler';
 import { getCharacterName, getCharacterID } from '../utils/characterUtils';
 
 import { useData } from '../contexts/DataContext';
+import { useModal } from '../contexts/ModalProvider';
 
 const comprehensiveSanitize = (str) => {
     if (!str) return '';
@@ -26,8 +28,8 @@ const parseCaseNumber = (url) => {
 export const useReportManagement = (
     formData,
     setFormData,
-    bbCodeVersion,
-    setBbCodeVersion,
+    bbCodeVersion_DEPRECATED, // This is null from FormHandler
+    setBbCodeVersion_DEPRECATED, // This is a placeholder from FormHandler
     getBBCodeContent,
     getCurrentReportAuthor,
     filterFormData,
@@ -38,13 +40,16 @@ export const useReportManagement = (
     setEasterEggType,
     sendEasterEggNotification,
     modalCloseTimer,
-    versionNames,
-    ER_PROTOCOL_VERSION,
-    CONSULTATION_NOTES_PHMC_VERSION,
-    CONSULTATION_NOTES_PBC_VERSION,
-    selectedAgencyGroup
-) => {
-    const { factionsData, coronerListData, phmcListData, sendDataRequestLog } = useData();
+    selectedForm, // This is the new 15th argument
+    // The following are legacy and not passed by FormHandler.jsx
+    // We keep them with default values to avoid breaking the old App.jsx implementation.
+    versionNames = {},
+    ER_PROTOCOL_VERSION = null,
+    CONSULTATION_NOTES_PHMC_VERSION = null,
+    CONSULTATION_NOTES_PBC_VERSION = null,
+    selectedAgencyGroup = null
+) => {    const { factionsData, coronerListData, phmcListData, sendDataRequestLog } = useData();
+    const formHandler = useFormHandler(showNotification);
 
     const findEmployeeDetails = (employeeName) => {
         if (factionsData && factionsData['364'] && factionsData['364'].members) {
@@ -89,6 +94,16 @@ export const useReportManagement = (
             Sentry.captureException(error, { extra: { context: 'logWebhook' } });
         }
     };
+    
+    const saveFormHandlerReport = async (reportName, bbCodeContent) => {
+        const currentAuthor = getCurrentReportAuthor(formData);
+        if (!currentAuthor) {
+            showNotification('Cannot determine report author.', 'error');
+            return { success: false, error: 'Cannot determine report author.' };
+        }
+        return await formHandler.saveReport(reportName, bbCodeContent, currentAuthor, formData, filterFormData);
+    };
+    
 
     async function saveReport() {
         let key = '';
@@ -578,17 +593,21 @@ export const useReportManagement = (
                     let loadedBbCode = reportData.bbCode || '';
                     let loadedFormData = reportData.data || {};
 
-                    if (returnOnly) {
-                        // When attaching, convert [bold] to [b]
-                        const boldMatches = (loadedBbCode.match(/\[bold\]/gi) || []).length;
-                        if (boldMatches > 0) {
-                            console.log(`[useReportManagement] Found ${boldMatches} [bold] tags. Converting to [b].`);
+                    const isFormHandlerReport = reportData.isFormHandler === true;
+
+                    if (!isFormHandlerReport) {
+                        if (returnOnly) {
+                            // When attaching, convert [bold] to [b]
+                            const boldMatches = (loadedBbCode.match(/\[bold\]/gi) || []).length;
+                            if (boldMatches > 0) {
+                                console.log(`[useReportManagement] Found ${boldMatches} [bold] tags. Converting to [b].`);
+                                loadedBbCode = loadedBbCode.replace(/\[bold\]/gi, '[b]').replace(/\[\/bold\]/gi, '[/b]');
+                                console.log(`[useReportManagement] Conversion complete.`);
+                            }
+                        } else {
+                            // When loading into the form, ensure any escaped bold tags are converted to simple [b]
                             loadedBbCode = loadedBbCode.replace(/\[bold\]/gi, '[b]').replace(/\[\/bold\]/gi, '[/b]');
-                            console.log(`[useReportManagement] Conversion complete.`);
                         }
-                    } else {
-                        // When loading into the form, ensure any escaped bold tags are converted to simple [b]
-                        loadedBbCode = loadedBbCode.replace(/\[bold\]/gi, '[b]').replace(/\[\/bold\]/gi, '[/b]');
                     }
                     const loadedCoronerEmployee = loadedFormData.coronerEmployee;
                     const loadedPhmcEmployee = loadedFormData.phmcEmployee;
@@ -692,9 +711,8 @@ export const useReportManagement = (
                                 coronerEmployee: loadedFormData.coronerEmployee || prev.coronerEmployee,
                                 phmcEmployee: loadedFormData.phmcEmployee || prev.phmcEmployee,
                             }));
-                            setBbCodeVersion(loadedVersion);
                             showNotification(`Mass Fatality Report loaded.`, 'upload');
-                        } else if (bbCodeVersion === 2 && loadedVersion === 1) {
+                        } else if ((selectedForm?.name === 'Coroner Email' || selectedForm?.id === 'coroner_email') && loadedVersion === 1) {
                             // ...existing code for v2 loading v1...
                             const currentDeathReportIsEmpty = !formData.deathReport || formData.deathReport.trim() === '';
                             let notificationMessage = '';
@@ -738,11 +756,8 @@ export const useReportManagement = (
                                 coronerEmployee: loadedFormData.coronerEmployee || prev.coronerEmployee,
                                 phmcEmployee: loadedFormData.phmcEmployee || prev.phmcEmployee,
                             }));
-                            setBbCodeVersion(loadedVersion);
-                            showNotification(`Report "${reportData.originalKey || reportFirebaseKey}" loaded.`, 'upload');
-                        }
-                        setShowSavedReports(false);
-                    }
+                                                    showNotification(`Report "${reportData.originalKey || reportFirebaseKey}" loaded.`, 'upload');
+                                                }                    }
                     // Always return the processed data, regardless of `returnOnly`
                     return { success: true, reportData: { ...reportData, data: loadedFormData, bbCode: loadedBbCode } };
                 } else {
@@ -766,7 +781,7 @@ export const useReportManagement = (
                     sendDataRequestLog(
                         'useReportManagement.js/loadReportForUser',
                         false,
-                        'Firebase Read Error',
+                        'Firebase ReadError',
                         0,
                         isGtaAuthenticated,
                         getCharacterName(gtaWorldUser),
@@ -783,129 +798,303 @@ export const useReportManagement = (
                     removeNotification(loadingNotifId);
                 }
             }
-        }, [bbCodeVersion, factionsData, coronerListData, phmcListData, removeNotification, setBbCodeVersion, setFormData, showNotification, sendDataRequestLog, isGtaAuthenticated, gtaWorldUser]);
+        }, [selectedForm, factionsData, coronerListData, phmcListData, removeNotification, setFormData, showNotification, sendDataRequestLog, isGtaAuthenticated, gtaWorldUser]);
 
-    const handleReportSelectedForAttachment = useCallback(async (reportFirebaseKey, userId) => {
-        // When multiple reports are being loaded, we need to delay closing the modal.
-        // This clears any pending close command from a previous, rapidly-fired event.
-        if (modalCloseTimer.current) {
-            clearTimeout(modalCloseTimer.current);
-        }
+        const handleReportSelectedForAttachment = useCallback(async (reportFirebaseKey, userId) => {
 
-        // Show a loading notification for this specific attachment
-        const loadingNotifId = showNotification(`Attaching report...`, 'info-circle', 0);
+            // When multiple reports are being loaded, we need to delay closing the modal.
 
-        const result = await loadReportForUser(reportFirebaseKey, userId, true);
+            // This clears any pending close command from a previous, rapidly-fired event.
 
-        // Remove the loading notification once done
-        removeNotification(loadingNotifId);
+            if (modalCloseTimer.current) {
 
-        if (result.success && pendingReportAttachmentCallback.current) {
-            const reportData = result.reportData;
-            const loadedFormData = reportData.data || {};
-            const loadedVersion = reportData.bbCodeVersion;
+                clearTimeout(modalCloseTimer.current);
 
-            // --- MODIFICATION START: Generalized Field Population ---
-            setFormData(prev => {
-                if (bbCodeVersion === 2 && loadedVersion === 11) { // Attaching Mass Fatality to Coroner Email
-                    const decedents = loadedFormData.decedents;
-                    if (decedents && decedents.length > 0) {
-                        const firstDecedent = decedents[0];
-                        let icName = firstDecedent.decedentName || firstDecedent.DecedentName || '';
-                        let oocName = firstDecedent.decedentOOC || firstDecedent.DecedentOOC || '';
-
-                        if (decedents.length > 1) {
-                            icName += ` (x${decedents.length})`;
-                            oocName += ` (x${decedents.length})`;
-                        }
-                        
-                        const currentDeathReportIsEmpty = !prev.deathReport || prev.deathReport.trim() === '';
-                        let newState = { ...prev };
-                        newState.decedentName = icName;
-                        newState.decedentOOC = oocName;
-                        newState.paperworkType = 'Mass Fatality';
-
-                        if (currentDeathReportIsEmpty) {
-                            newState.deathReport = reportData.bbCode;
-                        } else {
-                            newState.additionalReports = [...(prev.additionalReports || []), reportData.bbCode];
-                        }
-                        return newState;
-                    }
-                    return prev;
-                }
-                // Mass Fatality Report (bbCodeVersion 11): attach BBCode to deathReport and merge decedents
-                if (loadedVersion === 11) {
-                    const currentDeathReportIsEmpty = !prev.deathReport || prev.deathReport.trim() === '';
-                    let newState = { ...prev };
-                    if (currentDeathReportIsEmpty) {
-                        newState.deathReport = reportData.bbCode;
-                    } else {
-                        newState.additionalReports = [...(prev.additionalReports || []), reportData.bbCode];
-                    }
-                    // Merge decedents array if present
-                    if (Array.isArray(loadedFormData.decedents)) {
-                        newState.decedents = [...(prev.decedents || []), ...loadedFormData.decedents];
-                    }
-                    return newState;
-                }
-                // ...existing code...
-                const fieldsToUpdate = {
-                    decedentName: loadedFormData.decedentName,
-                    decedentOOC: loadedFormData.decedentOOC,
-                    requestingOfficer: loadedFormData.requestingOfficer,
-                    department: loadedFormData.department,
-                };
-                if (bbCodeVersion === 2) {
-                    // If there's already a name, append the new one.
-                    let newState = { ...prev };
-                    newState.decedentName = prev.decedentName && fieldsToUpdate.decedentName ? `${prev.decedentName}, ${fieldsToUpdate.decedentName}` : fieldsToUpdate.decedentName || prev.decedentName || '';
-                    newState.decedentOOC = prev.decedentOOC && fieldsToUpdate.decedentOOC ? `${prev.decedentOOC}, ${fieldsToUpdate.decedentOOC}` : fieldsToUpdate.decedentOOC || prev.decedentOOC || '';
-                    newState.requestingOfficer = fieldsToUpdate.requestingOfficer || prev.requestingOfficer;
-                    newState.department = fieldsToUpdate.department || prev.department;
-                    if (loadedVersion === 1 && bbCodeVersion === 2) {
-                        const currentDeathReportIsEmpty = !prev.deathReport || prev.deathReport.trim() === '';
-                        if (currentDeathReportIsEmpty) {
-                            newState.deathReport = reportData.bbCode;
-                        } else {
-                            newState.additionalReports = [...(prev.additionalReports || []), reportData.bbCode];
-                        }
-                    }
-                    return newState;
-                } else {
-                    let newState = { ...prev };
-                    newState.decedentName = fieldsToUpdate.decedentName || prev.decedentName;
-                    newState.decedentOOC = fieldsToUpdate.decedentOOC || prev.decedentOOC;
-                    newState.requestingOfficer = fieldsToUpdate.requestingOfficer || prev.requestingOfficer;
-                    newState.department = fieldsToUpdate.department || prev.department;
-                    return newState;
-                }
-            });
-            // --- MODIFICATION END ---
-
-            // The pending callback now primarily handles form-specific fields like 'attachedReportSummary'
-            pendingReportAttachmentCallback.current(reportData);
-
-            showNotification(`Report "${reportData.originalKey}" attached successfully.`, 'check-circle');
-
-        } else {
-            if (!result.success) {
-                showNotification('Failed to load the selected report.', 'error');
-            } else if (!pendingReportAttachmentCallback.current) {
-                showNotification('Attachment process could not be completed (no callback).', 'error');
-                Sentry.captureMessage('handleReportSelectedForAttachment was called but pendingReportAttachmentCallback.current was null.');
             }
-        }
 
-        // Set a timer to close the modal. If another report is loaded quickly,
-        // the timer will be reset, ensuring the modal only closes after the last report is processed.
-        modalCloseTimer.current = setTimeout(() => {
-            setReportSelectionFilter(null);
-            setPreselectedEmployeeType(null);
-            setShowSavedReports(false);
-        }, 1000); // 1-second delay
+    
 
-    }, [bbCodeVersion, loadReportForUser, modalCloseTimer, removeNotification, setFormData, showNotification]);
+            // Show a loading notification for this specific attachment
+
+            const loadingNotifId = showNotification(`Attaching report...`, 'info-circle', 0);
+
+    
+
+            const result = await loadReportForUser(reportFirebaseKey, userId, true);
+
+    
+
+            // Remove the loading notification once done
+
+            removeNotification(loadingNotifId);
+
+    
+
+            if (result.success && pendingReportAttachmentCallback.current) {
+
+                const reportData = result.reportData;
+
+                const loadedFormData = reportData.data || {};
+
+                const loadedVersion = reportData.bbCodeVersion;
+
+    
+
+                // --- MODIFICATION START: Generalized Field Population ---
+
+                setFormData(prev => {
+
+                    if ((selectedForm?.name === 'Coroner Email' || selectedForm?.id === 'coroner_email') && loadedVersion === 11) { // Attaching Mass Fatality to Coroner Email
+
+                        const decedents = loadedFormData.decedents;
+
+                        if (decedents && decedents.length > 0) {
+
+                            const firstDecedent = decedents[0];
+
+                            let icName = firstDecedent.decedentName || firstDecedent.DecedentName || '';
+
+                            let oocName = firstDecedent.decedentOOC || firstDecedent.DecedentOOC || '';
+
+    
+
+                            if (decedents.length > 1) {
+
+                                icName += ` (x${decedents.length})`;
+
+                                oocName += ` (x${decedents.length})`;
+
+                            }
+
+                            
+
+                            const currentDeathReportIsEmpty = !prev.deathReport || prev.deathReport.trim() === '';
+
+                            let newState = { ...prev };
+
+                            newState.decedentName = icName;
+
+                            newState.decedentOOC = oocName;
+
+                            newState.paperworkType = 'Mass Fatality';
+
+    
+
+                            if (currentDeathReportIsEmpty) {
+
+                                newState.deathReport = reportData.bbCode;
+
+                            } else {
+
+                                newState.additionalReports = [...(prev.additionalReports || []), reportData.bbCode];
+
+                            }
+
+                            return newState;
+
+                        }
+
+                        return prev;
+
+                    }
+
+                    // Mass Fatality Report (bbCodeVersion 11): attach BBCode to deathReport and merge decedents
+
+                    if (loadedVersion === 11) {
+
+                        const currentDeathReportIsEmpty = !prev.deathReport || prev.deathReport.trim() === '';
+
+                        let newState = { ...prev };
+
+                        if (currentDeathReportIsEmpty) {
+
+                            newState.deathReport = reportData.bbCode;
+
+                        } else {
+
+                            newState.additionalReports = [...(prev.additionalReports || []), reportData.bbCode];
+
+                        }
+
+                        // Merge decedents array if present
+
+                        if (Array.isArray(loadedFormData.decedents)) {
+
+                            newState.decedents = [...(prev.decedents || []), ...loadedFormData.decedents];
+
+                        }
+
+                        return newState;
+
+                    }
+
+                    // ...existing code...
+
+                    const fieldsToUpdate = {
+
+                        decedentName: loadedFormData.decedentName,
+
+                        decedentOOC: loadedFormData.decedentOOC,
+
+                        requestingOfficer: loadedFormData.requestingOfficer,
+
+                        department: loadedFormData.department,
+
+                    };
+
+                    if (selectedForm?.name === 'Coroner Email' || selectedForm?.id === 'coroner_email') {
+
+                        // If there's already a name, append the new one.
+
+                                                    // 1. Aggregate Names
+
+                                                    const existingNames = new Set((prev.decedentName || '').split(', ').filter(Boolean));
+
+                                                    let decedentNameToAdd = null;
+
+                                                    if (reportData.originalKey && reportData.originalKey.startsWith('[DEATH-REPORT]')) {
+
+                                                        const nameMatch = reportData.originalKey.match(/\[DEATH-REPORT\]\s*([^-]+)/);
+
+                                                        if (nameMatch && nameMatch[1]) {
+
+                                                            decedentNameToAdd = nameMatch[1].trim();
+
+                                                        }
+
+                                                    }
+
+                                                    if (!decedentNameToAdd && loadedFormData.decedentName) {
+
+                                                        decedentNameToAdd = loadedFormData.decedentName;
+
+                                                    }
+
+                                                    if (decedentNameToAdd) {
+
+                                                        existingNames.add(decedentNameToAdd);
+
+                                                    }
+
+                                                    const newDecedentName = Array.from(existingNames).join(', ');
+
+    
+
+                                                    // 2. Aggregate OOC Names
+
+                                                    const existingOocNames = new Set((prev.decedentOOC || '').split(', ').filter(Boolean));
+
+                                                    if (loadedFormData.decedentOOC) {
+
+                                                        existingOocNames.add(loadedFormData.decedentOOC);
+
+                                                    }
+
+                                                    const newDecedentOOC = Array.from(existingOocNames).join(', ');
+
+    
+
+                                                    // 3. Aggregate Report BBCode into the single deathReport field
+
+                                                    const newDeathReport = [prev.deathReport, reportData.bbCode].filter(Boolean).join('\n\n[hr]\n\n');
+
+    
+
+                                                    // 4. Aggregate Report Keys
+
+                                                    const newAttachedReportKeys = [...(prev.attachedReportKeys || []), reportData.originalKey];
+
+    
+
+                                                    // 5. Return the complete new state object
+
+                                                    return {
+
+                                                        ...prev,
+
+                                                        decedentName: newDecedentName,
+
+                                                        decedentOOC: newDecedentOOC,
+
+                                                        requestingOfficer: loadedFormData.requestingOfficer || prev.requestingOfficer,
+
+                                                        department: loadedFormData.department || prev.department,
+
+                                                        deathReport: newDeathReport,
+
+                                                        attachedReportKeys: newAttachedReportKeys,
+
+                                                        additionalReports: [], // Explicitly clear the unused field
+
+                                                    };
+
+                    } else {
+
+                        let newState = { ...prev };
+
+                        newState.decedentName = fieldsToUpdate.decedentName || prev.decedentName;
+
+                        newState.decedentOOC = fieldsToUpdate.decedentOOC || prev.decedentOOC;
+
+                        newState.requestingOfficer = fieldsToUpdate.requestingOfficer || prev.requestingOfficer;
+
+                        newState.department = fieldsToUpdate.department || prev.department;
+
+                        return newState;
+
+                    }
+
+                });
+
+                // --- MODIFICATION END ---
+
+    
+
+                // The pending callback now primarily handles form-specific fields like 'attachedReportSummary'
+
+                pendingReportAttachmentCallback.current(reportData);
+
+    
+
+                showNotification(`Report "${reportData.originalKey}" attached successfully.`, 'check-circle');
+
+    
+
+            } else {
+
+                if (!result.success) {
+
+                    showNotification('Failed to load the selected report.', 'error');
+
+                } else if (!pendingReportAttachmentCallback.current) {
+
+                    showNotification('Attachment process could not be completed (no callback).', 'error');
+
+                    Sentry.captureMessage('handleReportSelectedForAttachment was called but pendingReportAttachmentCallback.current was null.');
+
+                }
+
+            }
+
+    
+
+            // Set a timer to close the modal. If another report is loaded quickly,
+
+            // the timer will be reset, ensuring the modal only closes after the last report is processed.
+
+            modalCloseTimer.current = setTimeout(() => {
+
+                setReportSelectionFilter(null);
+
+                setPreselectedEmployeeType(null);
+
+                setShowSavedReports(false);
+
+            }, 1000); // 1-second delay
+
+    
+
+        }, [selectedForm, loadReportForUser, modalCloseTimer, removeNotification, setFormData, showNotification]);
 
     const onAttachReportSummaryRequest = useCallback((callback) => {
         // First, check if a relevant employee is selected
@@ -1020,7 +1209,17 @@ export const useReportManagement = (
             return;
         }
 
-        const author = getCurrentReportAuthor(formData);
+        let author = null;
+        if (employeeType === 'PHMC' && formData.phmcEmployee) {
+            author = formData.phmcEmployee;
+        } else if (employeeType === 'Coroner' && formData.coronerEmployee) {
+            author = formData.coronerEmployee;
+        }
+
+        // If no author is found from the form data, try the generic author
+        if (!author) {
+            author = getCurrentReportAuthor(formData);
+        }
 
         if (author) {
             setShowSavedReports(true);
@@ -1028,13 +1227,16 @@ export const useReportManagement = (
             setReportSelectionFilter(filterVersions);
             pendingReportAttachmentCallback.current = callback;
         } else {
-            showNotification('Please select an employee in the form before viewing saved reports.', 'warning');
+            const message = employeeType
+                ? `Please select a ${employeeType} employee in the form to view their reports.`
+                : 'Please select an employee in the form before viewing saved reports.';
+            showNotification(message, 'warning');
         }
     }, [getCurrentReportAuthor, formData, setPreselectedEmployeeType, setReportSelectionFilter, setShowSavedReports, showNotification, showSavedReports]);
 
     const handleShowPositionInfo = useCallback((positionKey) => {
         let data = null;
-        const definition = getFormDefinition(bbCodeVersion);
+        const definition = selectedForm; // Replaced getFormDefinition(bbCodeVersion)
 
         if (!positionKey) {
             showNotification("Please select a position first.", 'warning');
@@ -1063,35 +1265,36 @@ export const useReportManagement = (
         } else {
             showNotification("Detailed information for this position is not available.", 'warning');
         }
-    }, [bbCodeVersion, selectOptions, selectedAgencyGroup, showNotification]);
+    }, [selectedForm, selectOptions, selectedAgencyGroup, showNotification]);
 
-    return {
-        saveReport,
-        savedReports,
-        setSavedReports,
-        showSavedReports,
-        setShowSavedReports,
-        isLoadingUserReports,
-        setIsLoadingUserReports,
-        selectedUserForSavedReports,
-        setSelectedUserForSavedReports,
-        preselectedEmployeeType,
-        setPreselectedEmployeeType,
-        loadUserSavedReports,
-        loadReportForUser,
-        handleReportSelectedForAttachment,
-        onAttachReportSummaryRequest,
-        onParseDecedentRequest,
-        deleteReportForUser,
-        showRareEasterEggDirectly,
-        toggleSavedReports,
-        showPositionInfoModal,
-        setShowPositionInfoModal,
-        currentPositionInfo,
-        setCurrentPositionInfo,
-        handleShowPositionInfo,
-        pendingReportAttachmentCallback,
-        reportSelectionFilter,
-        setReportSelectionFilter
+        return {
+            saveReport,
+            saveFormHandlerReport,
+            savedReports,
+            setSavedReports,
+            showSavedReports,
+            setShowSavedReports,
+            isLoadingUserReports,
+            setIsLoadingUserReports,
+            selectedUserForSavedReports,
+            setSelectedUserForSavedReports,
+            preselectedEmployeeType,
+            setPreselectedEmployeeType,
+            loadUserSavedReports,
+            loadReportForUser,
+            handleReportSelectedForAttachment,
+            onAttachReportSummaryRequest,
+            onParseDecedentRequest,
+            deleteReportForUser,
+            showRareEasterEggDirectly,
+            toggleSavedReports,
+            showPositionInfoModal,
+            setShowPositionInfoModal,
+            currentPositionInfo,
+            setCurrentPositionInfo,
+            handleShowPositionInfo,
+            pendingReportAttachmentCallback,
+            reportSelectionFilter,
+            setReportSelectionFilter
+        };
     };
-};

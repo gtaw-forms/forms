@@ -174,7 +174,7 @@ const sendAdminActionWebhook = async (adminEmail, action, details, categoryName 
 
 
 
-const AdminAuthAndActions = ({ formData, setFormData, showNotification, showNotification: showInAppNotification, commitInfo }) => {
+const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAppNotification, commitInfo }) => {
     // --- Custom Webhook Panel State (must be first, before any logic or return) ---
     const [customWebhookChannel, setCustomWebhookChannel] = useState('');
     const [customWebhookTitle, setCustomWebhookTitle] = useState('');

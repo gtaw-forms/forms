@@ -4,7 +4,7 @@ const FormContext = createContext();
 
 export const useFormContext = () => useContext(FormContext);
 
-export const FormProvider = ({ initialFormData, setFormData, setLastWebhookIdentifier, showNotification, children }) => {
+export const FormProvider = ({ formData, setFormData, initialFormData, setLastWebhookIdentifier, showNotification, children }) => {
     // Move clearForm logic here
     const clearForm = useCallback(() => {
         setFormData(prevFormData => ({
@@ -28,7 +28,7 @@ export const FormProvider = ({ initialFormData, setFormData, setLastWebhookIdent
     }, [initialFormData, setFormData, setLastWebhookIdentifier, showNotification]);
 
     return (
-        <FormContext.Provider value={{ clearForm }}>
+        <FormContext.Provider value={{ formData, setFormData, clearForm }}>
             {children}
         </FormContext.Provider>
     );

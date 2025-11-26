@@ -1,6 +1,6 @@
 // src/firebase.js
 import { initializeApp } from "firebase/app";
-import { getDatabase } from "firebase/database";
+import { getDatabase, ref, remove } from "firebase/database"; // Import ref and remove
 import { getAuth } from "firebase/auth";
 import { getAnalytics } from "firebase/analytics";
 import { getFunctions } from "firebase/functions";
@@ -23,4 +23,15 @@ const analytics = getAnalytics(app);
 // Configure functions with the correct region (must match server-side)
 const functions = getFunctions(app, 'us-central1');
 
-export { database, auth, app, analytics, functions,};
+// Function to delete a form
+const deleteForm = async (formId) => {
+  try {
+    await remove(ref(database, `forms/${formId}`));
+    console.log(`Form with ID ${formId} deleted successfully.`);
+  } catch (error) {
+    console.error(`Error deleting form with ID ${formId}:`, error);
+    throw error;
+  }
+};
+
+export { database, auth, app, analytics, functions, deleteForm };

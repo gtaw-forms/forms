@@ -128,9 +128,6 @@ ${additionalImagesBBCode}
 
 ${decedentAttributesBBCode}
 
-${coronerRank || 'Coroner'} ${coronerEmployee || 'Unknown Coroner'} has added something to the evidence locker: ${evidenceLockerText}
-${evidenceLockerListItems}
-
 [/divbox]
 `;
 

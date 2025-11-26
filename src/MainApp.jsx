@@ -599,17 +599,7 @@ function MainApp({
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
         const newValue = type === 'checkbox' ? checked : value;
-        
-        setFormData(prev => {
-            const newFormData = {
-                ...prev,
-                [name]: newValue
             };
-            // Save to localStorage immediately after state update
-            localStorage.setItem('formData', JSON.stringify(newFormData));
-            return newFormData;
-        });
-    };
 
     const handleSelectChange = (selectedOption, action) => {
         const name = typeof action === 'string' ? action : action.name;
@@ -1205,6 +1195,9 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             handleShowCctvRequestModal();
         }
     }, []); // Empty dependency array ensures this runs only once on initial load
+
+    
+
     const handleHideCctvRequestModal = useCallback(() => {
         setShowCctvRequestModal(false);
         // When the modal is closed, remove '/cctv' from the URL if it's there
@@ -1221,7 +1214,14 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
         const currentPath = window.location.pathname;
         const hash = window.location.hash;
 
-        if (currentPath.endsWith('/cctv') || (redirectedPath && redirectedPath.endsWith('/cctv'))) {
+        if (hash === '#bingo' || currentPath.endsWith('/bingo') || (redirectedPath && redirectedPath.endsWith('/bingo'))) {
+
+
+
+            setShowEmsBingoModal(true);
+
+
+        if (currentPath.endsWith('/cctv') || (redirectedPath && redirectedPath.endsWith('/cctv'))) 
             handleShowCctvRequestModal();
         }
 
@@ -1473,9 +1473,6 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                 }}
             />
             {seasonalEffectsEnabled && effect}
-
-
-
 
                     {showAgencySelector && ( // Only show if a group is selected
                         <AgencySelector
@@ -1837,16 +1834,18 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                     <i className="fas fa-tachometer-alt"></i>
                     EMS Dashboard
                 </Button>
-                <Button
-                    type="button"
-                    variant="primary"
-                    className="changelog-button"
-                    onClick={() => navigate('/form-handler')}
-                    title="Open Form Handler"
-                >
-                    <i className="fas fa-tachometer-alt"></i>
-                    Form Handler
-                </Button>
+                {displayUser?.username === 'ItsMitch' && (
+                    <Button
+                        type="button"
+                        variant="primary"
+                        className="changelog-button"
+                        onClick={() => navigate('/form-handler')}
+                        title="Open Form Handler"
+                    >
+                        <i className="fas fa-tachometer-alt"></i>
+                        Form Handler
+                    </Button>
+                )}
                <Button
                     type="button"
                     variant="danger"

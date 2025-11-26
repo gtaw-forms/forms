@@ -42,7 +42,7 @@ function getSeason() {
         return "Easter";
     }
     // Christmas (December 1 to January 1)
-    if ((month === 11 && day >= 1) || (month === 0 && day <= 1)) {
+    if ((month === 10 && day >= 1) || (month === 0 && day <= 1)) {
         return "Christmas";
     }
 
