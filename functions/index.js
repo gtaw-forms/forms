@@ -1626,6 +1626,78 @@ export const getGtaWorldProfile = onCall({
     }
 });
 
+export const migrateLegacyReports = onCall({
+    secrets: ["ADMIN_ACTION_WEBHOOK_URL"],
+}, async (request) => {
+    console.log('[Migration] Starting migration of legacy reports in /savedReports.');
+
+    // Authentication check
+    if (!request.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+    }
+
+    const reportsRef = db.ref('/savedReports');
+    let migratedCount = 0;
+
+    try {
+        const snapshot = await reportsRef.once('value');
+        if (!snapshot.exists()) {
+            console.log('[Migration] No reports found at /savedReports. Nothing to migrate.');
+            return { success: true, message: 'No legacy reports found to migrate.', migratedCount: 0 };
+        }
+
+        const allUserData = snapshot.val();
+        const updates = {};
+
+        for (const userId in allUserData) {
+            const userReports = allUserData[userId];
+            for (const reportId in userReports) {
+                const report = userReports[reportId];
+                // Check if the report is an object and doesn't have the 'legacy' flag yet
+                if (typeof report === 'object' && report !== null && report.legacy === undefined) {
+                    updates[`/savedReports/${userId}/${reportId}/legacy`] = true;
+                    migratedCount++;
+                }
+            }
+        }
+
+        if (migratedCount > 0) {
+            console.log(`[Migration] Found ${migratedCount} reports to update. Applying updates...`);
+            await db.ref().update(updates);
+            console.log(`[Migration] Successfully updated ${migratedCount} reports with the legacy:true flag.`);
+        } else {
+            console.log('[Migration] All reports in /savedReports already seem to have the legacy flag.');
+        }
+
+        const successMessage = migratedCount > 0 
+            ? `Migration successful. ${migratedCount} legacy reports were flagged.`
+            : 'Migration complete. No new reports needed to be flagged.';
+            
+        await sendWebhook({
+            embeds: [{
+                title: "Legacy Report Migration Completed",
+                description: successMessage,
+                color: 0x00FF00, // Green
+                footer: { text: `Triggered by: ${request.auth.token.email || request.auth.uid}` }
+            }]
+        });
+
+        return { success: true, message: successMessage, migratedCount: migratedCount };
+
+    } catch (error) {
+        console.error('[Migration] An error occurred during the migration process:', error);
+        await sendWebhook({
+            embeds: [{
+                title: "Legacy Report Migration FAILED",
+                description: `An error occurred: ${error.message}`,
+                color: 0xFF0000, // Red
+                footer: { text: `Triggered by: ${request.auth.token.email || request.auth.uid}` }
+            }]
+        });
+        throw new functions.https.HttpsError('internal', 'An error occurred during migration.', error.message);
+    }
+});
+
 // --- Faction Data Management Functions ---
 
 /**

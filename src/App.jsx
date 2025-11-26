@@ -1,12 +1,12 @@
-import { useState, Suspense } from 'react';
+import { useState } from 'react';
 import { HashRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext.jsx';
 import { NotificationProvider, useNotification } from './contexts/NotificationContext.jsx';
 import { FormProvider } from './contexts/FormContext.jsx';
 import { DataProvider } from './contexts/DataContext.jsx';
+import { SeasonalEffectsProvider } from './contexts/SeasonalEffectsContext';
 import * as Sentry from "@sentry/react";
 import { sendDiscordErrorWebhook } from './utils/errorUtils';
-import LoadingSpinner from './components/LoadingSpinner.jsx';
 
 import GtaLogin from './components/Auth/GtaLogin.jsx';
 import UnifiedGtaCallback from './components/Auth/UnifiedGtaCallback.jsx';
@@ -88,19 +88,19 @@ function App() {
                     <NotificationProvider>
                         <AuthProvider>
                             <Router>
-                                <Suspense fallback={<LoadingSpinner />}>
-                                    <Routes>
-                                        <Route path="/" element={<FormHandler formData={formData} setFormData={setFormData} lastWebhookIdentifier={lastWebhookIdentifier} setLastWebhookIdentifier={setLastWebhookIdentifier} showNotification={showNotification} removeNotification={removeNotification} setShowAdblockNotification={setShowAdblockNotification} />} />
-                                        <Route path="/login" element={<GtaLogin />} />
-                                        <Route path="/auth/gta/callback" element={<UnifiedGtaCallback />} />
-                                        <Route path="/auth/gta/diagnostic" element={<OAuthUrlDiagnostic />} />
-                                        <Route path="/auth/gtapayment/callback/:token" element={<PaymentCallback />} />
-                                        <Route path="/admin" element={<ProtectedRoute><Admin formData={formData} setFormData={setFormData} showNotification={showNotification} /></ProtectedRoute>} />
-                                        <Route path="/ems-dashboard" element={<ProtectedRoute><EmsDashboard /></ProtectedRoute>} />
-                                        <Route path="/form-handler" element={<ProtectedRoute><FormHandler /></ProtectedRoute>} />
-                                        <Route path="*" element={<Navigate to="/" replace />} />
-                                    </Routes>
-                                </Suspense>
+                                    <SeasonalEffectsProvider> {/* Wrap Routes with SeasonalEffectsProvider */}
+                                        <Routes>
+                                            <Route path="/" element={<FormHandler formData={formData} setFormData={setFormData} lastWebhookIdentifier={lastWebhookIdentifier} setLastWebhookIdentifier={setLastWebhookIdentifier} showNotification={showNotification} removeNotification={removeNotification} setShowAdblockNotification={setShowAdblockNotification} />} />
+                                            <Route path="/login" element={<GtaLogin />} />
+                                            <Route path="/auth/gta/callback" element={<UnifiedGtaCallback />} />
+                                            <Route path="/auth/gta/diagnostic" element={<OAuthUrlDiagnostic />} />
+                                            <Route path="/auth/gtapayment/callback/:token" element={<PaymentCallback />} />
+                                            <Route path="/admin" element={<ProtectedRoute><Admin formData={formData} setFormData={setFormData} showNotification={showNotification} /></ProtectedRoute>} />
+                                            <Route path="/ems-dashboard" element={<ProtectedRoute><EmsDashboard /></ProtectedRoute>} />
+                                            <Route path="/form-handler" element={<ProtectedRoute><FormHandler /></ProtectedRoute>} />
+                                            <Route path="*" element={<Navigate to="/" replace />} />
+                                        </Routes>
+                                    </SeasonalEffectsProvider>
                             </Router>
                         </AuthProvider>
                     </NotificationProvider>

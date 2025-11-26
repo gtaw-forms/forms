@@ -37,5 +37,37 @@ export const uploadImageToImgBB = async (file) => {
   }
 };
 
+
+export const uploadDataUrlToImgBB = async (dataUrl) => {
+  const imgbbApiKey = import.meta.env.VITE_IMGBB_API_KEY;
+  if (!imgbbApiKey) {
+    throw new Error('ImgBB API Key is not configured.');
+  }
+
+  try {
+    const formData = new FormData();
+    const base64Image = dataUrl.split(',')[1];
+    formData.append('image', base64Image);
+
+    const response = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbApiKey}`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      return data.data.url;
+    } else {
+      console.error('ImgBB upload failed:', data.error.message);
+      throw new Error(`ImgBB upload failed: ${data.error.message}`);
+    }
+  } catch (error) {
+    console.error('Upload failed:', error);
+    Sentry.captureException(error, { extra: { context: 'imageUploadUtils dataUrl' } });
+    throw error;
+  }
+};
+
 // If uploadToImgBB is distinct, define it here, otherwise use uploadImageToImgBB
 export const uploadToImgBB = uploadImageToImgBB;

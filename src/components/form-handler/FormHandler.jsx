@@ -14,12 +14,14 @@ import EmsBingoModal from '../EmsBingoModal';
 import useBbcodeGenerator from '../../hooks/useBbcodeGenerator';
 import FormFieldRenderer from './FormFieldRenderer';
 import FormHandlerNavButtons from './FormHandlerNavButtons';
-import { uploadImageToImgBB } from '../../utils/imageUploadUtils'; 
+import { uploadImageToImgBB, uploadDataUrlToImgBB } from '../../utils/imageUploadUtils'; 
 import { useNotification } from '../../contexts/NotificationContext';
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTimeUtils';
 import { useReportManagement } from '../useReportManagement';
+import { useFormSaver } from '../../hooks/useFormSaver'; // Added useFormSaver import
 import SavedReportsModal from '../SavedReportsModal';
 import OnboardingModal from '../OnboardingModal'; // NEW IMPORT
+import seasonalEvents from '../../components/SeasonalEvents'; // Import seasonalEvents function
 
 // Helper: escape HTML characters for safe insertion into DOM
 const escapeHtml = (unsafe) => {
@@ -65,6 +67,19 @@ const FormHandler = () => {
   const [currentPhmcIndex, setCurrentPhmcIndex] = useState(() => parseInt(localStorage.getItem('formCurrentPhmcIndex'), 10) || 0);
   const [tempPatientName, setTempPatientName] = useState('');
 const [currentUtcTime, setCurrentUtcTime] = useState(getUtcFormattedDateTime());
+  const [seasonalEffectsEnabled, setSeasonalEffectsEnabled] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('seasonalEffectsEnabled')) ?? true;
+    } catch (e) {
+      console.error("Failed to parse seasonalEffectsEnabled from localStorage", e);
+      return true;
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('seasonalEffectsEnabled', JSON.stringify(seasonalEffectsEnabled));
+  }, [seasonalEffectsEnabled]);
+
   const toggleCategory = (cat) => {
     setCollapsedCategories((prev) => ({ ...prev, [cat]: !prev[cat] }));
   };
@@ -309,6 +324,16 @@ useEffect(() => { localStorage.setItem('formPatientType', patientType); }, [pati
   useEffect(() => { localStorage.setItem('formPhmcNames', JSON.stringify(phmcNames)); }, [phmcNames]);
   useEffect(() => { localStorage.setItem('formCurrentCivilianIndex', currentCivilianIndex.toString()); }, [currentCivilianIndex]);
   useEffect(() => { localStorage.setItem('formCurrentPhmcIndex', currentPhmcIndex.toString()); }, [currentPhmcIndex]);
+
+  // Effect to save form progression to localStorage
+  useEffect(() => {
+    if (selectedForm?.firebaseKey && Object.keys(formValues).length > 0) {
+      localStorage.setItem(`form_progression_${selectedForm.firebaseKey}`, JSON.stringify(formValues));
+    } else if (selectedForm?.firebaseKey) {
+        // If formValues are empty, ensure no old progression is left for this form.
+        localStorage.removeItem(`form_progression_${selectedForm.firebaseKey}`);
+    }
+  }, [formValues, selectedForm?.firebaseKey]);
 
   // Effect to manage tempPatientName based on selections
   useEffect(() => {
@@ -582,22 +607,43 @@ useEffect(() => {
       };
     });
   }, []);
+  const handleDiagramUpload = useCallback(async (dataUrl) => {
+    try {
+        const url = await uploadDataUrlToImgBB(dataUrl);
+        return [url]; // Return as an array to match modal's expectation
+    } catch (error) {
+        showNotification('Failed to upload diagram image.', 'error');
+        console.error("Autopsy Diagram upload failed:", error); // Add more specific logging
+        return [];
+    }
+}, [showNotification]);
+
+  const { saveReport: saveNewReport } = useFormSaver();
 
   const copyAndSaveReport = useCallback(async () => {
     if (generatedBBCode) {
+      // First, save the report
+      await saveNewReport(selectedForm, formValues, generatedTitle, generatedBBCode);
+      
+      // Then, copy to clipboard
       try {
         await navigator.clipboard.writeText(generatedBBCode);
-        // Optionally, add a notification here that BBCode was copied
-        // For example: alert('BBCode copied to clipboard!');
+        // The save function already shows a notification, so we might not need another one.
+        // Or, we can change the save notification and add a more specific one here.
+        // For now, relying on the notification from the saver hook.
       } catch (err) {
         console.error('Failed to copy BBCode: ', err);
-        // Optionally, add an error notification here
+        showNotification('Report saved, but failed to copy BBCode to clipboard.', 'warning');
       }
     }
-  }, [generatedBBCode]);
+  }, [generatedBBCode, selectedForm, formValues, generatedTitle, saveNewReport, showNotification]);
+
+  // Determine current seasonal effect
+  const { effect } = seasonalEvents({});
 
   return (
     <div className={styles.container}>
+      {seasonalEffectsEnabled && effect}
       {/* NEW: OnboardingModal */}
       <OnboardingModal
         show={showOnboardingModal}
@@ -684,7 +730,9 @@ useEffect(() => {
                                key={form.firebaseKey}
                                onClick={() => {
                                  setSelectedForm(form);
-                                 setFormValues({});
+                                 // Load saved progression or reset
+                                 const savedProgression = localStorage.getItem(`form_progression_${form.firebaseKey}`);
+                                 setFormValues(savedProgression ? JSON.parse(savedProgression) : {});
                                  setShowBBCode(false);
                                }}
                                className={`${styles.formCard} ${selectedForm?.firebaseKey === form.firebaseKey 
@@ -810,6 +858,8 @@ useEffect(() => {
                                   agencyDataStore={agencyDataStore} // New prop
                                   toggleSavedReports={toggleSavedReports}
                                   showNotification={showNotification}
+                                  isUploading={isUploading}
+                                  handleDiagramUpload={handleDiagramUpload}
                                 />
                               ))}
                             </div>
@@ -836,11 +886,6 @@ useEffect(() => {
             {isPhmcMember && <div style={{ color: "#34d399", marginTop: "0.5rem" }}>PHMC Member • Rank {factionRank}</div>}
           </div>
 
-          {generatedTitle && (
-            <div style={{ background: "#0f172a", padding: "1.5rem", borderRadius: 12, color: "#e2e8f0", fontSize: "1.1rem", fontWeight: "700", marginBottom: "1rem", whiteSpace: "pre-wrap" }}>
-              {generatedTitle}
-            </div>
-          )}
 
           <button
             onClick={() => setShowBBCode(!showBBCode)}
@@ -860,7 +905,14 @@ useEffect(() => {
           {showBBCode && generatedBBCode && (
             <>
               {generatedTitle && (
-                <div style={{ background: "#0f172a", padding: "1.5rem", borderRadius: 12, color: "#e2e8f0", fontSize: "1.1rem", fontWeight: "700", marginBottom: "1rem", whiteSpace: "pre-wrap" }}>
+                <div
+                  style={{ background: "#0f172a", padding: "1.5rem", borderRadius: 12, color: "#e2e8f0", fontSize: "1.1rem", fontWeight: "700", marginBottom: "1rem", whiteSpace: "pre-wrap", cursor: "pointer" }}
+                  onClick={() => {
+                    navigator.clipboard.writeText(generatedTitle);
+                    showNotification('Title copied to clipboard!', 'success');
+                  }}
+                  title="Click to copy title"
+                >
                   {generatedTitle}
                 </div>
               )}
