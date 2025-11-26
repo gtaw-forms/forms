@@ -1,4 +1,7 @@
 // src/formDefinitions.js
+// THIS IS A VERY LEGACY FILE THAT DEFINES ALL FORM METADATA AND GENERATORS
+// IT SHOULD NOT BE CONFUSED WITH THE FORM HANDLER COMPONENT 
+// IT SHOULD NOT BE REFERENCED OR USED DIRECTLY, SCHEDULED FOR DEPRECATION
 import { lazy } from 'react';
 import { generateDevTest } from './phmc-bbcode-generators/devTest';
 

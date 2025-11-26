@@ -6,6 +6,9 @@ Always prioritize and strictly adhere to the instructions and phases outlined in
 ## BBCodeVersion Deprecation
 **WARNING:** The `bbCodeVersion` concept is deprecated and considered legacy. Avoid introducing or relying on `bbCodeVersion` in any new code or modifications. Prioritize using `selectedForm.name` or other dynamic form properties from Firebase instead.
 
+## `cb:variable` Formatting in `src/components/Admin/AddFormModal.jsx`
+When generating or modifying BBCode within `src/components/Admin/AddFormModal.jsx` that uses `{{cb:variable}}`, always ensure the output format adheres to `[cb:variable]TEXT` with no space between `[cb:variable]` and the subsequent text. **NEVER** use `[cb:variable] Text` (with a space).
+
 If the Agent (Gemini) fails to replace blocks or takes significant time (over 5 minutes of thinking), stop the operation and inform the user of what block needs to be replaced.
 
 # GRIP (Grep-on-Replace-Interrupt Protocol)
