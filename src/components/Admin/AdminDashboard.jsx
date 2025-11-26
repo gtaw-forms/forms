@@ -299,41 +299,41 @@ const AdminDashboard = ({
         }
     };
 
-    const handleAppendLegacyFlag = async () => {
-        if (!window.confirm("Are you sure you want to append the 'legacy: true' flag to all saved reports? This operation is permanent.")) {
+    const handleMigrateLegacyReports = async () => {
+        if (!window.confirm("Are you sure you want to run the legacy report migration? This will add a 'legacy: true' flag to all reports in /savedReports.")) {
             return;
         }
 
-        setIsAppendingLegacyFlag(true);
-        showInAppNotification && showInAppNotification('Starting to append legacy flag to all reports. This may take a while...', 'info');
+        setIsMigratingLegacy(true);
+        showInAppNotification && showInAppNotification('Starting legacy report migration...', 'info');
 
         try {
             const functions = getFunctions();
-            const appendLegacyFlag = httpsCallable(functions, 'appendLegacyFlagToReports');
-            const result = await appendLegacyFlag();
+            const migrateFunc = httpsCallable(functions, 'migrateLegacyReports');
+            const result = await migrateFunc();
 
             if (result.data.success) {
                 showInAppNotification && showInAppNotification(
-                    `Successfully appended legacy flag to ${result.data.updatedReports} reports across ${result.data.updatedUsers} users.`,
+                    `Legacy migration complete: ${result.data.migratedCount} reports flagged.`,
                     'success'
                 );
-                console.log('Append legacy flag result:', result.data);
+                console.log('Legacy migration result:', result.data);
             } else {
                 showInAppNotification && showInAppNotification(
-                    `Failed to append legacy flag: ${result.data.message || 'Unknown error'}`,
+                    `Legacy migration failed: ${result.data.message || 'Unknown error'}`,
                     'error'
                 );
-                console.error('Append legacy flag failed:', result.data);
+                console.error('Legacy migration failed:', result.data);
             }
         } catch (error) {
-            console.error('Error calling appendLegacyFlagToReports:', error);
+            console.error('Error calling migrateLegacyReports:', error);
             showInAppNotification && showInAppNotification(
-                `Error during legacy flag append: ${error.message}`,
+                `Error during legacy migration: ${error.message}`,
                 'error'
             );
-            Sentry.captureException(error, { extra: { context: 'handleAppendLegacyFlag' } });
+            Sentry.captureException(error, { extra: { context: 'handleMigrateLegacyReports' } });
         } finally {
-            setIsAppendingLegacyFlag(false);
+            setIsMigratingLegacy(false);
         }
     };
 
@@ -1172,6 +1172,20 @@ const AdminDashboard = ({
                                             Migrate Reports
                                         </Button>
                                         <Button
+                                            variant="secondary"
+                                            size="sm"
+                                            onClick={handleMigrateLegacyReports}
+                                            disabled={isMigratingLegacy || !hasAdminAccess}
+                                            title={hasAdminAccess ? "Flag all reports in /savedReports as legacy:true" : "Requires admin access permission"}
+                                        >
+                                            {isMigratingLegacy ? (
+                                                <Spinner as="span" animation="border" size="sm" />
+                                            ) : (
+                                                <i className="fas fa-history me-2"></i>
+                                            )}
+                                            Migrate Legacy Reports
+                                        </Button>
+                                        <Button
                                             variant="info"
                                             size="sm"
                                             onClick={handleSyncReportCounts}
@@ -1349,7 +1363,7 @@ const AdminDashboard = ({
                             <div className="card-body">
                                 {isGtaAuthenticated || currentUser ? (
                                     hasDatabaseAccess ? (
-                                        <DatabaseEditor showNotification={showNotification} />
+                                        <DatabaseEditor showNotification={showInAppNotification} />
                                     ) : (
                                         <div className="alert alert-warning">
                                             <i className="fas fa-exclamation-triangle me-2"></i>

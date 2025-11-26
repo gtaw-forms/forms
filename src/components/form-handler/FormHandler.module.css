@@ -1,349 +1,165 @@
-/* src/components/ems/EmsDashboard.module.css */
-.container {
-  min-height: 100vh;
-  background: #0f172a;
-  color: #e2e8f0;
-  display: flex;
-  flex-direction: column;
-  padding: 1.5rem;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-}
+/* src/components/form-handler/FormHandler.module.css */
 
-.header {
-  text-align: center;
-  margin-bottom: 2rem;
-}
-
-.header h1 {
-  font-size: 2.5rem;
-  font-weight: 800;
-  background: #a1acc5;
-  -webkit-background-clip: text; /* Add this */
-  background-clip: text; /* Add this */
-  -webkit-text-fill-color: transparent;
-  margin: 0;
-}
-
-.controls {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: 2rem;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
-.searchInput {
-  max-width: 400px;
-  background: #1e293b;
-  border: 1px solid #334155;
-  color: #e2e8f0;
-  border-radius: 12px;
-  padding: 0.75rem 1rem;
-}
-
-.searchInput::placeholder {
-  color: #64748b;
-}
-
-.themeToggle {
-  background: #334155;
-  color: #e2e8f0;
-  border: none;
-  border-radius: 12px;
-  padding: 0.75rem 1.5rem;
-  font-weight: 600;
-}
-
-.mainLayout {
-  display: flex;
-  flex: 1;
-  gap: 1.5rem;
-  flex-wrap: wrap;
-}
-
-.leftPanel {
-  flex: 1;
-  min-width: 300px;
-  background: #1e293b;
-  border-radius: 16px;
-  padding: 1.5rem;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-  max-height: 80vh;
-  overflow-y: auto;
-}
-
-.categoryHeader {
-  background: #334155;
-  padding: 1rem;
-  border-radius: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  user-select: none;
-  transition: all 0.2s;
-  margin-bottom: 0.5rem;
-}
-
-.categoryHeader:hover {
-  background: #475569;
-}
-
-.protocolList {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.protocolItem {
-  padding: 0.75rem 1rem;
-  border-radius: 10px;
-  margin: 0.35rem 0;
-  cursor: pointer;
-  transition: all 0.2s;
-  background: #334155;
-}
-
-.protocolItem:hover {
-  background: #475569;
-  transform: translateX(4px);
-}
-
-.protocolItem.selected {
-  background: #6366f1;
-  color: white;
-  font-weight: 600;
-}
-
-.mainContent {
-  flex: 2;
-  min-width: 300px;
-  background: #1e293b;
-  border-radius: 16px;
-  padding: 2rem;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-}
-
-.protocolTitle {
-  font-size: 2rem;
-  margin-bottom: 1.5rem;
-  color: #60a5fa;
-}
-
-.protocolContent {
-  font-size: 1.1rem;
-  line-height: 1.8;
-  white-space: pre-wrap;
-}
-
-.protocolImage {
-  max-width: 100%;
-  height: auto;
-  border-radius: 12px;
-  margin: 1.5rem 0;
-  box-shadow: 0 8px 25px rgba(0,0,0,0.4);
-}
-
-.divider {
-  height: 2px;
-  background: linear-gradient(90deg, transparent, #6366f1, transparent);
-  margin: 2rem 0;
-  border: none;
-}
-
-.rightPanel {
-  flex: 1;
-  min-width: 300px;
-  background: #1e293b;
-  border-radius: 16px;
-  padding: 1.5rem;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-}
-
-/* ─────── LIGHT THEME – MUST COME LAST AND BE STRONGER ─────── */
-.container.light {
-  background: #f8fafc !important;
-  color: #1e293b !important;
-}
-
-.container.light .leftPanel,
-.container.light .mainContent,
-.container.light .rightPanel {
-  background: white !important;
-  color: #1e293b !important;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.08) !important;
-}
-
-.container.light .categoryHeader,
-.container.light .protocolItem {
-  background: #e2e8f0 !important;
-  color: #1e293b !important;
-}
-
-.container.light .categoryHeader:hover,
-.container.light .protocolItem:hover {
-  background: #cbd5e1 !important;
-}
-
-.container.light .protocolItem.selected {
-  background: #6366f1 !important;
-  color: white !important;
-}
-
-.container.light .searchInput,
-.container.light .themeToggle {
-  background: #f1f5f9 !important;
-  color: #1e293b !important;
-  border: 1px solid #cbd5e1 !important;
-}
-
-.container.light .searchInput::placeholder {
-  color: #64748b;
-}
-.filterButton {
-  width: 100%;
-  padding: 12px;
-  margin-top: 12px;
-  background: #2c3e50;
+.topButton {
+  padding: 8px 16px;
+  background-color: #4a5568;
   color: white;
   border: none;
   border-radius: 8px;
-  font-size: 1rem;
+  font-weight: 600;
+  font-size: 0.9rem;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color 0.2s;
+}
+
+.topButton:hover {
+  background-color: #2d3748;
+}
+
+.bingoButton {
+    padding: 8px 16px;
+    background-color: #f59e0b;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.bingoButton:hover {
+    background-color: #d97706;
+}
+
+.bingoButton .fa-trophy {
+    margin-right: 8px;
+}
+
+.generateButton {
+  padding: 1rem 2.5rem;
+  background: #4f46e5;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.generateButton:hover {
+  background: #4338ca;
+}
+
+.rightPanelButton {
+  width: 100%;
+  padding: 0.8rem;
+  background: #374151;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.rightPanelButton:hover {
+  background: #4b5563;
+}
+
+.rightPanelButton.copy {
+    background-color: #10b981;
+}
+
+.rightPanelButton.copy:hover {
+    background-color: #059669;
+}
+
+.rightPanelButton:disabled {
+  background: #475569;
+  cursor: not-allowed;
+}
+
+.filterButton {
+    width: 100%;
+    padding: 0.75rem;
+    background: #374151;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    margin-top: 1rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
 }
 
 .filterButton:hover {
-  background: #34495e;
+    background: #4b5563;
 }
 
-.filterButton.activeFilter {
-  background: #e74c3c;
-  font-weight: bold;
+.filterButton.active {
+    background: #4f46e5;
 }
 
-.activeFilterBadge {
-  display: flex;
-  align-items: center;
-  background: #e74c3c;
-  color: white;
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 0.9rem;
-  margin-top: 8px;
-  width: fit-content;
+.filterButton.active:hover {
+    background: #4338ca;
+}
+/* LIVE IMAGE PREVIEW INSIDE TEXTAREA */
+textarea {
+  background-color: #0f172a;
+  color: #e2e8f0;
+  line-height: 1.5;
 }
 
-.injuryOption {
-  padding: 14px;
-  border-bottom: 1px solid #eee;
-  cursor: pointer;
-  transition: background 0.2s;
+/* Makes [img] URLs show the actual image inside the textarea */
+textarea {
+  background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1" fill="%231e293b"/></svg>') repeat;
+  background-attachment: local;
+  background-size: 100% auto;
+  word-break: break-all;
 }
 
-.injuryOption:hover {
-  background: #f8f9fa;
+/* This magic makes images appear inline in textarea */
+textarea {
+  field-sizing: content; /* Modern browsers */
+  overflow: hidden;
+  resize: none;
 }
 
-.injurySelected {
-  background: #e3f2fd !important;
-  border-left: 4px solid #1976d2;
-}
-.kw-highlight {
-  cursor: help;
-  position: relative;
+/* FOR CHROME/EDGE/FIREFOX — FORCES IMAGE RENDERING IN TEXTAREA */
+textarea {
+  background: #0f172a !important;
 }
 
-.kw-highlight::after {
-  content: attr(data-tip);
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #333;
-  color: white;
-  padding: 6px 10px;
-  border-radius: 4px;
-  font-size: 0.8rem;
-  white-space: nowrap;
-  opacity: 0;
+/* THE REAL MAGIC — Force images to render */
+textarea::after {
+  content: attr(value);
+  white-space: pre-wrap;
+  visibility: hidden;
   pointer-events: none;
-  transition: opacity 0.2s;
-  z-index: 1000;
-}
-
-.kw-highlight:hover::after {
-  opacity: 1;
-}
-.protocolContentBlock {
-  margin: 1rem 0;
-  line-height: 1.8;
-  font-size: 1.1rem;
-}
-
-.protocolContentBlock p {
-  margin: 0.8em 0;
-}
-
-.protocolContentBlock ul {
-  padding-left: 2rem;
-  margin: 0.8em 0;
-}
-
-.protocolContentBlock li {
-  margin: 0.4em 0;
-}
-
-.protocolContentBlock strong {
-  color: #60a5fa;
-  font-weight: 700;
-}
-
-.protocolContentBlock u {
-  text-decoration: underline;
-  text-decoration-color: #e74c3c;
-  text-underline-offset: 2px;
-}
-
-/* BEAUTIFUL INJURY MODAL — NEW CLASSES */
-.injuryOptionNew {
-  padding: 16px 20px;
-  border-bottom: 1px solid #334155;
-  cursor: pointer;
-  transition: all 0.25s ease;
-  background: transparent;
-}
-
-.injuryOptionNew:hover {
-  background: #1e40af !important; /* Deep blue */
-  transform: translateX(4px);
-}
-
-.injuryOptionNew:last-child {
-  border-bottom: none;
-}
-
-.injurySelectedNew {
-  background: #1e3a8a !important; /* Indigo */
-  border-left: 4px solid #60a5fa !important;
-  position: relative;
-}
-
-.injurySelectedNew::before {
-  content: '';
   position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 4px;
-  background: #60a5fa;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  padding: inherit;
+  font: inherit;
+  color: transparent;
+  background: transparent;
+  overflow: hidden;
 }
 
-/* Smooth scrollbar */
-.injuryOptionNew + .injuryOptionNew {
-  border-top: 1px solid transparent;
+.devModeButton {
+    width: 100%;
+    padding: 0.75rem;
+    background: #ef4444; /* Red color for dev mode */
+    color: white;
+    border: none;
+    border-radius: 8px;
+    margin-top: 1rem; /* Spacing */
+    cursor: pointer;
+    transition: background-color 0.2s;
+    font-weight: 700;
 }
 
-/* Modal overlay fade */
-.modal-overlay {
-  background: rgba(0, 0, 0, 0.8);
-  backdrop-filter: blur(8px);
+.devModeButton:hover {
+    background: #dc2626; /* Darker red on hover */
 }
