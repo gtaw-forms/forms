@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button, Form } from 'react-bootstrap';
-import { formDefinitions } from '../formDefinitions';
 import { useWebhooks } from '../hooks/useWebhooks';
 import * as Sentry from "@sentry/react";
 import GtaWorldLoginButton from './Auth/GtaWorldLoginButton';
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
+import { useData } from '../contexts/DataContext';
 
 // Step definitions for the onboarding flow
 const ONBOARDING_STEPS = {
@@ -22,38 +22,34 @@ const USER_TYPES = {
     PHMC_STAFF: 'phmcStaff',
     CORONER: 'coroner',
     LEO: 'leo',
-    RECRUITMENT: 'recruitment',
     OTHER: 'other'
 };
 
 // Form categories for each user type
 const FORM_CATEGORIES = {
-    [USER_TYPES.CIVILIAN]: ['PHMC'],
+    [USER_TYPES.CIVILIAN]: ['PHMC', 'Patient Files'],
     [USER_TYPES.PHMC_STAFF]: ['PHMC'],
-    [USER_TYPES.CORONER]: ['PHMC'],
+    [USER_TYPES.CORONER]: ['DMEC'],
     [USER_TYPES.LEO]: ['PHMC'],
-    [USER_TYPES.RECRUITMENT]: ['PHMC Recruitment'],
     [USER_TYPES.OTHER]: ['PHMC', 'PHMC Recruitment']
 };
 
-// Recommended forms for each user type
-const RECOMMENDED_FORMS = {
-    [USER_TYPES.CIVILIAN]: [24, 25], // Medical Release, Basic Patient File, Advanced Patient File
-    [USER_TYPES.PHMC_STAFF]: [ 5, 6, 14, 19, 20, 22, 27], // Forensic Services, Surgical Ops, Physical Eval, ER Protocol, General Consultation
-    [USER_TYPES.CORONER]: [1, 2, 4, 8, 11, 37, 27], // Forensic Services, Coroner Email, Autopsy, Certificate, Mass Fatality
-    [USER_TYPES.LEO]: [24, 25], // Medical Records, Patient Files (for investigations), CCTV access via modal
-    [USER_TYPES.RECRUITMENT]: [50, 51, 52, 53, 54, 55], // All recruitment forms
-    [USER_TYPES.OTHER]: 'ALL_FORMS' // Show all available forms
+// Recommended categories for each user type
+const RECOMMENDED_CATEGORIES = {
+    [USER_TYPES.CIVILIAN]: ['Patient Files'],
+    [USER_TYPES.PHMC_STAFF]: ['PHMC'],
+    [USER_TYPES.CORONER]: ['DMEC'],
+    [USER_TYPES.LEO]: ['Patient Files'],
+    [USER_TYPES.OTHER]: 'ALL_CATEGORIES'
 };
 
-const OnboardingModal = ({ 
-    show, 
-    onComplete, 
+const OnboardingModal = ({
+    show,
+    onComplete,
     onSkip,
-    formDefinitions: formDefs = formDefinitions,
     showNotification = () => {}
 }) => {
-    // Initialize webhook functions
+    const { formsData } = useData();    // Initialize webhook functions
     const { logWebhookToFirebase } = useWebhooks({}, { sha: 'onboarding' }, showNotification);
     
     // GTAW Authentication hook
@@ -131,17 +127,22 @@ const OnboardingModal = ({
 
     // Update recommended forms when user type changes
     useEffect(() => {
-        if (selectedUserType) {
-            const formIds = RECOMMENDED_FORMS[selectedUserType];
-            if (formIds === 'ALL_FORMS') {
+        if (selectedUserType && formsData) {
+            const recommendedCategoriesForUser = RECOMMENDED_CATEGORIES[selectedUserType];
+            const allForms = Object.values(formsData);
+
+            if (recommendedCategoriesForUser === 'ALL_CATEGORIES') {
                 // For OTHER user type, show all forms
-                setRecommendedForms(formDefs);
+                setRecommendedForms(allForms);
             } else {
-                const forms = formIds?.map(id => formDefs.find(form => form.version === id)).filter(Boolean) || [];
+                // Filter forms by category
+                const forms = allForms.filter(form =>
+                    recommendedCategoriesForUser.includes(form.category)
+                );
                 setRecommendedForms(forms);
             }
         }
-    }, [selectedUserType, formDefs]);
+    }, [selectedUserType, formsData]);
 
     const handleNext = () => {
         switch (currentStep) {
@@ -213,35 +214,22 @@ const OnboardingModal = ({
         console.log(`[ONBOARDING_LOG] handleComplete called - UserType: ${selectedUserType}, NotificationType: FULL_ONBOARDING_COMPLETE`);
         // Get logged-in user data if available
         const isFactionMember = gtaWorldUser?.faction && gtaWorldUser.faction.characterName;
-        
-        // Determine default form based on user type and role
-        let defaultForm = 1; // Default fallback
-        if (selectedUserType === USER_TYPES.CIVILIAN) {
-            defaultForm = 24; // Medical Release Form
-        } else if (selectedUserType === USER_TYPES.PHMC_STAFF) {
-            defaultForm = selectedRole === 'physician' ? 5 : // Surgical Ops for physicians
-                         selectedRole === 'nurse' ? 6 : // Physical Evaluation for nurses
-                         selectedRole === 'ems' ? 19 : // ER Protocol for EMS
-                         selectedRole === 'psych' ? 14 : // Mental Health for psych
-                         20; // General Consultation for others
-        } else if (selectedUserType === USER_TYPES.CORONER) {
-            defaultForm = 1; // Forensic Services
-        } else if (selectedUserType === USER_TYPES.LEO) {
-            defaultForm = 24; // Medical Records for investigations
-        } else if (selectedUserType === USER_TYPES.RECRUITMENT) {
-            defaultForm = 50; // Physician recruitment (first recruitment form)
-        }
-            
+
+        // Determine default form from recommended forms
+        // Pick the first recommended form's firebaseKey as default, or null if no recommended forms
+        const defaultFormFirebaseKey = recommendedForms.length > 0 ? recommendedForms[0].firebaseKey : null;
+
         const preferences = {
             userType: selectedUserType,
             role: selectedRole,
-            recommendedForms: recommendedForms.map(form => form.version),
-            allowedCategories: FORM_CATEGORIES[selectedUserType] || ['PHMC', 'PHMC Recruitment'],
+            // Map recommended forms to their firebaseKey
+            recommendedForms: recommendedForms.map(form => form.firebaseKey),
+            allowedCategories: FORM_CATEGORIES[selectedUserType] || ['PHMC'], // Updated fallback
             onboardingComplete: true,
             completedAt: new Date().toISOString(),
-            defaultForm: defaultForm,
+            defaultForm: defaultFormFirebaseKey, // Use the firebaseKey from recommended forms
             // Include user account info if GTAW linked
-            ...(isFactionMember && gtaWorldUser && { 
+            ...(isFactionMember && gtaWorldUser && {
                 userAccount: {
                     name: (gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : gtaWorldUser.faction.characterName,
                     category: gtaWorldUser.faction.rank || 'PHMC',
@@ -256,7 +244,7 @@ const OnboardingModal = ({
         // Clear onboarding progress since we're done
         localStorage.removeItem('onboardingProgress');
 
-    // Send webhook notification for onboarding completion
+        // Send webhook notification for onboarding completion
         sendOnboardingCompletionWebhook(preferences);
 
         // Call completion callback
@@ -431,15 +419,15 @@ const OnboardingModal = ({
                 This quick setup will customize your experience and show you the most relevant tools.
             </p>
             <div style={featureListStyle}>
-                <div style={featureItemStyle}>
+                <div key="feature-1" style={featureItemStyle}>
                     <i className="fas fa-check-circle" style={checkIconStyle}></i>
                     <span>Personalized form recommendations</span>
                 </div>
-                <div style={featureItemStyle}>
+                <div key="feature-2" style={featureItemStyle}>
                     <i className="fas fa-check-circle" style={checkIconStyle}></i>
                     <span>Streamlined interface for your role</span>
                 </div>
-                <div style={featureItemStyle}>
+                <div key="feature-3" style={featureItemStyle}>
                     <i className="fas fa-check-circle" style={checkIconStyle}></i>
                     <span>Quick access to frequently used forms</span>
                 </div>
@@ -528,22 +516,6 @@ const OnboardingModal = ({
                     </p>
                 </button>
 
-{/*                 <button
-                    style={{
-                        ...userTypeButtonStyle,
-                        ...(selectedUserType === USER_TYPES.RECRUITMENT ? selectedButtonStyle : {}),
-                        backgroundColor: selectedUserType === USER_TYPES.RECRUITMENT ? '#1a3a5c' : '#2a2a2a',
-                        borderColor: selectedUserType === USER_TYPES.RECRUITMENT ? '#007bff' : '#444'
-                    }}
-                    onClick={() => setSelectedUserType(USER_TYPES.RECRUITMENT)}
-                >
-                    <i className="fas fa-clipboard-user" style={userTypeIconStyle}></i>
-                    <h4 style={userTypeButtonTitleStyle}>Job Applicant</h4>
-                    <p style={userTypeButtonDescStyle}>
-                        I'm applying for a position at PHMC (physician, nurse, admin, etc.)
-                    </p>
-                </button>
- */}
                 <button
                     style={{
                         ...userTypeButtonStyle,
@@ -644,12 +616,12 @@ const OnboardingModal = ({
                         Let's set up your access to the coroner forms and services:
                     </p>
                     <div style={coronerWelcomeStyle}>
-                        <div style={coronerInfoCardStyle}>
+                        <div key="coroner-card-1" style={coronerInfoCardStyle}>
                             <i className="fas fa-clipboard-check" style={coronerInfoIconStyle}></i>
                             <h4 style={coronerInfoTitleStyle}>Access to Forensic Forms</h4>
                             <p style={coronerInfoDescStyle}>Complete access to all coroner and forensic service forms</p>
                         </div>
-                        <div style={coronerInfoCardStyle}>
+                        <div key="coroner-card-2" style={coronerInfoCardStyle}>
                             <i className="fas fa-search" style={coronerInfoIconStyle}></i>
                             <h4 style={coronerInfoTitleStyle}>Investigation Tools</h4>
                             <p style={coronerInfoDescStyle}>Autopsy reports, death certificates, and case management</p>
@@ -700,18 +672,18 @@ const OnboardingModal = ({
 
     const renderFormPreviewStep = () => (
         <div style={stepContentStyle}>
-            <h2 style={stepTitleStyle}>Here are your recommended forms</h2>
+            <h2 style={stepTitleStyle}>Here are your recommended Categories:</h2>
             <p style={stepDescriptionStyle}>
                 Based on your selection, these forms will be prioritized in your interface:
             </p>
             <div style={formPreviewGridStyle}>
                 {recommendedForms.slice(0, 6).map(form => (
-                    <div key={form.version} style={formPreviewCardStyle}>
+                    <div key={form.firebaseKey} style={formPreviewCardStyle}>
                         <div style={formPreviewIconStyle}>
                             <img src={form.icon} alt={form.name} style={formIconImageStyle} />
                         </div>
                         <h5 style={formPreviewTitleStyle}>{form.name}</h5>
-                        <p style={formPreviewDescStyle}>Version {form.version}</p>
+                        
                     </div>
                 ))}
             </div>
@@ -754,9 +726,9 @@ const OnboardingModal = ({
                     </p>
                     <p><strong>We collect the following data:</strong></p>
                     <ul style={privacyListStyle}>
-                        <li>Firebase only stores Saved Reports, Dropdown Fields and Employee Names</li>
-                        <li>Error Logs Device Information (Mobile / Desktop / Tablet), related error file and button pressed.</li>
-                        <li>Only myself and Everett can view the Error Logs and the Firebase Database.</li>
+                        <li key="privacy-item-1">Firebase only stores Saved Reports, Dropdown Fields and Employee Names</li>
+                        <li key="privacy-item-2">Error Logs Device Information (Mobile / Desktop / Tablet), related error file and button pressed.</li>
+                        <li key="privacy-item-3">Only myself and Everett can view the Error Logs and the Firebase Database.</li>
                     </ul>
                     <p>We do not share your data with any third parties except for the third party providers mentioned above.</p>
                     <p><strong>Questions:</strong> Ask in the PHMC Discord Server.</p>
@@ -781,7 +753,7 @@ const OnboardingModal = ({
                     {selectedRole && ` (${getRoleLabel(selectedRole)})`}
                 </div>
                 <div style={summaryItemStyle}>
-                    <strong>Primary Forms:</strong> {recommendedForms.length} forms recommended
+                    <strong>Primary Forms:</strong> {recommendedForms.map(form => form.name).join(', ') || 'None recommended'}
                 </div>
                 <div style={summaryItemStyle}>
                     <strong>Available Categories:</strong> {FORM_CATEGORIES[selectedUserType]?.join(', ') || 'All categories'}
