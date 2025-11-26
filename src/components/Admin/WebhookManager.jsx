@@ -94,7 +94,7 @@ const WebhookManager = () => {
 
             const embed = {
                 title: title,
-                url: "https://phmc-tools.gta.world/",
+                url: "https://gtaw-forms.github.io/forms/#/form-handler",
                 description: description,
                 color: 0x7289DA,
                 timestamp: new Date().toISOString(),
