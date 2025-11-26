@@ -90,7 +90,7 @@ function App() {
                             <Router>
                                     <SeasonalEffectsProvider> {/* Wrap Routes with SeasonalEffectsProvider */}
                                         <Routes>
-                                            <Route path="/" element={<FormHandler formData={formData} setFormData={setFormData} lastWebhookIdentifier={lastWebhookIdentifier} setLastWebhookIdentifier={setLastWebhookIdentifier} showNotification={showNotification} removeNotification={removeNotification} setShowAdblockNotification={setShowAdblockNotification} />} />
+                                            <Route path="/" element={<MainApp formData={formData} setFormData={setFormData} lastWebhookIdentifier={lastWebhookIdentifier} setLastWebhookIdentifier={setLastWebhookIdentifier} showNotification={showNotification} removeNotification={removeNotification} setShowAdblockNotification={setShowAdblockNotification} />} />
                                             <Route path="/login" element={<GtaLogin />} />
                                             <Route path="/auth/gta/callback" element={<UnifiedGtaCallback />} />
                                             <Route path="/auth/gta/diagnostic" element={<OAuthUrlDiagnostic />} />
