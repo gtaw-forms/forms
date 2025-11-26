@@ -342,6 +342,15 @@ console.log('%c[CB DEBUG] [cb:] processing complete.', 'color: cyan; font-weight
                 const placeholderRegex = new RegExp(`{{\\s*${key}\\s*}}`, "g");
                 let replacementValue = evaluationContext[key] ?? "";
 
+                // --- NEW LOGIC FOR caseNumber ---
+                if (key === 'caseNumber' && typeof replacementValue === 'string') {
+                    const match = replacementValue.match(/t=(\d+)/);
+                    if (match && match[1]) {
+                        replacementValue = match[1];
+                    }
+                }
+                // --- END NEW LOGIC ---
+
                 if (Array.isArray(replacementValue)) {
                     replacementValue = replacementValue.join(', '); // Join array elements for display
                 }
