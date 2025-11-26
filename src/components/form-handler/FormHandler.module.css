@@ -146,3 +146,20 @@ textarea::after {
   background: transparent;
   overflow: hidden;
 }
+
+.devModeButton {
+    width: 100%;
+    padding: 0.75rem;
+    background: #ef4444; /* Red color for dev mode */
+    color: white;
+    border: none;
+    border-radius: 8px;
+    margin-top: 1rem; /* Spacing */
+    cursor: pointer;
+    transition: background-color 0.2s;
+    font-weight: 700;
+}
+
+.devModeButton:hover {
+    background: #dc2626; /* Darker red on hover */
+}
