@@ -206,29 +206,32 @@ const EmployeeCredentialsSection = ({
   };
 
   const handleSwap = () => {
-    if (!canSwapCharacters || !factionData || !gtaWorldUser.allFactionCharacters) return;
+    if (!canSwapCharacters || !factionData || !swappableCharacters || swappableCharacters.length < 2) {
+        console.log("Cannot swap characters", { canSwapCharacters, factionData, swappableCharacters });
+        return;
+    }
 
     const getCharId = (c) => c?.character?.characterId ?? c?.id ?? null;
 
-    const factionCharacterIds = gtaWorldUser.allFactionCharacters.map(getCharId);
-
-    const validCharacters = swappableCharacters.filter(c => {
-        const charId = getCharId(c);
-        return charId !== null && factionCharacterIds.includes(charId);
-    });
+    const validCharacters = swappableCharacters.filter(c => getCharId(c) !== null);
 
     if (validCharacters.length < 2) {
-      return; // Not enough characters to swap
+        console.log("Not enough valid characters to swap", { validCharacters });
+        return;
     }
 
     const currentIndex = validCharacters.findIndex(c => getCharId(c) === factionData.characterId);
     
-    const nextIndex = currentIndex !== -1 ? (currentIndex + 1) % validCharacters.length : 0;
+    const nextIndex = (currentIndex + 1) % validCharacters.length;
     
-    const nextCharacterId = getCharId(validCharacters[nextIndex]);
+    const nextCharacter = validCharacters[nextIndex];
+    const nextCharacterId = getCharId(nextCharacter);
 
     if (nextCharacterId) {
-      swapCharacter(nextCharacterId);
+        console.log(`Swapping from ${factionData.characterId} to ${nextCharacterId}`);
+        swapCharacter(nextCharacterId);
+    } else {
+        console.log("Could not determine next character ID to swap to", { nextCharacter });
     }
   };
 
