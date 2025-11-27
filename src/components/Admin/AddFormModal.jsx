@@ -423,6 +423,19 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
         }
         return [...prevFields, { ...fieldToSave, id: fieldToSave.id }];
       });
+    } else if (fieldToSave.type === "character_selector") {
+        if (!fieldToSave.label || !fieldToSave.name) {
+            alert("Label and Name are required for Character Selector!");
+            return;
+        }
+        setFields(prevFields => {
+            if (editingFieldIndex !== null) {
+                const updatedFields = [...prevFields];
+                updatedFields[editingFieldIndex] = { ...fieldToSave, id: fieldToSave.id };
+                return updatedFields;
+            }
+            return [...prevFields, { ...fieldToSave, id: fieldToSave.id }];
+        });
     } else {
       if (!fieldToSave.label || !fieldToSave.name) {
         alert("Label and Name are required!");
@@ -683,7 +696,7 @@ const applyBulkConditionalLogic = () => {
               <option value="input">Text Input</option>
               <option value="textarea">Textarea</option>
               <option value="select">Dropdown</option>
-              <option value="employee_select">Dropdown (Employee Select)</option>
+              <option value="character_selector">Dropdown - Character Select</option>
               <option value="multi_select">Dropdown (Multiple Selection)</option> // NEW OPTION
               <option value="checkbox">Checkbox</option>
               <option value="radio">Radio Button</option>
@@ -1211,6 +1224,8 @@ const applyBulkConditionalLogic = () => {
                                   <span style={{ color: "#a78bfa" }}>Dynamic List: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (Button: {f.buttonLabel})</span>
                                 ) : f.type === "autopsy_diagram_button" ? (
                                   <span style={{ color: "#a78bfa" }}>Autopsy Diagram Button: <strong>{f.label}</strong> → stores URL in <code>{"{{" + f.name + "}}"}</code></span>
+                                ) : f.type === "character_selector" ? (
+                                  <span style={{ color: "#a78bfa" }}>Dropdown - Character Select: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code></span>
                                 ) : (
                                   <>
                                     <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>
