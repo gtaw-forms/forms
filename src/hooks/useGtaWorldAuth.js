@@ -81,23 +81,37 @@ export const useGtaWorldAuth = () => {
     }, []);
 
     const swappableCharacters = useMemo(() => {
+        const extractNames = (fullName) => {
+            if (!fullName) return { firstname: null, lastname: null };
+            const parts = fullName.split(' ');
+            const firstname = parts.length > 1 ? parts.slice(0, -1).join(' ') : fullName;
+            const lastname = parts.length > 1 ? parts[parts.length - 1] : null;
+            return { firstname, lastname };
+        };
+
         if (user?.allFactionCharacters && user.allFactionCharacters.length > 0) {
-            return user.allFactionCharacters.map(fc => ({
-                id: fc.character.characterId,
-                characterName: fc.character.characterName,
-                firstname: fc.character.firstname,
-                lastname: fc.character.lastname,
-                scriptRank: fc.character.scriptRank,
-            }));
+            return user.allFactionCharacters.map(fc => {
+                const namesFromCharacterName = extractNames(fc.character.characterName);
+                return {
+                    id: fc.character.characterId,
+                    characterName: fc.character.characterName,
+                    firstname: fc.character.firstname || namesFromCharacterName.firstname, // Prefer explicit, then parse
+                    lastname: fc.character.lastname || namesFromCharacterName.lastname,     // Prefer explicit, then parse
+                    scriptRank: fc.character.scriptRank,
+                };
+            });
         }
         const fallbackChars = user?.character || user?.characters || [];
-        return fallbackChars.map(char => ({
-            id: char.id,
-            characterName: char.characterName || `${char.firstname || ''} ${char.lastname || ''}`.trim(),
-            firstname: char.firstname,
-            lastname: char.lastname,
-            scriptRank: char.scriptRank || 0,
-        }));
+        return fallbackChars.map(char => {
+            const namesFromCharacterName = extractNames(char.characterName);
+            return {
+                id: char.id,
+                characterName: char.characterName || `${char.firstname || ''} ${char.lastname || ''}`.trim(),
+                firstname: char.firstname || namesFromCharacterName.firstname,
+                lastname: char.lastname || namesFromCharacterName.lastname,
+                scriptRank: char.scriptRank || 0,
+            };
+        });
     }, [user]);
     // --- END POC ---
 
