@@ -1,5 +1,6 @@
+// src/hooks/useBbcodeGenerator.js
 import { useState, useCallback } from 'react';
-import { getUtcFormattedDateTime, getUtcFormattedTime } from '../utils/dateTimeUtils';
+import { getUtcFormattedDateTime } from '../utils/dateTimeUtils';
 import { getDepartmentFullName } from '../utils/bbcodeHelpers';
 import generateDecedentBBCode from '../phmc-bbcode-generators/generateMassFatality';
 
@@ -9,7 +10,11 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
   const [showBBCode, setShowBBCode] = useState(false);
 
   const generateBBCode = useCallback(() => {
-    if (!selectedForm?.template) return;
+    if (!selectedForm?.template) {
+      setGeneratedBBCode("");
+      setGeneratedTitle("");
+      return;
+    }
 
     console.log("--- BBCode Generation Triggered ---");
     console.log("Selected Form:", selectedForm.name);
@@ -18,14 +23,13 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
     let bbcode = selectedForm.template;
     let title = "";
 
-    // Evaluation context with case-insensitive fallbacks
-    const evaluationContext = { ...formValues };
-    evaluationContext.formData = evaluationContext;
+    // Evaluation context with fallbacks
+    const ctx = { ...formValues };
+    ctx.formData = ctx;
 
-    // Case-insensitive fallbacks
     const addFallback = (src, target) => {
-      if (formValues[src] !== undefined && evaluationContext[target] === undefined) {
-        evaluationContext[target] = formValues[src];
+      if (formValues[src] !== undefined && ctx[target] === undefined) {
+        ctx[target] = formValues[src];
       }
     };
     addFallback('patientName', 'PatientName'); addFallback('PatientName', 'patientName');
@@ -34,167 +38,159 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
     addFallback('coronerEmployee', 'CoronerEmployee'); addFallback('CoronerEmployee', 'coronerEmployee');
 
     // ──────────────────────────────────────────────────────────────
-    // SPECIAL CORONER EMAIL TITLE (already working perfectly)
+    // 1. SPECIAL CORONER EMAIL TITLE
     // ──────────────────────────────────────────────────────────────
     if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email") {
-      let decedentNames = [];
-      if (formValues.decedentName) decedentNames.push(formValues.decedentName.trim());
-      if (formValues.patientName && !formValues.decedentName) decedentNames.push(formValues.patientName.trim());
+      const names = [];
+      if (formValues.decedentName) names.push(formValues.decedentName.trim());
+      if (!names.length && formValues.patientName) names.push(formValues.patientName.trim());
       if (Array.isArray(formValues.decedents)) {
         formValues.decedents.forEach(d => {
           const n = (d.name || d.decedentName || d.fullName || "").trim();
-          if (n) decedentNames.push(n);
+          if (n) names.push(n);
         });
       }
-      if (decedentNames.length === 0) decedentNames = ["Unknown Decedent"];
-      const decedentDisplay = decedentNames.join(", ");
-
-      const attachedTitles = Array.isArray(formValues.attachedReportTitles)
+      const display = names.length ? names.join(", ") : "Unknown Decedent";
+      const attached = Array.isArray(formValues.attachedReportTitles)
         ? formValues.attachedReportTitles.filter(Boolean)
         : [];
-
-      const reportSuffix = attachedTitles.length > 0 ? ' — ' + attachedTitles.join(' | ') : '';
-      title = `[Coroner Email] ${decedentDisplay}${reportSuffix}`;
+      const suffix = attached.length ? " — " + attached.join(" | ") : "";
+      title = `[Coroner Email] ${display}${suffix}`;
       setGeneratedTitle(title);
     }
-    // Normal title fallback
+
+    // ──────────────────────────────────────────────────────────────
+    // 2. TITLE GENERATION (Smart + DMEC aware)
+    // ──────────────────────────────────────────────────────────────
     else if (selectedForm.titleGeneratorCode) {
-      const code = selectedForm.titleGeneratorCode.trim();
-      
-      // Check if it's an advanced function or a simple template
-      if (code.startsWith('(') || code.startsWith('function')) {
-        // Advanced function mode
-        try {
-          const fn = new Function('formName', 'formData', 'ctx', `return (${code})(formName, formData, ctx)`);
-          title = fn(selectedForm.name, formValues, evaluationContext);
-          setGeneratedTitle(title);
-        } catch (e) {
-          title = `${selectedForm.name} (Title Error)`;
-          console.error("Title generation error (Advanced):", e);
-          setGeneratedTitle(title);
-        }
-      } else {
-        // Simple template mode
-        title = code.replace(/{{([^}]+)}}/g, (match, fieldName) => {
-          return formValues[fieldName.trim()] || '';
+      try {
+        let rawTitle = selectedForm.titleGeneratorCode.trim();
+        const cleanDate = formValues.dateTime?.split("T")[0] || new Date().toISOString().split("T")[0];
+        const isDmec = selectedForm.category === "DMEC";
+
+        const employeeName = isDmec
+          ? (formValues.coronerEmployee || formValues.employeeName || "Unknown Coroner")
+          : (formValues.phmcEmployee || formValues.employeeName || "Unknown Staff");
+
+        const patientName = formValues.patientName || formValues.decedentName || "Unknown Patient";
+
+        rawTitle = rawTitle
+          .replace(/{{patientName}}/gi, patientName)
+          .replace(/{{decedentName}}/gi, patientName)
+          .replace(/{{employeeName}}/gi, employeeName)
+          .replace(/{{coronerEmployee}}/gi, employeeName)
+          .replace(/{{phmcEmployee}}/gi, employeeName)
+          .replace(/{{date}}/gi, cleanDate)
+          .replace(/{{typeOfDeath}}/gi, formValues.typeOfDeath || "Unknown");
+
+        selectedForm.fields?.forEach(f => {
+          const ph = `{{${f.name}}}`;
+          if (rawTitle.includes(ph)) {
+            const val = formValues[f.name] ?? "Unknown";
+            rawTitle = rawTitle.replace(new RegExp(ph.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), String(val));
+          }
         });
-        // Also replace [FORM_NAME]
-        title = title.replace(/\[FORM_NAME\]/g, selectedForm.name);
+
+        rawTitle = rawTitle.replace(/{{[^}]+}}/g, "Unknown");
+        title = rawTitle;
         setGeneratedTitle(title);
+      } catch (err) {
+        console.error("Title generation failed:", err);
+        setGeneratedTitle(`${selectedForm.name} (Title Error)`);
       }
     } else {
-      title = selectedForm.name || "Untitled Report";
-      setGeneratedTitle(title);
+      setGeneratedTitle(selectedForm.name || "Untitled Report");
     }
 
     // ──────────────────────────────────────────────────────────────
-    // NUCLEAR-GRADE [cb:field]Text FIX — MULTI-SELECT SAFE
+    // 3. CBC CHECKBOXES — RUN FIRST AND SAFE
     // ──────────────────────────────────────────────────────────────
-    let processed = bbcode;
-
-    // Main format: [cb:field]Text
-    const cbRegex = /\[cb:([^\]]+)\]([^\[\]]*)/g;
-    processed = processed.replace(cbRegex, (match, fieldName, displayText) => {
+    bbcode = bbcode.replace(/\[cb:([^\]]+)\]([^\[\]]*)/g, (match, fieldName, text) => {
       const field = fieldName.trim();
-      const text = displayText.trim();
-      if (!field || !text) return match;
+      const option = text.trim();
+      if (!field || !option) return match;
 
       const value = formValues[field];
-      const isSelected = Array.isArray(value)
-        ? value.map(v => String(v).trim()).includes(text)
-        : String(value || '').trim() === text;
 
-      return isSelected ? `[cbc] ${text}` : `[cb] ${text}`;
+      if (Array.isArray(value)) {
+        const selected = value.map(v => String(v).trim()).includes(option);
+        return selected ? `[cbc] ${option}` : `[cb] ${option}`;
+      }
+
+      const selected = String(value || "").trim() === option;
+      return selected ? `[cbc] ${option}` : `[cb] ${option}`;
     });
 
-    // Optional: [cb:field]Text[/cb:field] format
-    const cbClosingRegex = /\[cb:([^\]]+)\](.+?)\[\/cb:\1\]/gi;
-    processed = processed.replace(cbClosingRegex, (match, fieldName, text) => {
-      const field = fieldName.trim();
-      const cleanText = text.trim();
-      if (!field || !cleanText) return match;
-
-      const value = formValues[field];
-      const selected = Array.isArray(value)
-        ? value.map(v => String(v).trim()).includes(cleanText)
-        : String(value || '').trim() === cleanText;
-
-      return selected ? `[cbc] ${cleanText}` : `[cb] ${cleanText}`;
-    });
-
-    // Standalone [cb:field] → [cbc] if field has value
-    processed = processed.replace(/\[cb:([^\]]+)\]/gi, (match, fieldName) => {
+    bbcode = bbcode.replace(/\[cb:([^\]]+)\]/gi, (match, fieldName) => {
       const field = fieldName.trim();
       const value = formValues[field];
-      const hasValue = value && value !== '' && value !== false && (!Array.isArray(value) || value.length > 0);
-      return hasValue ? '[cbc]' : '[cb]';
-    });
-
-    bbcode = processed;
-
-    // ──────────────────────────────────────────────────────────────
-    // Conditional BBCode Parsing: [conditional field="X" value="Y"]TEXT[/conditional]
-    // This initial implementation supports only single field-value conditions.
-    // More complex AND/OR logic would require a more sophisticated parser.
-    // ──────────────────────────────────────────────────────────────
-    bbcode = bbcode.replace(/\[conditional\s+field="([^"]+)"\s+value="([^"]+)"\](.*?)\[\/conditional\]/gs, (match, fieldName, targetValue, innerText) => {
-        const actualValue = formValues[fieldName];
-
-        let conditionMet = false;
-        if (targetValue === "true") {
-            conditionMet = !!actualValue;
-        } else if (targetValue === "false") {
-            conditionMet = !actualValue;
-        } else {
-            conditionMet = String(actualValue) === targetValue;
-        }
-
-        return conditionMet ? innerText : '';
+      const hasValue = value && (!Array.isArray(value) || value.length > 0);
+      return hasValue ? "[cbc]" : "[cb]";
     });
 
     // ──────────────────────────────────────────────────────────────
-    // Field and Expression Replacement
+    // 4. CONDITIONAL BLOCKS
     // ──────────────────────────────────────────────────────────────
-    bbcode = bbcode.replace(/{{([^}]+)}}/g, (match, placeholder) => {
-        const fieldName = placeholder.trim();
-
-        // 1. First, check if the key exists directly in the form values.
-        if (Object.prototype.hasOwnProperty.call(formValues, fieldName)) {
-            let replacementValue = formValues[fieldName] || '';
-            
-            const field = selectedForm.fields?.find(f => f.name === fieldName);
-            
-            if (field?.type === "checkbox" && typeof replacementValue === "boolean") {
-                return replacementValue ? "Yes" : "No";
-            }
-            if (field?.type === "multi_select" && Array.isArray(replacementValue)) {
-                return replacementValue.join(", ");
-            }
-            
-            return replacementValue;
-        }
-
-        // 2. If it's not a direct key, THEN try to evaluate it as a JS expression.
-        try {
-            const evalFn = new Function('context', 'getDepartmentFullName', 'agencyDataStore', 'generateDecedentBBCode',
-              `with (context) { return ${fieldName}; }`
-            );
-            const result = evalFn(evaluationContext, getDepartmentFullName, agencyDataStore, generateDecedentBBCode);
-            return Array.isArray(result) ? result.join(', ') : String(result || '');
-        } catch (error) {
-            console.warn(`Placeholder error for "{{${fieldName}}}": Not a valid field or expression.`, error);
-            return '';
-        }
+    bbcode = bbcode.replace(/\[condition:([^\]]+)\](.*?)\[\/condition\]/gs, (match, condition, inner) => {
+      const [field, expected] = condition.split('=').map(s => s.trim());
+      const value = formValues[field];
+      const met = Array.isArray(value)
+        ? value.map(v => String(v).trim()).includes(expected)
+        : String(value || "").trim() === expected;
+      return met ? inner : '';
     });
 
     // ──────────────────────────────────────────────────────────────
-    // Final output
+    // 5. FIELD REPLACEMENT — SAFE PER-FIELD
+    // ──────────────────────────────────────────────────────────────
+    selectedForm.fields?.forEach(field => {
+      const placeholder = `{{${field.name}}}`;
+      if (!bbcode.includes(placeholder)) return;
+
+      let value = formValues[field.name] ?? "";
+
+      if (field.type === "image_upload" && value) value = `[img]${value}[/img]`;
+      else if (field.type === "checkbox" && typeof value === "boolean") value = value ? "Yes" : "No";
+      else if (field.type === "multi_select" && Array.isArray(value)) value = value.join(", ");
+      else if (["dateTime", "pronouncedTimeOfDeath"].includes(field.name)) value = value.split("T")[0] || value;
+
+      const escaped = placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      bbcode = bbcode.replace(new RegExp(escaped, "g"), String(value));
+    });
+
+    // ──────────────────────────────────────────────────────────────
+    // 6. JS EXPRESSIONS — LAST
+    // ──────────────────────────────────────────────────────────────
+    bbcode = bbcode.replace(/{{(.+?)}}/g, (match, expr) => {
+      const trimmed = expr.trim();
+      if (trimmed.includes(":") && !/[+\-*/()]/g.test(trimmed)) return trimmed;
+
+      try {
+        const fn = new Function('ctx', 'getDepartmentFullName', 'agencyDataStore', 'generateDecedentBBCode',
+          `with (ctx) { return ${trimmed}; }`
+        );
+        const result = fn(ctx, getDepartmentFullName, agencyDataStore, generateDecedentBBCode);
+        return Array.isArray(result) ? result.join(", ") : String(result || "");
+      } catch (e) {
+        console.warn("Expression failed:", trimmed, e);
+        return "";
+      }
+    });
+
+    // ──────────────────────────────────────────────────────────────
+    // FINAL OUTPUT
     // ──────────────────────────────────────────────────────────────
     setGeneratedBBCode(bbcode);
     setShowBBCode(true);
   }, [selectedForm, formValues, agencyDataStore]);
 
-  return { generatedBBCode, generatedTitle, showBBCode, setShowBBCode, generateBBCode };
+  return {
+    generatedBBCode,
+    generatedTitle,
+    showBBCode,
+    setShowBBCode,
+    generateBBCode,
+  };
 };
 
 export default useBbcodeGenerator;
