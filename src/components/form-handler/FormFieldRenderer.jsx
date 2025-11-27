@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import DecedentItemRenderer from './DecedentItemRenderer'; // Import the new component
 import AutopsyDiagramModal from '../AutopsyDiagramModal'; // Import AutopsyDiagramModal
+import CharacterSelector from '../CharacterSelector';
 
 const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore, toggleSavedReports, showNotification, handleDiagramUpload }) => {
   const { factionsData } = useData();
@@ -775,6 +776,16 @@ case "textarea":
             </div>
         );
     }
+    case "character_selector":
+      return (
+          <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
+              <CharacterSelector
+                  label={field.label}
+                  onCharacterSelect={(character) => handleChange(field.name, character ? character.fullName : '')}
+                  forceDropdown={true}
+              />
+          </div>
+      );
     case "input":
     default:
       return (
