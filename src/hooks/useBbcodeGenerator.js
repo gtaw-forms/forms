@@ -59,12 +59,27 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
     }
     // Normal title fallback
     else if (selectedForm.titleGeneratorCode) {
-      try {
-        const fn = new Function('formName', 'formData', 'ctx', selectedForm.titleGeneratorCode);
-        title = fn(selectedForm.name, formValues, evaluationContext);
-        setGeneratedTitle(title);
-      } catch (e) {
-        title = `${selectedForm.name} (Title Error)`;
+      const code = selectedForm.titleGeneratorCode.trim();
+      
+      // Check if it's an advanced function or a simple template
+      if (code.startsWith('(') || code.startsWith('function')) {
+        // Advanced function mode
+        try {
+          const fn = new Function('formName', 'formData', 'ctx', `return (${code})(formName, formData, ctx)`);
+          title = fn(selectedForm.name, formValues, evaluationContext);
+          setGeneratedTitle(title);
+        } catch (e) {
+          title = `${selectedForm.name} (Title Error)`;
+          console.error("Title generation error (Advanced):", e);
+          setGeneratedTitle(title);
+        }
+      } else {
+        // Simple template mode
+        title = code.replace(/{{([^}]+)}}/g, (match, fieldName) => {
+          return formValues[fieldName.trim()] || '';
+        });
+        // Also replace [FORM_NAME]
+        title = title.replace(/\[FORM_NAME\]/g, selectedForm.name);
         setGeneratedTitle(title);
       }
     } else {
@@ -118,47 +133,38 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
     bbcode = processed;
 
     // ──────────────────────────────────────────────────────────────
-    // Normal field replacement: {{fieldName}}
+    // Field and Expression Replacement
     // ──────────────────────────────────────────────────────────────
-    const placeholderRegex = /{{([^}]+)}}/g;
-    selectedForm.fields?.forEach(field => {
-      const placeholder = `{{${field.name}}}`;
-      if (!bbcode.includes(placeholder)) return;
+    bbcode = bbcode.replace(/{{([^}]+)}}/g, (match, placeholder) => {
+        const fieldName = placeholder.trim();
 
-      let replacementValue = formValues[field.name] || '';
+        // 1. First, check if the key exists directly in the form values.
+        if (Object.prototype.hasOwnProperty.call(formValues, fieldName)) {
+            let replacementValue = formValues[fieldName] || '';
+            
+            const field = selectedForm.fields?.find(f => f.name === fieldName);
+            
+            if (field?.type === "checkbox" && typeof replacementValue === "boolean") {
+                return replacementValue ? "Yes" : "No";
+            }
+            if (field?.type === "multi_select" && Array.isArray(replacementValue)) {
+                return replacementValue.join(", ");
+            }
+            
+            return replacementValue;
+        }
 
-      if (field.type === "image_upload" && replacementValue) {
-        replacementValue = `[img]${replacementValue}[/img]`;
-      } else if (field.type === "checkbox" && typeof replacementValue === "boolean") {
-        replacementValue = replacementValue ? "Yes" : "No";
-      } else if (field.type === "multi_select" && Array.isArray(replacementValue)) {
-        replacementValue = replacementValue.join(", ");
-      }
-
-      bbcode = bbcode.replace(placeholderRegex, replacementValue);
-    });
-
-    // ──────────────────────────────────────────────────────────────
-    // JavaScript expressions: {{some.js.code}}
-    // ──────────────────────────────────────────────────────────────
-    const expressionRegex = /{{(.+?)}}/g;
-    bbcode = bbcode.replace(expressionRegex, (match, expression) => {
-      const trimmed = expression.trim();
-      const isLiteral = trimmed.includes(':') && !trimmed.match(/[\.\(\)\+\-\*\/%&|\^~!=<>?]/) ||
-                       trimmed.startsWith(' ') || !trimmed.match(/[a-zA-Z0-9_.]/);
-
-      if (isLiteral) return trimmed;
-
-      try {
-        const evalFn = new Function('context', 'getDepartmentFullName', 'agencyDataStore', 'generateDecedentBBCode',
-          `with (context) { return ${trimmed}; }`
-        );
-        const result = evalFn(evaluationContext, getDepartmentFullName, agencyDataStore, generateDecedentBBCode);
-        return Array.isArray(result) ? result.join(', ') : String(result || '');
-      } catch (error) {
-        console.warn(`Expression error "${trimmed}":`, error);
-        return '';
-      }
+        // 2. If it's not a direct key, THEN try to evaluate it as a JS expression.
+        try {
+            const evalFn = new Function('context', 'getDepartmentFullName', 'agencyDataStore', 'generateDecedentBBCode',
+              `with (context) { return ${fieldName}; }`
+            );
+            const result = evalFn(evaluationContext, getDepartmentFullName, agencyDataStore, generateDecedentBBCode);
+            return Array.isArray(result) ? result.join(', ') : String(result || '');
+        } catch (error) {
+            console.warn(`Placeholder error for "{{${fieldName}}}": Not a valid field or expression.`, error);
+            return '';
+        }
     });
 
     // ──────────────────────────────────────────────────────────────
