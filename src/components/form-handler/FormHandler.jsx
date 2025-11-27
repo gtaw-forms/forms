@@ -71,6 +71,12 @@ const FormHandler = () => {
   const isDevelopment = process.env.NODE_ENV === 'development';
   const modalCloseTimer = React.useRef(null);
 
+  const isPatientForm = useMemo(() => {
+    return selectedForm?.accessType === 'Civilian' ||
+           selectedForm?.category?.includes('Patient') ||
+           selectedForm?.category?.includes('Medical');
+  }, [selectedForm]);
+
   // Memos
   const finalSelectOptions = useMemo(() => ({
     ...(dataContextSelectOptions || {}), 
@@ -85,8 +91,12 @@ const FormHandler = () => {
   }, [isDevelopment, selectedForm, originalCoronerListData]);
 
   const employeeOptions = useMemo(() => {
-      const phmcOptions = phmcListData.map(emp => ({ label: emp.name, value: emp.name }));
-      const coronerOptions = coronerListData.map(emp => ({ label: emp.name, value: emp.name }));
+      const validPhmcData = phmcListData.filter(emp => emp && emp.name && typeof emp.name === 'string');
+      const validCoronerData = coronerListData.filter(emp => emp && emp.name && typeof emp.name === 'string');
+
+      const phmcOptions = validPhmcData.map(emp => ({ label: emp.name, value: emp.name }));
+      const coronerOptions = validCoronerData.map(emp => ({ label: emp.name, value: emp.name }));
+      
       return [
           { label: 'PHMC Staff', options: phmcOptions },
           { label: 'Coroner Staff', options: coronerOptions }
@@ -149,6 +159,18 @@ const FormHandler = () => {
       };
     });
   }, []);
+
+  const sendBingoWebhook = useCallback(async (payload) => {
+    console.log("sendBingoWebhook called with payload:", payload);
+    // TODO: Implement actual webhook sending logic here
+    showNotification('Bingo webhook sent (dev mode)!', 'info');
+  }, [showNotification]);
+
+  const sendPhraseRequestWebhook = useCallback(async (payload) => {
+    console.log("sendPhraseRequestWebhook called with payload:", payload);
+    // TODO: Implement actual phrase request webhook sending logic here
+    showNotification('Phrase request webhook sent (dev mode)!', 'info');
+  }, [showNotification]);
 
   const handleSelectChange = useCallback((selectedOption, actionMeta) => {
     const name = selectedOption ? selectedOption.value : '';
@@ -315,11 +337,24 @@ const FormHandler = () => {
 
     setFormValues(currentFormValues => {
         const updates = {};
-        const possibleNames = ['patientname', 'employeename', 'phmcemployee', 'coroneremployee'];
         
+        const patientNameFromSelector = currentFormValues.patientCharacterSelector;
+
+        // Populate patientName based on patientCharacterSelector if it exists, otherwise fall back to mainEmployeeName
+        if (isPatientForm && patientNameFromSelector) {
+            if (currentFormValues.patientName !== patientNameFromSelector) {
+                updates.patientName = patientNameFromSelector;
+            }
+        } else if (currentFormValues.patientName !== mainEmployeeName) {
+            // Fallback to employee name if no specific patient selected or not a patient form
+            updates.patientName = mainEmployeeName;
+        }
+
+        // Keep existing logic for other employee-related name fields
+        const possibleEmployeeNames = ['employeename', 'phmcemployee', 'coroneremployee'];
         selectedForm.fields.forEach(field => {
             const fieldNameLower = field.name?.toLowerCase();
-            if (possibleNames.includes(fieldNameLower)) {
+            if (possibleEmployeeNames.includes(fieldNameLower)) {
                 if (currentFormValues[field.name] !== mainEmployeeName) {
                     updates[field.name] = mainEmployeeName;
                 }
@@ -332,7 +367,7 @@ const FormHandler = () => {
             return currentFormValues; // No change
         }
     });
-  }, [mainEmployeeName, selectedForm, setFormValues]);
+  }, [mainEmployeeName, selectedForm, isPatientForm, setFormValues]);
 
   useEffect(() => {
     if (!selectedForm || !generatedTitle) return;
@@ -448,7 +483,18 @@ const FormHandler = () => {
     <div className={styles.container}>
       {seasonalEffectsEnabled && effect}
       <OnboardingModal show={showOnboardingModal} onComplete={handleOnboardingComplete} onSkip={handleOnboardingSkip} showNotification={showNotification} />
-      <EmsBingoModal show={showEmsBingoModal} onHide={() => setShowEmsBingoModal(false)} />
+            <EmsBingoModal
+              show={showEmsBingoModal}
+              onHide={() => setShowEmsBingoModal(false)}
+              phmcGroupedOptions={employeeOptions.find(group => group.label === 'PHMC Staff')?.options || []}
+              coronerGroupedOptions={employeeOptions.find(group => group.label === 'Coroner Staff')?.options || []}
+              currentPhmcEmployee={mainEmployeeName}
+              showNotification={showNotification}
+              setShowEmployeeModal={setShowEmployeeModal}
+              isAdmin={isPhmcMember} // Assuming PHMC members are admins for bingo
+              sendBingoWebhook={sendBingoWebhook}
+              sendPhraseRequestWebhook={sendPhraseRequestWebhook}
+            />
       <SavedReportsModal
         show={showSavedReports}
         onHide={() => setShowSavedReports(false)}
@@ -571,22 +617,36 @@ const FormHandler = () => {
               )}
               
               <div style={{ margin: "0 -8px" }}>
-                {selectedForm.fields?.map((field) => (
-                  <FormFieldRenderer
-                    key={field.name}
-                    field={field}
-                    selectedForm={selectedForm}
-                    formValues={formValues}
-                    handleChange={handleChange}
-                    finalSelectOptions={finalSelectOptions}
-                    currentUtcTime={currentUtcTime}
-                    agencyDataStore={agencyDataStore}
-                    toggleSavedReports={toggleSavedReports}
-                    showNotification={showNotification}
-                    isUploading={isUploading}
-                    handleDiagramUpload={handleDiagramUpload}
-                  />
-                ))}
+                {(() => {
+                  let fieldsToRender = [...(selectedForm.fields || [])];
+                  if (isPatientForm) {
+                    const defaultCharacterSelectorField = {
+                      name: 'patientCharacterSelector',
+                      label: 'Select Patient Character',
+                      type: 'character_selector',
+                      id: 'synthetic-char-selector',
+                      layout: 'full',
+                    };
+                    fieldsToRender.unshift(defaultCharacterSelectorField);
+                  }
+
+                  return fieldsToRender.map((field) => (
+                    <FormFieldRenderer
+                      key={field.id || field.name} // Use field.id for stability if available, fallback to name
+                      field={field}
+                      selectedForm={selectedForm}
+                      formValues={formValues}
+                      handleChange={handleChange}
+                      finalSelectOptions={finalSelectOptions}
+                      currentUtcTime={currentUtcTime}
+                      agencyDataStore={agencyDataStore}
+                      toggleSavedReports={toggleSavedReports}
+                      showNotification={showNotification}
+                      isUploading={isUploading}
+                      handleDiagramUpload={handleDiagramUpload}
+                    />
+                  ));
+                })()}
               </div>
               
               <div style={{ textAlign: "center", margin: "3rem 0", display: "flex", justifyContent: "center", gap: "1rem" }}>
@@ -604,16 +664,23 @@ const FormHandler = () => {
         <div className={styles.rightPanel}>
           <div style={{ background: "linear-gradient(135deg, #2d1b69, #1e1b4b)", padding: "1.5rem", borderRadius: 12, marginBottom: "1.5rem" }}>
             <h3 style={{ color: "#a78bfa", margin: "0 0 1rem" }}>Signed in as</h3>
-            <EmployeeCredentialsSection
-              formData={formValues}
-              setFormData={setFormValues}
-              groupedOptions={employeeOptions}
-              handleSelectChange={handleSelectChange}
-              setShowEmployeeModal={setShowEmployeeModal}
-              employeeType={employeeType}
-              showNotification={showNotification}
-              context={selectedForm?.name}
-            />
+            {isPatientForm ? (
+              <div style={{ padding: '10px', backgroundColor: '#f59e0b', color: 'black', borderRadius: '4px', textAlign: 'center', fontWeight: 'bold' }}>
+                <i className="fas fa-exclamation-triangle" style={{ marginRight: '8px' }}></i>
+                Use the Select Patient Character. Employee Credentials are disabled during Patient Files.
+              </div>
+            ) : (
+              <EmployeeCredentialsSection
+                formData={formValues}
+                setFormData={setFormValues}
+                groupedOptions={employeeOptions}
+                handleSelectChange={handleSelectChange}
+                setShowEmployeeModal={setShowEmployeeModal}
+                employeeType={employeeType}
+                showNotification={showNotification}
+                context={selectedForm?.name}
+              />
+            )}
           </div>
 
           <button onClick={() => setShowBBCode(!showBBCode)} className={formStyles.rightPanelButton}>
