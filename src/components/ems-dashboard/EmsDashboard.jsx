@@ -77,12 +77,12 @@ const EmsDashboard = () => {
     const protocolsRef = ref(db, "lscc/protocols");
     const unsub1 = onValue(protocolsRef, (snap) => {
       const data = snap.val() || [];
-      //console.log("Raw protocols data from Firebase:", data); // DEBUG LOG
+      console.log("Raw protocols data from Firebase:", data); // DEBUG LOG - Added back
 
       // Define desired protocol order
       const protocolOrder = [
         "Introduction",
-        "Legalities",
+        "Legalities", // This protocol name doesn't appear in the provided Firebase data sample.
         "Emergency Vehicle Protocols", // Use 'Protocols' as per Firebase data
         "Radio Procedures + Encodes",
         "Miscellaneous Information + Tips" // Use full name as per Firebase data
@@ -114,52 +114,32 @@ const EmsDashboard = () => {
             };
           })
         : [];
-      //console.log("Normalized protocols data before final category sorting:", normalized); // DEBUG LOG
+      console.log("Normalized protocols data after protocol sorting:", normalized); // DEBUG LOG - Changed log message
 
-      // Helper to extract ID from category string (used for fallback sorting)
+      // Helper to extract ID from category string
       const extractId = (categoryString) => {
-        const match = categoryString.match(/^\[\d+\]\s*/);
+        const match = categoryString.match(/^\[(\d+)\]/);
         return match ? parseInt(match[1], 10) : Infinity; // Use Infinity to sort non-matching categories last
       };
 
-      // Sort top-level categories based on the order of their highest-priority protocol
+      // Sort top-level categories primarily by ID (the [number] pattern)
       normalized.sort((a, b) => {
-        const getCategoryRank = (categoryObject) => {
-          // Get the name of the first protocol in the desired order that this category contains
-          for (const pName of protocolOrder) {
-            if (categoryObject.protocols.some(p => p.name === pName)) {
-              return protocolOrderMap.get(pName); // Return its rank from protocolOrder
-            }
-          }
-          // If category contains 'Miscellaneous' protocol, give it a low rank (high number) to push to bottom
-          if (categoryObject.protocols.some(p => p.name.includes("Miscellaneous"))) return 99; 
-          return 50; // Default rank for categories not explicitly prioritized
-        };
-
-        const rankA = getCategoryRank(a);
-        const rankB = getCategoryRank(b);
-
         const idA = extractId(a.category);
         const idB = extractId(b.category);
 
         const cleanCategoryA = a.category.replace(/^\[\d+\]\s*/, '');
         const cleanCategoryB = b.category.replace(/^\[\d+\]\s*/, '');
 
-        //console.log(`--- Comparing category groups ${a.category} and ${b.category} ---`); // DEBUG LOG
-        //console.log(`  CategoryA: ${cleanCategoryA}, ProtocolRankA: ${rankA}, ID_A: ${idA}`); // DEBUG LOG
-        //console.log(`  CategoryB: ${cleanCategoryB}, ProtocolRankB: ${rankB}, ID_B: ${idB}`); // DEBUG LOG
+        console.log(`--- Comparing category groups ${a.category} and ${b.category} ---`); // DEBUG LOG
+        console.log(`  CategoryA: ${cleanCategoryA}, ID_A: ${idA}`); // DEBUG LOG
+        console.log(`  CategoryB: ${cleanCategoryB}, ID_B: ${idB}`); // DEBUG LOG
 
-        // Primary sort: by custom rank derived from protocol order
-        if (rankA !== rankB) {
-          return rankA - rankB;
-        }
-
-        // Fallback 1: by numeric ID of the category (e.g., [1], [2])
+        // Primary sort: numerical ID ascending
         if (idA !== idB) {
-          return idA - idB;
+          return idA - idB; // This should always be ascending
         }
 
-        // Fallback 2: alphabetical by clean category name
+        // Fallback: alphabetical by clean category name if IDs are the same
         return cleanCategoryA.localeCompare(cleanCategoryB);
       });
 
