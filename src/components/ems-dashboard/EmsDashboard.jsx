@@ -77,24 +77,90 @@ const EmsDashboard = () => {
     const protocolsRef = ref(db, "lscc/protocols");
     const unsub1 = onValue(protocolsRef, (snap) => {
       const data = snap.val() || [];
-      const normalized = Array.isArray(data)
-        ? data.map((cat) => ({
-            ...cat,
-            protocols: Array.isArray(cat.protocols) ? cat.protocols : [],
-          }))
-        : [];
+      //console.log("Raw protocols data from Firebase:", data); // DEBUG LOG
 
-      // Helper to extract ID from category string
+      // Define desired protocol order
+      const protocolOrder = [
+        "Introduction",
+        "Legalities",
+        "Emergency Vehicle Protocols", // Use 'Protocols' as per Firebase data
+        "Radio Procedures + Encodes",
+        "Miscellaneous Information + Tips" // Use full name as per Firebase data
+      ];
+      const protocolOrderMap = new Map(protocolOrder.map((name, index) => [name, index]));
+
+      const normalized = Array.isArray(data)
+        ? data.map((cat) => {
+            const sortedProtocols = Array.isArray(cat.protocols)
+              ? [...cat.protocols].sort((pA, pB) => {
+                  const nameA = pA.name;
+                  const nameB = pB.name;
+
+                  const indexA = protocolOrderMap.has(nameA) ? protocolOrderMap.get(nameA) : Infinity;
+                  const indexB = protocolOrderMap.has(nameB) ? protocolOrderMap.get(nameB) : Infinity;
+
+                  // Prioritize custom ordered protocols
+                  if (indexA !== Infinity || indexB !== Infinity) {
+                    if (indexA !== indexB) return indexA - indexB;
+                  }
+
+                  // Fallback: alphabetical by name for protocols within same category
+                  return nameA.localeCompare(nameB);
+                })
+              : [];
+            return {
+              ...cat,
+              protocols: sortedProtocols,
+            };
+          })
+        : [];
+      //console.log("Normalized protocols data before final category sorting:", normalized); // DEBUG LOG
+
+      // Helper to extract ID from category string (used for fallback sorting)
       const extractId = (categoryString) => {
-        const match = categoryString.match(/^\[(\d+)\]/);
+        const match = categoryString.match(/^\[\d+\]\s*/);
         return match ? parseInt(match[1], 10) : Infinity; // Use Infinity to sort non-matching categories last
       };
 
-      // Sort categories by ID
+      // Sort top-level categories based on the order of their highest-priority protocol
       normalized.sort((a, b) => {
+        const getCategoryRank = (categoryObject) => {
+          // Get the name of the first protocol in the desired order that this category contains
+          for (const pName of protocolOrder) {
+            if (categoryObject.protocols.some(p => p.name === pName)) {
+              return protocolOrderMap.get(pName); // Return its rank from protocolOrder
+            }
+          }
+          // If category contains 'Miscellaneous' protocol, give it a low rank (high number) to push to bottom
+          if (categoryObject.protocols.some(p => p.name.includes("Miscellaneous"))) return 99; 
+          return 50; // Default rank for categories not explicitly prioritized
+        };
+
+        const rankA = getCategoryRank(a);
+        const rankB = getCategoryRank(b);
+
         const idA = extractId(a.category);
         const idB = extractId(b.category);
-        return idA - idB;
+
+        const cleanCategoryA = a.category.replace(/^\[\d+\]\s*/, '');
+        const cleanCategoryB = b.category.replace(/^\[\d+\]\s*/, '');
+
+        //console.log(`--- Comparing category groups ${a.category} and ${b.category} ---`); // DEBUG LOG
+        //console.log(`  CategoryA: ${cleanCategoryA}, ProtocolRankA: ${rankA}, ID_A: ${idA}`); // DEBUG LOG
+        //console.log(`  CategoryB: ${cleanCategoryB}, ProtocolRankB: ${rankB}, ID_B: ${idB}`); // DEBUG LOG
+
+        // Primary sort: by custom rank derived from protocol order
+        if (rankA !== rankB) {
+          return rankA - rankB;
+        }
+
+        // Fallback 1: by numeric ID of the category (e.g., [1], [2])
+        if (idA !== idB) {
+          return idA - idB;
+        }
+
+        // Fallback 2: alphabetical by clean category name
+        return cleanCategoryA.localeCompare(cleanCategoryB);
       });
 
       setProtocols(normalized);
