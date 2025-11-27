@@ -123,10 +123,10 @@ export const DataProvider = ({ children }) => {
 
     // Version configuration for each segment
     const SEGMENT_VERSIONS = {
-        [CACHE_SEGMENTS.FACTIONS]: '1.0',
-        [CACHE_SEGMENTS.AGENCIES]: '1.0',
-        [CACHE_SEGMENTS.SELECT_OPTIONS]: '1.0',
-        [CACHE_SEGMENTS.FORMS]: '1.2' // Increment version for structural changes
+        [CACHE_SEGMENTS.FACTIONS]: '1.1',
+        [CACHE_SEGMENTS.AGENCIES]: '1.1',
+        [CACHE_SEGMENTS.SELECT_OPTIONS]: '1.1',
+        [CACHE_SEGMENTS.FORMS]: '1.2.1' // Increment version for structural changes
     };
 
     const getSegmentVersion = (segment) => SEGMENT_VERSIONS[segment] || '1.0';
@@ -427,61 +427,44 @@ export const DataProvider = ({ children }) => {
     }, []);
 
     useEffect(() => {
-        let isMounted = true;
+        let isMounted = true; // For handling async operations on unmounted components
 
-        const initializeApp = async () => {
-            try {
-                console.log('[DataContext] Starting full initialization...');
-                await loadData(); // This will fetch from Firebase if cache is invalid
-                
-                if (isMounted) {
-                    console.log('[DataContext] Full initialization complete.');
-                    sessionStorage.setItem('dataContextInitialized', 'true'); // Mark session as initialized
-                    dataInitializedRef.current = true;
-                    setupFirebaseListeners();
-                }
-            } catch (error) {
-                console.error('[DataContext] Error during full initialization:', error);
-            }
-        };
-
-        const loadFromCacheAndListen = async () => {
-            try {
-                console.log('[DataContext] Session already initialized. Loading from cache...');
-                await loadData(); // This will prioritize memory/localStorage cache
-                
-                if (isMounted) {
-                    console.log('[DataContext] Loaded from cache. Setting up listeners.');
-                    dataInitializedRef.current = true;
-                    setupFirebaseListeners();
-                }
-            } catch (error) {
-                console.error('[DataContext] Error loading from cache:', error);
-            }
-        };
-
+        // Primary guard: ensure loadData is truly called only once by THIS useEffect instance
         if (dataInitializedRef.current) {
-            console.log('[DataContext] Already initialized in this component instance. Skipping.');
+            console.log('[DataContext] Data load already initiated by this useEffect instance. Skipping.');
             return;
         }
 
-        const isSessionInitialized = sessionStorage.getItem('dataContextInitialized') === 'true';
+        const fetchData = async () => {
+            // Set ref to true immediately to prevent re-entry from StrictMode's double invocation
+            dataInitializedRef.current = true; 
+            console.log('[DataContext] Starting DataContext initialization (first useEffect invocation)...');
 
-        if (isSessionInitialized) {
-            loadFromCacheAndListen();
-        } else {
-            initializeApp();
-        }
-        
-        cleanupCache();
+            try {
+                // loadData handles internal caching logic (memory/localStorage/Firebase fetch)
+                await loadData(); 
+                if (isMounted) {
+                    console.log('[DataContext] Data load complete. Setting up Firebase listeners.');
+                    sessionStorage.setItem('dataContextInitialized', 'true'); // Mark session as initialized
+                    setupFirebaseListeners();
+                }
+            } catch (error) {
+                console.error('[DataContext] Error during DataContext initialization:', error);
+                // IMPORTANT: Reset ref on error to allow retry on subsequent component mounts/retries
+                dataInitializedRef.current = false; 
+            }
+        };
+
+        fetchData();
 
         // Cleanup on unmount
         return () => {
             isMounted = false;
+            // Clear Firebase listeners to prevent memory leaks
             Object.values(firebaseListeners.current).forEach(unsubscribe => unsubscribe());
             firebaseListeners.current = {};
         };
-        }, []);
+    }, [loadData, setupFirebaseListeners]); // Dependencies: ensure these useCallback functions are stable
     
         // DEPRICATED - USE IN VERY LIMITED APPLICATIONS
         const phmcListData = useMemo(() => {

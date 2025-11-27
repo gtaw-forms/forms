@@ -92,3 +92,8 @@ as documented in gemini-cli issue [https://github.com/google-gemini/gemini-cli/i
         4.  **If `new_string` is found**: Conclude the task is complete. No further action needed for this specific `replace`.
 
         5.  **If `new_string` is NOT found**: Report this anomaly: "Neither the original string nor the intended new string could be found. This indicates an unexpected state in the file." Ask for user clarification or provide raw file content for inspection.
+
+# AGENT EXECUTION CLARITY
+
+## Thought vs. Tool Execution
+Ensure that internal planning (`thought` blocks) is always distinct from intended actions (tool calls). Never output internal thought blocks as direct responses to the user or as tool calls. Always wrap tool calls in the appropriate FC2.0 format.
