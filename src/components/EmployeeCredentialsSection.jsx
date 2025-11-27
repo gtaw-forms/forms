@@ -227,9 +227,9 @@ const EmployeeCredentialsSection = ({
     const nextCharacter = validCharacters[nextIndex];
     const nextCharacterId = getCharId(nextCharacter);
 
-    if (nextCharacterId) {
+    if (nextCharacter) {
         console.log(`Swapping from ${factionData.characterId} to ${nextCharacterId}`);
-        swapCharacter(nextCharacterId);
+        swapCharacter(nextCharacter);
     } else {
         console.log("Could not determine next character ID to swap to", { nextCharacter });
     }

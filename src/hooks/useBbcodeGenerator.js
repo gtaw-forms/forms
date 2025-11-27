@@ -133,6 +133,26 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
     bbcode = processed;
 
     // ──────────────────────────────────────────────────────────────
+    // Conditional BBCode Parsing: [conditional field="X" value="Y"]TEXT[/conditional]
+    // This initial implementation supports only single field-value conditions.
+    // More complex AND/OR logic would require a more sophisticated parser.
+    // ──────────────────────────────────────────────────────────────
+    bbcode = bbcode.replace(/\[conditional\s+field="([^"]+)"\s+value="([^"]+)"\](.*?)\[\/conditional\]/gs, (match, fieldName, targetValue, innerText) => {
+        const actualValue = formValues[fieldName];
+
+        let conditionMet = false;
+        if (targetValue === "true") {
+            conditionMet = !!actualValue;
+        } else if (targetValue === "false") {
+            conditionMet = !actualValue;
+        } else {
+            conditionMet = String(actualValue) === targetValue;
+        }
+
+        return conditionMet ? innerText : '';
+    });
+
+    // ──────────────────────────────────────────────────────────────
     // Field and Expression Replacement
     // ──────────────────────────────────────────────────────────────
     bbcode = bbcode.replace(/{{([^}]+)}}/g, (match, placeholder) => {
