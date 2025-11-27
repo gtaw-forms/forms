@@ -58,8 +58,12 @@ const FormHandler = () => {
     isAuthenticated,
     isPhmcMember,
     characterName,
+    swappableCharacters,
     selectOptions: authSelectOptions,
   } = useGtaWorldAuth();
+
+  const oauthFirstName = user?.faction?.firstname || user?.activeCharacter?.firstname || null;
+  const oauthLastName = user?.faction?.lastname || user?.activeCharacter?.lastname || null;
   const { 
     agencyDataStore, 
     phmcListData, 
@@ -94,14 +98,45 @@ const FormHandler = () => {
       const validPhmcData = phmcListData.filter(emp => emp && emp.name && typeof emp.name === 'string');
       const validCoronerData = coronerListData.filter(emp => emp && emp.name && typeof emp.name === 'string');
 
-      const phmcOptions = validPhmcData.map(emp => ({ label: emp.name, value: emp.name }));
-      const coronerOptions = validCoronerData.map(emp => ({ label: emp.name, value: emp.name }));
+      // Helper to enrich employee data with firstname and lastname from OAuth if available
+      const enrichEmployeeData = (employeeList, type) => { // Added type for clearer logs
+          return employeeList.map(emp => {
+              const matchingChar = swappableCharacters.find(char => 
+                  char.characterName === emp.name || 
+                  (char.firstname && char.lastname && `${char.firstname} ${char.lastname}`.trim() === emp.name)
+              );
+              if (matchingChar) {
+                  return {
+                      ...emp,
+                      firstname: matchingChar.firstname,
+                      lastname: matchingChar.lastname,
+                  };
+              }
+              return emp; 
+          });
+      };
+
+      const enrichedPhmcData = enrichEmployeeData(validPhmcData, 'PHMC');
+      const enrichedCoronerData = enrichEmployeeData(validCoronerData, 'Coroner');
+
+      const phmcOptions = enrichedPhmcData.map(emp => ({
+          label: emp.name,
+          value: emp.name,
+          firstname: emp.firstname, 
+          lastname: emp.lastname,   
+      }));
+      const coronerOptions = enrichedCoronerData.map(emp => ({
+          label: emp.name,
+          value: emp.name,
+          firstname: emp.firstname, 
+          lastname: emp.lastname,   
+      }));
       
       return [
           { label: 'PHMC Staff', options: phmcOptions },
           { label: 'Coroner Staff', options: coronerOptions }
       ];
-  }, [phmcListData, coronerListData]);
+  }, [phmcListData, coronerListData, swappableCharacters]);
 
   const employeeType = useMemo(() => {
     if (selectedForm?.accessType === 'Coroner') return 'coroner';
@@ -176,12 +211,27 @@ const FormHandler = () => {
     const name = selectedOption ? selectedOption.value : '';
     const fieldName = actionMeta.name;
 
-    const employeeData = [...phmcListData, ...coronerListData].find(e => e.name === name);
-
     let updates = { [fieldName]: name };
-    if (employeeData) {
-        updates[`${employeeType}Rank`] = employeeData.rank || '';
-        updates[`${employeeType}Badge`] = employeeData.badge || '';
+
+    if (selectedOption) {
+        // The selectedOption itself now contains label, value, firstname, lastname from the employeeOptions memo
+        // Find the full employee data from the original list (phmcListData or coronerListData) for rank/badge
+        // This is necessary because selectedOption might not have rank/badge directly if enrichEmployeeData only added firstname/lastname
+        const fullEmployeeData = [...phmcListData, ...coronerListData].find(e => e.name === name);
+
+        // Update rank and badge from the more complete fullEmployeeData
+        if (fullEmployeeData) {
+            updates[`${employeeType}Rank`] = fullEmployeeData.rank || '';
+            updates[`${employeeType}Badge`] = fullEmployeeData.badge || '';
+        }
+        
+        // Add firstname and lastname to formValues from the selectedOption itself
+        if (selectedOption.firstname) {
+            updates[`${employeeType}FirstName`] = selectedOption.firstname;
+        }
+        if (selectedOption.lastname) {
+            updates[`${employeeType}LastName`] = selectedOption.lastname;
+        }
     }
     
     setFormValues(prev => ({...prev, ...updates}));
@@ -333,7 +383,9 @@ const FormHandler = () => {
   }, [formValues, selectedForm?.firebaseKey]);
 
   useEffect(() => {
-    if (!selectedForm || !selectedForm.fields || !mainEmployeeName) return;
+    if (!selectedForm || !selectedForm.fields || (!mainEmployeeName && !formValues.patientCharacterSelector)) {
+      return;
+    }
 
     setFormValues(currentFormValues => {
         const updates = {};
@@ -345,7 +397,7 @@ const FormHandler = () => {
             if (currentFormValues.patientName !== patientNameFromSelector) {
                 updates.patientName = patientNameFromSelector;
             }
-        } else if (currentFormValues.patientName !== mainEmployeeName) {
+        } else if (currentFormValues.patientName !== mainEmployeeName && mainEmployeeName) { // Ensure mainEmployeeName is not undefined
             // Fallback to employee name if no specific patient selected or not a patient form
             updates.patientName = mainEmployeeName;
         }
@@ -367,7 +419,7 @@ const FormHandler = () => {
             return currentFormValues; // No change
         }
     });
-  }, [mainEmployeeName, selectedForm, isPatientForm, setFormValues]);
+  }, [mainEmployeeName, selectedForm, isPatientForm, setFormValues, formValues.patientCharacterSelector, formValues.patientName]);
 
   useEffect(() => {
     if (!selectedForm || !generatedTitle) return;
@@ -454,14 +506,6 @@ const FormHandler = () => {
 
     return [sortedGroupedForms, tempNotDisplayedFormsDetails];
   }, [forms, searchTerm, isAuthenticated, isPhmcMember, isDevelopment, user]);
-
-  useEffect(() => {
-    console.log(
-        "[FormHandler Debug] Auth Status:", { isAuthenticated, isPhmcMember, userFaction: user?.faction, employeeName: mainEmployeeName },
-        "| Viewable Forms:", { categories: Object.keys(groupedForms), totalForms: Object.values(groupedForms).flat().length,
-        formsByCategory: groupedForms, notDisplayedForms: notDisplayedFormsDetails }
-    );
-  }, [groupedForms, notDisplayedFormsDetails, isAuthenticated, isPhmcMember, user, mainEmployeeName]);
 
   useEffect(() => {
     const updateUtcTime = () => {
