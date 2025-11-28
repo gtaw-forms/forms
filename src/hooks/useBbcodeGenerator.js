@@ -111,13 +111,19 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
       if (!field || !option) return match;
 
       const value = formValues[field];
+      let comparisonValue = value;
 
-      if (Array.isArray(value)) {
-        const selected = value.map(v => String(v).trim()).includes(option);
+      // If the value is an object and has a 'value' property, use that for comparison
+      if (typeof value === 'object' && value !== null && Object.prototype.hasOwnProperty.call(value, 'value')) {
+          comparisonValue = value.value;
+      }
+
+      if (Array.isArray(comparisonValue)) {
+        const selected = comparisonValue.map(v => String(v).trim()).includes(option);
         return selected ? `[cbc] ${option}` : `[cb] ${option}`;
       }
 
-      const selected = String(value || "").trim() === option;
+      const selected = String(comparisonValue || '').trim() === option;
       return selected ? `[cbc] ${option}` : `[cb] ${option}`;
     });
 
