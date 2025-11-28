@@ -49,14 +49,12 @@ const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
             Admin
           </button>
         )}
-        {isPhmcMember && (
           <button
             className={formStyles.topButton}
             onClick={() => navigate('/ems-dashboard')}
           >
             EMS Dashboard
           </button>
-        )}
       </div>
 
       {/* Right-aligned buttons */}

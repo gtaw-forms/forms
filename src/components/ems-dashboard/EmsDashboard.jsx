@@ -1,5 +1,5 @@
 // EmsDashboard.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import styles from "./EmsDashboard.module.css";
 import { database as db } from "../../firebase";
 import { ref, onValue } from "firebase/database";
@@ -40,12 +40,56 @@ const EmsDashboard = () => {
 
   const [showEmsBingoModal, setShowEmsBingoModal] = useState(false); // New state for Bingo Modal
 
-  const { phmcGroupedOptions, coronerGroupedOptions } = useData(); // Needed for EmsBingoModal
-  const { setShowEmployeeModal } = useModal(); // Needed for EmsBingoModal
-  const { user: gtawUser, factionData } = useGtaWorldAuth(); // Needed for EmsBingoModal (currentPhmcEmployee, isAdmin)
+  const { phmcListData, coronerListData: originalCoronerListData } = useData(); // Get raw lists
+  const { setShowEmployeeModal } = useModal();
+  const { user: gtawUser, factionData, swappableCharacters } = useGtaWorldAuth(); // Also need swappableCharacters
 
-  const currentPhmcEmployee = gtawUser?.username || factionData?.characterName || ''; // Simplified
-  const isAdmin = gtawUser?.isAdmin || false; // Simplified, assuming isAdmin comes from gtawUser
+  const currentPhmcEmployee = gtawUser?.username || factionData?.characterName || '';
+  const isAdmin = gtawUser?.isAdmin || false;
+
+  const employeeOptions = useMemo(() => {
+      const validPhmcData = phmcListData.filter(emp => emp && emp.name && typeof emp.name === 'string');
+      const validCoronerData = originalCoronerListData.filter(emp => emp && emp.name && typeof emp.name === 'string');
+
+      // Helper to enrich employee data with firstname and lastname from OAuth if available
+      const enrichEmployeeData = (employeeList) => {
+          return employeeList.map(emp => {
+              const matchingChar = swappableCharacters.find(char => 
+                  char.characterName === emp.name || 
+                  (char.firstname && char.lastname && `${char.firstname} ${char.lastname}`.trim() === emp.name)
+              );
+              if (matchingChar) {
+                  return {
+                      ...emp,
+                      firstname: matchingChar.firstname,
+                      lastname: matchingChar.lastname,
+                  };
+              }
+              return emp; 
+          });
+      };
+
+      const enrichedPhmcData = enrichEmployeeData(validPhmcData);
+      const enrichedCoronerData = enrichEmployeeData(validCoronerData);
+
+      const phmcOptions = enrichedPhmcData.map(emp => ({
+          label: emp.name,
+          value: emp.name,
+          firstname: emp.firstname, 
+          lastname: emp.lastname,   
+      }));
+      const coronerOptions = enrichedCoronerData.map(emp => ({
+          label: emp.name,
+          value: emp.name,
+          firstname: emp.firstname, 
+          lastname: emp.lastname,   
+      }));
+      
+      return [
+          { label: 'PHMC Staff', options: phmcOptions },
+          { label: 'Coroner Staff', options: coronerOptions }
+      ];
+  }, [phmcListData, originalCoronerListData, swappableCharacters]);
 
   useEffect(() => {
     const savedNotesData = localStorage.getItem('patient notes free text');
@@ -74,87 +118,175 @@ const EmsDashboard = () => {
 
   // Load data
   useEffect(() => {
+    const CACHE_EXPIRY_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+
+    // --- Protocols Caching ---
     const protocolsRef = ref(db, "lscc/protocols");
-    const unsub1 = onValue(protocolsRef, (snap) => {
-      const data = snap.val() || [];
-      console.log("Raw protocols data from Firebase:", data); // DEBUG LOG - Added back
-
-      // Define desired protocol order
-      const protocolOrder = [
-        "Introduction",
-        "Legalities", // This protocol name doesn't appear in the provided Firebase data sample.
-        "Emergency Vehicle Protocols", // Use 'Protocols' as per Firebase data
-        "Radio Procedures + Encodes",
-        "Miscellaneous Information + Tips" // Use full name as per Firebase data
-      ];
-      const protocolOrderMap = new Map(protocolOrder.map((name, index) => [name, index]));
-
-      const normalized = Array.isArray(data)
-        ? data.map((cat) => {
-            const sortedProtocols = Array.isArray(cat.protocols)
-              ? [...cat.protocols].sort((pA, pB) => {
-                  const nameA = pA.name;
-                  const nameB = pB.name;
-
-                  const indexA = protocolOrderMap.has(nameA) ? protocolOrderMap.get(nameA) : Infinity;
-                  const indexB = protocolOrderMap.has(nameB) ? protocolOrderMap.get(nameB) : Infinity;
-
-                  // Prioritize custom ordered protocols
-                  if (indexA !== Infinity || indexB !== Infinity) {
-                    if (indexA !== indexB) return indexA - indexB;
-                  }
-
-                  // Fallback: alphabetical by name for protocols within same category
-                  return nameA.localeCompare(nameB);
-                })
-              : [];
-            return {
-              ...cat,
-              protocols: sortedProtocols,
-            };
-          })
-        : [];
-      console.log("Normalized protocols data after protocol sorting:", normalized); // DEBUG LOG - Changed log message
-
-      // Helper to extract ID from category string
-      const extractId = (categoryString) => {
-        const match = categoryString.match(/^\[(\d+)\]/);
-        return match ? parseInt(match[1], 10) : Infinity; // Use Infinity to sort non-matching categories last
-      };
-
-      // Sort top-level categories primarily by ID (the [number] pattern)
-      normalized.sort((a, b) => {
-        const idA = extractId(a.category);
-        const idB = extractId(b.category);
-
-        const cleanCategoryA = a.category.replace(/^\[\d+\]\s*/, '');
-        const cleanCategoryB = b.category.replace(/^\[\d+\]\s*/, '');
-
-        console.log(`--- Comparing category groups ${a.category} and ${b.category} ---`); // DEBUG LOG
-        console.log(`  CategoryA: ${cleanCategoryA}, ID_A: ${idA}`); // DEBUG LOG
-        console.log(`  CategoryB: ${cleanCategoryB}, ID_B: ${idB}`); // DEBUG LOG
-
-        // Primary sort: numerical ID ascending
-        if (idA !== idB) {
-          return idA - idB; // This should always be ascending
+    let unsub1;
+    try {
+      const cachedProtocols = localStorage.getItem('lscc_protocols_cache');
+      if (cachedProtocols) {
+        const { data, timestamp } = JSON.parse(cachedProtocols);
+        if (Date.now() - timestamp < CACHE_EXPIRY_MS) {
+          setProtocols(data);
+          setLoading(false);
+          console.log("Protocols loaded from cache.");
+          // No need to attach Firebase listener if loaded from cache, unless forced refresh is desired later
+        } else {
+          localStorage.removeItem('lscc_protocols_cache'); // Cache expired
         }
+      }
+    } catch (e) {
+      console.error("Failed to load protocols from cache:", e);
+      localStorage.removeItem('lscc_protocols_cache');
+    }
 
-        // Fallback: alphabetical by clean category name if IDs are the same
-        return cleanCategoryA.localeCompare(cleanCategoryB);
+    if (loading) { // Only fetch from Firebase if not loaded from cache
+      unsub1 = onValue(protocolsRef, (snap) => {
+        const data = snap.val() || [];
+        // console.log("Raw protocols data from Firebase:", data); // Removed DEBUG LOG
+
+        // Define desired protocol order
+        const protocolOrder = [
+          "Introduction",
+          "Legalities",
+          "Emergency Vehicle Protocols",
+          "Radio Procedures + Encodes",
+          "Miscellaneous Information + Tips"
+        ];
+        const protocolOrderMap = new Map(protocolOrder.map((name, index) => [name, index]));
+
+        const normalized = Array.isArray(data)
+          ? data.map((cat) => {
+              const sortedProtocols = Array.isArray(cat.protocols)
+                ? [...cat.protocols].sort((pA, pB) => {
+                    const nameA = pA.name;
+                    const nameB = pB.name;
+
+                    const indexA = protocolOrderMap.has(nameA) ? protocolOrderMap.get(nameA) : Infinity;
+                    const indexB = protocolOrderMap.has(nameB) ? protocolOrderMap.get(nameB) : Infinity;
+
+                    // Prioritize custom ordered protocols
+                    if (indexA !== Infinity || indexB !== Infinity) {
+                      if (indexA !== indexB) return indexA - indexB;
+                    }
+
+                    // Fallback: alphabetical by name for protocols within same category
+                    return nameA.localeCompare(nameB);
+                  })
+                : [];
+              return {
+                ...cat,
+                protocols: sortedProtocols,
+              };
+            })
+          : [];
+        // console.log("Normalized protocols data after protocol sorting:", normalized); // Removed DEBUG LOG
+
+        // Helper to extract ID from category string
+        const extractId = (categoryString) => {
+          const match = categoryString.match(/^\[(\d+)\]/);
+          return match ? parseInt(match[1], 10) : Infinity;
+        };
+
+        // Sort top-level categories primarily by ID (the [number] pattern)
+        normalized.sort((a, b) => {
+          const idA = extractId(a.category);
+          const idB = extractId(b.category);
+
+          const cleanCategoryA = a.category.replace(/^\[\d+\]\s*/, '');
+          const cleanCategoryB = b.category.replace(/^\[\d+\]\s*/, '');
+
+          // console.log(`--- Comparing category groups ${a.category} and ${b.category} ---`); // Removed DEBUG LOG
+          // console.log(`  CategoryA: ${cleanCategoryA}, ID_A: ${idA}`); // Removed DEBUG LOG
+          // console.log(`  CategoryB: ${cleanCategoryB}, ID_B: ${idB}`); // Removed DEBUG LOG
+
+          // Primary sort: numerical ID ascending
+          if (idA !== idB) {
+            return idA - idB;
+          }
+
+          // Fallback: alphabetical by clean category name if IDs are the same
+          return cleanCategoryA.localeCompare(cleanCategoryB);
+        });
+
+        setProtocols(normalized);
+        setLoading(false);
+        try {
+          localStorage.setItem('lscc_protocols_cache', JSON.stringify({ data: normalized, timestamp: Date.now() }));
+        } catch (e) {
+          console.error("Failed to save protocols to cache:", e);
+        }
       });
+    }
 
-      setProtocols(normalized);
-      setLoading(false);
-    });
 
+    // --- Keywords Caching ---
     const kwRef = ref(db, "lscc/keywords");
-    const unsub2 = onValue(kwRef, (snap) => setKeywords(snap.val() || {}));
+    let unsub2;
+    try {
+      const cachedKeywords = localStorage.getItem('lscc_keywords_cache');
+      if (cachedKeywords) {
+        const { data, timestamp } = JSON.parse(cachedKeywords);
+        if (Date.now() - timestamp < CACHE_EXPIRY_MS) {
+          setKeywords(data);
+          console.log("Keywords loaded from cache.");
+        } else {
+          localStorage.removeItem('lscc_keywords_cache');
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load keywords from cache:", e);
+      localStorage.removeItem('lscc_keywords_cache');
+    }
 
+    if (Object.keys(keywords).length === 0) { // Only fetch if not loaded from cache
+      unsub2 = onValue(kwRef, (snap) => {
+        const data = snap.val() || {};
+        setKeywords(data);
+        try {
+          localStorage.setItem('lscc_keywords_cache', JSON.stringify({ data: data, timestamp: Date.now() }));
+        } catch (e) {
+          console.error("Failed to save keywords to cache:", e);
+        }
+      });
+    }
+
+    // --- Injuries Caching ---
     const injRef = ref(db, "lscc/injuries");
-    const unsub3 = onValue(injRef, (snap) => setInjuries(snap.val() || {}));
+    let unsub3;
+    try {
+      const cachedInjuries = localStorage.getItem('lscc_injuries_cache');
+      if (cachedInjuries) {
+        const { data, timestamp } = JSON.parse(cachedInjuries);
+        if (Date.now() - timestamp < CACHE_EXPIRY_MS) {
+          setInjuries(data);
+          console.log("Injuries loaded from cache.");
+        } else {
+          localStorage.removeItem('lscc_injuries_cache');
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load injuries from cache:", e);
+      localStorage.removeItem('lscc_injuries_cache');
+    }
+
+    if (Object.keys(injuries).length === 0) { // Only fetch if not loaded from cache
+      unsub3 = onValue(injRef, (snap) => {
+        const data = snap.val() || {};
+        setInjuries(data);
+        try {
+          localStorage.setItem('lscc_injuries_cache', JSON.stringify({ data: data, timestamp: Date.now() }));
+        } catch (e) {
+          console.error("Failed to save injuries to cache:", e);
+        }
+      });
+    }
 
     return () => {
-      unsub1(); unsub2(); unsub3();
+      if (unsub1) unsub1();
+      if (unsub2) unsub2();
+      if (unsub3) unsub3();
     };
   }, []);
 
@@ -305,7 +437,7 @@ return (
           </div>
 
           {loading ? (
-            <div style={{ textAlign: "center", padding: "2rem" }}>Loading...</div>
+            <div style={{ textAlign: "center", padding: "2rem" }}>Spinning up the hamsters...</div>
           ) : (
             <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
               {filteredProtocols.map((category) => (
@@ -465,8 +597,7 @@ return (
 <EmsBingoModal
   show={showEmsBingoModal}
   onHide={() => setShowEmsBingoModal(false)}
-  phmcGroupedOptions={phmcGroupedOptions}
-  coronerGroupedOptions={coronerGroupedOptions}
+  allEmployeeGroupedOptions={employeeOptions} // Pass the entire grouped options array
   currentPhmcEmployee={currentPhmcEmployee}
   showNotification={showNotification}
   setShowEmployeeModal={setShowEmployeeModal}

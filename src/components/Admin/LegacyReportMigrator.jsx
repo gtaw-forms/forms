@@ -12,6 +12,7 @@ import { Button } from 'react-bootstrap';
 
 const LegacyReportMigrator = ({ onClose }) => {
     const [forms, setForms] = useState([]);
+    const [isLoadingForms, setIsLoadingForms] = useState(true); // New state for loading forms
     const [isMigrating, setIsMigrating] = useState(false);
     const [targetUser, setTargetUser] = useState('');
     const [showModal, setShowModal] = useState(false);
@@ -19,8 +20,6 @@ const LegacyReportMigrator = ({ onClose }) => {
     // --- Hooks ---
     const { showNotification, removeNotification } = useNotification();
     const { employeeOptions } = useData();
-    console.log('[DEBUG] LegacyReportMigrator - employeeOptions from useData:', employeeOptions);
-
     // Augment employeeOptions to always include the targetUser
     const displayEmployeeOptions = useMemo(() => {
         const defaultOptions = employeeOptions || [];
@@ -49,31 +48,42 @@ const LegacyReportMigrator = ({ onClose }) => {
         return defaultOptions;
     }, [employeeOptions, targetUser]);
 
-
     // Minimal set of dependencies for useReportManagement
     const { 
         savedReports,
         isLoadingUserReports,
         loadUserSavedReports,
         loadReportForUser,
-        saveReport,
+        saveMigratedReport,
     } = useReportManagement(
-        {}, 
-        () => {}, 
+        // Arguments based on useReportManagement.js signature:
+        // 1. formData: (not used by migration, so empty object is fine)
+        {},
+        // 2. setFormData: (not used by migration, so dummy function is fine)
+        () => {},
+        // 3. bbCodeVersion_DEPRECATED: (set to null as it's deprecated and not used for saving new format)
         null, 
+        // 4. setBbCodeVersion_DEPRECATED: (not used by migration, so dummy function is fine)
         () => {}, 
+        // 5. getBBCodeContent: (not used by migration, as we save migratedReport directly)
         () => '', 
-        () => 'MIGRATION_USER', // Dummy author
+        // 6. getCurrentReportAuthor:
+        () => 'MIGRATION_USER', 
+        // 7. filterFormData: (not used by migration for saving)
         () => ({}), 
-        displayEmployeeOptions, // Pass real options
+        // 8. selectOptions:
+        displayEmployeeOptions, 
+        // 9. showNotification:
         showNotification, 
+        // 10. removeNotification:
         removeNotification,
-        () => {}, 
-        () => {}, 
-        () => {}, 
-        { current: null }, 
+        // 11-14 (setShowEasterEggModal, setEasterEggType, sendEasterEggNotification, modalCloseTimer):
+        () => {}, () => {}, () => {}, { current: null }, 
+        // 15. selectedForm: (null initially, will be determined dynamically for save)
         null, 
-        forms, 
+        // 16. getForms: (a getter function for forms)
+        () => forms, 
+        // 17. setSelectedForm: (not used by migration, so dummy function is fine)
         () => {}
     );
     
@@ -87,6 +97,7 @@ const LegacyReportMigrator = ({ onClose }) => {
             const list = Object.keys(data).map(key => ({ ...data[key], firebaseKey: key }));
             setForms(list);
             console.log(`[LegacyReportMigrator] Loaded ${list.length} form definitions.`);
+            setIsLoadingForms(false); // Set to false after forms are loaded
         });
         return () => unsub();
     }, []);
@@ -101,7 +112,6 @@ const LegacyReportMigrator = ({ onClose }) => {
     };
     
     const handleSelectReportToMigrate = async (report) => {
-        console.log("Selected report to migrate:", report);
         showNotification(`Migration for "${report.originalKey}" started...`, 'info');
 
         let migratedReport = { ...report };
@@ -150,6 +160,14 @@ const LegacyReportMigrator = ({ onClose }) => {
             }
         }
 
+        // --- Specific Override for Death Reports ---
+        // If the originalKey indicates a Death Report, set specific formId and formName
+        if (migratedReport.originalKey && migratedReport.originalKey.includes('[DEATH-REPORT]')) {
+            migratedReport.formId = "coroner-report";
+            migratedReport.formName = "Coroner Report";
+        }
+        // --- End Specific Override ---
+
         // 7. Add scenePhotosBBCode_narrative if missing
         if (!migratedReport.data.scenePhotosBBCode_narrative) {
             migratedReport.data.scenePhotosBBCode_narrative = "";
@@ -160,35 +178,32 @@ const LegacyReportMigrator = ({ onClose }) => {
             migratedReport.data.patientName = migratedReport.authorName;
         }
 
-        // 9. Ensure formName is present
-        if (!migratedReport.formName) {
-            // Try to derive formName from originalKey or formId
+        // 9. Ensure formName is present and derived correctly
+        if (!migratedReport.formName || migratedReport.formName === 'Unknown Form') { // Check for explicit 'Unknown Form' or absence
             if (migratedReport.originalKey) {
                 const match = migratedReport.originalKey.match(/\[(.*?)\]/);
                 if (match && match[1]) {
-                    migratedReport.formName = match[1].replace(/-/g, ' ');
+                    migratedReport.formName = match[1].replace(/-/g, ' ').trim(); // Use trim() to clean up
+                } else if (migratedReport.formId) { // Fallback to formId if originalKey parsing fails
+                    migratedReport.formName = migratedReport.formId.replace(/-/g, ' ').split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+                } else {
+                    migratedReport.formName = 'Unknown Form';
                 }
-            }
-            if (!migratedReport.formName && migratedReport.formId) {
+            } else if (migratedReport.formId) { // If no originalKey but formId exists
                 migratedReport.formName = migratedReport.formId.replace(/-/g, ' ').split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
             } else {
                 migratedReport.formName = 'Unknown Form';
             }
         }
-
-
-        console.log("Migrated report:", migratedReport);
-
+    
         try {
-            // Assume saveReport takes the report object and a boolean indicating if it's a migration
-            await saveReport(migratedReport, true);
+            await saveMigratedReport(migratedReport, ''); // Call saveMigratedReport with empty BBCode
             showNotification(`Successfully migrated "${migratedReport.originalKey}"!`, 'success');
         } catch (error) {
-            console.error("Error saving migrated report:", error);
+            console.error("[ERROR] Failed to save migrated report:", error);
             showNotification(`Failed to migrate "${migratedReport.originalKey}". Error: ${error.message}`, 'error');
         }
     };
-
     // --- Render ---
 
     return (
@@ -208,7 +223,7 @@ const LegacyReportMigrator = ({ onClose }) => {
                                 placeholder="e.g., Alyson Frost"
                             />
                         </div>
-                        <Button onClick={handleLoadReportsClick} className="mt-3">Load User's Legacy Reports</Button>
+                        <Button onClick={handleLoadReportsClick} className="mt-3" disabled={isLoadingForms}>Load User's Legacy Reports</Button>
                         <Button variant="secondary" onClick={onClose} className="mt-3 ms-2">Cancel</Button>
                     </div>
                 </div>

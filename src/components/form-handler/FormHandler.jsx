@@ -304,7 +304,8 @@ const FormHandler = () => {
   } = useReportManagement(
       formValues, setFormValues, null, () => {}, () => '', getCurrentReportAuthor, () => ({}), finalSelectOptions,
       showNotification, removeNotification, () => {}, () => {}, () => {}, modalCloseTimer, selectedForm,
-      forms, setSelectedForm
+      () => forms, // Changed from forms to () => forms
+      setSelectedForm
   );
 
   const handleNavToggleSavedReports = () => {

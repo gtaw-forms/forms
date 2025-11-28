@@ -250,6 +250,9 @@ const SavedReportsModal = ({
     reportSelectionFilter,
     pendingReportAttachmentCallback,
     selectedForm,
+    legacyOnly = false,
+    loadButtonText = 'Load',
+    disableAutoLoad = false,
 }) => {
     const [currentPage, setCurrentPage] = useState(1);
     const [searchQuery, setSearchQuery] = useState('');
@@ -268,7 +271,21 @@ const SavedReportsModal = ({
         reportSelectionFilter.includes(4);
 
     useEffect(() => {
-        if (show && !isManualSelectionRef.current) {
+        if (!show) { // When modal closes, reset all state
+            setSelectedEmployee(null);
+            setSearchQuery('');
+            setCurrentPage(1);
+            setSelectedReportKeys([]);
+            lastLoadedEmployeeRef.current = null;
+            isManualSelectionRef.current = false;
+            return;
+        }
+
+        // Logic to set selectedEmployee when modal is shown and employeeOptions are available
+        // This runs if:
+        // 1. Not a manual selection AND not disableAutoLoad (normal auto-load)
+        // 2. OR disableAutoLoad is true (we still need to set the employee in the UI)
+        if (show && employeeOptions) { // Only proceed if modal is shown and employeeOptions have potentially loaded
             let employeeToSelectValue = null;
             
             if (currentPhmcEmployee && currentPhmcEmployee !== 'Unknown') {
@@ -278,30 +295,32 @@ const SavedReportsModal = ({
             } else if (preselectedEmployeeType === 'PHMC' && currentPhmcEmployee !== 'Unknown') {
                 employeeToSelectValue = currentPhmcEmployee;
             } else {
-                employeeToSelectValue = (currentCoronerEmployee !== 'Unknown' ? currentCoronerEmployee : null) || (currentPhmcEmployee !== 'Unknown' ? currentPhmcEmployee : null);
+                employeeToSelectValue = (currentCoronerEmployee !== 'Unknown' ? currentCoronerEmployee : null) || (currentPhmcEmployee !== 'Unknown' ? currentPhoncEmployee : null);
             }
 
-            const employeeOption = employeeOptions?.flatMap(group => group.options).find(
+            const employeeOption = employeeOptions.flatMap(group => group.options).find(
                 (opt) => opt.value === employeeToSelectValue
             );
 
-            if (employeeOption && employeeToSelectValue !== lastLoadedEmployeeRef.current) {
+            // This condition determines if we need to update selectedEmployee or call onEmployeeSelect
+            const shouldUpdateSelectedEmployee = employeeOption && selectedEmployee?.value !== employeeOption.value;
+            const shouldCallOnEmployeeSelect = !isManualSelectionRef.current && !disableAutoLoad && employeeOption && employeeToSelectValue !== lastLoadedEmployeeRef.current;
+
+            if (shouldUpdateSelectedEmployee) {
                 setSelectedEmployee(employeeOption);
+            }
+            
+            if (shouldCallOnEmployeeSelect) {
                 onEmployeeSelect(employeeOption.label);
                 lastLoadedEmployeeRef.current = employeeToSelectValue;
-            } else if (!employeeOption) {
+            } else if (!employeeOption && selectedEmployee) { // If no option found, but something is selected, clear it
                 setSelectedEmployee(null);
-                onEmployeeSelect(null);
+                if (!disableAutoLoad && !isManualSelectionRef.current) { // Only clear if not in disableAutoLoad mode
+                    onEmployeeSelect(null);
+                }
             }
-        } else if (!show) {
-            setSelectedEmployee(null);
-            setSearchQuery('');
-            setCurrentPage(1);
-            setSelectedReportKeys([]);
-            lastLoadedEmployeeRef.current = null;
-            isManualSelectionRef.current = false;
         }
-    }, [show, currentCoronerEmployee, currentPhmcEmployee, employeeOptions, preselectedEmployeeType, onEmployeeSelect]);
+    }, [show, currentCoronerEmployee, currentPhmcEmployee, employeeOptions, preselectedEmployeeType, onEmployeeSelect, disableAutoLoad, selectedEmployee]);
 
     const handleEmployeeSelect = (selectedOption) => {
         isManualSelectionRef.current = true;
@@ -334,6 +353,9 @@ const SavedReportsModal = ({
 
     const searchedAndFilteredReports = useMemo(() => {
         let reports = sortedReports;
+        if (legacyOnly) {
+            reports = reports.filter(report => report.legacy);
+        }
         if (filterByBbCodeVersions && filterByBbCodeVersions.length > 0) {
             reports = reports.filter((report) => filterByBbCodeVersions.includes(report.bbCodeVersion));
         }
@@ -343,7 +365,7 @@ const SavedReportsModal = ({
             );
         }
         return reports;
-    }, [sortedReports, filterByBbCodeVersions, searchQuery]);
+    }, [sortedReports, legacyOnly, filterByBbCodeVersions, searchQuery]);
 
     useEffect(() => {
         setCurrentPage(1);
@@ -379,8 +401,8 @@ const SavedReportsModal = ({
         }
 
         const reportsToLoadCheck = sortedReports.filter((r) => selectedReportKeys.includes(r.key));
-        if (reportsToLoadCheck.some(report => report.legacy)) {
-            showNotification('This report is flagged as Legacy, you cannot load it at this time.', 'warning');
+        if (reportsToLoadCheck.some(report => report.legacy) && loadButtonText === 'Load') {
+            showNotification('Legacy reports cannot be loaded. Please unselect them to proceed.', 'warning');
             return;
         }
 
@@ -389,7 +411,7 @@ const SavedReportsModal = ({
         setIsLoadingMultiple(true);
         const numToLoad = selectedReportKeys.length;
         const calculatedDuration = numToLoad > 1 ? (numToLoad - 1) * LOAD_DELAY_MS + 500 : 3000;
-        showNotification(`Loading ${numToLoad} report(s)...`, 'info-circle', calculatedDuration);
+        showNotification(`Processing ${numToLoad} report(s)...`, 'info-circle', calculatedDuration);
 
         const reportsToLoad = sortedReports
             .filter((r) => selectedReportKeys.includes(r.key))
@@ -399,7 +421,9 @@ const SavedReportsModal = ({
         const isParsing = isParseDecedentMode;
         
         let actionFunction;
-        if (isParsing && pendingReportAttachmentCallback?.current) {
+        if (loadButtonText !== 'Load') {
+            actionFunction = loadReport;
+        } else if (isParsing && pendingReportAttachmentCallback?.current) {
             actionFunction = async (report, employeeValue) => {
                 const result = await loadReportForUser(report, employeeValue, true);
                 if (result.success && pendingReportAttachmentCallback.current) {
@@ -414,20 +438,20 @@ const SavedReportsModal = ({
 
         for (let i = 0; i < reportsToLoad.length; i++) {
             const report = reportsToLoad[i];
-            console.log(`[SavedReportsModal] Processing report ${i + 1}/${reportsToLoad.length}: ${report.originalKey} (Action: ${isParsing ? 'Parse' : (isAttaching ? 'Attach' : 'Load')})`);
+            const actionName = loadButtonText !== 'Load' ? loadButtonText : (isParsing ? 'Parse' : (isAttaching ? 'Attach' : 'Load'));
+            console.log(`[SavedReportsModal] Processing report ${i + 1}/${reportsToLoad.length}: ${report.originalKey} (Action: ${actionName})`);
             try {
                 await actionFunction(report, selectedEmployee.value);
                 if (i < reportsToLoad.length - 1) {
                     await new Promise((resolve) => setTimeout(resolve, LOAD_DELAY_MS));
                 }
             } catch (error) {
-                const actionName = isParsing ? 'parsing' : (isAttaching ? 'attaching' : 'loading');
-                console.error(`Error ${actionName} report ${report.originalKey}:`, error);
-                showNotification(`Error ${actionName} report ${report.originalKey}.`, 'error');
+                console.error(`Error ${actionName.toLowerCase()}ing report ${report.originalKey}:`, error);
+                showNotification(`Error ${actionName.toLowerCase()}ing report ${report.originalKey}.`, 'error');
             }
         }
-        const actionName = isParsing ? 'parsing' : (isAttaching ? 'attaching' : 'loading');
-        showNotification(`Finished ${actionName} ${reportsToLoad.length} report(s).`, 'check-circle');
+        const finalActionName = loadButtonText !== 'Load' ? loadButtonText : (isParsing ? 'parsing' : (isAttaching ? 'attaching' : 'loading'));
+        showNotification(`Finished ${finalActionName} ${reportsToLoad.length} report(s).`, 'check-circle');
         setIsLoadingMultiple(false);
         setSelectedReportKeys([]);
         onHide(); // Close modal after operation completes
@@ -621,8 +645,16 @@ const SavedReportsModal = ({
                                                     size="sm"
                                                     className="me-2"
                                                     onClick={() => {
-                                                        if (report.legacy) {
+                                                        if (report.legacy && loadButtonText === 'Load') {
                                                             showNotification('This report is flagged as Legacy, you cannot load it at this time.', 'warning');
+                                                            return;
+                                                        }
+                                                        if (loadButtonText !== 'Load') {
+                                                            loadReport(report, selectedEmployee.value);
+                                                            // Keep modal open for migration tasks unless explicitly closed by the handler
+                                                            if (loadButtonText !== "Migrate") {
+                                                                onHide();
+                                                            }
                                                             return;
                                                         }
                                                         if (isParseDecedentMode && pendingReportAttachmentCallback?.current) {
@@ -638,10 +670,10 @@ const SavedReportsModal = ({
                                                         }
                                                         onHide(); // Close modal after action
                                                     }}
-                                                    disabled={report.legacy || isLoadingReports || !selectedEmployee}
-                                                    title={report.legacy ? 'This report is flagged as Legacy, you cannot load it at this time.' : ''}
+                                                    disabled={(report.legacy && loadButtonText === 'Load') || isLoadingReports || !selectedEmployee}
+                                                    title={report.legacy && loadButtonText === 'Load' ? 'This report is flagged as Legacy, you cannot load it at this time.' : ''}
                                                 >
-                                                    {isParseDecedentMode ? 'Parse' : (selectedForm?.name === 'Coroner Email' ? 'Attach' : 'Load')}
+                                                    {loadButtonText || (isParseDecedentMode ? 'Parse' : (selectedForm?.name === 'Coroner Email' ? 'Attach' : 'Load'))}
                                                 </Button>
                                                 <Button
                                                     variant="danger"
@@ -712,7 +744,7 @@ const SavedReportsModal = ({
                                     Loading...
                                 </>
                             ) : (
-                                `${isParseDecedentMode ? 'Parse Selected' : (selectedForm?.name === 'Coroner Email' ? 'Attach Selected' : 'Load Selected')} (${selectedReportKeys.length})`
+                                `${loadButtonText ? loadButtonText + ' Selected' : (isParseDecedentMode ? 'Parse Selected' : (selectedForm?.name === 'Coroner Email' ? 'Attach Selected' : 'Load Selected'))} (${selectedReportKeys.length})`
                             )}
                         </Button>
                     </div>
