@@ -68,7 +68,7 @@ const BINGO_LINE_NAMES = [
 ];
 
 // MODIFIED: Add isAdmin, sendBingoWebhook, and sendPhraseRequestWebhook props
-const EmsBingoModal = ({ show, onHide, phmcGroupedOptions, coronerGroupedOptions, currentPhmcEmployee, showNotification, setShowEmployeeModal, isAdmin, sendBingoWebhook, sendPhraseRequestWebhook }) => {
+const EmsBingoModal = ({ show, onHide, allEmployeeGroupedOptions, currentPhmcEmployee, showNotification, setShowEmployeeModal, isAdmin, sendBingoWebhook, sendPhraseRequestWebhook }) => {
     const { user: gtawUser, isAuthenticated: isGtawAuthenticated, factionData } = useGtaWorldAuth();
     const [phrases, setPhrases] = useState([]);
     const [masterPhraseList, setMasterPhraseList] = useState([]);
@@ -134,18 +134,23 @@ const checkForBingo = useCallback((currentMarkedSquares, currentPhrases, previou
     const employeeNameField = `${employeeType}Employee`;
 
     const filteredGroupedOptions = useMemo(() => {
-        if (!selectedBingoType) return [];
+        if (!selectedBingoType || !allEmployeeGroupedOptions) return [];
 
+        let targetGroup = null;
         if (selectedBingoType.employeeGroup === 'PHMC') {
-            if (selectedBingoType.employeeFilter.length > 0) {
-                return phmcGroupedOptions.filter(group => selectedBingoType.employeeFilter.includes(group.label));
-            }
-            return phmcGroupedOptions;
+            targetGroup = allEmployeeGroupedOptions.find(group => group.label === 'PHMC Staff');
         } else if (selectedBingoType.employeeGroup === 'Coroner') {
-            return coronerGroupedOptions;
+            targetGroup = allEmployeeGroupedOptions.find(group => group.label === 'Coroner Staff');
         }
-        return [];
-    }, [selectedBingoType, phmcGroupedOptions, coronerGroupedOptions]);
+
+        if (!targetGroup) return []; // No matching group found
+
+        if (selectedBingoType.employeeFilter.length > 0) {
+            // Filter the options within the target group by rank
+            return targetGroup.options.filter(option => selectedBingoType.employeeFilter.includes(option.rank)); 
+        }
+        return targetGroup.options; // Return all options if no filter
+    }, [selectedBingoType, allEmployeeGroupedOptions]);
 
     // MODIFIED: Effect to fetch master list of phrases from Firebase based on selected type
     useEffect(() => {

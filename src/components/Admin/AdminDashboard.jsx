@@ -18,6 +18,7 @@ import FirebaseFunctionsTester from './FirebaseFunctionsTester';
 import EmployeeManager from './EmployeeManager';
 import LsccManager from './LsccManager';
 import FormsManager from './FormsManager';
+import LegacyReportMigrator from './LegacyReportMigrator';
 const AdminDashboard = ({
     currentUser,
     desktopNotificationPermission,
@@ -85,6 +86,7 @@ const AdminDashboard = ({
     const [isMigratingReports, setIsMigratingReports] = useState(false);
     const [isAppendingLegacyFlag, setIsAppendingLegacyFlag] = useState(false);
     const [isSyncingCounts, setIsSyncingCounts] = useState(false);
+    const [showMigrator, setShowMigrator] = useState(false);
     const navigate = useNavigate();
     
     // Use the unified GTA World auth hook
@@ -1172,20 +1174,6 @@ const AdminDashboard = ({
                                             Migrate Reports
                                         </Button>
                                         <Button
-                                            variant="secondary"
-                                            size="sm"
-                                            onClick={handleMigrateLegacyReports}
-                                            disabled={isMigratingLegacy || !hasAdminAccess}
-                                            title={hasAdminAccess ? "Flag all reports in /savedReports as legacy:true" : "Requires admin access permission"}
-                                        >
-                                            {isMigratingLegacy ? (
-                                                <Spinner as="span" animation="border" size="sm" />
-                                            ) : (
-                                                <i className="fas fa-history me-2"></i>
-                                            )}
-                                            Migrate Legacy Reports
-                                        </Button>
-                                        <Button
                                             variant="info"
                                             size="sm"
                                             onClick={handleSyncReportCounts}
@@ -1198,20 +1186,6 @@ const AdminDashboard = ({
                                                 <i className="fas fa-sync me-2"></i>
                                             )}
                                             Sync Report Counts
-                                        </Button>
-                                        <Button
-                                            variant="warning"
-                                            size="sm"
-                                            onClick={handleAppendLegacyFlag}
-                                            disabled={isAppendingLegacyFlag || !hasAdminAccess}
-                                            title={hasAdminAccess ? "Append 'legacy: true' to all existing reports." : "Requires admin access permission"}
-                                        >
-                                            {isAppendingLegacyFlag ? (
-                                                <Spinner as="span" animation="border" size="sm" />
-                                            ) : (
-                                                <i className="fas fa-tag me-2"></i>
-                                            )}
-                                            Append Legacy Flag
                                         </Button>
                                         <Button 
                                             variant="success" 
@@ -1259,6 +1233,16 @@ const AdminDashboard = ({
                                         >
                                             <i className="fas fa-info-circle me-2"></i>
                                             Log Environment Info
+                                        </Button>
+                                        <Button
+                                            variant="info"
+                                            size="sm"
+                                            onClick={() => setShowMigrator(true)}
+                                            disabled={!hasAdminAccess}
+                                            title={hasAdminAccess ? "Migrate a legacy report to the new format" : "Requires admin access permission"}
+                                        >
+                                            <i className="fas fa-magic me-2"></i>
+                                            Migrate Legacy Report (Experimental)
                                         </Button>
                                     </div>
                                     
@@ -1443,6 +1427,7 @@ const AdminDashboard = ({
                     )}
                 </div>
             </div>
+            {showMigrator && <LegacyReportMigrator onClose={() => setShowMigrator(false)} showNotification={showInAppNotification} />}
         </div>
     );
 };
