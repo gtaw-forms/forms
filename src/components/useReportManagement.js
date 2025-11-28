@@ -41,7 +41,7 @@ export const useReportManagement = (
     sendEasterEggNotification,
     modalCloseTimer,
     selectedForm, // This is the 15th argument
-    forms,
+    getForms, // Changed from forms to getForms (a getter function)
     setSelectedForm,
     // The following are legacy and not passed by FormHandler.jsx
     // We keep them with default values to avoid breaking the old App.jsx implementation.
@@ -50,7 +50,10 @@ export const useReportManagement = (
     CONSULTATION_NOTES_PHMC_VERSION = null,
     CONSULTATION_NOTES_PBC_VERSION = null,
     selectedAgencyGroup = null
-) => {    const { factionsData, coronerListData, phmcListData, sendDataRequestLog } = useData();
+) => {    
+    const bbCodeVersion = bbCodeVersion_DEPRECATED; // Define bbCodeVersion from the deprecated argument
+
+    const { factionsData, coronerListData, phmcListData, sendDataRequestLog } = useData();
     const formHandler = useFormHandler(showNotification);
 
     const findEmployeeDetails = (employeeName) => {
@@ -160,6 +163,133 @@ export const useReportManagement = (
             return { success: false, error: 'Cannot determine report author.' };
         }
         return await formHandler.saveReport(reportName, bbCodeContent, currentAuthor, formData, filterFormData);
+    };
+
+    const saveMigratedReport = async (migratedReport, bbCodeContent) => {
+        const currentAuthor = migratedReport.authorName; // Use author from the migrated report
+        const key = migratedReport.originalKey; // Use originalKey from the migrated report
+
+        if (!currentAuthor) {
+            showNotification('Cannot determine report author for migration.', 'error');
+            return { success: false, error: 'Cannot determine report author for migration.' };
+        }
+
+        const sanitizedAuthorId = comprehensiveSanitize(currentAuthor);
+        const sanitizedKey = key.trim().replace(/[.#$[\/ \]]+/g, '_') + '_' + Date.now();
+
+        let baseReportPath = `savedReports`;
+        let baseBbCodePath = `savedReportBBCode`;
+
+        // Determine save path based on the legacy flag in the migrated report
+        if (migratedReport.hasOwnProperty('legacy') && migratedReport.legacy === false) {
+            baseReportPath = `newSavedReports`;
+            baseBbCodePath = `newSavedReportBBCode`;
+        }
+        
+        const reportPath = `${baseReportPath}/${sanitizedAuthorId}/${sanitizedKey}`;
+        const bbCodePath = `${baseBbCodePath}/${sanitizedAuthorId}/${sanitizedKey}`;
+
+        // --- MODIFIED GTAW DATA HANDLING (for migrated reports) ---
+        let gtawDataFound = false;
+        let userForGtawData = null;
+
+        if (isGtaAuthenticated && gtaWorldUser) {
+            gtawDataFound = true;
+            userForGtawData = gtaWorldUser;
+        } else {
+            const storedProfileRaw = localStorage.getItem('phmc_gtaw_oauth_profile');
+            if (storedProfileRaw) {
+                try {
+                    const storedProfile = JSON.parse(storedProfileRaw);
+                    if (storedProfile) {
+                        gtawDataFound = true;
+                        userForGtawData = storedProfile;
+                    }
+                } catch (e) {
+                    console.error("Error parsing stored GTAW profile:", e);
+                    Sentry.captureException(e, { extra: { context: 'saveMigratedReport - parsing stored profile' } });
+                }
+            }
+        }
+        // --- END MODIFIED GTAW DATA HANDLING ---
+
+        try {
+            const reportRef = ref(database, reportPath);
+            const bbCodeRef = ref(database, bbCodePath);
+
+            const userReportCountRef = ref(database, `userReportCounts/${sanitizedAuthorId}/total`);
+
+            // Save both main report data and BBCode data in parallel, and increment count
+            await Promise.all([
+                set(reportRef, migratedReport), // Save the entire migratedReport object
+                set(bbCodeRef, { bbCode: bbCodeContent }),
+                runTransaction(userReportCountRef, (currentCount) => {
+                    return (currentCount || 0) + 1;
+                })
+            ]);
+
+            if (sendDataRequestLog) {
+                const reportSize = new TextEncoder().encode(JSON.stringify(migratedReport)).length;
+                const bbCodeSize = new TextEncoder().encode(JSON.stringify({ bbCode: bbCodeContent })).length;
+                const totalSize = reportSize + bbCodeSize;
+
+                sendDataRequestLog(
+                    'useReportManagement.js/saveMigratedReport',
+                    false, // This is a write operation
+                    'Firebase Write',
+                    totalSize,
+                    isGtaAuthenticated,
+                    getCharacterName(gtaWorldUser),
+                    `Report: ${reportPath} (${reportSize} bytes), BBCode: ${bbCodePath} (${bbCodeSize} bytes)`
+                );
+            }
+
+            const successMessage = gtawDataFound ?
+                `Migrated Report "${key}" saved for ${currentAuthor} to Firebase with GTAW data!` :
+                `Migrated Report "${key}" saved for ${currentAuthor} to Firebase!`;
+            showNotification(successMessage, 'save');
+
+            // Log the webhook with GTAW data information
+            const formName = migratedReport.formName || `FormV${migratedReport.bbCodeVersion}`; // Use formName from migrated report
+            const webhookPayload = {
+                author: currentAuthor,
+                reportKey: sanitizedKey,
+                originalKey: key,
+                formName: formName,
+                bbCodeVersion: migratedReport.bbCodeVersion === undefined ? null : migratedReport.bbCodeVersion, // Ensure bbCodeVersion is not undefined
+                hasGtawData: gtawDataFound,
+                data: migratedReport.data // Include the full migrated report data in webhook payload
+            };
+
+            if (gtawDataFound && userForGtawData) {
+                webhookPayload.gtawUsername = userForGtawData.username;
+                webhookPayload.gtawCharacterId = getCharacterID(userForGtawData);
+                webhookPayload.gtawCharacterName = getCharacterName(userForGtawData);
+            }
+
+            await logWebhook(`migrated_report_saved by ${currentAuthor}`, webhookPayload);
+
+            return { success: true }; // Indicate success
+
+        } catch (error) {
+            if (sendDataRequestLog) {
+                sendDataRequestLog(
+                    'useReportManagement.js/saveMigratedReport',
+                    false,
+                    'Firebase Write Error',
+                    0,
+                    isGtaAuthenticated,
+                    getCharacterName(gtaWorldUser),
+                    `Report: ${reportPath}, BBCode: ${bbCodePath}`,
+                    error.message || 'Unknown Save Error'
+                );
+            }
+            console.error("Error saving migrated report to Firebase:", error);
+            Sentry.captureException(error, { extra: { context: 'Firebase set migrated report' } });
+            const message = 'Something unexpected went wrong while saving migrated report!';
+            showNotification(message, 'error');
+            return { success: false, error: message }; // Indicate failure
+        }
     };
     
 
@@ -410,8 +540,17 @@ export const useReportManagement = (
         }
         // --- END MODIFIED GTAW DATA HANDLING ---
 
-        const reportPath = `savedReports/${sanitizedAuthorId}/${sanitizedKey}`;
-        const bbCodePath = `savedReportBBCode/${sanitizedAuthorId}/${sanitizedKey}`;
+        let baseReportPath = `savedReports`;
+        let baseBbCodePath = `savedReportBBCode`;
+
+        // Check if reportDataToSave has a 'legacy' property and if it's explicitly false
+        if (reportDataToSave.hasOwnProperty('legacy') && reportDataToSave.legacy === false) {
+            baseReportPath = `newSavedReports`;
+            baseBbCodePath = `newSavedReportBBCode`;
+        }
+        
+        const reportPath = `${baseReportPath}/${sanitizedAuthorId}/${sanitizedKey}`;
+        const bbCodePath = `${baseBbCodePath}/${sanitizedAuthorId}/${sanitizedKey}`;
 
         try {
             const reportRef = ref(database, reportPath);
@@ -745,9 +884,18 @@ export const useReportManagement = (
                     // --- End Employee Sync Logic ---
 
                     if (!returnOnly) {
-                        if (!isLegacyReport && reportData.formId && forms && setSelectedForm) {
-                            const formToLoad = forms.find(f => f.firebaseKey === reportData.formId);
+                        // Dynamically get the latest forms array
+                        const latestForms = getForms();
+                        if (!isLegacyReport && reportData.formId && latestForms && setSelectedForm) {
+                            console.log('[DEBUG] loadReportForUser: Attempting to auto-select form.');
+                            console.log('[DEBUG] loadReportForUser: reportData.formId:', reportData.formId);
+                            console.log('[DEBUG] loadReportForUser: forms array (from getter):', latestForms);
+                            const formToLoad = latestForms.find(f => {
+                                console.log('[DEBUG] loadReportForUser: Checking form:', f.id, 'against', reportData.formId);
+                                return f.id === reportData.formId;
+                            });
                             if (formToLoad) {
+                                console.log('[DEBUG] loadReportForUser: Form found:', formToLoad);
                                 setSelectedForm(formToLoad);
                             } else {
                                 console.warn(`Could not find form with ID: ${reportData.formId} to auto-select.`);
@@ -857,7 +1005,7 @@ export const useReportManagement = (
                     removeNotification(loadingNotifId);
                 }
             }
-        }, [selectedForm, factionsData, coronerListData, phmcListData, removeNotification, setFormData, showNotification, sendDataRequestLog, isGtaAuthenticated, gtaWorldUser]);
+        }, [selectedForm, factionsData, coronerListData, phmcListData, removeNotification, setFormData, showNotification, sendDataRequestLog, isGtaAuthenticated, gtaWorldUser, getForms]);
 
         const handleReportSelectedForAttachment = useCallback(async (report, userId) => {
 
@@ -1293,7 +1441,7 @@ export const useReportManagement = (
                 : 'Please select an employee in the form before viewing saved reports.';
             showNotification(message, 'warning');
         }
-    }, [getCurrentReportAuthor, formData, setPreselectedEmployeeType, setReportSelectionFilter, setShowSavedReports, showNotification, showSavedReports]);
+    }, [getCurrentReportAuthor, formData, setPreselectedEmployeeType, setReportSelectionFilter, setShowSavedReports, showNotification, showSavedReports, getForms]);
 
     const handleShowPositionInfo = useCallback((positionKey) => {
         let data = null;
@@ -1331,6 +1479,7 @@ export const useReportManagement = (
         return {
             saveReport,
             saveFormHandlerReport,
+            saveMigratedReport,
             savedReports,
             setSavedReports,
             showSavedReports,
