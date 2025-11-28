@@ -383,7 +383,7 @@ const EmployeeCredentialsSection = ({
             groupedOptions
               ? groupedOptions
                   .flatMap(group => group.options)
-                  .find(option => option.value === formData[employeeNameField]) || null
+                  .find(option => option && option.value === formData[employeeNameField]) || null
               : null
           }
           onChange={selectedOption => handleSelectChange(selectedOption, { name: employeeNameField })}

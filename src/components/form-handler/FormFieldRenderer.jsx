@@ -59,7 +59,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
   // Common styling wrapper for most fields
   const fieldWrapperStyle = {
     margin: "0 8px 1.5rem",
-    width: field.layout === "full" ? "calc(100% - 16px)" : field.layout === "compact-50" ? "calc(50% - 16px)" : "calc(20% - 16px)",
+    width: field.layout === "full" ? "calc(100% - 16px)" : field.layout === "compact-50" ? "calc(50% - 16px)" : field.layout === "compact-33" ? "calc(33.333% - 16px)" : "calc(20% - 16px)",
     verticalAlign: "top",
     boxSizing: "border-box",
     display: "inline-block" // Ensure compact fields can sit next to each other
@@ -283,6 +283,35 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
           />
         </div>
       );
+    case "multi_employee_select": {
+        const customStyles = {
+            control: (provided) => ({ ...provided, width: "100%", padding: "0.2rem", background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0", borderRadius: 8, fontSize: "1rem", minHeight: "auto" }),
+            input: (provided) => ({ ...provided, color: "#e2e8f0" }),
+            singleValue: (provided) => ({ ...provided, color: "#e2e8f0" }),
+            placeholder: (provided) => ({ ...provided, color: "#94a3b8" }),
+            option: (provided, state) => ({ ...provided, backgroundColor: state.isFocused ? "#334155" : "#1e293b", color: "#e2e8f0", "&:active": { backgroundColor: "#475569" } }),
+            menu: (provided) => ({ ...provided, backgroundColor: "#1e293b", border: "1px solid #334155" }),
+            multiValue: (provided) => ({ ...provided, backgroundColor: "#334155", borderRadius: 4 }),
+            multiValueLabel: (provided) => ({ ...provided, color: "#e2e8f0" }),
+            multiValueRemove: (provided) => ({ ...provided, color: "#cbd5e1", "&:hover": { backgroundColor: "#ef4444", color: "white" } }),
+        };
+        return (
+            <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
+                <label style={labelStyle}>{field.label}</label>
+                <Select
+                    isMulti
+                    name={field.name}
+                    options={employeeOptions}
+                    classNamePrefix="react-select"
+                    styles={customStyles}
+                    value={employeeOptions.filter(option => (formValues[field.name] || []).includes(option.value))}
+                    onChange={(selectedOptions) => handleChange(field.name, selectedOptions ? selectedOptions.map(option => option.value) : [])}
+                    placeholder={field.placeholder || "Select employee(s)..."}
+                    isClearable
+                />
+            </div>
+        );
+    }
     case "employee_select": {
         const customStyles = {
             control: (provided) => ({ ...provided, width: "100%", padding: "0.2rem", background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0", borderRadius: 8, fontSize: "1rem", minHeight: "auto" }),

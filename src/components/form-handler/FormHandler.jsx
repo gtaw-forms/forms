@@ -1,10 +1,6 @@
-// src/components/form-handler/FormHandler.jsx
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import Select from 'react-select';
 import { database } from "../../firebase";
 import { ref, onValue } from "firebase/database";
-import Form from 'react-bootstrap/Form';
-import Button from 'react-bootstrap/Button';
 import useGtaWorldAuth from "../../hooks/useGtaWorldAuth";
 import styles from "../ems-dashboard/EmsDashboard.module.css";
 import formStyles from './FormHandler.module.css';
@@ -23,9 +19,14 @@ import { useFormSaver } from '../../hooks/useFormSaver';
 import SavedReportsModal from '../SavedReportsModal';
 import OnboardingModal from '../OnboardingModal';
 import seasonalEvents from '../../components/SeasonalEvents';
+import * as Sentry from "@sentry/react";
+import FormQuickLinks from './FormQuickLinks';
+import '../../App.css';
+import '../../buttons.css';
+
+
 
 const FormHandler = () => {
-  // State
   const [forms, setForms] = useState([]);
   const [selectedForm, setSelectedForm] = useState(null);
   const [formValues, setFormValues] = useState({});
@@ -35,6 +36,7 @@ const FormHandler = () => {
       return JSON.parse(localStorage.getItem("formCollapsedCategories")) || {};
     } catch (e) {
       console.error("Error parsing formCollapsedCategories from localStorage:", e);
+      Sentry.captureException(e, { extra: { context: 'FormHandler - parsing formCollapsedCategories' } });
       return {};
     }
   });
@@ -43,6 +45,7 @@ const FormHandler = () => {
       return JSON.parse(localStorage.getItem('seasonalEffectsEnabled')) ?? true;
     } catch (e) {
       console.error("Failed to parse seasonalEffectsEnabled from localStorage", e);
+      Sentry.captureException(e, { extra: { context: 'FormHandler - parsing seasonalEffectsEnabled' } });
       return true;
     }
   });
@@ -244,6 +247,7 @@ const FormHandler = () => {
     } catch (error) {
         showNotification('Failed to upload diagram image.', 'error');
         console.error("Autopsy Diagram upload failed:", error);
+        Sentry.captureException(error, { extra: { context: 'FormHandler - handleDiagramUpload' } });
         return [];
     }
   }, [showNotification]);
@@ -255,6 +259,7 @@ const FormHandler = () => {
         await navigator.clipboard.writeText(generatedBBCode);
       } catch (err) {
         console.error('Failed to copy BBCode: ', err);
+        Sentry.captureException(err, { extra: { context: 'FormHandler - copyAndSaveReport clipboard' } });
         showNotification('Report saved, but failed to copy BBCode to clipboard.', 'warning');
       }
     }
@@ -311,6 +316,12 @@ const FormHandler = () => {
   }, [collapsedCategories]);
 
   useEffect(() => {
+    if (selectedForm?.name) {
+      localStorage.setItem('lastSelectedFormName', selectedForm.name);
+    }
+  }, [selectedForm]);
+
+  useEffect(() => {
     const onboardingComplete = localStorage.getItem('onboardingComplete') === 'true';
     if (!onboardingComplete) {
       setShowOnboardingModal(true);
@@ -364,6 +375,7 @@ const FormHandler = () => {
 
       } catch (err) {
         console.error("Upload failed:", err);
+        Sentry.captureException(err, { extra: { context: 'FormHandler - handlePaste image upload' } });
         showNotification("Failed to upload image", "error");
       } finally {
         setIsUploading(false);
@@ -462,7 +474,7 @@ const FormHandler = () => {
             shouldDisplay = false;
             reason = "Hidden form";
         } else {
-            const isRestricted = form.accessType === "PHMC" || form.accessType === "Coroner";
+            const isRestricted = form.accessType === "PHMC" || form.accessType === "Coroner" || form.accessType === "Mental Health";
             const hasRequiredAccess = isAuthenticated && (isPhmcMember || (user && user.faction));
             
             if (!isRestricted) {
@@ -644,7 +656,7 @@ const FormHandler = () => {
               borderRadius: '0.25rem', padding: '1rem', marginBottom: '1rem',
               textAlign: 'center', fontWeight: 'bold'
             }}>
-              Please sign in with OAuth to Generate BBCode and Save Reports.
+              Please sign in with OAuth to Generate BBCode and Save Reports. REPORT ISSUES TO ALYSON FROST 
             </div>
           )}
           {!selectedForm ? (
@@ -749,6 +761,7 @@ const FormHandler = () => {
                   {generatedTitle}
                 </div>
               )}
+              <FormQuickLinks form={selectedForm} />
               <pre style={{ background: "#0f172a", padding: "1.5rem", borderRadius: 12, color: "#e2e8f0", fontSize: "0.9rem", maxHeight: "60vh", overflow: "auto", marginTop: "1rem", whiteSpace: "pre-wrap" }}>
                 {generatedBBCode}
               </pre>

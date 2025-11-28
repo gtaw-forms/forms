@@ -436,6 +436,34 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
             }
             return [...prevFields, { ...fieldToSave, id: fieldToSave.id }];
         });
+    } else if (fieldToSave.type === "multi_employee_select") {
+      if (!fieldToSave.label || !fieldToSave.name) {
+        alert("Label and Name are required for Dropdown - Multiple Employees!");
+        return;
+      }
+      // For multi_employee_select, options are implicitly 'phmcEmployees' and doesn't need to be configurable, and isMulti is true.
+      setFields(prevFields => {
+        if (editingFieldIndex !== null) {
+          const updatedFields = [...prevFields];
+          updatedFields[editingFieldIndex] = { ...fieldToSave, isMulti: true, id: fieldToSave.id };
+          return updatedFields;
+        }
+        return [...prevFields, { ...fieldToSave, isMulti: true, id: fieldToSave.id }];
+      });
+    } else if (fieldToSave.type === "employee_select") { // NEW EMPLOYEE_SELECT BLOCK
+      if (!fieldToSave.label || !fieldToSave.name) {
+        alert("Label and Name are required for Dropdown - Employee Selector!");
+        return;
+      }
+      // For employee_select, options are implicitly 'phmcEmployees' and doesn't need to be configurable
+      setFields(prevFields => {
+        if (editingFieldIndex !== null) {
+          const updatedFields = [...prevFields];
+          updatedFields[editingFieldIndex] = { ...fieldToSave, id: fieldToSave.id };
+          return updatedFields;
+        }
+        return [...prevFields, { ...fieldToSave, id: fieldToSave.id }];
+      });
     } else {
       if (!fieldToSave.label || !fieldToSave.name) {
         alert("Label and Name are required!");
@@ -567,18 +595,6 @@ const applyBulkConditionalLogic = () => {
         isHidden // Store isHidden
       };
   
-      console.log("--- Saving Form to Firebase ---");
-      console.log("FormData being saved:", formData);
-      console.log("Fields array being saved:", formData.fields);
-      
-      formData.fields.forEach((field, index) => {
-        console.log(`Field ${index}: Name: ${field.name}, Type: ${field.type}`);
-        if (field.type === 'decedent_list') {
-          console.log(`  Decedent Item Schema for ${field.name}:`, JSON.parse(field.decedentItemSchemaJson));
-        }
-      });
-      console.log("-------------------------------");
-  
       update(ref(database, `forms/${formId}`), formData)
         .then(() => {
           alert("Form saved!");
@@ -607,6 +623,7 @@ const applyBulkConditionalLogic = () => {
               <option value="Public">Public (No Restriction)</option>
               <option value="PHMC">PHMC Staff Only</option>
               <option value="Coroner">Coroner / DMEC Only</option>
+              <option value="Mental Health">Mental Health Only</option> // NEW: Mental Health Access
               <option value="Civilian">Civilian / Patient Files</option>
             </select>
           </label>
@@ -621,61 +638,6 @@ const applyBulkConditionalLogic = () => {
             />
             <strong style={{ flexGrow: 1 }}>Hide Form (Localhost Devs Only)</strong>
           </label>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h4 style={{ color: "#60a5fa", marginTop: "2rem" }}>BBCode Template</h4>
-            <button
-              onClick={() => {
-                let newTemplate = bbcodeTemplate;
-
-                // 1. NEW: Convert specific [cb{{formData.variable?.includes(...) ? ... : ''}}] patterns to {{cb:variable}}
-                newTemplate = newTemplate.replace(
-                  /\[cb\{\{\s*formData\.([a-zA-Z0-9_]+)\s*\?\.\s*includes\s*\(['"].*?['"]\)\s*\?\s*['"].*?['"]\s*:\s*['"].*?['"]\s*\}\}\]/g,
-                  (match, variableName) => `{{cb:${variableName}}}`
-                );
-
-                // 2. Convert specific [cb${formData.variable === 'value' ? 'c' : ''}] patterns to {{cb:variable}}
-                newTemplate = newTemplate.replace(
-                  /\[cb\$\{\s*formData\.([a-zA-Z0-9_]+)\s*===\s*['"].*?['"]\s*\?\s*['"].*?['"]\s*:\s*['"].*?['"]\s*\}\]/g,
-                  (match, variableName) => `{{cb:${variableName}}}`
-                );
-
-                // 3. NEW: Convert {{cb:variable}} to [cb:variable] as per new guideline
-                newTemplate = newTemplate.replace(
-                    /\{\{cb:([a-zA-Z0-9_]+)\}\}/g,
-                    (match, variableName) => `[cb:${variableName}]`
-                );
-
-                // 4. NEW: Remove space between [cb:variable] and subsequent text
-                newTemplate = newTemplate.replace(/(\[cb:[a-zA-Z0-9_]+\])\s+([^\]\[]*)/g, '$1$2');
-
-                // 5. Convert specific ternary patterns to [conditional] format
-                // Example: ${formData.admission === 'No' ? 'c' : ''} => [conditional field="admission" value="No"]c[/conditional]
-                newTemplate = newTemplate.replace(
-                  /\$\{\s*formData\.([a-zA-Z0-9_]+)\s*===\s*['"](.*?)['"]\s*\?\s*['"](.*?)['"]\s*:\s*['"]['"]\s*\}/g,
-                  (match, variable, value, truePart) => `[conditional field="${variable}" value="${value}"]${truePart}[/conditional]`
-                );
-
-                // 4. Convert general ${variable} or {{variable}} placeholders
-                newTemplate = newTemplate.replace(/\$\{(.*?)(?:\|\|.*?)?\}/g, (match, p1) => `{{${p1.trim()}}}`);
-                newTemplate = newTemplate.replace(/\{\{(.*?)(?:\|\|.*?)?\}\}/g, (match, p1) => `{{${p1.trim()}}}`);
-
-                setBbcodeTemplate(newTemplate);
-              }}
-              style={{ background: "#8b5cf6", color: "white", border: "none", padding: "0.5rem 1rem", borderRadius: 8, fontWeight: "600", cursor: 'pointer' }}
-            >
-              Parse Legacy BBCode
-            </button>
-          </div>
-          <div style={{ color: "#94a3b8", fontSize: "0.9rem", marginBottom: "1rem" }}>
-            Use <code>{"{{ fieldName }}"}</code> for form fields. <br />
-            For conditional BBCode, use <code>[conditional field="hasDNR" value="true" and field="attorney" value="Yes"] TEXT [/conditional]</code>.
-            This conditional BBCode must be manually parsed when generating reports.
-          </div>
-
-          <textarea rows={12} value={bbcodeTemplate} onChange={e => setBbcodeTemplate(e.target.value)} style={{ ...inputStyle, fontFamily: "monospace", maxHeight: "200px", overflowY: "auto" }} />
-
-          {/* New: Title Generator Code Input */}
           <h4 style={{ color: "#60a5fa", marginTop: "2rem" }}>Title Generator Function</h4>
           <div style={{ color: "#94a3b8", fontSize: "0.9rem", marginBottom: "1rem" }}>
             Create a template for the report title. <br />
@@ -690,6 +652,127 @@ const applyBulkConditionalLogic = () => {
             placeholder={`[FORM_NAME] - {{PatientName}}\n\nExample for decedents:\n(formName, formData) => {\n  let title = formName;\n  if (formData.decedents && Array.isArray(formData.decedents)) {\n    const decedentNames = formData.decedents\n      .map(dec => dec.decedentName)\n      .filter(name => name && name.trim() !== '')\n      .join(', ');\n    if (decedentNames) {\n      title += \` - \${decedentNames}\`;\n    }\n  }\n  return title;\n}`}
           />
 
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h4 style={{ color: "#60a5fa", marginTop: "2rem" }}>BBCode Template</h4>
+<button
+  onClick={() => {
+    if (!bbcodeTemplate.trim()) {
+      alert("Please paste a BBCode template first!");
+      return;
+    }
+
+    let newTemplate = bbcodeTemplate;
+
+    // ──────────────────────────────────────────────────────────────
+    // 0. PRE-CLEANUP: Remove malformed [/cb] closing tags
+    // ──────────────────────────────────────────────────────────────
+    newTemplate = newTemplate.replace(/\[\/cb[^\]]*\]/g, '');
+
+    // ──────────────────────────────────────────────────────────────
+    // 1. Convert old ternary checkbox patterns → {{cb:variable}}
+    // ──────────────────────────────────────────────────────────────
+    newTemplate = newTemplate.replace(
+      /\[cb\{\{\s*formData\.([a-zA-Z0-9_]+)\s*\?\.\s*includes\s*\(['"]([^'"]+)['"]\)\s*\?\s*['"]c['"]\s*:\s*['"]['"]\s*\}\}\]/g,
+      (m, field) => `{{cb:${field}}}`
+    );
+    newTemplate = newTemplate.replace(
+      /\[cb\$\{\s*formData\.([a-zA-Z0-9_]+)\s*===\s*['"]([^'"]+)['"]\s*\?\s*['"]c['"]\s*:\s*['"]['"]\s*\}\]/g,
+      (m, field) => `{{cb:${field}}}`
+    );
+
+    // ──────────────────────────────────────────────────────────────
+    // 2. Convert {{cb:variable}} → [cb:variable]
+    // ──────────────────────────────────────────────────────────────
+    newTemplate = newTemplate.replace(/\{\{cb:([a-zA-Z0-9_]+)\}\}/g, `[cb:$1]`);
+
+    // ──────────────────────────────────────────────────────────────
+    // 3. Convert old conditional ternary → [conditional]
+    // ──────────────────────────────────────────────────────────────
+    newTemplate = newTemplate.replace(
+      /\$\{\s*formData\.([a-zA-Z0-9_]+)\s*===\s*['"]([^'"]+)['"]\s*\?\s*['"](c?)['"]\s*:\s*['"]['"]\s*\}/g,
+      (m, field, value, c) => c ? `[conditional field="${field}" value="${value}"]c[/conditional]` : ''
+    );
+
+    // ──────────────────────────────────────────────────────────────
+    // 4. Convert ${var} and {{var}} → {{var}}
+    // ──────────────────────────────────────────────────────────────
+    newTemplate = newTemplate.replace(/\$\{([^}]+)\}/g, (m, p1) => `{{${p1.trim()}}}`);
+    newTemplate = newTemplate.replace(/\{\{([^}]+)\}\}/g, (m, p1) => `{{${p1.trim()}}}`);
+
+    // ──────────────────────────────────────────────────────────────
+    // 5. FIX [cb:field]Text ON SAME LINE → ONE PER LINE (THE HOLY GRAIL)
+    // ──────────────────────────────────────────────────────────────
+    newTemplate = newTemplate.replace(/\[cb:([^\]]+)\]([^\[\]\r\n]*)/gi, (match, field, text) => {
+      const trimmed = text.trim();
+      return trimmed ? `[cb:${field.trim()}]${trimmed}\n` : match;
+    });
+
+    // Split lines with multiple [cb:...] into separate lines
+    const lines = newTemplate.split('\n');
+    const fixedLines = [];
+
+    for (let line of lines) {
+      const matches = [...line.matchAll(/\[cb:([^\]]+)\]/g)];
+      if (matches.length <= 1) {
+        fixedLines.push(line);
+        continue;
+      }
+
+      let remaining = line;
+      for (const match of matches) {
+        const full = match[0];
+        const field = match[1];
+        const index = remaining.indexOf(full);
+        const before = remaining.slice(0, index);
+        const afterMatch = remaining.slice(index + full.length);
+        const optionText = afterMatch.match(/^([^\[\]]+)/)?.[0]?.trim() || "";
+
+        if (before.trim()) fixedLines.push(before.trim());
+        fixedLines.push(`[cb:${field}]${optionText}`);
+        remaining = afterMatch.slice(optionText.length);
+      }
+      if (remaining.trim()) fixedLines.push(remaining.trim());
+    }
+
+    newTemplate = fixedLines.filter(Boolean).join("\n");
+
+
+    // ──────────────────────────────────────────────────────────────
+    // 7. Final cleanup
+    // ──────────────────────────────────────────────────────────────
+    newTemplate = newTemplate
+      .replace(/\n{3,}/g, "\n\n")
+      .replace(/^\s+|\s+$/gm, "")
+      .replace(/\[cb:([^\]]+)\]\s+/g, "[cb:$1]");
+
+    setBbcodeTemplate(newTemplate);
+    alert("Legacy BBCode PARSED & PERFECTED!\n\nAll [cb:field] are on new lines\nOld patterns converted\nLabels bolded\nReady for 2025");
+  }}
+  style={{
+    background: "linear-gradient(135deg, #8b5cf6, #6366f1)",
+    color: "white",
+    border: "none",
+    padding: "1rem 2rem",
+    borderRadius: 12,
+    fontWeight: "bold",
+    fontSize: "1.1rem",
+    cursor: "pointer",
+    boxShadow: "0 4px 20px rgba(139, 92, 246, 0.5)"
+  }}
+>
+  Parse & Fix Legacy BBCode (ULTIMATE)
+</button>
+          </div>
+          <div style={{ color: "#94a3b8", fontSize: "0.9rem", marginBottom: "1rem" }}>
+            Use <code>{"{{ fieldName }}"}</code> for form fields. <br />
+            For conditional BBCode, use <code>[conditional field="hasDNR" value="true" and field="attorney" value="Yes"] TEXT [/conditional]</code>.
+            This conditional BBCode must be manually parsed when generating reports.
+          </div>
+
+          <textarea rows={12} value={bbcodeTemplate} onChange={e => setBbcodeTemplate(e.target.value)} style={{ ...inputStyle, fontFamily: "monospace", maxHeight: "200px", overflowY: "auto" }} />
+
+          {/* New: Title Generator Code Input */}
+
           <h4 style={{ color: "#60a5fa", marginTop: "2rem" }}>Add Field</h4>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
             <select value={newField.type} onChange={e => setNewField({ ...createDefaultNewField(), type: e.target.value })} style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}>
@@ -697,6 +780,8 @@ const applyBulkConditionalLogic = () => {
               <option value="textarea">Textarea</option>
               <option value="select">Dropdown</option>
               <option value="character_selector">Dropdown - Character Select</option>
+              <option value="employee_select">Dropdown - Employee Selector</option>
+              <option value="multi_employee_select">Dropdown - Multiple Employees</option>
               <option value="multi_select">Dropdown (Multiple Selection)</option> // NEW OPTION
               <option value="checkbox">Checkbox</option>
               <option value="radio">Radio Button</option>
@@ -778,6 +863,7 @@ const applyBulkConditionalLogic = () => {
                             <select value={newField.layout || "full"} onChange={e => setNewField({ ...newField, layout: e.target.value })} style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}>
                               <option value="full">Full Width</option>
                               <option value="compact-50">Compact (50%)</option>
+                              <option value="compact-33">Compact (33%)</option>
                               <option value="compact">Compact (20%)</option>
                             </select>
                           )}
@@ -1226,6 +1312,10 @@ const applyBulkConditionalLogic = () => {
                                   <span style={{ color: "#a78bfa" }}>Autopsy Diagram Button: <strong>{f.label}</strong> → stores URL in <code>{"{{" + f.name + "}}"}</code></span>
                                 ) : f.type === "character_selector" ? (
                                   <span style={{ color: "#a78bfa" }}>Dropdown - Character Select: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code></span>
+                                ) : f.type === "multi_employee_select" ? (
+                                  <span style={{ color: "#a78bfa" }}>Dropdown - Multiple Employees: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code></span>
+                                ) : f.type === "employee_select" ? ( // NEW EMPLOYEE SELECT DISPLAY
+                                  <span style={{ color: "#a78bfa" }}>Dropdown - Employee Selector: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code></span>
                                 ) : (
                                   <>
                                     <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>
@@ -1233,6 +1323,7 @@ const applyBulkConditionalLogic = () => {
                                 )}
                                 {f.layout === "full" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Full Width</span>}
                                 {f.layout === "compact-50" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Compact (50%)</span>}
+                                {f.layout === "compact-33" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Compact (33%)</span>} 
                                 {f.layout === "compact" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Compact (20%)</span>}
                                 {f.type === "select" && <span style={{ marginLeft: "1rem", color: "#f59e0b" }}>Options: {f.optionsKey}</span>}
                                 {f.showIf && (
