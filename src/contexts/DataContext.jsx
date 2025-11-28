@@ -10,7 +10,8 @@ const CACHE_SEGMENTS = {
     FACTIONS: 'factions',
     AGENCIES: 'agencies',
     SELECT_OPTIONS: 'selectOptions',
-    FORMS: 'forms'
+    FORMS: 'forms',
+    LSCC: 'lscc'
 };
 
 // Define segments that should not be cached in localStorage
@@ -81,6 +82,10 @@ export const DataProvider = ({ children }) => {
             case CACHE_SEGMENTS.FORMS:
                 setFormsData(data || {});
                 break;
+            case CACHE_SEGMENTS.LSCC:
+                // Assuming you want to set some state for LSCC data as well
+                setLsccData(data || {});
+                break;
             default:
                 console.warn(`Unknown cache segment: ${segment}`);
         }
@@ -107,6 +112,7 @@ export const DataProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
 
     const [formsData, setFormsData] = useState({});
+    const [lsccData, setLsccData] = useState({}); // New state for LSCC data
     const [isDevMode, setIsDevMode] = useState(false); // Add isDevMode state
 
     // Segmented cache for fetched data
@@ -126,7 +132,8 @@ export const DataProvider = ({ children }) => {
         [CACHE_SEGMENTS.FACTIONS]: '1.1',
         [CACHE_SEGMENTS.AGENCIES]: '1.1',
         [CACHE_SEGMENTS.SELECT_OPTIONS]: '1.2.1',
-        [CACHE_SEGMENTS.FORMS]: '1.2.2' // Increment version for structural changes
+        [CACHE_SEGMENTS.FORMS]: '1.2.2', // Increment version for structural changes
+        [CACHE_SEGMENTS.LSCC]: '1.0',
     };
 
     const getSegmentVersion = (segment) => SEGMENT_VERSIONS[segment] || '1.0';
@@ -426,47 +433,45 @@ export const DataProvider = ({ children }) => {
         }
     }, []);
 
-    useEffect(() => {
-        let isMounted = true; // For handling async operations on unmounted components
-
-        // Primary guard: ensure loadData is truly called only once by THIS useEffect instance
-        if (dataInitializedRef.current) {
-            console.log('[DataContext] Data load already initiated by this useEffect instance. Skipping.');
-            return;
-        }
-
-        const fetchData = async () => {
-            // Set ref to true immediately to prevent re-entry from StrictMode's double invocation
-            dataInitializedRef.current = true; 
-            console.log('[DataContext] Starting DataContext initialization (first useEffect invocation)...');
-
-            try {
-                // loadData handles internal caching logic (memory/localStorage/Firebase fetch)
-                await loadData(); 
-                if (isMounted) {
-                    console.log('[DataContext] Data load complete. Setting up Firebase listeners.');
-                    sessionStorage.setItem('dataContextInitialized', 'true'); // Mark session as initialized
-                    setupFirebaseListeners();
+            useEffect(() => {
+                let isMounted = true; // For handling async operations on unmounted components
+        
+                // Primary guard: ensure loadData is truly called only once by THIS useEffect instance
+                if (dataInitializedRef.current) {
+                    console.log('[DataContext] Data load already initiated by this useEffect instance. Skipping.');
+                    return;
                 }
-            } catch (error) {
-                console.error('[DataContext] Error during DataContext initialization:', error);
-                // IMPORTANT: Reset ref on error to allow retry on subsequent component mounts/retries
-                dataInitializedRef.current = false; 
-            }
-        };
-
-        fetchData();
-
-        // Cleanup on unmount
-        return () => {
-            isMounted = false;
-            // Clear Firebase listeners to prevent memory leaks
-            Object.values(firebaseListeners.current).forEach(unsubscribe => unsubscribe());
-            firebaseListeners.current = {};
-        };
-    }, [loadData, setupFirebaseListeners]); // Dependencies: ensure these useCallback functions are stable
-    
-        // DEPRICATED - USE IN VERY LIMITED APPLICATIONS
+        
+                const fetchData = async () => {
+                    // Set ref to true immediately to prevent re-entry from StrictMode's double invocation
+                    dataInitializedRef.current = true; 
+                    console.log('[DataContext] Starting DataContext initialization (first useEffect invocation)...');
+        
+                    try {
+                        // loadData handles internal caching logic (memory/localStorage/Firebase fetch)
+                        await loadData(); 
+                        if (isMounted) {
+                            console.log('[DataContext] Data load complete. Setting up Firebase listeners.');
+                            sessionStorage.setItem('dataContextInitialized', 'true'); // Mark session as initialized
+                            setupFirebaseListeners();
+                        }
+                    } catch (error) {
+                        console.error('[DataContext] Error during DataContext initialization:', error);
+                        // IMPORTANT: Reset ref on error to allow retry on subsequent component mounts/retries
+                        dataInitializedRef.current = false; 
+                    }
+                };
+        
+                fetchData();
+        
+                // Cleanup on unmount
+                return () => {
+                    isMounted = false;
+                    // Clear Firebase listeners to prevent memory leaks
+                    Object.values(firebaseListeners.current).forEach(unsubscribe => unsubscribe());
+                    firebaseListeners.current = {};
+                };
+            }, [loadData, setupFirebaseListeners]); // Dependencies: ensure these useCallback functions are stable        // DEPRICATED - USE IN VERY LIMITED APPLICATIONS
         const phmcListData = useMemo(() => {
             // PHMC FACTION = 364, filtered by excluding CORONER categories
             if (!factionsData['364'] || !factionsData['364'].members) {
@@ -540,13 +545,13 @@ export const DataProvider = ({ children }) => {
         refreshSegments,
         notifyDataUpdate, // Expose the notification function
         sendDataRequestLog, // Expose the logging function
-        isDevMode,
-        setIsDevMode,
-    };
-
-    return (
-        <DataContext.Provider value={value}>
-            {children}
-        </DataContext.Provider>
-    );
+                isDevMode,
+                setIsDevMode,
+                lsccData, // Add lsccData to the context value
+            };
+            
+                return (
+                    <DataContext.Provider value={value}>
+                        {children}
+                    </DataContext.Provider>    );
 };
