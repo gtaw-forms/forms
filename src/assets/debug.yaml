@@ -1,0 +1,94 @@
+DEBUG] FormHandler global paste handler triggered. Active element: 
+<textarea rows="6" name="additionalImages_narrative" placeholder="Write notes or paste screenshots here (Ctrl+V)" style="width: 100%; padding: 0.…0); border-radius: 8px;">​
+"__reactEvents$z0e16z7w67l": Set [ "invalid__bubble" ]
+​​
+size: 1
+​​
+<entries>
+​​​
+0: "invalid__bubble"
+​​
+<prototype>: Set.prototype { … }
+​
+"__reactFiber$z0e16z7w67l": Object { tag: 5, elementType: "textarea", type: "textarea", … }
+​​
+_debugHookTypes: null
+​​
+_debugNeedsRemount: false
+​​
+_debugOwner: Object { tag: 0, key: "0", index: 0, … }
+​​
+_debugSource: Object { fileName: "C:/Users/cross/Documents/GitHub/phmc-forms/src/components/form-handler/DecedentItemRenderer.jsx", lineNumber: 41, columnNumber: 13 }
+​​
+actualDuration: 0
+​​
+actualStartTime: 31024
+​​
+alternate: Object { tag: 5, elementType: "textarea", type: "textarea", … }
+​​
+child: null
+​​
+childLanes: 0
+​​
+deletions: null
+​​
+dependencies: null
+​​
+elementType: "textarea"
+​​
+flags: 4
+​​
+index: 0
+​​
+key: null
+​​
+lanes: 0
+​​
+memoizedProps: Object { rows: 6, name: "additionalImages_narrative", placeholder: "Write notes or paste screenshots here (Ctrl+V)", … }
+​​
+memoizedState: null
+​​
+mode: 3
+​​
+pendingProps: Object { rows: 6, name: "additionalImages_narrative", placeholder: "Write notes or paste screenshots here (Ctrl+V)", … }
+​​
+ref: null
+​​
+return: Object { tag: 7, key: null, index: 1, … }
+​​
+selfBaseDuration: 0
+​​
+sibling: Object { tag: 5, elementType: "div", type: "div", … }
+​​
+stateNode: <textarea rows="6" name="additionalImages_narrative" placeholder="Write notes or paste screenshots here (Ctrl+V)" style="width: 100%; padding: 0.…0); border-radius: 8px;">
+​​
+subtreeFlags: 0
+​​
+tag: 5
+​​
+treeBaseDuration: 0
+​​
+type: "textarea"
+​​
+updateQueue: null
+​​
+<prototype>: Object { … }
+​
+"__reactProps$z0e16z7w67l": Object { rows: 6, name: "additionalImages_narrative", placeholder: "Write notes or paste screenshots here (Ctrl+V)", … }
+​
+_sentryId: "e94952962fc04ec58e0587eb80b2b798"
+​
+_valueTracker: Object { getValue: getValue(), setValue: setValue(value), stopTracking: stopTracking()
+ }
+​​
+getValue: function getValue()​​
+setValue: function setValue(value)​​
+stopTracking: function stopTracking()
+​​​
+length: 0
+​​​
+name: "stopTracking"
+​​​
+prototype: Object { … }
+​​​
+<prototype>: function ()
