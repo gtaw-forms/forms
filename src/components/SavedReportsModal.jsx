@@ -271,7 +271,6 @@ const SavedReportsModal = ({
         if (show && !isManualSelectionRef.current) {
             let employeeToSelectValue = null;
             
-            // First try to use the current employee based on form data
             if (currentPhmcEmployee && currentPhmcEmployee !== 'Unknown') {
                 employeeToSelectValue = currentPhmcEmployee;
             } else if (currentCoronerEmployee && currentCoronerEmployee !== 'Unknown') {
@@ -282,26 +281,15 @@ const SavedReportsModal = ({
                 employeeToSelectValue = (currentCoronerEmployee !== 'Unknown' ? currentCoronerEmployee : null) || (currentPhmcEmployee !== 'Unknown' ? currentPhmcEmployee : null);
             }
 
-            // --- DEBUG LOG ---
-            console.log('[Debug] employeeToSelectValue determined:', employeeToSelectValue);
-
-            // Find the matching employee option
             const employeeOption = employeeOptions?.flatMap(group => group.options).find(
                 (opt) => opt.value === employeeToSelectValue
             );
 
-            // --- DEBUG LOG ---
-            console.log('[Debug] employeeOption found:', employeeOption);
-
             if (employeeOption && employeeToSelectValue !== lastLoadedEmployeeRef.current) {
-                // --- DEBUG LOG ---
-                console.log('[Debug] Setting selected employee and loading reports for:', employeeOption.value);
                 setSelectedEmployee(employeeOption);
                 onEmployeeSelect(employeeOption.label);
                 lastLoadedEmployeeRef.current = employeeToSelectValue;
             } else if (!employeeOption) {
-                // --- DEBUG LOG ---
-                console.log('[Debug] No employeeOption found. Clearing selection.');
                 setSelectedEmployee(null);
                 onEmployeeSelect(null);
             }
@@ -315,22 +303,21 @@ const SavedReportsModal = ({
         }
     }, [show, currentCoronerEmployee, currentPhmcEmployee, employeeOptions, preselectedEmployeeType, onEmployeeSelect]);
 
-const handleEmployeeSelect = (selectedOption) => {
-    isManualSelectionRef.current = true;
-    setSelectedEmployee(selectedOption);
-    setSearchQuery('');
-    setCurrentPage(1);
-    setSelectedReportKeys([]);
+    const handleEmployeeSelect = (selectedOption) => {
+        isManualSelectionRef.current = true;
+        setSelectedEmployee(selectedOption);
+        setSearchQuery('');
+        setCurrentPage(1);
+        setSelectedReportKeys([]);
 
-    if (selectedOption) {
-        // CRITICAL FIX: Pass the NAME (label), not the value (Discord ID)
-        onEmployeeSelect(selectedOption.label);  // ← Change from .value to .label
-        lastLoadedEmployeeRef.current = selectedOption.label;
-    } else {
-        onEmployeeSelect(null);
-        lastLoadedEmployeeRef.current = null;
-    }
-};
+        if (selectedOption) {
+            onEmployeeSelect(selectedOption.label);
+            lastLoadedEmployeeRef.current = selectedOption.label;
+        } else {
+            onEmployeeSelect(null);
+            lastLoadedEmployeeRef.current = null;
+        }
+    };
     const filteredEmployeeOptions = useMemo(() => {
         if (preselectedEmployeeType === 'PHMC') {
             return (employeeOptions || []).filter((group) => group.label === 'PHMC Staff');
@@ -390,6 +377,13 @@ const handleEmployeeSelect = (selectedOption) => {
             showNotification('No reports selected or no employee identified.', 'warning');
             return;
         }
+
+        const reportsToLoadCheck = sortedReports.filter((r) => selectedReportKeys.includes(r.key));
+        if (reportsToLoadCheck.some(report => report.legacy)) {
+            showNotification('This report is flagged as Legacy, you cannot load it at this time.', 'warning');
+            return;
+        }
+
         if (isLoadingMultiple) return;
 
         setIsLoadingMultiple(true);
@@ -406,9 +400,8 @@ const handleEmployeeSelect = (selectedOption) => {
         
         let actionFunction;
         if (isParsing && pendingReportAttachmentCallback?.current) {
-            // For Parse Decedent mode, we need to load and then call the callback
-            actionFunction = async (reportKey, employeeValue) => {
-                const result = await loadReportForUser(reportKey, employeeValue, true);
+            actionFunction = async (report, employeeValue) => {
+                const result = await loadReportForUser(report, employeeValue, true);
                 if (result.success && pendingReportAttachmentCallback.current) {
                     pendingReportAttachmentCallback.current(result.reportData);
                 }
@@ -423,7 +416,7 @@ const handleEmployeeSelect = (selectedOption) => {
             const report = reportsToLoad[i];
             console.log(`[SavedReportsModal] Processing report ${i + 1}/${reportsToLoad.length}: ${report.originalKey} (Action: ${isParsing ? 'Parse' : (isAttaching ? 'Attach' : 'Load')})`);
             try {
-                await actionFunction(report.key, selectedEmployee.value);
+                await actionFunction(report, selectedEmployee.value);
                 if (i < reportsToLoad.length - 1) {
                     await new Promise((resolve) => setTimeout(resolve, LOAD_DELAY_MS));
                 }
@@ -448,33 +441,52 @@ const handleEmployeeSelect = (selectedOption) => {
         if (!window.confirm(`Are you sure you want to delete ${selectedReportKeys.length} selected report(s)? This action cannot be undone.`)) {
             return;
         }
-        selectedReportKeys.forEach((reportKey) => {
-            deleteReportForUser(reportKey, selectedEmployee.value);
+        const reportsToDelete = sortedReports.filter(r => selectedReportKeys.includes(r.key));
+        reportsToDelete.forEach((report) => {
+            deleteReportForUser(report, selectedEmployee.value);
         });
         showNotification(`${selectedReportKeys.length} report(s) deleted.`, 'trash');
         setSelectedReportKeys([]);
     };
 
     const handleCopySelectedBBCode = async () => {
-        if (selectedReportKeys.length === 0) {
+        if (selectedReportKeys.length === 0 || !selectedEmployee?.value) {
             showNotification('No reports selected to copy.', 'warning');
             return;
         }
+        
+        showNotification(`Loading BBCode for ${selectedReportKeys.length} report(s)...`, 'info-circle', 4000);
+    
         const reportsToCopy = sortedReports.filter((r) => selectedReportKeys.includes(r.key));
-        const combinedBbCode = reportsToCopy.map((r) => r.bbCode).filter(Boolean).join('\n\n');
-        if (combinedBbCode) {
-            await copyToClipboard(combinedBbCode, showNotification, 'BBCode copied!');
+        const bbCodes = [];
+    
+        for (const report of reportsToCopy) {
+            const result = await loadReportForUser(report, selectedEmployee.value, true);
+            if (result.success && result.reportData.bbCode) {
+                bbCodes.push(result.reportData.bbCode);
+            } else {
+                showNotification(`Could not load BBCode for report: ${report.originalKey}`, 'warning');
+            }
+        }
+        
+        if (bbCodes.length > 0) {
+            const combinedBbCode = bbCodes.join('\n\n');
+            await copyToClipboard(combinedBbCode, showNotification, `${bbCodes.length} BBCode(s) copied!`);
         } else {
             showNotification('No BBCode found in selected reports.', 'warning');
         }
     };
 
-    const handleCopyBBCode = async (reportKey) => {
-        const report = sortedReports.find((r) => r.key === reportKey);
-        if (report && report.bbCode) {
-            await copyToClipboard(report.bbCode, showNotification, 'BBCode copied!');
+    const handleCopyBBCode = async (report) => {
+        if (!selectedEmployee?.value) {
+            showNotification('No employee selected.', 'warning');
+            return;
+        }
+        const result = await loadReportForUser(report, selectedEmployee.value, true);
+        if (result.success && result.reportData.bbCode) {
+            await copyToClipboard(result.reportData.bbCode, showNotification, 'BBCode copied!');
         } else {
-            showNotification('No BBCode found for this report.', 'warning');
+            showNotification('Could not load BBCode for this report.', 'error');
         }
     };
 
@@ -574,7 +586,7 @@ const handleEmployeeSelect = (selectedOption) => {
                                     </th>
                                     <th style={thStyle}>Name / Identifier</th>
                                     <th style={thStyle}>Saved Date & Time</th>
-                                    <th style={thStyle}>Version</th>
+                                    <th style={thStyle}>Legacy</th>
                                     <th style={thStyle}>Actions</th>
                                 </tr>
                             </thead>
@@ -593,30 +605,41 @@ const handleEmployeeSelect = (selectedOption) => {
                                             </td>
                                             <td style={tdStyle} title={report.originalKey}>
                                                 {report.originalKey}
+                                                {report.legacy && <span style={{ color: '#f85149', marginLeft: '10px', fontWeight: 'bold' }}>LEGACY</span>}
                                             </td>
                                             <td style={tdStyle}>{new Date(report.timestamp).toLocaleString()}</td>
-                                            <td style={tdStyle}>{report.bbCodeVersion}</td>
+                                            <td style={tdStyle}>
+                                                {report.legacy ? (
+                                                    <span style={{ color: '#f85149', fontWeight: 'bold' }}>Yes</span>
+                                                ) : (
+                                                    <span style={{ color: '#28a745' }}>No</span>
+                                                )}
+                                            </td>
                                             <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
                                                 <Button
                                                     variant="primary"
                                                     size="sm"
                                                     className="me-2"
                                                     onClick={() => {
+                                                        if (report.legacy) {
+                                                            showNotification('This report is flagged as Legacy, you cannot load it at this time.', 'warning');
+                                                            return;
+                                                        }
                                                         if (isParseDecedentMode && pendingReportAttachmentCallback?.current) {
-                                                            // Handle Parse Decedent mode - call the pending callback with report data
-                                                            loadReportForUser(report.key, selectedEmployee.value, true).then((result) => {
+                                                            loadReportForUser(report, selectedEmployee.value, true).then((result) => {
                                                                 if (result.success && pendingReportAttachmentCallback.current) {
                                                                     pendingReportAttachmentCallback.current(result.reportData);
                                                                 }
                                                             });
                                                         } else if (selectedForm?.name === 'Coroner Email') {
-                                                            handleReportSelectedForAttachment(report.key, selectedEmployee.value);
+                                                            handleReportSelectedForAttachment(report, selectedEmployee.value);
                                                         } else if (loadReport) {
-                                                            loadReport(report.key, selectedEmployee.value);
+                                                            loadReport(report, selectedEmployee.value);
                                                         }
                                                         onHide(); // Close modal after action
                                                     }}
-                                                    disabled={isLoadingReports || !selectedEmployee}
+                                                    disabled={report.legacy || isLoadingReports || !selectedEmployee}
+                                                    title={report.legacy ? 'This report is flagged as Legacy, you cannot load it at this time.' : ''}
                                                 >
                                                     {isParseDecedentMode ? 'Parse' : (selectedForm?.name === 'Coroner Email' ? 'Attach' : 'Load')}
                                                 </Button>
@@ -625,7 +648,7 @@ const handleEmployeeSelect = (selectedOption) => {
                                                     size="sm"
                                                     onClick={() => {
                                                         if (window.confirm('Are you sure you want to delete this report?')) {
-                                                            deleteReportForUser(report.key, selectedEmployee.value);
+                                                            deleteReportForUser(report, selectedEmployee.value);
                                                         }
                                                     }}
                                                     disabled={isLoadingReports || !selectedEmployee}
@@ -633,7 +656,7 @@ const handleEmployeeSelect = (selectedOption) => {
                                                     Delete
                                                 </Button>
                                                 <Button
-                                                    onClick={() => handleCopyBBCode(report.key)}
+                                                    onClick={() => handleCopyBBCode(report)}
                                                     style={copyButtonStyle}
                                                     title="Copy BBCode"
                                                 >

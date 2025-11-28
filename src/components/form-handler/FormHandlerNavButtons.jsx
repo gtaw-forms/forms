@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import formStyles from './FormHandler.module.css'; // Assuming styles are needed here
 import { useModal } from '../../contexts/ModalProvider'; // For setShowEmsBingoModal
@@ -6,7 +6,7 @@ import useGtaWorldAuth from '../../hooks/useGtaWorldAuth'; // For auth status
 import { useSeasonalEffects } from '../../contexts/SeasonalEffectsContext'; // Import useSeasonalEffects
 import { useNotification } from '../../contexts/NotificationContext'; // Import useNotification
 
-const FormHandlerNavButtons = () => {
+const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
   const navigate = useNavigate();
   const { user, isAuthenticated, isPhmcMember, characterName, login } = useGtaWorldAuth();
   const { setShowEmsBingoModal } = useModal(); // Assuming EmsBingoModal is still in MainApp or handled globally
@@ -61,6 +61,13 @@ const FormHandlerNavButtons = () => {
 
       {/* Right-aligned buttons */}
       <div style={{ display: "flex", gap: "10px", pointerEvents: "auto" }}> {/* Re-enable pointer events for buttons */}
+        <button
+            className={formStyles.topButton}
+            onClick={onToggleSavedReports}
+            title="Open Saved Reports"
+        >
+            <i className="fas fa-save"></i> Saved Reports
+        </button>
         <button
           className={formStyles.topButton}
           onClick={handleGtawLogin}

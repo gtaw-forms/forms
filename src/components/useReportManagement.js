@@ -40,7 +40,9 @@ export const useReportManagement = (
     setEasterEggType,
     sendEasterEggNotification,
     modalCloseTimer,
-    selectedForm, // This is the new 15th argument
+    selectedForm, // This is the 15th argument
+    forms,
+    setSelectedForm,
     // The following are legacy and not passed by FormHandler.jsx
     // We keep them with default values to avoid breaking the old App.jsx implementation.
     versionNames = {},
@@ -516,81 +518,62 @@ export const useReportManagement = (
             return;
         }
 
-        // --- DEBUG LOG ---
-        console.log(`[Debug] loadUserSavedReports called with userId: ${userId}`);
-
         setIsLoadingUserReports(true);
         setSelectedUserForSavedReports(userId);
         const loadingNotifId = showNotification(`Loading reports for ${userId}...`, 'info-circle', 0);
+        
+        const sanitizedUserId = comprehensiveSanitize(userId);
+        const legacyReportsRef = ref(database, `savedReports/${sanitizedUserId}`);
+        const newReportsRef = ref(database, `newSavedReports/${sanitizedUserId}`);
 
         try {
-            const functions = getFunctions();
-            const getSavedReports = httpsCallable(functions, 'getSavedReports');
-            const result = await getSavedReports({ userId });
+            const [legacySnapshot, newSnapshot] = await Promise.all([
+                get(legacyReportsRef),
+                get(newReportsRef)
+            ]);
 
-            // --- DEBUG LOG ---
-            console.log(`[Debug] Firebase function 'getSavedReports' returned for userId: ${userId}`, result.data);
+            let allReports = [];
+
+            if (legacySnapshot.exists()) {
+                const legacyData = legacySnapshot.val();
+                const legacyReports = Object.keys(legacyData).map(key => ({
+                    ...legacyData[key],
+                    key: key // The firebase key
+                }));
+
+                const processedLegacyReports = legacyReports.map(report => {
+                    if (report.legacy === undefined) {
+                        // These versions were saved before the `legacy` flag existed.
+                        const legacyVersions = [1, 2, 3, 4, 5, 6, 7, 11, 18, 19, 24, 25, 37];
+                        const isLegacy = legacyVersions.includes(report.bbCodeVersion);
+                        return { ...report, legacy: isLegacy };
+                    }
+                    return report;
+                });
+                allReports.push(...processedLegacyReports);
+            }
+
+            if (newSnapshot.exists()) {
+                const newData = newSnapshot.val();
+                const newReports = Object.keys(newData).map(key => ({
+                    ...newData[key],
+                    key: key // The firebase key
+                }));
+                // These reports should already have `legacy: false` set during save.
+                allReports.push(...newReports);
+            }
 
             removeNotification(loadingNotifId);
 
-            if (result.data.success) {
-                const reports = result.data.reports || [];
-                const totalSize = JSON.stringify(reports).length;
-
-                if (sendDataRequestLog) {
-                    sendDataRequestLog(
-                        'useReportManagement.js/loadUserSavedReports',
-                        false, // This is a read operation from a function, not cache
-                        'Firebase Function Call',
-                        totalSize,
-                        isGtaAuthenticated,
-                        getCharacterName(gtaWorldUser),
-                        `Loaded ${reports.length} reports for user: ${userId}`
-                    );
-                }
-
-                // --- DEBUG LOG ---
-                console.log(`[Debug] Found ${reports.length} reports for ${userId}.`);
-                if (reports.length > 0) {
-                    console.log('[Debug] Reports found:', reports.map(r => ({ key: r.key, originalKey: r.originalKey, author: r.authorName })));
-                }
-
-                reports.sort((a, b) => b.timestamp - a.timestamp);
-                setSavedReports(reports);
-
-                if (reports.length > 0) {
-                    showNotification(`Loaded ${reports.length} report(s) for ${userId}.`, 'check-circle');
-                } else {
-                    showNotification(`No active reports found for ${userId}.`, 'info-circle');
-                }
+            if (allReports.length > 0) {
+                allReports.sort((a, b) => b.timestamp - a.timestamp);
+                setSavedReports(allReports);
+                showNotification(`Loaded ${allReports.length} report(s) for ${userId}.`, 'check-circle');
             } else {
-                if (sendDataRequestLog) {
-                    sendDataRequestLog(
-                        'useReportManagement.js/loadUserSavedReports',
-                        false,
-                        'Firebase Function Call Error',
-                        0,
-                        isGtaAuthenticated,
-                        getCharacterName(gtaWorldUser),
-                        `Failed to load reports for user: ${userId}`,
-                        result.data.message || 'Failed to load reports.'
-                    );
-                }
-                throw new Error(result.data.message || 'Failed to load reports.');
+                showNotification(`No reports found for ${userId}.`, 'info-circle');
             }
+
         } catch (error) {
-            if (sendDataRequestLog) {
-                sendDataRequestLog(
-                    'useReportManagement.js/loadUserSavedReports',
-                    false,
-                    'Firebase Function Call Error',
-                    0,
-                    isGtaAuthenticated,
-                    getCharacterName(gtaWorldUser),
-                    `Failed to load reports for user: ${userId}`,
-                    error.message || 'Unknown Load Error'
-                );
-            }
             removeNotification(loadingNotifId);
             console.error(`Error loading reports for user ${userId}:`, error);
             Sentry.captureException(error, { extra: { context: 'loadUserSavedReports', userId } });
@@ -599,17 +582,25 @@ export const useReportManagement = (
         } finally {
             setIsLoadingUserReports(false);
         }
-    }, [showNotification, removeNotification, setSavedReports, setSelectedUserForSavedReports, setIsLoadingUserReports, sendDataRequestLog, isGtaAuthenticated, gtaWorldUser]);
+    }, [showNotification, removeNotification, setSavedReports, setSelectedUserForSavedReports, setIsLoadingUserReports]);
 
-    const loadReportForUser = useCallback(async (reportFirebaseKey, userId, returnOnly = false) => {
+    const loadReportForUser = useCallback(async (report, userId, returnOnly = false) => {
+        const reportFirebaseKey = report?.key;
         if (!userId || !reportFirebaseKey) {
             if (!returnOnly) showNotification('Cannot load report: User ID or Report Key is missing.', 'error');
             return { success: false, message: 'User ID or Report Key is missing.' };
         }
 
+        const isLegacyReport = report.legacy;
         const sanitizedUserId = comprehensiveSanitize(userId);
-        const reportPath = `savedReports/${sanitizedUserId}/${reportFirebaseKey}`;
-        const bbCodePath = `savedReportBBCode/${sanitizedUserId}/${reportFirebaseKey}`;
+
+        const reportPath = isLegacyReport
+            ? `savedReports/${sanitizedUserId}/${reportFirebaseKey}`
+            : `newSavedReports/${sanitizedUserId}/${reportFirebaseKey}`;
+        const bbCodePath = isLegacyReport
+            ? `savedReportBBCode/${sanitizedUserId}/${reportFirebaseKey}`
+            : `newSavedReportBBCode/${sanitizedUserId}/${reportFirebaseKey}`;
+        
         const reportRef = ref(database, reportPath);
         const bbCodeRef = ref(database, bbCodePath);
 
@@ -754,6 +745,16 @@ export const useReportManagement = (
                     // --- End Employee Sync Logic ---
 
                     if (!returnOnly) {
+                        if (!isLegacyReport && reportData.formId && forms && setSelectedForm) {
+                            const formToLoad = forms.find(f => f.firebaseKey === reportData.formId);
+                            if (formToLoad) {
+                                setSelectedForm(formToLoad);
+                            } else {
+                                console.warn(`Could not find form with ID: ${reportData.formId} to auto-select.`);
+                                showNotification(`Warning: Could not switch to the correct form automatically.`, 'warning');
+                            }
+                        }
+                        
                         if (loadedVersion === 11) {
                             // Mass Fatality Report: set decedents array and other relevant fields
                             const decedents = Array.isArray(loadedFormData.decedents) ? loadedFormData.decedents.map(dec => ({
@@ -858,7 +859,7 @@ export const useReportManagement = (
             }
         }, [selectedForm, factionsData, coronerListData, phmcListData, removeNotification, setFormData, showNotification, sendDataRequestLog, isGtaAuthenticated, gtaWorldUser]);
 
-        const handleReportSelectedForAttachment = useCallback(async (reportFirebaseKey, userId) => {
+        const handleReportSelectedForAttachment = useCallback(async (report, userId) => {
 
             // When multiple reports are being loaded, we need to delay closing the modal.
 
@@ -878,7 +879,7 @@ export const useReportManagement = (
 
     
 
-            const result = await loadReportForUser(reportFirebaseKey, userId, true);
+            const result = await loadReportForUser(report, userId, true);
 
     
 
@@ -1188,22 +1189,24 @@ export const useReportManagement = (
         setShowSavedReports(true);
     }, [getCurrentReportAuthor, formData, setReportSelectionFilter, setPreselectedEmployeeType, setShowSavedReports, showNotification]);
 
-    const deleteReportForUser = useCallback(async (reportFirebaseKey, userId) => {
+    const deleteReportForUser = useCallback(async (report, userId) => {
+        const reportFirebaseKey = report?.key;
         if (!userId || !reportFirebaseKey) {
             showNotification('Cannot delete report: User ID or Report Key is missing.', 'error');
             return;
         }
 
+        const isLegacyReport = report.legacy;
         const sanitizedUserId = comprehensiveSanitize(userId);
-        const reportPath = `savedReports/${sanitizedUserId}/${reportFirebaseKey}`;
-        const bbCodePath = `savedReportBBCode/${sanitizedUserId}/${reportFirebaseKey}`;
+        const reportPath = isLegacyReport
+            ? `savedReports/${sanitizedUserId}/${reportFirebaseKey}`
+            : `newSavedReports/${sanitizedUserId}/${reportFirebaseKey}`;
+        const bbCodePath = isLegacyReport
+            ? `savedReportBBCode/${sanitizedUserId}/${reportFirebaseKey}`
+            : `newSavedReportBBCode/${sanitizedUserId}/${reportFirebaseKey}`;
+
         const reportRef = ref(database, reportPath);
         const bbCodeRef = ref(database, bbCodePath);
-
-        // Optional: Ask for confirmation before deleting
-        // if (!window.confirm(`Are you sure you want to delete this report?`)) {
-        //     return;
-        // }
 
         try {
             // Delete both the main report and the BBCode in parallel

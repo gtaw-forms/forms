@@ -1,5 +1,5 @@
 // src/components/form-handler/ImageUploader.jsx
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import * as Sentry from "@sentry/react";
 import { useNotification } from '../../contexts/NotificationContext';
 import LoadingSpinner from '../LoadingSpinner';
@@ -52,60 +52,87 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, maxImages = 6, fiel
     onImagesChange(newImages.length > 0 ? newImages : []);
   };
 
-  return (
-    <div className="image-uploader-container">
-<div className="image-previews">
-  {images.map((url, i) => (
-    <div key={i} className="image-preview" style={{ position: 'relative' }}>
-      <img src={url} alt={`Upload ${i + 1}`} />
-      
-      {/* URL Display + Copy Button */}
-      <div style={{
-        marginTop: '6px',
-        padding: '6px 8px',
-        background: '#0f172a',
-        borderRadius: 6,
-        fontSize: '0.8rem',
-        color: '#94a3b8',
-        wordBreak: 'break-all',
-        border: '1px solid #334155'
-      }}>
-        <span style={{ color: '#60a5fa' }}>{url}</span>
-        <button
-          type="button"
-          onClick={() => {
-            navigator.clipboard.writeText(url);
-            showNotification('Image URL copied to clipboard!', 'success');
-          }}
-          style={{
-            marginLeft: '8px',
-            padding: '2px 8px',
-            background: '#6366f1',
-            color: 'white',
-            border: 'none',
-            borderRadius: 4,
-            fontSize: '0.75rem',
-            cursor: 'pointer'
-          }}
-        >
-          Copy URL
-        </button>
-      </div>
+  const handlePaste = useCallback(async (event) => {
+    const items = event.clipboardData?.items;
+    if (!items) return;
 
-      {/* Remove Button */}
-      <button
-        type="button"
-        className="remove-btn"
-        onClick={() => handleRemove(i)}
-        style={{ top: 8, right: 8 }}
-      >
-        X
-      </button>
-    </div>
-  ))}
-</div>      {/* Paste Instructions */}
+    const imageFile = [...items].find(item => item.kind === 'file' && item.type.startsWith('image/'))?.getAsFile();
+    if (!imageFile) return;
+
+    event.preventDefault();
+
+    if (images.length >= maxImages) {
+        showNotification(`Maximum ${maxImages} images allowed.`, 'error');
+        return;
+    }
+
+    setIsUploading(true);
+    try {
+        const url = await uploadImageToImgBB(imageFile);
+        const newImages = [...images, url];
+        onImagesChange(newImages);
+        showNotification('Image pasted & uploaded!', 'success');
+    } catch (err) {
+        Sentry.captureException(err);
+        showNotification('Pasted image failed to upload', 'error');
+    } finally {
+        setIsUploading(false);
+    }
+  }, [images, maxImages, onImagesChange, showNotification, fieldName]);
+
+  return (
+    <div className="image-uploader-container" onPaste={handlePaste}>
+      <div className="image-previews">
+        {images.map((url, i) => (
+          <div key={i} className="image-preview" style={{ position: 'relative' }}>
+            <img src={url} alt={`Upload ${i + 1}`} />
+            
+            <div style={{
+              marginTop: '6px',
+              padding: '6px 8px',
+              background: '#0f172a',
+              borderRadius: 6,
+              fontSize: '0.8rem',
+              color: '#94a3b8',
+              wordBreak: 'break-all',
+              border: '1px solid #334155'
+            }}>
+              <span style={{ color: '#60a5fa' }}>{url}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(url);
+                  showNotification('Image URL copied to clipboard!', 'success');
+                }}
+                style={{
+                  marginLeft: '8px',
+                  padding: '2px 8px',
+                  background: '#6366f1',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 4,
+                  fontSize: '0.75rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Copy URL
+              </button>
+            </div>
+
+            <button
+              type="button"
+              className="remove-btn"
+              onClick={() => handleRemove(i)}
+              style={{ top: 8, right: 8 }}
+            >
+              X
+            </button>
+          </div>
+        ))}
+      </div>
+      
       <div style={{ margin: '12px 0', padding: '10px', background: '#1e293b', borderRadius: 8, fontSize: '0.9rem', color: '#94a3b8' }}>
-        <strong>Pro tip:</strong> You can <strong>paste images directly</strong> from clipboard (Ctrl+V) into any text field below)!
+        <strong>Pro tip:</strong> You can <strong>paste images directly</strong> here (Ctrl+V)!
       </div>
 
       {isUploading ? (
