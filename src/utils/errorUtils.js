@@ -35,11 +35,19 @@ export const recordInputInteraction = (inputType, fieldName) => {
 };
 
 /**
- * Automatically determines the current form type from bbCodeVersion stored in localStorage
+ * Automatically determines the current form type from localStorage.
+ * Prioritizes 'lastSelectedFormName' for new FormHandler, falls back to legacy 'bbCodeVersion'.
  * @returns {string} The form name or 'Unknown' if not found
  */
 const getCurrentFormType = () => {
     try {
+        // Prioritize lastSelectedFormName set by the new FormHandler
+        const lastSelectedFormName = localStorage.getItem('lastSelectedFormName');
+        if (lastSelectedFormName) {
+            return lastSelectedFormName;
+        }
+
+        // Fallback to bbCodeVersion for legacy forms/pages
         const bbCodeVersion = localStorage.getItem('bbCodeVersion');
         if (!bbCodeVersion) return 'Unknown';
 
