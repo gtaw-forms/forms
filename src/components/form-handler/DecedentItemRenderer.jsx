@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import ImageUploader from './ImageUploader'; // Assuming ImageUploader is in the same directory
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTimeUtils';
 
@@ -16,6 +16,8 @@ const DecedentItemRenderer = ({
   agencyDataStore,    // Passed from FormHandler
   showNotification    // Passed from FormHandler
 }) => {
+  const [isMinimized, setIsMinimized] = useState(false); // New state for minimization
+
   const handleSubFieldChange = useCallback((subFieldName, value) => {
     onItemChange(subFieldName, value);
   }, [onItemChange]);
@@ -80,30 +82,51 @@ const DecedentItemRenderer = ({
     }
   }, [itemValues, handleSubFieldChange, finalSelectOptions]);
 
+  const decedentName = itemValues.decedentName || '';
+  const decedentOOC = itemValues.decedentOOC || '';
+
+  let dynamicTitle = `Decedent #${index + 1}`;
+  if (decedentName || decedentOOC) {
+      dynamicTitle += `: ${decedentName}`;
+      if (decedentOOC) {
+          dynamicTitle += ` (${decedentOOC})`;
+      }
+  }
+
   return (
     <div style={{ border: "1px solid #334155", padding: "1rem", borderRadius: 8, marginBottom: "1rem", background: "#162032" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-        <h5 style={{ color: "#e2e8f0", margin: 0 }}>Decedent #{index + 1}</h5>
-        <button onClick={onRemove} style={{ background: "#ef4444", color: "white", border: "none", padding: "0.4rem 0.8rem", borderRadius: 6, cursor: "pointer" }}>
-          Remove
-        </button>
+        <h5 style={{ color: "#e2e8f0", margin: 0 }}>{dynamicTitle}</h5>
+        <div>
+            <button
+                onClick={() => setIsMinimized(!isMinimized)}
+                style={{ background: "#6c757d", color: "white", border: "none", padding: "0.4rem 0.8rem", borderRadius: 6, cursor: "pointer", marginRight: "0.5rem" }}
+            >
+                {isMinimized ? 'Expand' : 'Minimize'}
+            </button>
+            <button onClick={onRemove} style={{ background: "#ef4444", color: "white", border: "none", padding: "0.4rem 0.8rem", borderRadius: 6, cursor: "pointer" }}>
+                Remove
+            </button>
+        </div>
       </div>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.8rem" }}> {/* New flex container for sub-fields */}
-        {itemSchema.map((subField, idx) => {
-          let flexBasisWidth = '100%';
-          if (subField.layout === 'compact-50' || subField.layout === 'compact') { // Changed 'compact' to also be 50%
-            flexBasisWidth = 'calc(50% - 0.4rem)'; // (100% - 1 * 0.8rem) / 2
-          }
-          
-          return (
-            <div key={subField.name || idx} style={{ flexBasis: flexBasisWidth, marginBottom: "0.8rem", boxSizing: "border-box" }}>
-              <label style={labelStyle}>{subField.label}</label>
-              {renderSubField(subField)}
-            </div>
-          );
-        })}
-      </div>
+      {!isMinimized && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.8rem" }}> {/* New flex container for sub-fields */}
+          {itemSchema.map((subField, idx) => {
+            let flexBasisWidth = '100%';
+            if (subField.layout === 'compact-50' || subField.layout === 'compact') { // Changed 'compact' to also be 50%
+              flexBasisWidth = 'calc(50% - 0.4rem)'; // (100% - 1 * 0.8rem) / 2
+            }
+            
+            return (
+              <div key={subField.name || idx} style={{ flexBasis: flexBasisWidth, marginBottom: "0.8rem", boxSizing: "border-box" }}>
+                <label style={labelStyle}>{subField.label}</label>
+                {renderSubField(subField)}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

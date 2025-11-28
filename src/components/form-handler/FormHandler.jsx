@@ -55,7 +55,7 @@ const FormHandler = () => {
   const [isUploading, setIsUploading] = useState(false);
 
   // Hooks
-  const { showNotification } = useNotification();
+  const { showNotification, removeNotification } = useNotification();
   const {
     user,
     isAuthenticated,
@@ -303,8 +303,14 @@ const FormHandler = () => {
       pendingReportAttachmentCallback 
   } = useReportManagement(
       formValues, setFormValues, null, () => {}, () => '', getCurrentReportAuthor, () => ({}), finalSelectOptions,
-      showNotification, () => {}, () => {}, () => {}, () => {}, modalCloseTimer, selectedForm
+      showNotification, removeNotification, () => {}, () => {}, () => {}, modalCloseTimer, selectedForm,
+      forms, setSelectedForm
   );
+
+  const handleNavToggleSavedReports = () => {
+    const type = selectedForm?.accessType === 'Coroner' ? 'Coroner' : 'PHMC';
+    toggleSavedReports(null, type, null);
+  };
 
   // Effects
   useEffect(() => {
@@ -330,6 +336,10 @@ const FormHandler = () => {
 
   useEffect(() => {
     const handlePaste = async (e) => {
+      // If the paste is happening inside an ImageUploader, let it handle it.
+      if (e.target.closest('.image-uploader-container')) {
+          return;
+      }
       if (!selectedForm) return;
       const activeEl = document.activeElement;
       if (!activeEl || !['TEXTAREA', 'INPUT'].includes(activeEl.tagName)) return;
@@ -571,7 +581,7 @@ const FormHandler = () => {
         pendingReportAttachmentCallback={pendingReportAttachmentCallback}
         selectedForm={selectedForm}
       />
-      <FormHandlerNavButtons />
+      <FormHandlerNavButtons onToggleSavedReports={handleNavToggleSavedReports} />
 
       <div className={styles.header}>
         <h2>PHMC Tools - Form Generator and more!</h2>
