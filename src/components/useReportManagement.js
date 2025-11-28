@@ -82,16 +82,72 @@ export const useReportManagement = (
     const [currentPositionInfo, setCurrentPositionInfo] = useState(null);
 
     const logWebhook = async (type, payload) => {
+        // Log to Firebase RTDB
         const logRef = ref(database, 'webhook_logs/' + Date.now());
+        console.log('Logging legacy webhook to Firebase RTDB...', { type, payload });
         try {
             await set(logRef, {
                 type: type,
                 payload: payload,
                 timestamp: Date.now()
             });
+            console.log('Successfully logged legacy webhook to Firebase RTDB.');
         } catch (error) {
-            console.error("Error logging webhook:", error);
-            Sentry.captureException(error, { extra: { context: 'logWebhook' } });
+            console.error("Error logging legacy webhook to Firebase:", error);
+            Sentry.captureException(error, { extra: { context: 'logWebhook - Firebase (legacy)' } });
+        }
+
+        // Send to Discord
+        const discordWebhookUrl = import.meta.env.VITE_DISCORD_REPORTS_WEBHOOK_URL;
+        if (discordWebhookUrl) {
+            console.log('Attempting to send legacy report saved webhook to Discord...');
+            try {
+                const discordPayload = {
+                    embeds: [
+                        {
+                            title: 'Legacy Report Saved',
+                            description: `A new legacy report has been saved by **${payload.author}**.`,
+                            color: 0xf59e0b, // amber-500
+                            fields: [
+                                { name: 'Author', value: payload.author, inline: true },
+                                { name: 'Form Name', value: payload.formName, inline: true },
+                                { name: 'Report Title', value: `\`${payload.originalKey}\``, inline: false },
+                            ],
+                            timestamp: new Date().toISOString(),
+                            footer: {
+                                text: `BBCodeVersion: ${payload.bbCodeVersion} | ReportKey: ${payload.reportKey}`
+                            }
+                        }
+                    ]
+                };
+
+                if (payload.hasGtawData) {
+                    discordPayload.embeds[0].fields.push(
+                        { name: 'GTAW Username', value: payload.gtawUsername, inline: true },
+                        { name: 'GTAW Character', value: `${payload.gtawCharacterName} (${payload.gtawCharacterId})`, inline: true }
+                    );
+                }
+
+                const response = await fetch(discordWebhookUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(discordPayload)
+                });
+                
+                if (!response.ok) {
+                    const responseBody = await response.text();
+                    console.error('Discord webhook response not OK:', { status: response.status, body: responseBody });
+                    Sentry.captureMessage(`Discord webhook failed with status ${response.status}: ${responseBody}`);
+                } else {
+                    console.log('Successfully sent legacy report saved webhook to Discord.');
+                }
+
+            } catch (error) {
+                console.error("Error sending legacy webhook to Discord:", error);
+                Sentry.captureException(error, { extra: { context: 'logWebhook - Discord (legacy)' } });
+            }
+        } else {
+            console.warn('VITE_DISCORD_REPORTS_WEBHOOK_URL is not set. Skipping Discord webhook.');
         }
     };
     
@@ -392,10 +448,12 @@ export const useReportManagement = (
             showNotification(successMessage, 'save');
 
             // Log the webhook with GTAW data information
+            const formName = versionNames[bbCodeVersion] || `Legacy Form V${bbCodeVersion}`;
             const webhookPayload = {
                 author: currentAuthor,
                 reportKey: sanitizedKey,
                 originalKey: key,
+                formName: formName,
                 bbCodeVersion: bbCodeVersion,
                 hasGtawData: gtawDataFound
             };

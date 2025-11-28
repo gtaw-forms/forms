@@ -1,15 +1,30 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import formStyles from './FormHandler.module.css'; // Assuming styles are needed here
 import { useModal } from '../../contexts/ModalProvider'; // For setShowEmsBingoModal
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth'; // For auth status
 import { useSeasonalEffects } from '../../contexts/SeasonalEffectsContext'; // Import useSeasonalEffects
+import { useNotification } from '../../contexts/NotificationContext'; // Import useNotification
 
 const FormHandlerNavButtons = () => {
   const navigate = useNavigate();
-  const { user, isAuthenticated, isPhmcMember, characterName } = useGtaWorldAuth();
+  const { user, isAuthenticated, isPhmcMember, characterName, login } = useGtaWorldAuth();
   const { setShowEmsBingoModal } = useModal(); // Assuming EmsBingoModal is still in MainApp or handled globally
   const { seasonalEffectsEnabled, setSeasonalEffectsEnabled } = useSeasonalEffects(); // Use seasonal effects context
+  const { showNotification } = useNotification(); // Destructure showNotification
+
+  // Enhanced GTAW login handler with loading notification and return path logic
+  const handleGtawLogin = useCallback(() => {
+    // Show loading notification
+    showNotification('Please wait, this may take a moment...', 'info-circle', 10000);
+    
+    // Determine return path based on current location (simplified to homepage as per MainApp's logic)
+    // The previous MainApp logic redirected all GTAW logins to homepage ('#/')
+    const returnPath = '#/'; 
+    
+    // Call the original login function with proper return path
+    login({ returnPath });
+  }, [showNotification, login]);
 
   return (
     <div style={{
@@ -48,7 +63,7 @@ const FormHandlerNavButtons = () => {
       <div style={{ display: "flex", gap: "10px", pointerEvents: "auto" }}> {/* Re-enable pointer events for buttons */}
         <button
           className={formStyles.topButton}
-          onClick={() => navigate('/auth/gtaworld')}
+          onClick={handleGtawLogin}
         >
           {isAuthenticated ? `Signed in as ${characterName || user?.username}` : "Sign in with GTA:W"}
         </button>

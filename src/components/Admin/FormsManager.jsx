@@ -146,6 +146,7 @@ const FormManager = () => {
                     switch (form.accessType) {
                       case "PHMC": return { color: "#f87171" };
                       case "Coroner": return { color: "#f59e0b" };
+                      case "Mental Health": return { color: "#FF69B4" }; // NEW: Mental Health color
                       case "Civilian": return { color: "#60a5fa" };
                       default: return { color: "#34d399" };
                     }
@@ -154,6 +155,7 @@ const FormManager = () => {
                       switch (form.accessType) {
                         case "PHMC": return "PHMC Only";
                         case "Coroner": return "Coroner Only";
+                        case "Mental Health": return "Mental Health Only"; // NEW: Mental Health text
                         case "Civilian": return "Civilian";
                         default: return "Public";
                       }
@@ -342,11 +344,18 @@ const FormManager = () => {
             </div>
           </div>
           <div style={{ background: "#1e293b", padding: "1.5rem", borderRadius: 12 }}>
+            <div style={{ color: "#FF69B4", fontWeight: "700" }}>Mental Health Only</div>
+            <div style={{ color: "#94a3b8", fontSize: "0.9rem" }}>
+              Requires PHMC faction membership.
+            </div>
+          </div>
+                    <div style={{ background: "#1e293b", padding: "1.5rem", borderRadius: 12 }}>
             <div style={{ color: "#60a5fa", fontWeight: "700" }}>Civilian</div>
             <div style={{ color: "#94a3b8", fontSize: "0.9rem" }}>
               Available to any authenticated user.
             </div>
           </div>
+
         </div>
       </div>
 
