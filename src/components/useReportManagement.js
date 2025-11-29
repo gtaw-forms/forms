@@ -306,7 +306,7 @@ export const useReportManagement = (
                 showNotification(message, 'exclamation-circle');
                 return { success: false, error: message };
             }
-            key = `[DEATH-REPORT] ${formData.decedentOOC} - ${formData.dateTime}`;
+            key = `[DEATH-REPORT] ${formData.decedentOOC} ${formData.dateTime}`;
             isLegacy = true;
         } else if (bbCodeVersion === 4) { // Autopsy Report
             if (!formData.decedentName || !formData.decedentOOC || !formData.autopsyDate) {
@@ -654,7 +654,7 @@ export const useReportManagement = (
         if (!userId) {
             setSavedReports([]);
             setSelectedUserForSavedReports(null);
-            return;
+            return []; // MODIFIED: Return empty array
         }
 
         setIsLoadingUserReports(true);
@@ -665,16 +665,19 @@ export const useReportManagement = (
         const legacyReportsRef = ref(database, `savedReports/${sanitizedUserId}`);
         const newReportsRef = ref(database, `newSavedReports/${sanitizedUserId}`);
 
+
         try {
             const [legacySnapshot, newSnapshot] = await Promise.all([
                 get(legacyReportsRef),
                 get(newReportsRef)
             ]);
 
+
             let allReports = [];
 
             if (legacySnapshot.exists()) {
                 const legacyData = legacySnapshot.val();
+                console.log(`[loadUserSavedReports] Raw legacy data:`, legacyData);
                 const legacyReports = Object.keys(legacyData).map(key => ({
                     ...legacyData[key],
                     key: key // The firebase key
@@ -710,14 +713,15 @@ export const useReportManagement = (
                 showNotification(`Loaded ${allReports.length} report(s) for ${userId}.`, 'check-circle');
             } else {
                 showNotification(`No reports found for ${userId}.`, 'info-circle');
-            }
-
-        } catch (error) {
-            removeNotification(loadingNotifId);
-            console.error(`Error loading reports for user ${userId}:`, error);
-            Sentry.captureException(error, { extra: { context: 'loadUserSavedReports', userId } });
-            showNotification(`Failed to load reports for ${userId}.`, 'error');
-            setSavedReports([]);
+                        }
+                        return allReports; // MODIFIED: Return allReports
+                    } catch (error) {
+                        removeNotification(loadingNotifId);
+                        console.error(`Error loading reports for user ${userId}:`, error);
+                        Sentry.captureException(error, { extra: { context: 'loadUserSavedReports', userId } });
+                        showNotification(`Failed to load reports for ${userId}.`, 'error');
+                        setSavedReports([]);
+                        return []; // MODIFIED: Return empty array on error
         } finally {
             setIsLoadingUserReports(false);
         }
@@ -749,13 +753,11 @@ export const useReportManagement = (
             loadingNotifId = showNotification(`Loading report: ${reportFirebaseKey} for ${userId}...`, 'info-circle', 0);
         }
 
-            try {
-                const [reportSnapshot, bbCodeSnapshot] = await Promise.all([
-                    get(reportRef),
-                    get(bbCodeRef)
-                ]);
-
-                if (reportSnapshot.exists()) {
+                            try {
+                                const [reportSnapshot, bbCodeSnapshot] = await Promise.all([
+                                    get(reportRef),
+                                    get(bbCodeRef)
+                                ]);                if (reportSnapshot.exists()) {
                     const reportData = reportSnapshot.val();
                     const bbCodeData = bbCodeSnapshot.val();
                     
@@ -777,10 +779,16 @@ export const useReportManagement = (
                     // Manually add the bbCode to the reportData object
                     reportData.bbCode = bbCodeSnapshot.exists() ? bbCodeSnapshot.val().bbCode : '';
 
-                    const loadedVersion = reportData.bbCodeVersion;
                     let loadedBbCode = reportData.bbCode || '';
+                    // If bbCode is still empty, check within the reportData object itself
+                    if (!loadedBbCode && reportData.bbCode) {
+                        loadedBbCode = reportData.bbCode;
+                    }
+                    // If still empty, check a nested path within reportData
+                    if (!loadedBbCode && reportData.data && reportData.data.bbCode) {
+                        loadedBbCode = reportData.data.bbCode;
+                    }
                     let loadedFormData = reportData.data || {};
-
                     const isFormHandlerReport = reportData.isFormHandler === true;
 
                     if (!isFormHandlerReport) {
@@ -1476,6 +1484,161 @@ export const useReportManagement = (
         }
     }, [selectedForm, selectOptions, selectedAgencyGroup, showNotification]);
 
+    const countAllUserReports = useCallback(async (userId) => {
+        if (!userId) {
+            return 0;
+        }
+
+        const sanitizedUserId = comprehensiveSanitize(userId);
+        const legacyReportsRef = ref(database, `savedReports/${sanitizedUserId}`);
+        const newReportsRef = ref(database, `newSavedReports/${sanitizedUserId}`);
+
+        try {
+            const [legacySnapshot, newSnapshot] = await Promise.all([
+                get(legacyReportsRef),
+                get(newReportsRef)
+            ]);
+
+            let totalCount = 0;
+            if (legacySnapshot.exists()) {
+                totalCount += Object.keys(legacySnapshot.val()).length;
+            }
+            if (newSnapshot.exists()) {
+                totalCount += Object.keys(newSnapshot.val()).length;
+            }
+            return totalCount;
+        } catch (error) {
+            console.error(`Error counting reports for user ${userId}:`, error);
+            Sentry.captureException(error, { extra: { context: 'countAllUserReports', userId } });
+            return 0;
+        }
+    }, []);
+
+    const backupUserReports = useCallback(async (userId) => {
+        if (!userId) {
+            return { success: false, error: "User ID is required for backup." };
+        }
+
+        const sanitizedUserId = comprehensiveSanitize(userId);
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-'); // Sanitize timestamp for Firebase key
+        const fullBackupPath = `migrateBackup/${sanitizedUserId}_${timestamp}`;
+
+        try {
+            const legacyReportsRef = ref(database, `savedReports/${sanitizedUserId}`);
+            const newReportsRef = ref(database, `newSavedReports/${sanitizedUserId}`);
+            const legacyBBCodeRef = ref(database, `savedReportBBCode/${sanitizedUserId}`);
+            const newBBCodeRef = ref(database, `newSavedReportBBCode/${sanitizedUserId}`);
+
+            const [
+                legacyReportSnapshot,
+                newReportSnapshot,
+                legacyBBCodeSnapshot,
+                newBBCodeSnapshot
+            ] = await Promise.all([
+                get(legacyReportsRef),
+                get(newReportsRef),
+                get(legacyBBCodeRef),
+                get(newBBCodeRef)
+            ]);
+
+            const allReportsToBackup = {};
+            const allBBCodesToBackup = {};
+
+            if (legacyReportSnapshot.exists()) {
+                allReportsToBackup.legacy = legacyReportSnapshot.val();
+            }
+            if (newReportSnapshot.exists()) {
+                allReportsToBackup.new = newReportSnapshot.val();
+            }
+            if (legacyBBCodeSnapshot.exists()) {
+                allBBCodesToBackup.legacy = legacyBBCodeSnapshot.val();
+            }
+            if (newBBCodeSnapshot.exists()) {
+                allBBCodesToBackup.new = newBBCodeSnapshot.val();
+            }
+
+            if (Object.keys(allReportsToBackup).length === 0 && Object.keys(allBBCodesToBackup).length === 0) {
+                return { success: true, path: fullBackupPath, message: "No reports found to backup." };
+            }
+
+            const backupRef = ref(database, fullBackupPath);
+            await set(backupRef, {
+                reports: allReportsToBackup,
+                bbCodes: allBBCodesToBackup,
+                timestamp: Date.now(),
+                userId: userId
+            });
+
+            if (sendDataRequestLog) {
+                const reportsSize = new TextEncoder().encode(JSON.stringify(allReportsToBackup)).length;
+                const bbCodeSize = new TextEncoder().encode(JSON.stringify(allBBCodesToBackup)).length;
+                sendDataRequestLog(
+                    'useReportManagement.js/backupUserReports',
+                    false, // Write operation
+                    'Firebase Write (Backup)',
+                    reportsSize + bbCodeSize,
+                    isGtaAuthenticated,
+                    getCharacterName(gtaWorldUser),
+                    `Backup path: ${fullBackupPath}`
+                );
+            }
+
+            return { success: true, path: fullBackupPath };
+
+        } catch (error) {
+            console.error(`Error backing up reports for user ${userId}:`, error);
+            Sentry.captureException(error, { extra: { context: 'backupUserReports', userId } });
+            if (sendDataRequestLog) {
+                sendDataRequestLog(
+                    'useReportManagement.js/backupUserReports',
+                    false,
+                    'Firebase Write Error (Backup)',
+                    0,
+                    isGtaAuthenticated,
+                    getCharacterName(gtaWorldUser),
+                    `Backup path: ${fullBackupPath}`,
+                    error.message || 'Unknown Backup Error'
+                );
+            }
+            return { success: false, error: error.message || "Failed to backup reports." };
+        }
+    }, [sendDataRequestLog, isGtaAuthenticated, gtaWorldUser]);
+
+    const checkIfMigratedReportExists = useCallback(async (userId, originalKey) => {
+        if (!userId || !originalKey) {
+            return { exists: false };
+        }
+
+        const sanitizedUserId = comprehensiveSanitize(userId);
+        // The originalKey needs to be sanitized to match how it's stored in Firebase
+        // NOTE: The stored key in Firebase is `originalKey + '_' + Date.now()`.
+        // We are checking by the `originalKey` property *within` the report object,
+        // not by the Firebase key itself.
+        
+        const newReportsRef = ref(database, `newSavedReports/${sanitizedUserId}`);
+
+        try {
+            const snapshot = await get(newReportsRef);
+            if (snapshot.exists()) {
+                const reports = snapshot.val();
+                // Iterate through the reports to find a match by originalKey
+                for (const key in reports) {
+                    if (reports.hasOwnProperty(key)) {
+                        const report = reports[key];
+                        if (report.originalKey === originalKey) {
+                            return { exists: true, reportKey: key };
+                        }
+                    }
+                }
+            }
+            return { exists: false };
+        } catch (error) {
+            console.error(`Error checking for migrated report existence for user ${userId}, key ${originalKey}:`, error);
+            Sentry.captureException(error, { extra: { context: 'checkIfMigratedReportExists', userId, originalKey } });
+            return { exists: false };
+        }
+    }, []);
+
         return {
             saveReport,
             saveFormHandlerReport,
@@ -1505,6 +1668,9 @@ export const useReportManagement = (
             handleShowPositionInfo,
             pendingReportAttachmentCallback,
             reportSelectionFilter,
-            setReportSelectionFilter
+            setReportSelectionFilter,
+            backupUserReports,
+            checkIfMigratedReportExists,
+            countAllUserReports
         };
     };

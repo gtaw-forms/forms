@@ -62,46 +62,34 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
     // ──────────────────────────────────────────────────────────────
     // 2. TITLE GENERATION (Smart + DMEC aware)
     // ──────────────────────────────────────────────────────────────
-    else if (selectedForm.titleGeneratorCode) {
-      try {
-        let rawTitle = selectedForm.titleGeneratorCode.trim();
-        const cleanDate = formValues.dateTime?.split("T")[0] || new Date().toISOString().split("T")[0];
-        const isDmec = selectedForm.category === "DMEC";
+else if (selectedForm.titleGeneratorCode) {
+  try {
+    let rawTitle = selectedForm.titleGeneratorCode.trim();
+    console.log('[DEBUG TitleGen] Initial rawTitle:', rawTitle);
+    const cleanDate = formValues.dateTime?.split("T")[0] || new Date().toISOString().split("T")[0];
 
-        const employeeName = isDmec
-          ? (formValues.coronerEmployee || formValues.employeeName || "Unknown Coroner")
-          : (formValues.phmcEmployee || formValues.employeeName || "Unknown Staff");
+    const typeOfDeathValue = formValues.typeOfDeath || formValues.mannerOfDeath || "Unknown";
+    const titleDecedentName = formValues.decedentName || formValues.patientName || "Unknown Decedent";
+    const decedentOOCValue = formValues.decedentOOC || formValues.patientOOC || "Unknown";
 
-        const patientName = formValues.patientName || formValues.decedentName || "Unknown Patient";
+    console.log('[DEBUG TitleGen] Using decedentName:', formValues.decedentName);
+    console.log('[DEBUG TitleGen] Using patientName fallback:', formValues.patientName);
+    console.log('[DEBUG TitleGen] Final titleDecedentName:', titleDecedentName);
 
-        rawTitle = rawTitle
-          .replace(/{{patientName}}/gi, patientName)
-          .replace(/{{decedentName}}/gi, patientName)
-          .replace(/{{employeeName}}/gi, employeeName)
-          .replace(/{{coronerEmployee}}/gi, employeeName)
-          .replace(/{{phmcEmployee}}/gi, employeeName)
-          .replace(/{{date}}/gi, cleanDate)
-          .replace(/{{typeOfDeath}}/gi, formValues.typeOfDeath || "Unknown");
+    // NOW use the correct variable
+    title = rawTitle
+      .replace(/{{typeOfDeath}}/g, typeOfDeathValue)
+      .replace(/{{decedentName}}/g, titleDecedentName)
+      .replace(/{{decedentOOC}}/g, decedentOOCValue)
+      .replace(/{{date}}/g, cleanDate);
 
-        selectedForm.fields?.forEach(f => {
-          const ph = `{{${f.name}}}`;
-          if (rawTitle.includes(ph)) {
-            const val = formValues[f.name] ?? "Unknown";
-            rawTitle = rawTitle.replace(new RegExp(ph.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), String(val));
-          }
-        });
-
-        rawTitle = rawTitle.replace(/{{[^}]+}}/g, "Unknown");
-        title = rawTitle;
-        setGeneratedTitle(title);
-      } catch (err) {
-        console.error("Title generation failed:", err);
-        setGeneratedTitle(`${selectedForm.name} (Title Error)`);
-      }
-    } else {
-      setGeneratedTitle(selectedForm.name || "Untitled Report");
-    }
-
+    console.log('[DEBUG TitleGen] Final generatedTitle:', title);
+    setGeneratedTitle(title);
+  } catch (e) {
+    console.error("Title generation failed:", e);
+    setGeneratedTitle("Title Error");
+  }
+}
     // ──────────────────────────────────────────────────────────────
     // 3. CBC CHECKBOXES — RUN FIRST AND SAFE
     // ──────────────────────────────────────────────────────────────

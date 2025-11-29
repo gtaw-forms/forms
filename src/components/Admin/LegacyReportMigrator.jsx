@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { database } from '../../firebase';
-import { ref, onValue } from 'firebase/database';
+import { get, ref, onValue } from 'firebase/database';
 import { useReportManagement } from '../useReportManagement';
 import { useFormSaver } from '../../hooks/useFormSaver';
 import useBbcodeGenerator from '../../hooks/useBbcodeGenerator';
@@ -13,13 +13,31 @@ import { Button } from 'react-bootstrap';
 const LegacyReportMigrator = ({ onClose }) => {
     const [forms, setForms] = useState([]);
     const [isLoadingForms, setIsLoadingForms] = useState(true); // New state for loading forms
-    const [isMigrating, setIsMigrating] = useState(false);
-    const [targetUser, setTargetUser] = useState('');
-    const [showModal, setShowModal] = useState(false);
+    const [userToMigrate, setUserToMigrate] = useState(''); // Renamed from targetUser
+    const [showModal, setShowModal] = useState(false); // Controls visibility of SavedReportsModal
+    const [migrationStage, setMigrationStage] = useState('input'); // 'input', 'confirm', 'backup', 'migrate', 'complete'
+    const [migrationStatus, setMigrationStatus] = useState(''); // Status messages for the user
+    const [progress, setProgress] = useState(0); // Progress percentage
+    const [totalReportsToMigrate, setTotalReportsToMigrate] = useState(0);
+    const [successfulMigrations, setSuccessfulMigrations] = useState(0);
+    const [failedMigrations, setFailedMigrations] = useState(0);
+    const [backupPath, setBackupPath] = useState(''); // Path where backup is stored
+    const [reportsToMigrate, setReportsToMigrate] = useState([]); // Legacy reports to process
+    const [isProcessing, setIsProcessing] = useState(false); // Track if migration is in progress
+    const [totalSavedReports, setTotalSavedReports] = useState(0); // New state to hold total saved reports
 
     // --- Hooks ---
     const { showNotification, removeNotification } = useNotification();
-    const { employeeOptions } = useData();
+    const { employeeOptions, phmcListData, coronerListData } = useData(); // Get lists for user validation
+    
+    // Function to validate if the userToMigrate is a known employee
+    const validateUser = useCallback(() => {
+        if (!userToMigrate.trim()) return false;
+        const allEmployees = [...phmcListData, ...coronerListData];
+        return allEmployees.some(emp => emp.name === userToMigrate.trim());
+    }, [userToMigrate, phmcListData, coronerListData]);
+
+
     // Augment employeeOptions to always include the targetUser
     const displayEmployeeOptions = useMemo(() => {
         const defaultOptions = employeeOptions || [];
@@ -27,9 +45,9 @@ const LegacyReportMigrator = ({ onClose }) => {
         // Create a flat list of all existing employee values for easy checking
         const existingEmployeeValues = defaultOptions.flatMap(group => group.options).map(opt => opt.value);
 
-        if (targetUser && !existingEmployeeValues.includes(targetUser)) {
-            // Add targetUser as a generic option if not already present
-            const genericUserOption = { label: `${targetUser} (Migration Target)`, value: targetUser };
+        if (userToMigrate && !existingEmployeeValues.includes(userToMigrate)) {
+            // Add userToMigrate as a generic option if not already present
+            const genericUserOption = { label: `${userToMigrate} (Migration Target)`, value: userToMigrate };
             // Create a new group or add to an existing 'Other' group
             const otherGroupIndex = defaultOptions.findIndex(group => group.label === 'Other Users');
             if (otherGroupIndex !== -1) {
@@ -37,7 +55,7 @@ const LegacyReportMigrator = ({ onClose }) => {
                 const newOptions = [...defaultOptions];
                 newOptions[otherGroupIndex] = {
                     ...newOptions[otherGroupIndex],
-                    options: [...newOptions[otherGroupIndex].options, genericUserOption]
+                    options: [...newOptions[newOptions.length-1].options, genericUserOption]
                 };
                 return newOptions;
             } else {
@@ -46,7 +64,7 @@ const LegacyReportMigrator = ({ onClose }) => {
             }
         }
         return defaultOptions;
-    }, [employeeOptions, targetUser]);
+    }, [employeeOptions, userToMigrate]);
 
     // Minimal set of dependencies for useReportManagement
     const { 
@@ -55,6 +73,10 @@ const LegacyReportMigrator = ({ onClose }) => {
         loadUserSavedReports,
         loadReportForUser,
         saveMigratedReport,
+        backupUserReports: backupReports, // Renamed for clarity here
+        checkIfMigratedReportExists, // New
+        deleteReportForUser, // Needed for duplicate handling
+        countAllUserReports // New: Import countAllUserReports
     } = useReportManagement(
         // Arguments based on useReportManagement.js signature:
         // 1. formData: (not used by migration, so empty object is fine)
@@ -102,154 +124,371 @@ const LegacyReportMigrator = ({ onClose }) => {
         return () => unsub();
     }, []);
 
-    const handleLoadReportsClick = () => {
-        if (!targetUser) {
-            showNotification('Please enter a user name.', 'warning');
-            return;
-        }
-        setShowModal(true); // Open the modal
-        loadUserSavedReports(targetUser); // Explicitly load reports for the target user
-    };
+        const migrateSingleReport = useCallback(async (report) => {
+            console.log(`[migrateSingleReport] Called for report: ${report.originalKey}`);
+            
+            let originalBbCode = '';
+            try {
+                console.log(`[migrateSingleReport] Attempting to load original BBCode for: ${report.originalKey}`);
+                const loadResult = await loadReportForUser(report, userToMigrate, true);
+                console.log(`[migrateSingleReport] loadReportForUser completed for ${report.originalKey}. Success: ${loadResult.success}, BBCode present: ${!!loadResult.reportData.bbCode}`);
+                if (loadResult.success && loadResult.reportData.bbCode) {
+                    originalBbCode = loadResult.reportData.bbCode;
+                } else {
+                    throw new Error(`Failed to load original BBCode for "${report.originalKey}".`);
+                }
+            } catch (error) {
+                console.error("[ERROR] Failed to load original report BBCode for migration:", error);
+                throw new Error(`Failed to load original BBCode for "${report.originalKey}". ${error.message}`);
+            }
     
-    const handleSelectReportToMigrate = async (report) => {
-        showNotification(`Migration for "${report.originalKey}" started...`, 'info');
-
-        let migratedReport = { ...report };
-
-        // 1. Remove bbCodeVersion
-        delete migratedReport.bbCodeVersion;
-
-        // 2. Handle data.additionalImages to data.additionalPhotos
-        if (migratedReport.data.additionalImages && typeof migratedReport.data.additionalImages === 'string') {
-            migratedReport.data.additionalPhotos = [migratedReport.data.additionalImages];
-            delete migratedReport.data.additionalImages;
-        } else {
-            migratedReport.data.additionalPhotos = migratedReport.data.additionalPhotos || []; // Ensure it's always an array
-        }
-
-        // 3. Handle data.scenePhotos to data.scenePhotosBBCode
-        if (migratedReport.data.scenePhotos && typeof migratedReport.data.scenePhotos === 'string') {
-            // Exclude "Scene Photos are unavailable" from migration, as it's not a valid URL
-            if (migratedReport.data.scenePhotos !== "Scene Photos are unavailable") {
-                migratedReport.data.scenePhotosBBCode = [migratedReport.data.scenePhotos];
+            let migratedReport = { ...report };
+    
+            // 1. Remove bbCodeVersion
+            delete migratedReport.bbCodeVersion;
+    
+            // 2. Handle data.additionalImages to data.additionalPhotos
+            if (migratedReport.data.additionalImages && typeof migratedReport.data.additionalImages === 'string') {
+                migratedReport.data.additionalPhotos = [migratedReport.data.additionalImages];
+                delete migratedReport.data.additionalImages;
             } else {
-                migratedReport.data.scenePhotosBBCode = [];
+                migratedReport.data.additionalPhotos = migratedReport.data.additionalPhotos || []; // Ensure it's always an array
             }
-            delete migratedReport.data.scenePhotos;
-        } else {
-            migratedReport.data.scenePhotosBBCode = migratedReport.data.scenePhotosBBCode || []; // Ensure it's always an array
-        }
-
-        // 4. Set legacy to false
-        migratedReport.legacy = false;
-
-        // 5. Update timestamps
-        migratedReport.gtawSyncTimestamp = new Date().toISOString();
-        migratedReport.timestamp = Date.now();
-
-        // 6. Derive formId if not present (should be from report.formName)
-        if (!migratedReport.formId && migratedReport.formName) {
-            migratedReport.formId = migratedReport.formName.toLowerCase().replace(/\s/g, '-');
-        } else if (!migratedReport.formId) {
-            // Fallback for cases where formName might be missing, try to infer from originalKey
-            const match = migratedReport.originalKey.match(/\[(.*?)\]/);
-            if (match && match[1]) {
-                migratedReport.formId = match[1].toLowerCase().replace(/-report$/, '').replace(/\s/g, '-');
+    
+            // 3. Handle data.scenePhotos to data.scenePhotosBBCode
+            if (migratedReport.data.scenePhotos && typeof migratedReport.data.scenePhotos === 'string') {
+                // Exclude "Scene Photos are unavailable" from migration, as it's not a valid URL
+                if (migratedReport.data.scenePhotos !== "Scene Photos are unavailable") {
+                    migratedReport.data.scenePhotosBBCode = [migratedReport.data.scenePhotos];
+                }
+                else {
+                    migratedReport.data.scenePhotosBBCode = [];
+                }
+                delete migratedReport.data.scenePhotos;
             } else {
-                migratedReport.formId = 'unknown-form';
+                migratedReport.data.scenePhotosBBCode = migratedReport.data.scenePhotosBBCode || []; // Ensure it's always an array
             }
-        }
-
-        // --- Specific Override for Death Reports ---
-        // If the originalKey indicates a Death Report, set specific formId and formName
-        if (migratedReport.originalKey && migratedReport.originalKey.includes('[DEATH-REPORT]')) {
-            migratedReport.formId = "coroner-report";
-            migratedReport.formName = "Coroner Report";
-        }
-        // --- End Specific Override ---
-
-        // 7. Add scenePhotosBBCode_narrative if missing
-        if (!migratedReport.data.scenePhotosBBCode_narrative) {
-            migratedReport.data.scenePhotosBBCode_narrative = "";
-        }
-
-        // 8. Set patientName if missing
-        if (!migratedReport.data.patientName && migratedReport.authorName) {
-            migratedReport.data.patientName = migratedReport.authorName;
-        }
-
-        // 9. Ensure formName is present and derived correctly
-        if (!migratedReport.formName || migratedReport.formName === 'Unknown Form') { // Check for explicit 'Unknown Form' or absence
-            if (migratedReport.originalKey) {
+    
+            // 4. Set legacy to false
+            migratedReport.legacy = false;
+    
+            // 5. Update timestamps
+            migratedReport.gtawSyncTimestamp = new Date().toISOString();
+            migratedReport.timestamp = Date.now();
+    
+            // 6. Derive formId if not present (should be from report.formName)
+            if (!migratedReport.formId && migratedReport.formName) {
+                migratedReport.formId = migratedReport.formName.toLowerCase().replace(/\s/g, '-');
+            } else if (!migratedReport.formId) {
+                // Fallback for cases where formName might be missing, try to infer from originalKey
                 const match = migratedReport.originalKey.match(/\[(.*?)\]/);
                 if (match && match[1]) {
-                    migratedReport.formName = match[1].replace(/-/g, ' ').trim(); // Use trim() to clean up
-                } else if (migratedReport.formId) { // Fallback to formId if originalKey parsing fails
-                    migratedReport.formName = migratedReport.formId.replace(/-/g, ' ').split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+                    migratedReport.formId = match[1].toLowerCase().replace(/-report$/, '').replace(/\s/g, '-');
                 } else {
+                    migratedReport.formId = 'unknown-form';
+                }
+            }
+    
+            // --- Specific Override for Death Reports and Mass Fatality Reports ---
+            // If the originalKey indicates a Death Report, set specific formId and formName
+            if (migratedReport.originalKey && migratedReport.originalKey.includes('[DEATH-REPORT]')) {
+                migratedReport.formId = "coroner-report";
+                migratedReport.formName = "Coroner Report";
+            } else if (migratedReport.originalKey && migratedReport.originalKey.includes('[Mass Fatality Report]')) {
+                migratedReport.formId = "mass-ftality-test";
+                migratedReport.formName = "Mass Fatality Form";
+            }
+            // --- End Specific Override ---
+    
+            // 7. Add scenePhotosBBCode_narrative if missing
+            if (!migratedReport.data.scenePhotosBBCode_narrative) {
+                migratedReport.data.scenePhotosBBCode_narrative = "";
+            }
+    
+            // 8. Set patientName if missing
+            if (!migratedReport.data.patientName && migratedReport.authorName) {
+                migratedReport.data.patientName = migratedReport.authorName;
+            }
+    
+            // 9. Ensure formName is present and derived correctly
+            if (!migratedReport.formName || migratedReport.formName === 'Unknown Form') { // Check for explicit 'Unknown Form' or absence
+                if (migratedReport.originalKey) {
+                    const match = migratedReport.originalKey.match(/\[(.*?)\]/);
+                    if (match && match[1]) {
+                        migratedReport.formName = match[1].replace(/-/g, ' ').trim(); // Use trim() to clean up
+                    } else if (migratedReport.formId) { // Fallback to formId if originalKey parsing fails
+                        migratedReport.formName = migratedReport.formId.replace(/-/g, ' ').split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+                    } else {
+                        migratedReport.formName = 'unknown-form';
+                    }
+                } else if (migratedReport.formId) { // If no originalKey but formId exists
+                    migratedReport.formName = migratedReport.formId.replace(/-/g, ' ').split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+                }
+                else {
                     migratedReport.formName = 'Unknown Form';
                 }
-            } else if (migratedReport.formId) { // If no originalKey but formId exists
-                migratedReport.formName = migratedReport.formId.replace(/-/g, ' ').split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-            } else {
-                migratedReport.formName = 'Unknown Form';
             }
+        
+            try {
+                console.log(`[migrateSingleReport] Attempting to save migrated report for: ${report.originalKey}`);
+                await saveMigratedReport(migratedReport, originalBbCode); // Call saveMigratedReport with originalBbCode
+                console.log(`[migrateSingleReport] Successfully saved migrated report for: ${report.originalKey}`);
+            } catch (error) {
+                console.error("[ERROR] Failed to save migrated report:", error);
+                throw new Error(`Failed to save migrated report "${migratedReport.originalKey}". ${error.message}`);
+            }
+            console.log(`[migrateSingleReport] Finished processing report: ${report.originalKey}`);
+        }); // Closing for migrateSingleReport useCallback
+    const loadUserSavedReportsStandalone = async (userId) => {
+    if (!userId) return [];
+
+    const sanitizedUserId = comprehensiveSanitize(userId);
+
+    try {
+      const legacyRef = ref(database, `savedReports/${sanitizedUserId}`);
+      const newRef = ref(database, `newSavedReports/${sanitizedUserId}`);
+
+      const [legacySnap, newSnap] = await Promise.all([
+        get(legacyRef),
+        get(newRef),
+      ]);
+
+      const reports = [];
+
+      if (legacySnap.exists()) {
+        legacySnap.forEach((child) => {
+          reports.push({ ...child.val(), key: child.key, legacy: true });
+        });
+      }
+      if (newSnap.exists()) {
+        newSnap.forEach((child) => {
+          reports.push({ ...child.val(), key: child.key, legacy: false });
+        });
+      }
+
+      reports.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      console.log(`[Standalone] Loaded ${reports.length} total reports for ${userId}`);
+      return reports;
+    } catch (error) {
+      console.error("Standalone load failed:", error);
+      showNotification("Failed to load reports.", "error");
+      return [];
+    }
+  };
+
+  const loadSingleReportBBCode = async (report, userId) => {
+    const { key: reportKey, legacy = true } = report;
+    const sanitizedUserId = comprehensiveSanitize(userId);
+
+    const basePath = legacy ? "savedReportBBCode" : "newSavedReportBBCode";
+    const primaryPath = `${basePath}/${sanitizedUserId}/${reportKey}`;
+    const fallbackPaths = legacy
+      ? [`newSavedReportBBCode/${sanitizedUserId}/${reportKey}`]
+      : [`savedReportBBCode/${sanitizedUserId}/${reportKey}`];
+
+    try {
+      let snap = await get(ref(database, primaryPath));
+      if (snap.exists() && snap.val()?.bbCode) {
+        return snap.val().bbCode;
+      }
+
+      for (const path of fallbackPaths) {
+        snap = await get(ref(database, path));
+        if (snap.exists() && snap.val()?.bbCode) {
+          return snap.val().bbCode;
         }
-    
-        try {
-            await saveMigratedReport(migratedReport, ''); // Call saveMigratedReport with empty BBCode
-            showNotification(`Successfully migrated "${migratedReport.originalKey}"!`, 'success');
-        } catch (error) {
-            console.error("[ERROR] Failed to save migrated report:", error);
-            showNotification(`Failed to migrate "${migratedReport.originalKey}". Error: ${error.message}`, 'error');
+      }
+
+      return null;
+    } catch (error) {
+      console.error("BBCode load failed:", error);
+      return null;
+    }
+  };
+const startMigration = async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+    setMigrationStage('backup');
+    setMigrationStatus('Creating backup...');
+
+    const backupResult = await backupReports(userToMigrate);
+    if (!backupResult.success) {
+      showNotification('Backup failed!', 'error');
+      setIsProcessing(false);
+      return;
+    }
+    setBackupPath(backupResult.path);
+    setMigrationStatus('Loading reports...');
+
+    const allReports = await loadUserSavedReportsStandalone(userToMigrate);
+    const legacyReports = allReports.filter(r => r.legacy === true && (r.originalKey?.includes('[DEATH-REPORT]') || r.originalKey?.includes('[Mass Fatality Report]')));
+
+    if (legacyReports.length === 0) {
+      showNotification('No legacy death reports found to migrate.', 'warning');
+      setIsProcessing(false);
+      return;
+    }
+
+    setReportsToMigrate(legacyReports);
+    setTotalReportsToMigrate(legacyReports.length);
+    setMigrationStage('migrate');
+    setMigrationStatus('Migrating reports...');
+
+    let processed = 0;
+    for (const report of legacyReports) {
+      processed++;
+      setProgress((processed / legacyReports.length) * 100);
+
+      try {
+        const bbCode = await loadSingleReportBBCode(report, userToMigrate);
+        if (!bbCode) {
+          console.warn(`No BBCode for ${report.originalKey}, skipping save`);
         }
-    };
-    // --- Render ---
+
+        const cleanedReport = {
+          ...report,
+          legacy: false,
+          formId: "coroner-report",
+          formName: "Coroner Report",
+          bbCodeVersion: undefined,
+        };
+        delete cleanedReport.bbCodeVersion;
+
+        await saveMigratedReport(cleanedReport, bbCode || '');
+
+        await deleteReportForUser(report, userToMigrate);
+        setSuccessfulMigrations(prev => prev + 1);
+        console.log(`Migrated: ${report.originalKey}`);
+      } catch (err) {
+        console.error(`Failed: ${report.originalKey}`, err);
+        setFailedMigrations(prev => prev + 1);
+      }
+    }
+
+    setMigrationStage('complete');
+    setMigrationStatus('Done!');
+    setIsProcessing(false);
+    showNotification('Migration complete!', 'success');
+  };
+  const comprehensiveSanitize = (str) => {
+  if (!str) return '';
+  let sanitized = str.trim().replace(/[.#$[\/ \]]+/g, '_');
+  sanitized = sanitized.replace(/_{2,}/g, '_');
+  sanitized = sanitized.replace(/^_+|_+$/g, '');
+  return sanitized;
+};
+  const handleLoadReportsClick = useCallback(async () => { // Make async
+                if (!userToMigrate.trim()) {
+                    showNotification('Please enter a user name.', 'warning');
+                    return;
+                }
+                if (!validateUser()) {
+                    showNotification(`User "${userToMigrate}" is not a recognized PHMC or Coroner employee. Please ensure the name is correct.`, 'error');
+                    return;
+                }
+        
+                // Call countAllUserReports here
+                const count = await countAllUserReports(userToMigrate);
+                setTotalSavedReports(count); // Update the new state variable
+                console.log(`[LegacyReportMigrator] User ${userToMigrate} has a total of ${count} reports.`); // Debugging
+        
+                setMigrationStage('confirm');
+                setMigrationStatus(`Ready to migrate reports for "${userToMigrate}".`);
+            }, [userToMigrate, validateUser, showNotification, countAllUserReports]); // Add countAllUserReports to dependencies
+                // --- Render ---
 
     return (
-        <>
-            {/* The modal is the main UI, but we need a way to trigger it for a specific user */}
-            {!showModal && (
-                <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0, 0, 0, 0.7)', zIndex: 1100, display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={onClose}>
-                    <div style={{ background: '#0d1117', padding: '20px', borderRadius: '8px', color: 'white' }} onClick={e => e.stopPropagation()}>
-                        <h3>Legacy Report Migration (Experimental)</h3>
-                        <p>Enter the full character name of the user whose legacy reports you want to migrate.</p>
-                        <div className="form-group">
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1100, display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={onClose}>
+            <div style={{ background: '#0d1117', padding: '25px', borderRadius: '10px', color: 'white', maxWidth: '500px', width: '90%' }} onClick={e => e.stopPropagation()}>
+                <h3 style={{ borderBottom: '1px solid #30363d', paddingBottom: '15px', marginBottom: '20px' }}>Legacy Report Migration</h3>
+
+                {migrationStage === 'input' && (
+                    <>
+                        <p>Enter the full character name of the user whose reports you want to migrate.</p>
+                        <div className="form-group mb-3">
                             <input
                                 type="text"
                                 className="form-control"
-                                value={targetUser}
-                                onChange={(e) => setTargetUser(e.target.value)}
+                                value={userToMigrate}
+                                onChange={(e) => setUserToMigrate(e.target.value)}
                                 placeholder="e.g., Alyson Frost"
+                                disabled={isProcessing}
                             />
                         </div>
-                        <Button onClick={handleLoadReportsClick} className="mt-3" disabled={isLoadingForms}>Load User's Legacy Reports</Button>
-                        <Button variant="secondary" onClick={onClose} className="mt-3 ms-2">Cancel</Button>
-                    </div>
-                </div>
-            )}
+                        <div className="d-flex justify-content-between">
+                            <Button onClick={handleLoadReportsClick} disabled={isProcessing || isLoadingForms}>
+                                Check User
+                            </Button>
+                            <Button variant="secondary" onClick={onClose} disabled={isProcessing}>
+                                Cancel
+                            </Button>
+                        </div>
+                    </>
+                )}
 
-            {showModal && (
-                 <SavedReportsModal
-                    show={showModal}
-                    onHide={() => { setShowModal(false); onClose(); }}
-                    onClose={() => { setShowModal(false); onClose(); }}
-                    showNotification={showNotification}
-                    reportsForSelectedUser={savedReports}
-                    onEmployeeSelect={loadUserSavedReports}
-                    employeeOptions={displayEmployeeOptions}
-                    isLoadingReports={isLoadingUserReports}
-                    loadReport={handleSelectReportToMigrate}
-                    deleteReportForUser={() => { showNotification('Deletion is disabled in migration mode.', 'warning'); }}
-                    handleReportSelectedForAttachment={() => {}}
-                    currentCoronerEmployee={targetUser}
-                    currentPhmcEmployee={targetUser}
-                    legacyOnly={true}
-                    loadButtonText="Migrate"
-                    disableAutoLoad={true}
-                />
-            )}
-        </>
+                {migrationStage === 'confirm' && (
+                    <>
+                        <p className="lead">Ready to migrate reports for:</p>
+                        <h4 className="text-info mb-3">{userToMigrate}</h4>
+                        <p>Total reports found for this user: <strong>{totalSavedReports}</strong></p> {/* New line */}
+                        <p>This process will:</p>
+                        <ul>
+                            <li>Backup all existing reports for this user.</li>
+                            <li>Load all legacy reports.</li>
+                            <li>Convert and save them in the new format (removing the 'legacy' flag).</li>
+                            <li>Handle duplicate report names safely.</li>
+                        </ul>
+                        <p className="text-warning">This process can take a few moments. Please do not close this window.</p>
+                        <div className="d-flex justify-content-between mt-4">
+                            <Button onClick={startMigration} disabled={isProcessing}>
+                                Start Migration
+                            </Button>
+                            <Button variant="secondary" onClick={() => setMigrationStage('input')} disabled={isProcessing}>
+                                Back
+                            </Button>
+                            <Button variant="danger" onClick={onClose} disabled={isProcessing}>
+                                Cancel
+                            </Button>
+                        </div>
+                    </>
+                )}
+
+                {(migrationStage === 'backup' || migrationStage === 'migrate') && (
+                    <>
+                        <p className="lead">{migrationStatus}</p>
+                        <div className="progress mb-3" style={{ height: '25px' }}>
+                            <div
+                                className="progress-bar"
+                                role="progressbar"
+                                style={{ width: `${progress}%` }}
+                                aria-valuenow={progress}
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                            >
+                                {progress.toFixed(1)}%
+                            </div>
+                        </div>
+                        <p>Total: {totalReportsToMigrate}, Successful: {successfulMigrations}, Failed: {failedMigrations}</p>
+                        <p className="text-muted small">Backup Path: {backupPath || 'N/A'}</p>
+                    </>
+                )}
+
+                {migrationStage === 'complete' && (
+                    <>
+                        <p className="lead text-success">Migration Complete!</p>
+                        <p>Processed {totalReportsToMigrate} reports.</p>
+                        <p className="text-success">Successful: {successfulMigrations}</p>
+                        <p className="text-danger">Failed: {failedMigrations}</p>
+                        {backupPath && <p className="text-muted small">Backup stored at: {backupPath}</p>}
+                        <div className="d-flex justify-content-end mt-4">
+                            <Button onClick={onClose}>
+                                Done
+                            </Button>
+                        </div>
+                    </>
+                )}
+            </div>
+        </div>
     );
 };
 

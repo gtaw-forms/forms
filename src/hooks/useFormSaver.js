@@ -94,6 +94,16 @@ export const useFormSaver = () => {
             return { success: false, error: 'Missing data.' };
         }
 
+        let finalTitle = title;
+        // For Coroner Reports, enforce the standardized title format.
+        if (selectedForm.firebaseKey === 'coroner-report') {
+            if (formValues.decedentOOC && formValues.dateTime) {
+                finalTitle = `[DEATH-REPORT] ${formValues.decedentOOC} ${formValues.dateTime}`;
+            } else {
+                console.warn("Could not generate standardized Coroner Report title due to missing decedentOOC or dateTime. Using default title.");
+            }
+        }
+
         const currentAuthor = getCharacterName(gtaWorldUser);
         if (!currentAuthor) {
             showNotification('Cannot determine report author. Please ensure you are signed in.', 'error');
@@ -101,14 +111,14 @@ export const useFormSaver = () => {
         }
 
         const sanitizedAuthorId = comprehensiveSanitize(currentAuthor);
-        const sanitizedKey = title.trim().replace(/[.#$[\/ \]]+/g, '_') + '_' + Date.now();
+        const sanitizedKey = finalTitle.trim().replace(/[.#$[\/ \]]+/g, '_') + '_' + Date.now();
 
         const reportDataToSave = {
             formId: selectedForm.firebaseKey,
             formName: selectedForm.name,
             data: formValues,
             timestamp: Date.now(),
-            originalKey: title,
+            originalKey: finalTitle,
             authorName: currentAuthor,
             legacy: false, // As requested
         };
@@ -136,13 +146,13 @@ export const useFormSaver = () => {
                 runTransaction(userReportCountRef, (currentCount) => (currentCount || 0) + 1),
             ]);
 
-            showNotification(`Report "${title}" saved successfully!`, 'save');
+            showNotification(`Report "${finalTitle}" saved successfully!`, 'save');
 
             // Webhook Logging
             const webhookPayload = {
                 author: currentAuthor,
                 reportKey: sanitizedKey,
-                originalKey: title,
+                originalKey: finalTitle,
                 formId: selectedForm.firebaseKey,
                 formName: selectedForm.name,
                 hasGtawData: !!(isGtaAuthenticated && gtaWorldUser),
