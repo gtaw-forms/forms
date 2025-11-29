@@ -4,7 +4,7 @@ import { getUtcFormattedDateTime } from '../utils/dateTimeUtils';
 import { getDepartmentFullName } from '../utils/bbcodeHelpers';
 import generateDecedentBBCode from '../phmc-bbcode-generators/generateMassFatality';
 
-const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agencyDataStore) => {
+const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agencyDataStore, gtaWorldUser) => {
   const [generatedBBCode, setGeneratedBBCode] = useState("");
   const [generatedTitle, setGeneratedTitle] = useState("");
   const [showBBCode, setShowBBCode] = useState(false);
@@ -302,7 +302,14 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
         value = String(value.confirmedAt); // Extract the confirmedAt
       }
       // ... existing special handling for image_upload, checkbox, multi_select ...
-      else if (field.type === "image_upload" && value) value = `[img]${value}[/img]`;
+      // Handle image fields (single or multiple)
+      else if ((field.type === "image" || field.type === "image_upload") && value) {
+        if (Array.isArray(value)) {
+          value = value.map(url => url ? `[img]${url}[/img]` : '').filter(Boolean).join('\n'); // Join multiple images with newlines
+        } else if (typeof value === 'string' && value) {
+          value = `[img]${value}[/img]`;
+        }
+      }
       else if (field.type === "checkbox" && typeof value === "boolean") value = value ? "Yes" : "No";
       else if (field.type === "multi_select" && Array.isArray(value)) value = value.join(", ");
       else if (["dateTime", "pronouncedTimeOfDeath"].includes(field.name)) value = value.split("T")[0] || value;
@@ -337,13 +344,42 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
     });
     console.log("Final BBCode after syntaxing expressions:", bbcode);
 
+    // --- Consistency Check: Form Values vs. OAuth Data (Employee Credentials) ---
+    if (gtaWorldUser) {
+      const employeeTypeLower = selectedForm?.accessType?.toLowerCase(); // 'coroner' or 'phmc'
+
+      if (employeeTypeLower === 'coroner' || employeeTypeLower === 'phmc') {
+        const formEmployeeName = formValues[`${employeeTypeLower}Employee`];
+        const formEmployeeRank = formValues[`${employeeTypeLower}Rank`];
+
+        // OAuth data can come from faction or activeCharacter
+        const oauthEmployeeName = gtaWorldUser.faction?.name || gtaWorldUser.activeCharacter?.characterName;
+        const oauthEmployeeRank = gtaWorldUser.faction?.rank || 'N/A'; // Rank might be less directly available for non-faction activeCharacter
+
+        if (formEmployeeName && oauthEmployeeName && formEmployeeName !== oauthEmployeeName) {
+          console.warn(
+            `BBCode Generation Discrepancy (Name - ${employeeTypeLower.toUpperCase()}): ` +
+            `Form has "${formEmployeeName}" but OAuth user is "${oauthEmployeeName}".`
+          );
+        }
+
+        if (formEmployeeRank && oauthEmployeeRank && formEmployeeRank !== oauthEmployeeRank) {
+          console.warn(
+            `BBCode Generation Discrepancy (Rank - ${employeeTypeLower.toUpperCase()}): ` +
+            `Form has "${formEmployeeRank}" but OAuth user rank is "${oauthEmployeeRank}".`
+          );
+        }
+      }
+    }
+    // --- End Consistency Check ---
+
     setShowBBCode(true);
     setGeneratedBBCode(bbcode);
     setGeneratedTitle(finalTitle); // Set the accumulated finalTitle here
 
     console.log("%cGENERATION COMPLETE", "font-weight:bold;color:#0066cc");
     console.log("Title:", finalTitle);
-  }, [selectedForm, formValues, finalSelectOptions, agencyDataStore]);
+  }, [selectedForm, formValues, finalSelectOptions, agencyDataStore, gtaWorldUser]);
 
   return {
     generatedBBCode,
