@@ -602,22 +602,32 @@ case "textarea":
         </div>
       );
     }
-    case "attach_report_button":
+    case "attach_report_button": {
       const [attachedReportSummaries, setAttachedReportSummaries] = useState([]);
+      const targetField = field.targetField;
+
+      useEffect(() => {
+        // If the target field is cleared from outside, clear the summaries.
+        if (!formValues[targetField]) {
+          setAttachedReportSummaries([]);
+        }
+      }, [formValues[targetField]]);
 
       return (
         <div style={fieldWrapperStyle}>
           <button
             onClick={() => {
-              console.log("Attach report button clicked!");
+              // console.log("Attach report button clicked!");
               const callback = (reportData) => {
+                // console.log(`[FormFieldRenderer Callback] Received reportData:`, reportData);
+                // console.log(`[FormFieldRenderer Callback] reportData.bbCode value:`, reportData?.bbCode);
                 if (reportData && reportData.bbCode) {
                   const targetField = field.targetField;
                   // Use functional update to ensure we always get the latest state
                   handleChange(targetField, (prevFormValues) => {
                     const currentContent = prevFormValues[targetField] || '';
                     const newContent = currentContent ? `${currentContent}\n\n${reportData.bbCode}` : reportData.bbCode;
-                    console.log(`[FormFieldRenderer] Attached report "${reportData.originalKey}" to field "${targetField}". New content length: ${newContent.length}`);
+                    // console.log(`[FormFieldRenderer] Attached report "${reportData.originalKey}" to field "${targetField}". New content length: ${newContent.length}`);
                     return newContent;
                   });
                   if(showNotification) showNotification('Report attached!', 'success');
@@ -650,6 +660,7 @@ case "textarea":
           )}
         </div>
       );
+    }
     case "decedent_list": {
       const decedentItemSchema = useMemo(() => {
         try {

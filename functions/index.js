@@ -163,6 +163,88 @@ const scheduleDeletion = async (request) => {
     }
 };
 
+const cleanupCoronerReports = async (results) => {
+    const oldReportsRef = db.ref('/savedReports');
+    try {
+        const snapshot = await oldReportsRef.once('value');
+        if (!snapshot.exists()) {
+            console.log('[Coroner Migration] No reports in savedReports to migrate.');
+            results.coronerCleanup = { migrated: 0, errors: [] };
+            return;
+        }
+
+        const allUsersOldReports = snapshot.val();
+        const reportsToMigrate = [];
+
+        // 1. Identify reports to migrate
+        for (const userId in allUsersOldReports) {
+            const userReports = allUsersOldReports[userId];
+            for (const reportKey in userReports) {
+                const report = userReports[reportKey];
+                // Identify lingering coroner reports (bbCodeVersion 1 is Death Report)
+                if (report.bbCodeVersion === 1) {
+                    reportsToMigrate.push({ userId, reportKey, reportData: report });
+                }
+            }
+        }
+
+        if (reportsToMigrate.length === 0) {
+            console.log('[Coroner Migration] No lingering coroner reports found to migrate.');
+            results.coronerCleanup = { migrated: 0, errors: [] };
+            return;
+        }
+
+        let migratedCount = 0;
+        
+        // 2. Process each report
+        for (const { userId, reportKey, reportData } of reportsToMigrate) {
+            try {
+                // a. Read BBCode
+                const oldBbCodeRef = db.ref(`/savedReportBBCode/${userId}/${reportKey}`);
+                const bbCodeSnapshot = await oldBbCodeRef.once('value');
+                const bbCode = bbCodeSnapshot.val()?.bbCode || '';
+
+                // b. Clean/Standardize data
+                const migratedReport = { ...reportData };
+                migratedReport.formId = 'coroner-report';
+                migratedReport.formName = 'Coroner Report';
+                migratedReport.legacy = false;
+                
+                // Standardize originalKey
+                if (migratedReport.data && migratedReport.data.decedentOOC && migratedReport.data.dateTime) {
+                    migratedReport.originalKey = `[DEATH-REPORT] ${migratedReport.data.decedentOOC} ${migratedReport.data.dateTime}`;
+                }
+                migratedReport.migrationTimestamp = new Date().toISOString();
+
+                // c. Save to new location
+                const newReportKey = (migratedReport.originalKey || reportKey).trim().replace(/[.#$[\/ \]]+/g, '_') + '_' + Date.now();
+                const newReportRef = db.ref(`/newSavedReports/${userId}/${newReportKey}`);
+                const newBbCodeRef = db.ref(`/newSavedReportBBCode/${userId}/${newReportKey}`);
+                
+                await set(newReportRef, migratedReport);
+                await set(newBbCodeRef, { bbCode });
+
+                // d. Delete from old location
+                const oldReportRef = db.ref(`/savedReports/${userId}/${reportKey}`);
+                await oldReportRef.remove();
+                await oldBbCodeRef.remove();
+
+                migratedCount++;
+            } catch (error) {
+                console.error(`[Coroner Migration] Failed to migrate report ${reportKey} for user ${userId}:`, error);
+                results.coronerCleanup.errors.push(`Failed migration for ${userId}/${reportKey}: ${error.message}`);
+            }
+        }
+
+        results.coronerCleanup = { migrated: migratedCount, errors: results.coronerCleanup.errors };
+        console.log(`[Coroner Migration] Successfully migrated ${migratedCount} coroner reports.`);
+
+    } catch (error) {
+        console.error(`[Coroner Migration] Error during coroner report migration: ${error?.message || String(error)}`);
+        results.coronerCleanup = { migrated: 0, errors: [`Coroner migration task failed: ${error.message}`] };
+    }
+};
+
 // --- Scheduled Cloud Function (v2) ---
 
 // Use ESM 'export' syntax instead of 'exports.dailyTaskHandler ='
@@ -181,7 +263,8 @@ export const dailyMaintenanceTask = onSchedule({
         duplicateCleanup: { scanned: 0, duplicatesFound: 0, duplicatesDeleted: 0, errors: [] },
         backupCleanup: { oldBackupsCleaned: 0, errors: [] },
         webhookLogCleanup: { oldLogsCleaned: 0, errors: [] },
-        reportCleanup: { oldReportsCleaned: 0, errors: [] } // New result category
+        reportCleanup: { oldReportsCleaned: 0, errors: [] },
+        coronerCleanup: { migrated: 0, errors: [] } // New result category
     };
 
     // --- Bingo Reset Logic ---
@@ -492,6 +575,9 @@ export const dailyMaintenanceTask = onSchedule({
         maintenanceResults.reportCleanup.errors.push(`Old reports cleanup error: ${error.message}`);
     }
 
+    // --- Coroner Report Cleanup ---
+    await cleanupCoronerReports(maintenanceResults);
+
 
 
 
@@ -504,7 +590,7 @@ export const dailyMaintenanceTask = onSchedule({
 
     const phraseRequestsDetails = `Deleted: ${maintenanceResults.phraseRequests.deleted}`;
 
-    const hasCleanedUp = maintenanceResults.reportCleanup.oldReportsCleaned > 0 || maintenanceResults.duplicateCleanup.duplicatesDeleted > 0 || maintenanceResults.backupCleanup.oldBackupsCleaned > 0 || maintenanceResults.webhookLogCleanup.oldLogsCleaned > 0;
+    const hasCleanedUp = maintenanceResults.reportCleanup.oldReportsCleaned > 0 || maintenanceResults.duplicateCleanup.duplicatesDeleted > 0 || maintenanceResults.backupCleanup.oldBackupsCleaned > 0 || maintenanceResults.webhookLogCleanup.oldLogsCleaned > 0 || maintenanceResults.coronerCleanup.migrated > 0;
     const embed = {
         title: "Daily Maintenance Task",
         color: hasCleanedUp ? 0xFF6B35 : 0x1E90FF, // Orange if cleanup happened, blue otherwise
@@ -527,6 +613,7 @@ export const dailyMaintenanceTask = onSchedule({
             },
             { name: "💾 Backup Cleanup (3 days)", value: `📁 **Old Backups Cleaned:** ${maintenanceResults.backupCleanup.oldBackupsCleaned}`, inline: true },
             { name: "📋 Webhook Log Cleanup (3 days)", value: `📝 **Old Logs Cleaned:** ${maintenanceResults.webhookLogCleanup.oldLogsCleaned}`, inline: true },
+            { name: "💀 Coroner Report Migration", value: `✨ **Migrated:** ${maintenanceResults.coronerCleanup.migrated} reports`, inline: true },
             {
                 name: "📈 Overall Status",
                 value: hasCleanedUp
@@ -545,7 +632,8 @@ export const dailyMaintenanceTask = onSchedule({
         ...maintenanceResults.phraseRequests.errors,
         ...maintenanceResults.duplicateCleanup.errors,
         ...maintenanceResults.backupCleanup.errors,
-        ...maintenanceResults.webhookLogCleanup.errors
+        ...maintenanceResults.webhookLogCleanup.errors,
+        ...maintenanceResults.coronerCleanup.errors
     ];
 
     if (allErrors.length > 0) {
