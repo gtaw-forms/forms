@@ -269,6 +269,8 @@ const SavedReportsModal = ({
         reportSelectionFilter.length === 2 && 
         reportSelectionFilter.includes(1) && 
         reportSelectionFilter.includes(4);
+    const isAttachMode = !!handleReportSelectedForAttachment;
+
 
     useEffect(() => {
         if (!show) { // When modal closes, reset all state
@@ -356,6 +358,15 @@ const SavedReportsModal = ({
         if (legacyOnly) {
             reports = reports.filter(report => report.legacy);
         }
+
+        // If in attach mode, only show relevant coroner reports.
+        if (isAttachMode) {
+            reports = reports.filter(report => 
+                report.originalKey.toLowerCase().includes('[death-report]') || report.originalKey.toLowerCase().includes('[pk]') ||
+                report.originalKey.toLowerCase().includes('[mass fatality report]')
+            );
+        }
+
         if (filterByBbCodeVersions && filterByBbCodeVersions.length > 0) {
             reports = reports.filter((report) => filterByBbCodeVersions.includes(report.bbCodeVersion));
         }
@@ -365,7 +376,7 @@ const SavedReportsModal = ({
             );
         }
         return reports;
-    }, [sortedReports, legacyOnly, filterByBbCodeVersions, searchQuery]);
+    }, [sortedReports, legacyOnly, filterByBbCodeVersions, searchQuery, isAttachMode]);
 
     useEffect(() => {
         setCurrentPage(1);
@@ -417,7 +428,6 @@ const SavedReportsModal = ({
             .filter((r) => selectedReportKeys.includes(r.key))
             .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
 
-        const isAttaching = selectedForm?.name === 'Coroner Email';
         const isParsing = isParseDecedentMode;
         
         let actionFunction;
@@ -430,7 +440,7 @@ const SavedReportsModal = ({
                     pendingReportAttachmentCallback.current(result.reportData);
                 }
             };
-        } else if (isAttaching) {
+        } else if (isAttachMode) {
             actionFunction = handleReportSelectedForAttachment;
         } else {
             actionFunction = loadReport;
@@ -438,7 +448,7 @@ const SavedReportsModal = ({
 
         for (let i = 0; i < reportsToLoad.length; i++) {
             const report = reportsToLoad[i];
-            const actionName = loadButtonText !== 'Load' ? loadButtonText : (isParsing ? 'Parse' : (isAttaching ? 'Attach' : 'Load'));
+            const actionName = loadButtonText !== 'Load' ? loadButtonText : (isParsing ? 'Parse' : (isAttachMode ? 'Attach' : 'Load'));
             console.log(`[SavedReportsModal] Processing report ${i + 1}/${reportsToLoad.length}: ${report.originalKey} (Action: ${actionName})`);
             try {
                 await actionFunction(report, selectedEmployee.value);
@@ -450,7 +460,7 @@ const SavedReportsModal = ({
                 showNotification(`Error ${actionName.toLowerCase()}ing report ${report.originalKey}.`, 'error');
             }
         }
-        const finalActionName = loadButtonText !== 'Load' ? loadButtonText : (isParsing ? 'parsing' : (isAttaching ? 'attaching' : 'loading'));
+        const finalActionName = loadButtonText !== 'Load' ? loadButtonText : (isParsing ? 'parsing' : (isAttachMode ? 'attaching' : 'loading'));
         showNotification(`Finished ${finalActionName} ${reportsToLoad.length} report(s).`, 'check-circle');
         setIsLoadingMultiple(false);
         setSelectedReportKeys([]);
@@ -663,7 +673,7 @@ const SavedReportsModal = ({
                                                                     pendingReportAttachmentCallback.current(result.reportData);
                                                                 }
                                                             });
-                                                        } else if (selectedForm?.name === 'Coroner Email') {
+                                                        } else if (isAttachMode) {
                                                             handleReportSelectedForAttachment(report, selectedEmployee.value);
                                                         } else if (loadReport) {
                                                             loadReport(report, selectedEmployee.value);
@@ -673,7 +683,7 @@ const SavedReportsModal = ({
                                                     disabled={(report.legacy && loadButtonText === 'Load') || isLoadingReports || !selectedEmployee}
                                                     title={report.legacy && loadButtonText === 'Load' ? 'This report is flagged as Legacy, you cannot load it at this time.' : ''}
                                                 >
-                                                    {loadButtonText || (isParseDecedentMode ? 'Parse' : (selectedForm?.name === 'Coroner Email' ? 'Attach' : 'Load'))}
+                                                    {isAttachMode ? 'Attach' : (loadButtonText || (isParseDecedentMode ? 'Parse' : 'Load'))}
                                                 </Button>
                                                 <Button
                                                     variant="danger"
@@ -744,7 +754,7 @@ const SavedReportsModal = ({
                                     Loading...
                                 </>
                             ) : (
-                                `${loadButtonText ? loadButtonText + ' Selected' : (isParseDecedentMode ? 'Parse Selected' : (selectedForm?.name === 'Coroner Email' ? 'Attach Selected' : 'Load Selected'))} (${selectedReportKeys.length})`
+                                `${isAttachMode ? 'Attach Selected' : (loadButtonText ? loadButtonText + ' Selected' : (isParseDecedentMode ? 'Parse Selected' : 'Load Selected'))} (${selectedReportKeys.length})`
                             )}
                         </Button>
                     </div>
