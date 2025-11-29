@@ -14,6 +14,72 @@ const comprehensiveSanitize = (str) => {
     return sanitized;
 };
 
+const parseCaseNumber = (url) => {
+    if (!url) return '';
+    const match = url.match(/\d+$/);
+    return match ? match[0] : '';
+};
+
+// Function to format date to MM/DD/YYYY
+const formatToNorthAmericanDate = (isoDateTime) => {
+    if (!isoDateTime) return 'NO_DATE';
+    try {
+        const date = new Date(isoDateTime);
+        // Ensure date is valid
+        if (isNaN(date.getTime())) {
+            // Try to parse YYYY-MM-DD if ISO string also has time
+            const parts = isoDateTime.split('T')[0].split('-');
+            if (parts.length === 3) {
+                 const year = parseInt(parts[0], 10);
+                 const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+                 const day = parseInt(parts[2], 10);
+                 const reconsDate = new Date(year, month, day);
+                 if (!isNaN(reconsDate.getTime())) {
+                    return `${(reconsDate.getMonth() + 1).toString().padStart(2, '0')}/${reconsDate.getDate().toString().padStart(2, '0')}/${reconsDate.getFullYear()}`;
+                 }
+            }
+            return isoDateTime; // Return original if cannot parse
+        }
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        const day = date.getDate().toString().padStart(2, '0');
+        const year = date.getFullYear();
+        return `${month}/${day}/${year}`;
+    } catch (e) {
+        console.error("Error formatting date for title:", e);
+        return isoDateTime; // Fallback to original
+    }
+};
+
+// Function to format date to MMM-DD-YYYY
+const formatToMMM_DD_YYYY = (isoDateTime) => {
+    if (!isoDateTime) return 'NO_DATE';
+    try {
+        const date = new Date(isoDateTime);
+        if (isNaN(date.getTime())) {
+            const parts = isoDateTime.split('T')[0].split('-');
+            if (parts.length === 3) {
+                 const year = parseInt(parts[0], 10);
+                 const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+                 const day = parseInt(parts[2], 10);
+                 const reconsDate = new Date(year, month, day);
+                 if (!isNaN(reconsDate.getTime())) {
+                    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                    return `${monthNames[reconsDate.getMonth()]}-${reconsDate.getDate().toString().padStart(2, '0')}-${reconsDate.getFullYear()}`;
+                 }
+            }
+            return isoDateTime;
+        }
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const month = monthNames[date.getMonth()];
+        const day = date.getDate().toString().padStart(2, '0');
+        const year = date.getFullYear();
+        return `${month}-${day}-${year}`;
+    } catch (e) {
+        console.error("Error formatting date for title (MMM-DD-YYYY):", e);
+        return isoDateTime;
+    }
+};
+
 export const useFormSaver = () => {
     const { user: gtaWorldUser, isAuthenticated: isGtaAuthenticated } = useGtaWorldAuth();
     const { showNotification } = useNotification();
@@ -98,10 +164,21 @@ export const useFormSaver = () => {
         // For Coroner Reports, enforce the standardized title format.
         if (selectedForm.firebaseKey === 'coroner-report') {
             if (formValues.decedentOOC && formValues.dateTime) {
-                finalTitle = `[DEATH-REPORT] ${formValues.decedentOOC} ${formValues.dateTime}`;
+                const formattedDate = formatToNorthAmericanDate(formValues.dateTime);
+                finalTitle = `[DEATH-REPORT] ${formValues.decedentOOC} ${formattedDate}`;
             } else {
                 console.warn("Could not generate standardized Coroner Report title due to missing decedentOOC or dateTime. Using default title.");
             }
+        } else if (selectedForm.firebaseKey === 'mass-ftality-test') { // Handle Mass Fatality Report
+            // ... Mass Fatality Report logic ...
+        } else if (selectedForm.firebaseKey === 'death-record') { // Handle Death Record title
+            const currentYear = new Date().getFullYear();
+            const caseNumber = parseCaseNumber(formValues.deathReportPostId) || formValues.caseNumber || 'UNKNOWN';
+            const decedentName = formValues.decedentName || 'UNKNOWN';
+            const decedentOOC = formValues.decedentOOC || 'N/A';
+            const formattedDateOfDeath = formatToMMM_DD_YYYY(formValues.dateOfDeath);
+
+            finalTitle = `[CASE-#${currentYear}-${caseNumber}] ${decedentName} ((${decedentOOC} | ${formattedDateOfDeath}))`;
         }
 
         const currentAuthor = getCharacterName(gtaWorldUser);

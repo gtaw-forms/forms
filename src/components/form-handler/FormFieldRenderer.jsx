@@ -25,13 +25,23 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
   if (field.showIf) {
     let shouldShow = false;
 
+    const currentFieldValue = formValues[field.showIf.field || (field.showIf.conditions && field.showIf.conditions[0]?.field)];
+
+
     if (field.showIf.mode === "and" || field.showIf.mode === "or") {
       const conditions = field.showIf.conditions || [];
       const results = conditions.map(cond => {
         const current = formValues[cond.field];
-        if (cond.value === true) return !!current && current !== "";
-        if (cond.value === false) return !current || current === "";
-        return current === cond.value;
+        // Normalize boolean values to actual booleans if they come as strings
+        const expectedValue = (cond.value === "true") ? true : (cond.value === "false" ? false : cond.value);
+        const currentValue = (typeof current === 'string' && (current === "true" || current === "false")) ? (current === "true") : current;
+
+        let conditionMet = false;
+        if (expectedValue === true) conditionMet = !!currentValue && currentValue !== "";
+        else if (expectedValue === false) conditionMet = !currentValue || currentValue === "";
+        else conditionMet = currentValue === expectedValue;
+        
+        return conditionMet;
       });
 
       shouldShow = field.showIf.mode === "and"
@@ -41,16 +51,27 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       // Backwards compatibility
       shouldShow = field.showIf.conditions.every(cond => {
         const current = formValues[cond.field];
-        if (cond.value === true) return !!current;
-        if (cond.value === false) return !current;
-        return current === cond.value;
+        // Normalize boolean values to actual booleans if they come as strings
+        const expectedValue = (cond.value === "true") ? true : (cond.value === "false" ? false : cond.value);
+        const currentValue = (typeof current === 'string' && (current === "true" || current === "false")) ? (current === "true") : current;
+
+        let conditionMet = false;
+        if (expectedValue === true) conditionMet = !!currentValue && currentValue !== "";
+        else if (expectedValue === false) conditionMet = !currentValue || currentValue === "";
+        else conditionMet = currentValue === expectedValue;
+
+        return conditionMet;
       });
     } else {
       // Simple mode
       const current = formValues[field.showIf.field];
-      if (field.showIf.value === true) shouldShow = !!current && current !== "";
-      else if (field.showIf.value === false) shouldShow = !current || current === "";
-      else shouldShow = current === field.showIf.value;
+      const expectedValue = (field.showIf.value === "true") ? true : (field.showIf.value === "false" ? false : field.showIf.value);
+      const currentValue = (typeof current === 'string' && (current === "true" || current === "false")) ? (current === "true") : current;
+
+      if (expectedValue === true) shouldShow = !!currentValue && currentValue !== "";
+      else if (expectedValue === false) shouldShow = !currentValue || currentValue === "";
+      else shouldShow = currentValue === expectedValue;
+
     }
 
     if (!shouldShow) return null;
@@ -100,7 +121,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
               </span>
             )}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}> {/* Input and Button are here */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "flex-start" }}> {/* Changed to column */}
             <input
               type={field.timerType || 'text'}
               name={field.name}
@@ -125,8 +146,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
                   fontSize: "0.9rem",
                   fontWeight: "600",
                   flexShrink: 0,
-                  position: "relative", // Added
-                  top: "-10px" // Added
+                  // Removed: position: "relative", top: "-10px"
                 }}
               >
                 {field.buttonLabel}
@@ -466,7 +486,7 @@ case "textarea":
           <label style={{ ...labelStyle, flexShrink: 0 }}>
             {field.label}
           </label>
-          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', width: '100%' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-start', width: '100%' }}>
             <input
               type={field.inputType || 'text'}
               name={field.name}
