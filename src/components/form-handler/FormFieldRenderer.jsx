@@ -669,19 +669,15 @@ case "textarea":
                 if (reportData && reportData.bbCode) {
                   const targetField = field.targetField;
                   // Use functional update to ensure we always get the latest state
-                  handleChange(targetField, (prevFormValues) => {
-                    const currentContent = prevFormValues[targetField] || '';
-                    const newContent = currentContent ? `${currentContent}\n\n${reportData.bbCode}` : reportData.bbCode;
-                    // console.log(`[FormFieldRenderer] Attached report "${reportData.originalKey}" to field "${targetField}". New content length: ${newContent.length}`);
-                    return newContent;
-                  });
+                  // The useReportManagement hook now handles updating formValues directly.
+                  // This callback is now only responsible for local UI updates and notifications.
                   if(showNotification) showNotification('Report attached!', 'success');
                   
                   // Add the confirmation message to the array
                   setAttachedReportSummaries(prev => [...prev, `Report "${reportData.originalKey}" attached to "${targetField}"!`]);
                 }
               };
-              toggleSavedReports(null, field.employeeType, callback);
+              toggleSavedReports(null, field.employeeType, callback, field.targetField);
             }}
             style={{
               padding: "0.8rem 1.5rem",
