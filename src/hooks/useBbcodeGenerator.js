@@ -9,6 +9,45 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
   const [generatedTitle, setGeneratedTitle] = useState("");
   const [showBBCode, setShowBBCode] = useState(false);
 
+  // Function to format date to MM/DD/YYYY
+  const formatToNorthAmericanDate = (isoDateTime) => { /* ... */ };
+
+  // Function to format date to MMM-DD-YYYY
+  const formatToMMM_DD_YYYY = (isoDateTime) => {
+    if (!isoDateTime) return 'NO_DATE';
+    try {
+        const date = new Date(isoDateTime);
+        if (isNaN(date.getTime())) {
+            const parts = isoDateTime.split('T')[0].split('-');
+            if (parts.length === 3) {
+                 const year = parseInt(parts[0], 10);
+                 const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+                 const day = parseInt(parts[2], 10);
+                 const reconsDate = new Date(year, month, day);
+                 if (!isNaN(reconsDate.getTime())) {
+                    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                    return `${monthNames[reconsDate.getMonth()]}-${reconsDate.getDate().toString().padStart(2, '0')}-${reconsDate.getFullYear()}`;
+                 }
+            }
+            return isoDateTime;
+        }
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const month = monthNames[date.getMonth()];
+        const day = date.getDate().toString().padStart(2, '0');
+        const year = date.getFullYear();
+        return `${month}-${day}-${year}`;
+    } catch (e) {
+        console.error("Error formatting date for title (MMM-DD-YYYY):", e);
+        return isoDateTime;
+    }
+  };
+
+  const parseCaseNumber = (url) => {
+    if (!url) return '';
+    const match = url.match(/\d+$/);
+    return match ? match[0] : '';
+  };
+
   const generateBBCode = useCallback(() => {
     if (!selectedForm?.template) {
       setGeneratedBBCode("");
@@ -24,8 +63,12 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
     let title = "";
 
     // Evaluation context with fallbacks
-    const ctx = { ...formValues };
-    ctx.formData = ctx;
+    const ctx = { ...formValues }; // Start with formValues
+    ctx.formData = ctx; // Keep formData alias
+
+    // Add specialized functions/variables to ctx for expression evaluation
+    ctx.generateDecedentBBCode = (decedentsArray) => generateDecedentBBCode(decedentsArray, finalSelectOptions); // Pass finalSelectOptions
+    ctx.decedents_array_bbcode = ctx.generateDecedentBBCode(ctx.decedents);
 
     const addFallback = (src, target) => {
       if (formValues[src] !== undefined && ctx[target] === undefined) {
@@ -41,40 +84,55 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
     // 1. SPECIAL CORONER EMAIL TITLE
     // ──────────────────────────────────────────────────────────────
     if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email") {
-      const names = [];
-      if (formValues.decedentName) names.push(formValues.decedentName.trim());
-      if (!names.length && formValues.patientName) names.push(formValues.patientName.trim());
-      if (Array.isArray(formValues.decedents)) {
-        formValues.decedents.forEach(d => {
-          const n = (d.name || d.decedentName || d.fullName || "").trim();
-          if (n) names.push(n);
-        });
-      }
-      const display = names.length ? names.join(", ") : "Unknown Decedent";
-      const attached = Array.isArray(formValues.attachedReportTitles)
-        ? formValues.attachedReportTitles.filter(Boolean)
-        : [];
-      const suffix = attached.length ? " — " + attached.join(" | ") : "";
-      title = `[Coroner Email] ${display}${suffix}`;
-      setGeneratedTitle(title);
-    }
+      // ... Coroner Email title logic ...
+        } else if (selectedForm.firebaseKey === 'mass-ftality-test') { // Handle Mass Fatality Report title
+            // --- DEBUGGING LOG ---
+            console.log('[DEBUG Mass Fatality Title] formValues.decedents:', formValues.decedents);
+            console.log('[DEBUG Mass Fatality Title] formValues.dateTime:', formValues.dateTime);
+            // --- END DEBUGGING LOG ---
 
+            const decedentCounts = {};
+            if (Array.isArray(formValues.decedents)) {
+                formValues.decedents.forEach(d => {
+                    const name = d.decedentName?.trim();
+                    if (name) {
+                        decedentCounts[name] = (decedentCounts[name] || 0) + 1;
+                    }
+                });
+            }
+
+            const formattedDecedents = Object.entries(decedentCounts)
+                .map(([name, count]) => (count > 1 ? `${name} (x${count})` : name))
+                .join(' ');
+            
+            const formattedDate = formatToNorthAmericanDate(formValues.dateTime);
+            
+            if (formattedDecedents) {
+                title = `[Mass Fatality Report] ${formattedDecedents} - ${formattedDate}`;
+            } else {
+                title = `[Mass Fatality Report] No Decedents - ${formattedDate}`;
+            }
+            setGeneratedTitle(title);
+        } else if (selectedForm.firebaseKey === 'death_record') { // Handle Death Record title
+            const currentYear = new Date().getFullYear();
+            const caseNumber = parseCaseNumber(formValues.deathReportPostId) || formValues.caseNumber || 'UNKNOWN';
+            const decedentName = formValues.decedentName || 'UNKNOWN';
+            const decedentOOC = formValues.decedentOOC || 'N/A';
+            const formattedDateOfDeath = formatToMMM_DD_YYYY(formValues.dateOfDeath);
+
+            title = `[CASE-#${currentYear}-${caseNumber}] ${decedentName} ((${decedentOOC} | ${formattedDateOfDeath}))`;
+            setGeneratedTitle(title);
+        }
     // ──────────────────────────────────────────────────────────────
     // 2. TITLE GENERATION (Smart + DMEC aware)
     // ──────────────────────────────────────────────────────────────
-else if (selectedForm.titleGeneratorCode) {
+    else if (selectedForm.titleGeneratorCode) {
   try {
     let rawTitle = selectedForm.titleGeneratorCode.trim();
-    console.log('[DEBUG TitleGen] Initial rawTitle:', rawTitle);
-    const cleanDate = formValues.dateTime?.split("T")[0] || new Date().toISOString().split("T")[0];
-
-    const typeOfDeathValue = formValues.typeOfDeath || formValues.mannerOfDeath || "Unknown";
-    const titleDecedentName = formValues.decedentName || formValues.patientName || "Unknown Decedent";
-    const decedentOOCValue = formValues.decedentOOC || formValues.patientOOC || "Unknown";
-
-    console.log('[DEBUG TitleGen] Using decedentName:', formValues.decedentName);
-    console.log('[DEBUG TitleGen] Using patientName fallback:', formValues.patientName);
-    console.log('[DEBUG TitleGen] Final titleDecedentName:', titleDecedentName);
+            const cleanDate = formatToNorthAmericanDate(formValues.dateTime);
+    const typeOfDeathValue = formValues.typeOfDeath || formValues.mannerOfDeath || "Type of Death Not Specified";
+    const titleDecedentName = formValues.decedentName  || "Fill in the Decedent IC field!";
+    const decedentOOCValue = formValues.decedentOOC || formValues.patientOOC || "Fill in the Decedent OOC field!";
 
     // NOW use the correct variable
     title = rawTitle
@@ -125,15 +183,29 @@ else if (selectedForm.titleGeneratorCode) {
     // ──────────────────────────────────────────────────────────────
     // 4. CONDITIONAL BLOCKS
     // ──────────────────────────────────────────────────────────────
-    bbcode = bbcode.replace(/\[condition:([^\]]+)\](.*?)\[\/condition\]/gs, (match, condition, inner) => {
-      const [field, expected] = condition.split('=').map(s => s.trim());
-      const value = formValues[field];
-      const met = Array.isArray(value)
-        ? value.map(v => String(v).trim()).includes(expected)
-        : String(value || "").trim() === expected;
-      return met ? inner : '';
-    });
+bbcode = bbcode.replace(/\[conditional\s+field=["']?([^"'\]\s]+)["']?\s+value=["']?([^"'\]]+)["']?\](.*?)\[\/conditional\]/gis, (match, field, expected, inner) => {
+  const currentValue = formValues[field];
 
+  // Handle checkbox booleans properly
+  let actualValue = currentValue;
+  if (typeof currentValue === 'string') {
+    actualValue = currentValue.toLowerCase() === 'true' ? true : 
+                   currentValue.toLowerCase() === 'false' ? false : 
+                   currentValue;
+  }
+
+  const expectedNormalized = expected.toLowerCase() === 'true' ? true :
+                             expected.toLowerCase() === 'false' ? false :
+                             expected;
+
+  const conditionMet = Array.isArray(actualValue)
+    ? actualValue.map(v => String(v)).includes(String(expectedNormalized))
+    : actualValue == expectedNormalized; // loose equality to handle string "true" vs boolean true
+
+  console.log(`[Conditional] field=${field}, expected=${expectedNormalized}, actual=${actualValue}, met=${conditionMet}`);
+
+  return conditionMet ? inner.trim() : '';
+});
     // ──────────────────────────────────────────────────────────────
     // 5. FIELD REPLACEMENT — SAFE PER-FIELD
     // ──────────────────────────────────────────────────────────────

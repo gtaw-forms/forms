@@ -386,7 +386,16 @@ const EmployeeCredentialsSection = ({
                   .find(option => option && option.value === formData[employeeNameField]) || null
               : null
           }
-          onChange={selectedOption => handleSelectChange(selectedOption, { name: employeeNameField })}
+          onChange={selectedOption => {
+            handleSelectChange(selectedOption, { name: employeeNameField });
+            setFormData(prev => ({
+                ...prev,
+                [employeeBadgeField]: selectedOption?.badge || '',
+                [employeeRankField]: selectedOption?.rank || '',
+                [employeeDiscordField]: selectedOption?.discord || '',
+                [employeePHNumberField]: selectedOption?.phNumber || '50056',
+            }));
+          }}
           options={groupedOptions || []}
           isClearable
           placeholder={`Search or select ${employeeType}...`}
