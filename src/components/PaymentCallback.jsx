@@ -16,10 +16,12 @@ const PaymentCallback = () => {
             const pendingPaymentJSON = localStorage.getItem('phmc-payment-pending');
             if (!pendingPaymentJSON) {
                 setMessage('Error: No pending payment information found in this browser session. If you believe you have completed a payment, please return to the form and try again.');
+                console.error('PaymentCallback: No pending payment JSON found in localStorage.');
                 return;
             }
 
             const pendingPayment = JSON.parse(pendingPaymentJSON);
+            console.log('PaymentCallback: Retrieved pending payment:', pendingPayment);
             const { formName, userId, fieldId } = pendingPayment;
 
             // 2. Set the confirmation in localStorage for the original tab to pick up
@@ -29,11 +31,25 @@ const PaymentCallback = () => {
                 status: 'confirmed'
             };
             localStorage.setItem('phmc-payment-confirmed', JSON.stringify(confirmationData));
+            console.log('PaymentCallback: Set confirmation data in localStorage:', confirmationData);
 
             // 3. Clean up the pending marker
             localStorage.removeItem('phmc-payment-pending');
+            console.log('PaymentCallback: Removed pending payment from localStorage.');
             
-            setMessage('Payment successful! Your record has been updated. You can now safely close this window.');
+            // 4. Construct and perform the redirect
+            const currentOrigin = window.location.origin;
+            const baseUrl = `${currentOrigin}/#/`; // Assumes hash-based routing
+
+            const encodedFormName = encodeURIComponent(formName);
+            const redirectUrl = `${baseUrl}form?name=${encodedFormName}`;
+            console.log('PaymentCallback: Constructed redirect URL:', redirectUrl);
+
+            setMessage('Payment successful! Redirecting you back to the form in 3 seconds...');
+            setTimeout(() => {
+                window.location.href = redirectUrl;
+            }, 3000); // Add a small delay to allow user to read the message and see the console logs
+
         };
 
         processPayment();

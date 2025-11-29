@@ -750,35 +750,67 @@ const FormHandler = () => {
             )}
           </div>
 
-          <button onClick={() => setShowBBCode(!showBBCode)} className={formStyles.rightPanelButton}>
-            {showBBCode ? "Hide" : "Show"} BBCode Preview
-          </button>
-
+{generatedBBCode ? (
+  <button
+    onClick={() => setShowBBCode(!showBBCode)}
+    className={formStyles.rightPanelButton}
+    style={{ background: showBBCode ? "#7c3aed" : "#4c1d95" }}
+  >
+    {showBBCode ? "Hide" : "Show"} BBCode Preview
+  </button>
+) : (
+  <div style={{ color: "#94a3b8", fontStyle: "italic", padding: "0.75rem" }}>
+    Click "Generate BBCode" to preview
+  </div>
+)}
           <button onClick={copyAndSaveReport} disabled={!generatedBBCode} className={`${formStyles.rightPanelButton} ${generatedBBCode ? formStyles.copy : ''}`}>
             {generatedBBCode ? "Copy BBCode + Save" : "No BBCode Yet"}
           </button>
 
-          {showBBCode && generatedBBCode && (
-            <>
-              {generatedTitle && (
-                <div
-                  style={{ background: "#0f172a", padding: "1.5rem", borderRadius: 12, color: "#e2e8f0", fontSize: "1.1rem", fontWeight: "700", marginBottom: "1rem", whiteSpace: "pre-wrap", cursor: "pointer" }}
-                  onClick={() => {
-                    navigator.clipboard.writeText(generatedTitle);
-                    showNotification('Title copied to clipboard!', 'success');
-                  }}
-                  title="Click to copy title"
-                >
-                  {generatedTitle}
-                </div>
-              )}
-              <FormQuickLinks form={selectedForm} />
-              <pre style={{ background: "#0f172a", padding: "1.5rem", borderRadius: 12, color: "#e2e8f0", fontSize: "0.9rem", maxHeight: "60vh", overflow: "auto", marginTop: "1rem", whiteSpace: "pre-wrap" }}>
-                {generatedBBCode}
-              </pre>
-            </>
-          )}
-        </div>
+{generatedBBCode && (
+  <>
+    {generatedTitle && (
+      <div
+        style={{
+          background: "#0f172a",
+          padding: "1.5rem",
+          borderRadius: 12,
+          color: "#e2e8f0",
+          fontSize: "1.1rem",
+          fontWeight: "700",
+          marginBottom: "1rem",
+          whiteSpace: "pre-wrap",
+          cursor: "pointer"
+        }}
+        onClick={() => {
+          navigator.clipboard.writeText(generatedTitle);
+          showNotification('Title copied to clipboard!', 'success');
+        }}
+        title="Click to copy title"
+      >
+        {generatedTitle}
+      </div>
+    )}
+
+    <FormQuickLinks form={selectedForm} />
+
+    {showBBCode && (
+      <pre style={{
+        background: "#0f172a",
+        padding: "1.5rem",
+        borderRadius: 12,
+        color: "#e2e8f0",
+        fontSize: "0.9rem",
+        maxHeight: "60vh",
+        overflow: "auto",
+        marginTop: "1rem",
+        whiteSpace: "pre-wrap"
+      }}>
+        {generatedBBCode}
+      </pre>
+    )}
+  </>
+)}        </div>
       </div>
     </div>
   );
