@@ -82,6 +82,7 @@ export const useReportManagement = (
     const [selectedUserForSavedReports, setSelectedUserForSavedReports] = useState(null);
     const [preselectedEmployeeType, setPreselectedEmployeeType] = useState(null);
     const pendingReportAttachmentCallback = useRef(null);
+    const currentAttachmentTargetFieldRef = useRef(null); // Add this line
     const [reportSelectionFilter, setReportSelectionFilter] = useState(null);
     const [showPositionInfoModal, setShowPositionInfoModal] = useState(false);
     const [currentPositionInfo, setCurrentPositionInfo] = useState(null);
@@ -1015,7 +1016,7 @@ export const useReportManagement = (
             }
         }, [selectedForm, factionsData, coronerListData, phmcListData, removeNotification, setFormData, showNotification, sendDataRequestLog, isGtaAuthenticated, gtaWorldUser, getForms]);
 
-        const handleReportSelectedForAttachment = useCallback(async (report, userId) => {
+        const handleReportSelectedForAttachment = useCallback(async (report, userId, targetFieldName) => {
 
             // When multiple reports are being loaded, we need to delay closing the modal.
 
@@ -1244,19 +1245,18 @@ export const useReportManagement = (
                                                     };
 
                     } else {
-
                         let newState = { ...prev };
-
                         newState.decedentName = fieldsToUpdate.decedentName || prev.decedentName;
-
                         newState.decedentOOC = fieldsToUpdate.decedentOOC || prev.decedentOOC;
-
                         newState.requestingOfficer = fieldsToUpdate.requestingOfficer || prev.requestingOfficer;
-
                         newState.department = fieldsToUpdate.department || prev.department;
 
+                        // If a targetFieldName is provided, attach the BBCode to it
+                        if (targetFieldName && reportData.bbCode) {
+                            const currentContent = newState[targetFieldName] || '';
+                            newState[targetFieldName] = currentContent ? `${currentContent}\n\n${reportData.bbCode}` : reportData.bbCode;
+                        }
                         return newState;
-
                     }
 
                 });
@@ -1416,12 +1416,13 @@ export const useReportManagement = (
         }
     }, [sendEasterEggNotification, setEasterEggType, setShowEasterEggModal]);
 
-    const toggleSavedReports = useCallback((filterVersions = null, employeeType = null, callback = null) => {
+    const toggleSavedReports = useCallback((filterVersions = null, employeeType = null, callback = null, targetFieldName = null) => {
         if (showSavedReports) {
             setShowSavedReports(false);
             setPreselectedEmployeeType(null);
             setReportSelectionFilter(null);
             pendingReportAttachmentCallback.current = null;
+            currentAttachmentTargetFieldRef.current = null; // Clear target field on close
 
             return;
         }
@@ -1443,6 +1444,7 @@ export const useReportManagement = (
             setPreselectedEmployeeType(employeeType);
             setReportSelectionFilter(filterVersions);
             pendingReportAttachmentCallback.current = callback;
+            currentAttachmentTargetFieldRef.current = targetFieldName; // Set target field on open
         } else {
             const message = employeeType
                 ? `Please select a ${employeeType} employee in the form to view their reports.`
@@ -1667,6 +1669,7 @@ export const useReportManagement = (
             setCurrentPositionInfo,
             handleShowPositionInfo,
             pendingReportAttachmentCallback,
+            currentAttachmentTargetFieldRef, // Add this line
             reportSelectionFilter,
             setReportSelectionFilter,
             backupUserReports,

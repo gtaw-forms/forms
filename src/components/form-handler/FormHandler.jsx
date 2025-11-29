@@ -155,7 +155,8 @@ const FormHandler = () => {
     selectedForm,
     formValues,
     finalSelectOptions,
-    agencyDataStore
+    agencyDataStore,
+    user // Pass the user object here
   );
 
   // Callbacks
@@ -210,35 +211,62 @@ const FormHandler = () => {
     showNotification('Phrase request webhook sent (dev mode)!', 'info');
   }, [showNotification]);
 
-  const handleSelectChange = useCallback((selectedOption, actionMeta) => {
-    const name = selectedOption ? selectedOption.value : '';
-    const fieldName = actionMeta.name;
+  const updateEmployeeCredentials = useCallback((employeeName, empType) => {
+    const updates = {};
+    updates[`${empType}Employee`] = employeeName || ''; 
 
-    let updates = { [fieldName]: name };
-
-    if (selectedOption) {
-        // The selectedOption itself now contains label, value, firstname, lastname from the employeeOptions memo
+    if (employeeName) {
+      const selectedOption = employeeOptions.flatMap(group => group.options).find(opt => opt.value === employeeName);
+      if (selectedOption) {
         // Find the full employee data from the original list (phmcListData or coronerListData) for rank/badge
-        // This is necessary because selectedOption might not have rank/badge directly if enrichEmployeeData only added firstname/lastname
-        const fullEmployeeData = [...phmcListData, ...coronerListData].find(e => e.name === name);
+        const fullEmployeeData = [...phmcListData, ...coronerListData].find(e => e.name === employeeName);
 
-        // Update rank and badge from the more complete fullEmployeeData
         if (fullEmployeeData) {
-            updates[`${employeeType}Rank`] = fullEmployeeData.rank || '';
-            updates[`${employeeType}Badge`] = fullEmployeeData.badge || '';
+          updates[`${empType}Rank`] = fullEmployeeData.rank || '';
+          updates[`${empType}Badge`] = fullEmployeeData.badge || '';
+          updates[`${empType}Discord`] = fullEmployeeData.discord || ''; 
+          updates[`${empType}PHNumber`] = fullEmployeeData.phNumber || '';
+        } else {
+          // If fullEmployeeData is not found (e.g., employee not in current list), ensure fields are cleared or default
+          updates[`${empType}Rank`] = '';
+          updates[`${empType}Badge`] = '';
+          updates[`${empType}Discord`] = '';
+          updates[`${empType}PHNumber`] = '';
         }
         
-        // Add firstname and lastname to formValues from the selectedOption itself
-        if (selectedOption.firstname) {
-            updates[`${employeeType}FirstName`] = selectedOption.firstname;
-        }
-        if (selectedOption.lastname) {
-            updates[`${employeeType}LastName`] = selectedOption.lastname;
-        }
+        // Add firstname and lastname from the selectedOption itself
+        updates[`${empType}FirstName`] = selectedOption.firstname || '';
+        updates[`${empType}LastName`] = selectedOption.lastname || '';
+      } else {
+        // If selectedOption not found (employeeName provided but no matching option), clear dependent fields
+        updates[`${empType}Rank`] = '';
+        updates[`${empType}Badge`] = '';
+        updates[`${empType}FirstName`] = '';
+        updates[`${empType}LastName`] = '';
+        updates[`${empType}Discord`] = '';
+        updates[`${empType}PHNumber`] = '';
+      }
+    } else {
+      // If employeeName is null/empty, clear all related fields
+      updates[`${empType}Rank`] = '';
+      updates[`${empType}Badge`] = '';
+      updates[`${empType}FirstName`] = '';
+      updates[`${empType}LastName`] = '';
+      updates[`${empType}Discord`] = '';
+      updates[`${empType}PHNumber`] = '';
     }
+    return updates;
+  }, [employeeOptions, phmcListData, coronerListData]); // Dependencies for useCallback
+
+  const handleSelectChange = useCallback((selectedOption, actionMeta) => {
+    const name = selectedOption ? selectedOption.value : '';
+    // fieldName is implicitly 'coronerEmployee' or 'phmcEmployee' based on where the select is rendered
     
-    setFormValues(prev => ({...prev, ...updates}));
-  }, [employeeType, phmcListData, coronerListData, setFormValues]);
+    // Use the helper to get all relevant credential updates
+    const credentialUpdates = updateEmployeeCredentials(name, employeeType);
+    
+    setFormValues(prev => ({...prev, ...credentialUpdates}));
+  }, [employeeType, updateEmployeeCredentials, setFormValues]);
 
   const handleDiagramUpload = useCallback(async (dataUrl) => {
     try {
@@ -300,7 +328,8 @@ const FormHandler = () => {
       loadReportForUser,
       preselectedEmployeeType,
       reportSelectionFilter,
-      pendingReportAttachmentCallback 
+      pendingReportAttachmentCallback,
+      currentAttachmentTargetFieldRef // Add this line
   } = useReportManagement(
       formValues, setFormValues, null, () => {}, () => '', getCurrentReportAuthor, () => ({}), finalSelectOptions,
       showNotification, removeNotification, () => {}, () => {}, () => {}, modalCloseTimer, selectedForm,
@@ -425,16 +454,14 @@ const FormHandler = () => {
             updates.patientName = mainEmployeeName;
         }
 
-        // Keep existing logic for other employee-related name fields
-        const possibleEmployeeNames = ['employeename', 'phmcemployee', 'coroneremployee'];
-        selectedForm.fields.forEach(field => {
-            const fieldNameLower = field.name?.toLowerCase();
-            if (possibleEmployeeNames.includes(fieldNameLower)) {
-                if (currentFormValues[field.name] !== mainEmployeeName) {
-                    updates[field.name] = mainEmployeeName;
-                }
-            }
-        });
+        // --- NEW LOGIC: Update employee credentials based on mainEmployeeName ---
+        // Only update if the current employee field in formValues is different from mainEmployeeName
+        const currentEmployeeFieldName = `${employeeType}Employee`;
+        if (mainEmployeeName && currentFormValues[currentEmployeeFieldName] !== mainEmployeeName) {
+            const credentialUpdates = updateEmployeeCredentials(mainEmployeeName, employeeType);
+            Object.assign(updates, credentialUpdates); // Merge credential updates
+        }
+        // --- END NEW LOGIC ---
 
         if (Object.keys(updates).length > 0) {
             return { ...currentFormValues, ...updates };
@@ -442,7 +469,7 @@ const FormHandler = () => {
             return currentFormValues; // No change
         }
     });
-  }, [mainEmployeeName, selectedForm, isPatientForm, setFormValues, formValues.patientCharacterSelector, formValues.patientName]);
+  }, [mainEmployeeName, selectedForm, isPatientForm, setFormValues, formValues.patientCharacterSelector, formValues.patientName, employeeType, updateEmployeeCredentials]);
 
   useEffect(() => {
     if (!selectedForm || !generatedTitle) return;
@@ -581,6 +608,7 @@ const FormHandler = () => {
         reportSelectionFilter={reportSelectionFilter}
         pendingReportAttachmentCallback={pendingReportAttachmentCallback}
         selectedForm={selectedForm}
+        attachmentTargetField={currentAttachmentTargetFieldRef.current} // Add this line
       />
       <FormHandlerNavButtons onToggleSavedReports={handleNavToggleSavedReports} />
 

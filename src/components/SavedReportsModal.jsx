@@ -250,6 +250,7 @@ const SavedReportsModal = ({
     reportSelectionFilter,
     pendingReportAttachmentCallback,
     selectedForm,
+    attachmentTargetField, // Add this line
     legacyOnly = false,
     loadButtonText = 'Load',
     disableAutoLoad = false,
@@ -441,7 +442,7 @@ const SavedReportsModal = ({
                 }
             };
         } else if (isAttachMode) {
-            actionFunction = handleReportSelectedForAttachment;
+            actionFunction = (report, employeeValue) => handleReportSelectedForAttachment(report, employeeValue, attachmentTargetField);
         } else {
             actionFunction = loadReport;
         }
@@ -674,7 +675,7 @@ const SavedReportsModal = ({
                                                                 }
                                                             });
                                                         } else if (isAttachMode) {
-                                                            handleReportSelectedForAttachment(report, selectedEmployee.value);
+                                                            handleReportSelectedForAttachment(report, selectedEmployee.value, attachmentTargetField);
                                                         } else if (loadReport) {
                                                             loadReport(report, selectedEmployee.value);
                                                         }
