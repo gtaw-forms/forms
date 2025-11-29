@@ -542,6 +542,7 @@ case "textarea":
         };
       }, [field.name, handleChange]);
 
+
       // Effect to set the initial step based on the form's data
       useEffect(() => {
         const value = formValues[field.name];
@@ -609,10 +610,34 @@ case "textarea":
             {step === 2 && (
               <div style={{ color: "#f59e0b" }}>
                 <p style={{ margin: 0 }}>Waiting for payment confirmation...</p>
-                <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.5rem' }}>Once you complete the payment in the new tab, this message will update automatically.</p>
+                <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.5rem' }}>Once you have paid and the Fleeca Bank has indicated 'OK', come back to this tab and click on 'I've Paid' </p>
+                <button
+                  onClick={() => {
+                    const confirmationData = {
+                        fieldId: field.name,
+                        confirmedAt: new Date().toISOString(),
+                        status: 'confirmed'
+                    };
+                    localStorage.setItem('phmc-payment-confirmed', JSON.stringify(confirmationData)); // To ensure consistency for other components
+                    handleChange(field.name, confirmationData);
+                    // No need to setStep(3) directly, handleChange will trigger the other useEffect
+                    // that updates the step based on formValues.
+                  }}
+                  style={{
+                    background: "#007bff", // Blue button
+                    color: "white",
+                    border: "none",
+                    padding: "0.8rem 1.5rem",
+                    borderRadius: 8,
+                    width: '100%',
+                    marginTop: '1rem'
+                  }}
+                >
+                  I've Paid 
+                </button>
               </div>
             )}
-            {step === 3 && (
+            {step === 3 && formValues[field.name] && formValues[field.name].confirmedAt && (
               <div style={{ color: "#34d399" }}>
                 <p style={{ margin: 0 }}>Payment Confirmed at:</p>
                 <strong>{new Date(formValues[field.name].confirmedAt).toLocaleString()}</strong>
