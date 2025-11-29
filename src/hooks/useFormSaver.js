@@ -156,6 +156,12 @@ export const useFormSaver = () => {
 
     const saveReport = useCallback(async (selectedForm, formValues, title, bbCode) => {
         if (!selectedForm || !formValues || !title || !bbCode) {
+            const missingFields = [];
+            if (!selectedForm) missingFields.push('selectedForm');
+            if (!formValues) missingFields.push('formValues');
+            if (!title) missingFields.push('title');
+            if (!bbCode) missingFields.push('bbCode');
+            console.error('[DEBUG useFormSaver] Save failed due to missing required data:', missingFields.join(', '));
             showNotification('Missing data required to save the report.', 'error');
             return { success: false, error: 'Missing data.' };
         }
