@@ -18,12 +18,7 @@ import {
     generateAutopsy, generateCertificate, generateMassFatality, generateDeathRecord,
     generateSicknessEmail
 } from './phmc-bbcode-generators';
-import generatePhysician from './phmc-recruitment-generators/generatePhysician';
-import generatePsych from './phmc-recruitment-generators/generatePsych';
-import admin from './phmc-recruitment-generators/generateAdmin';
-import nursing from './phmc-recruitment-generators/generateNursing';
-import generateCoroner from './phmc-recruitment-generators/generateCoroner';
-import generateEMS from './phmc-recruitment-generators/generateEMS';
+
 
 // Import your icons
 import folder from './assets/folder.png';
@@ -67,13 +62,7 @@ const componentLoaders = {
     DeathRecord: () => import('./phmc-field-data/DeathRecord.jsx'),
     SicknessEmail: () => import('./phmc-field-data/SicknessEmail.jsx'),
 
-    // Recruitment field components with prefetch for popular positions
-    PhysicianFields: () => import(/* webpackPrefetch: true */ './phmc-civilian-fields/Physician.jsx'),
-    PsychFields: () => import('./phmc-civilian-fields/Psych.jsx'),
-    AdminFields: () => import('./phmc-civilian-fields/Admin.jsx'),
-    NursingFields: () => import(/* webpackPrefetch: true */ './phmc-civilian-fields/Nursing.jsx'),
-    Coroner: () => import('./phmc-civilian-fields/Coroner.jsx'),
-    Ems: () => import(/* webpackPrefetch: true */ './phmc-civilian-fields/Ems.jsx'),
+
 };
 
 
@@ -162,78 +151,7 @@ export const formDefinitions = [
     // Add isHiddenInSelector: true to the PBC version
     { version: 29, name: "Psychological Evaluation (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generatePsychEvalPBC, componentLoader: componentLoaders.Shrink, titleKey: "psychEvalPBC", sortOrder: 32, isHiddenInSelector: true, userTypes: ['phmcStaff', 'other'], primaryFor: ['phmcStaff'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true },
     { version: 35, name: "Medical Sickness Email", group: "PHMC", icon: emailIcon, generator: generateSicknessEmail, componentLoader: componentLoaders.SicknessEmail, titleKey: "sicknessEmail", sortOrder: 33, isHiddenInSelector: true, userTypes: ['phmcStaff', 'other'], primaryFor: ['phmcStaff'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true }, // No FieldComponent for this one
-    {
-        version: 50,
-        name: "Physician Careers",
-        group: "PHMC Recruitment",
-        icon: application,
-        generator: generatePhysician,
-        componentLoader: componentLoaders.PhysicianFields,
-        titleKey: "phmcGeneralApplication",
-        sortOrder: 200,
-        hasCustomTitle: true,
-        userTypes: ['recruitment', 'other'], primaryFor: ['recruitment'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true
-    },
-    {
-        version: 51,
-        name: "Psychologist/Psychiatrist Careers",
-        group: "PHMC Recruitment",
-        icon: application,
-        generator: generatePsych,
-        componentLoader: componentLoaders.PsychFields,
-        titleKey: "phmcPsychApplication",
-        sortOrder: 201,
-        hasCustomTitle: true,
-        userTypes: ['recruitment', 'other'], primaryFor: ['recruitment'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true
-    },
-    {
-        version: 52,
-        name: "Admin Careers",
-        group: "PHMC Recruitment",
-        icon: application,
-        generator: admin,
-        componentLoader: componentLoaders.AdminFields,
-        titleKey: "phmcAdminApplication",
-        sortOrder: 202,
-        hasCustomTitle: true,
-        userTypes: ['recruitment', 'other'], primaryFor: ['recruitment'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true
-    },
-    {
-        version: 53,
-        name: "Nursing Careers",
-        group: "PHMC Recruitment",
-        icon: application,
-        generator: nursing,
-        componentLoader: componentLoaders.NursingFields,
-        titleKey: "phmcNursingApplication",
-        sortOrder: 203,
-        hasCustomTitle: true,
-        userTypes: ['recruitment', 'other'], primaryFor: ['recruitment'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true
-    },
-    {
-        version: 54,
-        name: "Coroner Careers",
-        group: "PHMC Recruitment",
-        icon: application,
-        generator: generateCoroner,
-        componentLoader: componentLoaders.Coroner,
-        titleKey: "phmcCoronerRecruitmentApplication",
-        sortOrder: 204,
-        hasCustomTitle: true,
-        userTypes: ['recruitment', 'other'], primaryFor: ['recruitment'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true
-    },
-    {
-        version: 55,
-        name: "EMS Careers",
-        group: "PHMC Recruitment",
-        icon: application,
-        generator: generateEMS,
-        componentLoader: componentLoaders.Ems,
-        titleKey: "phmcEMSApplication",
-        sortOrder: 205,
-        hasCustomTitle: true,
-        userTypes: ['recruitment', 'other'], primaryFor: ['recruitment'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true
-    },
+
     {
         version: 999,
         name: "Admin Control Panel",
