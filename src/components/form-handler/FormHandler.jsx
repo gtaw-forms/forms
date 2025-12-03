@@ -23,6 +23,8 @@ import * as Sentry from "@sentry/react";
 import FormQuickLinks from './FormQuickLinks';
 import '../../App.css';
 import '../../buttons.css';
+import PermanentNotification from '../PermanentNotification';
+import BugReportModal from '../BugReportModal';
 
 
 
@@ -53,6 +55,7 @@ const FormHandler = () => {
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
   const [currentUtcTime, setCurrentUtcTime] = useState(getUtcFormattedDateTime());
   const [isUploading, setIsUploading] = useState(false);
+  const [showBugReportModal, setShowBugReportModal] = useState(false);
 
   // Hooks
   const { showNotification, removeNotification } = useNotification();
@@ -840,6 +843,16 @@ const FormHandler = () => {
   </>
 )}        </div>
       </div>
+      <PermanentNotification
+        discordLink="https://discord.gg/fg7ssSMkj9"
+        onReportBugClick={() => setShowBugReportModal(true)}
+      />
+      <BugReportModal
+        show={showBugReportModal}
+        onClose={() => setShowBugReportModal(false)}
+        webhookUrl={import.meta.env.VITE_DEV_DISCORD}
+        showNotification={showNotification}
+      />
     </div>
   );
 };

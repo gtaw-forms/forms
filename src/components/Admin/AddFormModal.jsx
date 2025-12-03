@@ -763,10 +763,16 @@ const applyBulkConditionalLogic = () => {
   Parse & Fix Legacy BBCode (ULTIMATE)
 </button>
           </div>
-          <div style={{ color: "#94a3b8", fontSize: "0.9rem", marginBottom: "1rem" }}>
-            Use <code>{"{{ fieldName }}"}</code> for form fields. <br />
-            For conditional BBCode, use <code>[conditional field="hasDNR" value="true" and field="attorney" value="Yes"] TEXT [/conditional]</code>.
-            This conditional BBCode must be manually parsed when generating reports.
+          <div style={{ color: "#94a3b8", fontSize: "0.9rem", marginBottom: "1rem", padding: "1rem", background: "#162032", borderRadius: 8 }}>
+            <h5 style={{ color: "#a78bfa", marginTop: 0 }}>BBCode Syntax Guide</h5>
+            <ul style={{ paddingLeft: "20px", margin: 0 }}>
+              <li style={{ marginBottom: '0.5rem' }}><strong>Field Values:</strong> <code>{"{{ fieldName }}"}</code><br />Replaces with the value of the specified field.</li>
+              <li style={{ marginBottom: '0.5rem' }}><strong>JavaScript Expressions:</strong> <code>{"{{ ctx.field1 + ctx.field2 }}"}</code><br />Allows for simple JS logic. Use `ctx` to access form values.</li>
+              <li style={{ marginBottom: '0.5rem' }}><strong>Checkboxes (for options):</strong> <code>[cb:fieldName]Option Text</code><br />Renders a checkbox for "Option Text". It will be checked if the value of `fieldName` matches "Option Text".</li>
+              <li style={{ marginBottom: '0.5rem' }}><strong>Checkboxes (for presence):</strong> <code>[cb:fieldName]</code><br />Renders a single checkbox that is checked if `fieldName` has any value.</li>
+              <li style={{ marginBottom: '0.5rem' }}><strong>Conditional (value exists):</strong> <code>[conditional field="fieldName"]...[/conditional]</code><br />Shows the enclosed content only if `fieldName` has a value.</li>
+              <li style={{ marginBottom: '0.5rem' }}><strong>Conditional (value matches):</strong> <code>[conditional field="fieldName" value="expectedValue"]...[/conditional]</code><br />Shows the enclosed content only if the value of `fieldName` is exactly "expectedValue".</li>
+            </ul>
           </div>
 
           <textarea rows={12} value={bbcodeTemplate} onChange={e => setBbcodeTemplate(e.target.value)} style={{ ...inputStyle, fontFamily: "monospace", maxHeight: "200px", overflowY: "auto" }} />
