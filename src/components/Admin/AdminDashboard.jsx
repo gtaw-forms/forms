@@ -24,15 +24,7 @@ const AdminDashboard = ({
     desktopNotificationPermission,
     handleEnableDesktopNotifications,
     isUpdatingDb,
-    selectedRecruitmentCategory,
-    setSelectedRecruitmentCategory,
-    recruitmentCategories,
-    handleAddRoleClick,
-    isLoadingRecruitmentData,
-    currentRecruitmentData,
-    handleRenameRoleKeyClick,
-    handleEditRoleClick,
-    handleTogglePositionStatus,
+
     selectedAdminBingoType,
     setSelectedAdminBingoType,
     BINGO_TYPES,
@@ -382,7 +374,7 @@ const AdminDashboard = ({
                         {hasLockdownAccess && (
                             <button className={`nav-link ${selectedSection === 'lockdown' ? 'active' : ''}`} onClick={() => setSelectedSection('lockdown')}><i className="fas fa-lock me-2"></i>Lockdown</button>
                         )}
-                        <button className={`nav-link ${selectedSection === 'recruitment' ? 'active' : ''}`} onClick={() => setSelectedSection('recruitment')}><i className="fas fa-user-plus me-2"></i>Recruitment</button>
+
                         {hasBingoAccess && (
                             <button className={`nav-link ${selectedSection === 'bingo' ? 'active' : ''}`} onClick={() => setSelectedSection('bingo')}><i className="fas fa-dice me-2"></i>Bingo</button>
                         )}
@@ -549,57 +541,7 @@ const AdminDashboard = ({
                             </div>
                         </div>
                     )}
-                    {selectedSection === 'recruitment' && (
-                        <div className="card">
-                            <div className="card-header">Recruitment Management</div>
-                            <div className="card-body">
-                                <div className="form-group mb-3">
-                                    <label htmlFor="selectRecruitmentCategory">Select Recruitment Option</label>
-                                    <select id="selectRecruitmentCategory" value={selectedRecruitmentCategory} onChange={(e) => setSelectedRecruitmentCategory(e.target.value)} className="form-select">
-                                        <option value="">-- Select an Option --</option>
-                                        {Object.entries(recruitmentCategories).map(([key, cat]) => (<option key={key} value={key}>{cat.displayName}</option>))}
-                                    </select>
-                                </div>
 
-                                {selectedRecruitmentCategory && recruitmentCategories[selectedRecruitmentCategory] ? (
-                                    <>
-                                        <div className="d-flex justify-content-between align-items-center mb-2">
-                                            <h5>Manage {recruitmentCategories[selectedRecruitmentCategory]?.displayName}</h5>
-                                            <Button variant="success" size="sm" onClick={handleAddRoleClick}>
-                                                <i className="fas fa-plus-circle"></i> Add Role
-                                            </Button>
-                                        </div>
-                                        {isLoadingRecruitmentData ? (<Spinner animation="border" />) : Object.keys(currentRecruitmentData).length > 0 ? (
-                                            <div className="list-group mb-3">
-                                                {Object.entries(currentRecruitmentData).map(([key, position]) => (
-                                                    <div key={key} className="list-group-item d-flex justify-content-between align-items-center">
-                                                        <div>
-                                                            {position.displayName || position.name || key}: {}
-                                                            <strong style={{ color: position.status === "OPEN" ? 'green' : 'red' }}>{position.status || "N/A"}</strong>
-                                                            <br />
-                                                            <small className="text-muted">DB Key: {key}</small>
-                                                        </div>
-                                                        <div className="d-flex gap-2">
-                                                            <Button variant="outline-warning" size="sm" onClick={() => handleRenameRoleKeyClick(key, position)} disabled={isUpdatingDb} title={`Rename Database Key for ${position.displayName || position.name || key}`}>
-                                                                <i className="fas fa-key"></i> Rename Key
-                                                            </Button>
-                                                            <Button variant="outline-secondary" size="sm" onClick={() => handleEditRoleClick(key, position)} disabled={isUpdatingDb} title={`Edit ${position.displayName || position.name || key}`}>
-                                                                <i className="fas fa-edit"></i> Edit
-                                                            </Button>
-                                                            <Button variant={position.status === "OPEN" ? "outline-danger" : "outline-success"} size="sm" onClick={() => handleTogglePositionStatus(key, position.status)} disabled={isUpdatingDb} style={{ minWidth: '120px' }}>
-                                                                {isUpdatingDb && <Spinner as="span" animation="border" size="sm" />}
-                                                                {position.status === "OPEN" ? "Set CLOSED" : "Set OPEN"}
-                                                            </Button>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (<p>No positions loaded for {recruitmentCategories[selectedRecruitmentCategory]?.displayName}.</p>)}
-                                    </>
-                                ) : (<p>Select a recruitment category to manage positions.</p>)}
-                            </div>
-                        </div>
-                    )}
                     {selectedSection === 'bingo' && (
                         <div className="card">
                             <div className="card-header">Bingo Management</div>

@@ -146,7 +146,7 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
       console.log("%cMatched: Death Record Title", "color:#2980b9;font-weight:bold");
 
       const year = new Date().getFullYear();
-      const caseNum = parseCaseNumber(formValues.deathReportPostId) || formValues.caseNumber || 'UNKNOWN';
+      const caseNum = parseCaseNumber(formValues.deathReportPostId) || parseCaseNumber(formValues.caseNumber) || 'UNKNOWN';
       const name = formValues.decedentName || 'UNKNOWN_NAME';
       const ooc = formValues.decedentOOC || 'N/A';
       const dod = formatToMMM_DD_YYYY(formValues.dateOfDeath || formValues.dateTime);
@@ -210,7 +210,8 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
       console.log("%cFINAL TITLE → " + finalTitle, "color:#2ecc71;font-weight:bold;background:#000;padding:2px 6px");
 
       
-    }    // ===================================================================    // Rest of BBCode processing (unchanged)
+    }    // ===================================================================    
+    // 1. CHECKBOXES WITH OPTIONS (e.g., [cb:fieldName]Option[/cb], [cb:fieldName])
     // ===================================================================
 
     bbcode = bbcode.replace(/\[cb:([^\]]+)\]([^\[\]]*)/g, (match, fieldName, text) => {
