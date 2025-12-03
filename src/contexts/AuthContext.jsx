@@ -8,7 +8,22 @@ export const AuthProvider = ({ children }) => {
 
     useEffect(() => {
         const unsubscribe = auth.onAuthStateChanged(user => {
-            setUser(user);
+            if (user) {
+                setUser(user);
+                // Clear any lingering session storage from the old system
+                sessionStorage.removeItem('user');
+            } else {
+                // If Firebase has no user, check session storage as a fallback
+                try {
+                    const storedUser = sessionStorage.getItem('user');
+                    if (storedUser) {
+                        setUser(JSON.parse(storedUser));
+                    }
+                } catch (error) {
+                    console.error("Failed to parse user from session storage:", error);
+                    sessionStorage.removeItem('user'); // Clear corrupted data
+                }
+            }
         });
         return unsubscribe;
     }, []);

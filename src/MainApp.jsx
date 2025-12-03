@@ -1331,11 +1331,6 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
                 { importFn: () => import('./phmc-field-data/GeneralConsult'), name: 'GeneralConsult' },
                 { importFn: () => import('./phmc-field-data/EmergencyForm'), name: 'EmergencyForm' },
             ],
-            'PHMC Recruitment': [
-                { importFn: () => import('./phmc-civilian-fields/Physician'), name: 'PhysicianFields' },
-                { importFn: () => import('./phmc-civilian-fields/Nursing'), name: 'NursingFields' },
-                { importFn: () => import('./phmc-civilian-fields/Ems'), name: 'EmsFields' },
-            ],
             'Civilian Paperwork': [
                 { importFn: () => import('./phmc-field-data/BasicPatientFile'), name: 'BasicPatientFile' },
                 { importFn: () => import('./phmc-field-data/MedicalRecords'), name: 'MedicalRecords' },

@@ -4,6 +4,7 @@ import ImageUploader from './ImageUploader'; // Assuming ImageUploader is in the
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTimeUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
+import useGtaWorldAuth from '../../hooks/useGtaWorldAuth'; // Import useGtaWorldAuth
 import DecedentItemRenderer from './DecedentItemRenderer'; // Import the new component
 import AutopsyDiagramModal from '../AutopsyDiagramModal'; // Import AutopsyDiagramModal
 import CharacterSelector from '../CharacterSelector';
@@ -519,7 +520,7 @@ case "textarea":
       );
     case "payment_button": {
       const [step, setStep] = useState(0);
-      const { user } = useAuth();
+      const { user: gtawUser } = useGtaWorldAuth();
 
       // Effect to listen for localStorage changes from the callback tab
       useEffect(() => {
@@ -546,14 +547,25 @@ case "textarea":
       // Effect to set the initial step based on the form's data
       useEffect(() => {
         const value = formValues[field.name];
-        if (value && value.status === 'confirmed') {
-          setStep(3); // Payment is confirmed
+        const THIRTY_MINUTES_IN_MS = 30 * 60 * 1000;
+
+        if (value && value.status === 'confirmed' && value.confirmedAt) {
+          const confirmationTime = new Date(value.confirmedAt).getTime();
+          const now = new Date().getTime();
+          
+          if (now - confirmationTime < THIRTY_MINUTES_IN_MS) {
+            setStep(3); // Payment is confirmed and not expired
+          } else {
+            // Payment has expired, reset it
+            handleChange(field.name, null);
+            setStep(0);
+          }
         } else if (value === 'pending_confirmation') {
           setStep(2); // Payment is pending
         } else {
           setStep(0); // Initial state
         }
-      }, [formValues, field.name]);
+      }, [formValues, field.name, handleChange]);
 
       const paymentValue = useMemo(() => {
         if (selectedForm && selectedForm.name.includes('Patient File')) {
@@ -570,7 +582,7 @@ case "textarea":
       }, [field.paymentValueLogic, formValues, selectedForm]);
 
       const handlePayment = () => {
-        if (!user) {
+        if (!gtawUser) {
           alert("Authentication error: You must be logged in to proceed with a payment.");
           return;
         }
@@ -580,7 +592,7 @@ case "textarea":
         const url = `${baseURL}/${apiKey}/0/${paymentValue}`;
 
         const pendingPayment = {
-          userId: user.uid,
+          userId: gtawUser.userId,
           formName: selectedForm.name,
           fieldId: field.name,
         };

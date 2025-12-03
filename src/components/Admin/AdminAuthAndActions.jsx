@@ -4,8 +4,7 @@ import { auth, database } from '../../firebase';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { ref, get, update, remove, set, serverTimestamp, onValue, push } from "firebase/database";
 import { collection, addDoc, deleteDoc, doc, getDocs } from 'firebase/firestore'; 
-import AddRoleModal from './RoleModal';
-import RenameRoleKeyModal from './RenameRoleKeyModal';
+
 
 import { captureMessage, captureException } from "@sentry/react";
 import EditBingoPhrasesModal from './EditBingoPhrasesModal';
@@ -18,14 +17,7 @@ import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { isGoogleAuthenticated, getGoogleUser, logout as gtaLogout } from '../../services/gtaWorldAuth';
 
 
-const recruitmentCategories = {
-    physician: { displayName: "Physician Recruitment", path: 'selectOptions/physicianRecruitmentDetails' },
-    psych: { displayName: "Psychologist/Psychiatrist Recruitment", path: 'selectOptions/psychPositionDetailsData' },
-    admin: { displayName: "Admin Recruitment", path: 'selectOptions/adminPositionDetailsData' },
-    nursing: { displayName: "Nursing Recruitment", path: 'selectOptions/nursePositionDetailsData' },
-    ems: { displayName: "EMS Recruitment", path: 'selectOptions/emsPositionDetailsData' },
-    coroner: { displayName: "Coroner Recruitment", path: 'selectOptions/coronerPositionDetailsData' },
-};
+
 const BINGO_TYPES = [
     { id: 'er', name: 'Emergency Room', path: 'ER' },
     { id: 'ems', name: 'EMS', path: 'EMS' },
@@ -201,9 +193,7 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
 
     // GTA World login is now handled by the unified authentication service
 
-    const [selectedRecruitmentCategory, setSelectedRecruitmentCategory] = useState('');
-    const [currentRecruitmentData, setCurrentRecruitmentData] = useState({});
-    const [isLoadingRecruitmentData, setIsLoadingRecruitmentData] = useState(false);
+
     const [isUpdatingDb, setIsUpdatingDb] = useState(false);
     const [selectedAdminBingoType, setSelectedAdminBingoType] = useState(BINGO_TYPES[0].id);
     const [showEditBingoPhrasesModal, setShowEditBingoPhrasesModal] = useState(false);
@@ -406,59 +396,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
         };
     }, []);
 
-    const fetchRecruitmentDataForCategory = useCallback(async (categoryKey) => {
-        if (!categoryKey || !recruitmentCategories[categoryKey]) {
-            setCurrentRecruitmentData({});
-            setFormData(prev => ({ ...prev, adminDisplayData: null, adminSelectedCategoryName: categoryKey ? "Invalid Category" : null }));
-            if (showInAppNotification) showInAppNotification("Invalid recruitment category selected.", "error");
-            return;
-        }
-        
-        setIsLoadingRecruitmentData(true);
-        const categoryConfig = recruitmentCategories[categoryKey];
-        
-        // Add retry logic for Firebase connection issues
-        let retryCount = 0;
-        const maxRetries = 3;
-        
-        while (retryCount < maxRetries) {
-            try {
-                console.log(`[Recruitment Data] Fetching data for ${categoryConfig.displayName} (attempt ${retryCount + 1}/${maxRetries})`);
-                
-                const dataRef = ref(database, categoryConfig.path);
-                const snapshot = await get(dataRef);
-                
-                if (snapshot.exists()) {
-                    const data = snapshot.val();
-                    console.log(`[Recruitment Data] Successfully loaded ${Object.keys(data).length} positions for ${categoryConfig.displayName}`);
-                    setCurrentRecruitmentData(data);
-                    setFormData(prev => ({ ...prev, adminDisplayData: data, adminSelectedCategoryName: categoryConfig.displayName }));
-                    break; // Success - exit retry loop
-                } else {
-                    console.warn(`[Recruitment Data] No data found at path: ${categoryConfig.path}`);
-                    setCurrentRecruitmentData({});
-                    setFormData(prev => ({ ...prev, adminDisplayData: null, adminSelectedCategoryName: categoryConfig.displayName }));
-                    if (showInAppNotification) showInAppNotification(`No positions found for ${categoryConfig.displayName}. The database may be empty or the path may be incorrect.`, "warning");
-                    break; // No data is not a retry-able error
-                }
-            } catch (dbError) {
-                retryCount++;
-                console.error(`[Recruitment Data] Error fetching data for ${categoryConfig.displayName} (attempt ${retryCount}/${maxRetries}):`, dbError);
-                
-                if (retryCount >= maxRetries) {
-                    // Final attempt failed
-                    if (showInAppNotification) showInAppNotification(`Failed to load recruitment data for ${categoryConfig.displayName} after ${maxRetries} attempts. Please check your internet connection and try again.`, "error");
-                    setCurrentRecruitmentData({});
-                    setFormData(prev => ({ ...prev, adminDisplayData: null, adminSelectedCategoryName: categoryConfig.displayName }));
-                } else {
-                    // Wait before retrying (exponential backoff)
-                    await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-                }
-            }
-        }
-        
-        setIsLoadingRecruitmentData(false);
-    }, [setFormData, showInAppNotification]);
+
     const [webhookMessage, setWebhookMessage] = useState('');
 
     useEffect(() => {
@@ -595,14 +533,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
         prevGtaAuthStateRef.current = isNowGtaAuthenticated ? gtaAuthUser : null;
     }, [isGtaAuthenticated, gtaAuthUser, gtaAuthLoading, gtaAuthUsername, showInAppNotification]);
 
-    useEffect(() => {
-        if (currentUser && selectedRecruitmentCategory && recruitmentCategories[selectedRecruitmentCategory]) {
-            fetchRecruitmentDataForCategory(selectedRecruitmentCategory);
-        } else if (currentUser && !selectedRecruitmentCategory) {
-            setCurrentRecruitmentData({});
-            setFormData(prev => ({ ...prev, adminDisplayData: null, adminSelectedCategoryName: null }));
-        }
-    }, [currentUser, selectedRecruitmentCategory, fetchRecruitmentDataForCategory, setFormData]);
+
 
     const handleLoginAttempt = async () => {
         setError('');
@@ -787,154 +718,19 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
         }
     };
 
-const handleTogglePositionStatus = async (positionKey, currentStatus) => {
-    // --- 1. Initial Validation & Early Exit ---
-    if (!currentUser || !selectedRecruitmentCategory || !recruitmentCategories[selectedRecruitmentCategory]) {
-        // No notification here, as this might be a normal state (e.g., user not logged in).
-        return;
-    }
 
-    const positionDetails = currentRecruitmentData[positionKey];
-    if (!positionDetails) {
-        console.error("Position details not found for key:", positionKey);
-        showInAppNotification("Error: Position details missing.", "error");
-        return;
-    }
 
-    // Extract frequently used or calculated values into clear variables.
-    const positionDisplayName = positionDetails.displayName || positionDetails.name || positionKey;
-    const newStatus = currentStatus === "OPEN" ? "CLOSED" : "OPEN";
-    const categoryConfig = recruitmentCategories[selectedRecruitmentCategory];
-    const positionStatusPath = `${categoryConfig.path}/${positionKey}/status`;
-    const { userAgent, timeZone } = getUserContext(); // Capture user context for logging.
 
-    // Indicate that an asynchronous operation is in progress.
-    setIsUpdatingDb(true);
 
-    try {
-        // --- 4. Core Operation: Firebase Update ---
-        await update(ref(database), { [positionStatusPath]: newStatus });
 
-        // --- 5. Success Path: Notifications & Webhooks ---
-        const successMessage = `${positionDisplayName} status updated to ${newStatus} for ${categoryConfig.displayName}.`;
-        showInAppNotification(successMessage, "check-circle"); // Notify user in-app.
 
-        // Log the successful action to the admin webhook.
-        sendAdminActionWebhook(
-            unifiedCurrentUser?.email || "Unknown User",
-            "Toggled Recruitment Status",
-            `Position: ${positionDisplayName}\
-New Status: ${newStatus}`,
-            categoryConfig.displayName,
-            userAgent,
-            timeZone
-        );
 
-        // Show desktop notification if permission is granted.
-        if (desktopNotificationPermission === "granted") {
-            showDesktopNotification(`Recruitment Status Updated: ${categoryConfig.displayName}`, {
-                body: `${positionDisplayName} is now ${newStatus}.`,
-                icon: '/phmc512.png', // Ensure this path is correct and accessible.
-                tag: `status-update-${selectedRecruitmentCategory}-${positionKey}` // Unique tag to prevent duplicate notifications.
-            });
-        }
 
-        // Refresh the recruitment data in the UI to reflect the change.
-        fetchRecruitmentDataForCategory(selectedRecruitmentCategory);
 
-    } catch (dbError) {
-        // --- 6. Error Path: Notifications & Webhooks ---
-        console.error(`Error updating status for ${positionKey}:`, dbError); // Log error to console for debugging.
-        showInAppNotification(`Failed to update status for ${positionKey}.`, "error"); // Notify user in-app.
 
-        // Log the failed action to the admin webhook.
-        sendAdminActionWebhook(
-            currentUser?.email || "Unknown User", // Fallback for email if not available.
-            "Failed to Toggle Recruitment Status",
-            `Position: ${positionDisplayName}\
-Attempted Status: ${newStatus}\
-Error: ${dbError.message}`,
-            categoryConfig.displayName,
-            userAgent,
-            timeZone
-        );
-    } finally {
-        // --- 7. Reset Loading State ---
-        // Always reset loading state regardless of whether the operation succeeded or failed.
-        setIsUpdatingDb(false);
-    }
-};
 
-    const handleRoleSaved = (savedRoleData, actionType) => {
-        if (selectedRecruitmentCategory) {
-            fetchRecruitmentDataForCategory(selectedRecruitmentCategory);
-        }
-        const { userAgent, timeZone } = getUserContext(); // Capture user context
-        if (unifiedCurrentUser?.email && savedRoleData) {
-            const categoryConfig = recruitmentCategories[selectedRecruitmentCategory];
-            const action = actionType === 'edited' ? "Edited Role" : "Added New Role";
-            sendAdminActionWebhook(
-                unifiedCurrentUser.email, action,
-                `Role Name: ${savedRoleData.displayName || savedRoleData.originalKey}\
-Short Code: ${savedRoleData.shortCode || 'N/A'}\
-Status: ${savedRoleData.status || 'N/A'}\
-Key: ${savedRoleData.originalKey}`,
-                categoryConfig?.displayName || "Unknown Category",
-                userAgent,
-                timeZone
-            );
-            if (desktopNotificationPermission === "granted" && savedRoleData?.displayName) {
-                 const notificationTitle = actionType === 'edited' ? `Role Updated: ${categoryConfig?.displayName || 'Recruitment'}` : `New Role Added: ${categoryConfig?.displayName || 'Recruitment'}`;
-                 const notificationBody = actionType === 'edited'
-                    ? `Role \"${savedRoleData.displayName}\" (${savedRoleData.shortCode || 'N/A'}) has been updated.`
-                    : `Role \"${savedRoleData.displayName}\" (${savedRoleData.shortCode || 'N/A'}) has been added.`;
-                showDesktopNotification(notificationTitle, { body: notificationBody, icon: '/phmc512.png', tag: `${actionType}-role-${selectedRecruitmentCategory}-${savedRoleData.originalKey}` });
-            }
-        }
-    };
 
-    const handleAddRoleClick = () => {
-        setRoleToEdit(null);
-        setShowRoleModal(true);
-        const { userAgent, timeZone } = getUserContext(); // Capture user context
-        sendAdminActionWebhook(currentUser?.email || "Unknown User", "Opened Add Role Modal", "Admin opened the modal to add a new role.", recruitmentCategories[selectedRecruitmentCategory]?.displayName, userAgent, timeZone, gtaAuthUsername);
-    };
 
-    const handleEditRoleClick = (roleKey, roleData) => {
-        setRoleToEdit({ ...roleData, originalKey: roleKey });
-        setShowRoleModal(true);
-        const { userAgent, timeZone } = getUserContext(); // Capture user context
-        sendAdminActionWebhook(currentUser?.email || "Unknown User", "Opened Edit Role Modal", `Admin opened the modal to edit role: ${roleData.displayName || roleKey}`, recruitmentCategories[selectedRecruitmentCategory]?.displayName, userAgent, timeZone, gtaAuthUsername);
-    };
-
-    const handleCloseRoleModal = () => {
-        setShowRoleModal(false);
-        setRoleToEdit(null);
-        const { userAgent, timeZone } = getUserContext(); // Capture user context
-        sendAdminActionWebhook(currentUser?.email || "Unknown User", "Closed Role Modal", "Admin closed the role add/edit modal.", recruitmentCategories[selectedRecruitmentCategory]?.displayName, userAgent, timeZone, gtaAuthUsername);
-    };
-
-    const handleRenameRoleKeyClick = (roleKey, roleData) => {
-        setRoleToRenameKeyDetails({ key: roleKey, data: roleData });
-        setShowRenameKeyModal(true);
-        const { userAgent, timeZone } = getUserContext(); // Capture user context
-        sendAdminActionWebhook(currentUser?.email || "Unknown User", "Opened Rename Role Key Modal", `Admin opened the modal to rename key for role: ${roleData.displayName || roleKey}`, recruitmentCategories[selectedRecruitmentCategory]?.displayName, userAgent, timeZone, gtaAuthUsername);
-    };
-
-    const handleRoleKeyRenamed = () => {
-        if (selectedRecruitmentCategory) {
-            fetchRecruitmentDataForCategory(selectedRecruitmentCategory);
-        }
-        if (currentUser?.email && roleToRenameKeyDetails && desktopNotificationPermission === "granted") {
-            const categoryConfig = recruitmentCategories[selectedRecruitmentCategory];
-            showDesktopNotification(`Role Key Renamed: ${categoryConfig?.displayName || 'Recruitment'}`, 
-                { body: `Key for \"${roleToRenameKeyDetails.data.displayName || roleToRenameKeyDetails.key}\" has been changed.`, 
-                icon: '/phmc512.png', 
-                tag: `rename-key-${selectedRecruitmentCategory}-${roleToRenameKeyDetails.key}` 
-            });
-        }
-        setRoleToRenameKeyDetails(null);
-    };
 
     const handleEnableDesktopNotifications = async () => {
         console.log("[Desktop Notify] 'Enable Desktop Notifications' button clicked.");
@@ -1515,15 +1311,7 @@ Key: ${savedRoleData.originalKey}`,
                 localHostStatus={localHostStatus}
                 setLocalHostStatus={setLocalHostStatus}
                 isUpdatingDb={isUpdatingDb}
-                selectedRecruitmentCategory={selectedRecruitmentCategory}
-                setSelectedRecruitmentCategory={setSelectedRecruitmentCategory}
-                recruitmentCategories={recruitmentCategories}
-                handleAddRoleClick={handleAddRoleClick}
-                isLoadingRecruitmentData={isLoadingRecruitmentData}
-                currentRecruitmentData={currentRecruitmentData}
-                handleRenameRoleKeyClick={handleRenameRoleKeyClick}
-                handleEditRoleClick={handleEditRoleClick}
-                handleTogglePositionStatus={handleTogglePositionStatus}
+
                 selectedAdminBingoType={selectedAdminBingoType}
                 setSelectedAdminBingoType={setSelectedAdminBingoType}
                 BINGO_TYPES={BINGO_TYPES}
@@ -1566,12 +1354,7 @@ Key: ${savedRoleData.originalKey}`,
                 setLogRefreshTrigger={setLogRefreshTrigger}
             />
 
-            {selectedRecruitmentCategory && recruitmentCategories[selectedRecruitmentCategory] && (
-                <AddRoleModal show={showRoleModal} onHide={handleCloseRoleModal} categoryKey={selectedRecruitmentCategory} categoryConfig={recruitmentCategories[selectedRecruitmentCategory]} showNotification={showInAppNotification} onRoleSaved={handleRoleSaved} roleToEdit={roleToEdit} />
-            )}
-            {roleToRenameKeyDetails && selectedRecruitmentCategory && recruitmentCategories[selectedRecruitmentCategory] && (
-                <RenameRoleKeyModal show={showRenameKeyModal} onHide={() => { setShowRenameKeyModal(false); setRoleToRenameKeyDetails(null); }} categoryConfig={recruitmentCategories[selectedRecruitmentCategory]} currentRoleKey={roleToRenameKeyDetails.key} currentRoleData={roleToRenameKeyDetails.data} showInAppNotification={showInAppNotification} onKeyRenamed={handleRoleKeyRenamed} sendAdminActionWebhook={sendAdminActionWebhook} adminUserEmail={currentUser?.email} />
-            )}
+
 
 
             <EditBingoPhrasesModal

@@ -19,9 +19,7 @@ project-root/
 │   ├── components/admin/         # Admin panel components and debugging utilities
 │   ├── contexts/                 # Global state providers (React Context API)
 │   ├── phmc-bbcode-generators/   # BBCode generators for PHMC forms
-│   ├── phmc-civilian-fields/     # Civilian interaction form components
 │   ├── phmc-field-data/          # Core form data and input field components
-│   ├── phmc-recruitment-generators/ # Recruitment-related BBCode generators
 │
 ├── functions/                    # Firebase Functions — scheduled jobs, API key rotation, etc.
 ├── migration-script-rtdb/        # Scripts for Firebase Realtime Database migrations
