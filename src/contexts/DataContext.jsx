@@ -454,6 +454,7 @@ export const DataProvider = ({ children }) => {
                             console.log('[DataContext] Data load complete. Setting up Firebase listeners.');
                             sessionStorage.setItem('dataContextInitialized', 'true'); // Mark session as initialized
                             setupFirebaseListeners();
+                            cleanupCache(); // <--- ADD THIS LINE
                         }
                     } catch (error) {
                         console.error('[DataContext] Error during DataContext initialization:', error);
@@ -471,7 +472,7 @@ export const DataProvider = ({ children }) => {
                     Object.values(firebaseListeners.current).forEach(unsubscribe => unsubscribe());
                     firebaseListeners.current = {};
                 };
-            }, [loadData, setupFirebaseListeners]); // Dependencies: ensure these useCallback functions are stable        // DEPRICATED - USE IN VERY LIMITED APPLICATIONS
+            }, [loadData, setupFirebaseListeners, cleanupCache]); // Dependencies: ensure these useCallback functions are stable        // DEPRICATED - USE IN VERY LIMITED APPLICATIONS
         const phmcListData = useMemo(() => {
             // PHMC FACTION = 364, filtered by excluding CORONER categories
             if (!factionsData['364'] || !factionsData['364'].members) {
