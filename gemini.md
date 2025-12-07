@@ -1,5 +1,8 @@
 # CRITICAL PROJECT GUIDELINES
 
+## Operating System Commands
+**CRITICAL: This project operates in a Windows environment.** All shell commands executed via `run_shell_command` MUST use Windows-native commands (e.g., `dir`, `copy`, `del`, `move`) or PowerShell cmdlets (e.g., `Get-ChildItem`, `Copy-Item`, `Remove-Item`, `Move-Item`). **DO NOT use Linux/Unix-based commands** such as `ls`, `cp`, `rm`, or `mv`, as they will fail.
+
 ## Refactoring Plan Adherence
 Always prioritize and strictly adhere to the instructions and phases outlined in the `@REFACTOR_PLAN.md` file. All tasks related to form management migration must be executed according to this plan.
 

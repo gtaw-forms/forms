@@ -169,11 +169,11 @@ export const useFormSaver = () => {
         let finalTitle = title;
         // For Coroner Reports, enforce the standardized title format.
         if (selectedForm.firebaseKey === 'coroner-report') {
-            if (formValues.decedentOOC && formValues.dateTime) {
+            if (formValues.decedentName && formValues.decedentOOC && formValues.dateTime) {
                 const formattedDate = formatToNorthAmericanDate(formValues.dateTime);
-                finalTitle = `[DEATH-REPORT] ${formValues.decedentOOC} ${formattedDate}`;
+                finalTitle = `[DEATH-REPORT] ${formValues.decedentName} (${formValues.decedentOOC}) ${formattedDate}`;
             } else {
-                console.warn("Could not generate standardized Coroner Report title due to missing decedentOOC or dateTime. Using default title.");
+                console.warn("Could not generate standardized Coroner Report title due to missing decedentName, decedentOOC or dateTime. Using default title.");
             }
         } else if (selectedForm.firebaseKey === 'mass-ftality-test') { // Handle Mass Fatality Report
             // ... Mass Fatality Report logic ...

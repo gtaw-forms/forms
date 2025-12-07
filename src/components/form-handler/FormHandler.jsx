@@ -55,6 +55,9 @@ const FormHandler = () => {
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
   const [currentUtcTime, setCurrentUtcTime] = useState(getUtcFormattedDateTime());
   const [isUploading, setIsUploading] = useState(false);
+  const [keepCredentials, setKeepCredentials] = useState(() => {
+    return localStorage.getItem('keepCredentials') === 'true';
+  });
   const [showBugReportModal, setShowBugReportModal] = useState(false);
 
   // Hooks
@@ -67,6 +70,38 @@ const FormHandler = () => {
     swappableCharacters,
     selectOptions: authSelectOptions,
   } = useGtaWorldAuth();
+
+  useEffect(() => {
+    const hasSeenPrompt = localStorage.getItem('seenKeepCredentialsPrompt') === 'true';
+    if (isPhmcMember && !hasSeenPrompt) {
+      showNotification(
+        'Do you want us to remember your employee credentials across different forms?',
+        'info',
+        null,
+        [
+          {
+            label: 'Keep Credentials',
+            handler: (id) => {
+              localStorage.setItem('keepCredentials', 'true');
+              setKeepCredentials(true);
+              localStorage.setItem('seenKeepCredentialsPrompt', 'true');
+              removeNotification(id);
+              showNotification('Your credentials will be preserved when switching forms.', 'success');
+            },
+          },
+          {
+            label: 'Dismiss',
+            handler: (id) => {
+              localStorage.setItem('keepCredentials', 'false');
+              setKeepCredentials(false);
+              localStorage.setItem('seenKeepCredentialsPrompt', 'true');
+              removeNotification(id);
+            },
+          },
+        ]
+      );
+    }
+  }, [isPhmcMember, showNotification, removeNotification, setKeepCredentials]);
 
   const oauthFirstName = user?.faction?.firstname || user?.activeCharacter?.firstname || null;
   const oauthLastName = user?.faction?.lastname || user?.activeCharacter?.lastname || null;
@@ -306,18 +341,20 @@ const FormHandler = () => {
     ];
 
     const preservedValues = {};
-    credentialFieldsToPreserve.forEach(fieldName => {
-        if (formValues[fieldName]) {
-            preservedValues[fieldName] = formValues[fieldName];
-        }
-    });
+    if (keepCredentials) {
+        credentialFieldsToPreserve.forEach(fieldName => {
+            if (formValues[fieldName]) {
+                preservedValues[fieldName] = formValues[fieldName];
+            }
+        });
+    }
     
     setFormValues(preservedValues);
     if (selectedForm?.firebaseKey) {
         localStorage.removeItem(`form_progression_${selectedForm.firebaseKey}`);
     }
     showNotification('Form cleared!', 'info');
-  }, [formValues, employeeType, setFormValues, selectedForm?.firebaseKey, showNotification]);
+  }, [formValues, employeeType, setFormValues, selectedForm?.firebaseKey, showNotification, keepCredentials]);
 
   const { 
       toggleSavedReports,
@@ -652,18 +689,17 @@ const FormHandler = () => {
                             onClick={() => {
                               // Preserve essential credential fields across form switches.
                               const credentialFields = [
-                                `${employeeType}Employee`,
-                                `${employeeType}Badge`,
-                                `${employeeType}Rank`,
-                                `${employeeType}Discord`,
-                                `${employeeType}PHNumber`
+                                'phmcEmployee', 'phmcBadge', 'phmcRank', 'phmcDiscord', 'phmcPHNumber',
+                                'coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord', 'coronerPHNumber'
                               ];
                               const baseValues = {};
-                              credentialFields.forEach(key => {
-                                  if (formValues[key]) { // Carry over from current state
-                                      baseValues[key] = formValues[key];
-                                  }
-                              });
+                              if (keepCredentials) {
+                                credentialFields.forEach(key => {
+                                    if (formValues[key]) { // Carry over from current state
+                                        baseValues[key] = formValues[key];
+                                    }
+                                });
+                              }
 
                               console.log("Switching form. Preserving base values:", baseValues);
 
@@ -850,7 +886,7 @@ const FormHandler = () => {
       <BugReportModal
         show={showBugReportModal}
         onClose={() => setShowBugReportModal(false)}
-        webhookUrl={import.meta.env.VITE_DEV_DISCORD}
+        webhookUrl={import.meta.env.VITE_DEV_WEBHOOK}
         showNotification={showNotification}
       />
     </div>
@@ -858,3 +894,4 @@ const FormHandler = () => {
 };
 
 export default FormHandler;
+

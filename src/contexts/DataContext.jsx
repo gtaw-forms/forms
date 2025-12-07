@@ -131,7 +131,7 @@ export const DataProvider = ({ children }) => {
     const SEGMENT_VERSIONS = {
         [CACHE_SEGMENTS.FACTIONS]: '1.1',
         [CACHE_SEGMENTS.AGENCIES]: '1.1',
-        [CACHE_SEGMENTS.SELECT_OPTIONS]: '1.2.1',
+        [CACHE_SEGMENTS.SELECT_OPTIONS]: '1.2.2',
         [CACHE_SEGMENTS.FORMS]: '1.2.2', // Increment version for structural changes
         [CACHE_SEGMENTS.LSCC]: '1.0',
     };
