@@ -1,8 +1,8 @@
 // src/services/webhookService.js
-import { VITE_DEV_DISCORD_WEBHOOK_URL } from '../config';
+import { VITE_DEV_WEBHOOK } from '../config';
 
 export const sendDiscordWebhook = async (message, embed) => {
-  const webhookUrl = VITE_DEV_DISCORD_WEBHOOK_URL;
+  const webhookUrl = VITE_DEV_WEBHOOK;
 
   if (!webhookUrl || webhookUrl === 'YOUR_DISCORD_WEBHOOK_URL_HERE') {
     console.warn('Discord Webhook URL is not configured. Skipping notification.');

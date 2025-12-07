@@ -3,6 +3,9 @@ import React, { useState, useEffect } from "react";
 import { database } from "../../firebase";
 import { ref, update } from "firebase/database";
 import Select from 'react-select';
+import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
+import { logAdminActionToDiscord } from '../../utils/adminLogger';
+import BulkAddFieldsModal from './BulkAddFieldsModal'; // Import the new modal
 const inputStyle = {
   width: "100%",
   padding: "0.75rem",
@@ -15,6 +18,8 @@ const inputStyle = {
 };
 
 const AddFormModal = ({ show, onClose, editingForm = null }) => {
+  const { user } = useGtaWorldAuth(); // Get authenticated user for logging
+
   const [formId, setFormId] = useState("");
   const [formName, setFormName] = useState("");
   const [category, setCategory] = useState("");
@@ -43,6 +48,8 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
     options: [],
     inputType: "",
     showIf: null,
+    infoType: 'Information', // Default for information_state
+    content: '', // Default for information_state
     decedentItemSchemaJson: "", // New: Schema for decedent list items
   });
 
@@ -66,6 +73,9 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
   const [bulkConditionalField, setBulkConditionalField] = useState('');
   const [bulkConditionalValue, setBulkConditionalValue] = useState('');
   const [bulkExactValue, setBulkExactValue] = useState('');
+
+  // State for Bulk Add Modal
+  const [showBulkAddModal, setShowBulkAddModal] = useState(false);
 
   useEffect(() => {
     if (editingForm) {
@@ -361,6 +371,20 @@ const AddFormModal = ({ show, onClose, editingForm = null }) => {
             }
             return [...prevFields, { ...fieldToSave, id: fieldToSave.id }];
         });
+    } else if (fieldToSave.type === "information_state") {
+        if (!fieldToSave.content) {
+            alert("Content is required for Information State!");
+            return;
+        }
+        const finalName = fieldToSave.name || `info_${fields.length + 1}`;
+        setFields(prevFields => {
+            if (editingFieldIndex !== null) {
+                const updatedFields = [...prevFields];
+                updatedFields[editingFieldIndex] = { ...fieldToSave, name: finalName, id: fieldToSave.id };
+                return updatedFields;
+            }
+            return [...prevFields, { ...fieldToSave, name: finalName, id: fieldToSave.id }];
+        });
     } else if (fieldToSave.type === "image") {
   if (!fieldToSave.label || !fieldToSave.name) {
     alert("Label and Name are required for Image field!");
@@ -577,6 +601,15 @@ const applyBulkConditionalLogic = () => {
     alert(`Conditional logic applied to ${bulkSelectedFields.length} fields.`);
 };
 
+const handleBulkAddFields = (fieldsToAdd) => {
+    const validatedFields = fieldsToAdd.map(field => ({
+        ...field,
+        id: `field-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    }));
+    setFields(currentFields => [...currentFields, ...validatedFields]);
+    setShowBulkAddModal(false); // Hide modal after adding
+};
+
       const saveForm = () => {
       if (!formId || !formName) {
         alert("Form ID and Name required!");
@@ -598,6 +631,12 @@ const applyBulkConditionalLogic = () => {
       update(ref(database, `forms/${formId}`), formData)
         .then(() => {
           alert("Form saved!");
+          const actionType = editingForm ? 'modify' : 'add';
+          const userDetails = {
+              username: user?.username || 'Unknown',
+              id: user?.id || 'N/A'
+          };
+          logAdminActionToDiscord(actionType, formData, userDetails);
           onClose();
         })
         .catch(err => alert("Error: " + err.message));
@@ -605,7 +644,7 @@ const applyBulkConditionalLogic = () => {
   if (!show) return null;
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.9)", zIndex: 9999, overflow: "auto" }} onClick={onClose}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.9)", zIndex: 9999, overflow: "auto" }}>
       <div style={{ maxWidth: 1100, margin: "2rem auto", background: "#0f172a", borderRadius: 16, overflow: "hidden" }} onClick={e => e.stopPropagation()}>
         <div style={{ background: "#1e293b", padding: "1.5rem", textAlign: "center" }}>
           <h2 style={{ margin: 0, color: "#e2e8f0" }}>{editingForm ? "Edit" : "Create"} Form</h2>
@@ -680,6 +719,12 @@ const applyBulkConditionalLogic = () => {
       (m, field) => `{{cb:${field}}}`
     );
 
+    // NEW: Handle [cb{{...}}] format
+    newTemplate = newTemplate.replace(
+      /\[cb\{\{([a-zA-Z0-9_]+)\s*===\s*['"]([^'"]+)['"]\s*\?\s*['"]c['"]\s*:\s*['"]['"]\}\}\]/g,
+      `[cb:$1]`
+    );
+
     // ──────────────────────────────────────────────────────────────
     // 2. Convert {{cb:variable}} → [cb:variable]
     // ──────────────────────────────────────────────────────────────
@@ -702,7 +747,7 @@ const applyBulkConditionalLogic = () => {
     // ──────────────────────────────────────────────────────────────
     // 5. FIX [cb:field]Text ON SAME LINE → ONE PER LINE (THE HOLY GRAIL)
     // ──────────────────────────────────────────────────────────────
-    newTemplate = newTemplate.replace(/\[cb:([^\]]+)\]([^\[\]\r\n]*)/gi, (match, field, text) => {
+    newTemplate = newTemplate.replace(/\[cb:([^\]]+)\](.*?)(?=\[cb:|\r?\n|$)/gi, (match, field, text) => {
       const trimmed = text.trim();
       return trimmed ? `[cb:${field.trim()}]${trimmed}\n` : match;
     });
@@ -775,11 +820,27 @@ const applyBulkConditionalLogic = () => {
             </ul>
           </div>
 
-          <textarea rows={12} value={bbcodeTemplate} onChange={e => setBbcodeTemplate(e.target.value)} style={{ ...inputStyle, fontFamily: "monospace", maxHeight: "200px", overflowY: "auto" }} />
+          <textarea
+            rows={12}
+            value={bbcodeTemplate}
+            onChange={e => {
+              setBbcodeTemplate(e.target.value);
+              console.log('AddFormModal: bbcodeTemplate updated by textarea:', e.target.value);
+            }}
+            style={{ ...inputStyle, fontFamily: "monospace", maxHeight: "200px", overflowY: "auto" }}
+          />
 
           {/* New: Title Generator Code Input */}
 
-          <h4 style={{ color: "#60a5fa", marginTop: "2rem" }}>Add Field</h4>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: "2rem" }}>
+            <h4 style={{ color: "#60a5fa", margin: 0 }}>Add Field</h4>
+            <button 
+              onClick={() => setShowBulkAddModal(true)} 
+              style={{ background: "#4f46e5", color: "white", border: "none", padding: "0.5rem 1rem", borderRadius: 8, cursor: 'pointer', fontSize: '0.9rem' }}
+            >
+              Add Multiple Fields at Once
+            </button>
+          </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
             <select value={newField.type} onChange={e => setNewField({ ...createDefaultNewField(), type: e.target.value })} style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}>
               <option value="input">Text Input</option>
@@ -802,9 +863,31 @@ const applyBulkConditionalLogic = () => {
                             <option value="decedent_list">Decedent List</option>
                             <option value="dynamic_text_list">Dynamic Text List</option>
                             <option value="autopsy_diagram_button">Autopsy Diagram Button</option>
+                            <option value="information_state">Information State</option>
                           </select>
               
-                                                    {newField.type !== "hr" && newField.type !== "decedent_list" && (
+                                                    {newField.type === "information_state" && (
+                                                      <>
+                                                          <select
+                                                              value={newField.infoType}
+                                                              onChange={e => setNewField({ ...newField, infoType: e.target.value })}
+                                                              style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}
+                                                          >
+                                                              <option value="Information">Information</option>
+                                                              <option value="Warning">Warning</option>
+                                                              <option value="Danger">Danger</option>
+                                                          </select>
+                                                          <textarea
+                                                              placeholder="Content for the information state"
+                                                              value={newField.content}
+                                                              onChange={e => setNewField({ ...newField, content: e.target.value })}
+                                                              style={{...inputStyle, flex: '1 1 100%', minWidth: '150px'}}
+                                                              rows={3}
+                                                          />
+                                                      </>
+                                                    )}
+              
+                                                    {newField.type !== "hr" && newField.type !== "decedent_list" && newField.type !== "information_state" && (
                                                       <input
                                                         placeholder={newField.type === "small_header" ? "Header Text" : "Label"}
                                                         value={newField.label}
@@ -812,7 +895,7 @@ const applyBulkConditionalLogic = () => {
                                                         style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}
                                                       />
                                                     )}                          
-                          {newField.type !== "hr" && newField.type !== "small_header" && newField.type !== "attach_report_button" && newField.type !== "decedent_list" && (
+                          {newField.type !== "hr" && newField.type !== "small_header" && newField.type !== "attach_report_button" && newField.type !== "decedent_list" && newField.type !== "information_state" && (
                             <input 
                               placeholder="Name {{}}" 
                               value={newField.name} 
@@ -856,7 +939,7 @@ const applyBulkConditionalLogic = () => {
                             </div>
                           )}
               
-                          {newField.type !== "hr" && newField.type !== "checkbox" && newField.type !== "image" && newField.type !== "small_header" && newField.type !== "timer" && newField.type !== "radio" && newField.type !== "input_button_combo" && newField.type !== "attach_report_button" && newField.type !== "decedent_list" && (
+                          {newField.type !== "hr" && newField.type !== "checkbox" && newField.type !== "image" && newField.type !== "small_header" && newField.type !== "timer" && newField.type !== "radio" && newField.type !== "input_button_combo" && newField.type !== "attach_report_button" && newField.type !== "decedent_list" && newField.type !== "information_state" && (
                             <input 
                               placeholder="Placeholder" 
                               value={newField.placeholder} 
@@ -865,7 +948,7 @@ const applyBulkConditionalLogic = () => {
                             />
                           )}
               
-                          {newField.type !== "hr" && newField.type !== "checkbox" && newField.type !== "image" && newField.type !== "small_header" && newField.type !== "radio" && newField.type !== "input_button_combo" && newField.type !== "attach_report_button" && (
+                          {newField.type !== "hr" && newField.type !== "checkbox" && newField.type !== "image" && newField.type !== "small_header" && newField.type !== "radio" && newField.type !== "input_button_combo" && newField.type !== "attach_report_button" && newField.type !== "information_state" && (
                             <select value={newField.layout || "full"} onChange={e => setNewField({ ...newField, layout: e.target.value })} style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}>
                               <option value="full">Full Width</option>
                               <option value="compact-50">Compact (50%)</option>
@@ -1270,6 +1353,7 @@ const applyBulkConditionalLogic = () => {
                         )}
               
                         <h4 style={{ color: "#60a5fa", marginTop: "2rem" }}>Fields ({fields.length})</h4>
+                        <div style={{ maxHeight: '400px', overflowY: 'auto', padding: '0.5rem', border: '1px solid #334155', borderRadius: '8px', background: '#0f172a' }}>
                         {fields.map((f, i) => (
                           <div key={i} style={{ background: "#1e293b", padding: "1rem", borderRadius: 10, marginBottom: "0.8rem", border: "1px solid #334155" }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1316,6 +1400,8 @@ const applyBulkConditionalLogic = () => {
                                   <span style={{ color: "#a78bfa" }}>Dynamic List: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (Button: {f.buttonLabel})</span>
                                 ) : f.type === "autopsy_diagram_button" ? (
                                   <span style={{ color: "#a78bfa" }}>Autopsy Diagram Button: <strong>{f.label}</strong> → stores URL in <code>{"{{" + f.name + "}}"}</code></span>
+                                ) : f.type === "information_state" ? (
+                                  <span style={{ color: "#a78bfa" }}>Info State: <strong>{f.infoType}</strong> → <code>{f.content.substring(0, 50)}...</code></span>
                                 ) : f.type === "character_selector" ? (
                                   <span style={{ color: "#a78bfa" }}>Dropdown - Character Select: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code></span>
                                 ) : f.type === "multi_employee_select" ? (
@@ -1366,6 +1452,7 @@ const applyBulkConditionalLogic = () => {
                             </div>
                           </div>
                         ))}
+                        </div>
               
                         <div style={{ marginTop: "2rem", textAlign: "center" }}>
                           <button onClick={saveForm} style={{ padding: "1rem 3rem", background: "#6366f1", color: "white", border: "none", borderRadius: 12, margin: "0 1rem" }}>Save Form</button>
@@ -1373,6 +1460,14 @@ const applyBulkConditionalLogic = () => {
                         </div>
                       </div>
                     </div>
+                    {console.log('AddFormModal: Passing bbcodeTemplate to BulkAddFieldsModal:', bbcodeTemplate)}
+                    <BulkAddFieldsModal 
+                      show={showBulkAddModal}
+                      onClose={() => setShowBulkAddModal(false)}
+                      onBulkAdd={handleBulkAddFields}
+                      existingFields={fields}
+                      bbcodeTemplate={bbcodeTemplate}
+                    />
                   </div>
                 );
               };

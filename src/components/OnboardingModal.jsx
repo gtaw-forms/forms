@@ -241,6 +241,9 @@ const OnboardingModal = ({
         // Save preferences to localStorage
         localStorage.setItem('userOnboardingPreferences', JSON.stringify(preferences));
         localStorage.setItem('onboardingComplete', 'true');
+        if (selectedUserType === USER_TYPES.LEO) {
+            localStorage.setItem('showCctvHint', 'true');
+        }
         // Clear onboarding progress since we're done
         localStorage.removeItem('onboardingProgress');
 
@@ -390,14 +393,18 @@ const OnboardingModal = ({
 
     const handleBusinessCardOnly = () => {
         console.log(`[ONBOARDING_LOG] handleBusinessCardOnly called - UserType: CIVILIAN, NotificationType: BUSINESS_CARD_ONLY`);
+
+        const businessCardForm = Object.values(formsData).find(form => form.name.toLowerCase().includes('business card'));
+        const businessCardKey = businessCardForm ? businessCardForm.firebaseKey : null;
+
         const preferences = {
             userType: USER_TYPES.CIVILIAN,
             role: null,
-            recommendedForms: RECOMMENDED_FORMS[USER_TYPES.CIVILIAN],
+            recommendedForms: businessCardKey ? [businessCardKey] : [],
             allowedCategories: FORM_CATEGORIES[USER_TYPES.CIVILIAN],
             onboardingComplete: true,
             completedAt: new Date().toISOString(),
-            defaultForm: 24,
+            defaultForm: businessCardKey,
         };
 
         localStorage.setItem('userOnboardingPreferences', JSON.stringify(preferences));

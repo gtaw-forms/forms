@@ -16,7 +16,7 @@ const BugReportModal = ({ show, onClose, webhookUrl, showNotification }) => {
       return;
     }
     if (!webhookUrl) {
-      console.error('VITE_DEV_DISCORD webhook URL is not defined.');
+      console.error('VITE_DEV_WEBHOOK webhook URL is not defined.');
       showNotification('Cannot submit bug report: Webhook URL is not configured.', 'error');
       return;
     }
