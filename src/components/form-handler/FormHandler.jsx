@@ -56,7 +56,7 @@ const FormHandler = () => {
   const [currentUtcTime, setCurrentUtcTime] = useState(getUtcFormattedDateTime());
   const [isUploading, setIsUploading] = useState(false);
   const [keepCredentials, setKeepCredentials] = useState(() => {
-    return localStorage.getItem('keepCredentials') === 'true';
+    return localStorage.getItem('phmc_gtaw_oauth_persist_enabled') === 'true';
   });
   const [showBugReportModal, setShowBugReportModal] = useState(false);
 
@@ -82,7 +82,7 @@ const FormHandler = () => {
           {
             label: 'Keep Credentials',
             handler: (id) => {
-              localStorage.setItem('keepCredentials', 'true');
+              localStorage.setItem('phmc_gtaw_oauth_persist_enabled', 'true');
               setKeepCredentials(true);
               localStorage.setItem('seenKeepCredentialsPrompt', 'true');
               removeNotification(id);
@@ -92,7 +92,7 @@ const FormHandler = () => {
           {
             label: 'Dismiss',
             handler: (id) => {
-              localStorage.setItem('keepCredentials', 'false');
+              localStorage.setItem('phmc_gtaw_oauth_persist_enabled', 'false');
               setKeepCredentials(false);
               localStorage.setItem('seenKeepCredentialsPrompt', 'true');
               removeNotification(id);
