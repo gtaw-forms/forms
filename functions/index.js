@@ -163,88 +163,6 @@ const scheduleDeletion = async (request) => {
     }
 };
 
-const cleanupCoronerReports = async (results) => {
-    const oldReportsRef = db.ref('/savedReports');
-    try {
-        const snapshot = await oldReportsRef.once('value');
-        if (!snapshot.exists()) {
-            console.log('[Coroner Migration] No reports in savedReports to migrate.');
-            results.coronerCleanup = { migrated: 0, errors: [] };
-            return;
-        }
-
-        const allUsersOldReports = snapshot.val();
-        const reportsToMigrate = [];
-
-        // 1. Identify reports to migrate
-        for (const userId in allUsersOldReports) {
-            const userReports = allUsersOldReports[userId];
-            for (const reportKey in userReports) {
-                const report = userReports[reportKey];
-                // Identify lingering coroner reports (bbCodeVersion 1 is Death Report)
-                if (report.bbCodeVersion === 1) {
-                    reportsToMigrate.push({ userId, reportKey, reportData: report });
-                }
-            }
-        }
-
-        if (reportsToMigrate.length === 0) {
-            console.log('[Coroner Migration] No lingering coroner reports found to migrate.');
-            results.coronerCleanup = { migrated: 0, errors: [] };
-            return;
-        }
-
-        let migratedCount = 0;
-        
-        // 2. Process each report
-        for (const { userId, reportKey, reportData } of reportsToMigrate) {
-            try {
-                // a. Read BBCode
-                const oldBbCodeRef = db.ref(`/savedReportBBCode/${userId}/${reportKey}`);
-                const bbCodeSnapshot = await oldBbCodeRef.once('value');
-                const bbCode = bbCodeSnapshot.val()?.bbCode || '';
-
-                // b. Clean/Standardize data
-                const migratedReport = { ...reportData };
-                migratedReport.formId = 'coroner-report';
-                migratedReport.formName = 'Coroner Report';
-                migratedReport.legacy = false;
-                
-                // Standardize originalKey
-                if (migratedReport.data && migratedReport.data.decedentOOC && migratedReport.data.dateTime) {
-                    migratedReport.originalKey = `[DEATH-REPORT] ${migratedReport.data.decedentOOC} ${migratedReport.data.dateTime}`;
-                }
-                migratedReport.migrationTimestamp = new Date().toISOString();
-
-                // c. Save to new location
-                const newReportKey = (migratedReport.originalKey || reportKey).trim().replace(/[.#$[\/ \]]+/g, '_') + '_' + Date.now();
-                const newReportRef = db.ref(`/newSavedReports/${userId}/${newReportKey}`);
-                const newBbCodeRef = db.ref(`/newSavedReportBBCode/${userId}/${newReportKey}`);
-                
-                await set(newReportRef, migratedReport);
-                await set(newBbCodeRef, { bbCode });
-
-                // d. Delete from old location
-                const oldReportRef = db.ref(`/savedReports/${userId}/${reportKey}`);
-                await oldReportRef.remove();
-                await oldBbCodeRef.remove();
-
-                migratedCount++;
-            } catch (error) {
-                console.error(`[Coroner Migration] Failed to migrate report ${reportKey} for user ${userId}:`, error);
-                results.coronerCleanup.errors.push(`Failed migration for ${userId}/${reportKey}: ${error.message}`);
-            }
-        }
-
-        results.coronerCleanup = { migrated: migratedCount, errors: results.coronerCleanup.errors };
-        console.log(`[Coroner Migration] Successfully migrated ${migratedCount} coroner reports.`);
-
-    } catch (error) {
-        console.error(`[Coroner Migration] Error during coroner report migration: ${error?.message || String(error)}`);
-        results.coronerCleanup = { migrated: 0, errors: [`Coroner migration task failed: ${error.message}`] };
-    }
-};
-
 // --- Scheduled Cloud Function (v2) ---
 
 // Use ESM 'export' syntax instead of 'exports.dailyTaskHandler ='
@@ -256,15 +174,15 @@ export const dailyMaintenanceTask = onSchedule({
 }, async (event) => {
     console.log(`Running daily maintenance task. Event ID: ${event.id}`);
 
-    const REPORTS_PATH = '/savedReports';
+    const REPORTS_PATH = '/newSavedReports';
+    const BBCODE_PATH = '/newSavedReportBBCode';
     let maintenanceResults = {
         bingo: { success: [], noCard: [], notEnoughPhrases: [], errors: [] },
         phraseRequests: { deleted: 0, errors: [] },
         duplicateCleanup: { scanned: 0, duplicatesFound: 0, duplicatesDeleted: 0, errors: [] },
         backupCleanup: { oldBackupsCleaned: 0, errors: [] },
         webhookLogCleanup: { oldLogsCleaned: 0, errors: [] },
-        reportCleanup: { oldReportsCleaned: 0, errors: [] },
-        coronerCleanup: { migrated: 0, errors: [] } // New result category
+        reportCleanup: { oldReportsCleaned: 0, errors: [] }
     };
 
     // --- Bingo Reset Logic ---
@@ -394,7 +312,6 @@ export const dailyMaintenanceTask = onSchedule({
                 if (reportPaths.length > 1) {
                     duplicatesFound += reportPaths.length - 1; // All except the first are duplicates
 
-                    // Sort by timestamp (newest first) - we need to get the actual report data
                     const reportsWithTimestamps = await Promise.all(
                         reportPaths.map(async (path) => {
                             const [userId, reportKey] = path.split('/');
@@ -410,15 +327,15 @@ export const dailyMaintenanceTask = onSchedule({
                         })
                     );
 
-                    // Sort by timestamp descending (newest first)
                     reportsWithTimestamps.sort((a, b) => b.timestamp - a.timestamp);
 
-                    // Keep the first (newest), delete the rest
                     const toDelete = reportsWithTimestamps.slice(1);
                     for (const report of toDelete) {
                         try {
                             const deleteRef = db.ref(`${REPORTS_PATH}/${report.userId}/${report.reportKey}`);
+                            const deleteBbCodeRef = db.ref(`${BBCODE_PATH}/${report.userId}/${report.reportKey}`);
                             await deleteRef.remove();
+                            await deleteBbCodeRef.remove();
                             duplicatesDeleted++;
                             console.log(`[Maintenance] Deleted duplicate report: ${report.path}`);
                         } catch (deleteError) {
@@ -448,7 +365,6 @@ export const dailyMaintenanceTask = onSchedule({
 		const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000); // 3 days in milliseconds
 		let oldBackupsCleaned = 0;
 
-		// Clean faction backups
 		const factionBackupRef = db.ref('factions');
 		const factionSnapshot = await factionBackupRef.once('value');
 
@@ -497,13 +413,9 @@ export const dailyMaintenanceTask = onSchedule({
 
             const logDeletionPromises = Object.entries(logs)
                 .map(async ([logKey, logData]) => {
-                    // Check if this log is older than 3 days
-                    // First check if the key itself is a timestamp
                     let logTimestamp = parseInt(logKey);
                     
-                    // If key is not a timestamp, check for timestamp in the data
                     if (isNaN(logTimestamp)) {
-                        // Check various possible timestamp locations
                         if (logData?.timestamp) {
                             logTimestamp = parseInt(logData.timestamp);
                         } else if (logData?.payload?.timestamp) {
@@ -513,7 +425,6 @@ export const dailyMaintenanceTask = onSchedule({
                         }
                     }
                     
-                    // Delete if we found a valid timestamp that's older than 3 days
                     if (!isNaN(logTimestamp) && logTimestamp > 0 && logTimestamp < threeDaysAgo) {
                         try {
                             const logRef = db.ref(`webhook_logs/${logKey}`);
@@ -536,11 +447,11 @@ export const dailyMaintenanceTask = onSchedule({
         maintenanceResults.webhookLogCleanup.errors.push(`Webhook log cleanup error: ${error.message}`);
     }
 
-    // --- Saved Reports Cleanup Logic (7 days) ---
+    // --- Saved Reports Cleanup Logic (365 days) ---
     try {
-        console.log('[Maintenance] Starting old reports cleanup...');
-        const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
-        const allUserIdsRef = db.ref(REPORTS_PATH); // Reference to the root of savedReports to get all user IDs
+        console.log('[Maintenance] Starting old reports cleanup (365 days)...');
+        const threeSixtyFiveDaysAgo = Date.now() - (365 * 24 * 60 * 60 * 1000);
+        const allUserIdsRef = db.ref(REPORTS_PATH);
         const allUserIdsSnapshot = await allUserIdsRef.once('value');
         let oldReportsCleaned = 0;
         const deletionPromises = [];
@@ -549,22 +460,20 @@ export const dailyMaintenanceTask = onSchedule({
             const allUsers = allUserIdsSnapshot.val();
 
             for (const userId in allUsers) {
-                // Query for old reports for this specific user
-                const userReportsQuery = db.ref(`/savedReports/${userId}`).orderByChild('timestamp').endAt(sevenDaysAgo);
+                const userReportsQuery = db.ref(`${REPORTS_PATH}/${userId}`).orderByChild('timestamp').endAt(threeSixtyFiveDaysAgo);
                 const userReportsSnapshot = await userReportsQuery.once('value');
 
                 if (userReportsSnapshot.exists()) {
                     userReportsSnapshot.forEach((reportSnapshot) => {
                         const reportId = reportSnapshot.key;
-                        // Push deletion promises for both report and its BBCode
-                        deletionPromises.push(db.ref(`/savedReports/${userId}/${reportId}`).remove());
-                        deletionPromises.push(db.ref(`/savedReportBBCode/${userId}/${reportId}`).remove());
+                        deletionPromises.push(db.ref(`${REPORTS_PATH}/${userId}/${reportId}`).remove());
+                        deletionPromises.push(db.ref(`${BBCODE_PATH}/${userId}/${reportId}`).remove());
                         oldReportsCleaned++;
                     });
                 }
             }
 
-            await Promise.all(deletionPromises); // Execute all deletions concurrently
+            await Promise.all(deletionPromises);
             console.log(`[Maintenance] Old reports cleanup complete: cleaned ${oldReportsCleaned} old reports.`);
         } else {
             console.log('[Maintenance] No saved reports found to clean up.');
@@ -575,12 +484,6 @@ export const dailyMaintenanceTask = onSchedule({
         maintenanceResults.reportCleanup.errors.push(`Old reports cleanup error: ${error.message}`);
     }
 
-    // --- Coroner Report Cleanup ---
-    await cleanupCoronerReports(maintenanceResults);
-
-
-
-
     // Send comprehensive webhook notification with all maintenance results
     const bingoDetails = [
         `Success: ${maintenanceResults.bingo.success.join(', ') || 'None'}`,
@@ -590,7 +493,7 @@ export const dailyMaintenanceTask = onSchedule({
 
     const phraseRequestsDetails = `Deleted: ${maintenanceResults.phraseRequests.deleted}`;
 
-    const hasCleanedUp = maintenanceResults.reportCleanup.oldReportsCleaned > 0 || maintenanceResults.duplicateCleanup.duplicatesDeleted > 0 || maintenanceResults.backupCleanup.oldBackupsCleaned > 0 || maintenanceResults.webhookLogCleanup.oldLogsCleaned > 0 || maintenanceResults.coronerCleanup.migrated > 0;
+    const hasCleanedUp = maintenanceResults.reportCleanup.oldReportsCleaned > 0 || maintenanceResults.duplicateCleanup.duplicatesDeleted > 0 || maintenanceResults.backupCleanup.oldBackupsCleaned > 0 || maintenanceResults.webhookLogCleanup.oldLogsCleaned > 0;
     const embed = {
         title: "Daily Maintenance Task",
         color: hasCleanedUp ? 0xFF6B35 : 0x1E90FF, // Orange if cleanup happened, blue otherwise
@@ -613,7 +516,6 @@ export const dailyMaintenanceTask = onSchedule({
             },
             { name: "💾 Backup Cleanup (3 days)", value: `📁 **Old Backups Cleaned:** ${maintenanceResults.backupCleanup.oldBackupsCleaned}`, inline: true },
             { name: "📋 Webhook Log Cleanup (3 days)", value: `📝 **Old Logs Cleaned:** ${maintenanceResults.webhookLogCleanup.oldLogsCleaned}`, inline: true },
-            { name: "💀 Coroner Report Migration", value: `✨ **Migrated:** ${maintenanceResults.coronerCleanup.migrated} reports`, inline: true },
             {
                 name: "📈 Overall Status",
                 value: hasCleanedUp
@@ -632,8 +534,7 @@ export const dailyMaintenanceTask = onSchedule({
         ...maintenanceResults.phraseRequests.errors,
         ...maintenanceResults.duplicateCleanup.errors,
         ...maintenanceResults.backupCleanup.errors,
-        ...maintenanceResults.webhookLogCleanup.errors,
-        ...maintenanceResults.coronerCleanup.errors
+        ...maintenanceResults.webhookLogCleanup.errors
     ];
 
     if (allErrors.length > 0) {
@@ -2471,52 +2372,56 @@ export const migrateReportsToNewStructure = onCall({
 });
 
 export const syncReportCounts = onCall({
-    secrets: ["ADMIN_ACTION_WEBHOOK_URL"], // Optional: For logging success/failure to a channel
+    secrets: ["ADMIN_ACTION_WEBHOOK_URL"],
 }, async (request) => {
-    // Ensure the user is an admin before running this function
-    // (Assuming some form of admin check exists or should be added)
-    // For now, I'll proceed with the core logic. A real implementation
-    // would need a robust authentication check here.
-    
-    console.log('[Sync Counts] Starting report count sync process.');
+    console.log('[Sync Counts] Starting combined report count sync process.');
 
-    const reportsRef = db.ref('/savedReports');
+    const legacyReportsRef = db.ref('/savedReports');
+    const newReportsRef = db.ref('/newSavedReports');
     const countsRef = db.ref('/userReportCounts');
     
     try {
-        const snapshot = await reportsRef.once('value');
-        if (!snapshot.exists()) {
-            console.log('[Sync Counts] No reports found to sync.');
+        const [legacySnapshot, newSnapshot] = await Promise.all([
+            legacyReportsRef.once('value'),
+            newReportsRef.once('value')
+        ]);
+
+        const legacyUsers = legacySnapshot.exists() ? legacySnapshot.val() : {};
+        const newUsers = newSnapshot.exists() ? newSnapshot.val() : {};
+
+        if (Object.keys(legacyUsers).length === 0 && Object.keys(newUsers).length === 0) {
+            console.log('[Sync Counts] No reports found in legacy or new paths to sync.');
             return { success: true, message: 'No reports found to sync.', syncedUsers: 0 };
         }
 
-        const allUsers = snapshot.val();
-        let syncedUsers = 0;
+        const combinedUserIds = new Set([...Object.keys(legacyUsers), ...Object.keys(newUsers)]);
         const updates = {};
+        let syncedUsers = 0;
 
-        for (const userId in allUsers) {
-            // It's possible for a user to have an entry but no reports, so check
-            const userReports = allUsers[userId];
-            if (userReports && typeof userReports === 'object') {
-                const reportCount = Object.keys(userReports).length;
-                updates[`${userId}/total`] = reportCount;
-                syncedUsers++;
-            }
+        for (const userId of combinedUserIds) {
+            const legacyUserReports = legacyUsers[userId];
+            const newUserReports = newUsers[userId];
+
+            const legacyCount = (legacyUserReports && typeof legacyUserReports === 'object') ? Object.keys(legacyUserReports).length : 0;
+            const newCount = (newUserReports && typeof newUserReports === 'object') ? Object.keys(newUserReports).length : 0;
+            
+            const totalCount = legacyCount + newCount;
+            updates[`${userId}/total`] = totalCount;
+            syncedUsers++;
         }
 
         if (syncedUsers > 0) {
             await countsRef.update(updates);
         }
 
-        const successMessage = `Successfully synced counts for ${syncedUsers} users.`;
+        const successMessage = `Successfully synced combined counts for ${syncedUsers} users.`;
         console.log(`[Sync Counts] ${successMessage}`);
         
-        // Optional: Log success to a webhook
         await sendWebhook({
             embeds: [{
-                title: "Report Count Sync Complete",
+                title: "Report Count Sync Complete (Combined)",
                 description: successMessage,
-                color: 0x00FF00, // Green
+                color: 0x00FF00,
                 footer: { text: "PHMC Tools - Admin Action" }
             }]
         });
@@ -2528,19 +2433,16 @@ export const syncReportCounts = onCall({
         };
 
     } catch (error) {
-        console.error('[Sync Counts] Error during report count sync:', error);
-
-        // Optional: Log failure to a webhook
+        console.error('[Sync Counts] Error during combined report count sync:', error);
         await sendWebhook({
             embeds: [{
-                title: "Report Count Sync Failed",
+                title: "Report Count Sync Failed (Combined)",
                 description: `An error occurred: ${error.message}`,
-                color: 0xFF0000, // Red
+                color: 0xFF0000,
                 footer: { text: "PHMC Tools - Admin Action" }
             }]
         });
-
-        throw new functions.https.HttpsError('internal', 'Failed to sync report counts.', error.message);
+        throw new functions.https.HttpsError('internal', 'Failed to sync combined report counts.', error.message);
     }
 });
 
