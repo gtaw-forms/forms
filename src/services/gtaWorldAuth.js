@@ -2,6 +2,7 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase';
 import * as Sentry from "@sentry/react";
 import { getCharacterID, getCharacterName } from '../utils/characterUtils';
+import { logAuthErrorToDiscord } from '../utils/authLogger';
 /**
  * Unified GTA World Authentication Service
  * Consolidates all OAuth functionality into a single service
@@ -148,9 +149,7 @@ export const initiateGtaWorldLogin = (options = {}) => {
         // Check if user is already authenticated from stored session data
         const restoredSession = tryRestoreSession();
         if (restoredSession && restoredSession.user) {
-            console.info('[GTA Auth] User is already authenticated, restoring session:', {
-                user: restoredSession.user
-            });
+            console.info('[GTA Auth] User is already authenticated, restoring session.');
             
             // Send Discord webhook for session restoration login
             sendLoginWebhook(restoredSession.user);
@@ -191,11 +190,7 @@ export const initiateGtaWorldLogin = (options = {}) => {
                 
                 // If OAuth data is less than 2 minutes old, consider it still active
                 if (timeSinceOAuth < 120000) { // 2 minutes
-                    console.warn('[GTA Auth] OAuth flow already in progress, ignoring new request:', {
-                        existingTimestamp: parsed.timestamp,
-                        timeSinceOAuth,
-                        state: parsed.state?.substring(0, 10) + '...'
-                    });
+                    console.warn('[GTA Auth] OAuth flow already in progress, ignoring new request.');
                     return;
                 }
             } catch (e) {
@@ -219,7 +214,7 @@ export const initiateGtaWorldLogin = (options = {}) => {
 
         sessionStorage.setItem(STORAGE_KEYS.OAUTH_STATE, JSON.stringify(oauthData));
 
-        console.debug('[GTA Auth] Stored OAuth state:', { state, returnPath, redirectUri });
+        console.debug('[GTA Auth] Stored OAuth state (obfuscated).');
 
         // Build authorization URL
         const authUrl = new URL(GTA_WORLD_CONFIG.AUTHORIZE_URL);
@@ -229,21 +224,16 @@ export const initiateGtaWorldLogin = (options = {}) => {
         authUrl.searchParams.set('state', state);
         authUrl.searchParams.set('scope', ''); // Can be customized as needed
 
-        console.debug('[GTA Auth] Authorization URL details:', {
-            baseUrl: GTA_WORLD_CONFIG.AUTHORIZE_URL,
-            redirectUri: redirectUri,
-            clientId: GTA_WORLD_CONFIG.CLIENT_ID,
-            state: state,
-            fullAuthUrl: authUrl.toString()
-        });
+        console.debug('[GTA Auth] Authorization URL details (obfuscated).');
 
-        console.debug('[GTA Auth] Redirecting to:', authUrl.toString());
+        console.debug('[GTA Auth] Redirecting to GTA World OAuth endpoint.');
 
         // Redirect to GTA World OAuth
         window.location.href = authUrl.toString();
 
     } catch (error) {
         console.error('[GTA Auth] Failed to initiate OAuth flow:', error);
+        logAuthErrorToDiscord(error, 'OAuth Initiation');
         Sentry.captureException(error, {
             extra: { context: 'GTA World OAuth Initiation' }
         });
@@ -329,23 +319,10 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
             storedOAuthData = {};
         }
         
-        console.debug('[GTA Auth] State validation details:', {
-            receivedState: state,
-            storedState: storedOAuthData.state,
-            storedOAuthData: storedOAuthData,
-            stateMatch: storedOAuthData.state === state,
-            storedDataExists: !!storedOAuthData.state,
-            receivedStateLength: state?.length,
-            storedStateLength: storedOAuthData.state?.length,
-            sessionStorageRaw: sessionStorage.getItem(STORAGE_KEYS.OAUTH_STATE)
-        });
+        console.debug('[GTA Auth] OAuth state validation initiated.');
         
         if (!storedOAuthData.state || storedOAuthData.state !== state) {
-            console.error('[GTA Auth] OAuth state validation failed:', {
-                stored: storedOAuthData.state,
-                received: state,
-                storedDataFull: storedOAuthData
-            });
+            console.error('[GTA Auth] OAuth state validation failed.');
             
             // TEMPORARY: In development/testing, allow bypass with warning
             const isProduction = import.meta.env.NODE_ENV === 'production';
@@ -389,13 +366,7 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
         
         logPhase('token_exchange', tokenStart);
 
-        console.debug('[GTA Auth] Token exchange completed:', {
-            success: result.success,
-            hasToken: !!result.accessToken,
-            hasUser: !!result.userData,
-            errorCode: result.errorCode,
-            originalRedirectUri: storedOAuthData.redirectUri
-        });
+        console.debug('[GTA Auth] Token exchange completed successfully.');
 
         if (result.success) {
             // If we have user data, check faction membership
@@ -403,27 +374,8 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
                 // Check both possible character array field names
                 const characterArray = result.userData.character || result.userData.characters;
                 
-                console.log(`🔍 [GTA Auth] Faction membership check - userData structure:`, {
-                    userId: result.userData.id,
-                    username: result.userData.username,
-                    userDataKeys: Object.keys(result.userData),
-                    hasCharacterField: !!result.userData.character,
-                    hasCharactersField: !!result.userData.characters,
-                    characterFieldType: typeof result.userData.character,
-                    characterFieldContent: result.userData.character,
-                    actualFieldUsed: result.userData.character ? 'character' : (result.userData.characters ? 'characters' : 'none'),
-                    charactersCount: characterArray?.length || 0,
-                    rawCharacterArray: characterArray
-                });
                 
                 if (!characterArray || !Array.isArray(characterArray) || characterArray.length === 0) {
-                    console.warn(`⚠️ [GTA Auth] No valid character array found for faction checking:`, {
-                        hasCharacterField: !!result.userData.character,
-                        characterFieldType: typeof result.userData.character,
-                        hasCharactersField: !!result.userData.characters,
-                        charactersFieldType: typeof result.userData.characters,
-                        userDataStructure: result.userData
-                    });
                     
                     // Add empty faction data to prevent errors
                     result.userData = {
@@ -473,18 +425,9 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
                         }
                     }
                     
-                    console.log(`🔍 [GTA Auth] Main user info:`, {
-                        userId: result.userData.id,
-                        username: result.userData.username,
-                        note: 'This is the memberid, not used for faction lookup - we need individual character IDs'
-                    });
+                    console.log(`🔍 [GTA Auth] Processing user for faction check.`);
                     
-                    console.log(`📝 [GTA Auth] Processing character array for BATCH faction check:`, {
-                        arrayLength: characterArray.length,
-                        validCharacters: characterIds.length,
-                        characterIds: characterIds,
-                        characterNames: characterNames
-                    });
+                    console.log(`📝 [GTA Auth] Processing character array for BATCH faction check.`);
                     
                     // Check for cached faction data first
                     const cacheKey = `factionData_364_${characterIds.join('_')}`;
@@ -509,13 +452,7 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
                                 const factionCacheStart = performance.now();
                                 logPhase('faction_cache_hit', factionCacheStart);
                                 
-                                console.log(`💾 [GTA Auth] Using cached faction data [${factionCallId}]:`, {
-                                    cacheKey,
-                                    cacheAge: `${Math.round(cacheAge / 1000)}s`,
-                                    cacheValidFor: `${Math.round((cacheValidDuration - cacheAge) / 1000)}s more`,
-                                    characterIds: characterIds,
-                                    cachedMembersCount: parsed.data?.summary?.totalMembers || 0
-                                });
+                                console.log(`💾 [GTA Auth] Using cached faction data [${factionCallId}].`);
                                 batchResult = parsed;
                                 usedCache = true;
                             } else {
@@ -536,9 +473,7 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
                     if (!batchResult) {
                         console.log(`�🔥 [GTA Auth] BATCH checking faction membership [${factionCallId}]:`, {
                             function: 'batchCheckFactionMembership',
-                            factionId: 364,
-                            characterIds: characterIds,
-                            characterCount: characterIds.length,
+                                                    factionId: 364,                            characterCount: characterIds.length,
                             timestamp: factionStartTime,
                             cacheStatus: 'cache miss - fetching fresh data'
                         });
@@ -598,14 +533,7 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
                             if (highestRankMember) {
                                 finalFactionResult = { data: highestRankMember };
                                 
-                                console.log(`🏆 [GTA Auth] Selected highest-ranking character from batch:`, {
-                                    characterId: highestRankMember.character.characterId,
-                                    characterName: highestRankMember.character.characterName,
-                                    scriptRank: highestRankMember.character.scriptRank,
-                                    rank: highestRankMember.character.rank,
-                                    accessLevel: highestRankMember.accessLevel,
-                                    totalFactionMembers: factionMembers.length
-                                });
+                                console.log(`🏆 [GTA Auth] Selected highest-ranking character from batch.`);
                             } else {
                                 // Fallback to first found member
                                 finalFactionResult = { data: factionMembers[0] };
@@ -629,22 +557,12 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
                         // Add debugging info about which characters were checked
                         debugInfo: {
                             charactersChecked: characterIds.length,
-                            characterIds: characterIds,
                             foundMember,
                             factionCheckDuration: factionDuration
                         }
                     };
                     
-                    console.log(`📊 [GTA Auth] Enhanced user data with faction info [${factionCallId}]:`, {
-                        username: result.userData.username,
-                        mainCharacterId: result.userData.id,
-                        isFactionMember: result.userData.isFactionMember,
-                        accessLevel: result.userData.accessLevel,
-                        permissionCount: result.userData.permissions.length,
-                        factionCharacter: result.userData.faction,
-                        charactersChecked: characterIds.length,
-                        debugInfo: result.userData.debugInfo
-                    });
+                    console.log(`📊 [GTA Auth] Enhanced user data with faction info [${factionCallId}].`);
 
                     // Construct allFactionCharacters for the webhook
                     const allFactionCharacters = batchResult.data?.results?.filter(r => r.isMember).map(r => ({
@@ -667,12 +585,6 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
                         foundMember: foundMember,
                         totalCharactersChecked: characterIds.length,
                         factionMembersFound: batchResult.data?.summary?.totalMembers || 0,
-                        selectedResult: foundMember ? {
-                            characterId: finalFactionResult.data?.character?.characterId,
-                            rank: finalFactionResult.data?.character?.rank,
-                            scriptRank: finalFactionResult.data?.character?.scriptRank,
-                            accessLevel: finalFactionResult.data?.accessLevel
-                        } : null,
                         note: foundMember ? 'Member access granted' : 'No faction membership found',
                         dataSource: usedCache ? 'cached data (no API call)' : 'fresh API call',
                         batchOptimization: 'Single batch call instead of individual character checks'
@@ -697,7 +609,6 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
                         error: factionError.message,
                         code: factionError.code,
                         details: factionError.details,
-                        characterIds: characterIds,
                         batchFunction: 'batchCheckFactionMembership'
                     });
                     // Continue without faction data - user can still authenticate but won't have faction permissions
@@ -741,12 +652,7 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
             perfMetrics.success = true;
             
             // Log comprehensive performance metrics
-            console.log(`[Perf] OAuth completed successfully [${perfMetrics.sessionId}]:`, {
-                totalDuration: `${totalDuration.toFixed(2)}ms`,
-                phases: perfMetrics.phases,
-                efficiency: totalDuration < 10000 ? 'excellent' : totalDuration < 20000 ? 'good' : 'needs improvement',
-                cacheUsed: result.userData?.debugInfo?.usedCache || false
-            });
+            console.log(`[Perf] OAuth completed successfully [${perfMetrics.sessionId}].`);
             
             // Progress: Complete
             onProgress?.({ 
@@ -781,6 +687,7 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
         perfMetrics.error = error.message;
         
         console.error('[GTA Auth] OAuth callback error:', error);
+        logAuthErrorToDiscord(error, 'OAuth Callback');
         console.log(`[Perf] OAuth failed [${perfMetrics.sessionId}]:`, {
             totalDuration: `${totalDuration.toFixed(2)}ms`,
             phases: perfMetrics.phases,
@@ -945,31 +852,8 @@ const exchangeAuthCodeForToken = async (code, redirectUri) => {
                     throw firebaseError;
                 }
 
-                console.debug(`📋 [GTA Auth] Raw Firebase response [${firebaseCallId}]:`, result);
-                console.log(`🔍 [GTA Auth] Detailed API response analysis [${firebaseCallId}]:`, {
-                    hasData: !!result.data,
-                    hasToken: !!result.data?.token,
-                    hasUser: !!result.data?.user,
-                    success: result.data?.success,
-                    dataKeys: result.data ? Object.keys(result.data) : [],
-                    // Detailed user data structure
-                    userDataKeys: result.data?.user ? Object.keys(result.data.user) : [],
-                    userData: result.data?.user,
-                    // Check for characters in user data (API uses 'character', not 'characters')
-                    hasCharacterField: !!result.data?.user?.character,
-                    hasCharactersField: !!result.data?.user?.characters,
-                    charactersCount: (result.data?.user?.character || result.data?.user?.characters)?.length || 0,
-                    charactersData: result.data?.user?.character || result.data?.user?.characters || 'no character data found',
-                    // Check for other possible character fields
-                    userFields: {
-                        name: result.data?.user?.name,
-                        username: result.data?.user?.username,
-                        firstname: result.data?.user?.firstname,
-                        lastname: result.data?.user?.lastname,
-                        id: result.data?.user?.id,
-                        email: result.data?.user?.email
-                    }
-                });
+                console.debug(`📋 [GTA Auth] Raw Firebase response received [${firebaseCallId}].`);
+                console.log(`🔍 [GTA Auth] Detailed API response analysis completed [${firebaseCallId}].`);
 
                 if (result.data?.success && result.data?.token && result.data?.user) {
                     return {
@@ -1019,12 +903,8 @@ const exchangeAuthCodeForToken = async (code, redirectUri) => {
 
     } catch (error) {
         console.error('[GTA Auth] Token exchange failed:', error);
-        console.error('[GTA Auth] Error details:', {
-            code: error.code,
-            message: error.message,
-            details: error.details,
-            stack: error.stack
-        });
+        logAuthErrorToDiscord(error, 'Token Exchange');
+
         
         // Parse Firebase function errors with enhanced error types
         if (error.code && error.message) {
@@ -1123,12 +1003,7 @@ export const tryRestoreSession = () => {
             return null;
         }
         
-        console.info('[GTA Auth] Successfully restored session for user:', {
-            username: parsedUserData.username,
-            characterId: parsedUserData.id,
-            isFactionMember: parsedUserData.isFactionMember,
-            accessLevel: parsedUserData.accessLevel
-        });
+        console.info('[GTA Auth] Successfully restored session for user.');
         
         return {
             user: parsedUserData,
@@ -1388,7 +1263,7 @@ export const validateFirebaseConfig = () => {
         issues.push('VITE_GTAWORLD_CLIENT_ID environment variable not set');
     }
 
-    console.info('[GTA Auth] Configuration validation:', { config, issues });
+    console.info('[GTA Auth] Configuration validation complete.');
     
     return {
         valid: issues.length === 0,
@@ -1546,13 +1421,7 @@ export const refreshFactionData = async (characterId) => {
         const refreshCallId = Date.now() + '-' + Math.random().toString(36).substr(2, 5);
         const refreshStartTime = Date.now();
         
-        console.log(`🔥 [GTA Auth] Refreshing faction data Firebase call [${refreshCallId}]:`, {
-            function: 'checkFactionMembership',
-            characterId: parseInt(idToCheck),
-            factionId: 364,
-            timestamp: refreshStartTime,
-            source: characterId ? 'explicit' : (userData.faction?.characterId ? 'session_faction' : 'session_user_id')
-        });
+        console.log(`🔥 [GTA Auth] Refreshing faction data Firebase call [${refreshCallId}].`);
         
         const result = await checkFactionMembership({ 
             characterId: parseInt(idToCheck),
@@ -1578,11 +1447,7 @@ export const refreshFactionData = async (characterId) => {
         
         sessionStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(updatedUserData));
         
-        console.log('[GTA Auth] Faction data refreshed:', {
-            isFactionMember: updatedUserData.isFactionMember,
-            accessLevel: updatedUserData.accessLevel,
-            permissionCount: updatedUserData.permissions.length
-        });
+        console.log('[GTA Auth] Faction data refreshed.');
         
         return updatedUserData;
         
@@ -1649,7 +1514,7 @@ const getUserFriendlyErrorMessage = (error) => {
     }
     
     if (errorMessage.includes('invalid_client')) {
-        return 'Authentication service configuration error. Please notify the Maintainer in the PHMC Discord.';
+        return 'Authentication service configuration error. Please notify Alyson Frost in the PHMC Discord.';
     }
     
     if (errorMessage.includes('502') || errorMessage.includes('503') || errorMessage.includes('504')) {
@@ -1661,7 +1526,7 @@ const getUserFriendlyErrorMessage = (error) => {
     }
     
     // Fallback for unknown errors
-    return 'Something went wrong during authentication. Please notify the Maintainer in the PHMC Discord';
+    return 'Something went wrong during authentication. Please notify Alyson Frost in the PHMC Discord';
 };
 
 /**
@@ -1813,3 +1678,18 @@ export const getOAuthPerformanceAnalytics = () => {
 
 // Export configuration for external use if needed
 export const GTA_WORLD_AUTH_CONFIG = GTA_WORLD_CONFIG;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

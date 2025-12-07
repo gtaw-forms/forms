@@ -38,9 +38,25 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         const currentValue = (typeof current === 'string' && (current === "true" || current === "false")) ? (current === "true") : current;
 
         let conditionMet = false;
-        if (expectedValue === true) conditionMet = !!currentValue && currentValue !== "";
-        else if (expectedValue === false) conditionMet = !currentValue || currentValue === "";
-        else conditionMet = currentValue === expectedValue;
+        if (expectedValue === true) { // Has ANY value
+          if (Array.isArray(currentValue)) {
+            conditionMet = currentValue.length > 0;
+          } else {
+            conditionMet = !!currentValue && currentValue !== "";
+          }
+        } else if (expectedValue === false) { // Is empty
+          if (Array.isArray(currentValue)) {
+            conditionMet = currentValue.length === 0;
+          } else {
+            conditionMet = !currentValue || currentValue === "";
+          }
+        } else { // Exact value
+          if (Array.isArray(currentValue)) {
+            conditionMet = currentValue.includes(expectedValue);
+          } else {
+            conditionMet = currentValue === expectedValue;
+          }
+        }
         
         return conditionMet;
       });
@@ -57,9 +73,25 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         const currentValue = (typeof current === 'string' && (current === "true" || current === "false")) ? (current === "true") : current;
 
         let conditionMet = false;
-        if (expectedValue === true) conditionMet = !!currentValue && currentValue !== "";
-        else if (expectedValue === false) conditionMet = !currentValue || currentValue === "";
-        else conditionMet = currentValue === expectedValue;
+        if (expectedValue === true) { // Has ANY value
+          if (Array.isArray(currentValue)) {
+            conditionMet = currentValue.length > 0;
+          } else {
+            conditionMet = !!currentValue && currentValue !== "";
+          }
+        } else if (expectedValue === false) { // Is empty
+          if (Array.isArray(currentValue)) {
+            conditionMet = currentValue.length === 0;
+          } else {
+            conditionMet = !currentValue || currentValue === "";
+          }
+        } else { // Exact value
+          if (Array.isArray(currentValue)) {
+            conditionMet = currentValue.includes(expectedValue);
+          } else {
+            conditionMet = currentValue === expectedValue;
+          }
+        }
 
         return conditionMet;
       });
@@ -69,9 +101,25 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       const expectedValue = (field.showIf.value === "true") ? true : (field.showIf.value === "false" ? false : field.showIf.value);
       const currentValue = (typeof current === 'string' && (current === "true" || current === "false")) ? (current === "true") : current;
 
-      if (expectedValue === true) shouldShow = !!currentValue && currentValue !== "";
-      else if (expectedValue === false) shouldShow = !currentValue || currentValue === "";
-      else shouldShow = currentValue === expectedValue;
+      if (expectedValue === true) {
+        if (Array.isArray(currentValue)) {
+          shouldShow = currentValue.length > 0;
+        } else {
+          shouldShow = !!currentValue && currentValue !== "";
+        }
+      } else if (expectedValue === false) {
+        if (Array.isArray(currentValue)) {
+          shouldShow = currentValue.length === 0;
+        } else {
+          shouldShow = !currentValue || currentValue === "";
+        }
+      } else {
+        if (Array.isArray(currentValue)) {
+          shouldShow = currentValue.includes(expectedValue);
+        } else {
+          shouldShow = currentValue === expectedValue;
+        }
+      }
 
     }
 
@@ -111,6 +159,35 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
           </h4>
         </div>
       );
+    case "information_state": {
+      const getInfoStyle = () => {
+        const baseStyle = {
+          padding: '1rem',
+          borderRadius: '8px',
+          color: '#e2e8f0',
+          width: '100%',
+          boxSizing: 'border-box',
+          whiteSpace: 'pre-wrap', // To respect newlines and spaces
+        };
+        switch (field.infoType) {
+          case 'Warning':
+            return { ...baseStyle, backgroundColor: '#3d301a', border: '1px solid #f59e0b' };
+          case 'Danger':
+            return { ...baseStyle, backgroundColor: '#401f23', border: '1px solid #ef4444' };
+          case 'Information':
+          default:
+            return { ...baseStyle, backgroundColor: '#1e293b', border: '1px solid #3b82f6' };
+        }
+      };
+
+      return (
+        <div style={fieldWrapperStyle}>
+          <div style={getInfoStyle()}>
+            {field.content}
+          </div>
+        </div>
+      );
+    }
     case "timer":
       return (
         <div style={{...fieldWrapperStyle }}>
