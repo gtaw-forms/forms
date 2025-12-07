@@ -425,6 +425,13 @@ const EmployeeCredentialsSection = ({
             Using GTAW OAuth Credentials
           </div>
           <div style={{ color: '#eeeeeeb0' }}>
+            <div style={{ color: '#cfe6cf', fontSize: '0.9rem', marginBottom: '10px' }}>
+              {persistEnabled ? (
+                <><i className="fas fa-bookmark" style={{ marginRight: '5px' }}></i> Your credentials will be saved automatically.</>
+              ) : (
+                <><i className="fas fa-eraser" style={{ marginRight: '5px' }}></i> Your credentials will NOT be saved automatically.</>
+              )}
+            </div>
             <strong>Character Name:</strong> {usingSavedProfile ? formData[employeeNameField] : gtawCharacterName}<br />
             <strong>UCP User:</strong> {usingSavedProfile ? formData[employeeDiscordField] : gtaWorldUser?.username}<br />
             <strong>Badge Number:</strong> {usingSavedProfile ? formData[employeeBadgeField] : (factionData?.characterId || gtaWorldUser?.id)}<br />
@@ -471,6 +478,13 @@ const EmployeeCredentialsSection = ({
               <div style={{ color: '#20c997', fontWeight: 'bold', marginBottom: '6px' }}>
                 <i className="fas fa-id-badge" style={{ marginRight: '8px' }}></i>
                 Saved OAuth Details Available
+              </div>
+              <div style={{ color: '#cfe6cf', fontSize: '0.9rem', marginBottom: '10px' }}>
+                {persistEnabled ? (
+                  <><i className="fas fa-bookmark" style={{ marginRight: '5px' }}></i> Your credentials will be saved automatically.</>
+                ) : (
+                  <><i className="fas fa-eraser" style={{ marginRight: '5px' }}></i> Your credentials will NOT be saved automatically.</>
+                )}
               </div>
               <div style={{ color: '#eeeeeeb0', marginBottom: '8px' }}>
                 <strong>Character Name:</strong> {savedProfile?.preferredEmployee?.name || 'Unknown'}
