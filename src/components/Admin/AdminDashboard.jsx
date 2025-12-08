@@ -682,7 +682,7 @@ const AdminDashboard = ({
                                         {selectedSection === 'forms' && (
                             <div className="card-body">
                                 {hasFormsManagerAccess ? (
-                                    <FormsManager />
+                                    <FormsManager currentUser={currentUser} />
                                 ) : (
                                     <div className="alert alert-danger">
                                         <i className="fas fa-exclamation-triangle me-2"></i>

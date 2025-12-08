@@ -1123,10 +1123,14 @@ export const isAuthenticated = () => {
 export const logout = () => {
     console.info('[GTA Auth] Logging out user');
     
-    // Clear all stored authentication data
+    // Clear all stored authentication data from sessionStorage
     Object.values(STORAGE_KEYS).forEach(key => {
         sessionStorage.removeItem(key);
     });
+
+    // Also clear localStorage flags related to credential persistence
+    localStorage.removeItem('phmc_gtaw_oauth_persist_enabled');
+    localStorage.removeItem('seenKeepCredentialsPrompt');
     
     console.debug('[GTA Auth] User logged out successfully');
 };

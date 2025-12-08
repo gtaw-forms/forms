@@ -76,22 +76,69 @@ const formatToNorthAmericanDate = (isoDateTime) => {
       return;
     }
 
+    // Process formValues to extract primitive values from select objects
+    const processedFormValues = Object.entries(formValues).reduce((acc, [key, value]) => {
+      if (
+        typeof value === 'object' &&
+        value !== null &&
+        !Array.isArray(value) && // Do not flatten arrays
+        value.hasOwnProperty('value') &&
+        value.hasOwnProperty('label')
+      ) {
+        acc[key] = value.value;
+      } else {
+        acc[key] = value;
+      }
+      return acc;
+    }, {});
+
+    // Custom handling for request-medical-files form to inject OAuth names
+    if (selectedForm?.id === 'request-medical-files' && gtaWorldUser) {
+      let oauthFirstName = gtaWorldUser?.faction?.firstname || gtaWorldUser?.activeCharacter?.firstname || null;
+      let oauthLastName = gtaWorldUser?.faction?.lastname || gtaWorldUser?.activeCharacter?.lastname || null;
+
+      console.log(`%c[Medical Files Form] Detected: ${selectedForm.id}`, 'color: #1abc9c; font-weight: bold;');
+      console.log('[Medical Files Form] OAuth Names (initial):', { oauthFirstName, oauthLastName });
+
+      // If OAuth names are null/empty, try to derive from patientName if available in formValues
+      if ((!oauthFirstName || !oauthLastName) && processedFormValues.patientName) {
+        const patientNameParts = String(processedFormValues.patientName).trim().split(' ');
+        if (patientNameParts.length > 0) {
+          oauthFirstName = patientNameParts[0];
+          oauthLastName = patientNameParts.slice(1).join(' '); // Handle multi-word last names
+          console.log('[Medical Files Form] Derived names from patientName:', { oauthFirstName, oauthLastName });
+        } else {
+            console.log('[Medical Files Form] patientName is empty, cannot derive names.');
+        }
+      }
+
+      if (oauthFirstName && !processedFormValues.patientFirstName) {
+        processedFormValues.patientFirstName = oauthFirstName;
+        console.log(`[Medical Files Form] Injected patientFirstName: ${processedFormValues.patientFirstName}`);
+      }
+      if (oauthLastName && !processedFormValues.patientLastName) {
+        processedFormValues.patientLastName = oauthLastName;
+        console.log(`[Medical Files Form] Injected patientLastName: ${processedFormValues.patientLastName}`);
+      }
+    }
+
     console.log("%c=== BBCODE & TITLE GENERATION STARTED ===", "font-weight:bold;color:#0066cc");
     console.log("Form:", selectedForm.name, `(${selectedForm.firebaseKey || selectedForm.id})`);
-    console.log("Form Values:", JSON.parse(JSON.stringify(formValues)));
+    console.log("Original Form Values:", JSON.parse(JSON.stringify(formValues)));
+    console.log("Processed Form Values:", JSON.parse(JSON.stringify(processedFormValues)));
     console.log("Initial selectedForm.template:", selectedForm.template);
 
     let bbcode = selectedForm.template;
     let finalTitle = "";
 
-    const ctx = { ...formValues };
+    const ctx = { ...processedFormValues };
     ctx.formData = ctx;
     ctx.generateDecedentBBCode = (arr) => generateDecedentBBCode(arr, finalSelectOptions);
     ctx.decedents_array_bbcode = ctx.generateDecedentBBCode(ctx.decedents);
 
     // Fallback aliases
     const addFallback = (src, target) => {
-      if (formValues[src] !== undefined && ctx[target] === undefined) ctx[target] = formValues[src];
+      if (processedFormValues[src] !== undefined && ctx[target] === undefined) ctx[target] = processedFormValues[src];
     };
     addFallback('patientName', 'PatientName'); addFallback('PatientName', 'patientName');
     addFallback('employeeName', 'EmployeeName'); addFallback('EmployeeName', 'employeeName');
@@ -106,10 +153,17 @@ const formatToNorthAmericanDate = (isoDateTime) => {
 if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email") {
       console.log("%cCORONER EMAIL TITLE LOGIC MATCHED", "color:#e74c3c;font-weight:bold");
 
-      const decedentName = formValues.decedentName || formValues.patientName || "UNKNOWN DECEDENT";
-      const decedentOOC = formValues.decedentOOC || "N/A";
+      let decedentName = processedFormValues.decedentName || processedFormValues.patientName || "UNKNOWN DECEDENT";
+      const decedentOOC = processedFormValues.decedentOOC || "N/A";
 
-      finalTitle = `Coroner Report - ${decedentName} | ((${decedentOOC}))`;
+      // NEW: Clean decedentName if it contains OOC info/dates
+      const cleanedDecedentNameMatch = String(decedentName).match(/^(.*?)(?:\s*\(.*|\s*\[.*)/);
+      if (cleanedDecedentNameMatch && cleanedDecedentNameMatch[1]) {
+        decedentName = cleanedDecedentNameMatch[1].trim();
+        console.log(`[Coroner Email Title] Cleaned decedentName: ${decedentName}`);
+      }
+
+      finalTitle = `Coroner Report - ${decedentName} ((${decedentOOC}))`;
 
       console.log("Coroner Email Title Inputs:", { decedentName, decedentOOC });
       console.log("%cFinal Coroner Email Title → " + finalTitle, "color:#2ecc71;font-weight:bold");
@@ -121,8 +175,8 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
       const decedentCounts = {};
       let validCount = 0;
 
-      if (Array.isArray(formValues.decedents)) {
-        formValues.decedents.forEach((d, i) => {
+      if (Array.isArray(processedFormValues.decedents)) {
+        processedFormValues.decedents.forEach((d, i) => {
           const name = (d.decedentName || '').trim();
           console.log(`Decedent[${i}]:`, name || "(empty)");
           if (name) {
@@ -136,7 +190,7 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
         .map(([n, c]) => c > 1 ? `${n} (x${c})` : n)
         .join(' | ') || 'No Decedents Listed';
 
-      const dateStr = formatToNorthAmericanDate(formValues.dateTime) || 'NO_DATE';
+      const dateStr = formatToNorthAmericanDate(processedFormValues.dateTime) || 'NO_DATE';
 
       finalTitle = `[Mass Fatality Report] ${namesList} - ${dateStr}`;
       console.log("%cFinal Mass Fatality Title → " + finalTitle, "color:#27ae60;font-weight:bold");
@@ -146,10 +200,10 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
       console.log("%cMatched: Death Record Title", "color:#2980b9;font-weight:bold");
 
       const year = new Date().getFullYear();
-      const caseNum = parseCaseNumber(formValues.deathReportPostId) || parseCaseNumber(formValues.caseNumber) || 'UNKNOWN';
-      const name = formValues.decedentName || 'UNKNOWN_NAME';
-      const ooc = formValues.decedentOOC || 'N/A';
-      const dod = formatToMMM_DD_YYYY(formValues.dateOfDeath || formValues.dateTime);
+      const caseNum = parseCaseNumber(processedFormValues.deathReportPostId) || parseCaseNumber(processedFormValues.caseNumber) || 'UNKNOWN';
+      const name = processedFormValues.decedentName || 'UNKNOWN_NAME';
+      const ooc = processedFormValues.decedentOOC || 'N/A';
+      const dod = formatToMMM_DD_YYYY(processedFormValues.dateOfDeath || processedFormValues.dateTime);
 
       finalTitle = `[CASE-#${year}-${caseNum}] ${name} ((${ooc} | ${dod}))`;
       console.log("%cFinal Death Record Title → " + finalTitle, "color:#27ae60;font-weight:bold");
@@ -167,7 +221,7 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
       selectedForm.fields?.forEach(field => {
         const placeholder = `{{${field.name}}}`;
         if (workingTitle.includes(placeholder)) {
-          let value = formValues[field.name] ?? "";
+          let value = processedFormValues[field.name] ?? "";
 
           // Handle special types
           if (field.type === "image_upload" && value) value = `[img]${value}[/img]`;
@@ -188,12 +242,12 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
       });
       // Fallback: also replace common known common ones even if not in fields list
       const fallbackTitleReplacements = {
-        '{{patientName}}': formValues.patientName || formValues.decedentName || "NO_NAME",
-        '{{PatientName}}': formValues.patientName || formValues.decedentName || "NO_NAME",
-        '{{patientID}}': formValues.patientID || "NO_ID",
-        '{{phmcEmployee}}': formValues.phmcEmployee || "",
-        '{{date}}': formatToNorthAmericanDate(formValues.dateTime || formValues.date) || "NO_DATE",
-        '{{agency}}': formValues.agency || "",
+        '{{patientName}}': processedFormValues.patientName || processedFormValues.decedentName || "NO_NAME",
+        '{{PatientName}}': processedFormValues.patientName || processedFormValues.decedentName || "NO_NAME",
+        '{{patientID}}': processedFormValues.patientID || "NO_ID",
+        '{{phmcEmployee}}': processedFormValues.phmcEmployee || "",
+        '{{date}}': formatToNorthAmericanDate(processedFormValues.dateTime || processedFormValues.date) || "NO_DATE",
+        '{{agency}}': processedFormValues.agency || "",
       };
 
       Object.entries(fallbackTitleReplacements).forEach(([ph, val]) => {
@@ -219,10 +273,10 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
       const option = text.trim();
       if (!field || !option) return match;
 
-      const value = formValues[field];
+      const value = processedFormValues[field];
       let comparisonValue = value;
 
-      // If the value is an object and has a 'value' property, use that for comparison
+      // This check is now redundant because of processedFormValues, but it's harmless to keep.
       if (typeof value === 'object' && value !== null && Object.prototype.hasOwnProperty.call(value, 'value')) {
           comparisonValue = value.value;
       }
@@ -238,7 +292,7 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
 
     bbcode = bbcode.replace(/\[cb:([^\]]+)\]/gi, (match, fieldName) => {
       const field = fieldName.trim();
-      const value = formValues[field];
+      const value = processedFormValues[field];
       const hasValue = value && (!Array.isArray(value) || value.length > 0);
       return hasValue ? "[cbc]" : "[cb]";
     });
@@ -248,7 +302,7 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
     // ──────────────────────────────────────────────────────────────
     bbcode = bbcode.replace(/\[conditional\s+field=["']?([^"'\]\s]+)["']?\](.*?)\[\/conditional\]/gis, (match, fieldName, inner) => {
       const field = fieldName.trim();
-      const currentValue = formValues[field];
+      const currentValue = processedFormValues[field];
       
       let conditionMet = false;
       if (typeof currentValue === 'object' && currentValue !== null && Object.prototype.hasOwnProperty.call(currentValue, 'confirmedAt')) {
@@ -268,7 +322,7 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
     bbcode = bbcode.replace(/\[conditional\s+field=["']?([^"'\]\s]+)["']?\s+value=["']?([^"'\]]+)["']?\](.*?)\[\/conditional\]/gis, (match, fieldName, expectedValue, inner) => {
       const field = fieldName.trim();
       const expected = expectedValue.trim();
-      const currentValue = formValues[field];
+      const currentValue = processedFormValues[field];
 
   // Handle checkbox booleans properly
   let actualValue = currentValue;
@@ -296,7 +350,7 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
       const placeholder = `{{${field.name}}}`;
       if (!bbcode.includes(placeholder)) return;
 
-      let value = formValues[field.name] ?? "";
+      let value = processedFormValues[field.name] ?? "";
 
       // Custom handling for payment confirmation objects during field replacement
       if (typeof value === 'object' && value !== null && Object.prototype.hasOwnProperty.call(value, 'confirmedAt')) {
@@ -324,7 +378,7 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
     // ──────────────────────────────────────────────────────────────
     bbcode = bbcode.replace(/{{(.+?)}}/g, (match, expr) => {
       const trimmed = expr.trim();
-      if (trimmed.includes(":") && !/[+\-*/()]/g.test(trimmed)) return trimmed;
+      if (trimmed.includes(":") && !/[+\-*/()=?<>!&|]/g.test(trimmed)) return trimmed;
 
       try {
         const fn = new Function('ctx', 'getDepartmentFullName', 'agencyDataStore', 'generateDecedentBBCode',
@@ -350,8 +404,8 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
       const employeeTypeLower = selectedForm?.accessType?.toLowerCase(); // 'coroner' or 'phmc'
 
       if (employeeTypeLower === 'coroner' || employeeTypeLower === 'phmc') {
-        const formEmployeeName = formValues[`${employeeTypeLower}Employee`];
-        const formEmployeeRank = formValues[`${employeeTypeLower}Rank`];
+        const formEmployeeName = processedFormValues[`${employeeTypeLower}Employee`];
+        const formEmployeeRank = processedFormValues[`${employeeTypeLower}Rank`];
 
         // OAuth data can come from faction or activeCharacter
         const oauthEmployeeName = gtaWorldUser.faction?.name || gtaWorldUser.activeCharacter?.characterName;
