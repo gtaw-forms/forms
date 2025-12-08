@@ -91,15 +91,23 @@ export const useGtaWorldAuth = () => {
 
         if (user?.allFactionCharacters && user.allFactionCharacters.length > 0) {
             return user.allFactionCharacters.map(fc => {
-                const namesFromCharacterName = extractNames(fc.character.characterName);
+                // Robustly handle both nested and flat structures to prevent crashes
+                const characterData = fc.character || fc;
+
+                if (!characterData || !characterData.characterId) {
+                    console.warn("Skipping invalid/malformed character data in allFactionCharacters:", fc);
+                    return null;
+                }
+
+                const namesFromCharacterName = extractNames(characterData.characterName);
                 return {
-                    id: fc.character.characterId,
-                    characterName: fc.character.characterName,
-                    firstname: fc.character.firstname || namesFromCharacterName.firstname, // Prefer explicit, then parse
-                    lastname: fc.character.lastname || namesFromCharacterName.lastname,     // Prefer explicit, then parse
-                    scriptRank: fc.character.scriptRank,
+                    id: characterData.characterId,
+                    characterName: characterData.characterName,
+                    firstname: characterData.firstname || namesFromCharacterName.firstname,
+                    lastname: characterData.lastname || namesFromCharacterName.lastname,
+                    scriptRank: characterData.scriptRank,
                 };
-            });
+            }).filter(Boolean); // Filter out any null entries that were skipped
         }
         const fallbackChars = user?.character || user?.characters || [];
         return fallbackChars.map(char => {
