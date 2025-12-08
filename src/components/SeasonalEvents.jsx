@@ -1,10 +1,11 @@
 import React from 'react';
 // New Imports for Events
-import christmas from '../assets/christmas.png';
+import christmas from '../assets/phmcchristmaslogo.png';
 import easter from '../assets/easteregg.png';
 import phmcEaster from '../assets/easter.png';
 import halloween from '../assets/halloween-rip.png';
 import Default from '../assets/Generic.png';
+import phmcLogoPng from '../assets/phmc.png';
 import HalloweenEffect from './HalloweenEffect';
 import Snowfall from 'react-snowfall';
 
@@ -22,6 +23,13 @@ const seasonalImages = {
         Easter: phmcEaster,
         Halloween: halloween,
         Default: Default, // Added Default
+    },
+    phmcLogo: {
+        Christmas: christmas,
+        AprilFools: easter,
+        Easter: phmcEaster,
+        Halloween: halloween,
+        Default: phmcLogoPng,
     },
 };
 
