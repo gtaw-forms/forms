@@ -8,12 +8,19 @@ import { useNotification } from '../../contexts/NotificationContext';
 import CctvRequestModal from './CctvRequestModal';
 import FormRequestModal from '../FormRequestModal';
 import Dropdown from '../common/Dropdown'; // New import
+import seasonalEvents from '../SeasonalEvents';
 
 const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
   const navigate = useNavigate();
   const { user, isAuthenticated, isPhmcMember, characterName, login, logout } = useGtaWorldAuth();
   const { setShowEmsBingoModal } = useModal();
   const { seasonalEffectsEnabled, setSeasonalEffectsEnabled } = useSeasonalEffects();
+
+  const { imageSource: phmcLogoSrc, className: phmcLogoClassName } = seasonalEvents({
+    imageType: 'phmcLogo',
+    season: seasonalEffectsEnabled ? undefined : 'Default'
+  });
+
   const { showNotification } = useNotification();
   const [showCctvModal, setShowCctvModal] = useState(false);
   const [showFormRequestModal, setShowFormRequestModal] = useState(false);
@@ -107,7 +114,7 @@ const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
         pointerEvents: "none",
       }}>
         {/* Left-aligned buttons */}
-        <div style={{ display: "flex", gap: "10px", pointerEvents: "auto" }}>
+        <div style={{ display: "flex", alignItems: 'center', gap: "10px", pointerEvents: "auto" }}>
           {(isPhmcMember || import.meta.env.DEV) && (
             <button
               className={formStyles.topButton}
@@ -211,6 +218,23 @@ const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
             </div>
           )}
         </div>
+      </div>
+
+      <div
+        style={{
+            position: 'fixed',
+            bottom: '10px',
+            left: '10px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            cursor: 'pointer',
+            zIndex: 1000,
+        }}
+        onClick={() => navigate('/')}
+        title="Go to PHMC Website"
+      >
+        <img src={phmcLogoSrc} alt="PHMC Logo" className={phmcLogoClassName} style={{ height: '85px' }} />
       </div>
 
       {showCctvModal && (
