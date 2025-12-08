@@ -1,10 +1,11 @@
 import React from 'react';
 
-const getQuickLinks = (form) => {
+const getQuickLinks = (form, formValues, agencyDataStore) => {
   if (!form) return [];
   
   const links = [];
   const nameLower = form.name.toLowerCase();
+  const formId = form.id; // Use form.id for more reliable identification
 
   // Coroner-related
   if (nameLower.includes('coroner report')) {
@@ -21,6 +22,32 @@ const getQuickLinks = (form) => {
   }
   if (form.category === 'Coroner') {
       links.push({ name: 'View Coroner Case Files', href: 'https://phmc.gta.world/viewforum.php?f=266' });
+  }
+
+  // NEW: Custom handling for Coroner Email form
+  if (formId === 'coroner_email') { // Assuming the ID is 'coroner-email'
+      const departmentValue = formValues?.department;
+      // departmentName is now the full name, e.g., "Los Santos Police Department"
+      const departmentName = (typeof departmentValue === 'object' && departmentValue !== null && departmentValue.value)
+                            ? departmentValue.value
+                            : departmentValue; // Fallback to raw value if not an object
+
+      // NEW: Find agency by fullName instead of key
+      let agency = null;
+      if (departmentName && agencyDataStore) {
+          agency = Object.values(agencyDataStore).find(
+              (a) => a.fullName === departmentName
+          );
+      }
+      
+      if (agency) {
+          if (agency.url) {
+              links.push({ name: `${agency.fullName || departmentName} - Dispatch/Internal`, href: agency.url });
+          }
+          if (agency.website) {
+              links.push({ name: `${agency.fullName || departmentName} Website`, href: `https://${agency.website}` });
+          }
+      }
   }
 
   // Patient/Civilian related
@@ -46,8 +73,8 @@ const getQuickLinks = (form) => {
   return [...new Map(links.map(item => [item.name, item])).values()];
 };
 
-const FormQuickLinks = ({ form }) => {
-  const links = getQuickLinks(form);
+const FormQuickLinks = ({ form, formValues, agencyDataStore }) => {
+  const links = getQuickLinks(form, formValues, agencyDataStore);
 
   if (links.length === 0) {
     return null;

@@ -6,15 +6,17 @@ import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { useSeasonalEffects } from '../../contexts/SeasonalEffectsContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import CctvRequestModal from './CctvRequestModal';
+import FormRequestModal from '../FormRequestModal';
 import Dropdown from '../common/Dropdown'; // New import
 
 const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
   const navigate = useNavigate();
-  const { user, isAuthenticated, isPhmcMember, characterName, login } = useGtaWorldAuth();
+  const { user, isAuthenticated, isPhmcMember, characterName, login, logout } = useGtaWorldAuth();
   const { setShowEmsBingoModal } = useModal();
   const { seasonalEffectsEnabled, setSeasonalEffectsEnabled } = useSeasonalEffects();
   const { showNotification } = useNotification();
   const [showCctvModal, setShowCctvModal] = useState(false);
+  const [showFormRequestModal, setShowFormRequestModal] = useState(false);
   const [userPrefs, setUserPrefs] = useState(null);
   const [showCctvPopup, setShowCctvPopup] = useState(false);
 
@@ -133,9 +135,9 @@ const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
           </button>
           <button
             className={formStyles.topButton}
-            onClick={handleGtawLogin}
+            onClick={isAuthenticated ? logout : handleGtawLogin}
           >
-            {isAuthenticated ? `Signed in as ${characterName || user?.username}` : "Sign in with GTA:W"}
+            {isAuthenticated ? `Sign Out (${characterName || user?.username})` : "Sign in with GTA:W"}
           </button>
           
           <Dropdown trigger={dropdownTrigger} onTriggerClick={handleDropdownClick}>
@@ -156,6 +158,13 @@ const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
             >
                 <i className="fas fa-trophy"></i>
                 Bingo Night!
+            </button>
+            <button
+              className="dropdown-item"
+              onClick={() => setShowFormRequestModal(true)}
+              title="Request a New Form"
+            >
+                <i className="fas fa-file-alt"></i> Request a Form
             </button>
             <button
               className="dropdown-item"
@@ -209,6 +218,13 @@ const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
           show={showCctvModal}
           onHide={() => setShowCctvModal(false)}
           showNotification={showNotification}
+        />
+      )}
+
+      {showFormRequestModal && (
+        <FormRequestModal
+            show={showFormRequestModal}
+            onClose={() => setShowFormRequestModal(false)}
         />
       )}
     </React.Fragment>

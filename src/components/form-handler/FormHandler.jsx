@@ -25,6 +25,8 @@ import '../../App.css';
 import '../../buttons.css';
 import PermanentNotification from '../PermanentNotification';
 import BugReportModal from '../BugReportModal';
+import { validateForm } from '../../utils/formValidation';
+import { sendDiscordWebhook } from '../../utils/webhookUtils';
 
 
 
@@ -123,10 +125,23 @@ const FormHandler = () => {
   }, [selectedForm]);
 
   // Memos
-  const finalSelectOptions = useMemo(() => ({
-    ...(dataContextSelectOptions || {}), 
-    ...(authSelectOptions || {}) 
-  }), [dataContextSelectOptions, authSelectOptions]);
+  const finalSelectOptions = useMemo(() => {
+    const derivedAgencyOptions = {};
+    if (agencyDataStore) {
+      // Assuming agencyDataStore is an object where keys are IDs (e.g., "lspd", "DAO")
+      // and values are objects containing properties like 'fullName'
+      derivedAgencyOptions.agencies = Object.entries(agencyDataStore).map(([key, agency]) => ({
+        label: agency.fullName || key, // Use fullName for label, fallback to key
+        value: key, // The key (e.g., "lspd", "DAO")
+      }));
+    }
+
+    return {
+      ...(dataContextSelectOptions || {}),
+      ...(authSelectOptions || {}),
+      ...derivedAgencyOptions, // Add the derived agencies list here
+    };
+  }, [dataContextSelectOptions, authSelectOptions, agencyDataStore]);
 
   const coronerListData = useMemo(() => {
     if (isDevelopment && selectedForm?.accessType === "Coroner") {
@@ -613,6 +628,52 @@ const FormHandler = () => {
   
   const { effect } = seasonalEvents({});
 
+  useEffect(() => {
+    if (selectedForm && finalSelectOptions && isDevelopment) { // Only run in dev for now to be safe
+      const validationErrors = validateForm(selectedForm, finalSelectOptions);
+
+      if (validationErrors.length > 0) {
+        const webhookUrl = import.meta.env.VITE_DEV_WEBHOOK;
+        const formName = selectedForm.name;
+        const errorList = validationErrors.map(e => `- ${e}`).join('\n');
+
+        const payload = {
+          embeds: [
+            {
+              title: "Form Validation Error Detected",
+              color: 15158332, // Red
+              fields: [
+                {
+                  name: "Form Name",
+                  value: formName,
+                  inline: true,
+                },
+                {
+                    name: "Timestamp (UTC)",
+                    value: new Date().toISOString(),
+                    inline: true,
+                },
+                {
+                  name: "Errors",
+                  value: `\`\`\`\n${errorList}\n\`\`\``,
+                },
+              ],
+              footer: {
+                text: "This is an automated notification from the PHMC Forms application.",
+              },
+            },
+          ],
+        };
+
+        sendDiscordWebhook(webhookUrl, payload);
+        
+        // Also notify the dev in the console
+        console.warn(`[Form Validation Error] Form "${formName}" has configuration issues:`, validationErrors);
+        showNotification(`The form "${formName}" has validation errors. Maintainers have been notified.`, 'warning', 10000);
+      }
+    }
+  }, [selectedForm, finalSelectOptions, isDevelopment, showNotification]);
+
   return (
     <div className={styles.container}>
       {seasonalEffectsEnabled && effect}
@@ -859,7 +920,7 @@ const FormHandler = () => {
       </div>
     )}
 
-    <FormQuickLinks form={selectedForm} />
+    <FormQuickLinks form={selectedForm} formValues={formValues} agencyDataStore={agencyDataStore} />
 
     {showBBCode && (
       <pre style={{

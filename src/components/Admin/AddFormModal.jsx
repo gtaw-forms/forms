@@ -17,8 +17,8 @@ const inputStyle = {
   fontSize: "1rem"
 };
 
-const AddFormModal = ({ show, onClose, editingForm = null }) => {
-  const { user } = useGtaWorldAuth(); // Get authenticated user for logging
+const AddFormModal = ({ show, onClose, editingForm = null, user }) => {
+  const { user: gtawUser } = useGtaWorldAuth(); // Get authenticated user for logging
 
   const [formId, setFormId] = useState("");
   const [formName, setFormName] = useState("");
@@ -632,9 +632,13 @@ const handleBulkAddFields = (fieldsToAdd) => {
         .then(() => {
           alert("Form saved!");
           const actionType = editingForm ? 'modify' : 'add';
+          
+          // Use the passed 'user' prop (unified user) first, then fallback to gtawUser from the hook
+          const userForLogging = user || gtawUser;
+
           const userDetails = {
-              username: user?.username || 'Unknown',
-              id: user?.id || 'N/A'
+              username: userForLogging?.displayName || userForLogging?.username || 'Unknown',
+              id: userForLogging?.uid || userForLogging?.id || 'N/A'
           };
           logAdminActionToDiscord(actionType, formData, userDetails);
           onClose();
@@ -723,6 +727,12 @@ const handleBulkAddFields = (fieldsToAdd) => {
     newTemplate = newTemplate.replace(
       /\[cb\{\{([a-zA-Z0-9_]+)\s*===\s*['"]([^'"]+)['"]\s*\?\s*['"]c['"]\s*:\s*['"]['"]\}\}\]/g,
       `[cb:$1]`
+    );
+
+    // NEW: Convert single-select object-based ternaries to .includes() check
+    newTemplate = newTemplate.replace(
+      /\{\{formData\.([a-zA-Z0-9_]+)\s*===\s*['"]([^'"]+)['"]\s*\?\s*'X'\s*:\s*''\}\}/g,
+      "{{formData.$1?.includes('$2') ? 'X' : ''}}"
     );
 
     // ──────────────────────────────────────────────────────────────

@@ -171,7 +171,7 @@ export const useFormSaver = () => {
         if (selectedForm.firebaseKey === 'coroner-report') {
             if (formValues.decedentName && formValues.decedentOOC && formValues.dateTime) {
                 const formattedDate = formatToNorthAmericanDate(formValues.dateTime);
-                finalTitle = `[DEATH-REPORT] ${formValues.decedentName} (${formValues.decedentOOC}) ${formattedDate}`;
+                finalTitle = `[DEATH-REPORT] ${formValues.decedentName} ((${formValues.decedentOOC})) ${formattedDate}`;
             } else {
                 console.warn("Could not generate standardized Coroner Report title due to missing decedentName, decedentOOC or dateTime. Using default title.");
             }
