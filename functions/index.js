@@ -623,7 +623,9 @@ const CACHE_EXPIRY = 5 * 60 * 1000; // 5 minutes
     }
  });
  */
-export const exchangeAuthCodeForToken = onCall({
+
+// [NEW UNIFIED FUNCTION]
+export const processGtaWorldAuth = onCall({
     secrets: ["GTAWORLD_CLIENT_ID", "GTAWORLD_CLIENT_SECRET"],
     cors: [
         'https://ancad-studios.github.io',
@@ -633,91 +635,36 @@ export const exchangeAuthCodeForToken = onCall({
         'https://global.gta.world'
     ]
 }, async (request) => {
-    const data = request.data;
+    const { code, redirectUri, clientId: providedClientId } = request.data || {};
     const startTime = Date.now();
-    
-    console.log('[OAuth] Received token exchange request');
-    console.log('[OAuth] Request auth:', request.auth ? 'authenticated' : 'unauthenticated');
-    console.log('[OAuth] Has code:', !!data?.code);
-    console.log('[OAuth] Has redirectUri:', !!data?.redirectUri);
-    
-    const { code, redirectUri, clientId: providedClientId } = data || {};
+    const perf = { start: startTime, last: startTime };
+
+    const logPerf = (name) => {
+        const now = Date.now();
+        const duration = now - perf.last;
+        perf[name] = duration;
+        perf.last = now;
+        console.log(`[AuthPerf] ${name}: ${duration}ms`);
+    };
+
+    console.log(`[UnifiedAuth] Received auth request. Session ID: ${startTime}`);
+    logPerf('init');
+
+    // 1. --- Input Validation ---
+    if (!code || !redirectUri) {
+        throw new functions.https.HttpsError('invalid-argument', 'Authorization code and redirect URI are required.');
+    }
     const clientId = process.env.GTAWORLD_CLIENT_ID;
     const clientSecret = process.env.GTAWORLD_CLIENT_SECRET;
-
-    // Enhanced debugging for client ID comparison
-    console.log('[OAuth] Client ID comparison debug:', {
-        hasProvidedClientId: !!providedClientId,
-        hasServerClientId: !!clientId,
-        providedLength: providedClientId?.length || 0,
-        serverLength: clientId?.length || 0,
-        providedPrefix: providedClientId ? `${providedClientId.substring(0, 8)}...` : 'NOT_PROVIDED',
-        serverPrefix: clientId ? `${clientId.substring(0, 8)}...` : 'NOT_SET',
-        exactMatch: providedClientId === clientId,
-        trimmedMatch: providedClientId?.trim() === clientId?.trim()
-    });
-
-    // Validate that the provided clientId matches the configured one (security check)
-    if (providedClientId && providedClientId !== clientId) {
-        console.error('[OAuth] Client ID mismatch - detailed comparison:', {
-            provided: providedClientId,
-            expected: clientId,
-            providedType: typeof providedClientId,
-            expectedType: typeof clientId
-        });
-        throw new functions.https.HttpsError('invalid-argument', 'Invalid client ID provided');
-    }
-
-    // Validate required arguments
-    if (!code) {
-        console.error('[OAuth] Missing authorization code parameter');
-        throw new functions.https.HttpsError('invalid-argument', 'Authorization code is required');
-    }
-
-    if (!redirectUri) {
-        console.error('[OAuth] Missing redirectUri parameter');
-        throw new functions.https.HttpsError('invalid-argument', 'Redirect URI is required and must match the registered URI');
-    }
-
-    // Validate redirect URI format and allowed domains
-    const allowedRedirectUris = [
-        'https://ancad-studios.github.io/phmc-forms/#/auth/gta/callback',
-        'https://gtaw-forms.github.io/forms/#/auth/gta/callback',
-        'http://localhost:3000/#/auth/gta/callback',
-        'https://phmc-tools.gta.world/#/auth/gta/callback'
-    ];
-
-    if (!allowedRedirectUris.includes(redirectUri)) {
-        console.error('[OAuth] Invalid redirect URI:', redirectUri);
-        throw new functions.https.HttpsError('invalid-argument', 'Redirect URI is not allowed');
-    }
-
     if (!clientId || !clientSecret) {
-        console.error('[OAuth] Missing OAuth client credentials in environment');
-        throw new functions.https.HttpsError('internal', 'OAuth client credentials not configured properly');
+        console.error('[UnifiedAuth] Missing OAuth client credentials in environment');
+        throw new functions.https.HttpsError('internal', 'OAuth client credentials not configured properly on the server.');
     }
-
-    // Check if this code was already processed recently (prevent duplicate requests)
-    const cacheKey = `${code}-${redirectUri}`;
-    const cached = oauthCodeCache.get(cacheKey);
-    if (cached && (Date.now() - cached.timestamp) < CACHE_EXPIRY) {
-        console.log('[OAuth] Using cached token exchange result');
-        return cached.result;
-    }
+    logPerf('validation');
 
     try {
-        console.log('[OAuth] Starting token exchange with GTA World');
-        console.log('[OAuth] Token exchange parameters:', {
-            hasCode: !!code,
-            codeLength: code?.length,
-            codePrefix: code ? `${code.substring(0, 20)}...` : 'MISSING',
-            redirectUri: redirectUri,
-            redirectUriEncoded: encodeURIComponent(redirectUri),
-            clientId: clientId ? `${clientId.substring(0, 8)}...` : 'MISSING',
-            tokenUrl: 'https://ucp.gta.world/oauth/token'
-        });
-        
-        // Exchange auth code for access token
+        // 2. --- Token Exchange ---
+        console.log('[UnifiedAuth] Starting token exchange with GTA World.');
         const tokenRequestBody = new URLSearchParams({
             grant_type: 'authorization_code',
             client_id: clientId,
@@ -726,206 +673,128 @@ export const exchangeAuthCodeForToken = onCall({
             code: code,
         });
 
-        console.log('[OAuth] Token request body parameters:', {
-            grant_type: 'authorization_code',
-            client_id: clientId ? `${clientId.substring(0, 8)}...` : 'MISSING',
-            client_secret: clientSecret ? 'SET' : 'MISSING',
-            redirect_uri: redirectUri,
-            code: code ? `${code.substring(0, 30)}...` : 'MISSING',
-            bodyString: tokenRequestBody.toString().substring(0, 200) + '...'
-        });
-
-        // Add timeout to prevent hanging requests
         const tokenController = new AbortController();
-        const tokenTimeout = setTimeout(() => tokenController.abort(), 25000); // 25 second timeout
-        
+        const tokenTimeout = setTimeout(() => tokenController.abort(), 25000); // 25s timeout
+
         const tokenResponse = await fetch('https://ucp.gta.world/oauth/token', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)'
-            },
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)' },
             body: tokenRequestBody,
             signal: tokenController.signal
         });
-        
         clearTimeout(tokenTimeout);
+        logPerf('token_exchange_api');
 
-        console.log('[OAuth] Token response status:', tokenResponse.status);
-        console.log('[OAuth] Token response headers:', Object.fromEntries(tokenResponse.headers.entries()));
-
-        // Get response text first to check if it's HTML or JSON
         const tokenResponseText = await tokenResponse.text();
-        console.log('[OAuth] Raw token response:', {
-            status: tokenResponse.status,
-            statusText: tokenResponse.statusText,
-            contentType: tokenResponse.headers.get('content-type'),
-            textLength: tokenResponseText.length,
-            startsWithHTML: tokenResponseText.trim().startsWith('<'),
-            firstChars: tokenResponseText.substring(0, 200)
-        });
-
-        let tokenData;
-        try {
-            tokenData = JSON.parse(tokenResponseText);
-        } catch (parseError) {
-            console.error('[OAuth] Failed to parse token response as JSON:', {
-                error: parseError.message,
-                responseText: tokenResponseText.substring(0, 1000),
-                isHTML: tokenResponseText.includes('<html>') || tokenResponseText.includes('<!DOCTYPE')
-            });
-            throw new functions.https.HttpsError('internal', 'GTA World API returned invalid response (HTML instead of JSON)');
-        }
+        const tokenData = JSON.parse(tokenResponseText);
 
         if (!tokenResponse.ok) {
-            console.error('[OAuth] Token exchange failed:', tokenData);
-            
-            // Enhanced error handling for specific OAuth errors
-            let errorMessage = 'Failed to exchange authorization code for access token';
-            let userFriendlyMessage = errorMessage;
-            
-            if (tokenData.error) {
-                switch (tokenData.error) {
-                    case 'invalid_request':
-                        if (tokenData.hint && tokenData.hint.includes('revoked')) {
-                            userFriendlyMessage = 'This login attempt has expired or was already used. Please try logging in again.';
-                            errorMessage = 'Authorization code has been revoked (likely due to duplicate request)';
-                        } else if (tokenData.hint && tokenData.hint.includes('Authorization code has expired')) {
-                            userFriendlyMessage = 'Your login attempt has expired. Please try logging in again.';
-                            errorMessage = 'Authorization code has expired';
-                        } else {
-                            userFriendlyMessage = 'Invalid login request. Please try again.';
-                        }
-                        break;
-                    case 'invalid_grant':
-                        userFriendlyMessage = 'The login session has expired. Please try logging in again.';
-                        break;
-                    case 'invalid_client':
-                        userFriendlyMessage = 'Authentication service configuration error. Please contact support.';
-                        break;
-                    default:
-                        userFriendlyMessage = `Authentication failed: ${tokenData.error_description || tokenData.error}`;
-                        break;
-                }
-            }
-            
-            throw new functions.https.HttpsError('invalid-argument', userFriendlyMessage, {
-                ...tokenData,
-                originalError: errorMessage
-            });
+            console.error('[UnifiedAuth] Token exchange failed:', tokenData);
+            const userMessage = tokenData.hint?.includes('expired')
+                ? 'Your login attempt has expired. Please try logging in again.'
+                : 'Failed to exchange authorization code for an access token.';
+            throw new functions.https.HttpsError('invalid-argument', userMessage, tokenData);
         }
-
-        // Validate token response structure
         if (!tokenData.access_token) {
-            console.error('[OAuth] Invalid token response - missing access_token');
-            throw new functions.https.HttpsError('internal', 'Invalid response from GTA World OAuth server');
+            throw new functions.https.HttpsError('internal', 'Invalid response from GTA World OAuth server (missing access_token).');
         }
+        logPerf('token_parse');
 
-        console.log('[OAuth] Token exchange successful, fetching user profile');
-
-        // Fetch user profile with enhanced error handling
-        console.log('[OAuth] User profile request details:', {
-            url: 'https://ucp.gta.world/api/user',
-            hasAccessToken: !!tokenData.access_token,
-            tokenType: tokenData.token_type || 'Bearer',
-            tokenPrefix: tokenData.access_token ? `${tokenData.access_token.substring(0, 20)}...` : 'MISSING'
-        });
-
-        // Add timeout to user profile request
+        // 3. --- User Profile Fetch ---
+        console.log('[UnifiedAuth] Token exchange successful, fetching user profile.');
         const userController = new AbortController();
-        const userTimeout = setTimeout(() => userController.abort(), 30000); // 30 second timeout
-        
+        const userTimeout = setTimeout(() => userController.abort(), 30000); // 30s timeout
+
         const userResponse = await fetch('https://ucp.gta.world/api/user', {
-            headers: {
-                'Authorization': `Bearer ${tokenData.access_token}`,
-                'Accept': 'application/json',
-                'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)'
-            },
+            headers: { 'Authorization': `Bearer ${tokenData.access_token}`, 'Accept': 'application/json', 'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)' },
             signal: userController.signal
         });
-        
         clearTimeout(userTimeout);
+        logPerf('user_profile_api');
 
-        console.log('[OAuth] User profile response details:', {
-            status: userResponse.status,
-            statusText: userResponse.statusText,
-            headers: Object.fromEntries(userResponse.headers.entries()),
-            contentType: userResponse.headers.get('content-type'),
-            ok: userResponse.ok
-        });
-
-        // Get response text first to debug what's being returned
-        const responseText = await userResponse.text();
-        
-        // Parse JSON to show structured data instead of truncated text
-        let parsedData;
-        let isValidJSON = false;
-        try {
-            parsedData = JSON.parse(responseText);
-            isValidJSON = true;
-        } catch {
-            parsedData = null;
-            isValidJSON = false;
-        }
-        
-        console.log('[OAuth] Raw user profile response:', {
-            textLength: responseText.length,
-            startsWithHTML: responseText.trim().startsWith('<'),
-            isJSON: isValidJSON,
-            characterCount: isValidJSON && parsedData?.user?.character ? parsedData.user.character.length : 0,
-            userInfo: isValidJSON && parsedData?.user ? {
-                id: parsedData.user.id,
-                username: parsedData.user.username,
-                hasCharacters: !!parsedData.user.character
-            } : null
-        });
-        
-        // Log character data separately (only in debug mode or if there are issues)
-        if (isValidJSON && parsedData?.user?.character) {
-            // Reduce verbose logging - only log character count and basic info
-            console.log('[OAuth] Character data summary:', {
-                characterCount: parsedData.user.character.length,
-                characterIds: parsedData.user.character.map(char => char.id),
-                characterNames: parsedData.user.character.map(char => 
-                    char.name || `${char.firstname || ''} ${char.lastname || ''}`.trim()
-                )
-            });
-        } else if (!isValidJSON) {
-            console.log('[OAuth] Raw response text (not JSON):', responseText.substring(0, 200));
-        }
-
+        const userResponseText = await userResponse.text();
         let userData;
         try {
-            userData = JSON.parse(responseText);
-        } catch (parseError) {
-            console.error('[OAuth] Failed to parse user profile response as JSON:', {
-                parseError: parseError.message,
-                responsePreview: responseText.substring(0, 500)
-            });
-            throw new functions.https.HttpsError('invalid-argument', 'Failed to fetch user profile from GTA World API - invalid response format', {
-                status: userResponse.status,
-                contentType: userResponse.headers.get('content-type'),
-                responsePreview: responseText.substring(0, 200)
-            });
+            userData = JSON.parse(userResponseText);
+        } catch (e) {
+            console.error('[UnifiedAuth] Failed to parse user profile JSON:', userResponseText);
+            throw new functions.https.HttpsError('internal', 'Failed to parse user profile from GTA World API.');
         }
 
-        console.log('[OAuth] User profile response status:', userResponse.status);
 
         if (!userResponse.ok) {
-            console.error('[OAuth] Failed to fetch user profile:', userData);
-            throw new functions.https.HttpsError('invalid-argument', 'Failed to fetch user profile from GTA World API', userData);
+            console.error('[UnifiedAuth] Failed to fetch user profile:', userData);
+            throw new functions.https.HttpsError('internal', 'Failed to fetch user profile from GTA World API.', userData);
+        }
+        if (!userData.user && !userData.id) {
+             throw new functions.https.HttpsError('internal', 'Invalid user data received from GTA World API.');
+        }
+        logPerf('user_profile_parse');
+
+        // 4. --- Faction Membership Check ---
+        console.log('[UnifiedAuth] User profile fetched, checking faction membership.');
+        const finalUser = userData.user || userData;
+        const characterArray = finalUser.character || finalUser.characters || [];
+        const characterIds = characterArray.map(c => c.id).filter(id => id);
+
+        let factionResult = {
+            isMember: false,
+            character: null,
+            permissions: [],
+            accessLevel: 'none',
+            allFactionCharacters: []
+        };
+
+        if (characterIds.length > 0) {
+            const factionId = 364; // PHMC Faction ID
+            const membersRef = db.ref(`factions/${factionId}/members`);
+            const membersSnapshot = await membersRef.once('value');
+            const allMembers = membersSnapshot.val() || {};
+            logPerf('faction_db_read');
+
+            const factionMembers = [];
+            for (const charId of characterIds) {
+                if (allMembers[charId]) {
+                    const memberData = allMembers[charId];
+                    factionMembers.push({
+                        character: { // Nest the character data
+                            characterId: memberData.characterId,
+                            characterName: memberData.characterName,
+                            rank: memberData.rank,
+                            scriptRank: memberData.scriptRank
+                        },
+                        permissions: getPermissionsForRank(memberData.scriptRank),
+                        accessLevel: getAccessLevel(memberData.scriptRank)
+                    });
+                }
+            }
+
+            if (factionMembers.length > 0) {
+                // Find highest ranking member
+                const highestRankMember = factionMembers.reduce((max, current) =>
+                    (current.character.scriptRank > max.character.scriptRank) ? current : max, factionMembers[0]
+                );
+
+                factionResult = {
+                    isMember: true,
+                    character: highestRankMember.character, // The full character object for the highest rank
+                    permissions: highestRankMember.permissions,
+                    accessLevel: highestRankMember.accessLevel,
+                    allFactionCharacters: factionMembers // Array of all characters found in the faction
+                };
+            }
+             logPerf('faction_processing');
+        } else {
+            console.log('[UnifiedAuth] No characters on user account to check for faction membership.');
+             logPerf('faction_processing_skipped');
         }
 
-        // Validate user data structure
-        if (!userData.user && !userData.id && !userData.username) {
-            console.error('[OAuth] Invalid user response structure:', userData);
-            throw new functions.https.HttpsError('internal', 'Invalid user data received from GTA World API');
-        }
 
-        console.log('[OAuth] Authentication successful for user:', userData.user?.username || userData.username);
-        
-        // Prepare successful response
-        const successResult = { 
+        // 5. --- Final Response ---
+        const processingTime = Date.now() - startTime;
+        console.log(`[UnifiedAuth] Auth successful for ${finalUser.username}. Total time: ${processingTime}ms`);
+
+        return {
             success: true,
             token: {
                 access_token: tokenData.access_token,
@@ -934,55 +803,32 @@ export const exchangeAuthCodeForToken = onCall({
                 refresh_token: tokenData.refresh_token,
                 scope: tokenData.scope
             },
-            user: userData.user || userData, // Handle both response formats
+            user: {
+                ...finalUser,
+                // Enhance user object with faction data directly
+                isFactionMember: factionResult.isMember,
+                faction: factionResult.character,
+                permissions: factionResult.permissions,
+                accessLevel: factionResult.accessLevel,
+                allFactionCharacters: factionResult.allFactionCharacters,
+            },
             timestamp: new Date().toISOString(),
-            processingTime: Date.now() - startTime
+            processingTime,
+            perf
         };
 
-        // Cache the result to prevent duplicate processing
-        oauthCodeCache.set(cacheKey, {
-            result: successResult,
-            timestamp: Date.now()
-        });
-
-        // Clean up old cache entries (basic cleanup)
-        if (oauthCodeCache.size > 100) {
-            const entries = Array.from(oauthCodeCache.entries());
-            const now = Date.now();
-            for (const [key, value] of entries) {
-                if (now - value.timestamp > CACHE_EXPIRY) {
-                    oauthCodeCache.delete(key);
-                }
-            }
-        }
-
-        console.log(`[OAuth] Token exchange completed in ${Date.now() - startTime}ms`);
-        return successResult;
-
     } catch (error) {
-        console.error('[OAuth] Unexpected error during token exchange:', error);
-        console.error('[OAuth] Error stack:', error.stack);
-        
-        // Determine error type for better client-side handling
-        let errorCode = 'internal';
-        let errorMessage = 'An internal error occurred during authentication';
-        
-        if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
-            errorCode = 'unavailable';
-            errorMessage = 'Unable to connect to GTA World OAuth server';
-        } else if (error.name === 'AbortError') {
-            errorCode = 'deadline-exceeded';
-            errorMessage = 'Request to GTA World OAuth server timed out after 15 seconds. Please try again.';
-        } else if (error.message && error.message.includes('fetch')) {
-            errorCode = 'unavailable';
-            errorMessage = 'Network error connecting to GTA World servers';
+        const processingTime = Date.now() - startTime;
+        console.error(`[UnifiedAuth] Error after ${processingTime}ms:`, error);
+        if (error instanceof functions.https.HttpsError) {
+            throw error;
+        } else {
+            throw new functions.https.HttpsError('internal', 'An unexpected error occurred during authentication.', { originalError: error.message });
         }
-        
-        throw new functions.https.HttpsError(errorCode, errorMessage, 
-            process.env.NODE_ENV === 'development' ? error.message : undefined
-        );
     }
 });
+
+
 
 /**
  * Helper function to get access token for Firebase Secrets setup
@@ -1863,333 +1709,9 @@ export const appendLegacyFlagToReports = onCall({
     }
 });
 
-/**
- * BATCH CHECK: Check faction membership for multiple characters at once
- * This optimizes the OAuth flow by reducing 3+ individual calls to 1 batch call
- */
-export const batchCheckFactionMembership = onCall({
-    secrets: ["GTAWORLD_PERSISTENT_TOKEN"],
-    cors: [
-        'https://gtaw-forms.github.io',
-        'https://phmc-tools.gta.world',
-        'http://localhost:3000'
-    ]
-}, async (request) => {
-    console.log('[Batch Faction Check] Starting batch faction membership check');
-    
-    const { characterIds, factionId = 364, accessToken, skipTokenValidation = false, useManagedToken = false } = request.data;
-    
-    if (!characterIds || !Array.isArray(characterIds) || characterIds.length === 0) {
-        throw new functions.https.HttpsError('invalid-argument', 'Character IDs array is required');
-    }
-    
-    if (characterIds.length > 10) {
-        throw new functions.https.HttpsError('invalid-argument', 'Maximum 10 characters can be checked at once');
-    }
-    
-    console.log(`[Batch Faction Check] Checking ${characterIds.length} characters:`, characterIds);
-    
-    // Use managed persistent token if requested
-    let tokenToUse = accessToken;
-    if (useManagedToken) {
-        const persistentToken = process.env.GTAWORLD_PERSISTENT_TOKEN;
-        if (persistentToken) {
-            console.log('[Batch Faction Check] Using managed persistent token');
-            tokenToUse = persistentToken;
-        } else {
-            console.warn('[Batch Faction Check] Managed token requested but GTAWORLD_PERSISTENT_TOKEN not configured');
-            return {
-                success: false,
-                error: 'Managed token not configured',
-                message: 'Please set GTAWORLD_PERSISTENT_TOKEN secret first. Call getTokenForSecrets to get your token.',
-                setupRequired: true
-            };
-        }
-    }
-    
-    // Optional: Validate the access token (same as individual check)
-    if (accessToken && !skipTokenValidation) {
-        try {
-            console.log('[Batch Faction Check] Validating access token');
-            const tokenValidation = await fetch('https://global.gta.world/api/user', {
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Accept': 'application/json',
-                    'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)'
-                }
-            });
-            
-            if (!tokenValidation.ok) {
-                console.log('[Batch Faction Check] Token validation failed:', tokenValidation.status);
-                throw new functions.https.HttpsError('unauthenticated', 'Invalid or expired access token');
-            }
-            
-            console.log('[Batch Faction Check] Token validated successfully');
-        } catch (tokenError) {
-            console.error('[Batch Faction Check] Token validation error:', tokenError);
-            if (tokenError.code) {
-                throw tokenError;
-            }
-            throw new functions.https.HttpsError('unauthenticated', 'Failed to validate access token');
-        }
-    }
-    
-    try {
-        // Get faction metadata once for all characters
-        const metadataRef = db.ref(`factions/${factionId}/metadata`);
-        const metadataSnapshot = await metadataRef.once('value');
-        const factionMetadata = metadataSnapshot.val() || {};
-        
-        // Batch lookup all characters at once using a single database query
-        const factionMembersRef = db.ref(`factions/${factionId}/members`);
-        const membersSnapshot = await factionMembersRef.once('value');
-        const allMembers = membersSnapshot.val() || {};
-        
-        console.log(`[Batch Faction Check] Retrieved faction data, checking against ${Object.keys(allMembers).length} total members`);
-        
-        // Process each character
-        const results = [];
-        let highestRankMember = null;
-        let highestScriptRank = -1;
-        
-        for (const characterId of characterIds) {
-            const memberData = allMembers[characterId];
-            
-            if (!memberData) {
-                console.log(`[Batch Faction Check] Character ${characterId} not found in faction`);
-                results.push({
-                    characterId: parseInt(characterId),
-                    isMember: false,
-                    character: null,
-                    permissions: [],
-                    accessLevel: 'none',
-                    message: 'Character not found in faction database'
-                });
-                continue;
-            }
-            
-            console.log(`[Batch Faction Check] Found faction member ${characterId}:`, {
-                characterName: memberData.characterName,
-                rank: memberData.rank,
-                scriptRank: memberData.scriptRank
-            });
-            
-            // Determine permissions based on script rank
-            const permissions = getPermissionsForRank(memberData.scriptRank);
-            const accessLevel = getAccessLevel(memberData.scriptRank);
-            
-            const memberResult = {
-                characterId: memberData.characterId,
-                isMember: true,
-                character: {
-                    characterId: memberData.characterId,
-                    characterName: memberData.characterName,
-                    rank: memberData.rank,
-                    scriptRank: memberData.scriptRank,
-                    factionId: memberData.factionId,
-                    lastOnline: memberData.lastOnline,
-                    activity: memberData.activity,
-                    dataVersion: memberData.dataVersion
-                },
-                permissions,
-                accessLevel,
-                message: `Access granted - ${memberData.rank} (Rank ${memberData.scriptRank})`
-            };
-            
-            results.push(memberResult);
-            
-            // Track highest ranking character
-            if (memberData.scriptRank > highestScriptRank) {
-                highestScriptRank = memberData.scriptRank;
-                highestRankMember = memberResult;
-            }
-        }
-        
-        // Summary statistics
-        const membersFound = results.filter(r => r.isMember).length;
-        const membersNotFound = results.filter(r => !r.isMember).length;
-        
-        console.log(`[Batch Faction Check] Batch check complete:`, {
-            totalCharacters: characterIds.length,
-            membersFound,
-            membersNotFound,
-            highestRank: highestRankMember ? {
-                name: highestRankMember.character.characterName,
-                scriptRank: highestRankMember.character.scriptRank,
-                rank: highestRankMember.character.rank
-            } : null
-        });
-        
-        return {
-            success: true,
-            results,
-            summary: {
-                totalCharacters: characterIds.length,
-                membersFound,
-                membersNotFound,
-            highestRankingMember: highestRankMember,
-            factionInfo: {
-                factionId,
-                lastUpdated: factionMetadata.lastUpdated,
-                memberCount: factionMetadata.statistics?.validRecords || 0
-            }
-        },
-            timestamp: new Date().toISOString()
-        };
-        
-    } catch (error) {
-        console.error('[Batch Faction Check] Error in batch faction check:', error);
-        
-        throw new functions.https.HttpsError('internal', 'Failed to perform batch faction membership check', {
-            originalError: error.message
-        });
-    }
-});
 
-/**
- * Check faction membership and permissions for authenticated user
- */
-/**
- * Enhanced faction membership check with managed token support
- */
-export const checkFactionMembership = onCall({
-    secrets: ["GTAWORLD_PERSISTENT_TOKEN"],
-    cors: [
-        'https://gtaw-forms.github.io',
-        'https://phmc-tools.gta.world',
-        'http://localhost:3000'
-    ]
-}, async (request) => {
-    console.log('[Faction Check] Starting faction membership check');
-    
-    const { characterId, factionId = 364, accessToken, skipTokenValidation = false, useManagedToken = false } = request.data; // Default to PHMC faction
-    
-    if (!characterId) {
-        throw new functions.https.HttpsError('invalid-argument', 'Character ID is required');
-    }
-    
-    // Use managed persistent token if requested
-    let tokenToUse = accessToken;
-    if (useManagedToken) {
-        const persistentToken = process.env.GTAWORLD_PERSISTENT_TOKEN;
-        if (persistentToken) {
-            console.log('[Faction Check] Using managed persistent token');
-            tokenToUse = persistentToken;
-        } else {
-            console.warn('[Faction Check] Managed token requested but GTAWORLD_PERSISTENT_TOKEN not configured');
-            return {
-                isMember: false,
-                error: 'Managed token not configured',
-                message: 'Please set GTAWORLD_PERSISTENT_TOKEN secret first. Call getTokenForSecrets to get your token.',
-                setupRequired: true
-            };
-        }
-    }
-    
-    // Note: Secrets configuration removed for initial deployment
-    // After setting up GTAWORLD_PERSISTENT_TOKEN, you can add it back to the function config
-    
-    // Optional: Validate the access token to ensure user is authenticated
-    if (accessToken && !skipTokenValidation) {
-        try {
-            console.log('[Faction Check] Validating access token');
-            const tokenValidation = await fetch('https://global.gta.world/api/user', {
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Accept': 'application/json',
-                    'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)'
-                }
-            });
-            
-            if (!tokenValidation.ok) {
-                console.log('[Faction Check] Token validation failed:', tokenValidation.status);
-                throw new functions.https.HttpsError('unauthenticated', 'Invalid or expired access token');
-            }
-            
-            console.log('[Faction Check] Token validated successfully');
-        } catch (tokenError) {
-            console.error('[Faction Check] Token validation error:', tokenError);
-            if (tokenError.code) {
-                throw tokenError;
-            }
-            throw new functions.https.HttpsError('unauthenticated', 'Failed to validate access token');
-        }
-    }
-    
-    try {
-        console.log('[Faction Check] Looking up character ID:', characterId, 'in faction:', factionId);
-        
-        // Look up the user in faction database
-        const factionRef = db.ref(`factions/${factionId}/members/${characterId}`);
-        const memberSnapshot = await factionRef.once('value');
-        
-        if (!memberSnapshot.exists()) {
-            console.log('[Faction Check] Character not found in faction database');
-            return {
-                isMember: false,
-                character: null,
-                permissions: [],
-                accessLevel: 'none',
-                message: 'Character not found in faction database'
-            };
-        }
-        
-        const memberData = memberSnapshot.val();
-        console.log('[Faction Check] Found faction member:', {
-            characterId: memberData.characterId,
-            characterName: memberData.characterName,
-            rank: memberData.rank,
-            scriptRank: memberData.scriptRank
-        });
-        
-        // Determine permissions based on script rank
-        const permissions = getPermissionsForRank(memberData.scriptRank);
-        const accessLevel = getAccessLevel(memberData.scriptRank);
-        
-        // Get faction metadata
-        const metadataRef = db.ref(`factions/${factionId}/metadata`);
-        const metadataSnapshot = await metadataRef.once('value');
-        const factionMetadata = metadataSnapshot.val() || {};
-        
-        const result = {
-            isMember: true,
-            character: {
-                characterId: memberData.characterId,
-                characterName: memberData.characterName,
-                rank: memberData.rank,
-                scriptRank: memberData.scriptRank,
-                factionId: memberData.factionId,
-                lastOnline: memberData.lastOnline,
-                activity: memberData.activity,
-                dataVersion: memberData.dataVersion
-            },
-            permissions,
-            accessLevel,
-            factionInfo: {
-                factionId,
-                lastUpdated: factionMetadata.lastUpdated,
-                memberCount: factionMetadata.statistics?.validRecords || 0
-            },
-            message: `Access granted - ${memberData.rank} (Rank ${memberData.scriptRank})`
-        };
-        
-        console.log('[Faction Check] Faction check complete:', {
-            characterName: result.character.characterName,
-            scriptRank: result.character.scriptRank,
-            accessLevel: result.accessLevel,
-            permissionCount: result.permissions.length
-        });
-        
-        return result;
-        
-    } catch (error) {
-        console.error('[Faction Check] Error checking faction membership:', error);
-        
-        throw new functions.https.HttpsError('internal', 'Failed to check faction membership', {
-            originalError: error.message
-        });
-    }
-});
+
+
 
 /**
  * Helper function to get permissions based on script rank

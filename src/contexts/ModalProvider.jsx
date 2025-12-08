@@ -6,7 +6,6 @@ export const useModal = () => useContext(ModalContext);
 
 export const ModalProvider = ({ children }) => {
     const [showEmsBingoModal, setShowEmsBingoModal] = useState(false);
-    const [showGtaCallback, setShowGtaCallback] = useState(false);
     const [showEasterEggModal, setShowEasterEggModal] = useState(false);
     const [easterEggType, setEasterEggType] = useState(null);
     const [showAgencySelector, setShowAgencySelector] = useState(false);
@@ -26,7 +25,6 @@ export const ModalProvider = ({ children }) => {
 
     const value = {
         showEmsBingoModal, setShowEmsBingoModal,
-        showGtaCallback, setShowGtaCallback,
         showEasterEggModal, setShowEasterEggModal,
         easterEggType, setEasterEggType,
         showAgencySelector, setShowAgencySelector,

@@ -2,7 +2,6 @@ import { useState } from 'react';
 
 export function useModal() {
     const [showEmsBingoModal, setShowEmsBingoModal] = useState(false);
-    const [showGtaCallback, setShowGtaCallback] = useState(false);
     const [showEasterEggModal, setShowEasterEggModal] = useState(false);
     const [easterEggType, setEasterEggType] = useState(null);
     const [showAgencySelector, setShowAgencySelector] = useState(false);
@@ -22,7 +21,6 @@ export function useModal() {
 
     return {
         showEmsBingoModal, setShowEmsBingoModal,
-        showGtaCallback, setShowGtaCallback,
         showEasterEggModal, setShowEasterEggModal,
         easterEggType, setEasterEggType,
         showAgencySelector, setShowAgencySelector,
