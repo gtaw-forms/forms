@@ -9,9 +9,7 @@ export const logAdminActionToDiscord = async (action, formDetails, userDetails =
   try {
     const embed = {
       title: `Form ${action === 'add' ? 'Created' : 'Modified'}`,
-      description: `Form **${formDetails.name}** (ID: 
-${formDetails.id}
-) has been ${action === 'add' ? 'created' : 'modified'}`,
+      description: `Form **${formDetails.name}** (ID: ${formDetails.id}) has been ${action === 'add' ? 'created' : 'modified'}`,
       color: action === 'add' ? 5763719 : 16705372, // Green for add, Orange for modify
       fields: [
         {

@@ -6,7 +6,7 @@ import AddFormModal from "./AddFormModal";
 import styles from "../ems-dashboard/EmsDashboard.module.css";
 import { useNotification } from '../../contexts/NotificationContext'; // Import useNotification
 
-const FormManager = () => {
+const FormManager = ({ currentUser }) => {
   const [forms, setForms] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
@@ -364,6 +364,7 @@ const FormManager = () => {
         show={showAddModal}
         onClose={closeModal}
         editingForm={editingForm}
+        user={currentUser}
       />
     </div>
   );
