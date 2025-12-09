@@ -6,6 +6,23 @@ import Select from 'react-select';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { logAdminActionToDiscord } from '../../utils/adminLogger';
 import BulkAddFieldsModal from './BulkAddFieldsModal'; // Import the new modal
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { SortableFieldItem } from './SortableFieldItem';
 const inputStyle = {
   width: "100%",
   padding: "0.75rem",
@@ -508,20 +525,26 @@ const AddFormModal = ({ show, onClose, editingForm = null, user }) => {
     setShowConditionalBuilder(false);
   };
 
-  const removeField = (idx) => setFields(fields.filter((_, i) => i !== idx));
+  const removeField = (id) => setFields(fields.filter(f => f.id !== id));
 
-  const moveFieldUp = (i) => {
-    if (i === 0) return;
-    const newFields = [...fields];
-    [newFields[i - 1], newFields[i]] = [newFields[i], newFields[i - 1]];
-    setFields(newFields);
-  };
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
-  const moveFieldDown = (i) => {
-    if (i === fields.length - 1) return;
-    const newFields = [...fields];
-    [newFields[i], newFields[i + 1]] = [newFields[i + 1], newFields[i]];
-    setFields(newFields);
+  const handleDragEnd = (event) => {
+    const {active, over} = event;
+    
+    if (active.id !== over.id) {
+      setFields((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id);
+        const newIndex = items.findIndex((item) => item.id === over.id);
+        
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
   };
 
   const startEditField = (fieldToEdit, index) => {
@@ -1364,104 +1387,115 @@ const handleBulkAddFields = (fieldsToAdd) => {
               
                         <h4 style={{ color: "#60a5fa", marginTop: "2rem" }}>Fields ({fields.length})</h4>
                         <div style={{ maxHeight: '400px', overflowY: 'auto', padding: '0.5rem', border: '1px solid #334155', borderRadius: '8px', background: '#0f172a' }}>
-                        {fields.map((f, i) => (
-                          <div key={i} style={{ background: "#1e293b", padding: "1rem", borderRadius: 10, marginBottom: "0.8rem", border: "1px solid #334155" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <div>
-                                { f.type === "image" ? (
-                                  <span style={{ color: "#a78bfa" }}>
-                                    Image Gallery: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>
-                                    <span style={{ color: "#34d399", marginLeft: "0.5rem" }}>
-                                      (Auto-paired with narrative field below)
-                                    </span>
-                                  </span>
-                                ) : f.allowImagePaste ? (
-                                  <span style={{ color: "#34d399" }}>
-                                    Text + Paste: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>
-                                    <span style={{ color: "#fbbf24", fontSize: "0.85rem" }}>
-                                      → pastes into <strong>{f.linkedImageField}</strong>
-                                    </span>
-                                  </span>
-                                ) : f.type === "hr" ? (
-                                  <span style={{ color: "#a78bfa" }}>Horizontal Rule</span>
-                                ) : f.type === "fake_line" ? (
-                                  <span style={{ color: "#a78bfa" }}>Fake Line (Thinner Horizontal Rule)</span>
-                                ) : f.type === "small_header" ? (
-                                  <span style={{ color: "#a78bfa" }}>Small Header: <strong>{f.label}</strong></span>
-                                ) : f.type === "timer" ? (
-                                  <span style={{ color: "#a78bfa" }}>Timer: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> ({f.timerType})
-                                    {f.buttonLabel && ` [Button: ${f.buttonLabel} (${f.buttonAction})]`}
-                                  </span>
-                                ) : f.type === "checkbox" ? (
-                                  <span style={{ color: "#a78bfa" }}>Checkbox: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>
-                                    {f.associatedInputField && ` [Associated Input: ${f.associatedInputField.type} -> ${f.associatedInputField.name}]`}
-                                  </span>
-                                ) : f.type === "radio" ? (
-                                  <span style={{ color: "#a78bfa" }}>Radio: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (Options: {f.options.join(', ')})</span>
-                                ) : f.type === "input_button_combo" ? (
-                                  <span style={{ color: "#a78bfa" }}>Input Button Combo: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (Type: {f.inputType}, Button: {f.buttonLabel} ({f.buttonAction}))</span>
-                                ) : f.type === "payment_button" ? (
-                                  <span style={{ color: "#a78bfa" }}>Payment Button: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (stores timestamp)</span>
-                                ) : f.type === "attach_report_button" ? (
-                                  <span style={{ color: "#a78bfa" }}>Attach Report Button: <strong>{f.label}</strong> → (Filters: {f.filterVersions}, Type: {f.employeeType}, Target: {f.targetField})</span>
-                                ) : f.type === "decedent_list" ? (
-                                    <span style={{ color: "#a78bfa" }}>Decedent List: <strong>{f.name}</strong></span>
-                                ) : f.type === "dynamic_text_list" ? (
-                                  <span style={{ color: "#a78bfa" }}>Dynamic List: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (Button: {f.buttonLabel})</span>
-                                ) : f.type === "autopsy_diagram_button" ? (
-                                  <span style={{ color: "#a78bfa" }}>Autopsy Diagram Button: <strong>{f.label}</strong> → stores URL in <code>{"{{" + f.name + "}}"}</code></span>
-                                ) : f.type === "information_state" ? (
-                                  <span style={{ color: "#a78bfa" }}>Info State: <strong>{f.infoType}</strong> → <code>{f.content.substring(0, 50)}...</code></span>
-                                ) : f.type === "character_selector" ? (
-                                  <span style={{ color: "#a78bfa" }}>Dropdown - Character Select: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code></span>
-                                ) : f.type === "multi_employee_select" ? (
-                                  <span style={{ color: "#a78bfa" }}>Dropdown - Multiple Employees: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code></span>
-                                ) : f.type === "employee_select" ? ( // NEW EMPLOYEE SELECT DISPLAY
-                                  <span style={{ color: "#a78bfa" }}>Dropdown - Employee Selector: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code></span>
-                                ) : (
-                                  <>
-                                    <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>
-                                  </>
-                                )}
-                                {f.layout === "full" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Full Width</span>}
-                                {f.layout === "compact-50" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Compact (50%)</span>}
-                                {f.layout === "compact-33" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Compact (33%)</span>} 
-                                {f.layout === "compact" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Compact (20%)</span>}
-                                {f.type === "select" && <span style={{ marginLeft: "1rem", color: "#f59e0b" }}>Options: {f.optionsKey}</span>}
-                                {f.showIf && (
-                                  <span style={{ marginLeft: "1rem", color: "#8b5cf6" }}>
-                                      Show if {' '}
-                                      {f.showIf.mode ? ( // Check if it's a complex condition
+                          <DndContext
+                            sensors={sensors}
+                            collisionDetection={closestCenter}
+                            onDragEnd={handleDragEnd}
+                          >
+                            <SortableContext
+                              items={fields.map(f => f.id)}
+                              strategy={verticalListSortingStrategy}
+                            >
+                              {fields.map((f, i) => (
+                                <SortableFieldItem key={f.id} id={f.id}>
+                                  <div style={{ background: "#1e293b", padding: "1rem", borderRadius: 10, marginBottom: "0.8rem", border: "1px solid #334155", width: '100%' }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                      <div>
+                                        { f.type === "image" ? (
+                                          <span style={{ color: "#a78bfa" }}>
+                                            Image Gallery: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>
+                                            <span style={{ color: "#34d399", marginLeft: "0.5rem" }}>
+                                              (Auto-paired with narrative field below)
+                                            </span>
+                                          </span>
+                                        ) : f.allowImagePaste ? (
+                                          <span style={{ color: "#34d399" }}>
+                                            Text + Paste: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>
+                                            <span style={{ color: "#fbbf24", fontSize: "0.85rem" }}>
+                                              → pastes into <strong>{f.linkedImageField}</strong>
+                                            </span>
+                                          </span>
+                                        ) : f.type === "hr" ? (
+                                          <span style={{ color: "#a78bfa" }}>Horizontal Rule</span>
+                                        ) : f.type === "fake_line" ? (
+                                          <span style={{ color: "#a78bfa" }}>Fake Line (Thinner Horizontal Rule)</span>
+                                        ) : f.type === "small_header" ? (
+                                          <span style={{ color: "#a78bfa" }}>Small Header: <strong>{f.label}</strong></span>
+                                        ) : f.type === "timer" ? (
+                                          <span style={{ color: "#a78bfa" }}>Timer: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> ({f.timerType})
+                                            {f.buttonLabel && ` [Button: ${f.buttonLabel} (${f.buttonAction})]`}
+                                          </span>
+                                        ) : f.type === "checkbox" ? (
+                                          <span style={{ color: "#a78bfa" }}>Checkbox: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>
+                                            {f.associatedInputField && ` [Associated Input: ${f.associatedInputField.type} -> ${f.associatedInputField.name}]`}
+                                          </span>
+                                        ) : f.type === "radio" ? (
+                                          <span style={{ color: "#a78bfa" }}>Radio: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (Options: {f.options.join(', ')})</span>
+                                        ) : f.type === "input_button_combo" ? (
+                                          <span style={{ color: "#a78bfa" }}>Input Button Combo: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (Type: {f.inputType}, Button: {f.buttonLabel} ({f.buttonAction}))</span>
+                                        ) : f.type === "payment_button" ? (
+                                          <span style={{ color: "#a78bfa" }}>Payment Button: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (stores timestamp)</span>
+                                        ) : f.type === "attach_report_button" ? (
+                                          <span style={{ color: "#a78bfa" }}>Attach Report Button: <strong>{f.label}</strong> → (Filters: {f.filterVersions}, Type: {f.employeeType}, Target: {f.targetField})</span>
+                                        ) : f.type === "decedent_list" ? (
+                                            <span style={{ color: "#a78bfa" }}>Decedent List: <strong>{f.name}</strong></span>
+                                        ) : f.type === "dynamic_text_list" ? (
+                                          <span style={{ color: "#a78bfa" }}>Dynamic List: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (Button: {f.buttonLabel})</span>
+                                        ) : f.type === "autopsy_diagram_button" ? (
+                                          <span style={{ color: "#a78bfa" }}>Autopsy Diagram Button: <strong>{f.label}</strong> → stores URL in <code>{"{{" + f.name + "}}"}</code></span>
+                                        ) : f.type === "information_state" ? (
+                                          <span style={{ color: "#a78bfa" }}>Info State: <strong>{f.infoType}</strong> → <code>{f.content.substring(0, 50)}...</code></span>
+                                        ) : f.type === "character_selector" ? (
+                                          <span style={{ color: "#a78bfa" }}>Dropdown - Character Select: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code></span>
+                                        ) : f.type === "multi_employee_select" ? (
+                                          <span style={{ color: "#a78bfa" }}>Dropdown - Multiple Employees: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code></span>
+                                        ) : f.type === "employee_select" ? ( // NEW EMPLOYEE SELECT DISPLAY
+                                          <span style={{ color: "#a78bfa" }}>Dropdown - Employee Selector: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code></span>
+                                        ) : (
                                           <>
-                                              <strong>{f.showIf.mode.toUpperCase()}</strong> of: {' '}
-                                              {f.showIf.conditions.map((condition, idx) => (
-                                                  <span key={idx}>
-                                                      {idx > 0 && ", "}
-                                                      <strong>{fields.find(field => field.name === condition.field)?.label || condition.field}</strong>
+                                            <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code>
+                                          </>
+                                        )}
+                                        {f.layout === "full" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Full Width</span>}
+                                        {f.layout === "compact-50" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Compact (50%)</span>}
+                                        {f.layout === "compact-33" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Compact (33%)</span>} 
+                                        {f.layout === "compact" && <span style={{ marginLeft: "1rem", color: "#a78bfa" }}>Compact (20%)</span>}
+                                        {f.type === "select" && <span style={{ marginLeft: "1rem", color: "#f59e0b" }}>Options: {f.optionsKey}</span>}
+                                        {f.showIf && (
+                                          <span style={{ marginLeft: "1rem", color: "#8b5cf6" }}>
+                                              Show if {' '}
+                                              {f.showIf.mode ? ( // Check if it's a complex condition
+                                                  <>
+                                                      <strong>{f.showIf.mode.toUpperCase()}</strong> of: {' '}
+                                                      {f.showIf.conditions.map((condition, idx) => (
+                                                          <span key={idx}>
+                                                              {idx > 0 && ", "}
+                                                              <strong>{fields.find(field => field.name === condition.field)?.label || condition.field}</strong>
+                                                              {' '}is{' '}
+                                                              {condition.value === true ? "filled" : condition.value === false ? "empty" : `"${condition.value}"`}
+                                                          </span>
+                                                      ))}
+                                                  </>
+                                              ) : ( // Simple condition
+                                                  <>
+                                                      <strong>{fields.find(field => field.name === f.showIf.field)?.label || f.showIf.field}</strong>
                                                       {' '}is{' '}
-                                                      {condition.value === true ? "filled" : condition.value === false ? "empty" : `"${condition.value}"`}
-                                                  </span>
-                                              ))}
-                                          </>
-                                      ) : ( // Simple condition
-                                          <>
-                                              <strong>{fields.find(field => field.name === f.showIf.field)?.label || f.showIf.field}</strong>
-                                              {' '}is{' '}
-                                              {f.showIf.value === true ? "filled" : f.showIf.value === false ? "empty" : `"${f.showIf.value}"`}
-                                          </>
-                                      )}
-                                  </span>
-                                )}
-                              </div>
-                              <div style={{ display: "flex", gap: "0.5rem" }}>
-                                <button onClick={() => startEditField(f, i)} style={{ background: "#6366f1", color: "white", border: "none", padding: "0 1rem", borderRadius: 8 }}>Edit</button>
-                                {i > 0 && <button onClick={() => moveFieldUp(i)} style={{ background: "#6366f1", color: "white", border: "none", width: 36, height: 36, borderRadius: 8 }}>Up</button>}
-                                {i < fields.length - 1 && <button onClick={() => moveFieldDown(i)} style={{ background: "#6366f1", color: "white", border: "none", width: 36, height: 36, borderRadius: 8 }}>Down</button>}
-                                <button onClick={() => removeField(i)} style={{ background: "#ef4444", color: "white", border: "none", padding: "0 1rem", borderRadius: 8 }}>Remove</button>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
+                                                      {f.showIf.value === true ? "filled" : f.showIf.value === false ? "empty" : `"${f.showIf.value}"`}
+                                                  </>
+                                              )}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div style={{ display: "flex", gap: "0.5rem" }}>
+                                        <button onClick={() => startEditField(f, i)} style={{ background: "#6366f1", color: "white", border: "none", padding: "0 1rem", borderRadius: 8 }}>Edit</button>
+                                        <button onClick={() => removeField(f.id)} style={{ background: "#ef4444", color: "white", border: "none", padding: "0 1rem", borderRadius: 8 }}>Remove</button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </SortableFieldItem>
+                              ))}
+                            </SortableContext>
+                          </DndContext>
                         </div>
               
                         <div style={{ marginTop: "2rem", textAlign: "center" }}>
