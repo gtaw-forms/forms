@@ -754,11 +754,11 @@ export const useReportManagement = (
             loadingNotifId = showNotification(`Loading report: ${reportFirebaseKey} for ${userId}...`, 'info-circle', 0);
         }
 
-                            try {
-                                const [reportSnapshot, bbCodeSnapshot] = await Promise.all([
-                                    get(reportRef),
-                                    get(bbCodeRef)
-                                ]);                if (reportSnapshot.exists()) {
+        try {
+            const [reportSnapshot, bbCodeSnapshot] = await Promise.all([
+                get(reportRef),
+                get(bbCodeRef)
+            ]);                if (reportSnapshot.exists()) {
                     const reportData = reportSnapshot.val();
                     const bbCodeData = bbCodeSnapshot.val();
                     
