@@ -116,7 +116,7 @@ const FormManager = ({ currentUser }) => {
           <div style={{ marginTop: "0.5rem" }}>
             {filteredForms.length === 0 ? (
               <div style={{ textAlign: "center", color: "#64748b", padding: "2rem" }}>
-                No forms found
+                Loading....
               </div>
             ) : (
               filteredForms.map((form) => (

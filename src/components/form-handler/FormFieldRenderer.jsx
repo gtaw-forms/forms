@@ -385,13 +385,15 @@ case "textarea":
     <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
       <label style={labelStyle}>{field.label}</label>
       <textarea
-        name={field.name}                    // THIS LINE WAS MISSING!
+        name={field.name}
         rows={field.rows || 4}
         value={formValues[field.name] || ""}
-        onChange={e => handleChange(field.name, e.target.value)}
+        onChange={e => {
+          handleChange(field.name, e.target.value);
+        }}
         placeholder={field.placeholder || ""}
         style={inputStyle}
-        data-field={field.name}              // Optional fallback
+        data-field={field.name}
       />
       {field.allowImagePaste && (
         <div style={{

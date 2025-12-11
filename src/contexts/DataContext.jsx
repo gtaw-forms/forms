@@ -80,7 +80,9 @@ export const DataProvider = ({ children }) => {
                 setCoronerRecruitmentDetails(data?.coronerPositionDetailsData || {});
                 break;
             case CACHE_SEGMENTS.FORMS:
-                setFormsData(data || {});
+                // Ensure formsData is always an array
+                const formsAsList = Array.isArray(data) ? data : (data ? Object.keys(data).map(key => ({ ...data[key], firebaseKey: key })) : []);
+                setFormsData(formsAsList);
                 break;
             case CACHE_SEGMENTS.LSCC:
                 // Assuming you want to set some state for LSCC data as well
@@ -111,7 +113,7 @@ export const DataProvider = ({ children }) => {
     const [isLoadingData, setIsLoadingData] = useState(true);
     const [loading, setLoading] = useState(true);
 
-    const [formsData, setFormsData] = useState({});
+    const [formsData, setFormsData] = useState([]);
     const [lsccData, setLsccData] = useState({}); // New state for LSCC data
     const [isDevMode, setIsDevMode] = useState(false); // Add isDevMode state
 
@@ -125,7 +127,7 @@ export const DataProvider = ({ children }) => {
     // Cache configuration
     const CACHE_PREFIX = 'firebaseCache';
     const CACHE_VERSION = '1.0';
-    const CACHE_EXPIRY = 1000 * 60 * 60 * 24 * 7; // 7 days in milliseconds
+    const CACHE_EXPIRY = 1000 * 60 * 60 * 24 * 30; // 30 days in milliseconds
 
     // Version configuration for each segment
     const SEGMENT_VERSIONS = {
@@ -215,14 +217,61 @@ export const DataProvider = ({ children }) => {
             if (!dataInitializedRef.current) return; // Only process updates after initial load
 
             if (snapshot.exists()) {
-                const formsData = snapshot.val();
-                if (JSON.stringify(formsData) !== JSON.stringify(dataCache.current[CACHE_SEGMENTS.FORMS])) {
-                    updateCacheSegment(CACHE_SEGMENTS.FORMS, formsData);
-                    console.log('🔄 Forms data updated from Firebase (real-time)');
+                const firebaseFormsObject = snapshot.val(); // This is an object of forms
+                const firebaseFormsList = Object.keys(firebaseFormsObject).map(key => ({ ...firebaseFormsObject[key], firebaseKey: key }));
+
+                setFormsData(currentFormsList => {
+                    const currentFormsMap = new Map(currentFormsList.map(f => [f.firebaseKey, f]));
+                    const firebaseFormsMap = new Map(firebaseFormsList.map(f => [f.firebaseKey, f]));
+
+                    let updatedFormsList = [...currentFormsList];
+                    let formsCacheUpdated = false;
+
+                    // Merge/update forms from Firebase
+                    firebaseFormsList.forEach(fbForm => {
+                        const cachedForm = currentFormsMap.get(fbForm.firebaseKey);
+                        // Update if new form or Firebase form is newer
+                        if (!cachedForm || (fbForm.lastUpdated && fbForm.lastUpdated > (cachedForm.lastUpdated || 0))) {
+                            const index = updatedFormsList.findIndex(f => f.firebaseKey === fbForm.firebaseKey);
+                            if (index !== -1) {
+                                updatedFormsList[index] = fbForm;
+                            } else {
+                                updatedFormsList.push(fbForm);
+                            }
+                            formsCacheUpdated = true;
+                        }
+                    });
+
+                    // Remove forms deleted from Firebase
+                    updatedFormsList = updatedFormsList.filter(form => {
+                        const existsInFirebase = firebaseFormsMap.has(form.firebaseKey);
+                        if (!existsInFirebase) {
+                            formsCacheUpdated = true;
+                        }
+                        return existsInFirebase;
+                    });
+
+                    // Sort the forms consistently
+                    updatedFormsList.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+                    // Only update cache and state if changes were made
+                    if (formsCacheUpdated) {
+                        updateCacheSegment(CACHE_SEGMENTS.FORMS, updatedFormsList); // Pass the list
+                        console.log('🔄 Forms data updated from Firebase (real-time, merged)');
+                        return updatedFormsList;
+                    }
+                    return currentFormsList; // No changes
+                });
+            } else {
+                // If the entire 'forms' node is deleted in Firebase, clear cache and state
+                if (formsData.length > 0) { // Check if we actually had forms
+                    updateCacheSegment(CACHE_SEGMENTS.FORMS, {}); // Clear cache with empty object or array
+                    console.log('🔄 Forms data cleared from Firebase (real-time)');
                 }
+                setFormsData([]); // Clear state
             }
         });
-    }, [updateCacheSegment]);
+    }, [updateCacheSegment, setFormsData, formsData.length]);
 
 
     const loadData = useCallback(async (forceRefresh = false) => {
@@ -257,6 +306,10 @@ export const DataProvider = ({ children }) => {
 
             if (allSegmentsLoaded) {
                 console.log('📦 Using localStorage-cached Firebase data');
+                if (dataCache.current[CACHE_SEGMENTS.FORMS]) {
+                    const formsList = Array.isArray(dataCache.current[CACHE_SEGMENTS.FORMS]) ? dataCache.current[CACHE_SEGMENTS.FORMS] : [];
+                    console.log(`📦 -> Forms loaded from cache: ${formsList.length} forms.`);
+                }
                 const size = JSON.stringify(dataCache.current).length;
                 const portions = Object.keys(dataCache.current).join(', ');
                 sendDataRequestLog('DataContext.jsx', true, 'Local Storage', size, isAuthenticated, user?.faction?.characterName || user?.username, portions);
@@ -289,7 +342,13 @@ export const DataProvider = ({ children }) => {
 
             results.forEach(({ segment, snapshot }) => {
                 if (snapshot.exists()) {
-                    allData[segment] = snapshot.val();
+                    // Special handling for FORMS: convert object to list and add firebaseKey
+                    if (segment === CACHE_SEGMENTS.FORMS) {
+                        const formsObject = snapshot.val();
+                        allData[segment] = Object.keys(formsObject).map(key => ({ ...formsObject[key], firebaseKey: key }));
+                    } else {
+                        allData[segment] = snapshot.val();
+                    }
                     hasData = true;
                 } else {
                     console.warn(`Segment "${segment}" does not exist in Firebase.`);
@@ -309,11 +368,13 @@ export const DataProvider = ({ children }) => {
                         try {
                             localStorage.setItem(getCacheKey(path), JSON.stringify(data));
                             localStorage.setItem(getTimestampKey(path), Date.now().toString());
+                            localStorage.setItem(getVersionKey(path), getSegmentVersion(path)); // Ensure version is stored
                         } catch (error) {
                             console.warn(`Failed to cache ${path} to localStorage:`, error);
                             try {
                                 localStorage.removeItem(getCacheKey(path));
                                 localStorage.removeItem(getTimestampKey(path));
+                                localStorage.removeItem(getVersionKey(path));
                             } catch (clearError) {
                                 console.error(`Failed to clear cache for ${path}:`, clearError);
                             }
@@ -324,6 +385,11 @@ export const DataProvider = ({ children }) => {
                 });
 
                 console.log('💾 Firebase data cached to localStorage by segments');
+                
+                if (allData[CACHE_SEGMENTS.FORMS]) {
+                    const formsList = Array.isArray(allData[CACHE_SEGMENTS.FORMS]) ? allData[CACHE_SEGMENTS.FORMS] : [];
+                    console.log(` fetched from Firebase: ${formsList.length} forms.`);
+                }
 
                 // Update all state values
                 updateStateWithData(allData);
@@ -345,7 +411,7 @@ export const DataProvider = ({ children }) => {
             }
         }
     }, [
-        showNotification, removeNotification,
+        showNotification, removeNotification, updateCacheSegment, // Added updateCacheSegment
         setFactionsData, setAgencyDataStore, setSelectOptions,
         setPhysicianRecruitmentDetails, setPsychRecruitmentDetails, setAdminRecruitmentDetails,
         setEmsRecruitmentDetails, setNurseRecruitmentDetails, setCoronerRecruitmentDetails,

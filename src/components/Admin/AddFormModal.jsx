@@ -649,7 +649,8 @@ const handleBulkAddFields = (fieldsToAdd) => {
         titleGeneratorCode, // Save the titleGeneratorCode
         fields,
         accessType, // Store accessType
-        isHidden // Store isHidden
+        isHidden, // Store isHidden
+        lastUpdated: Date.now() // NEW: Add lastUpdated timestamp
       };
   
       update(ref(database, `forms/${formId}`), formData)
