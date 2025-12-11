@@ -68,6 +68,7 @@ const AddFormModal = ({ show, onClose, editingForm = null, user }) => {
     infoType: 'Information', // Default for information_state
     content: '', // Default for information_state
     decedentItemSchemaJson: "", // New: Schema for decedent list items
+    paymentTotal: 0,
   });
 
   const [newField, setNewField] = useState(createDefaultNewField());
@@ -255,8 +256,8 @@ const AddFormModal = ({ show, onClose, editingForm = null, user }) => {
             alert("Label and Name are required for Payment Button!");
             return;
         }
-        if (!fieldToSave.paymentValueLogic) {
-            alert("Payment Value Logic is required for Payment Button!");
+        if (typeof fieldToSave.paymentTotal !== 'number' || isNaN(fieldToSave.paymentTotal) || fieldToSave.paymentTotal < 0) {
+            alert("Payment Total must be a non-negative number!");
             return;
         }
         setFields(prevFields => {
@@ -1085,16 +1086,15 @@ const handleBulkAddFields = (fieldsToAdd) => {
                                                   {/* New Payment Button fields */}
                                                   {newField.type === "payment_button" && (
                                                     <div style={{ flexBasis: '100%', padding: '1rem', background: '#162032', borderRadius: 8 }}>
-                                                      <textarea
-                                                        placeholder="Payment Value Logic (e.g., (formData) => formData.someValue * 100)"
-                                                        value={newField.paymentValueLogic || ''}
-                                                        onChange={e => setNewField({ ...newField, paymentValueLogic: e.target.value })}
-                                                        style={{...inputStyle, width: '100%', fontFamily: 'monospace'}}
-                                                        rows={3}
+                                                      <input
+                                                        type="number"
+                                                        placeholder="Payment Total (in cents, e.g., 2000 for $20.00)"
+                                                        value={newField.paymentTotal || ''}
+                                                        onChange={e => setNewField({ ...newField, paymentTotal: +e.target.value })}
+                                                        style={{...inputStyle, width: '100%'}}
                                                       />
                                                       <div style={{ color: "#94a3b8", fontSize: "0.9rem", marginTop: '0.5rem' }}>
-                                                          Use a JS arrow function that receives <code>formData</code> and returns the payment amount in cents.
-                                                          Example: <code>(formData) - 2000</code>
+                                                          Enter the total payment amount in cents. Example: <code>2000</code> for $20.00.
                                                       </div>
                                                     </div>
                                                   )}

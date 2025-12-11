@@ -13,8 +13,8 @@ import OAuthUrlDiagnostic from './components/Auth/OAuthUrlDiagnostic.jsx';
 import ProtectedRoute from './components/Auth/ProtectedRoute.jsx';
 import PaymentCallback from './components/PaymentCallback.jsx';
 
-import MainApp from './MainApp.jsx';
-import Admin from './components/Admin/Admin.jsx';
+/* import MainApp from './MainApp.jsx';
+ */import Admin from './components/Admin/Admin.jsx';
 import EmsDashboard from './components/ems-dashboard/EmsDashboard.jsx';
 import FormHandler from './components/form-handler/FormHandler.jsx';
 function App() {
@@ -96,7 +96,8 @@ function App() {
                                         <Route path="/admin" element={<ProtectedRoute><Admin formData={formData} setFormData={setFormData} showNotification={showNotification} /></ProtectedRoute>} />
                                         <Route path="/ems-dashboard" element={<ProtectedRoute><EmsDashboard /></ProtectedRoute>} />
                                         <Route path="/form-handler" element={<ProtectedRoute><FormHandler /></ProtectedRoute>} />
-                                        <Route path="*" element={<Navigate to="/" replace />} />
+{/*                                         <Route path="/legacy-forms" element={<MainApp formData={formData} setFormData={setFormData} lastWebhookIdentifier={lastWebhookIdentifier} setLastWebhookIdentifier={setLastWebhookIdentifier} showNotification={showNotification} removeNotification={removeNotification} />} />
+ */}                                        <Route path="*" element={<Navigate to="/" replace />} />
                                     </Routes>
                                 </SeasonalEffectsProvider>
                         </Router>

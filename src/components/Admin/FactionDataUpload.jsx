@@ -621,7 +621,7 @@ const FactionDataUpload = ({ showNotification }) => {
                             Upload File
                         </span>
                     }>
-                    Hello! Please grab a copy of the faction CSV from the GTAWorld UCP and upload it here to manage faction data. <a href="https://ucp.gta.world/view/faction/364/populate?draw=2&columns%5B0%5D%5Bdata%5D=actions&columns%5B0%5D%5Bname%5D=actions&columns%5B0%5D%5Bsearchable%5D=true&columns%5B0%5D%5Borderable%5D=true&columns%5B0%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B0%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B1%5D%5Bdata%5D=id&columns%5B1%5D%5Bname%5D=characters.id&columns%5B1%5D%5Bsearchable%5D=true&columns%5B1%5D%5Borderable%5D=true&columns%5B1%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B1%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B2%5D%5Bdata%5D=name&columns%5B2%5D%5Bname%5D=name&columns%5B2%5D%5Bsearchable%5D=true&columns%5B2%5D%5Borderable%5D=true&columns%5B2%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B2%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B3%5D%5Bdata%5D=rank&columns%5B3%5D%5Bname%5D=rank&columns%5B3%5D%5Bsearchable%5D=true&columns%5B3%5D%5Borderable%5D=true&columns%5B3%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B3%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B4%5D%5Bdata%5D=scriptrank&columns%5B4%5D%5Bname%5D=scriptrank&columns%5B4%5D%5Bsearchable%5D=true&columns%5B4%5D%5Borderable%5D=true&columns%5B4%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B4%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B5%5D%5Bdata%5D=lastduty&columns%5B5%5D%5Bname%5D=lastduty&columns%5B5%5D%5Bsearchable%5D=true&columns%5B5%5D%5Borderable%5D=true&columns%5B5%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B5%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B6%5D%5Bdata%5D=lastonline&columns%5B6%5D%5Bname%5D=lastonline&columns%5B6%5D%5Bsearchable%5D=true&columns%5B6%5D%5Borderable%5D=true&columns%5B6%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B6%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B7%5D%5Bdata%5D=abas&columns%5B7%5D%5Bname%5D=abas&columns%5B7%5D%5Bsearchable%5D=true&columns%5B7%5D%5Borderable%5D=true&columns%5B7%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B7%5D%5Bsearch%5D%5Bregex%5D=false&order%5B0%5D%5Bcolumn%5D=3&order%5B0%5D%5Bdir%5D=desc&start=0&length=500&search%5Bvalue%5D=&search%5Bregex%5D=false&type=members&filters=&searchTerm=&_=1762736428879">Expand by 'all' and then get CSV.</a> Alternatively, you can upload a JSON file with an array of member objects.
+                    Hello! Please grab a copy of the faction CSV from the GTAWorld UCP and upload it here to manage faction data. <a href="https://ucp.gta.world/view/faction/364/populate?draw=2&columns%5B0%5D%5Bdata%5D=actions&columns%5B0%5D%5Bname%5D=actions&columns%5B0%5D%5Bsearchable%5D=true&columns%5B0%5D%5Borderable%5D=true&columns%5B0%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B0%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B1%5D%5Bdata%5D=id&columns%5B1%5D%5Bname%5D=characters.id&columns%5B1%5D%5Bsearchable%5D=true&columns%5B1%5D%5Borderable%5D=true&columns%5B1%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B1%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B2%5D%5Bdata%5D=name&columns%5B2%5D%5Bname%5D=name&columns%5B2%5D%5Bsearchable%5D=true&columns%5B2%5D%5Borderable%5D=true&columns%5B2%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B2%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B3%5D%5Bdata%5D=rank&columns%5B3%5D%5Bname%5D=rank&columns%5B3%5D%5Bsearchable%5D=true&columns%5B3%5D%5Borderable%5D=true&columns%5B3%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B3%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B4%5D%5Bdata%5D=scriptrank&columns%5B4%5D%5Bname%5D=scriptrank&columns%5B4%5D%5Bsearchable%5D=true&columns%5B4%5D%5Borderable%5D=true&columns%5B4%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B4%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B5%5D%5Bdata%5D=lastduty&columns%5B5%5D%5Bname%5D=lastduty&columns%5B5%5D%5Bsearchable%5D=true&columns%5B5%5D%5Borderable%5D=true&columns%5B5%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B5%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B6%5D%5Bdata%5D=lastonline&columns%5B6%5D%5Bname%5D=lastonline&columns%5B6%5D%5Bsearchable%5D=true&columns%5B6%5D%5Borderable%5D=true&columns%5B6%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B6%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B7%5D%5Bdata%5D=abas&columns%5B7%5D%5Bname%5D=abas&columns%5B7%5D%5Bsearchable%5D=true&columns%5B7%5D%5Borderable%5D=true&columns%5B7%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B7%5D%5Bsearch%5D%5Bregex%5D=false&order%5B0%5D%5Bcolumn%5D=3&order%5B0%5D%5Bdir%5D=desc&start=0&length=-1&search%5Bvalue%5D=&search%5Bregex%5D=false" target="_blank" rel="noopener noreferrer">Grab a copy from the UCP (expand by 'all').</a> Alternatively, you can upload a JSON file with an array of member objects.
                         {activeTab === 'upload' && (
                             <>
                                 {uploadStatus === 'idle' && renderUploadArea()}
@@ -746,38 +746,6 @@ const FactionDataUpload = ({ showNotification }) => {
                                                         </div>
                                                     </Alert>
                                                     
-                                                    {/* High-Priority Admin Alert for Rank 14+ */}
-                                                    {(() => {
-                                                        const highRankInactive = inactiveMembers.filter(member => member.scriptRank >= 14);
-                                                        if (highRankInactive.length > 0) {
-                                                            return (
-                                                                <Alert variant="danger" className="mb-3">
-                                                                    <Alert.Heading>
-                                                                        <i className="fas fa-crown me-2"></i>
-                                                                        High-Priority Admin Alert
-                                                                    </Alert.Heading>
-                                                                    <p className="mb-2">
-                                                                        <strong>{highRankInactive.length} high-ranking administrator(s)</strong> (Rank 14+) are inactive and require immediate attention:
-                                                                    </p>
-                                                                    <ul className="mb-2">
-                                                                        {highRankInactive.map(admin => (
-                                                                            <li key={admin.characterId}>
-                                                                                <strong>{admin.characterName}</strong> - 
-                                                                                {admin.scriptRank >= 15 ? ' Hospital President' : ' Executive Leadership'} 
-                                                                                (Rank {admin.scriptRank}, ABAS: {parseFloat(admin.activity || '0').toFixed(2)})
-                                                                            </li>
-                                                                        ))}
-                                                                    </ul>
-                                                                    <small className="text-muted">
-                                                                        <i className="fas fa-info-circle me-1"></i>
-                                                                        High-ranking inactive administrators may impact department operations and require priority intervention.
-                                                                    </small>
-                                                                </Alert>
-                                                            );
-                                                        }
-                                                        return null;
-                                                    })()}
-                                                    
                                                     {/* Standard Inactivity Warning */}
                                                     {inactiveMembers.length > 0 && (
                                                         <Alert variant="warning" className="mb-3">
@@ -874,7 +842,6 @@ const FactionDataUpload = ({ showNotification }) => {
                                                     <th>Script Rank</th>
                                                     <th>ABAS</th>
                                                     <th>Access Level</th>
-                                                    <th>Permissions</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -885,52 +852,40 @@ const FactionDataUpload = ({ showNotification }) => {
                                         // Determine access level based on script rank
                                         let accessLevel = 'Member';
                                         let badgeVariant = 'secondary';
-                                        let permissions = [];
 
                                         if (member.scriptRank >= 15) {
                                             accessLevel = 'Leadership';
                                             badgeVariant = 'danger';
-                                            permissions = ['All Permissions', 'Executive Control', 'Strategic Oversight'];
                                         } else if (member.scriptRank >= 14) {
                                             accessLevel = 'Leadership';
                                             badgeVariant = 'warning';
-                                            permissions = ['Admin', 'Department Management', 'All Reports', 'Webhooks', 'Faction Upload'];
                                         } else if (member.scriptRank >= 13) {
                                             accessLevel = 'Senior Management';
                                             badgeVariant = 'info';
-                                            permissions = ['Limited Admin', 'Department Reports', 'Audit Logs'];
                                         } else if (member.scriptRank >= 12) {
                                             accessLevel = 'Middle Management';
                                             badgeVariant = 'primary';
-                                            permissions = ['Limited Admin', 'Own Reports', 'View Members'];
                                         } else if (member.scriptRank >= 11) {
                                             accessLevel = 'Supervisor';
                                             badgeVariant = 'info';
-                                            permissions = ['Admin', 'Webhooks', 'Faction Upload'];
                                         } else if (member.scriptRank >= 10) {
                                             accessLevel = 'Attending';
                                             badgeVariant = 'primary';
-                                            permissions = ['Admin', 'Faction Upload'];
                                         } else if (member.scriptRank >= 9) {
                                             accessLevel = 'Resident';
                                             badgeVariant = 'success';
-                                            permissions = ['Basic Access'];
                                         } else if (member.scriptRank >= 8) {
                                             accessLevel = 'Upper Level';
                                             badgeVariant = 'success';
-                                            permissions = ['Basic Access'];
                                         } else if (member.scriptRank >= 7) {
                                             accessLevel = 'Mid Level';
                                             badgeVariant = 'secondary';
-                                            permissions = ['Basic Access'];
                                         } else if (member.scriptRank >= 6) {
                                             accessLevel = 'Administration';
                                             badgeVariant = 'secondary';
-                                            permissions = ['Basic Access'];
                                         } else if (member.scriptRank >= 5) {
                                             accessLevel = 'Entry Level';
                                             badgeVariant = 'light';
-                                            permissions = ['Basic Access'];
                                         }                                                        // Activity badge color and inactivity check
                                                         let activityBadge = 'success';
                                                         let isInactive = false;
@@ -969,11 +924,6 @@ const FactionDataUpload = ({ showNotification }) => {
                                                                     <Badge bg={badgeVariant}>
                                                                         {accessLevel}
                                                                     </Badge>
-                                                                </td>
-                                                                <td>
-                                                                    <small className="text-muted">
-                                                                        {permissions.join(', ')}
-                                                                    </small>
                                                                 </td>
                                                             </tr>
                                                         );

@@ -2,8 +2,6 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { database } from "../../firebase";
 import { ref, onValue } from "firebase/database";
 import useGtaWorldAuth from "../../hooks/useGtaWorldAuth";
-import styles from "../ems-dashboard/EmsDashboard.module.css";
-import formStyles from './FormHandler.module.css';
 import { useModal } from "../../contexts/ModalProvider";
 import { useData } from "../../contexts/DataContext";
 import EmsBingoModal from '../EmsBingoModal';
@@ -21,12 +19,19 @@ import OnboardingModal from '../OnboardingModal';
 import seasonalEvents from '../../components/SeasonalEvents';
 import * as Sentry from "@sentry/react";
 import FormQuickLinks from './FormQuickLinks';
-import '../../App.css';
-import '../../buttons.css';
 import PermanentNotification from '../PermanentNotification';
 import BugReportModal from '../BugReportModal';
 import { validateForm } from '../../utils/formValidation';
 import { sendDiscordWebhook } from '../../utils/webhookUtils';
+
+// Critical CSS imports
+import 'bootstrap/dist/css/bootstrap.min.css';
+import '@fortawesome/fontawesome-free/css/all.min.css';
+import 'react-bootstrap-typeahead/css/Typeahead.css';
+import '../../App.css';
+import '../../buttons.css';
+import styles from "../ems-dashboard/EmsDashboard.module.css";
+import formStyles from './FormHandler.module.css';
 
 
 
