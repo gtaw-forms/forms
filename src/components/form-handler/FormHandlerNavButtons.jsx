@@ -7,7 +7,7 @@ import { useSeasonalEffects } from '../../contexts/SeasonalEffectsContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import CctvRequestModal from './CctvRequestModal';
 import FormRequestModal from '../FormRequestModal';
-import Dropdown from '../common/Dropdown'; // New import
+import Dropdown from 'react-bootstrap/Dropdown'; // React Bootstrap Dropdown
 import seasonalEvents from '../SeasonalEvents';
 
 const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
@@ -93,12 +93,6 @@ const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
     }
   };
 
-  const dropdownTrigger = (
-    <button className={formStyles.topButton} title="More options">
-      <i className="fas fa-cog"></i> More
-    </button>
-  );
-
   return (
     <React.Fragment>
       <div style={{
@@ -106,7 +100,7 @@ const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
         top: 10,
         left: 10,
         right: 10,
-        zIndex: 1000,
+        zIndex: 9999,
         display: "flex",
         justifyContent: "space-between",
         alignItems: "flex-start",
@@ -147,48 +141,32 @@ const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
             {isAuthenticated ? `Sign Out (${characterName || user?.username})` : "Sign in with GTA:W"}
           </button>
           
-          <Dropdown trigger={dropdownTrigger} onTriggerClick={handleDropdownClick}>
-            {((isAuthenticated && isLeo) || import.meta.env.DEV) && (
-              <button
-                  className="dropdown-item"
-                  onClick={() => setShowCctvModal(true)}
-                  title="Request CCTV Footage"
-              >
+          <Dropdown onToggle={handleDropdownClick}>
+            <Dropdown.Toggle as="button" className={formStyles.topButton} id="dropdown-more-options">
+              <i className="fas fa-cog"></i> More
+            </Dropdown.Toggle>
+
+            <Dropdown.Menu>
+              {((isAuthenticated && isLeo) || import.meta.env.DEV) && (
+                <Dropdown.Item onClick={() => setShowCctvModal(true)}>
                   <i className="fas fa-video"></i> CCTV Request
-              </button>
-            )}
-            <button
-                type="button"
-                className="dropdown-item"
-                onClick={() => setShowEmsBingoModal(true)}
-                title="Open Bingo Night!"
-            >
-                <i className="fas fa-trophy"></i>
-                Bingo Night!
-            </button>
-            <button
-              className="dropdown-item"
-              onClick={() => setShowFormRequestModal(true)}
-              title="Request a New Form"
-            >
+                </Dropdown.Item>
+              )}
+              <Dropdown.Item onClick={() => setShowEmsBingoModal(true)}>
+                <i className="fas fa-trophy"></i> Bingo Night!
+              </Dropdown.Item>
+              <Dropdown.Item onClick={() => setShowFormRequestModal(true)}>
                 <i className="fas fa-file-alt"></i> Request a Form
-            </button>
-            <button
-              className="dropdown-item"
-              onClick={() => setSeasonalEffectsEnabled(!seasonalEffectsEnabled)}
-              title={seasonalEffectsEnabled ? "Disable Seasonal Effects" : "Enable Seasonal Effects"}
-            >
-              <i className={`fas ${seasonalEffectsEnabled ? "fa-toggle-on" : "fa-toggle-off"}`}></i>
-              {seasonalEffectsEnabled ? "Effects ON" : "Effects OFF"}
-            </button>
-            <div className="dropdown-divider"></div>
-            <button
-              className="dropdown-item"
-              onClick={handleRestartOnboarding}
-              title="Restart the onboarding process"
-            >
-              <i className="fas fa-redo"></i> Restart Onboarding
-            </button>
+              </Dropdown.Item>
+              <Dropdown.Item onClick={() => setSeasonalEffectsEnabled(!seasonalEffectsEnabled)}>
+                <i className={`fas ${seasonalEffectsEnabled ? "fa-toggle-on" : "fa-toggle-off"}`}></i>
+                {seasonalEffectsEnabled ? "Effects ON" : "Effects OFF"}
+              </Dropdown.Item>
+              <Dropdown.Divider />
+              <Dropdown.Item onClick={handleRestartOnboarding}>
+                <i className="fas fa-redo"></i> Restart Onboarding
+              </Dropdown.Item>
+            </Dropdown.Menu>
           </Dropdown>
           {showCctvPopup && (
             <div style={{

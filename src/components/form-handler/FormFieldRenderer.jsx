@@ -25,105 +25,50 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
   // Conditional visibility logic
   if (field.showIf) {
     let shouldShow = false;
+    const fieldName = field.label || field.name;
+    //console.log(`[Conditional Check] Field: '${fieldName}'. Evaluating visibility...`);
 
-    const currentFieldValue = formValues[field.showIf.field || (field.showIf.conditions && field.showIf.conditions[0]?.field)];
-
-
-    if (field.showIf.mode === "and" || field.showIf.mode === "or") {
-      const conditions = field.showIf.conditions || [];
-      const results = conditions.map(cond => {
+    const evaluateCondition = (cond) => {
         const current = formValues[cond.field];
-        // Normalize boolean values to actual booleans if they come as strings
-        const expectedValue = (cond.value === "true") ? true : (cond.value === "false" ? false : cond.value);
+        const expectedValue = (cond.value === "true") ? true : (cond.value === "false") ? false : cond.value;
         const currentValue = (typeof current === 'string' && (current === "true" || current === "false")) ? (current === "true") : current;
 
         let conditionMet = false;
         if (expectedValue === true) { // Has ANY value
-          if (Array.isArray(currentValue)) {
-            conditionMet = currentValue.length > 0;
-          } else {
-            conditionMet = !!currentValue && currentValue !== "";
-          }
+            if (Array.isArray(currentValue)) conditionMet = currentValue.length > 0;
+            else conditionMet = !!currentValue && currentValue !== "";
         } else if (expectedValue === false) { // Is empty
-          if (Array.isArray(currentValue)) {
-            conditionMet = currentValue.length === 0;
-          } else {
-            conditionMet = !currentValue || currentValue === "";
-          }
+            if (Array.isArray(currentValue)) conditionMet = currentValue.length === 0;
+            else conditionMet = !currentValue || currentValue === "";
         } else { // Exact value
-          if (Array.isArray(currentValue)) {
-            conditionMet = currentValue.includes(expectedValue);
-          } else {
-            conditionMet = currentValue === expectedValue;
-          }
+            if (Array.isArray(currentValue)) {
+                conditionMet = currentValue.includes(expectedValue);
+            } else if (expectedValue === 'Yes' && currentValue === true) {
+                conditionMet = true; // Fix for 'Yes' string matching boolean true
+            } else {
+                conditionMet = currentValue === expectedValue;
+            }
         }
         
+        const status = conditionMet ? 'PASSED' : 'INVALID';
+        //console.log(`[Conditional Check]  - Condition for '${cond.field}': ${status}. Expected: '${expectedValue}', Found: '${currentValue}'`);
         return conditionMet;
-      });
+    };
 
-      shouldShow = field.showIf.mode === "and"
-        ? results.every(r => r)
-        : results.some(r => r);
-    } else if (field.showIf.conditions) {
-      // Backwards compatibility
-      shouldShow = field.showIf.conditions.every(cond => {
-        const current = formValues[cond.field];
-        // Normalize boolean values to actual booleans if they come as strings
-        const expectedValue = (cond.value === "true") ? true : (cond.value === "false" ? false : cond.value);
-        const currentValue = (typeof current === 'string' && (current === "true" || current === "false")) ? (current === "true") : current;
-
-        let conditionMet = false;
-        if (expectedValue === true) { // Has ANY value
-          if (Array.isArray(currentValue)) {
-            conditionMet = currentValue.length > 0;
-          } else {
-            conditionMet = !!currentValue && currentValue !== "";
-          }
-        } else if (expectedValue === false) { // Is empty
-          if (Array.isArray(currentValue)) {
-            conditionMet = currentValue.length === 0;
-          } else {
-            conditionMet = !currentValue || currentValue === "";
-          }
-        } else { // Exact value
-          if (Array.isArray(currentValue)) {
-            conditionMet = currentValue.includes(expectedValue);
-          } else {
-            conditionMet = currentValue === expectedValue;
-          }
-        }
-
-        return conditionMet;
-      });
+    if (field.showIf.mode === "and" || field.showIf.mode === "or") {
+        const conditions = field.showIf.conditions || [];
+        //console.log(`[Conditional Check]  - Mode: ${field.showIf.mode.toUpperCase()}, Conditions: ${conditions.length}`);
+        const results = conditions.map(evaluateCondition);
+        shouldShow = field.showIf.mode === "and" ? results.every(r => r) : results.some(r => r);
     } else {
-      // Simple mode
-      const current = formValues[field.showIf.field];
-      const expectedValue = (field.showIf.value === "true") ? true : (field.showIf.value === "false" ? false : field.showIf.value);
-      const currentValue = (typeof current === 'string' && (current === "true" || current === "false")) ? (current === "true") : current;
-
-      if (expectedValue === true) {
-        if (Array.isArray(currentValue)) {
-          shouldShow = currentValue.length > 0;
-        } else {
-          shouldShow = !!currentValue && currentValue !== "";
-        }
-      } else if (expectedValue === false) {
-        if (Array.isArray(currentValue)) {
-          shouldShow = currentValue.length === 0;
-        } else {
-          shouldShow = !currentValue || currentValue === "";
-        }
-      } else {
-        if (Array.isArray(currentValue)) {
-          shouldShow = currentValue.includes(expectedValue);
-        } else {
-          shouldShow = currentValue === expectedValue;
-        }
-      }
-
+        shouldShow = evaluateCondition(field.showIf);
     }
 
-    if (!shouldShow) return null;
+    if (!shouldShow) {
+        //console.log(`[Conditional Check] Result for '${fieldName}': HIDDEN`);
+        return null;
+    }
+    //console.log(`[Conditional Check] Result for '${fieldName}': VISIBLE`);
   }
 
   // Common styling wrapper for most fields
@@ -609,6 +554,7 @@ case "textarea":
               handleChange(field.name, confirmationData);
               // Clean up the confirmation key so it doesn't trigger again
               localStorage.removeItem('phmc-payment-confirmed');
+              localStorage.removeItem('phmc-payment-pending');
             }
           }
         };
@@ -621,9 +567,10 @@ case "textarea":
       }, [field.name, handleChange]);
 
 
-      // Effect to set the initial step based on the form's data
+      // Effect to set the initial step and handle timeouts
       useEffect(() => {
         const value = formValues[field.name];
+        const TEN_MINUTES_IN_MS = 10 * 60 * 1000;
         const THIRTY_MINUTES_IN_MS = 30 * 60 * 1000;
 
         if (value && value.status === 'confirmed' && value.confirmedAt) {
@@ -633,30 +580,51 @@ case "textarea":
           if (now - confirmationTime < THIRTY_MINUTES_IN_MS) {
             setStep(3); // Payment is confirmed and not expired
           } else {
-            // Payment has expired, reset it
+            showNotification('Your previous payment confirmation has expired.', 'warning');
             handleChange(field.name, null);
             setStep(0);
           }
         } else if (value === 'pending_confirmation') {
-          setStep(2); // Payment is pending
+            const pendingPaymentRaw = localStorage.getItem('phmc-payment-pending');
+            if (pendingPaymentRaw) {
+                const pendingPayment = JSON.parse(pendingPaymentRaw);
+                const pendingTime = pendingPayment.timestamp || 0;
+                const now = new Date().getTime();
+
+                if (now - pendingTime < TEN_MINUTES_IN_MS) {
+                    setStep(2); // Payment is pending and not expired
+                } else {
+                    showNotification('Your payment session has expired. Please restart the payment process.', 'warning');
+                    localStorage.removeItem('phmc-payment-pending');
+                    handleChange(field.name, null);
+                    setStep(0);
+                }
+            } else {
+                 // If state is pending but no localStorage item, reset.
+                handleChange(field.name, null);
+                setStep(0);
+            }
         } else {
           setStep(0); // Initial state
         }
-      }, [formValues, field.name, handleChange]);
+      }, [formValues, field.name, handleChange, showNotification]);
 
       const paymentValue = useMemo(() => {
+        if (field.paymentTotal) {
+            return field.paymentTotal;
+        }
         if (selectedForm && selectedForm.name.includes('Patient File')) {
           return 2000;
         }
-        if (!field.paymentValueLogic) return 0;
-        try {
-          const func = new Function('formData', `return (${field.paymentValueLogic})(formData)`);
-          return func(formValues);
-        } catch (error) {
-          console.error("Error calculating payment value:", error);
-          return 0;
-        }
-      }, [field.paymentValueLogic, formValues, selectedForm]);
+        return 0;
+      }, [field.paymentTotal, selectedForm]);
+
+      const handleRestartPayment = () => {
+          handleChange(field.name, null);
+          localStorage.removeItem('phmc-payment-pending');
+          setStep(0);
+          showNotification('Payment process has been reset.', 'info');
+      };
 
       const handlePayment = () => {
         if (!gtawUser) {
@@ -672,6 +640,7 @@ case "textarea":
           userId: gtawUser.userId,
           formName: selectedForm.name,
           fieldId: field.name,
+          timestamp: new Date().getTime(),
         };
         localStorage.setItem('phmc-payment-pending', JSON.stringify(pendingPayment));
         
@@ -692,38 +661,50 @@ case "textarea":
             )}
             {step === 1 && (
               <div>
-                <p style={{ color: "#cbd5e1", margin: "0 0 1rem" }}>Please click the button below to make a payment of <strong>${(paymentValue).toFixed(2)}</strong> to Pillbox Hill Medical Center.</p>
+                <p style={{ color: "#cbd5e1", margin: "0 0 1rem" }}>Please click the button below to make a payment of <strong>${paymentValue}</strong> to Pillbox Hill Medical Center.</p>
                 <button onClick={handlePayment} style={{ background: "#10b981", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, width: '100%' }}>Pay Now</button>
               </div>
             )}
             {step === 2 && (
               <div style={{ color: "#f59e0b" }}>
                 <p style={{ margin: 0 }}>Waiting for payment confirmation...</p>
-                <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.5rem' }}>Once you have paid and the Fleeca Bank has indicated 'OK', come back to this tab and click on 'I've Paid' </p>
-                <button
-                  onClick={() => {
-                    const confirmationData = {
-                        fieldId: field.name,
-                        confirmedAt: new Date().toISOString(),
-                        status: 'confirmed'
-                    };
-                    localStorage.setItem('phmc-payment-confirmed', JSON.stringify(confirmationData)); // To ensure consistency for other components
-                    handleChange(field.name, confirmationData);
-                    // No need to setStep(3) directly, handleChange will trigger the other useEffect
-                    // that updates the step based on formValues.
-                  }}
-                  style={{
-                    background: "#007bff", // Blue button
-                    color: "white",
-                    border: "none",
-                    padding: "0.8rem 1.5rem",
-                    borderRadius: 8,
-                    width: '100%',
-                    marginTop: '1rem'
-                  }}
-                >
-                  I've Paid 
-                </button>
+                <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.5rem' }}>Once you have paid and the Fleeca Bank has indicated 'OK', come back to this tab and click on 'I've Paid'. If you encounter an issue, you can restart.</p>
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                    <button
+                      onClick={() => {
+                        const confirmationData = {
+                            fieldId: field.name,
+                            confirmedAt: new Date().toISOString(),
+                            status: 'confirmed'
+                        };
+                        localStorage.setItem('phmc-payment-confirmed', JSON.stringify(confirmationData)); // To ensure consistency for other components
+                        handleChange(field.name, confirmationData);
+                      }}
+                      style={{
+                        background: "#007bff",
+                        color: "white",
+                        border: "none",
+                        padding: "0.8rem 1.5rem",
+                        borderRadius: 8,
+                        width: '100%',
+                      }}
+                    >
+                      I've Paid 
+                    </button>
+                    <button
+                      onClick={handleRestartPayment}
+                      style={{
+                        background: "#dc3545",
+                        color: "white",
+                        border: "none",
+                        padding: "0.8rem 1.5rem",
+                        borderRadius: 8,
+                        width: '100%',
+                      }}
+                    >
+                      Restart
+                    </button>
+                </div>
               </div>
             )}
             {step === 3 && formValues[field.name] && formValues[field.name].confirmedAt && (
