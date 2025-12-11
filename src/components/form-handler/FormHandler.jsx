@@ -36,7 +36,7 @@ import formStyles from './FormHandler.module.css';
 
 
 const FormHandler = () => {
-  const [forms, setForms] = useState([]);
+
   const [selectedForm, setSelectedForm] = useState(null);
   const [formValues, setFormValues] = useState({});
   const [searchTerm, setSearchTerm] = useState(() => localStorage.getItem("formSearchTerm") || "");
@@ -116,7 +116,8 @@ const FormHandler = () => {
     agencyDataStore, 
     phmcListData, 
     coronerListData: originalCoronerListData,
-    selectOptions: dataContextSelectOptions
+    selectOptions: dataContextSelectOptions,
+    formsData
   } = useData();
   const { showEmsBingoModal, setShowEmsBingoModal } = useModal();
   const { saveReport: saveNewReport } = useFormSaver();
@@ -454,24 +455,42 @@ const FormHandler = () => {
       if (!imageFile) return;
 
       e.preventDefault();
-      const targetField = fieldConfig.linkedImageField || fieldName;
+      const targetField = fieldConfig.linkedImageField || fieldName; // This determines which field in formValues gets the image URL.
+
+      console.log(`[handlePaste] Processing paste for fieldName: ${fieldName}, linkedImageField: ${fieldConfig.linkedImageField}, targetField: ${targetField}`);
 
       try {
         setIsUploading(true);
         const url = await uploadImageToImgBB(imageFile);
+        
+        console.log(`[handlePaste] Image uploaded. URL: ${url}`);
+        console.log(`[handlePaste] formValues BEFORE image URL update for ${targetField}:`, JSON.parse(JSON.stringify(formValues)));
+
         setFormValues(prev => {
           const current = prev[targetField] || [];
           const arr = Array.isArray(current) ? current : (typeof current === 'string' ? current.split(', ').filter(Boolean) : []);
-          return { ...prev, [targetField]: [...arr, url] };
+          const updatedImages = [...arr, url];
+          
+          console.log(`[handlePaste] setFormValues for ${targetField}: new images array:`, updatedImages);
+          
+          return { ...prev, [targetField]: updatedImages };
         });
+        
+        // Log formValues state AFTER setFormValues call
+        // Note: setFormValues is async, so this log will reflect the state from the previous render cycle,
+        // but the internal prev argument in the setter function gives the accurate "before" state.
+        // For current formValues after commit, a subsequent useEffect would be needed.
+        
         showNotification("Image pasted & uploaded!", "success");
 
         const insertText = `[img]${url}[/img]`
         const newValue = activeEl.value.substring(0, activeEl.selectionStart) + (activeEl.value ? "\n" : "") + insertText + "\n" + activeEl.value.substring(activeEl.selectionEnd);
         
-        activeEl.value = newValue;
+        console.log(`[handlePaste] New textarea value for ${fieldName} (including img tag):`, newValue);
+
+        activeEl.value = newValue; // Update the DOM element
         const event = new Event('input', { bubbles: true });
-        activeEl.dispatchEvent(event);
+        activeEl.dispatchEvent(event); // Trigger React's onChange for the textarea
 
       } catch (err) {
         console.error("Upload failed:", err);
@@ -484,7 +503,7 @@ const FormHandler = () => {
 
     document.addEventListener('paste', handlePaste);
     return () => document.removeEventListener('paste', handlePaste);
-  }, [selectedForm, showNotification, setIsUploading, setFormValues]);
+  }, [selectedForm, showNotification, setIsUploading, setFormValues, formValues]); // Added formValues to dependencies to get latest state in log
 
   useEffect(() => {
     if (selectedForm?.firebaseKey && Object.keys(formValues).length > 0) {
@@ -495,41 +514,91 @@ const FormHandler = () => {
   }, [formValues, selectedForm?.firebaseKey]);
 
   useEffect(() => {
-    if (!selectedForm || !selectedForm.fields || (!mainEmployeeName && !formValues.patientCharacterSelector)) {
+    // Only proceed if a form is selected and user is authenticated for PHMC/Coroner forms
+    if (!selectedForm || !isAuthenticated || isPatientForm) {
+      // If it's a patient form, employee credentials are not relevant here.
+      // If not authenticated, we don't have OAuth data to sync.
+      // If no form is selected, there's no employeeType context.
+      return;
+    }
+
+    const currentEmployeeType = selectedForm?.accessType === 'Coroner' ? 'coroner' : 'phmc';
+    const employeeNameField = `${currentEmployeeType}Employee`;
+
+    // Determine the "source of truth" for the employee name, usually from OAuth
+    const oauthEmployeeName = user?.faction?.characterName || user?.activeCharacter?.characterName || null;
+    
+    setFormValues(currentFormValues => {
+      const updates = {};
+      
+      // Update patientName based on characterName if not a patient form,
+      // and if patientName is not already set by patientCharacterSelector.
+      if (!isPatientForm && characterName && currentFormValues.patientName !== characterName) {
+        // Only set patientName from characterName if patientCharacterSelector hasn't taken precedence
+        if (!currentFormValues.patientCharacterSelector) {
+            updates.patientName = characterName;
+        }
+      }
+
+      // Sync employee credentials from OAuth if OAuth name is available
+      if (oauthEmployeeName) {
+        const currentFormEmployeeName = currentFormValues[employeeNameField];
+        const currentFormRank = currentFormValues[`${currentEmployeeType}Rank`];
+        const currentFormBadge = currentFormValues[`${currentEmployeeType}Badge`];
+
+        // This is a heuristic: if the name is different, or if *any* of the key derived fields are missing,
+        // we should re-derive to ensure consistency.
+        const shouldUpdateCredentials = (
+            currentFormEmployeeName !== oauthEmployeeName ||
+            !currentFormRank || 
+            !currentFormBadge 
+        );
+
+        if (shouldUpdateCredentials) {
+            console.log(`[FormHandler] Syncing credentials for ${currentEmployeeType}. OAuth: ${oauthEmployeeName}, Form: ${currentFormEmployeeName || 'N/A'}`);
+            const credentialUpdates = updateEmployeeCredentials(oauthEmployeeName, currentEmployeeType);
+            Object.assign(updates, credentialUpdates); // Merge credential updates
+        }
+      } else {
+        // If OAuth name becomes unavailable (e.g., user logs out or character changes)
+        // and form still has employee name, clear it.
+        if (currentFormValues[employeeNameField]) {
+            console.log(`[FormHandler] Clearing credentials for ${currentEmployeeType} as OAuth data is unavailable.`);
+            const credentialUpdates = updateEmployeeCredentials('', currentEmployeeType); // Pass empty name to clear
+            Object.assign(updates, credentialUpdates);
+        }
+      }
+
+      if (Object.keys(updates).length > 0) {
+          return { ...currentFormValues, ...updates };
+      } else {
+          return currentFormValues; // No change
+      }
+    });
+
+  }, [user, isAuthenticated, selectedForm, isPatientForm, setFormValues, updateEmployeeCredentials, characterName]);
+
+  // Existing useEffect for patient character selector
+  useEffect(() => {
+    if (!selectedForm || !selectedForm.fields) {
       return;
     }
 
     setFormValues(currentFormValues => {
         const updates = {};
-        
         const patientNameFromSelector = currentFormValues.patientCharacterSelector;
 
-        // Populate patientName based on patientCharacterSelector if it exists, otherwise fall back to mainEmployeeName
-        if (isPatientForm && patientNameFromSelector) {
-            if (currentFormValues.patientName !== patientNameFromSelector) {
-                updates.patientName = patientNameFromSelector;
-            }
-        } else if (currentFormValues.patientName !== mainEmployeeName && mainEmployeeName) { // Ensure mainEmployeeName is not undefined
-            // Fallback to employee name if no specific patient selected or not a patient form
-            updates.patientName = mainEmployeeName;
+        if (isPatientForm && patientNameFromSelector && currentFormValues.patientName !== patientNameFromSelector) {
+            updates.patientName = patientNameFromSelector;
         }
-
-        // --- NEW LOGIC: Update employee credentials based on mainEmployeeName ---
-        // Only update if the current employee field in formValues is different from mainEmployeeName
-        const currentEmployeeFieldName = `${employeeType}Employee`;
-        if (mainEmployeeName && currentFormValues[currentEmployeeFieldName] !== mainEmployeeName) {
-            const credentialUpdates = updateEmployeeCredentials(mainEmployeeName, employeeType);
-            Object.assign(updates, credentialUpdates); // Merge credential updates
-        }
-        // --- END NEW LOGIC ---
 
         if (Object.keys(updates).length > 0) {
             return { ...currentFormValues, ...updates };
         } else {
-            return currentFormValues; // No change
+            return currentFormValues;
         }
     });
-  }, [mainEmployeeName, selectedForm, isPatientForm, setFormValues, formValues.patientCharacterSelector, formValues.patientName, employeeType, updateEmployeeCredentials]);
+  }, [selectedForm, isPatientForm, setFormValues, formValues.patientCharacterSelector, formValues.patientName]);
 
   useEffect(() => {
     if (!selectedForm || !generatedTitle) return;
@@ -544,21 +613,13 @@ const FormHandler = () => {
     localStorage.setItem("formSearchTerm", searchTerm);
   }, [searchTerm]);
 
-  useEffect(() => {
-    const formsRef = ref(database, "forms");
-    const unsub = onValue(formsRef, (snap) => {
-      const data = snap.val() || {};
-      const list = Object.keys(data).map(key => ({ ...data[key], firebaseKey: key }));
-      setForms(list);
-    });
-    return () => unsub();
-  }, []);
+
 
   const [groupedForms, notDisplayedFormsDetails] = React.useMemo(() => {
     const categoriesMap = {};
     const tempNotDisplayedFormsDetails = [];
 
-    forms.forEach(form => {
+    formsData.forEach(form => {
       const matchesSearchTerm = form.name && form.name.toLowerCase().includes(searchTerm.toLowerCase());
       
       let shouldDisplay = false;
@@ -578,7 +639,8 @@ const FormHandler = () => {
             if (!isRestricted) {
                 shouldDisplay = true;
                 reason = "Public form";
-            } else { // Form is restricted
+            }
+            else { // Form is restricted
                 shouldDisplay = hasRequiredAccess;
                 reason = hasRequiredAccess ? "Access granted" : "Access denied";
             }
@@ -611,11 +673,11 @@ const FormHandler = () => {
 
     const sortedGroupedForms = {};
     sortedCategoryNames.forEach(catName => {
-        sortedGroupedForms[catName] = categoriesMap[catName].sort((a, b) => a.name.localeCompare(b.name));
+        sortedGroupedForms[catName] = categoriesMap[catName].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     });
 
     return [sortedGroupedForms, tempNotDisplayedFormsDetails];
-  }, [forms, searchTerm, isAuthenticated, isPhmcMember, isDevelopment, user]);
+  }, [formsData, searchTerm, isAuthenticated, isPhmcMember, isDevelopment, user]);
 
   useEffect(() => {
     const updateUtcTime = () => {
@@ -761,7 +823,7 @@ const FormHandler = () => {
                               const baseValues = {};
                               if (keepCredentials) {
                                 credentialFields.forEach(key => {
-                                    if (formValues[key]) { // Carry over from current state
+                                    if (formValues.hasOwnProperty(key)) { // Carry over from current state if the key exists
                                         baseValues[key] = formValues[key];
                                     }
                                 });

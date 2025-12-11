@@ -92,6 +92,22 @@ const formatToNorthAmericanDate = (isoDateTime) => {
       return acc;
     }, {});
 
+    // Ensure all template variables have a fallback to prevent ReferenceErrors
+    // This is especially for variables directly referenced in the template.
+    // The specific ones from the example error are coronerRank and coronerEmployee.
+    // Adding common employee fields for both PHMC and Coroner.
+    const ensureTemplateVariables = [
+      'coronerRank', 'coronerEmployee', 'coronerBadge', 'coronerFirstName', 'coronerLastName', 'coronerDiscord', 'coronerPHNumber',
+      'phmcRank', 'phmcEmployee', 'phmcBadge', 'phmcFirstName', 'phmcLastName', 'phmcDiscord', 'phmcPHNumber',
+      // Add other common fields that might be directly referenced in templates without prior checks
+      'patientName', 'patientFirstName', 'patientLastName', 'patientOOC', 'dateTime', 'placeOfDeath', 'department', 'synopsis',
+    ];
+    ensureTemplateVariables.forEach(key => {
+      if (processedFormValues[key] === undefined) { // Check for undefined, allowing nulls if intended
+        processedFormValues[key] = '';
+      }
+    });
+
     // Custom handling for 'Patient Files' category to auto-populate date
     if (selectedForm?.category === 'Patient Files') {
         if (!processedFormValues.date) {

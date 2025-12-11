@@ -309,16 +309,19 @@ const SavedReportsModal = ({
             const shouldUpdateSelectedEmployee = employeeOption && selectedEmployee?.value !== employeeOption.value;
             const shouldCallOnEmployeeSelect = !isManualSelectionRef.current && !disableAutoLoad && employeeOption && employeeToSelectValue !== lastLoadedEmployeeRef.current;
 
-            if (shouldUpdateSelectedEmployee) {
-                setSelectedEmployee(employeeOption);
+            // Only auto-update selectedEmployee if no manual selection has occurred
+            if (!isManualSelectionRef.current) { // ADD THIS CHECK
+                if (shouldUpdateSelectedEmployee) {
+                    setSelectedEmployee(employeeOption);
+                }
             }
             
             if (shouldCallOnEmployeeSelect) {
                 onEmployeeSelect(employeeOption.label);
                 lastLoadedEmployeeRef.current = employeeToSelectValue;
-            } else if (!employeeOption && selectedEmployee) { // If no option found, but something is selected, clear it
+            } else if (!employeeOption && selectedEmployee && !isManualSelectionRef.current) { // ADD isManualSelectionRef.current
                 setSelectedEmployee(null);
-                if (!disableAutoLoad && !isManualSelectionRef.current) { // Only clear if not in disableAutoLoad mode
+                if (!disableAutoLoad && !isManualSelectionRef.current) {
                     onEmployeeSelect(null);
                 }
             }
