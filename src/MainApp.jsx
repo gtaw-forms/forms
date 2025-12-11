@@ -35,7 +35,7 @@ import tombstone from './assets/tombstone.png'
 import phmcpaletobay from './assets/phmcpaletobaylogo.png'
 import './assets/fonts/Poppins-Medium.ttf';
 import {ref, get} from 'firebase/database';
-
+import Alert from 'react-bootstrap/Alert';
 // css fun
 import './App.css';
 import './buttons.css';
@@ -902,6 +902,18 @@ const getBBCodeContent = () => {
     const { imageSource: civilianPaperworkImage, className: civilianPaperworkClass } = seasonalEffectsEnabled ? SeasonalEvents({ imageType: 'civilianPaperwork'  }) : {};
 
     const handleCopyAndNotifyWrapper = useCallback(() => {
+        const definition = getFormDefinition(bbCodeVersion);
+        if (definition) {
+            sendDataRequestLog(
+                'MainApp.jsx (Legacy Form)', // componentName
+                true, // isWrite
+                `Legacy Form Copied: ${definition.name} (v${bbCodeVersion})`, // dataType
+                JSON.stringify(formData).length, // dataSize
+                displayIsAuthenticated, // isAuthenticated
+                displayCharacterName, // characterName
+            );
+        }
+
         if (selectedAgencyGroup === 'PHMC Recruitment') {
             handlePhmcRecruitmentCopyAndNotify({
                 formData,
@@ -951,7 +963,9 @@ const getBBCodeContent = () => {
         coronerListData,
         phmcListData,
         displayIsAuthenticated, // Dependency
-        displayUser // Dependency
+        displayUser, // Dependency
+        sendDataRequestLog,
+        displayCharacterName
     ]);
 
     const currentFormDefinition = useMemo(() => getFormDefinition(bbCodeVersion), [bbCodeVersion]);
@@ -1388,6 +1402,7 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
         localStorage.setItem('bbCodeVersion', bbCodeVersion.toString());
         const definition = getFormDefinition(bbCodeVersion);
         if (definition) {
+
             if (selectedAgencyGroup !== definition.group) { // Optimization
                 setSelectedAgencyGroup(definition.group);
             }
@@ -1400,11 +1415,29 @@ const handleMissingEmployeeSubmit = async (actionType, employeeType, selectedEmp
             localStorage.removeItem('selectedAgencyGroup');
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [bbCodeVersion]); // This effect should primarily react to bbCodeVersion changes.
+    }, [bbCodeVersion, displayIsAuthenticated, displayCharacterName]); // This effect should primarily react to bbCodeVersion changes.
         return ( 
             
         <Suspense fallback={<LoadingSpinner />}>
             <div className="App">
+                <Alert variant="danger" className="mt-3 mx-3">
+                    <Alert.Heading>This Page is Deprecated</Alert.Heading>
+                    <p>
+                        You have accessed a legacy page that is no longer the intended way to use this application. <br />
+                        This page will be removed in a future update.<br />
+                        How... did you even get here? This page should be inaccessible via normal navigation.<br />
+                        Please tell me your secrets.<br />
+                    </p>
+                    <hr />
+                    <p className="mb-0">
+                        Please use the new <strong>Form Handler</strong> for a better experience.
+                    </p>
+                    <div className="d-flex justify-content-end">
+                        <Button onClick={() => navigate('/form-handler')} variant="danger">
+                            Go to Form Handler
+                        </Button>
+                    </div>
+                </Alert>
                 <LockdownBanner notification={lockdownConfig.notification} show={isLockdownActive} />
                 <LockdownDialog show={showDialog} onHide={hideDialog} message={lockdownConfig.dialog} />
 {/*                 <DebugUserBar />

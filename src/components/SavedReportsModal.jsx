@@ -298,7 +298,7 @@ const SavedReportsModal = ({
             } else if (preselectedEmployeeType === 'PHMC' && currentPhmcEmployee !== 'Unknown') {
                 employeeToSelectValue = currentPhmcEmployee;
             } else {
-                employeeToSelectValue = (currentCoronerEmployee !== 'Unknown' ? currentCoronerEmployee : null) || (currentPhmcEmployee !== 'Unknown' ? currentPhoncEmployee : null);
+                employeeToSelectValue = (currentCoronerEmployee !== 'Unknown' ? currentCoronerEmployee : null) || (currentPhmcEmployee !== 'Unknown' ? currentPhmcEmployee : null);
             }
 
             const employeeOption = employeeOptions.flatMap(group => group.options).find(

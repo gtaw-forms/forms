@@ -92,6 +92,15 @@ const formatToNorthAmericanDate = (isoDateTime) => {
       return acc;
     }, {});
 
+    // Custom handling for 'Patient Files' category to auto-populate date
+    if (selectedForm?.category === 'Patient Files') {
+        if (!processedFormValues.date) {
+            console.log(`[Patient Files Form] 'date' field is missing or empty. Auto-populating with today's date.`);
+            processedFormValues.date = formatToNorthAmericanDate(new Date().toISOString());
+            console.log(`[Patient Files Form] New date value: ${processedFormValues.date}`);
+        }
+    }
+
     // Custom handling for request-medical-files form to inject OAuth names
     if (selectedForm?.id === 'request-medical-files' && gtaWorldUser) {
       let oauthFirstName = gtaWorldUser?.faction?.firstname || gtaWorldUser?.activeCharacter?.firstname || null;

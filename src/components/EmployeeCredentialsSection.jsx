@@ -264,7 +264,12 @@ const EmployeeCredentialsSection = ({
       }
     } catch (err) {
       console.warn('[EmployeeCredentialsSection] Failed to refresh faction info:', err);
-      (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('Unable to refresh now. Please log out and back in to update your rank.', 'exclamation-triangle', 5000);
+      const errorMessage = err?.message || '';
+      if (errorMessage.includes('404: Not Found')) {
+        (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('GTA World API endpoint not found. Please contact support.', 'exclamation-triangle', 7000);
+      } else {
+        (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('Unable to refresh now. Please log out and back in to update your rank.', 'exclamation-triangle', 5000);
+      }
     } finally {
       setIsRefreshing(false);
     }
@@ -399,7 +404,6 @@ const EmployeeCredentialsSection = ({
           options={groupedOptions || []}
           isClearable
           placeholder={`Search or select ${employeeType}...`}
-          className={`form-control ${!formData[employeeNameField] ? 'is-invalid' : ''}`}
           styles={{
             control: (base, state) => ({
               ...base,
@@ -409,7 +413,7 @@ const EmployeeCredentialsSection = ({
               '&:hover': { borderColor: !formData[employeeNameField] ? '#dc3545' : '#86b7fe' },
               boxShadow: !formData[employeeNameField] && state.isFocused ? '0 0 0 0.25rem rgba(220, 53, 69, 0.25)' : state.isFocused ? '0 0 0 0.25rem rgba(13, 110, 253, 0.25)' : null,
             }),
-            menu: base => ({ ...base, backgroundColor: '#16202c', zIndex: 1000 }),
+            menu: base => ({ ...base, backgroundColor: '#16202c', zIndex: 1051 }),
             option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? 'Grey' : '#16202c', color: '#eeeeeeb0' }),
             singleValue: base => ({ ...base, color: '#eeeeeeb0' }),
             input: base => ({ ...base, color: '#eeeeeeb0' }),
