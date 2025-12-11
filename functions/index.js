@@ -1254,7 +1254,7 @@ export const getCachedGtaWorldProfile = onCall({
         
         // Make fresh API call
         console.log('[Cached Profile] Making fresh API call');
-        const userResponse = await fetch('https://global.gta.world/api/user', {
+        const userResponse = await fetch('https://ucp.gta.world/api/user', {
             headers: {
                 'Authorization': `Bearer ${accessToken}`,
                 'Accept': 'application/json',
