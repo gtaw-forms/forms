@@ -214,64 +214,47 @@ export const DataProvider = ({ children }) => {
         // --- Listener for forms changes ---
         const formsRef = ref(database, CACHE_SEGMENTS.FORMS);
         firebaseListeners.current.forms = onValue(formsRef, (snapshot) => {
-            if (!dataInitializedRef.current) return; // Only process updates after initial load
+            if (!dataInitializedRef.current) return;
 
-            if (snapshot.exists()) {
-                const firebaseFormsObject = snapshot.val(); // This is an object of forms
-                const firebaseFormsList = Object.keys(firebaseFormsObject).map(key => ({ ...firebaseFormsObject[key], firebaseKey: key }));
-
-                setFormsData(currentFormsList => {
-                    const currentFormsMap = new Map(currentFormsList.map(f => [f.firebaseKey, f]));
-                    const firebaseFormsMap = new Map(firebaseFormsList.map(f => [f.firebaseKey, f]));
-
-                    let updatedFormsList = [...currentFormsList];
-                    let formsCacheUpdated = false;
-
-                    // Merge/update forms from Firebase
-                    firebaseFormsList.forEach(fbForm => {
-                        const cachedForm = currentFormsMap.get(fbForm.firebaseKey);
-                        // Update if new form or Firebase form is newer
-                        if (!cachedForm || (fbForm.lastUpdated && fbForm.lastUpdated > (cachedForm.lastUpdated || 0))) {
-                            const index = updatedFormsList.findIndex(f => f.firebaseKey === fbForm.firebaseKey);
-                            if (index !== -1) {
-                                updatedFormsList[index] = fbForm;
-                            } else {
-                                updatedFormsList.push(fbForm);
-                            }
-                            formsCacheUpdated = true;
-                        }
-                    });
-
-                    // Remove forms deleted from Firebase
-                    updatedFormsList = updatedFormsList.filter(form => {
-                        const existsInFirebase = firebaseFormsMap.has(form.firebaseKey);
-                        if (!existsInFirebase) {
-                            formsCacheUpdated = true;
-                        }
-                        return existsInFirebase;
-                    });
-
-                    // Sort the forms consistently
-                    updatedFormsList.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-
-                    // Only update cache and state if changes were made
-                    if (formsCacheUpdated) {
-                        updateCacheSegment(CACHE_SEGMENTS.FORMS, updatedFormsList); // Pass the list
-                        console.log('🔄 Forms data updated from Firebase (real-time, merged)');
-                        return updatedFormsList;
-                    }
-                    return currentFormsList; // No changes
-                });
-            } else {
-                // If the entire 'forms' node is deleted in Firebase, clear cache and state
-                if (formsData.length > 0) { // Check if we actually had forms
-                    updateCacheSegment(CACHE_SEGMENTS.FORMS, {}); // Clear cache with empty object or array
-                    console.log('🔄 Forms data cleared from Firebase (real-time)');
+            if (!snapshot.exists()) {
+                if ((dataCache.current[CACHE_SEGMENTS.FORMS] || []).length > 0) {
+                    updateCacheSegment(CACHE_SEGMENTS.FORMS, []);
                 }
-                setFormsData([]); // Clear state
+                return;
+            }
+
+            const firebaseFormsObject = snapshot.val();
+            const serverFormsList = Object.keys(firebaseFormsObject).map(key => ({ ...firebaseFormsObject[key], firebaseKey: key }));
+            const localFormsList = dataCache.current[CACHE_SEGMENTS.FORMS] || [];
+            const localFormsMap = new Map(localFormsList.map(f => [f.firebaseKey, f]));
+            let needsUpdate = false;
+
+            serverFormsList.forEach(serverForm => {
+                const localForm = localFormsMap.get(serverForm.firebaseKey);
+                if (!localForm) {
+                    needsUpdate = true;
+                    return;
+                }
+
+                const serverTimestamp = serverForm.lastUpdated || 0;
+                const localTimestamp = localForm.lastUpdated || 0;
+
+                if (serverTimestamp > localTimestamp) {
+                    needsUpdate = true;
+                }
+            });
+
+            const somethingWasDeleted = localFormsList.some(oldForm => !firebaseFormsObject.hasOwnProperty(oldForm.firebaseKey));
+            if (somethingWasDeleted) {
+                needsUpdate = true;
+            }
+
+            if (needsUpdate) {
+                serverFormsList.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+                updateCacheSegment(CACHE_SEGMENTS.FORMS, serverFormsList);
             }
         });
-    }, [updateCacheSegment, setFormsData, formsData.length]);
+    }, [updateCacheSegment]);
 
 
     const loadData = useCallback(async (forceRefresh = false) => {
@@ -537,6 +520,7 @@ export const DataProvider = ({ children }) => {
                     // Clear Firebase listeners to prevent memory leaks
                     Object.values(firebaseListeners.current).forEach(unsubscribe => unsubscribe());
                     firebaseListeners.current = {};
+                    dataInitializedRef.current = false; // Reset the flag on cleanup
                 };
             }, [loadData, setupFirebaseListeners, cleanupCache]); // Dependencies: ensure these useCallback functions are stable        // DEPRICATED - USE IN VERY LIMITED APPLICATIONS
         const phmcListData = useMemo(() => {

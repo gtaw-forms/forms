@@ -66,6 +66,9 @@ const FormHandler = () => {
     return localStorage.getItem('phmc_gtaw_oauth_persist_enabled') === 'true';
   });
   const [showBugReportModal, setShowBugReportModal] = useState(false);
+  const [debugInfo, setDebugInfo] = useState(null);
+  const [showDebug, setShowDebug] = useState(false);
+  const [isAutoUpdatingBbcode, setIsAutoUpdatingBbcode] = useState(false);
 
   // Hooks
   const { showNotification, removeNotification } = useNotification();
@@ -374,8 +377,10 @@ const FormHandler = () => {
     if (selectedForm?.firebaseKey) {
         localStorage.removeItem(`form_progression_${selectedForm.firebaseKey}`);
     }
+    setShowBBCode(false);
+    setIsAutoUpdatingBbcode(false);
     showNotification('Form cleared!', 'info');
-  }, [formValues, employeeType, setFormValues, selectedForm?.firebaseKey, showNotification, keepCredentials]);
+  }, [formValues, employeeType, setFormValues, selectedForm?.firebaseKey, showNotification, keepCredentials, setShowBBCode, setIsAutoUpdatingBbcode]);
 
   const { 
       toggleSavedReports,
@@ -613,7 +618,25 @@ const FormHandler = () => {
     localStorage.setItem("formSearchTerm", searchTerm);
   }, [searchTerm]);
 
-
+  // Effect to synchronize selectedForm with updates from formsData context
+  useEffect(() => {
+    if (selectedForm && formsData.length > 0) {
+      const newVersionOfSelectedForm = formsData.find(form => form.firebaseKey === selectedForm.firebaseKey);
+      
+      if (newVersionOfSelectedForm) {
+        // If the form in context has a more recent timestamp, update our local state
+        if (newVersionOfSelectedForm.lastUpdated > selectedForm.lastUpdated) {
+          console.log('🔄 Refreshing selected form with updated data from context...');
+          setSelectedForm(newVersionOfSelectedForm);
+        }
+      } else {
+        // The currently selected form was not found in the new data (e.g., deleted)
+        console.log('🔌 Selected form no longer exists. Clearing selection.');
+        setSelectedForm(null);
+        showNotification('The selected form has been removed or is no longer available.', 'warning');
+      }
+    }
+  }, [formsData, selectedForm, showNotification]);
 
   const [groupedForms, notDisplayedFormsDetails] = React.useMemo(() => {
     const categoriesMap = {};
