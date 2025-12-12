@@ -70,7 +70,6 @@ const formatToNorthAmericanDate = (isoDateTime) => {
 
   const generateBBCode = useCallback(() => {
     if (!selectedForm?.template) {
-      console.log("No template found. Skipping generation.");
       setGeneratedBBCode("");
       setGeneratedTitle(""); // ← Correct setter
       return;
@@ -111,9 +110,7 @@ const formatToNorthAmericanDate = (isoDateTime) => {
     // Custom handling for 'Patient Files' category to auto-populate date
     if (selectedForm?.category === 'Patient Files') {
         if (!processedFormValues.date) {
-            console.log(`[Patient Files Form] 'date' field is missing or empty. Auto-populating with today's date.`);
             processedFormValues.date = formatToNorthAmericanDate(new Date().toISOString());
-            console.log(`[Patient Files Form] New date value: ${processedFormValues.date}`);
         }
     }
 
@@ -122,36 +119,22 @@ const formatToNorthAmericanDate = (isoDateTime) => {
       let oauthFirstName = gtaWorldUser?.faction?.firstname || gtaWorldUser?.activeCharacter?.firstname || null;
       let oauthLastName = gtaWorldUser?.faction?.lastname || gtaWorldUser?.activeCharacter?.lastname || null;
 
-      console.log(`%c[Medical Files Form] Detected: ${selectedForm.id}`, 'color: #1abc9c; font-weight: bold;');
-      console.log('[Medical Files Form] OAuth Names (initial):', { oauthFirstName, oauthLastName });
-
       // If OAuth names are null/empty, try to derive from patientName if available in formValues
       if ((!oauthFirstName || !oauthLastName) && processedFormValues.patientName) {
         const patientNameParts = String(processedFormValues.patientName).trim().split(' ');
         if (patientNameParts.length > 0) {
           oauthFirstName = patientNameParts[0];
           oauthLastName = patientNameParts.slice(1).join(' '); // Handle multi-word last names
-          console.log('[Medical Files Form] Derived names from patientName:', { oauthFirstName, oauthLastName });
-        } else {
-            console.log('[Medical Files Form] patientName is empty, cannot derive names.');
         }
       }
 
       if (oauthFirstName && !processedFormValues.patientFirstName) {
         processedFormValues.patientFirstName = oauthFirstName;
-        console.log(`[Medical Files Form] Injected patientFirstName: ${processedFormValues.patientFirstName}`);
       }
       if (oauthLastName && !processedFormValues.patientLastName) {
         processedFormValues.patientLastName = oauthLastName;
-        console.log(`[Medical Files Form] Injected patientLastName: ${processedFormValues.patientLastName}`);
       }
     }
-
-    console.log("%c=== BBCODE & TITLE GENERATION STARTED ===", "font-weight:bold;color:#0066cc");
-    console.log("Form:", selectedForm.name, `(${selectedForm.firebaseKey || selectedForm.id})`);
-    console.log("Original Form Values:", JSON.parse(JSON.stringify(formValues)));
-    console.log("Processed Form Values:", JSON.parse(JSON.stringify(processedFormValues)));
-    console.log("Initial selectedForm.template:", selectedForm.template);
 
     let bbcode = selectedForm.template;
     let finalTitle = "";
@@ -173,11 +156,8 @@ const formatToNorthAmericanDate = (isoDateTime) => {
     // ===================================================================
     // TITLE GENERATION – DETAILED DEBUG LOGS
     // ===================================================================
-    console.log("%cTITLE GENERATION PHASE", "font-weight:bold;color:#d35400;font-size:14px");
 
 if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email") {
-      console.log("%cCORONER EMAIL TITLE LOGIC MATCHED", "color:#e74c3c;font-weight:bold");
-
       let decedentName = processedFormValues.decedentName || processedFormValues.patientName || "UNKNOWN DECEDENT";
       const decedentOOC = processedFormValues.decedentOOC || "N/A";
 
@@ -185,25 +165,18 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
       const cleanedDecedentNameMatch = String(decedentName).match(/^(.*?)(?:\s*\(.*|\s*\[.*)/);
       if (cleanedDecedentNameMatch && cleanedDecedentNameMatch[1]) {
         decedentName = cleanedDecedentNameMatch[1].trim();
-        console.log(`[Coroner Email Title] Cleaned decedentName: ${decedentName}`);
       }
 
       finalTitle = `Coroner Report - ${decedentName} ((${decedentOOC}))`;
 
-      console.log("Coroner Email Title Inputs:", { decedentName, decedentOOC });
-      console.log("%cFinal Coroner Email Title → " + finalTitle, "color:#2ecc71;font-weight:bold");
-
     }
         else if (selectedForm.firebaseKey === 'mass-ftality-test' || selectedForm.id === 'mass-fatality') {
-      console.log("%cMatched: Mass Fatality Report Title", "color:#8e44ad;font-weight:bold");
-
       const decedentCounts = {};
       let validCount = 0;
 
       if (Array.isArray(processedFormValues.decedents)) {
         processedFormValues.decedents.forEach((d, i) => {
           const name = (d.decedentName || '').trim();
-          console.log(`Decedent[${i}]:`, name || "(empty)");
           if (name) {
             decedentCounts[name] = (decedentCounts[name] || 0) + 1;
             validCount++;
@@ -218,12 +191,9 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
       const dateStr = formatToNorthAmericanDate(processedFormValues.dateTime) || 'NO_DATE';
 
       finalTitle = `[Mass Fatality Report] ${namesList} - ${dateStr}`;
-      console.log("%cFinal Mass Fatality Title → " + finalTitle, "color:#27ae60;font-weight:bold");
  // ← FIXED
     }
     else if (selectedForm.firebaseKey === 'death-record' || selectedForm.id === 'death-record') {
-      console.log("%cMatched: Death Record Title", "color:#2980b9;font-weight:bold");
-
       const year = new Date().getFullYear();
       const caseNum = parseCaseNumber(processedFormValues.deathReportPostId) || parseCaseNumber(processedFormValues.caseNumber) || 'UNKNOWN';
       const name = processedFormValues.decedentName || 'UNKNOWN_NAME';
@@ -231,17 +201,11 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
       const dod = formatToMMM_DD_YYYY(processedFormValues.dateOfDeath || processedFormValues.dateTime);
 
       finalTitle = `[CASE-#${year}-${caseNum}] ${name} ((${ooc} | ${dod}))`;
-      console.log("%cFinal Death Record Title → " + finalTitle, "color:#27ae60;font-weight:bold");
  // ← FIXED
     }
     
     else if (selectedForm.titleGeneratorCode) {
-      console.log("%cGENERIC titleGeneratorCode TEMPLATE", "color:#1abc9c;font-weight:bold");
-      console.log("Raw title template:", selectedForm.titleGeneratorCode);
-
       let workingTitle = selectedForm.titleGeneratorCode;
-
-      console.log("%cSAFETY NET: Pre-replacing all form fields in TITLE", "color:#f39c12;font-weight:bold");
 
       selectedForm.fields?.forEach(field => {
         const placeholder = `{{${field.name}}}`;
@@ -262,7 +226,6 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
             new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
             safeValue
           );
-          console.log(`Title pre-replaced ${placeholder} → "${safeValue}"`);
         }
       });
       // Fallback: also replace common known common ones even if not in fields list
@@ -281,12 +244,10 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
             new RegExp(ph.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
             String(val)
           );
-          console.log(`Title fallback: ${ph} → "${val}"`);
         }
       });
 
       finalTitle = workingTitle;
-      console.log("%cFINAL TITLE → " + finalTitle, "color:#2ecc71;font-weight:bold;background:#000;padding:2px 6px");
 
       
     }    // ===================================================================    
@@ -369,33 +330,54 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
   return conditionMet ? inner.trim() : '';
 });
     // ──────────────────────────────────────────────────────────────
-    // 5. FIELD REPLACEMENT — SAFE PER-FIELD
+    // 5. FIELD REPLACEMENT — NOW BASED ON VALUES, NOT FIELD DEFS
     // ──────────────────────────────────────────────────────────────
-    selectedForm.fields?.forEach(field => {
-      const placeholder = `{{${field.name}}}`;
-      if (!bbcode.includes(placeholder)) return;
+    Object.keys(processedFormValues).forEach(key => {
+        const placeholder = `{{${key}}}`;
+        if (!bbcode.includes(placeholder)) return;
 
-      let value = processedFormValues[field.name] ?? "";
+        const value = processedFormValues[key];
+        const escaped = placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        let replacement = String(value ?? ''); // Default to string representation
 
-      // Custom handling for payment confirmation objects during field replacement
-      if (typeof value === 'object' && value !== null && Object.prototype.hasOwnProperty.call(value, 'confirmedAt')) {
-        value = String(value.confirmedAt); // Extract the confirmedAt
-      }
-      // ... existing special handling for image_upload, checkbox, multi_select ...
-      // Handle image fields (single or multiple)
-      else if ((field.type === "image" || field.type === "image_upload") && value) {
-        if (Array.isArray(value)) {
-          value = value.map(url => url ? `[img]${url}[/img]` : '').filter(Boolean).join('\n'); // Join multiple images with newlines
-        } else if (typeof value === 'string' && value) {
-          value = `[img]${value}[/img]`;
+        // Find the field definition to apply special formatting if it exists
+        const field = selectedForm.fields?.find(f => f.name === key);
+
+        if (field) {
+            if ((field.type === "image" || field.type === "image_upload") && value) {
+                const isImageUrl = (url) => {
+                    if (typeof url !== 'string') return false;
+                    return /\.(jpg|jpeg|png|gif|webp)$/i.test(url.trim());
+                };
+                const formatItem = (item) => {
+                    if (typeof item === 'string' && isImageUrl(item)) {
+                        return `[img]${item}[/img]`;
+                    }
+                    return item || '';
+                };
+                if (Array.isArray(value)) {
+                    replacement = value.map(formatItem).filter(Boolean).join('\n');
+                } else if (typeof value === 'string') {
+                    replacement = formatItem(value);
+                }
+            }
+            else if (field.type === "checkbox" && typeof value === "boolean") {
+                replacement = value ? "Yes" : "No";
+            } 
+            else if (field.type === "multi_select" && Array.isArray(value)) {
+                replacement = value.join(", ");
+            }
+            else if (["dateTime", "pronouncedTimeOfDeath"].includes(field.name)) {
+                replacement = String(value).split("T")[0] || String(value);
+            }
         }
-      }
-      else if (field.type === "checkbox" && typeof value === "boolean") value = value ? "Yes" : "No";
-      else if (field.type === "multi_select" && Array.isArray(value)) value = value.join(", ");
-      else if (["dateTime", "pronouncedTimeOfDeath"].includes(field.name)) value = value.split("T")[0] || value;
+        
+        // This handles cases where value is an object, like from payment buttons
+        if (typeof value === 'object' && value !== null && !Array.isArray(value) && Object.prototype.hasOwnProperty.call(value, 'confirmedAt')) {
+            replacement = String(value.confirmedAt);
+        }
 
-      const escaped = placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      bbcode = bbcode.replace(new RegExp(escaped, "g"), String(value));
+        bbcode = bbcode.replace(new RegExp(escaped, "g"), replacement);
     });
 
     // ──────────────────────────────────────────────────────────────
@@ -422,7 +404,6 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
         return "";
       }
     });
-    console.log("Final BBCode after syntaxing expressions:", bbcode);
 
     // --- Consistency Check: Form Values vs. OAuth Data (Employee Credentials) ---
     if (gtaWorldUser) {
@@ -437,17 +418,9 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
         const oauthEmployeeRank = gtaWorldUser.faction?.rank || 'N/A'; // Rank might be less directly available for non-faction activeCharacter
 
         if (formEmployeeName && oauthEmployeeName && formEmployeeName !== oauthEmployeeName) {
-          console.warn(
-            `BBCode Generation Discrepancy (Name - ${employeeTypeLower.toUpperCase()}): ` +
-            `Form has "${formEmployeeName}" but OAuth user is "${oauthEmployeeName}".`
-          );
         }
 
         if (formEmployeeRank && oauthEmployeeRank && formEmployeeRank !== oauthEmployeeRank) {
-          console.warn(
-            `BBCode Generation Discrepancy (Rank - ${employeeTypeLower.toUpperCase()}): ` +
-            `Form has "${formEmployeeRank}" but OAuth user rank is "${oauthEmployeeRank}".`
-          );
         }
       }
     }
@@ -456,9 +429,6 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
     setShowBBCode(true);
     setGeneratedBBCode(bbcode);
     setGeneratedTitle(finalTitle); // Set the accumulated finalTitle here
-
-    console.log("%cGENERATION COMPLETE", "font-weight:bold;color:#0066cc");
-    console.log("Title:", finalTitle);
   }, [selectedForm, formValues, finalSelectOptions, agencyDataStore, gtaWorldUser]);
 
   return {
