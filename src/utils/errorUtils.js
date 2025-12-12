@@ -205,7 +205,7 @@ export const sendDiscordErrorWebhook = (errorDetails, sentryBlocked = false) => 
             sentryEventId ? { name: "Sentry Trace/Event ID", value: `\`${sentryEventId}\``, inline: false } : null,
         ].filter(Boolean),
         timestamp: new Date().toISOString(),
-        footer: { text: "PHMC Tools - Global Error Handler" }
+        footer: { text: `PHMC Tools - Global Error Handler | gh-pages ${import.meta.env.GIT_COMMIT_SHORT || 'N/A'}${import.meta.env.GIT_DIRTY ? ' (dirty)' : ''}` }
     };
     discordErrorWebhookQueue.push({ content: '<@228306972204597248>', embeds: [embed] });
     processDiscordErrorQueue(); // Start processing the queue if it's not already running

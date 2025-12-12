@@ -418,7 +418,7 @@ const AddFormModal = ({ show, onClose, editingForm = null, user }) => {
 
   const narrativeField = {
     type: "textarea",
-    label: `${fieldToSave.label} - Notes`,
+    label: `${fieldToSave.label} - Raw Notes / Manual cdmages /cdna`,
     name: `${fieldToSave.name}_narrative`,
     placeholder: "Write notes or paste screenshots here (Ctrl+V)",
     rows: 6,

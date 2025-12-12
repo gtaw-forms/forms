@@ -713,6 +713,23 @@ case "textarea":
               <div style={{ color: "#34d399" }}>
                 <p style={{ margin: 0 }}>Payment Confirmed at:</p>
                 <strong>{new Date(formValues[field.name].confirmedAt).toLocaleString()}</strong>
+                <button
+                  onClick={handleRestartPayment}
+                  style={{
+                    background: "#ef4444", // Red color for reset/danger
+                    color: "white",
+                    border: "none",
+                    padding: "0.5rem 1rem",
+                    borderRadius: 8,
+                    fontSize: "0.9rem",
+                    fontWeight: "600",
+                    marginTop: "1rem",
+                    width: "100%",
+                    cursor: "pointer"
+                  }}
+                >
+                  Reset Payment
+                </button>
               </div>
             )}
           </div>
