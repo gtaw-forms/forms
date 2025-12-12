@@ -104,7 +104,7 @@ export const sendDiscordWebhookInternal = async (webhookUrl, embedData, commitIn
         fields: fields,
         timestamp: new Date().toISOString(),
         footer: {
-            text: `${footerText} | gh-pages ${commitInfo.sha || 'N/A'}`
+            text: `${footerText} | gh-pages ${import.meta.env.GIT_COMMIT_SHORT || 'N/A'}${import.meta.env.GIT_DIRTY ? ' (dirty)' : ''}`
         }
     };
 
@@ -162,7 +162,9 @@ export const sendBingoNotification = async ({ scorer, bingoType, phrase, lineNam
                 { name: "Game", value: bingoType || 'Unknown', inline: true },
                 { name: "Phrase", value: phrase || 'Unknown', inline: true },
             ],
-            footerText: "PHMC Bingo - Marker Placed",
+            footer: {
+                text: `PHMC Bingo - Marker Placed | gh-pages ${import.meta.env.GIT_COMMIT_SHORT || 'N/A'}${import.meta.env.GIT_DIRTY ? ' (dirty)' : ''}`
+            },
         };
     } else { // Original Bingo! functionality
         embedData = {
@@ -173,7 +175,9 @@ export const sendBingoNotification = async ({ scorer, bingoType, phrase, lineNam
                 { name: "Game", value: bingoType || 'Unknown', inline: true },
                 { name: "Line", value: lineName || 'Unknown', inline: true },
             ],
-            footerText: "PHMC Bingo - BINGO!",
+            footer: {
+                text: `PHMC Bingo - BINGO! | gh-pages ${import.meta.env.GIT_COMMIT_SHORT || 'N/A'}${import.meta.env.GIT_DIRTY ? ' (dirty)' : ''}`
+            },
         };
     }
 
@@ -265,7 +269,7 @@ export const sendMissingEmployeeNotification = async (
                 ],
                 timestamp: new Date().toISOString(),
                 footer: {
-                    text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}`,
+                    text: `Submitted via PHMC Tools Tool - v${import.meta.env.GIT_COMMIT_SHORT || 'N/A'}${import.meta.env.GIT_DIRTY ? ' (dirty)' : ''}`,
                 },
             };
 
@@ -337,7 +341,7 @@ ${JSON.stringify(debugData, null, 2)}
                 ],
                 timestamp: new Date().toISOString(),
                 footer: {
-                    text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}`,
+                    text: `Submitted via PHMC Tools Tool - v${import.meta.env.GIT_COMMIT_SHORT || 'N/A'}${import.meta.env.GIT_DIRTY ? ' (dirty)' : ''}`,
                 },
             };
 
@@ -435,7 +439,7 @@ ${JSON.stringify(debugData, null, 2)}
                 ],
                 timestamp: new Date().toISOString(),
                 footer: {
-                    text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}`,
+                    text: `Submitted via PHMC Tools Tool - v${import.meta.env.GIT_COMMIT_SHORT || 'N/A'}${import.meta.env.GIT_DIRTY ? ' (dirty)' : ''}`,
                 },
             };
 
@@ -491,7 +495,9 @@ export const sendPhraseRequestNotification = async ({ requester, phrase, bingoTy
         description: `A new phrase has been requested for review.`, 
         color: 0x7289DA, // Discord Blurple
         fields: embedFields,
-        footerText: "PHMC Bingo",
+        footer: {
+            text: `PHMC Bingo | gh-pages ${import.meta.env.GIT_COMMIT_SHORT || 'N/A'}${import.meta.env.GIT_DIRTY ? ' (dirty)' : ''}`
+        },
     };
 
     await sendDiscordWebhookInternal(webhookUrl, embedData, commitInfo);
@@ -558,7 +564,9 @@ const sendPhmcRecruitmentWebhook = async ({
         title: `${formNameForTitle} Notification`,
         color: 0x007bff, 
         fields: fields,
-        footerText: "PHMC Recruitment Forms", 
+        footer: {
+            text: `PHMC Recruitment Forms | gh-pages ${import.meta.env.GIT_COMMIT_SHORT || 'N/A'}${import.meta.env.GIT_DIRTY ? ' (dirty)' : ''}`
+        },
     };
 
     await sendDiscordWebhookInternal(webhookUrl, embedData, commitInfo);
@@ -750,7 +758,7 @@ const sendFormInteractionWebhookInternal = async ({
         fields: validatedFields,
         timestamp: new Date().toISOString(),
         footer: {
-            text: `Forms Tool | gh-pages ${commitInfo.sha || 'N/A'}`
+            text: `Forms Tool | gh-pages ${import.meta.env.GIT_COMMIT_SHORT || 'N/A'}${import.meta.env.GIT_DIRTY ? ' (dirty)' : ''}`
         },
     };
 
@@ -1068,7 +1076,9 @@ ${stack.substring(0, 1000)}
 `,
  inline: false },
         ],
-        footerText: "Error Fallback Reporter"
+        footer: {
+            text: `Error Fallback Reporter | gh-pages ${import.meta.env.GIT_COMMIT_SHORT || 'N/A'}${import.meta.env.GIT_DIRTY ? ' (dirty)' : ''}`
+        }
     };
 
     // We don't have commitInfo here, so we pass an empty object.

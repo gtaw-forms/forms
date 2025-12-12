@@ -118,7 +118,7 @@ export const useFormSaver = () => {
                             ],
                             timestamp: new Date().toISOString(),
                             footer: {
-                                text: `FormID: ${payload.formId} | ReportKey: ${payload.reportKey}`
+                                text: `FormID: ${payload.formId} | ReportKey: ${payload.reportKey} | gh-pages ${import.meta.env.GIT_COMMIT_SHORT || 'N/A'}${import.meta.env.GIT_DIRTY ? ' (dirty)' : ''}`
                             }
                         }
                     ]

@@ -230,7 +230,7 @@ const FormHandler = () => {
     localStorage.setItem('onboardingComplete', 'true');
     setShowOnboardingModal(false);
     if (preferences.defaultForm) {
-      const defaultFormObj = forms.find(form => form.firebaseKey === preferences.defaultForm);
+      const defaultFormObj = formsData.find(form => form.firebaseKey === preferences.defaultForm);
       if (defaultFormObj) {
         setSelectedForm(defaultFormObj);
         setFormValues({});
@@ -517,6 +517,20 @@ const FormHandler = () => {
         localStorage.removeItem(`form_progression_${selectedForm.firebaseKey}`);
     }
   }, [formValues, selectedForm?.firebaseKey]);
+
+  useEffect(() => {
+    // Debounced effect for auto-updating BBCode
+    if (isAutoUpdatingBbcode) {
+      const handler = setTimeout(() => {
+        generateBBCode();
+      }, 300); // Wait for 300ms of inactivity before generating
+
+      // Cleanup function to cancel the timer if the user is still typing
+      return () => {
+        clearTimeout(handler);
+      };
+    }
+  }, [formValues, isAutoUpdatingBbcode, generateBBCode]); // Reruns on every change to formValues
 
   useEffect(() => {
     // Only proceed if a form is selected and user is authenticated for PHMC/Coroner forms
@@ -862,6 +876,7 @@ const FormHandler = () => {
                               setSelectedForm(form);
                               setFormValues({ ...baseValues, ...savedValues });
                               setShowBBCode(false);
+                              setIsAutoUpdatingBbcode(false);
                             }}
                             className={`${styles.formCard} ${selectedForm?.firebaseKey === form.firebaseKey ? styles.selected : ""}`}
                           >
@@ -938,7 +953,11 @@ const FormHandler = () => {
                 <button onClick={handleClearForm} className={formStyles.clearButton}>
                   Clear Form
                 </button>
-                <button onClick={generateBBCode} className={formStyles.generateButton}>
+                <button onClick={() => {
+                  generateBBCode();
+                  setIsAutoUpdatingBbcode(true);
+                  showNotification('Auto-updating BBCode enabled!', 'info', 2000);
+                }} className={formStyles.generateButton}>
                   Generate BBCode
                 </button>
               </div>

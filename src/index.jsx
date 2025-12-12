@@ -119,7 +119,6 @@ init({
   tracePropagationTargets: ["localhost", "https://forms.phmc.io", /^\//],
 });
 console.log("Sentry has been initialized.");
-
 // --- Global Error Handling Setup ---
 window.onerror = (message, source, lineno, colno, errorObject) => {
     // Ignore common, non-critical errors that can create a lot of noise.
