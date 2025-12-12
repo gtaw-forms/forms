@@ -407,10 +407,6 @@ const BulkAddFieldsModal = ({ show, onBulkAdd, onClose, existingFields = [], bbc
                                     style={{...inputStyle, width: '100%', fontFamily: 'monospace'}}
                                     rows={3}
                                   />
-                                  <div style={{ color: "#94a3b8", fontSize: "0.9rem", marginTop: '0.5rem' }}>
-                                      Use a JS arrow function that receives <code>formData</code> and returns the payment amount in cents.
-                                      Example: <code>(formData) => 2000</code>
-                                  </div>
                                 </div>
                               )}
                   

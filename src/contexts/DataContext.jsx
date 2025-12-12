@@ -121,6 +121,7 @@ export const DataProvider = ({ children }) => {
     const dataCache = useRef({});
     const didLoadFromCache = useRef(false); // Flag to track if cache was used
     const dataInitializedRef = useRef(false); // Flag to track if initial data load is complete
+    const hasLoggedInitialLoad = useRef(false); // Flag to prevent duplicate logging in StrictMode
     const [dataLoaded, setDataLoaded] = useState(false);
     const firebaseListeners = useRef({});
 
@@ -225,8 +226,11 @@ export const DataProvider = ({ children }) => {
 
             const firebaseFormsObject = snapshot.val();
             const serverFormsList = Object.keys(firebaseFormsObject).map(key => ({ ...firebaseFormsObject[key], firebaseKey: key }));
-            const localFormsList = dataCache.current[CACHE_SEGMENTS.FORMS] || [];
-            const localFormsMap = new Map(localFormsList.map(f => [f.firebaseKey, f]));
+            const localFormsData = dataCache.current[CACHE_SEGMENTS.FORMS];
+            const localFormsList = Array.isArray(localFormsData) ? localFormsData : [];
+            // Filter out any null or undefined entries before mapping
+            const cleanLocalFormsList = localFormsList.filter(f => f && typeof f === 'object');
+            const localFormsMap = new Map(cleanLocalFormsList.map(f => [f.firebaseKey, f]));
             let needsUpdate = false;
 
             serverFormsList.forEach(serverForm => {
@@ -258,13 +262,23 @@ export const DataProvider = ({ children }) => {
 
 
     const loadData = useCallback(async (forceRefresh = false) => {
+        // If data is already loaded and we are not forcing a refresh, exit early.
+        // This is crucial to prevent re-fetching in StrictMode's double invocation.
+        if (dataLoaded && !forceRefresh) {
+            console.log('[DataContext] Data already loaded and no force refresh. Skipping redundant loadData call.');
+            return;
+        }
+
         // Check memory cache first for each segment
         if (dataLoaded && !forceRefresh && Object.values(CACHE_SEGMENTS).every(segment => 
             dataCache.current[segment] && isCacheValid(segment))) {
-            console.log('📦 Using memory-cached Firebase data');
-            const size = JSON.stringify(dataCache.current).length;
-            const portions = Object.keys(dataCache.current).join(', ');
-            sendDataRequestLog('DataContext.jsx', true, 'Memory Cache', size, isAuthenticated, user?.faction?.characterName || user?.username, portions);
+            if (!hasLoggedInitialLoad.current) {
+                console.log('📦 Using memory-cached Firebase data');
+                const size = JSON.stringify(dataCache.current).length;
+                const portions = Object.keys(dataCache.current).join(', ');
+                sendDataRequestLog('DataContext.jsx', true, 'Memory Cache', size, isAuthenticated, user?.faction?.characterName || user?.username, portions);
+                hasLoggedInitialLoad.current = true;
+            }
             setIsLoadingData(false);
             setLoading(false);
             return;
@@ -288,14 +302,17 @@ export const DataProvider = ({ children }) => {
             });
 
             if (allSegmentsLoaded) {
-                console.log('📦 Using localStorage-cached Firebase data');
-                if (dataCache.current[CACHE_SEGMENTS.FORMS]) {
-                    const formsList = Array.isArray(dataCache.current[CACHE_SEGMENTS.FORMS]) ? dataCache.current[CACHE_SEGMENTS.FORMS] : [];
-                    console.log(`📦 -> Forms loaded from cache: ${formsList.length} forms.`);
+                if (!hasLoggedInitialLoad.current) {
+                    console.log('📦 Using localStorage-cached Firebase data');
+                    if (dataCache.current[CACHE_SEGMENTS.FORMS]) {
+                        const formsList = Array.isArray(dataCache.current[CACHE_SEGMENTS.FORMS]) ? dataCache.current[CACHE_SEGMENTS.FORMS] : [];
+                        console.log(`📦 -> Forms loaded from cache: ${formsList.length} forms.`);
+                    }
+                    const size = JSON.stringify(dataCache.current).length;
+                    const portions = Object.keys(dataCache.current).join(', ');
+                    sendDataRequestLog('DataContext.jsx', true, 'Local Storage', size, isAuthenticated, user?.faction?.characterName || user?.username, portions);
+                    hasLoggedInitialLoad.current = true;
                 }
-                const size = JSON.stringify(dataCache.current).length;
-                const portions = Object.keys(dataCache.current).join(', ');
-                sendDataRequestLog('DataContext.jsx', true, 'Local Storage', size, isAuthenticated, user?.faction?.characterName || user?.username, portions);
                 updateStateWithData(dataCache.current);
                 setDataLoaded(true);
                 setIsLoadingData(false);
@@ -339,9 +356,12 @@ export const DataProvider = ({ children }) => {
             });
 
             if (hasData) {
-                const size = JSON.stringify(allData).length;
-                const portions = Object.keys(allData).join(', ');
-                sendDataRequestLog('DataContext.jsx', false, 'Firebase', size, isAuthenticated, user?.faction?.characterName || user?.username, portions);
+                if (!hasLoggedInitialLoad.current) {
+                    const size = JSON.stringify(allData).length;
+                    const portions = Object.keys(allData).join(', ');
+                    sendDataRequestLog('DataContext.jsx', false, 'Firebase', size, isAuthenticated, user?.faction?.characterName || user?.username, portions);
+                    hasLoggedInitialLoad.current = true;
+                }
                 console.log('[DataContext] Raw data from Firebase:', allData);
 
                 // Update each cache segment independently
@@ -399,7 +419,7 @@ export const DataProvider = ({ children }) => {
         setPhysicianRecruitmentDetails, setPsychRecruitmentDetails, setAdminRecruitmentDetails,
         setEmsRecruitmentDetails, setNurseRecruitmentDetails, setCoronerRecruitmentDetails,
         setIsLoadingData, setLoading, setFormsData,
-        isAuthenticated, user, sendDataRequestLog, dataLoaded
+        isAuthenticated, user, sendDataRequestLog
     ]);
 
     const refreshData = useCallback(async () => {
@@ -520,13 +540,12 @@ export const DataProvider = ({ children }) => {
                     // Clear Firebase listeners to prevent memory leaks
                     Object.values(firebaseListeners.current).forEach(unsubscribe => unsubscribe());
                     firebaseListeners.current = {};
-                    dataInitializedRef.current = false; // Reset the flag on cleanup
                 };
             }, [loadData, setupFirebaseListeners, cleanupCache]); // Dependencies: ensure these useCallback functions are stable        // DEPRICATED - USE IN VERY LIMITED APPLICATIONS
         const phmcListData = useMemo(() => {
             // PHMC FACTION = 364, filtered by excluding CORONER categories
-            if (!factionsData['364'] || !factionsData['364'].members) {
-                console.log('[DataContext] phmcListData: Faction data empty');
+            if (!factionsData['364'] || typeof factionsData['364'].members !== 'object' || !factionsData['364'].members) {
+                console.log('[DataContext] phmcListData: Faction data empty or malformed');
                 return [];
             }
     
@@ -548,8 +567,8 @@ export const DataProvider = ({ children }) => {
         // DEPRICATED - USE IN VERY LIMITED APPLICATIONS
         const coronerListData = useMemo(() => {
         // PHMC FACTION = 364, filtered by CORONER categories
-        if ((!factionsData['364'] || !factionsData['364'].members) ) {
-            console.log('[DataContext] coronerListData: Both faction and legacy data empty');
+        if (!factionsData['364'] || typeof factionsData['364'].members !== 'object' || !factionsData['364'].members) {
+            console.log('[DataContext] coronerListData: Faction data empty or malformed');
             return [];
         }
 

@@ -91,18 +91,11 @@ const formatToNorthAmericanDate = (isoDateTime) => {
       return acc;
     }, {});
 
-    // Ensure all template variables have a fallback to prevent ReferenceErrors
-    // This is especially for variables directly referenced in the template.
-    // The specific ones from the example error are coronerRank and coronerEmployee.
-    // Adding common employee fields for both PHMC and Coroner.
-    const ensureTemplateVariables = [
-      'coronerRank', 'coronerEmployee', 'coronerBadge', 'coronerFirstName', 'coronerLastName', 'coronerDiscord', 'coronerPHNumber',
-      'phmcRank', 'phmcEmployee', 'phmcBadge', 'phmcFirstName', 'phmcLastName', 'phmcDiscord', 'phmcPHNumber',
-      // Add other common fields that might be directly referenced in templates without prior checks
-      'patientName', 'patientFirstName', 'patientLastName', 'patientOOC', 'dateTime', 'placeOfDeath', 'department', 'synopsis',
-    ];
-    ensureTemplateVariables.forEach(key => {
-      if (processedFormValues[key] === undefined) { // Check for undefined, allowing nulls if intended
+    // Ensure all template variables are initialized to prevent ReferenceErrors.
+    // This dynamically finds all `{{variable}}` placeholders in the template.
+    const placeholders = new Set(selectedForm.template.match(/\{\{([a-zA-Z0-9_]+)\}\}/g)?.map(p => p.replace(/[{}]/g, '')) || []);
+    placeholders.forEach(key => {
+      if (processedFormValues[key] === undefined) {
         processedFormValues[key] = '';
       }
     });
@@ -136,6 +129,10 @@ const formatToNorthAmericanDate = (isoDateTime) => {
       }
     }
 
+    console.log("%c=== BBCODE & TITLE GENERATION STARTED ===", "font-weight:bold;color:#0066cc");
+    console.log("Form:", selectedForm.name, `(${selectedForm.firebaseKey || selectedForm.id})`);
+    console.log("Processed Form Values:", JSON.parse(JSON.stringify(processedFormValues)));
+
     let bbcode = selectedForm.template;
     let finalTitle = "";
 
@@ -154,8 +151,9 @@ const formatToNorthAmericanDate = (isoDateTime) => {
     addFallback('coronerEmployee', 'CoronerEmployee'); addFallback('CoronerEmployee', 'coronerEmployee');
 
     // ===================================================================
-    // TITLE GENERATION – DETAILED DEBUG LOGS
+    // TITLE GENERATION
     // ===================================================================
+    console.log("%cTITLE GENERATION PHASE", "font-weight:bold;color:#d35400;font-size:14px");
 
 if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email") {
       let decedentName = processedFormValues.decedentName || processedFormValues.patientName || "UNKNOWN DECEDENT";
@@ -191,7 +189,6 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
       const dateStr = formatToNorthAmericanDate(processedFormValues.dateTime) || 'NO_DATE';
 
       finalTitle = `[Mass Fatality Report] ${namesList} - ${dateStr}`;
- // ← FIXED
     }
     else if (selectedForm.firebaseKey === 'death-record' || selectedForm.id === 'death-record') {
       const year = new Date().getFullYear();
@@ -201,7 +198,6 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
       const dod = formatToMMM_DD_YYYY(processedFormValues.dateOfDeath || processedFormValues.dateTime);
 
       finalTitle = `[CASE-#${year}-${caseNum}] ${name} ((${ooc} | ${dod}))`;
- // ← FIXED
     }
     
     else if (selectedForm.titleGeneratorCode) {
@@ -248,7 +244,7 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
       });
 
       finalTitle = workingTitle;
-
+      console.log("%cFINAL TITLE → " + finalTitle, "color:#2ecc71;font-weight:bold;background:#000;padding:2px 6px");
       
     }    // ===================================================================    
     // 1. CHECKBOXES WITH OPTIONS (e.g., [cb:fieldName]Option[/cb], [cb:fieldName])
@@ -429,6 +425,9 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
     setShowBBCode(true);
     setGeneratedBBCode(bbcode);
     setGeneratedTitle(finalTitle); // Set the accumulated finalTitle here
+
+    console.log("%cGENERATION COMPLETE", "font-weight:bold;color:#0066cc");
+    console.log("Title:", finalTitle);
   }, [selectedForm, formValues, finalSelectOptions, agencyDataStore, gtaWorldUser]);
 
   return {

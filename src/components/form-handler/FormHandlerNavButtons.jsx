@@ -209,7 +209,7 @@ const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
             cursor: 'pointer',
             zIndex: 1000,
         }}
-        onClick={() => navigate('/')}
+        onClick={() => window.open('https://phmc.gta.world/', '_blank')}
         title="Go to PHMC Website"
       >
         <img src={phmcLogoSrc} alt="PHMC Logo" className={phmcLogoClassName} style={{ height: '85px' }} />
