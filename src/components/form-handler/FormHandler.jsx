@@ -705,8 +705,17 @@ const FormHandler = () => {
     });
 
     const sortedCategoryNames = Object.keys(categoriesMap).sort((a, b) => {
+        const categoryOrder = ['Patient Files', 'DMEC', 'PHMC Staff'];
+        const indexA = categoryOrder.indexOf(a);
+        const indexB = categoryOrder.indexOf(b);
+
+        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+        if (indexA !== -1) return -1;
+        if (indexB !== -1) return 1;
+
         if (a === "Uncategorized") return 1;
         if (b === "Uncategorized") return -1;
+        
         return a.localeCompare(b);
     });
 
