@@ -824,7 +824,7 @@ export const handleFormCopyAndNotify = async ({
     bbCodeVersion,
     selectedAgencyGroup,
     getBBCodeContent,
-    getFormDefinition,
+    //getFormDefinition,
     saveReport,
     showNotification,
     removeNotification,
@@ -843,7 +843,7 @@ export const handleFormCopyAndNotify = async ({
 }) => {
     // --- Step 1: Generate BBCode ---
     const bbCodeToCopy = getBBCodeContent();
-    const definition = getFormDefinition(bbCodeVersion);
+    //const definition = getFormDefinition(bbCodeVersion);
     const versionName = definition ? definition.name : "Unknown Form";
 
     if (!bbCodeToCopy) {
