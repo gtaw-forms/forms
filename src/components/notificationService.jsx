@@ -104,7 +104,7 @@ export const sendDiscordWebhookInternal = async (webhookUrl, embedData, commitIn
         fields: fields,
         timestamp: new Date().toISOString(),
         footer: {
-            text: `${footerText} | gh-pages ${import.meta.env.GIT_COMMIT_SHORT || 'N/A'}${import.meta.env.GIT_DIRTY ? ' (dirty)' : ''}`
+            text: `${footerText} `
         }
     };
 
@@ -163,7 +163,7 @@ export const sendBingoNotification = async ({ scorer, bingoType, phrase, lineNam
                 { name: "Phrase", value: phrase || 'Unknown', inline: true },
             ],
             footer: {
-                text: `PHMC Bingo - Marker Placed | gh-pages ${import.meta.env.GIT_COMMIT_SHORT || 'N/A'}${import.meta.env.GIT_DIRTY ? ' (dirty)' : ''}`
+                text: `PHMC Bingo - Marker Placed | `
             },
         };
     } else { // Original Bingo! functionality
@@ -176,7 +176,7 @@ export const sendBingoNotification = async ({ scorer, bingoType, phrase, lineNam
                 { name: "Line", value: lineName || 'Unknown', inline: true },
             ],
             footer: {
-                text: `PHMC Bingo - BINGO! | gh-pages ${import.meta.env.GIT_COMMIT_SHORT || 'N/A'}${import.meta.env.GIT_DIRTY ? ' (dirty)' : ''}`
+                text: `PHMC Bingo - BINGO! | `
             },
         };
     }
@@ -496,7 +496,7 @@ export const sendPhraseRequestNotification = async ({ requester, phrase, bingoTy
         color: 0x7289DA, // Discord Blurple
         fields: embedFields,
         footer: {
-            text: `PHMC Bingo | gh-pages ${import.meta.env.GIT_COMMIT_SHORT || 'N/A'}${import.meta.env.GIT_DIRTY ? ' (dirty)' : ''}`
+            text: `PHMC Bingo | `
         },
     };
 
@@ -565,7 +565,7 @@ const sendPhmcRecruitmentWebhook = async ({
         color: 0x007bff, 
         fields: fields,
         footer: {
-            text: `PHMC Recruitment Forms | gh-pages ${import.meta.env.GIT_COMMIT_SHORT || 'N/A'}${import.meta.env.GIT_DIRTY ? ' (dirty)' : ''}`
+            text: `PHMC Recruitment Forms | `
         },
     };
 
@@ -758,7 +758,7 @@ const sendFormInteractionWebhookInternal = async ({
         fields: validatedFields,
         timestamp: new Date().toISOString(),
         footer: {
-            text: `Forms Tool | gh-pages ${import.meta.env.GIT_COMMIT_SHORT || 'N/A'}${import.meta.env.GIT_DIRTY ? ' (dirty)' : ''}`
+            text: `Forms Tool | `
         },
     };
 
@@ -1077,7 +1077,7 @@ ${stack.substring(0, 1000)}
  inline: false },
         ],
         footer: {
-            text: `Error Fallback Reporter | gh-pages ${import.meta.env.GIT_COMMIT_SHORT || 'N/A'}${import.meta.env.GIT_DIRTY ? ' (dirty)' : ''}`
+            text: `Error Fallback Reporter | `
         }
     };
 

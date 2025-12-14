@@ -16,8 +16,12 @@ import { useModal } from '../../contexts/ModalProvider.jsx'; // New import
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth'; // New import
 import { sendBingoNotification, sendPhraseRequestNotification } from '../notificationService'; // New import
 import { Button } from 'react-bootstrap';
+import { useInactivityReload } from '../../hooks/useInactivityReload'; // NEW IMPORT
+
 
 const EmsDashboard = () => {
+  useInactivityReload(); // NEW HOOK CALL
+
   const [protocols, setProtocols] = useState([]);
   const [injuries, setInjuries] = useState({}); // { id: { name, words } }
   const [selectedInjury, setSelectedInjury] = useState(null); // full injury object

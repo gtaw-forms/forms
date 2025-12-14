@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { Button, Form, Spinner, Card, Alert } from 'react-bootstrap';
-import { ref, get, update } from 'firebase/database'; // Changed set to update
+import React, { useState, useCallback } from 'react';
+import { Button, Form, Spinner, Card, Alert, Col, Row, ListGroup } from 'react-bootstrap';
+import { ref, get, update, set } from 'firebase/database';
 import { database } from '../../firebase';
 
 const DatabaseEditor = ({ showNotification }) => {
@@ -10,6 +10,13 @@ const DatabaseEditor = ({ showNotification }) => {
     const [error, setError] = useState(null);
     const [restoreFile, setRestoreFile] = useState(null);
     const [isRestoring, setIsRestoring] = useState(false);
+
+    // New state for Select Options editor
+    const [optionCategory, setOptionCategory] = useState('');
+    const [currentOptions, setCurrentOptions] = useState(null); // null if not loaded, array if loaded
+    const [newOptionLabel, setNewOptionLabel] = useState('');
+    const [newOptionValue, setNewOptionValue] = useState('');
+    const [isLoadingOptions, setIsLoadingOptions] = useState(false);
 
     const handleFetch = async () => {
         if (!path) {
@@ -53,7 +60,6 @@ const DatabaseEditor = ({ showNotification }) => {
         setError(null);
         try {
             const dbRef = ref(database, path);
-            // Using update instead of set to prevent overwriting entire nodes unintentionally
             await update(dbRef, dataToSave);
             showNotification('Data updated successfully!', 'check-circle');
         } catch (e) {
@@ -138,6 +144,80 @@ const DatabaseEditor = ({ showNotification }) => {
         reader.readAsText(restoreFile);
     };
 
+    const handleLoadCategory = useCallback(async () => {
+        if (!optionCategory) {
+            showNotification('Please enter an option category name.', 'warning');
+            return;
+        }
+        setIsLoadingOptions(true);
+        try {
+            const optionsRef = ref(database, `/selectOptions/${optionCategory}`);
+            const snapshot = await get(optionsRef);
+            if (snapshot.exists()) {
+                setCurrentOptions(snapshot.val());
+            } else {
+                setCurrentOptions([]); // Category doesn't exist, start with an empty array
+                showNotification(`Category "${optionCategory}" does not exist. You can add the first option to create it.`, 'info');
+            }
+        } catch (e) {
+            showNotification(`Error fetching options: ${e.message}`, 'error');
+            setCurrentOptions(null); // Reset on error
+        } finally {
+            setIsLoadingOptions(false);
+        }
+    }, [optionCategory, showNotification]);
+
+    const handleAddNewOption = async () => {
+        if (!newOptionLabel || !newOptionValue) {
+            showNotification('Please provide both a label and a value for the new option.', 'warning');
+            return;
+        }
+
+        setIsLoadingOptions(true);
+
+        const newOption = { label: newOptionLabel, value: newOptionValue };
+        const updatedOptions = [...(currentOptions || []), newOption];
+
+        try {
+            const categoryRef = ref(database, `/selectOptions/${optionCategory}`);
+            await set(categoryRef, updatedOptions);
+            
+            showNotification('Option added successfully!', 'check-circle');
+            
+            setCurrentOptions(updatedOptions);
+            setNewOptionLabel('');
+            setNewOptionValue('');
+        } catch (e) {
+            showNotification(`Error adding option: ${e.message}`, 'error');
+        } finally {
+            setIsLoadingOptions(false);
+        }
+    };
+
+    const handleDeleteOption = async (indexToDelete) => {
+        if (!window.confirm('Are you sure you want to delete this option? This action cannot be undone.')) {
+            return;
+        }
+
+        setIsLoadingOptions(true);
+
+        const updatedOptions = currentOptions.filter((_, index) => index !== indexToDelete);
+
+        try {
+            const categoryRef = ref(database, `/selectOptions/${optionCategory}`);
+            await set(categoryRef, updatedOptions);
+            
+            showNotification('Option deleted successfully!', 'check-circle');
+            
+            // Refresh the list in the UI
+            setCurrentOptions(updatedOptions);
+        } catch (e) {
+            showNotification(`Error deleting option: ${e.message}`, 'error');
+        } finally {
+            setIsLoadingOptions(false);
+        }
+    };
+
     return (
         <>
             <Card className="mb-4">
@@ -177,6 +257,7 @@ const DatabaseEditor = ({ showNotification }) => {
                 </Card.Body>
             </Card>
 
+            <Card className="mb-4">
                 <Card.Header>Restore from JSON Backup</Card.Header>
                 <Card.Body>
                     <Form.Group controlId="formFile" className="mb-3">
@@ -194,8 +275,81 @@ const DatabaseEditor = ({ showNotification }) => {
                         {isRestoring ? <Spinner as="span" animation="border" size="sm" /> : 'Restore `savedReportBBCode`'}
                     </Button>
                 </Card.Body>
+            </Card>
+
+            <Card className="mt-4">
+                <Card.Header>Select Options Editor</Card.Header>
+                <Card.Body>
+                    <Form.Group as={Row} className="mb-3">
+                        <Form.Label column sm={2}>Option Category</Form.Label>
+                        <Col sm={10}>
+                            <div className="d-flex">
+                                <Form.Control
+                                    type="text"
+                                    value={optionCategory}
+                                    onChange={(e) => setOptionCategory(e.target.value)}
+                                    placeholder="e.g., dnrTypes"
+                                />
+                                <Button onClick={handleLoadCategory} disabled={isLoadingOptions || !optionCategory} className="ms-2">
+                                    {isLoadingOptions ? <Spinner as="span" animation="border" size="sm" /> : 'Load'}
+                                </Button>
+                            </div>
+                        </Col>
+                    </Form.Group>
+
+                    {currentOptions && (
+                        <>
+                            <hr />
+                            <h5>Current Options for "{optionCategory}"</h5>
+                            {currentOptions.length > 0 ? (
+                                <ListGroup style={{ maxHeight: '200px', overflowY: 'auto' }} className="mb-3">
+                                    {currentOptions.map((opt, index) => (
+                                        <ListGroup.Item key={index} className="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <strong>Label:</strong> {opt.label} <br />
+                                                <strong>Value:</strong> {opt.value}
+                                            </div>
+                                            <Button variant="danger" size="sm" onClick={() => handleDeleteOption(index)}>
+                                                Delete
+                                            </Button>
+                                        </ListGroup.Item>
+                                    ))}
+                                </ListGroup>
+                            ) : <p>No options found for this category. Add one below.</p>}
+
+                            <h5>Add New Option</h5>
+                            <Form.Group as={Row} className="mb-2">
+                                <Form.Label column sm={2}>New Label</Form.Label>
+                                <Col sm={10}>
+                                    <Form.Control
+                                        type="text"
+                                        value={newOptionLabel}
+                                        onChange={(e) => setNewOptionLabel(e.target.value)}
+                                        placeholder="e.g., Full Code"
+                                    />
+                                </Col>
+                            </Form.Group>
+                            <Form.Group as={Row} className="mb-3">
+                                <Form.Label column sm={2}>New Value</Form.Label>
+                                <Col sm={10}>
+                                    <Form.Control
+                                        type="text"
+                                        value={newOptionValue}
+                                        onChange={(e) => setNewOptionValue(e.target.value)}
+                                        placeholder="e.g., full_code"
+                                    />
+                                </Col>
+                            </Form.Group>
+                            <Button onClick={handleAddNewOption} disabled={isLoadingOptions}>
+                                {isLoadingOptions ? <Spinner as="span" animation="border" size="sm" /> : 'Add Option'}
+                            </Button>
+                        </>
+                    )}
+                </Card.Body>
+            </Card>
         </>
     );
 };
 
 export default DatabaseEditor;
+

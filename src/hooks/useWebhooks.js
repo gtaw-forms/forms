@@ -50,7 +50,7 @@ export const useWebhooks = (formData, commitInfo, showNotification) => {
             color: embedColor,
             timestamp: new Date().toISOString(),
             footer: {
-                text: `PHMC Tools Tool | ${triggerSource} | gh-pages ${import.meta.env.GIT_COMMIT_SHORT || 'N/A'}${import.meta.env.GIT_DIRTY ? ' (dirty)' : ''}`
+                text: `PHMC Tools Tool | ${triggerSource} | `
             }
         };
 
@@ -171,7 +171,7 @@ export const useWebhooks = (formData, commitInfo, showNotification) => {
             color: cached ? 0x00FF00 : 0xFFA500,
             timestamp: new Date().toISOString(),
             footer: {
-                text: `PHMC Tools | Data Request Log | gh-pages ${import.meta.env.GIT_COMMIT_SHORT || 'N/A'}${import.meta.env.GIT_DIRTY ? ' (dirty)' : ''}`
+                text: `PHMC Tools | Data Request Log | `
             }
         };
 
