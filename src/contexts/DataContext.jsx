@@ -25,10 +25,16 @@ export const useData = () => {
 };
 
 export const DataProvider = ({ children }) => {
-    const { sendDataRequestLog } = useWebhooks();
     const { user, isAuthenticated } = useGtaWorldAuth();
-    
+        const { showNotification, removeNotification } = useNotification();
+    const { getIsInactivityWarningTriggered } = useInactivityReload();
+        const [factionsData, setFactionsData] = useState({});
+    const [agencyDataStore, setAgencyDataStore] = useState({});
+    const [selectOptions, setSelectOptions] = useState({});
+    const [isLoadingData, setIsLoadingData] = useState(true);
+    const [loading, setLoading] = useState(true);
 
+const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarningTriggered);
     const CORONER_KEYWORDS = ['Coroner', 'Examiner', 'Attendant'];
     const updateCacheSegment = useCallback(async (segment, data) => {
         // Update memory cache
@@ -52,21 +58,6 @@ export const DataProvider = ({ children }) => {
                 }
                 console.log(logMessage);
 
-                // Send webhook log for successful cache update
-                webhooks.sendDataRequestLog(
-                    'DataContext.jsx',
-                    true, // cached
-                    'Realtime Update', // source
-                    cachedDataSize, // cachedDataSize
-                    0, // networkTransferSize
-                    isAuthenticated,
-                    user?.faction?.characterName || user?.username,
-                    segment, // requestedPortions (send the single segment name)
-                    null, // missingPortions
-                    { [segment]: cachedDataSize }, // segmentSizes
-                    null // error
-                );
-
             } catch (error) {
                 console.warn(`Failed to update cache for ${segment}:`, error);
                 // If we hit quota, clear all cache segments to make space
@@ -86,21 +77,6 @@ export const DataProvider = ({ children }) => {
         }
         else {
             console.log(`⏩ Skipping localStorage cache for ${segment} (excluded segment)`);
-            // Send webhook log for skipped localStorage cache
-            const cachedDataSize = (JSON.stringify(data)?.length || 0) / 1024; // Calculate size even if not cached
-            webhooks.sendDataRequestLog(
-                'DataContext.jsx',
-                false, // not cached in localStorage
-                'Realtime Update (Skipped LocalStorage)', // source
-                cachedDataSize, // cachedDataSize (of the data received, even if not stored)
-                0, // networkTransferSize
-                isAuthenticated,
-                user?.faction?.characterName || user?.username,
-                segment, // requestedPortions
-                null, // missingPortions
-                { [segment]: cachedDataSize }, // segmentSizes
-                null // error
-            );
         }
 
         // Update relevant state based on segment
@@ -135,15 +111,8 @@ export const DataProvider = ({ children }) => {
             }
         });
     };
-    const { showNotification, removeNotification } = useNotification();
-    const { getIsInactivityWarningTriggered } = useInactivityReload();
-        const [factionsData, setFactionsData] = useState({});
-    const [agencyDataStore, setAgencyDataStore] = useState({});
-    const [selectOptions, setSelectOptions] = useState({});
-    const [isLoadingData, setIsLoadingData] = useState(true);
-    const [loading, setLoading] = useState(true);
 
-    const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarningTriggered);
+
 
     const [formsData, setFormsData] = useState([]);
     const [lsccData, setLsccData] = useState({}); // New state for LSCC data
@@ -347,13 +316,28 @@ export const DataProvider = ({ children }) => {
             dataCache.current[segment] && isCacheValid(segment))) {
                             if (!hasLoggedInitialLoad.current) {
                                 console.log('📦 Using memory-cached Firebase data');
-                                const size = JSON.stringify(dataCache.current).length;
-                                const portions = Object.keys(dataCache.current).join(', ');
+                                // Calculate total size and individual segment sizes
+                                const portions = Object.keys(dataCache.current);
                                 const memorySegmentSizes = {};
-                                Object.keys(dataCache.current).forEach(segment => {
-                                    memorySegmentSizes[segment] = (JSON.stringify(dataCache.current[segment])?.length || 0) / 1024;
+                                let totalMemorySize = 0;
+                                portions.forEach(segment => {
+                                    const segmentSize = (JSON.stringify(dataCache.current[segment])?.length || 0) / 1024;
+                                    memorySegmentSizes[segment] = segmentSize;
+                                    totalMemorySize += segmentSize;
                                 });
-                                webhooks.sendDataRequestLog('DataContext.jsx', true, 'Memory Cache', size, 0, isAuthenticated, user?.faction?.characterName || user?.username, portions, null, memorySegmentSizes, null);
+                                webhooks.sendDataRequestLog(
+                                    'DataContext.jsx',
+                                    true, // cached
+                                    'Memory Cache', // source
+                                    totalMemorySize, // cachedDataSize (total)
+                                    0, // networkTransferSize (none for memory cache)
+                                    isAuthenticated,
+                                    user?.faction?.characterName || user?.username,
+                                    portions, // requestedPortions (array of segment names)
+                                    null, // missingPortions
+                                    memorySegmentSizes, // segmentSizes object
+                                    null // error
+                                );
                                 hasLoggedInitialLoad.current = true;
                             }            setIsLoadingData(false);
             setLoading(false);
@@ -384,13 +368,29 @@ export const DataProvider = ({ children }) => {
                         const formsList = Array.isArray(dataCache.current[CACHE_SEGMENTS.FORMS]) ? dataCache.current[CACHE_SEGMENTS.FORMS] : [];
                         console.log(`📦 -> Forms loaded from cache: ${formsList.length} forms.`);
                     }
-                    const size = JSON.stringify(dataCache.current).length;
-                    const portions = Object.keys(dataCache.current).join(', ');
+                    // Calculate total size and individual segment sizes from localStorage
+                    const portions = Object.keys(dataCache.current);
                     const localStorageSegmentSizes = {};
-                    Object.keys(dataCache.current).forEach(segment => {
-                        localStorageSegmentSizes[segment] = (JSON.stringify(dataCache.current[segment])?.length || 0) / 1024;
+                    let totalLocalStorageSize = 0;
+                    portions.forEach(segment => {
+                        const segmentData = localStorage.getItem(getCacheKey(segment));
+                        const segmentSize = (segmentData?.length || 0) / 1024;
+                        localStorageSegmentSizes[segment] = segmentSize;
+                        totalLocalStorageSize += segmentSize;
                     });
-                    webhooks.sendDataRequestLog('DataContext.jsx', true, 'Local Storage', size, 0, isAuthenticated, user?.faction?.characterName || user?.username, portions, null, localStorageSegmentSizes, null);
+                    webhooks.sendDataRequestLog(
+                        'DataContext.jsx',
+                        true, // cached
+                        'Local Storage', // source
+                        totalLocalStorageSize, // cachedDataSize (total)
+                        0, // networkTransferSize (none for local storage)
+                        isAuthenticated,
+                        user?.faction?.characterName || user?.username,
+                        portions, // requestedPortions (array of segment names)
+                        null, // missingPortions
+                        localStorageSegmentSizes, // segmentSizes object
+                        null // error
+                    );
                     hasLoggedInitialLoad.current = true;
                 }
                 updateStateWithData(dataCache.current);
@@ -437,15 +437,31 @@ export const DataProvider = ({ children }) => {
 
             if (hasData) {
                 if (!hasLoggedInitialLoad.current) {
-                    const size = JSON.stringify(allData).length;
-                    const requestedPortions = segmentsToFetch.join(', ');
                     const receivedSegments = Object.keys(allData);
                     const missingPortions = segmentsToFetch.filter(segment => !receivedSegments.includes(segment));
+                    
+                    // Calculate total network transfer size and individual segment sizes
+                    let totalNetworkTransferSize = 0;
                     const firebaseFetchSegmentSizes = {};
-                    Object.keys(allData).forEach(segment => {
-                        firebaseFetchSegmentSizes[segment] = (JSON.stringify(allData[segment])?.length || 0) / 1024;
+                    receivedSegments.forEach(segment => {
+                        const segmentSize = (JSON.stringify(allData[segment])?.length || 0) / 1024;
+                        firebaseFetchSegmentSizes[segment] = segmentSize;
+                        totalNetworkTransferSize += segmentSize;
                     });
-                    webhooks.sendDataRequestLog('DataContext.jsx', false, 'Firebase', size, size, isAuthenticated, user?.faction?.characterName || user?.username, requestedPortions, missingPortions, firebaseFetchSegmentSizes, null);
+
+                    webhooks.sendDataRequestLog(
+                        'DataContext.jsx',
+                        false, // not cached
+                        'Firebase', // source
+                        totalNetworkTransferSize, // cachedDataSize (total size of what was fetched)
+                        totalNetworkTransferSize, // networkTransferSize (same as cachedDataSize for fresh fetch)
+                        isAuthenticated,
+                        user?.faction?.characterName || user?.username,
+                        segmentsToFetch, // requestedPortions (send the array of all segments that were requested)
+                        missingPortions, // missingPortions
+                        firebaseFetchSegmentSizes, // segmentSizes object
+                        null // error
+                    );
                     hasLoggedInitialLoad.current = true;
                 }
                 console.log('[DataContext] Raw data from Firebase:', allData);
@@ -490,8 +506,19 @@ export const DataProvider = ({ children }) => {
         } catch (error) {
             showNotification("An error has happened, contact the maintainer", 'error');
             console.error("Error fetching data from Realtime Database:", error);
-            const portions = Object.values(CACHE_SEGMENTS).join(', ');
-            webhooks.sendDataRequestLog('DataContext.jsx', false, 'Firebase Error', 0, 0, isAuthenticated, user?.faction?.characterName || user?.username, portions, portions.split(', '), {}, error.message || 'Unknown Fetch Error');
+            webhooks.sendDataRequestLog(
+                'DataContext.jsx',
+                false, // not cached
+                'Firebase Error', // source
+                0, // cachedDataSize
+                0, // networkTransferSize
+                isAuthenticated,
+                user?.faction?.characterName || user?.username,
+                segmentsToFetch, // requestedPortions (send the array of all segments that were requested)
+                segmentsToFetch, // missingPortions (assume all missing on error)
+                {}, // segmentSizes (empty on error)
+                error.message || 'Unknown Fetch Error' // error
+            );
         } finally {
             setIsLoadingData(false);
             setLoading(false);
