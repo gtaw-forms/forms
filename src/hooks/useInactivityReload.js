@@ -14,6 +14,7 @@ export const useInactivityReload = () => {
     const warningTimer = useRef(null);
     const reloadTimer = useRef(null);
     const notificationId = useRef(null);
+    const inactivityWarningTriggered = useRef(false); // NEW REF to track if warning was triggered
 
     const reloadPage = () => {
         console.log("[Inactivity] Reloading page due to inactivity.");
@@ -22,6 +23,7 @@ export const useInactivityReload = () => {
 
     const showWarning = () => {
         console.log("[Inactivity] Displaying inactivity warning.");
+        inactivityWarningTriggered.current = true; // Set to true when warning is shown
         if (notificationId.current) {
             removeNotification(notificationId.current);
         }
@@ -36,6 +38,9 @@ export const useInactivityReload = () => {
         // Clear existing timers
         if (warningTimer.current) clearTimeout(warningTimer.current);
         if (reloadTimer.current) clearTimeout(reloadTimer.current);
+
+        // Reset inactivity state - crucial!
+        inactivityWarningTriggered.current = false; 
 
         // Dismiss notification if it's showing
         if (notificationId.current) {
@@ -70,5 +75,8 @@ export const useInactivityReload = () => {
         };
     }, [resetTimers]);
 
-    // This hook performs side effects and does not need to return a value.
+    // Expose a getter for the inactivity warning state
+    return {
+        getIsInactivityWarningTriggered: () => inactivityWarningTriggered.current,
+    };
 };
