@@ -113,7 +113,7 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
         }
     };
 
-    const sendDataRequestLog = async (file, cached, source, cachedDataSize, networkTransferSize, loggedIn, user, requestedPortions, missingPortions, error = null) => {
+    const sendDataRequestLog = async (file, cached, source, cachedDataSize, networkTransferSize, loggedIn, user, requestedPortions, missingPortions, segmentSizes = {}, error = null) => {
         const webhookUrl = import.meta.env.VITE_DEV_WEBHOOK;
         if (!webhookUrl) {
             console.error("Discord webhook URL is not configured.");
@@ -167,10 +167,24 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
                 value: missingPortions.join(', '),
                 inline: false,
             });
-        } else if (requestedPortions) { // Only show requested if nothing is missing
+        }
+
+        if (requestedPortions) {
+            let requestedValue = requestedPortions;
+            if (typeof requestedPortions === 'string') {
+                requestedValue = requestedPortions.split(', ').map(p => p.trim());
+            }
+
+            const formattedPortions = requestedValue.map(portion => {
+                if (segmentSizes[portion]) {
+                    return `${portion} (${segmentSizes[portion].toFixed(2)} KB)`;
+                }
+                return portion;
+            }).join(', ');
+
             fields.push({
                 name: 'Requested Portions',
-                value: requestedPortions,
+                value: formattedPortions,
                 inline: false,
             });
         }
