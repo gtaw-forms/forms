@@ -1,7 +1,7 @@
 // src/components/admin/AddFormModal.jsx
 import React, { useState, useEffect } from "react";
 import { database } from "../../firebase";
-import { ref, update } from "firebase/database";
+import { ref, update, runTransaction } from "firebase/database";
 import Select from 'react-select';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { logAdminActionToDiscord } from '../../utils/adminLogger';
@@ -634,42 +634,51 @@ const handleBulkAddFields = (fieldsToAdd) => {
     setShowBulkAddModal(false); // Hide modal after adding
 };
 
-      const saveForm = () => {
-      if (!formId || !formName) {
-        alert("Form ID and Name required!");
-        return;
-      }
-  
-      const formData = {
-        id: formId,
-        name: formName,
-        category,
-        formDescription,
-        template: bbcodeTemplate,
-        titleGeneratorCode, // Save the titleGeneratorCode
-        fields,
-        accessType, // Store accessType
-        isHidden, // Store isHidden
-        lastUpdated: Date.now() // NEW: Add lastUpdated timestamp
-      };
-  
-      update(ref(database, `forms/${formId}`), formData)
-        .then(() => {
-          alert("Form saved!");
-          const actionType = editingForm ? 'modify' : 'add';
-          
-          // Use the passed 'user' prop (unified user) first, then fallback to gtawUser from the hook
-          const userForLogging = user || gtawUser;
+      const saveForm = async () => {
+    if (!formId || !formName) {
+      alert("Form ID and Name required!");
+      return;
+    }
 
-          const userDetails = {
-              username: userForLogging?.displayName || userForLogging?.username || 'Unknown',
-              id: userForLogging?.uid || userForLogging?.id || 'N/A'
-          };
-          logAdminActionToDiscord(actionType, formData, userDetails);
-          onClose();
-        })
-        .catch(err => alert("Error: " + err.message));
+    const formData = {
+      id: formId,
+      name: formName,
+      category,
+      formDescription,
+      template: bbcodeTemplate,
+      titleGeneratorCode,
+      fields,
+      accessType,
+      isHidden,
+      lastUpdated: Date.now()
     };
+
+    try {
+      await update(ref(database, `forms/${formId}`), formData);
+      alert("Form saved!");
+
+      const actionType = editingForm ? 'modify' : 'add';
+      const userForLogging = user || gtawUser;
+      const userDetails = {
+        username: userForLogging?.displayName || userForLogging?.username || 'Unknown',
+        id: userForLogging?.uid || userForLogging?.id || 'N/A'
+      };
+      logAdminActionToDiscord(actionType, formData, userDetails);
+
+      try {
+        const metadataRef = ref(database, 'appMetadata/formsDataVersion');
+        await runTransaction(metadataRef, (currentVersion) => (currentVersion || 0) + 1);
+        console.log("Global form version bumped successfully!");
+      } catch (error) {
+        console.error("Failed to bump global form version:", error);
+        alert("Form saved, but failed to update the global version. Clients may not see changes immediately.");
+      }
+
+      onClose();
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
+  };
   if (!show) return null;
 
   return (

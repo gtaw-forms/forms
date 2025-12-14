@@ -40,7 +40,15 @@ export const DataProvider = ({ children }) => {
                 localStorage.setItem(getCacheKey(segment), JSON.stringify(data));
                 localStorage.setItem(getTimestampKey(segment), Date.now().toString());
                 localStorage.setItem(getVersionKey(segment), version);
-                console.log(`💾 Updated cache segment: ${segment} (v${version})`);
+                
+                let logMessage = `💾 Updated cache segment: ${segment} (v${version})`;
+
+                // If updating the forms segment, append the Firebase Data version
+                if (segment === CACHE_SEGMENTS.FORMS) {
+                    const firebaseDataVersion = localStorage.getItem('formsDataVersion') || 'N/A';
+                    logMessage = `💾 Updated cache segment: forms | InternalDataContext v${version} | Firebase Data: v${firebaseDataVersion}`;
+                }
+                console.log(logMessage);
             } catch (error) {
                 console.warn(`Failed to update cache for ${segment}:`, error);
                 // If we hit quota, clear all cache segments to make space
@@ -162,6 +170,32 @@ export const DataProvider = ({ children }) => {
         return isVersionValid && isTimeValid;
     };
 
+    const refreshSegments = useCallback(async (segments = []) => {
+        const segmentsToRefresh = segments.length > 0 ? segments : Object.values(CACHE_SEGMENTS);
+        
+        for (const segment of segmentsToRefresh) {
+            if (!Object.values(CACHE_SEGMENTS).includes(segment)) {
+                console.warn(`Invalid segment: ${segment}`);
+                continue;
+            }
+
+            const segmentRef = ref(database, segment);
+            try {
+                const snapshot = await get(segmentRef);
+                if (snapshot.exists()) {
+                    let data = snapshot.val();
+                    if (segment === CACHE_SEGMENTS.FORMS && data) {
+                        data = Object.keys(data).map(key => ({ ...data[key], firebaseKey: key }));
+                    }
+                    await updateCacheSegment(segment, data);
+                }
+            } catch (error) {
+                console.error(`Failed to refresh segment ${segment}:`, error);
+                showNotification(`Failed to refresh ${segment} data`, 'error');
+            }
+        }
+    }, [updateCacheSegment, showNotification]);
+
     // Setup Firebase listeners for real-time updates
     const setupFirebaseListeners = useCallback(() => {
         // Cleanup existing listeners
@@ -171,14 +205,11 @@ export const DataProvider = ({ children }) => {
         // --- Listener for factions changes ---
         const factionsRef = ref(database, CACHE_SEGMENTS.FACTIONS);
         firebaseListeners.current.factions = onValue(factionsRef, (snapshot) => {
-            if (!dataInitializedRef.current) return; // Only process updates after initial load
-
+            if (!dataInitializedRef.current) return;
             if (snapshot.exists()) {
                 const factionsData = snapshot.val();
-                // Only update if data has actually changed to prevent unnecessary re-renders
                 if (JSON.stringify(factionsData) !== JSON.stringify(dataCache.current[CACHE_SEGMENTS.FACTIONS])) {
                     updateCacheSegment(CACHE_SEGMENTS.FACTIONS, factionsData);
-                    console.log('🔄 Factions data updated from Firebase (real-time)');
                 }
             }
         });
@@ -186,13 +217,11 @@ export const DataProvider = ({ children }) => {
         // --- Listener for agency changes ---
         const agenciesRef = ref(database, CACHE_SEGMENTS.AGENCIES);
         firebaseListeners.current.agencies = onValue(agenciesRef, (snapshot) => {
-            if (!dataInitializedRef.current) return; // Only process updates after initial load
-
+            if (!dataInitializedRef.current) return;
             if (snapshot.exists()) {
                 const agencyData = snapshot.val();
                 if (JSON.stringify(agencyData) !== JSON.stringify(dataCache.current[CACHE_SEGMENTS.AGENCIES])) {
                     updateCacheSegment(CACHE_SEGMENTS.AGENCIES, agencyData);
-                    console.log('🔄 Agency data updated from Firebase (real-time)');
                 }
             }
         });
@@ -200,112 +229,85 @@ export const DataProvider = ({ children }) => {
         // --- Listener for select options changes ---
         const optionsRef = ref(database, CACHE_SEGMENTS.SELECT_OPTIONS);
         firebaseListeners.current.options = onValue(optionsRef, (snapshot) => {
-            if (!dataInitializedRef.current) return; // Only process updates after initial load
-
+            if (!dataInitializedRef.current) return;
             if (snapshot.exists()) {
                 const optionsData = snapshot.val();
                 if (JSON.stringify(optionsData) !== JSON.stringify(dataCache.current[CACHE_SEGMENTS.SELECT_OPTIONS])) {
                     updateCacheSegment(CACHE_SEGMENTS.SELECT_OPTIONS, optionsData);
-                    console.log('🔄 Select options updated from Firebase (real-time)');
                 }
             }
         });
 
-        // --- Listener for forms changes ---
-        const formsRef = ref(database, CACHE_SEGMENTS.FORMS);
-        firebaseListeners.current.forms = onValue(formsRef, (snapshot) => {
-            if (!dataInitializedRef.current) return;
+        // --- Listener for Global Forms Version ---
+        // Use an async IIFE to perform a get() before attaching the onValue listener
+        // This forces Firebase to update its local cache's understanding of this node.
+        (async () => {
+            const formsVersionRef = ref(database, 'appMetadata/formsDataVersion');
+            let initialServerVersion = null;
 
             try {
-                if (!snapshot.exists()) {
-                    if ((dataCache.current[CACHE_SEGMENTS.FORMS] || []).length > 0) {
-                        updateCacheSegment(CACHE_SEGMENTS.FORMS, []);
-                    }
+                const snapshot = await get(formsVersionRef);
+                if (snapshot.exists()) {
+                    initialServerVersion = String(snapshot.val());
+                    console.log(`[DataContext] Initial formsDataVersion fetched from server: v${initialServerVersion}`);
+                } else {
+                    console.log('[DataContext] formsDataVersion does not exist on server initially. (This is fine)');
+                }
+                // Crucially, update local storage with this server value after the get()
+                // This ensures the local cache is primed correctly for the onValue listener.
+                // We default to '0' if the node doesn't exist to ensure localVersion is always comparable.
+                localStorage.setItem('formsDataVersion', initialServerVersion || '0'); 
+
+            } catch (error) {
+                console.error('[DataContext] Failed to get initial formsDataVersion from server:', error);
+                // In case of error during initial get, ensure local storage has a default to prevent further errors
+                localStorage.setItem('formsDataVersion', '0');
+            }
+
+            // Now, attach the onValue listener. It should now get an un-poisoned snapshot.
+            firebaseListeners.current.formsVersion = onValue(formsVersionRef, async (snapshot) => {
+                // Guards for listener invocation
+                if (!dataInitializedRef.current) {
+                    console.log('[DataContext] Global forms version listener triggered, but DataContext not initialized. Skipping.');
                     return;
                 }
+                // serverVersion can be null if the node is deleted or doesn't exist
+                const serverVersion = snapshot.exists() ? String(snapshot.val()) : null;
+                const localVersion = localStorage.getItem('formsDataVersion'); // Get freshest local version
 
-                const firebaseFormsObject = snapshot.val();
-                const serverFormsList = Object.keys(firebaseFormsObject).map(key => ({ ...firebaseFormsObject[key], firebaseKey: key }));
-                const localFormsData = dataCache.current[CACHE_SEGMENTS.FORMS];
+                // Always log the current state for tracking
+                console.log(`Global Forms Version - Local: ${localVersion || 'N/A'}, Server: ${serverVersion || 'N/A'}`);
 
-                // Ensure we ALWAYS have an array, even if cache is corrupted/old
-                let localFormsList = [];
-                if (Array.isArray(localFormsData)) {
-                    localFormsList = localFormsData;
-                } else if (localFormsData && typeof localFormsData === 'object' && !Array.isArray(localFormsData)) {
-                    // Handle legacy cache where forms was stored as object {key: form}
-                    console.warn('[DataContext] Legacy forms cache detected (object instead of array) — auto-converting');
-                    localFormsList = Object.keys(localFormsData).map(key => ({
-                        ...localFormsData[key],
-                        firebaseKey: key
-                    }));
+                // Proceed only if server version exists AND it differs from the local one.
+                if (serverVersion !== null && localVersion !== serverVersion) { 
+                    console.log(`🔄 Global forms version mismatch (v${localVersion} → v${serverVersion}). Clearing and refreshing forms cache...`);
+
+                    // Clear only forms cache
+                    localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.FORMS));
+                    localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.FORMS));
+                    localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.FORMS));
+
+                    // Update local version
+                    localStorage.setItem('formsDataVersion', serverVersion);
+
+                    showNotification("Application forms have been updated.", "success", 4000);
+
+                    // Force reload of the forms segment
+                    await refreshSegments([CACHE_SEGMENTS.FORMS]);
+                } else if (serverVersion === null && localVersion !== null) {
+                    // Scenario: formsDataVersion was deleted from Firebase. Clear local and notify.
+                    console.log(`🗑️ Global forms version deleted from server. Clearing local cache.`);
+                    localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.FORMS));
+                    localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.FORMS));
+                    localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.FORMS));
+                    localStorage.removeItem('formsDataVersion'); // Remove local tracker too
+                    showNotification("Application forms data cleared due to server-side deletion.", "info", 4000);
+                    await refreshSegments([CACHE_SEGMENTS.FORMS]); // Refresh to show empty state
                 }
+            });
+        })(); // Immediately Invoked Async Function Expression
+    }, [updateCacheSegment, showNotification, refreshSegments]);
 
-                // Now safe to filter and map
-                let cleanLocalFormsList = localFormsList
-                    .filter(f => f && typeof f === 'object' && f.firebaseKey);
-
-                if (!Array.isArray(cleanLocalFormsList)) {
-                    console.error('[DataContext] cleanLocalFormsList is not an array!', cleanLocalFormsList);
-                    cleanLocalFormsList = [];
-                }
-
-                const localFormsMap = new Map(
-                    cleanLocalFormsList.map(f => [f.firebaseKey, f])
-                );
-                let needsUpdate = false;
-
-                serverFormsList.forEach(serverForm => {
-                    const localForm = localFormsMap.get(serverForm.firebaseKey);
-                    if (!localForm) {
-                        needsUpdate = true;
-                        return;
-                    }
-
-                    const serverTimestamp = serverForm.lastUpdated || 0;
-                    const localTimestamp = localForm.lastUpdated || 0;
-
-                    if (serverTimestamp > localTimestamp) {
-                        needsUpdate = true;
-                    }
-                });
-
-                const somethingWasDeleted = localFormsList.some(oldForm => !firebaseFormsObject.hasOwnProperty(oldForm.firebaseKey));
-                if (somethingWasDeleted) {
-                    needsUpdate = true;
-                }
-
-                if (needsUpdate) {
-                    serverFormsList.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-                    updateCacheSegment(CACHE_SEGMENTS.FORMS, serverFormsList);
-                }
-            } catch (error) {
-                console.error("Critical error in forms listener:", error);
-
-                const localFormsData = dataCache.current[CACHE_SEGMENTS.FORMS];
-                const debugInfo = {
-                    errorMessage: error.message,
-                    errorStack: error.stack,
-                    localFormsData_type: typeof localFormsData,
-                    localFormsData_isArray: Array.isArray(localFormsData),
-                    localFormsData_sample: JSON.stringify(localFormsData, null, 2).substring(0, 3000),
-                };
-
-                console.error("Forms listener debug info:", debugInfo);
-
-                sendDataRequestLog(
-                    'DataContext.jsx (forms-listener-error)',
-                    false, // not from cache
-                    'runtime-error',
-                    JSON.stringify(debugInfo).length,
-                    isAuthenticated,
-                    user?.faction?.characterName || user?.username,
-                    'forms-processing', // portions
-                    error.message
-                );
-            }
-        });
-    }, [updateCacheSegment]);
 
 
     const loadData = useCallback(async (forceRefresh = false) => {
@@ -478,33 +480,6 @@ export const DataProvider = ({ children }) => {
         await loadData(true); // Force a refresh
     }, [loadData]);
 
-    // Function to refresh specific segments
-    const refreshSegments = useCallback(async (segments = []) => {
-        const segmentsToRefresh = segments.length > 0 ? segments : Object.values(CACHE_SEGMENTS);
-        
-        for (const segment of segmentsToRefresh) {
-            if (!Object.values(CACHE_SEGMENTS).includes(segment)) {
-                console.warn(`Invalid segment: ${segment}`);
-                continue;
-            }
-
-            const segmentRef = ref(database, segment);
-            try {
-                const snapshot = await get(segmentRef);
-                if (snapshot.exists()) {
-                    let data = snapshot.val();
-                    if (segment === CACHE_SEGMENTS.FORMS && data) {
-                        data = Object.keys(data).map(key => ({ ...data[key], firebaseKey: key }));
-                    }
-                    await updateCacheSegment(segment, data);
-                }
-            } catch (error) {
-                console.error(`Failed to refresh segment ${segment}:`, error);
-                showNotification(`Failed to refresh ${segment} data`, 'error');
-            }
-        }
-    }, [updateCacheSegment, showNotification]);
-
     // Function to notify of direct Firebase updates
     const notifyDataUpdate = useCallback(async (path, type = 'update') => {
         console.log(`🔔 Received direct update notification for path: ${path}`);
@@ -534,6 +509,10 @@ export const DataProvider = ({ children }) => {
 
 
     const cleanupCache = useCallback(() => {
+        // Remove remnants of both versioning systems to be safe
+        localStorage.removeItem('formsDataVersion');
+        localStorage.removeItem('formVersions');
+
         // Explicitly remove old forms cache versions
         const oldFormsCacheKeys = [
             'firebaseCache_forms_v1.0',
