@@ -51,6 +51,22 @@ export const DataProvider = ({ children }) => {
                     logMessage = `💾 Updated cache segment: forms (${cachedDataSize.toFixed(2)} KB) | InternalDataContext v${version} | Firebase Data: v${firebaseDataVersion}`;
                 }
                 console.log(logMessage);
+
+                // Send webhook log for successful cache update
+                webhooks.sendDataRequestLog(
+                    'DataContext.jsx',
+                    true, // cached
+                    'Realtime Update', // source
+                    cachedDataSize, // cachedDataSize
+                    0, // networkTransferSize
+                    isAuthenticated,
+                    user?.faction?.characterName || user?.username,
+                    segment, // requestedPortions (send the single segment name)
+                    null, // missingPortions
+                    { [segment]: cachedDataSize }, // segmentSizes
+                    null // error
+                );
+
             } catch (error) {
                 console.warn(`Failed to update cache for ${segment}:`, error);
                 // If we hit quota, clear all cache segments to make space
@@ -70,6 +86,21 @@ export const DataProvider = ({ children }) => {
         }
         else {
             console.log(`⏩ Skipping localStorage cache for ${segment} (excluded segment)`);
+            // Send webhook log for skipped localStorage cache
+            const cachedDataSize = (JSON.stringify(data)?.length || 0) / 1024; // Calculate size even if not cached
+            webhooks.sendDataRequestLog(
+                'DataContext.jsx',
+                false, // not cached in localStorage
+                'Realtime Update (Skipped LocalStorage)', // source
+                cachedDataSize, // cachedDataSize (of the data received, even if not stored)
+                0, // networkTransferSize
+                isAuthenticated,
+                user?.faction?.characterName || user?.username,
+                segment, // requestedPortions
+                null, // missingPortions
+                { [segment]: cachedDataSize }, // segmentSizes
+                null // error
+            );
         }
 
         // Update relevant state based on segment
@@ -82,6 +113,12 @@ export const DataProvider = ({ children }) => {
                 break;
             case CACHE_SEGMENTS.SELECT_OPTIONS:
                 setSelectOptions(data);
+                setPhysicianRecruitmentDetails(data?.physicianRecruitmentDetails || {});
+                setPsychRecruitmentDetails(data?.psychPositionDetailsData || {});
+                setAdminRecruitmentDetails(data?.adminPositionDetailsData || {});
+                setEmsRecruitmentDetails(data?.emsPositionDetailsData || {});
+                setNurseRecruitmentDetails(data?.nursePositionDetailsData || {});
+                setCoronerRecruitmentDetails(data?.coronerPositionDetailsData || {});
                 break;
             case CACHE_SEGMENTS.FORMS:
                 // Ensure formsData is always an array
@@ -95,7 +132,7 @@ export const DataProvider = ({ children }) => {
             default:
                 console.warn(`Unknown cache segment: ${segment}`);
         }
-    }, []);
+    }, [isAuthenticated, user, webhooks]);
 
     const updateStateWithData = (data) => {
         Object.entries(CACHE_SEGMENTS).forEach(([key, segment]) => {
@@ -314,14 +351,17 @@ export const DataProvider = ({ children }) => {
         // Check memory cache first for each segment
         if (dataLoaded && !forceRefresh && Object.values(CACHE_SEGMENTS).every(segment => 
             dataCache.current[segment] && isCacheValid(segment))) {
-            if (!hasLoggedInitialLoad.current) {
-                console.log('📦 Using memory-cached Firebase data');
-                const size = JSON.stringify(dataCache.current).length;
-                const portions = Object.keys(dataCache.current).join(', ');
-                webhooks.sendDataRequestLog('DataContext.jsx', true, 'Memory Cache', size, 0, isAuthenticated, user?.faction?.characterName || user?.username, portions, null, null);
-                hasLoggedInitialLoad.current = true;
-            }
-            setIsLoadingData(false);
+                            if (!hasLoggedInitialLoad.current) {
+                                console.log('📦 Using memory-cached Firebase data');
+                                const size = JSON.stringify(dataCache.current).length;
+                                const portions = Object.keys(dataCache.current).join(', ');
+                                const memorySegmentSizes = {};
+                                Object.keys(dataCache.current).forEach(segment => {
+                                    memorySegmentSizes[segment] = (JSON.stringify(dataCache.current[segment])?.length || 0) / 1024;
+                                });
+                                webhooks.sendDataRequestLog('DataContext.jsx', true, 'Memory Cache', size, 0, isAuthenticated, user?.faction?.characterName || user?.username, portions, null, memorySegmentSizes, null);
+                                hasLoggedInitialLoad.current = true;
+                            }            setIsLoadingData(false);
             setLoading(false);
             return;
         }
@@ -352,7 +392,11 @@ export const DataProvider = ({ children }) => {
                     }
                     const size = JSON.stringify(dataCache.current).length;
                     const portions = Object.keys(dataCache.current).join(', ');
-                    webhooks.sendDataRequestLog('DataContext.jsx', true, 'Local Storage', size, 0, isAuthenticated, user?.faction?.characterName || user?.username, portions, null, null);
+                    const localStorageSegmentSizes = {};
+                    Object.keys(dataCache.current).forEach(segment => {
+                        localStorageSegmentSizes[segment] = (JSON.stringify(dataCache.current[segment])?.length || 0) / 1024;
+                    });
+                    webhooks.sendDataRequestLog('DataContext.jsx', true, 'Local Storage', size, 0, isAuthenticated, user?.faction?.characterName || user?.username, portions, null, localStorageSegmentSizes, null);
                     hasLoggedInitialLoad.current = true;
                 }
                 updateStateWithData(dataCache.current);
@@ -403,8 +447,11 @@ export const DataProvider = ({ children }) => {
                     const requestedPortions = segmentsToFetch.join(', ');
                     const receivedSegments = Object.keys(allData);
                     const missingPortions = segmentsToFetch.filter(segment => !receivedSegments.includes(segment));
-
-                    webhooks.sendDataRequestLog('DataContext.jsx', false, 'Firebase', size, size, isAuthenticated, user?.faction?.characterName || user?.username, requestedPortions, missingPortions, null);
+                    const firebaseFetchSegmentSizes = {};
+                    Object.keys(allData).forEach(segment => {
+                        firebaseFetchSegmentSizes[segment] = (JSON.stringify(allData[segment])?.length || 0) / 1024;
+                    });
+                    webhooks.sendDataRequestLog('DataContext.jsx', false, 'Firebase', size, size, isAuthenticated, user?.faction?.characterName || user?.username, requestedPortions, missingPortions, firebaseFetchSegmentSizes, null);
                     hasLoggedInitialLoad.current = true;
                 }
                 console.log('[DataContext] Raw data from Firebase:', allData);
@@ -450,7 +497,7 @@ export const DataProvider = ({ children }) => {
             showNotification("An error has happened, contact the maintainer", 'error');
             console.error("Error fetching data from Realtime Database:", error);
             const portions = Object.values(CACHE_SEGMENTS).join(', ');
-            webhooks.sendDataRequestLog('DataContext.jsx', false, 'Firebase Error', 0, 0, isAuthenticated, user?.faction?.characterName || user?.username, portions, portions.split(', '), error.message || 'Unknown Fetch Error');
+            webhooks.sendDataRequestLog('DataContext.jsx', false, 'Firebase Error', 0, 0, isAuthenticated, user?.faction?.characterName || user?.username, portions, portions.split(', '), {}, error.message || 'Unknown Fetch Error');
         } finally {
             setIsLoadingData(false);
             setLoading(false);
@@ -461,8 +508,10 @@ export const DataProvider = ({ children }) => {
     }, [
         showNotification, removeNotification, updateCacheSegment, // Added updateCacheSegment
         setFactionsData, setAgencyDataStore, setSelectOptions,
+        setPhysicianRecruitmentDetails, setPsychRecruitmentDetails, setAdminRecruitmentDetails, // Re-added these
+        setEmsRecruitmentDetails, setNurseRecruitmentDetails, setCoronerRecruitmentDetails, // Re-added these
         setIsLoadingData, setLoading, setFormsData,
-        isAuthenticated, user, sendDataRequestLog
+        isAuthenticated, user, webhooks // Replaced sendDataRequestLog with webhooks
     ]);
 
     const refreshData = useCallback(async () => {
