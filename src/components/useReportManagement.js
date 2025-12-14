@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { getFormDefinition } from '../formDefinitions'; // Assuming this path
+//import { getFormDefinition } from '../formDefinitions'; // Assuming this path
 import { database } from '../firebase'; // Assuming this path
 import { ref, get, set, remove, runTransaction } from 'firebase/database';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -1453,38 +1453,6 @@ export const useReportManagement = (
         }
     }, [getCurrentReportAuthor, formData, setPreselectedEmployeeType, setReportSelectionFilter, setShowSavedReports, showNotification, showSavedReports, getForms]);
 
-    const handleShowPositionInfo = useCallback((positionKey) => {
-        let data = null;
-        const definition = selectedForm; // Replaced getFormDefinition(bbCodeVersion)
-
-        if (!positionKey) {
-            showNotification("Please select a position first.", 'warning');
-            return;
-        }
-
-        if (selectedAgencyGroup === 'PHMC Recruitment') {
-            if (definition?.titleKey === "phmcGeneralApplication" && selectOptions?.physicianRecruitmentDetails) {
-                data = selectOptions.physicianRecruitmentDetails[positionKey];
-            } else if (definition?.titleKey === "phmcPsychApplication" && selectOptions?.psychPositionDetailsData) {
-                data = selectOptions.psychPositionDetailsData[positionKey];
-            } else if (definition?.titleKey === "phmcAdminApplication" && selectOptions?.adminPositionDetailsData) {
-                data = selectOptions.adminPositionDetailsData[positionKey];
-            } else if (definition?.titleKey === "phmcNursingApplication" && selectOptions?.nursePositionDetailsData) {
-                data = selectOptions.nursePositionDetailsData[positionKey];
-            } else if (definition?.titleKey === "phmcEMSApplication" && selectOptions?.emsPositionDetailsData) {
-                data = selectOptions.emsPositionDetailsData[positionKey];
-            } else if (definition?.titleKey === "phmcCoronerRecruitmentApplication" && selectOptions?.coronerPositionDetailsData) {
-                data = selectOptions.coronerPositionDetailsData[positionKey];
-            }
-        }
-
-        if (data) {
-            setCurrentPositionInfo(data);
-            setShowPositionInfoModal(true);
-        } else {
-            showNotification("Detailed information for this position is not available.", 'warning');
-        }
-    }, [selectedForm, selectOptions, selectedAgencyGroup, showNotification]);
 
     const countAllUserReports = useCallback(async (userId) => {
         if (!userId) {
@@ -1667,7 +1635,7 @@ export const useReportManagement = (
             setShowPositionInfoModal,
             currentPositionInfo,
             setCurrentPositionInfo,
-            handleShowPositionInfo,
+            //handleShowPositionInfo,
             pendingReportAttachmentCallback,
             currentAttachmentTargetFieldRef, // Add this line
             reportSelectionFilter,
