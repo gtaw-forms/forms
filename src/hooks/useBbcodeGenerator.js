@@ -250,7 +250,7 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
     // 1. CHECKBOXES WITH OPTIONS (e.g., [cb:fieldName]Option[/cb], [cb:fieldName])
     // ===================================================================
 
-    bbcode = bbcode.replace(/\[cb:([^\]]+)\]([^\[\]]*)/g, (match, fieldName, text) => {
+    bbcode = bbcode.replace(/\[cb:([^\]]+)\]([^\r\n]*)(\r?\n)?/g, (match, fieldName, text, newline) => {
       const field = fieldName.trim();
       const option = text.trim();
       if (!field || !option) return match;
@@ -258,18 +258,20 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
       const value = processedFormValues[field];
       let comparisonValue = value;
 
-      // This check is now redundant because of processedFormValues, but it's harmless to keep.
       if (typeof value === 'object' && value !== null && Object.prototype.hasOwnProperty.call(value, 'value')) {
           comparisonValue = value.value;
       }
 
+      let isSelected = false;
       if (Array.isArray(comparisonValue)) {
-        const selected = comparisonValue.map(v => String(v).trim()).includes(option);
-        return selected ? `[cbc] ${option}` : `[cb] ${option}`;
+        isSelected = comparisonValue.map(v => String(v).trim()).includes(option);
+      } else {
+        isSelected = String(comparisonValue || '').trim() === option;
       }
-
-      const selected = String(comparisonValue || '').trim() === option;
-      return selected ? `[cbc] ${option}` : `[cb] ${option}`;
+      
+      const replacementTag = isSelected ? `[cbc]` : `[cb]`;
+      const trailingNewline = newline || '';
+      return `${replacementTag} ${option}${trailingNewline}`;
     });
 
     bbcode = bbcode.replace(/\[cb:([^\]]+)\]/gi, (match, fieldName) => {

@@ -127,15 +127,14 @@ export const DataProvider = ({ children }) => {
 
     // Cache configuration
     const CACHE_PREFIX = 'firebaseCache';
-    const CACHE_VERSION = '1.0';
     const CACHE_EXPIRY = 1000 * 60 * 60 * 24 * 30; // 30 days in milliseconds
 
     // Version configuration for each segment
     const SEGMENT_VERSIONS = {
         [CACHE_SEGMENTS.FACTIONS]: '1.1',
         [CACHE_SEGMENTS.AGENCIES]: '1.1',
-        [CACHE_SEGMENTS.SELECT_OPTIONS]: '1.2.2',
-        [CACHE_SEGMENTS.FORMS]: '1.2.2', // Increment version for structural changes
+        [CACHE_SEGMENTS.SELECT_OPTIONS]: '1.2.3', // Bumped version for structural changes and cache cleanup
+        [CACHE_SEGMENTS.FORMS]: '1.2.3', // Bumped version for structural changes and cache cleanup
         [CACHE_SEGMENTS.LSCC]: '1.0',
     };
 
@@ -217,45 +216,93 @@ export const DataProvider = ({ children }) => {
         firebaseListeners.current.forms = onValue(formsRef, (snapshot) => {
             if (!dataInitializedRef.current) return;
 
-            if (!snapshot.exists()) {
-                if ((dataCache.current[CACHE_SEGMENTS.FORMS] || []).length > 0) {
-                    updateCacheSegment(CACHE_SEGMENTS.FORMS, []);
-                }
-                return;
-            }
-
-            const firebaseFormsObject = snapshot.val();
-            const serverFormsList = Object.keys(firebaseFormsObject).map(key => ({ ...firebaseFormsObject[key], firebaseKey: key }));
-            const localFormsData = dataCache.current[CACHE_SEGMENTS.FORMS];
-            const localFormsList = Array.isArray(localFormsData) ? localFormsData : [];
-            // Filter out any null or undefined entries before mapping
-            const cleanLocalFormsList = localFormsList.filter(f => f && typeof f === 'object');
-            const localFormsMap = new Map(cleanLocalFormsList.map(f => [f.firebaseKey, f]));
-            let needsUpdate = false;
-
-            serverFormsList.forEach(serverForm => {
-                const localForm = localFormsMap.get(serverForm.firebaseKey);
-                if (!localForm) {
-                    needsUpdate = true;
+            try {
+                if (!snapshot.exists()) {
+                    if ((dataCache.current[CACHE_SEGMENTS.FORMS] || []).length > 0) {
+                        updateCacheSegment(CACHE_SEGMENTS.FORMS, []);
+                    }
                     return;
                 }
 
-                const serverTimestamp = serverForm.lastUpdated || 0;
-                const localTimestamp = localForm.lastUpdated || 0;
+                const firebaseFormsObject = snapshot.val();
+                const serverFormsList = Object.keys(firebaseFormsObject).map(key => ({ ...firebaseFormsObject[key], firebaseKey: key }));
+                const localFormsData = dataCache.current[CACHE_SEGMENTS.FORMS];
 
-                if (serverTimestamp > localTimestamp) {
+                // Ensure we ALWAYS have an array, even if cache is corrupted/old
+                let localFormsList = [];
+                if (Array.isArray(localFormsData)) {
+                    localFormsList = localFormsData;
+                } else if (localFormsData && typeof localFormsData === 'object' && !Array.isArray(localFormsData)) {
+                    // Handle legacy cache where forms was stored as object {key: form}
+                    console.warn('[DataContext] Legacy forms cache detected (object instead of array) — auto-converting');
+                    localFormsList = Object.keys(localFormsData).map(key => ({
+                        ...localFormsData[key],
+                        firebaseKey: key
+                    }));
+                }
+
+                // Now safe to filter and map
+                let cleanLocalFormsList = localFormsList
+                    .filter(f => f && typeof f === 'object' && f.firebaseKey);
+
+                if (!Array.isArray(cleanLocalFormsList)) {
+                    console.error('[DataContext] cleanLocalFormsList is not an array!', cleanLocalFormsList);
+                    cleanLocalFormsList = [];
+                }
+
+                const localFormsMap = new Map(
+                    cleanLocalFormsList.map(f => [f.firebaseKey, f])
+                );
+                let needsUpdate = false;
+
+                serverFormsList.forEach(serverForm => {
+                    const localForm = localFormsMap.get(serverForm.firebaseKey);
+                    if (!localForm) {
+                        needsUpdate = true;
+                        return;
+                    }
+
+                    const serverTimestamp = serverForm.lastUpdated || 0;
+                    const localTimestamp = localForm.lastUpdated || 0;
+
+                    if (serverTimestamp > localTimestamp) {
+                        needsUpdate = true;
+                    }
+                });
+
+                const somethingWasDeleted = localFormsList.some(oldForm => !firebaseFormsObject.hasOwnProperty(oldForm.firebaseKey));
+                if (somethingWasDeleted) {
                     needsUpdate = true;
                 }
-            });
 
-            const somethingWasDeleted = localFormsList.some(oldForm => !firebaseFormsObject.hasOwnProperty(oldForm.firebaseKey));
-            if (somethingWasDeleted) {
-                needsUpdate = true;
-            }
+                if (needsUpdate) {
+                    serverFormsList.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+                    updateCacheSegment(CACHE_SEGMENTS.FORMS, serverFormsList);
+                }
+            } catch (error) {
+                console.error("Critical error in forms listener:", error);
 
-            if (needsUpdate) {
-                serverFormsList.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-                updateCacheSegment(CACHE_SEGMENTS.FORMS, serverFormsList);
+                const localFormsData = dataCache.current[CACHE_SEGMENTS.FORMS];
+                const debugInfo = {
+                    errorMessage: error.message,
+                    errorStack: error.stack,
+                    localFormsData_type: typeof localFormsData,
+                    localFormsData_isArray: Array.isArray(localFormsData),
+                    localFormsData_sample: JSON.stringify(localFormsData, null, 2).substring(0, 3000),
+                };
+
+                console.error("Forms listener debug info:", debugInfo);
+
+                sendDataRequestLog(
+                    'DataContext.jsx (forms-listener-error)',
+                    false, // not from cache
+                    'runtime-error',
+                    JSON.stringify(debugInfo).length,
+                    isAuthenticated,
+                    user?.faction?.characterName || user?.username,
+                    'forms-processing', // portions
+                    error.message
+                );
             }
         });
     }, [updateCacheSegment]);
@@ -436,7 +483,7 @@ export const DataProvider = ({ children }) => {
         const segmentsToRefresh = segments.length > 0 ? segments : Object.values(CACHE_SEGMENTS);
         
         for (const segment of segmentsToRefresh) {
-            if (!CACHE_SEGMENTS[segment]) {
+            if (!Object.values(CACHE_SEGMENTS).includes(segment)) {
                 console.warn(`Invalid segment: ${segment}`);
                 continue;
             }
@@ -445,7 +492,11 @@ export const DataProvider = ({ children }) => {
             try {
                 const snapshot = await get(segmentRef);
                 if (snapshot.exists()) {
-                    await updateCacheSegment(segment, snapshot.val());
+                    let data = snapshot.val();
+                    if (segment === CACHE_SEGMENTS.FORMS && data) {
+                        data = Object.keys(data).map(key => ({ ...data[key], firebaseKey: key }));
+                    }
+                    await updateCacheSegment(segment, data);
                 }
             } catch (error) {
                 console.error(`Failed to refresh segment ${segment}:`, error);
@@ -483,6 +534,33 @@ export const DataProvider = ({ children }) => {
 
 
     const cleanupCache = useCallback(() => {
+        // Explicitly remove old forms cache versions
+        const oldFormsCacheKeys = [
+            'firebaseCache_forms_v1.0',
+            'firebaseCache_forms_v1.0_timestamp',
+            'firebaseCache_forms_v1.0_version',
+            'firebaseCache_forms_v1.1',
+            'firebaseCache_forms_v1.1_timestamp',
+            'firebaseCache_forms_v1.1_version',
+            'firebaseCache_forms_v1.2',
+            'firebaseCache_forms_v1.2_timestamp',
+            'firebaseCache_forms_v1.2_version',
+            'firebaseCache_forms_v1.2.1', // Assuming there might have been a minor version before 1.2.2
+            'firebaseCache_forms_v1.2.1_timestamp',
+            'firebaseCache_forms_v1.2.1_version',
+            'firebaseCache_forms_v1.2.2',
+            'firebaseCache_forms_v1.2.2_timestamp',
+            'firebaseCache_forms_v1.2.2_version',
+            
+        ];
+        oldFormsCacheKeys.forEach(key => {
+            if (localStorage.getItem(key) !== null) {
+                console.log(`🧹 Explicitly cleaning up old forms cache key: ${key}`);
+                localStorage.removeItem(key);
+            }
+        });
+
+
         const prefix = CACHE_PREFIX + '_';
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
@@ -599,8 +677,8 @@ export const DataProvider = ({ children }) => {
     const value = {
         factionsData,
         formsData,
-        phmcListData,
-        coronerListData,
+        phmcListData: phmcListData || [],
+        coronerListData: coronerListData || [],
         agencyDataStore,
         selectOptions,
         physicianRecruitmentDetails,

@@ -100,7 +100,7 @@ const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
         top: 10,
         left: 10,
         right: 10,
-        zIndex: 9999,
+        zIndex: 1000,
         display: "flex",
         justifyContent: "space-between",
         alignItems: "flex-start",

@@ -23,6 +23,7 @@ import PermanentNotification from '../PermanentNotification';
 import BugReportModal from '../BugReportModal';
 import { validateForm } from '../../utils/formValidation';
 import { sendDiscordWebhook } from '../../utils/webhookUtils';
+import { useInactivityReload } from '../../hooks/useInactivityReload'; // NEW IMPORT
 
 // Critical CSS imports
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -36,6 +37,7 @@ import formStyles from './FormHandler.module.css';
 
 
 const FormHandler = () => {
+  useInactivityReload(); // NEW HOOK CALL
 
   const [selectedForm, setSelectedForm] = useState(null);
   const [formValues, setFormValues] = useState({});
