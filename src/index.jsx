@@ -106,6 +106,7 @@ const getCurrentFormType = () => {
 init({
   dsn: "https://5dfa5683e8dc9adbc7f30e44757995c7@o4509126124765184.ingest.de.sentry.io/4509126125813840",
   sendDefaultPii: true,
+  environment: import.meta.env.MODE, // Add environment context
   integrations: [
     Sentry.browserTracingIntegration(),
     Sentry.replayIntegration({
@@ -117,6 +118,26 @@ init({
   replaysSessionSampleRate: 0.1,
   replaysOnErrorSampleRate: 1.0,
   tracePropagationTargets: ["localhost", "https://forms.phmc.io", /^\//],
+  beforeSend(event, hint) {
+    // Check if it's an error event to add context
+    if (event.exception) {
+      // Add custom tags for better filtering and analytics
+      event.tags = {
+        ...event.tags,
+        form_type: getCurrentFormType(),
+        sentry_blocked: isSentryBlocked,
+      };
+
+      // Add extra context data for deeper debugging
+      if (lastInputInteraction) {
+        event.extra = {
+          ...event.extra,
+          last_input_interaction: lastInputInteraction,
+        };
+      }
+    }
+    return event;
+  },
 });
 console.log("Sentry has been initialized.");
 // --- Global Error Handling Setup ---
@@ -168,6 +189,24 @@ window.onerror = (message, source, lineno, colno, errorObject) => {
     }
     // --- End Error Context Detection ---
 
+    // Helper to safely get user info from storage
+    const getUserInfoFromStorage = () => {
+        try {
+            const userKey = Object.keys(localStorage).find(k => k.includes('user'));
+            if (userKey) {
+                const user = JSON.parse(localStorage.getItem(userKey));
+                return {
+                    id: user?.uid || user?.id,
+                    username: user?.displayName || user?.username,
+                };
+            }
+            return null;
+        } catch {
+            return { error: 'Failed to parse user info from localStorage' };
+        }
+    };
+
+
     // Log the error to Firebase Analytics
     logEvent(analytics, 'exception', {
         description: message,
@@ -195,7 +234,15 @@ window.onerror = (message, source, lineno, colno, errorObject) => {
         isInputFieldError,
         inputFieldType,
         currentFormType: getCurrentFormType(),
-        lastInputInteraction
+        lastInputInteraction,
+        // --- Added Debug Data ---
+        url: window.location.href,
+        clientInfo: {
+            viewport: `${window.innerWidth}x${window.innerHeight}`,
+            platform: navigator.platform,
+            language: navigator.language,
+        },
+        userInfo: getUserInfoFromStorage(),
     };
     sendDiscordErrorWebhook(errorDetails, isSentryBlocked);
 

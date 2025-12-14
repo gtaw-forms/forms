@@ -4,6 +4,49 @@
 
 import * as Sentry from "@sentry/react";
 
+// --- Error Categorization ---
+const ErrorCategory = {
+    CONNECTION: 'Connection Error',
+    DATA_PROCESSING: 'Data Processing / Render Error',
+    SENTRY_API: 'Sentry API Error',
+    WEBHOOK: 'Webhook Error',
+    UNKNOWN: 'Unknown Error',
+};
+
+/**
+ * Analyzes an error message to categorize it and provide a debugging suggestion.
+ * @param {string} message - The error message string.
+ * @returns {{category: string, suggestion: string}}
+ */
+const categorizeError = (message) => {
+    const lowerMessage = (message || '').toLowerCase();
+
+    if (/\.map is not a function|\.find is not a function|\.filter is not a function|cannot read properties of undefined/.test(lowerMessage)) {
+        return {
+            category: ErrorCategory.DATA_PROCESSING,
+            suggestion: "A component likely tried to render a list (e.g., using `.map`) but the data was `undefined` or not an array. Check context providers and data fetching logic to ensure defaults are always arrays (e.g., `myList || []`)."
+        };
+    }
+    if (/failed to fetch|networkerror/.test(lowerMessage)) {
+        return {
+            category: ErrorCategory.CONNECTION,
+            suggestion: "A network request failed. This could be a user's connection issue, a CORS problem, or the downstream service (e.g., Firebase, Discord webhook) being unavailable."
+        };
+    }
+    if (/sentry.*error/.test(lowerMessage)) {
+        return {
+            category: ErrorCategory.SENTRY_API,
+            suggestion: "The Sentry SDK itself threw an error. This might be a configuration issue or a problem with the Sentry service."
+        };
+    }
+
+    return {
+        category: ErrorCategory.UNKNOWN,
+        suggestion: "The error type is not automatically recognized. Manual investigation of the stack trace and error message is required."
+    };
+};
+
+
 // --- Global Error Handling Setup ---
 let lastDiscordErrorMessage = '';
 let lastDiscordErrorTimestamp = 0;
@@ -186,6 +229,8 @@ export const sendDiscordErrorWebhook = (errorDetails, sentryBlocked = false) => 
         sentryEventId = Sentry.lastEventId();
     }
 
+    const { category, suggestion } = categorizeError(errorMessage);
+
     const embed = {
         title: errorDetails.isButtonClickError ? "🚨 Button Click Error 🚨" : "🚨 Unhandled Application Error 🚨",
         description: "An unhandled error was caught by the global error handler.",
@@ -194,7 +239,10 @@ export const sendDiscordErrorWebhook = (errorDetails, sentryBlocked = false) => 
             { name: "Error Type", value: errorDetails.isButtonClickError ? "UI Button Interaction" : errorDetails.isInputFieldError ? "Input Field Interaction" : "General", inline: true },
             { name: "Sentry Status", value: sentryBlocked ? "⚠️ Blocked / Unreachable" : "✅ Active", inline: true },
             { name: "Form Type", value: `\`${errorDetails.currentFormType || getCurrentFormType()}\``, inline: true },
+            { name: "Error Category", value: `**${category}**`, inline: false },
             { name: "Error Message", value: `\`${errorMessage}\``, inline: false },
+            { name: "URL", value: errorDetails.url || 'N/A', inline: false },
+            { name: "Debugging Suggestion", value: suggestion, inline: false },
             { name: "Source File", value: errorDetails.source || "N/A", inline: true },
             { name: "Line", value: errorDetails.lineno || "N/A", inline: true },
             { name: "Column", value: errorDetails.colno || "N/A", inline: true },
@@ -203,9 +251,11 @@ export const sendDiscordErrorWebhook = (errorDetails, sentryBlocked = false) => 
             errorDetails.lastInputInteraction ? { name: "Last Input Interaction", value: `\`${errorDetails.lastInputInteraction.type} - ${errorDetails.lastInputInteraction.fieldName}\``, inline: true } : null,
             { name: "Stack Trace", value: `\`${errorStack}\``, inline: false },
             sentryEventId ? { name: "Sentry Trace/Event ID", value: `\`${sentryEventId}\``, inline: false } : null,
+            errorDetails.userInfo ? { name: "User Info", value: `\`\`\`json\n${JSON.stringify(errorDetails.userInfo, null, 2)}\n\`\`\``, inline: true } : null,
+            errorDetails.clientInfo ? { name: "Client Info", value: `\`\`\`json\n${JSON.stringify(errorDetails.clientInfo, null, 2)}\n\`\`\``, inline: true } : null,
         ].filter(Boolean),
         timestamp: new Date().toISOString(),
-        footer: { text: `PHMC Tools - Global Error Handler | gh-pages ${import.meta.env.GIT_COMMIT_SHORT || 'N/A'}${import.meta.env.GIT_DIRTY ? ' (dirty)' : ''}` }
+        footer: { text: `PHMC Tools - Global Error Handler | ` }
     };
     discordErrorWebhookQueue.push({ content: '<@228306972204597248>', embeds: [embed] });
     processDiscordErrorQueue(); // Start processing the queue if it's not already running
