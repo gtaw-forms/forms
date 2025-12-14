@@ -3,6 +3,7 @@ import { database } from '../firebase';
 import { ref, get, onChildChanged, onValue, set } from 'firebase/database';
 import { useNotification } from './NotificationContext.jsx';
 import { useWebhooks } from '../hooks/useWebhooks';
+import { useInactivityReload } from '../hooks/useInactivityReload';
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
 
 // Define cache segments
@@ -26,7 +27,7 @@ export const useData = () => {
 export const DataProvider = ({ children }) => {
     const { sendDataRequestLog } = useWebhooks();
     const { user, isAuthenticated } = useGtaWorldAuth();
-
+    
 
     const CORONER_KEYWORDS = ['Coroner', 'Examiner', 'Attendant'];
     const updateCacheSegment = useCallback(async (segment, data) => {
@@ -41,12 +42,13 @@ export const DataProvider = ({ children }) => {
                 localStorage.setItem(getTimestampKey(segment), Date.now().toString());
                 localStorage.setItem(getVersionKey(segment), version);
                 
-                let logMessage = `💾 Updated cache segment: ${segment} (v${version})`;
+                const cachedDataSize = (JSON.stringify(data)?.length || 0) / 1024;
+                let logMessage = `💾 Updated cache segment: ${segment} (v${version}) (${cachedDataSize.toFixed(2)} KB)`;
 
                 // If updating the forms segment, append the Firebase Data version
                 if (segment === CACHE_SEGMENTS.FORMS) {
                     const firebaseDataVersion = localStorage.getItem('formsDataVersion') || 'N/A';
-                    logMessage = `💾 Updated cache segment: forms | InternalDataContext v${version} | Firebase Data: v${firebaseDataVersion}`;
+                    logMessage = `💾 Updated cache segment: forms (${cachedDataSize.toFixed(2)} KB) | InternalDataContext v${version} | Firebase Data: v${firebaseDataVersion}`;
                 }
                 console.log(logMessage);
             } catch (error) {
@@ -80,12 +82,6 @@ export const DataProvider = ({ children }) => {
                 break;
             case CACHE_SEGMENTS.SELECT_OPTIONS:
                 setSelectOptions(data);
-                setPhysicianRecruitmentDetails(data?.physicianRecruitmentDetails || {});
-                setPsychRecruitmentDetails(data?.psychPositionDetailsData || {});
-                setAdminRecruitmentDetails(data?.adminPositionDetailsData || {});
-                setEmsRecruitmentDetails(data?.emsPositionDetailsData || {});
-                setNurseRecruitmentDetails(data?.nursePositionDetailsData || {});
-                setCoronerRecruitmentDetails(data?.coronerPositionDetailsData || {});
                 break;
             case CACHE_SEGMENTS.FORMS:
                 // Ensure formsData is always an array
@@ -109,17 +105,14 @@ export const DataProvider = ({ children }) => {
         });
     };
     const { showNotification, removeNotification } = useNotification();
-    const [factionsData, setFactionsData] = useState({});
+    const { getIsInactivityWarningTriggered } = useInactivityReload();
+        const [factionsData, setFactionsData] = useState({});
     const [agencyDataStore, setAgencyDataStore] = useState({});
     const [selectOptions, setSelectOptions] = useState({});
-    const [physicianRecruitmentDetails, setPhysicianRecruitmentDetails] = useState({});
-    const [psychRecruitmentDetails, setPsychRecruitmentDetails] = useState({});
-    const [adminRecruitmentDetails, setAdminRecruitmentDetails] = useState({});
-    const [emsRecruitmentDetails, setEmsRecruitmentDetails] = useState({});
-    const [nurseRecruitmentDetails, setNurseRecruitmentDetails] = useState({});
-    const [coronerRecruitmentDetails, setCoronerRecruitmentDetails] = useState({});
     const [isLoadingData, setIsLoadingData] = useState(true);
     const [loading, setLoading] = useState(true);
+
+    const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarningTriggered);
 
     const [formsData, setFormsData] = useState([]);
     const [lsccData, setLsccData] = useState({}); // New state for LSCC data
@@ -325,7 +318,7 @@ export const DataProvider = ({ children }) => {
                 console.log('📦 Using memory-cached Firebase data');
                 const size = JSON.stringify(dataCache.current).length;
                 const portions = Object.keys(dataCache.current).join(', ');
-                sendDataRequestLog('DataContext.jsx', true, 'Memory Cache', size, isAuthenticated, user?.faction?.characterName || user?.username, portions);
+                webhooks.sendDataRequestLog('DataContext.jsx', true, 'Memory Cache', size, 0, isAuthenticated, user?.faction?.characterName || user?.username, portions, null, null);
                 hasLoggedInitialLoad.current = true;
             }
             setIsLoadingData(false);
@@ -359,7 +352,7 @@ export const DataProvider = ({ children }) => {
                     }
                     const size = JSON.stringify(dataCache.current).length;
                     const portions = Object.keys(dataCache.current).join(', ');
-                    sendDataRequestLog('DataContext.jsx', true, 'Local Storage', size, isAuthenticated, user?.faction?.characterName || user?.username, portions);
+                    webhooks.sendDataRequestLog('DataContext.jsx', true, 'Local Storage', size, 0, isAuthenticated, user?.faction?.characterName || user?.username, portions, null, null);
                     hasLoggedInitialLoad.current = true;
                 }
                 updateStateWithData(dataCache.current);
@@ -407,8 +400,11 @@ export const DataProvider = ({ children }) => {
             if (hasData) {
                 if (!hasLoggedInitialLoad.current) {
                     const size = JSON.stringify(allData).length;
-                    const portions = Object.keys(allData).join(', ');
-                    sendDataRequestLog('DataContext.jsx', false, 'Firebase', size, isAuthenticated, user?.faction?.characterName || user?.username, portions);
+                    const requestedPortions = segmentsToFetch.join(', ');
+                    const receivedSegments = Object.keys(allData);
+                    const missingPortions = segmentsToFetch.filter(segment => !receivedSegments.includes(segment));
+
+                    webhooks.sendDataRequestLog('DataContext.jsx', false, 'Firebase', size, size, isAuthenticated, user?.faction?.characterName || user?.username, requestedPortions, missingPortions, null);
                     hasLoggedInitialLoad.current = true;
                 }
                 console.log('[DataContext] Raw data from Firebase:', allData);
@@ -454,7 +450,7 @@ export const DataProvider = ({ children }) => {
             showNotification("An error has happened, contact the maintainer", 'error');
             console.error("Error fetching data from Realtime Database:", error);
             const portions = Object.values(CACHE_SEGMENTS).join(', ');
-            sendDataRequestLog('DataContext.jsx', false, 'Firebase Error', 0, isAuthenticated, user?.faction?.characterName || user?.username, portions, error.message || 'Unknown Fetch Error');
+            webhooks.sendDataRequestLog('DataContext.jsx', false, 'Firebase Error', 0, 0, isAuthenticated, user?.faction?.characterName || user?.username, portions, portions.split(', '), error.message || 'Unknown Fetch Error');
         } finally {
             setIsLoadingData(false);
             setLoading(false);
@@ -465,8 +461,6 @@ export const DataProvider = ({ children }) => {
     }, [
         showNotification, removeNotification, updateCacheSegment, // Added updateCacheSegment
         setFactionsData, setAgencyDataStore, setSelectOptions,
-        setPhysicianRecruitmentDetails, setPsychRecruitmentDetails, setAdminRecruitmentDetails,
-        setEmsRecruitmentDetails, setNurseRecruitmentDetails, setCoronerRecruitmentDetails,
         setIsLoadingData, setLoading, setFormsData,
         isAuthenticated, user, sendDataRequestLog
     ]);
@@ -660,18 +654,12 @@ export const DataProvider = ({ children }) => {
         coronerListData: coronerListData || [],
         agencyDataStore,
         selectOptions,
-        physicianRecruitmentDetails,
-        psychRecruitmentDetails,
-        adminRecruitmentDetails,
-        emsRecruitmentDetails,
-        nurseRecruitmentDetails,
-        coronerRecruitmentDetails,
         isLoadingData,
         loading,
         refreshData,
         refreshSegments,
         notifyDataUpdate, // Expose the notification function
-        sendDataRequestLog, // Expose the logging function
+        sendDataRequestLog: webhooks.sendDataRequestLog, // Expose the logging function
                 isDevMode,
                 setIsDevMode,
                 lsccData, // Add lsccData to the context value

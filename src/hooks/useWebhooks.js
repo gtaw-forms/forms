@@ -5,7 +5,7 @@ import { logEvent } from 'firebase/analytics';
 import { database } from '../firebase';
 import { ref, set, push } from 'firebase/database';
 
-export const useWebhooks = (formData, commitInfo, showNotification) => {
+export const useWebhooks = (formData, commitInfo, showNotification, getIsInactivityWarningTriggered) => {
     const logWebhookToFirebase = async (type, payload) => {
         const db = database;
         const logsRef = ref(db, 'webhook_logs');
@@ -113,7 +113,7 @@ export const useWebhooks = (formData, commitInfo, showNotification) => {
         }
     };
 
-    const sendDataRequestLog = async (file, cached, source, size, loggedIn, user, portions) => {
+    const sendDataRequestLog = async (file, cached, source, cachedDataSize, networkTransferSize, loggedIn, user, requestedPortions, missingPortions, error = null) => {
         const webhookUrl = import.meta.env.VITE_DEV_WEBHOOK;
         if (!webhookUrl) {
             console.error("Discord webhook URL is not configured.");
@@ -138,12 +138,17 @@ export const useWebhooks = (formData, commitInfo, showNotification) => {
             },
             {
                 name: 'Approximate Size',
-                value: `${(size / 1024).toFixed(2)} KB`,
+                value: `${(networkTransferSize / 1024).toFixed(2)} KB`,
                 inline: true,
             },
             {
                 name: 'Logged In',
                 value: loggedIn ? 'Yes' : 'No',
+                inline: true,
+            },
+            { // NEW: Inactivity Check Field
+                name: 'Inactivity Check (30min+)',
+                value: getIsInactivityWarningTriggered() ? 'True' : 'False',
                 inline: true,
             },
         ];
@@ -156,10 +161,24 @@ export const useWebhooks = (formData, commitInfo, showNotification) => {
             });
         }
 
-        if (portions) {
+        if (missingPortions && missingPortions.length > 0) {
+            fields.push({
+                name: 'Missing Portions',
+                value: missingPortions.join(', '),
+                inline: false,
+            });
+        } else if (requestedPortions) { // Only show requested if nothing is missing
             fields.push({
                 name: 'Requested Portions',
-                value: portions,
+                value: requestedPortions,
+                inline: false,
+            });
+        }
+
+        if (error) { // NEW: Add error field if present
+            fields.push({
+                name: 'Error Details',
+                value: String(error),
                 inline: false,
             });
         }
