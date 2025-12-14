@@ -113,12 +113,6 @@ export const DataProvider = ({ children }) => {
                 break;
             case CACHE_SEGMENTS.SELECT_OPTIONS:
                 setSelectOptions(data);
-                setPhysicianRecruitmentDetails(data?.physicianRecruitmentDetails || {});
-                setPsychRecruitmentDetails(data?.psychPositionDetailsData || {});
-                setAdminRecruitmentDetails(data?.adminPositionDetailsData || {});
-                setEmsRecruitmentDetails(data?.emsPositionDetailsData || {});
-                setNurseRecruitmentDetails(data?.nursePositionDetailsData || {});
-                setCoronerRecruitmentDetails(data?.coronerPositionDetailsData || {});
                 break;
             case CACHE_SEGMENTS.FORMS:
                 // Ensure formsData is always an array
@@ -508,8 +502,6 @@ export const DataProvider = ({ children }) => {
     }, [
         showNotification, removeNotification, updateCacheSegment, // Added updateCacheSegment
         setFactionsData, setAgencyDataStore, setSelectOptions,
-        setPhysicianRecruitmentDetails, setPsychRecruitmentDetails, setAdminRecruitmentDetails, // Re-added these
-        setEmsRecruitmentDetails, setNurseRecruitmentDetails, setCoronerRecruitmentDetails, // Re-added these
         setIsLoadingData, setLoading, setFormsData,
         isAuthenticated, user, webhooks // Replaced sendDataRequestLog with webhooks
     ]);
