@@ -761,6 +761,7 @@ export const useReportManagement = (
             ]);                if (reportSnapshot.exists()) {
                     const reportData = reportSnapshot.val();
                     const bbCodeData = bbCodeSnapshot.val();
+                    const loadedVersion = reportData.bbCodeVersion;
                     
                     if (sendDataRequestLog) {
                         const reportSize = new TextEncoder().encode(JSON.stringify(reportData)).length;
@@ -912,7 +913,7 @@ export const useReportManagement = (
                             }
                         }
                         
-                        if (loadedVersion === 11) {
+                        if (loadedVersion === 11 || reportData.formId === 'mass-ftality-test') {
                             // Mass Fatality Report: set decedents array and other relevant fields
                             const decedents = Array.isArray(loadedFormData.decedents) ? loadedFormData.decedents.map(dec => ({
                                 ...dec,

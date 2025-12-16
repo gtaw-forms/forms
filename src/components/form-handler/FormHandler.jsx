@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { database } from "../../firebase";
-import { ref, onValue } from "firebase/database";
 import useGtaWorldAuth from "../../hooks/useGtaWorldAuth";
 import { useModal } from "../../contexts/ModalProvider";
 import { useData } from "../../contexts/DataContext";
@@ -23,7 +21,7 @@ import PermanentNotification from '../PermanentNotification';
 import BugReportModal from '../BugReportModal';
 import { validateForm } from '../../utils/formValidation';
 import { sendDiscordWebhook } from '../../utils/webhookUtils';
-import { useInactivityReload } from '../../hooks/useInactivityReload'; // NEW IMPORT
+import { useInactivityReload } from '../../hooks/useInactivityReload';
 
 // Critical CSS imports
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -68,8 +66,6 @@ const FormHandler = () => {
     return localStorage.getItem('phmc_gtaw_oauth_persist_enabled') === 'true';
   });
   const [showBugReportModal, setShowBugReportModal] = useState(false);
-  const [debugInfo, setDebugInfo] = useState(null);
-  const [showDebug, setShowDebug] = useState(false);
   const [isAutoUpdatingBbcode, setIsAutoUpdatingBbcode] = useState(false);
 
   // Hooks
@@ -122,7 +118,7 @@ const FormHandler = () => {
     phmcListData, 
     coronerListData: originalCoronerListData,
     selectOptions: dataContextSelectOptions,
-    formsData
+    formsData,
   } = useData();
   const { showEmsBingoModal, setShowEmsBingoModal } = useModal();
   const { saveReport: saveNewReport } = useFormSaver();
@@ -401,7 +397,7 @@ const FormHandler = () => {
   } = useReportManagement(
       formValues, setFormValues, null, () => {}, () => '', getCurrentReportAuthor, () => ({}), finalSelectOptions,
       showNotification, removeNotification, () => {}, () => {}, () => {}, modalCloseTimer, selectedForm,
-      () => forms, // Changed from forms to () => forms
+      () => formsData, // Changed from forms to () => formsData
       setSelectedForm
   );
 
@@ -672,7 +668,7 @@ const FormHandler = () => {
             shouldDisplay = false;
             reason = "Hidden form";
         } else {
-            const isRestricted = form.accessType === "PHMC" || form.accessType === "Coroner" || form.accessType === "Mental Health";
+            const isRestricted = form.accessType === "PHMC" || form.accessType === "Coroner" || form.accessType === "Mental Health" || form.accessType === "Civilian";
             const hasRequiredAccess = isAuthenticated && (isPhmcMember || (user && user.faction));
             
             if (!isRestricted) {
@@ -845,7 +841,7 @@ const FormHandler = () => {
           <div className={styles.formList}>
             {Object.entries(groupedForms).length === 0 ? (
               <div style={{ textAlign: "center", color: "#64748b", padding: "2rem" }}>
-                No forms found
+                Access Denied
               </div>
             ) : (
               <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
@@ -905,19 +901,24 @@ const FormHandler = () => {
         </div>
 
         <div className={styles.mainContent}>
-          {!isAuthenticated && (
-            <div style={{
-              backgroundColor: '#f8d7da', color: '#721c24', border: '1px solid #f5c6cb',
-              borderRadius: '0.25rem', padding: '1rem', marginBottom: '1rem',
-              textAlign: 'center', fontWeight: 'bold'
-            }}>
-              Please sign in with OAuth to Generate BBCode and Save Reports. REPORT ISSUES TO ALYSON FROST 
-            </div>
-          )}
           {!selectedForm ? (
-            <div style={{ textAlign: "center", marginTop: "8rem", color: "#64748b" }}>
-              <h3>Select a form from the left to begin</h3>
-            </div>
+            !isAuthenticated ? (
+                <div style={{ textAlign: "center", marginTop: "8rem", color: "#c9d1d9" }}>
+                    <i className="fas fa-lock" style={{ fontSize: "3rem",  marginBottom: "1rem", display: 'block' }}></i>
+                    <h3 style={{ color: "#880a03ff", fontWeight: "bold" }}>Authentication Required</h3>
+                    <p style={{ fontSize: "1.1rem", marginTop: "1rem" }}>
+                        These forms are restricted to GTA WORLD EU OAUTH.
+                        <br />
+                        You must sign in to preview these forms. Civilian Forms will be retired in the future.
+                        <br /><br />
+                        Please sign in with your GTA World account to continue.
+                    </p>
+                </div>
+            ) : (
+                <div style={{ textAlign: "center", marginTop: "8rem", color: "#64748b" }}>
+                    <h3>Select a form from the left to begin</h3>
+                </div>
+            )
           ) : (
             <>
               <h2 style={{ color: "#60a5fa", marginBottom: "2rem" }}>{selectedForm.name}</h2>
@@ -1075,4 +1076,3 @@ const FormHandler = () => {
 };
 
 export default FormHandler;
-

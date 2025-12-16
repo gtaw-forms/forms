@@ -139,7 +139,11 @@ const formatToNorthAmericanDate = (isoDateTime) => {
     const ctx = { ...processedFormValues };
     ctx.formData = ctx;
     ctx.generateDecedentBBCode = (arr) => generateDecedentBBCode(arr, finalSelectOptions);
-    ctx.decedents_array_bbcode = ctx.generateDecedentBBCode(ctx.decedents);
+
+    // Directly generate and replace the decedents BBCode
+    const decedents_bbcode = generateDecedentBBCode(processedFormValues.decedents, finalSelectOptions);
+    console.log("Generated Decedents BBCode:", decedents_bbcode);
+    bbcode = bbcode.replace('{{decedents_array_bbcode}}', decedents_bbcode);
 
     // Fallback aliases
     const addFallback = (src, target) => {
