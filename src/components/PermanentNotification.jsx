@@ -36,7 +36,7 @@ const PermanentNotification = ({ discordLink, onReportBugClick }) => {
 
   return (
     <div style={notificationStyle}>
-      You are using a beta website build. Please report bugs to the (<a href={discordLink} target="_blank" rel="noopener noreferrer" style={linkStyle}>PHMC Discord</a>) and notify 'Alyson Frost' in the Visitor Chat or DM.
+      You are using a beta website build. Please report bugs to the (<a href={discordLink} target="_blank" rel="noopener noreferrer" style={linkStyle}>PHMC Discord</a>) and notify 'PHMC Leadership' in the Visitor Chat or DM.
       <button style={buttonStyle} onClick={onReportBugClick}>
         Report Bug
       </button>
