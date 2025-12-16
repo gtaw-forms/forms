@@ -394,7 +394,7 @@ const OnboardingModal = ({
     const handleBusinessCardOnly = () => {
         console.log(`[ONBOARDING_LOG] handleBusinessCardOnly called - UserType: CIVILIAN, NotificationType: BUSINESS_CARD_ONLY`);
 
-        const businessCardForm = Object.values(formsData).find(form => form.name.toLowerCase().includes('business card'));
+        const businessCardForm = Object.values(formsData).find(form => form.name && form.name.toLowerCase().includes('business card'));
         const businessCardKey = businessCardForm ? businessCardForm.firebaseKey : null;
 
         const preferences = {

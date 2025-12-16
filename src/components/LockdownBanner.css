@@ -1,0 +1,37 @@
+.lockdown-banner {
+    background-color: #ffc107; /* A warning yellow */
+    color: #333;
+    padding: 12px 20px;
+    text-align: center;
+    font-size: 1rem;
+    font-weight: 500;
+    position: sticky;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1050; /* High z-index to stay on top */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.lockdown-banner-message {
+    flex-grow: 1;
+}
+
+.lockdown-banner-button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    margin-left: 20px;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.lockdown-banner-button:hover {
+    background-color: #0056b3;
+}

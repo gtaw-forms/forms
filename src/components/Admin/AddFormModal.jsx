@@ -35,7 +35,7 @@ const inputStyle = {
 };
 
 const AddFormModal = ({ show, onClose, editingForm = null, user }) => {
-  const { user: gtawUser } = useGtaWorldAuth(); // Get authenticated user for logging
+  const { user: gtawUser, isAuthenticated } = useGtaWorldAuth(); // Get authenticated user for logging
 
   const [formId, setFormId] = useState("");
   const [formName, setFormName] = useState("");
@@ -700,8 +700,10 @@ const handleBulkAddFields = (fieldsToAdd) => {
               <option value="Public">Public (No Restriction)</option>
               <option value="PHMC">PHMC Staff Only</option>
               <option value="Coroner">Coroner / DMEC Only</option>
-              <option value="Mental Health">Mental Health Only</option> // NEW: Mental Health Access
-              <option value="Civilian">Civilian / Patient Files</option>
+              <option value="Mental Health">Mental Health Only</option> 
+              {isAuthenticated && (
+                <option value="Civilian">Civilian / Patient Files</option>
+              )}
             </select>
           </label>
 

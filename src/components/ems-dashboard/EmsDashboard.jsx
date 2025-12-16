@@ -11,6 +11,7 @@ import { useWebhooks } from '../../hooks/useWebhooks';
 import { useImageUpload } from '../../hooks/useImageUpload';
 import EmsAmaModal from '../EmsAmaModal';
 import EmsBingoModal from '../EmsBingoModal'; // New import
+import BusinessCardModal from '../BusinessCardModal'; // New import
 import { useData } from '../../contexts/DataContext.jsx'; // New import
 import { useModal } from '../../contexts/ModalProvider.jsx'; // New import
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth'; // New import
@@ -43,6 +44,7 @@ const EmsDashboard = () => {
   const { isUploading, handleImageUpload } = useImageUpload(showNotification, () => {}); // Placeholder setFormData
 
   const [showEmsBingoModal, setShowEmsBingoModal] = useState(false); // New state for Bingo Modal
+  const [showBusinessCardModal, setShowBusinessCardModal] = useState(false);
 
   const { phmcListData, coronerListData: originalCoronerListData } = useData(); // Get raw lists
   const { setShowEmployeeModal } = useModal();
@@ -405,6 +407,7 @@ return (
               <Button type="button" variant="primary" className="changelog-button" onClick={() => navigate('/')} title="Go to Home" > <i className="fas fa-home"></i>Home</Button>
               <Button type="button" variant="primary" className="changelog-button" onClick={() => setShowEmsAmaModal(true)} title="Open EMS AMA Form" > <i className="fa-solid fa-truck-medical"></i> EMS AMA</Button>
               <Button type="button" variant="warning" className="changelog-button" onClick={() => setShowEmsBingoModal(true)} title="Open Bingo Night!" > <i className="fas fa-trophy"></i> Bingo Night!</Button>
+              <Button type="button" variant="info" className="changelog-button" onClick={() => setShowBusinessCardModal(true)} title="Open Business Card Generator"> <i className="fas fa-id-card"></i> Business Card</Button>
             </div>
       <div className={styles.mainLayout}>
         {/* Left Panel */}
@@ -616,6 +619,13 @@ return (
 <EmsAmaModal
   show={showEmsAmaModal}
   onHide={() => setShowEmsAmaModal(false)}
+  showNotification={showNotification}
+  commitInfo={commitInfo}
+  handleImageUpload={handleImageUpload}
+/>
+<BusinessCardModal
+  show={showBusinessCardModal}
+  onHide={() => setShowBusinessCardModal(false)}
   showNotification={showNotification}
   commitInfo={commitInfo}
   handleImageUpload={handleImageUpload}
