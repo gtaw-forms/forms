@@ -255,7 +255,8 @@ const Root = () => {
     const { showNotification, removeNotification } = useNotification();
 
     useEffect(() => {
-        const checkSentryConnectivity = async () => {
+
+            const checkSentryConnectivity = async () => {
             // Wait a moment for Sentry's client to be fully available after init.
             await new Promise(resolve => setTimeout(resolve, 100));
             
