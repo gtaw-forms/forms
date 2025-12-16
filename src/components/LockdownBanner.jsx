@@ -1,23 +1,21 @@
 import React from 'react';
-import { Alert } from 'react-bootstrap';
+import './LockdownBanner.css';
 
-function LockdownBanner({ notification, show }) {
-    if (!show) return null;
+const LockdownBanner = ({ message, onAcknowledge }) => {
+    if (!message) return null;
 
     return (
-        <Alert 
-            variant="danger" 
-            className="mb-0 text-center" 
-            style={{ 
-                borderRadius: 0,
-                position: 'sticky',
-                top: 0,
-                zIndex: 1030
-            }}
-        >
-            {notification}
-        </Alert>
+        <div className="lockdown-banner">
+            <div className="lockdown-banner-message">
+                {message}
+            </div>
+            {onAcknowledge && (
+                <button onClick={onAcknowledge} className="lockdown-banner-button">
+                    Acknowledge
+                </button>
+            )}
+        </div>
     );
-}
+};
 
 export default LockdownBanner;

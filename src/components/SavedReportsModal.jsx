@@ -270,7 +270,7 @@ const SavedReportsModal = ({
         reportSelectionFilter.length === 2 && 
         reportSelectionFilter.includes(1) && 
         reportSelectionFilter.includes(4);
-    const isAttachMode = !!handleReportSelectedForAttachment;
+    const isAttachMode = !!handleReportSelectedForAttachment && (selectedForm?.id === 'coroner_email' || selectedForm?.name === 'Coroner Email');
 
 
     useEffect(() => {

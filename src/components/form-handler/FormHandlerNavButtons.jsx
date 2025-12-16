@@ -9,6 +9,8 @@ import CctvRequestModal from './CctvRequestModal';
 import FormRequestModal from '../FormRequestModal';
 import Dropdown from 'react-bootstrap/Dropdown'; // React Bootstrap Dropdown
 import seasonalEvents from '../SeasonalEvents';
+import BusinessCardModal from '../BusinessCardModal';
+import { uploadDataUrlToImgBB } from '../../utils/imageUploadUtils';
 
 const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
   const navigate = useNavigate();
@@ -24,6 +26,7 @@ const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
   const { showNotification } = useNotification();
   const [showCctvModal, setShowCctvModal] = useState(false);
   const [showFormRequestModal, setShowFormRequestModal] = useState(false);
+  const [showBusinessCardModal, setShowBusinessCardModal] = useState(false);
   const [userPrefs, setUserPrefs] = useState(null);
   const [showCctvPopup, setShowCctvPopup] = useState(false);
 
@@ -158,6 +161,9 @@ const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
               <Dropdown.Item onClick={() => setShowFormRequestModal(true)}>
                 <i className="fas fa-file-alt"></i> Request a Form
               </Dropdown.Item>
+              <Dropdown.Item onClick={() => setShowBusinessCardModal(true)}>
+                <i className="fas fa-id-card"></i> Business Card
+              </Dropdown.Item>
               <Dropdown.Item onClick={() => setSeasonalEffectsEnabled(!seasonalEffectsEnabled)}>
                 <i className={`fas ${seasonalEffectsEnabled ? "fa-toggle-on" : "fa-toggle-off"}`}></i>
                 {seasonalEffectsEnabled ? "Effects ON" : "Effects OFF"}
@@ -227,6 +233,16 @@ const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
         <FormRequestModal
             show={showFormRequestModal}
             onClose={() => setShowFormRequestModal(false)}
+        />
+      )}
+
+      {showBusinessCardModal && (
+        <BusinessCardModal
+          show={showBusinessCardModal}
+          onHide={() => setShowBusinessCardModal(false)}
+          showNotification={showNotification}
+          commitInfo={{}}
+          handleImageUpload={uploadDataUrlToImgBB}
         />
       )}
     </React.Fragment>
