@@ -6,8 +6,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth'; // Import useGtaWorldAuth
 import DecedentItemRenderer from './DecedentItemRenderer'; // Import the new component
-import AutopsyDiagramModal from '../AutopsyDiagramModal'; // Import AutopsyDiagramModal
-import CharacterSelector from '../CharacterSelector';
+import AutopsyDiagramModal from '../Modals/AutopsyDiagramModal'; // Import AutopsyDiagramModal
+import CharacterSelector from '../Modals/CharacterSelector';
 
 const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore, toggleSavedReports, showNotification, handleDiagramUpload }) => {
   const { factionsData } = useData();
