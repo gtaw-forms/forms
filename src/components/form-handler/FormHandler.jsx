@@ -22,6 +22,7 @@ import BugReportModal from '../BugReportModal';
 import { validateForm } from '../../utils/formValidation';
 import { sendDiscordWebhook } from '../../utils/webhookUtils';
 import { useInactivityReload } from '../../hooks/useInactivityReload';
+import { useUserMetrics } from '../../hooks/useUserMetrics';
 
 // Critical CSS imports
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -36,6 +37,7 @@ import formStyles from './FormHandler.module.css';
 
 const FormHandler = () => {
   useInactivityReload(); // NEW HOOK CALL
+  const { trackMetric } = useUserMetrics();
 
   const [selectedForm, setSelectedForm] = useState(null);
   const [formValues, setFormValues] = useState({});
@@ -110,6 +112,11 @@ const FormHandler = () => {
       );
     }
   }, [isPhmcMember, showNotification, removeNotification, setKeepCredentials]);
+
+  // NEW: Track form handler visit
+  useEffect(() => {
+    trackMetric('form_handler', 'main_page');
+  }, [trackMetric]);
 
   const oauthFirstName = user?.faction?.firstname || user?.activeCharacter?.firstname || null;
   const oauthLastName = user?.faction?.lastname || user?.activeCharacter?.lastname || null;
@@ -343,6 +350,7 @@ const FormHandler = () => {
   const copyAndSaveReport = useCallback(async () => {
     if (generatedBBCode) {
       await saveNewReport(selectedForm, formValues, generatedTitle, generatedBBCode);
+      trackMetric('form_handler', `save_report_${selectedForm.name}`);
       try {
         await navigator.clipboard.writeText(generatedBBCode);
       } catch (err) {
@@ -884,6 +892,7 @@ const FormHandler = () => {
                               setFormValues({ ...baseValues, ...savedValues });
                               setShowBBCode(false);
                               setIsAutoUpdatingBbcode(false);
+                              trackMetric('form_handler', `view_form_${form.name}`);
                             }}
                             className={`${styles.formCard} ${selectedForm?.firebaseKey === form.firebaseKey ? styles.selected : ""}`}
                           >
@@ -969,6 +978,7 @@ const FormHandler = () => {
                   generateBBCode();
                   setIsAutoUpdatingBbcode(true);
                   showNotification('Auto-updating BBCode enabled!', 'info', 2000);
+                  trackMetric('form_handler', `generate_bbcode_${selectedForm.name}`);
                 }} className={formStyles.generateButton}>
                   Generate BBCode
                 </button>
