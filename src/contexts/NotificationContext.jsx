@@ -1,5 +1,5 @@
 import React, { createContext, useState, useRef, useCallback, useContext } from 'react';
-import Notification from '../components/Notification';
+import Notification from '../components/UI/Notification';
 
 const DEFAULT_NOTIFICATION_DURATION = 5000; 
 

@@ -2,8 +2,8 @@
 import React, { useState, useCallback } from 'react';
 import * as Sentry from "@sentry/react";
 import { useNotification } from '../../contexts/NotificationContext';
-import LoadingSpinner from '../LoadingSpinner';
-import './ImageUploader.css';
+import LoadingSpinner from '../UI/LoadingSpinner';
+
 import { uploadImageToImgBB } from '../../utils/imageUploadUtils';
 
 const ImageUploader = ({ images: imagesProp, onImagesChange, maxImages = 6, fieldName }) => {

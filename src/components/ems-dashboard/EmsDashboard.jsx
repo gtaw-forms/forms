@@ -3,20 +3,20 @@ import React, { useState, useEffect, useMemo } from "react";
 import styles from "./EmsDashboard.module.css";
 import { database as db } from "../../firebase";
 import { ref, onValue } from "firebase/database";
-import { KeywordHighlighter } from "../KeywordHighlighter";
-import PatientHelper from "../PatientHelper";
+import { KeywordHighlighter } from "../UI/KeywordHighlighter";
+import PatientHelper from "../Modals/PatientHelper";
 import { useNavigate } from 'react-router-dom';
 import { useNotification } from '../../contexts/NotificationContext.jsx';
 import { useWebhooks } from '../../hooks/useWebhooks';
 import { useImageUpload } from '../../hooks/useImageUpload';
-import EmsAmaModal from '../EmsAmaModal';
-import EmsBingoModal from '../EmsBingoModal'; // New import
-import BusinessCardModal from '../BusinessCardModal'; // New import
+import EmsAmaModal from '../Modals/EmsAmaModal';
+import EmsBingoModal from '../Modals/EmsBingoModal'; // New import
+import BusinessCardModal from '../Modals/BusinessCardModal'; // New import
 import { useData } from '../../contexts/DataContext.jsx'; // New import
 import { useModal } from '../../contexts/ModalProvider.jsx'; // New import
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth'; // New import
 import { useUserMetrics } from '../../hooks/useUserMetrics'; // NEW IMPORT
-import { sendBingoNotification, sendPhraseRequestNotification } from '../notificationService'; // New import
+import { sendBingoNotification, sendPhraseRequestNotification } from '../UI/notificationService'; // New import
 import { Button } from 'react-bootstrap';
 import { useInactivityReload } from '../../hooks/useInactivityReload'; // NEW IMPORT
 

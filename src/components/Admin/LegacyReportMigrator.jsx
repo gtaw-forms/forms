@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { database } from '../../firebase';
 import { get, ref, onValue } from 'firebase/database';
-import { useReportManagement } from '../useReportManagement';
+import { useReportManagement } from '../../hooks/useReportManagement';
 import { useFormSaver } from '../../hooks/useFormSaver';
 import useBbcodeGenerator from '../../hooks/useBbcodeGenerator';
 import { useData } from '../../contexts/DataContext';
-import SavedReportsModal from '../SavedReportsModal';
+import SavedReportsModal from '../Modals/SavedReportsModal';
 import { useNotification } from '../../contexts/NotificationContext';
 import { Button } from 'react-bootstrap';
 
