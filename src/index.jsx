@@ -13,7 +13,7 @@ import { useNotification } from './contexts/NotificationContext';
 import * as Sentry from "@sentry/react";
 import { analytics } from './firebase';
 import { logEvent } from "firebase/analytics";
-import ErrorBoundary from './components/ErrorBoundary';
+import ErrorBoundary from './components/UI/ErrorBoundary';
 import { sendDiscordErrorWebhook } from './utils/errorUtils';
 
 // --- START: Chunk Loading Error Handler ---
