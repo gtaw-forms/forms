@@ -19,6 +19,7 @@ import EmployeeManager from './EmployeeManager';
 import LsccManager from './LsccManager';
 import FormsManager from './FormsManager';
 import LegacyReportMigrator from './LegacyReportMigrator';
+import MetricsDashboard from './MetricsDashboard';
 const AdminDashboard = ({
     currentUser,
     desktopNotificationPermission,
@@ -381,6 +382,9 @@ const AdminDashboard = ({
                         {hasUsersAccess && (
                             <button className={`nav-link ${selectedSection === 'users' ? 'active' : ''}`} onClick={() => setSelectedSection('users')}><i className="fas fa-users-cog me-2"></i>Users</button>
                         )}
+                        {hasUsersAccess && (
+                            <button className={`nav-link ${selectedSection === 'metrics' ? 'active' : ''}`} onClick={() => setSelectedSection('metrics')}><i className="fas fa-chart-line me-2"></i>Metrics</button>
+                        )}
                         {hasEmployeeManagerAccess && (
                             <button className={`nav-link ${selectedSection === 'employeeManager' ? 'active' : ''}`} onClick={() => setSelectedSection('employeeManager')}><i className="fas fa-users me-2"></i>Employee Manager</button>
                         )}
@@ -413,7 +417,7 @@ const AdminDashboard = ({
                                 return '(Firebase)';
                             })()}
                         </Button>
-                                    <Button type="button" variant="secondary" className="changelog-button" onClick={() => navigate('/')} title="Go to Home" > <i className="fas fa-home"></i>Home</Button>
+                                    <Button type="button" variant="secondary" className="changelog-button" onClick={() => navigate('/admin')} title="Go to Admin Home" > <i className="fas fa-tachometer-alt"></i>Admin Home</Button>
 
                     </div>
                 </div>
@@ -642,6 +646,23 @@ const AdminDashboard = ({
                                     <div className="alert alert-danger">
                                         <i className="fas fa-exclamation-triangle me-2"></i>
                                         <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to manage users.
+                                        <br />
+                                        <small>Required: Script Rank 14 or higher, or Google Admin access</small>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    {selectedSection === 'metrics' && (
+                        <div className="card">
+                            <div className="card-header">User Metrics & Engagement</div>
+                            <div className="card-body">
+                                {hasUsersAccess ? (
+                                    <MetricsDashboard />
+                                ) : (
+                                    <div className="alert alert-danger">
+                                        <i className="fas fa-exclamation-triangle me-2"></i>
+                                        <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to view metrics.
                                         <br />
                                         <small>Required: Script Rank 14 or higher, or Google Admin access</small>
                                     </div>

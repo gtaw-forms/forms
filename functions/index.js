@@ -1713,6 +1713,115 @@ export const appendLegacyFlagToReports = onCall({
 
 
 
+
+/**
+ * Refreshes a user's GTAW data, including faction membership and permissions,
+ * using their existing access token.
+ */
+export const refreshGtawUser = onCall({
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000'
+    ]
+}, async (request) => {
+    const { accessToken } = request.data;
+
+    if (!accessToken) {
+        throw new functions.https.HttpsError('invalid-argument', 'Access token is required.');
+    }
+
+    try {
+        const userResponse = await fetch('https://ucp.gta.world/api/user', {
+            headers: { 'Authorization': `Bearer ${accessToken}`, 'Accept': 'application/json', 'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)' },
+        });
+
+        if (!userResponse.ok) {
+            throw new functions.https.HttpsError('internal', `Failed to fetch user profile from GTA World API. Status: ${userResponse.status}`);
+        }
+        
+        const userData = await userResponse.json();
+
+        if (!userData.user && !userData.id) {
+             throw new functions.https.HttpsError('internal', 'Invalid user data received from GTA World API.');
+        }
+
+        const finalUser = userData.user || userData;
+        const characterArray = finalUser.character || finalUser.characters || [];
+        const characterIds = characterArray.map(c => c.id).filter(id => id);
+
+        let factionResult = {
+            isMember: false,
+            character: null,
+            permissions: [],
+            accessLevel: 'none',
+            allFactionCharacters: []
+        };
+
+        if (characterIds.length > 0) {
+            const factionId = 364; // PHMC Faction ID
+            const membersRef = db.ref(`factions/${factionId}/members`);
+            const membersSnapshot = await membersRef.once('value');
+            const allMembers = membersSnapshot.val() || {};
+
+            const factionMembers = [];
+            for (const charId of characterIds) {
+                if (allMembers[charId]) {
+                    const memberData = allMembers[charId];
+                    factionMembers.push({
+                        character: {
+                            characterId: memberData.characterId,
+                            characterName: memberData.characterName,
+                            rank: memberData.rank,
+                            scriptRank: memberData.scriptRank
+                        },
+                        permissions: getPermissionsForRank(memberData.scriptRank),
+                        accessLevel: getAccessLevel(memberData.scriptRank)
+                    });
+                }
+            }
+
+            if (factionMembers.length > 0) {
+                const highestRankMember = factionMembers.reduce((max, current) =>
+                    (current.character.scriptRank > max.character.scriptRank) ? current : max, factionMembers[0]
+                );
+
+                factionResult = {
+                    isMember: true,
+                    character: highestRankMember.character,
+                    permissions: highestRankMember.permissions,
+                    accessLevel: highestRankMember.accessLevel,
+                    allFactionCharacters: factionMembers
+                };
+            }
+        }
+
+        const refreshedUser = {
+            ...finalUser,
+            isFactionMember: factionResult.isMember,
+            faction: factionResult.character,
+            permissions: factionResult.permissions,
+            accessLevel: factionResult.accessLevel,
+            allFactionCharacters: factionResult.allFactionCharacters,
+        };
+
+        return {
+            success: true,
+            user: refreshedUser,
+            timestamp: new Date().toISOString()
+        };
+
+    } catch (error) {
+        console.error('[refreshGtawUser] Error refreshing user:', error);
+        if (error instanceof functions.https.HttpsError) {
+            throw error;
+        } else {
+            throw new functions.https.HttpsError('internal', 'An unexpected error occurred during user refresh.', { originalError: error.message });
+        }
+    }
+});
+
+
 /**
  * Helper function to get permissions based on script rank
  */
@@ -1892,6 +2001,107 @@ export const migrateReportsToNewStructure = onCall({
         });
     }
 });
+
+export const weeklyMetricsSummary = onSchedule({
+    schedule: "every monday 09:00", // Weekly trigger
+    timeZone: "UTC",
+    secrets: ["ADMIN_ACTION_WEBHOOK_URL"],
+}, async (event) => {
+    console.log(`[Metrics Summary] Running weekly user metrics summary. Event ID: ${event.id}`);
+
+    const metricsRef = db.ref('user_metrics');
+    const snapshot = await metricsRef.once('value');
+
+    if (!snapshot.exists()) {
+        console.log('[Metrics Summary] No user_metrics data found.');
+        return null;
+    }
+
+    const allMetrics = snapshot.val();
+    const userStats = [];
+    const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+    Object.entries(allMetrics).forEach(([ucpName, categories]) => {
+        let totalActions = 0;
+        let lastActive = 0;
+        let distinctActions = 0;
+
+        if (ucpName === 'DEV_STAGING') return; // Ignore dev staging data
+
+        Object.values(categories).forEach(subCategories => {
+            Object.values(subCategories).forEach(metric => {
+                totalActions += metric.visit_count || 0;
+                if (metric.last_visited > lastActive) {
+                    lastActive = metric.last_visited;
+                }
+                distinctActions++;
+            });
+        });
+
+        // Only include users active in the last week
+        if (lastActive > oneWeekAgo) {
+            userStats.push({
+                ucpName: ucpName.replace(/_/g, ' '),
+                totalActions,
+                distinctActions,
+                lastActive,
+            });
+        }
+    });
+
+    if (userStats.length === 0) {
+        await sendWebhook({
+            embeds: [{
+                title: "Weekly Metrics Summary",
+                description: "No user activity recorded in the last 7 days.",
+                color: 0x6c757d, // Gray
+                footer: { text: "PHMC Tools - Automated Weekly Summary" }
+            }]
+        });
+        return null;
+    }
+    
+    // Sort by total actions and get top 5
+    const top5Users = userStats.sort((a, b) => b.totalActions - a.totalActions).slice(0, 5);
+
+    const totalWeeklyUsers = userStats.length;
+    const totalWeeklyActions = userStats.reduce((sum, user) => sum + user.totalActions, 0);
+
+    let topUsersDescription = top5Users.map((user, index) => {
+        return `${index + 1}. **${user.ucpName}**: ${user.totalActions} actions`;
+    }).join('\\n');
+    
+    if (top5Users.length === 0) {
+        topUsersDescription = "No users with recorded actions this week."
+    }
+
+    const embed = {
+        title: "Weekly User Activity Summary",
+        description: "A summary of user engagement with PHMC Tools over the last 7 days.",
+        color: 0x0275d8, // Blue
+        fields: [
+            {
+                name: "📊 Overall Stats",
+                value: `**${totalWeeklyUsers}** active users performed a total of **${totalWeeklyActions}** actions.`,
+                inline: false
+            },
+            {
+                name: "🏆 Top 5 Most Active Users (by actions)",
+                value: topUsersDescription,
+                inline: false
+            }
+        ],
+        footer: { text: "PHMC Tools - Automated Weekly Summary" },
+        timestamp: new Date().toISOString()
+    };
+
+    await sendWebhook({ embeds: [embed] });
+
+    console.log(`[Metrics Summary] Weekly summary sent. Active users: ${totalWeeklyUsers}. Total actions: ${totalWeeklyActions}.`);
+
+    return null;
+});
+
 
 export const syncReportCounts = onCall({
     secrets: ["ADMIN_ACTION_WEBHOOK_URL"],
