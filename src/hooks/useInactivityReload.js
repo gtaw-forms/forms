@@ -15,9 +15,26 @@ export const useInactivityReload = () => {
     const reloadTimer = useRef(null);
     const notificationId = useRef(null);
     const inactivityWarningTriggered = useRef(false); // NEW REF to track if warning was triggered
+    
+    // Check if the page was reloaded due to inactivity
+    const wasReloadedDueToInactivity = useRef(sessionStorage.getItem('inactivityReloadTriggered') === 'true');
+
+    // Clear the flag from sessionStorage so it doesn't persist to subsequent manual reloads
+    useEffect(() => {
+        if (sessionStorage.getItem('inactivityReloadTriggered')) {
+            sessionStorage.removeItem('inactivityReloadTriggered');
+        }
+    }, []);
 
     const reloadPage = () => {
         console.log("[Inactivity] Reloading page due to inactivity.");
+        sessionStorage.setItem('inactivityReloadTriggered', 'true');
+
+        if (window.location.hash && window.location.hash.includes('/auth/gta/callback')) {
+            window.location.href = window.location.origin + window.location.pathname;
+            return;
+        }
+
         window.location.reload();
     };
 
@@ -77,6 +94,6 @@ export const useInactivityReload = () => {
 
     // Expose a getter for the inactivity warning state
     return {
-        getIsInactivityWarningTriggered: () => inactivityWarningTriggered.current,
+        getIsInactivityWarningTriggered: () => inactivityWarningTriggered.current || wasReloadedDueToInactivity.current,
     };
 };

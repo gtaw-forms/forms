@@ -31,7 +31,7 @@ const UnifiedGtaCallback = () => {
     (async () => {
       try {
         console.log('🎯 [UnifiedGtaCallback] Starting processCallback with:', { code: code?.substring(0, 10) + '...', state });
-        await processCallback(code, state);
+        const result = await processCallback(code, state);
         console.log('✅ [UnifiedGtaCallback] processCallback completed successfully');
         setStatus('success');
         // EXPERIMENTAL: Prepare a compact, safe OAuth profile object for optional persistence
@@ -90,16 +90,19 @@ const UnifiedGtaCallback = () => {
         } catch (persistErr) {
           console.warn('[UnifiedGtaCallback] Failed to prepare/persist compact OAuth profile:', persistErr);
         }
-        console.log('🔄 [UnifiedGtaCallback] Setting up navigation to homepage in 800ms');
+        
+        const destinationPath = result?.returnPath || '/';
+        console.log(`🔄 [UnifiedGtaCallback] Setting up navigation to ${destinationPath} in 800ms`);
+        
         setTimeout(() => {
-          console.log('🚀 [UnifiedGtaCallback] Navigating to homepage (preserving sessionStorage)');
+          console.log(`🚀 [UnifiedGtaCallback] Navigating to ${destinationPath} (preserving sessionStorage)`);
           console.log('📦 [UnifiedGtaCallback] SessionStorage before navigation:', {
-            userData: !!sessionStorage.getItem('gtaworld_user_data'),
-            accessToken: !!sessionStorage.getItem('gtaworld_access_token'),
+            userData: !!sessionStorage.getItem('gta-user-data'),
+            accessToken: !!sessionStorage.getItem('gta-access-token'),
             storageKeys: Object.keys(sessionStorage)
           });
           // Use React Router navigate to preserve sessionStorage
-          navigate('/', { replace: true });
+          navigate(destinationPath.startsWith('#') ? destinationPath.substring(1) : destinationPath, { replace: true });
         }, 800);
       } catch (err) {
         console.error('❌ [UnifiedGtaCallback] processCallback failed:', err);
