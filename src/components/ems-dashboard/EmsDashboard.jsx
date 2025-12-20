@@ -15,6 +15,7 @@ import BusinessCardModal from '../BusinessCardModal'; // New import
 import { useData } from '../../contexts/DataContext.jsx'; // New import
 import { useModal } from '../../contexts/ModalProvider.jsx'; // New import
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth'; // New import
+import { useUserMetrics } from '../../hooks/useUserMetrics'; // NEW IMPORT
 import { sendBingoNotification, sendPhraseRequestNotification } from '../notificationService'; // New import
 import { Button } from 'react-bootstrap';
 import { useInactivityReload } from '../../hooks/useInactivityReload'; // NEW IMPORT
@@ -22,6 +23,7 @@ import { useInactivityReload } from '../../hooks/useInactivityReload'; // NEW IM
 
 const EmsDashboard = () => {
   useInactivityReload(); // NEW HOOK CALL
+  const { trackMetric } = useUserMetrics(); // NEW METRICS HOOK
 
   const [protocols, setProtocols] = useState([]);
   const [injuries, setInjuries] = useState({}); // { id: { name, words } }
@@ -52,6 +54,11 @@ const EmsDashboard = () => {
 
   const currentPhmcEmployee = gtawUser?.username || factionData?.characterName || '';
   const isAdmin = gtawUser?.isAdmin || false;
+
+  // NEW: Track dashboard visit
+  useEffect(() => {
+    trackMetric('ems_dashboard', 'main_page');
+  }, [trackMetric]);
 
   const employeeOptions = useMemo(() => {
       const validPhmcData = phmcListData.filter(emp => emp && emp.name && typeof emp.name === 'string');
@@ -405,9 +412,9 @@ return (
       </div>
                 <div className="floating-admin-button-container">
               <Button type="button" variant="primary" className="changelog-button" onClick={() => navigate('/')} title="Go to Home" > <i className="fas fa-home"></i>Home</Button>
-              <Button type="button" variant="primary" className="changelog-button" onClick={() => setShowEmsAmaModal(true)} title="Open EMS AMA Form" > <i className="fa-solid fa-truck-medical"></i> EMS AMA</Button>
-              <Button type="button" variant="warning" className="changelog-button" onClick={() => setShowEmsBingoModal(true)} title="Open Bingo Night!" > <i className="fas fa-trophy"></i> Bingo Night!</Button>
-              <Button type="button" variant="info" className="changelog-button" onClick={() => setShowBusinessCardModal(true)} title="Open Business Card Generator"> <i className="fas fa-id-card"></i> Business Card</Button>
+              <Button type="button" variant="primary" className="changelog-button" onClick={() => { setShowEmsAmaModal(true); trackMetric('ems_dashboard', 'open_ama_modal'); }} title="Open EMS AMA Form" > <i className="fa-solid fa-truck-medical"></i> EMS AMA</Button>
+              <Button type="button" variant="warning" className="changelog-button" onClick={() => { setShowEmsBingoModal(true); trackMetric('ems_dashboard', 'open_bingo_modal'); }} title="Open Bingo Night!" > <i className="fas fa-trophy"></i> Bingo Night!</Button>
+              <Button type="button" variant="info" className="changelog-button" onClick={() => { setShowBusinessCardModal(true); trackMetric('ems_dashboard', 'open_business_card_modal'); }} title="Open Business Card Generator"> <i className="fas fa-id-card"></i> Business Card</Button>
             </div>
       <div className={styles.mainLayout}>
         {/* Left Panel */}
@@ -424,7 +431,7 @@ return (
             {/* NEW: Filter by Injuries Button */}
             <button
               className={`${styles.filterButton} ${selectedInjury ? styles.activeFilter : ""}`}
-              onClick={() => setShowInjuryModal(true)}
+              onClick={() => { setShowInjuryModal(true); trackMetric('ems_dashboard', 'open_injury_filter'); }}
             >
               Filter by Injuries {selectedInjury && " (" + selectedInjury.name + ")"}
             </button>
@@ -465,7 +472,10 @@ return (
                           className={`${styles.protocolItem} ${
                             selectedProtocol?.id === protocol.id ? styles.selected : ""
                           }`}
-                          onClick={() => setSelectedProtocol(protocol)}
+                          onClick={() => {
+                            setSelectedProtocol(protocol);
+                            trackMetric('ems_dashboard', `protocol_view_${protocol.name}`);
+                          }}
                         >
                           {protocol.name}
                         </li>
@@ -563,6 +573,7 @@ return (
                     setSelectedInjury(injury);
                     setShowInjuryModal(false);
                     setInjurySearch(""); // clear search
+                    trackMetric('ems_dashboard', `select_injury_${injury.name}`);
                   }}
                 >
                   <div className="flex items-center justify-between w-full">

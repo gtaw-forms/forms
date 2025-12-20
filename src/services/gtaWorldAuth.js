@@ -1067,52 +1067,28 @@ export const isFactionMember = () => {
  * @returns {Promise<Object>} Updated faction data
  */
 export const refreshFactionData = async () => {
-    const userData = getStoredUserData();
-    if (!userData) {
-        throw new Error('No authenticated user found');
-    }
-
-    // Since processGtaWorldAuth now returns full user data with faction info,
-    // we can simply re-fetch the user's profile to refresh faction data.
-    // We pass the existing accessToken to ensure we refresh the data for the current user.
     const accessToken = getAccessToken();
     if (!accessToken) {
         throw new Error('No access token available to refresh faction data.');
     }
 
     try {
-        const getCachedGtaWorldProfileCallable = httpsCallable(functions, 'getCachedGtaWorldProfile');
-        const refreshCallId = Date.now() + '-' + Math.random().toString(36).substr(2, 5);
-        const refreshStartTime = Date.now();
-        
-        console.log(`🔥 [GTA Auth] Refreshing faction data by re-fetching profile [${refreshCallId}].`);
-        
-        // Pass the accessToken to the Firebase function to get the latest profile
-        const result = await getCachedGtaWorldProfileCallable({ 
-            accessToken: accessToken,
-            useCache: false // Force refresh, don't use client-side cache for a "refresh" operation
-        });
-        
-        const refreshDuration = Date.now() - refreshStartTime;
-        console.log(`✅ [GTA Auth] Faction refresh completed by re-fetching profile [${refreshCallId}]:`, {
-            duration: refreshDuration,
-            hasUserData: !!result.data?.userData,
-        });
+        const refreshGtawUserCallable = httpsCallable(functions, 'refreshGtawUser');
+        const result = await refreshGtawUserCallable({ accessToken });
 
-        if (!result.data || !result.data.userData) {
-            throw new Error('Failed to retrieve updated user profile data.');
+        if (!result.data || !result.data.success || !result.data.user) {
+            throw new Error('Failed to retrieve updated user profile data from refreshGtawUser.');
         }
         
-        // Update stored user data with the fresh profile
-        const updatedUserData = result.data.userData;
+        const updatedUserData = result.data.user;
         sessionStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(updatedUserData));
         
-        console.log('[GTA Auth] Faction data refreshed by re-fetching profile.');
+        console.log('[GTA Auth] Faction data refreshed via refreshGtawUser.');
         
         return updatedUserData;
         
     } catch (error) {
-        console.error('[GTA Auth] Failed to refresh faction data by re-fetching profile:', error);
+        console.error('[GTA Auth] Failed to refresh faction data via refreshGtawUser:', error);
         throw error;
     }
 };

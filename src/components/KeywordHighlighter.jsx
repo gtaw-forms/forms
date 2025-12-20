@@ -129,7 +129,7 @@ export const KeywordHighlighter = ({ children }) => {
         document.getElementById('modal-root')
       )}
 
-      <style jsx>{`
+      <style>{`
         .smart-keyword {
           color: #0066cc;
           text-decoration: underline dotted 2px #2b435cff;
