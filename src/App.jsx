@@ -11,10 +11,9 @@ import GtaLogin from './components/Auth/GtaLogin.jsx';
 import UnifiedGtaCallback from './components/Auth/UnifiedGtaCallback.jsx';
 import OAuthUrlDiagnostic from './components/Auth/OAuthUrlDiagnostic.jsx';
 import ProtectedRoute from './components/Auth/ProtectedRoute.jsx';
-import PaymentCallback from './components/PaymentCallback.jsx';
+import PaymentCallback from './components/Common/PaymentCallback.jsx';
 
-/* import MainApp from './MainApp.jsx';
- */import Admin from './components/Admin/Admin.jsx';
+import Admin from './components/Admin/Admin.jsx';
 import EmsDashboard from './components/ems-dashboard/EmsDashboard.jsx';
 import FormHandler from './components/form-handler/FormHandler.jsx';
 function App() {
