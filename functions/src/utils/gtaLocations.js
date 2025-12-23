@@ -1,0 +1,70 @@
+export const gtaLocations = {
+  "los_santos_city": [
+    {
+      "area": "Hawick",
+      "streets": ["Hawick Avenue", "Alta Street", "Power Street", "Meteor Street", "Spanish Avenue"]
+    },
+    {
+      "area": "Vinewood",
+      "streets": ["Vinewood Boulevard", "Clinton Avenue", "Fenwell Place", "Mirror Park Boulevard", "Elgin Avenue"]
+    },
+    {
+      "area": "Downtown",
+      "streets": ["San Andreas Avenue", "Vespucci Boulevard", "Swiss Street", "Peaceful Street", "Sinner Street"]
+    },
+    {
+      "area": "South Los Santos",
+      "streets": ["Strawberry Avenue", "Carson Avenue", "Forum Drive", "Innocence Boulevard", "Brouge Avenue", "Grove Street"]
+    },
+    {
+      "area": "Mirror Park",
+      "streets": ["Bridge Street", "Mirror Park Boulevard", "York Street", "Tangerine Street", "Nikola Avenue", "East Mirror Drive", "Mirror Place" ]
+    },
+    {
+      "area": "Rockford Hills",
+      "streets": ["Dorset Drive", "Abe Milton Parkway", "South Rockford Drive", "Heritage Way", "Mad Wayne Thunder Drive"]
+    },
+    {
+      "area": "Del Perro",
+      "streets": ["Del Perro Boulevard", "Prosperity Street", "Sandcastle Way", "Red Desert Avenue"]
+    },
+    {
+      "area": "Vespucci",
+      "streets": ["Aguja Street", "Bay City Avenue", "Goma Street", "Melanoma Street", "Palomino Avenue"]
+    },
+    {
+      "area": "La Mesa",
+      "streets": ["Popular Street", "Orchardville Avenue", "El Rancho Boulevard", "Capital Boulevard"]
+    }
+  ],
+  "blaine_county": [
+    {
+      "area": "Sandy Shores",
+      "streets": ["Algonquin Boulevard", "Joshua Road", "Zancudo Avenue", "Panorama Drive", "Mountain View Drive", "Cholla Springs Avenue"]
+    },
+    {
+      "area": "Grapeseed",
+      "streets": ["Grapeseed Main Street", "Grapeseed Avenue", "Joad Lane", "O'Neil Way", "Union Road"]
+    },
+    {
+      "area": "Paleto Bay",
+      "streets": ["Paleto Boulevard", "Procopio Drive", "Cascade Drive", "Duesenberry Lane", "Pyrite Avenue"]
+    },
+    {
+      "area": "Harmony",
+      "streets": ["Route 68", "Senora Freeway", "Meringue Lane", "Cat-Claw Avenue"]
+    },
+    {
+      "area": "Chumash",
+      "streets": ["Great Ocean Highway", "Barbaree Lane", "Ineseno Road"]
+    }
+  ],
+  "major_highways": [
+    "Senora Freeway",
+    "Los Santos Freeway",
+    "Del Perro Freeway",
+    "Great Ocean Highway",
+    "Olympic Freeway",
+    "La Puerta Freeway"
+  ]
+};

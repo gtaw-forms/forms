@@ -4,6 +4,7 @@ import { db, admin } from '../utils/firebase.js';
 import { sendWebhook } from '../utils/helpers.js';
 
 export * from './coroner.js';
+export * from './untracked.js';
 
 export const getSavedReports = onCall({
     cors: [
