@@ -4,7 +4,7 @@ import { db, admin } from '../utils/firebase.js';
 import { sendWebhook } from '../utils/helpers.js';
 
 export const systemHealthMonitor = onSchedule({
-    schedule: "every 5 minutes",
+    schedule: "every 30 minutes",
     timeZone: "UTC",
     secrets: ["ADMIN_ACTION_WEBHOOK_URL"],
 }, async (event) => {
@@ -28,6 +28,7 @@ export const systemHealthMonitor = onSchedule({
             const cfData = await cfResponse.json();
             const currentIndicator = cfData.status.indicator;
             const currentDescription = cfData.status.description;
+            console.log(`[System Monitor] Cloudflare Status: ${cfData.status.indicator} - ${cfData.status.description}`);
 
             // Find the most recent active incident (not resolved or postmortem)
             const activeIncident = cfData.incidents && cfData.incidents.find(i => i.status !== 'resolved' && i.status !== 'postmortem');
@@ -90,6 +91,7 @@ export const systemHealthMonitor = onSchedule({
                     };
                 }
             }
+
         }
     } catch (error) {
         console.error('[System Monitor] Error checking Cloudflare:', error);
