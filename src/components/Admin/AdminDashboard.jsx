@@ -20,7 +20,10 @@ import LsccManager from './LsccManager';
 import FormsManager from './FormsManager';
 import LegacyReportMigrator from './LegacyReportMigrator';
 import MetricsDashboard from './MetricsDashboard';
+import UntrackedLocationManager from './UntrackedLocationManager';
+
 const AdminDashboard = ({
+
     currentUser,
     desktopNotificationPermission,
     handleEnableDesktopNotifications,
@@ -79,6 +82,7 @@ const AdminDashboard = ({
     const [isMigratingReports, setIsMigratingReports] = useState(false);
     const [isAppendingLegacyFlag, setIsAppendingLegacyFlag] = useState(false);
     const [isSyncingCounts, setIsSyncingCounts] = useState(false);
+    const [isTriggeringReport, setIsTriggeringReport] = useState(false);
     const [showMigrator, setShowMigrator] = useState(false);
     const navigate = useNavigate();
     
@@ -294,6 +298,41 @@ const AdminDashboard = ({
         }
     };
 
+    const handleTriggerCoronerReport = async (type) => {
+        if (!window.confirm(`Are you sure you want to force trigger a ${type} coroner report? This will send a webhook to the admin channel.`)) {
+            return;
+        }
+
+        setIsTriggeringReport(true);
+        showInAppNotification && showInAppNotification(`Triggering ${type} report...`, 'info');
+
+        try {
+            const functions = getFunctions();
+            const triggerReport = httpsCallable(functions, 'triggerCoronerReport');
+            const result = await triggerReport({ type });
+
+            if (result.data.success) {
+                showInAppNotification && showInAppNotification(
+                    result.data.message || 'Report triggered successfully.',
+                    'success'
+                );
+            } else {
+                showInAppNotification && showInAppNotification(
+                    `Trigger failed: ${result.data.message || 'Unknown error'}`,
+                    'error'
+                );
+            }
+        } catch (error) {
+            console.error('Error triggering coroner report:', error);
+            showInAppNotification && showInAppNotification(
+                `Error: ${error.message}`,
+                'error'
+            );
+        } finally {
+            setIsTriggeringReport(false);
+        }
+    };
+
     const handleMigrateLegacyReports = async () => {
         if (!window.confirm("Are you sure you want to run the legacy report migration? This will add a 'legacy: true' flag to all reports in /savedReports.")) {
             return;
@@ -399,6 +438,7 @@ const AdminDashboard = ({
                         <button className={`nav-link ${selectedSection === 'factions' ? 'active' : ''}`} onClick={() => setSelectedSection('factions')}><i className="fas fa-users me-2"></i>Faction Data</button>
                         <button className={`nav-link ${selectedSection === 'dev' ? 'active' : ''}`} onClick={() => setSelectedSection('dev')}><i className="fas fa-code me-2"></i>Developer</button>
                         <button className={`nav-link ${selectedSection === 'database' ? 'active' : ''}`} onClick={() => setSelectedSection('database')}><i className="fas fa-database me-2"></i>Database</button>
+                        <button className={`nav-link ${selectedSection === 'untrackedLocations' ? 'active' : ''}`} onClick={() => setSelectedSection('untrackedLocations')}><i className="fas fa-map-marker-alt me-2"></i>Untracked Locations</button>
                         {hasRankPermissionsAccess && (
                             <button className={`nav-link ${selectedSection === 'rankPermissions' ? 'active' : ''}`} onClick={() => setSelectedSection('rankPermissions')}><i className="fas fa-user-shield me-2"></i>Rank Permissions</button>
                         )}
@@ -1208,6 +1248,34 @@ const AdminDashboard = ({
                                             Migrate Legacy Report (Experimental)
                                         </Button>
                                     </div>
+
+                                    <h6 className="mt-4">Coroner Report Manual Triggers (Webhook Test)</h6>
+                                    <div className="d-flex gap-2 mb-3 flex-wrap">
+                                        <Button
+                                            variant="outline-primary"
+                                            size="sm"
+                                            onClick={() => handleTriggerCoronerReport('weekly')}
+                                            disabled={isTriggeringReport || !hasAdminAccess}
+                                        >
+                                            {isTriggeringReport ? <Spinner size="sm" /> : <i className="fas fa-calendar-week me-1"></i>} Force Weekly Report
+                                        </Button>
+                                        <Button
+                                            variant="outline-primary"
+                                            size="sm"
+                                            onClick={() => handleTriggerCoronerReport('monthly')}
+                                            disabled={isTriggeringReport || !hasAdminAccess}
+                                        >
+                                            {isTriggeringReport ? <Spinner size="sm" /> : <i className="fas fa-calendar-alt me-1"></i>} Force Monthly Report
+                                        </Button>
+                                        <Button
+                                            variant="outline-primary"
+                                            size="sm"
+                                            onClick={() => handleTriggerCoronerReport('yearly')}
+                                            disabled={isTriggeringReport || !hasAdminAccess}
+                                        >
+                                            {isTriggeringReport ? <Spinner size="sm" /> : <i className="fas fa-calendar me-1"></i>} Force Yearly Report
+                                        </Button>
+                                    </div>
                                     
                                     {diagnosticsResult && (
                                         <div className="card">
@@ -1310,7 +1378,11 @@ const AdminDashboard = ({
                             <div className="card-body">
                                 {isGtaAuthenticated || currentUser ? (
                                     hasDatabaseAccess ? (
-                                        <DatabaseEditor showNotification={showInAppNotification} />
+                                        <DatabaseEditor 
+    showNotification={showInAppNotification} 
+    currentUser={currentUser} 
+    gtawUser={gtaWorldUser} 
+/>
                                     ) : (
                                         <div className="alert alert-warning">
                                             <i className="fas fa-exclamation-triangle me-2"></i>
@@ -1323,6 +1395,29 @@ const AdminDashboard = ({
                                     <div className="alert alert-info">
                                         <i className="fas fa-info-circle me-2"></i>
                                         Please log in with your GTA World account to access database management features.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    {selectedSection === 'untrackedLocations' && (
+                        <div className="card">
+                            <div className="card-body">
+                                {isGtaAuthenticated || currentUser ? (
+                                    hasDatabaseAccess ? (
+                                        <UntrackedLocationManager showNotification={showInAppNotification} />
+                                    ) : (
+                                        <div className="alert alert-warning">
+                                            <i className="fas fa-exclamation-triangle me-2"></i>
+                                            <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have database access permissions.
+                                            <br />
+                                            <small>Required: Script Rank 12 or higher</small>
+                                        </div>
+                                    )
+                                ) : (
+                                    <div className="alert alert-info">
+                                        <i className="fas fa-info-circle me-2"></i>
+                                        Please log in with your GTA World account to access location management features.
                                     </div>
                                 )}
                             </div>

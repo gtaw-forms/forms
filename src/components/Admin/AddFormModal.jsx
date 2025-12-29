@@ -4,7 +4,7 @@ import { database } from "../../firebase";
 import { ref, update, runTransaction } from "firebase/database";
 import Select from 'react-select';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
-import { logAdminActionToDiscord } from '../../utils/adminLogger';
+import { logAdminAction, getUserContext } from '../../utils/adminLogger';
 import BulkAddFieldsModal from './BulkAddFieldsModal'; // Import the new modal
 import {
   DndContext,
@@ -657,13 +657,24 @@ const handleBulkAddFields = (fieldsToAdd) => {
       await update(ref(database, `forms/${formId}`), formData);
       alert("Form saved!");
 
-      const actionType = editingForm ? 'modify' : 'add';
+      const action = editingForm ? 'Modified Form' : 'Created Form';
       const userForLogging = user || gtawUser;
-      const userDetails = {
-        username: userForLogging?.displayName || userForLogging?.username || 'Unknown',
-        id: userForLogging?.uid || userForLogging?.id || 'N/A'
-      };
-      logAdminActionToDiscord(actionType, formData, userDetails);
+      const adminEmail = userForLogging?.email || userForLogging?.username || 'Unknown';
+      const oauthUsername = gtawUser?.username || null;
+      const { userAgent, timeZone } = getUserContext();
+      
+      const details = `Form Name: ${formData.name}\nID: ${formData.id}\nCategory: ${formData.category}\nAccess: ${formData.accessType}`;
+
+      logAdminAction(
+        adminEmail,
+        action,
+        details,
+        'Form Management',
+        userAgent,
+        timeZone,
+        oauthUsername,
+        gtawUser
+      );
 
       try {
         const metadataRef = ref(database, 'appMetadata/formsDataVersion');
