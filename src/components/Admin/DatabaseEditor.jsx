@@ -3,7 +3,12 @@ import { Button, Form, Spinner, Card, Alert, Col, Row, ListGroup } from 'react-b
 import { ref, get, update, set } from 'firebase/database';
 import { database } from '../../firebase';
 
-const DatabaseEditor = ({ showNotification }) => {
+import { logAdminAction, getUserContext } from '../../utils/adminLogger';
+import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
+
+const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUser: propGtawUser }) => {
+    const { user: gtawUser, username: gtawUsername } = useGtaWorldAuth();
+    const currentUser = propCurrentUser || gtawUser;
     const [path, setPath] = useState('/agencies');
     const [jsonData, setJsonData] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -26,6 +31,17 @@ const DatabaseEditor = ({ showNotification }) => {
         setIsLoading(true);
         setError(null);
         try {
+            const { userAgent, timeZone } = getUserContext();
+            logAdminAction(
+                currentUser?.email || gtawUsername,
+                'Fetched Database Path',
+                `Path: ${path}`,
+                'Database Editor',
+                userAgent,
+                timeZone,
+                gtawUsername,
+                gtawUser
+            );
             const dbRef = ref(database, path);
             const snapshot = await get(dbRef);
             if (snapshot.exists()) {
@@ -59,6 +75,17 @@ const DatabaseEditor = ({ showNotification }) => {
         setIsLoading(true);
         setError(null);
         try {
+            const { userAgent, timeZone } = getUserContext();
+            logAdminAction(
+                currentUser?.email || gtawUsername,
+                'Saved Data to Database',
+                `Path: ${path}\nData: ${jsonData.substring(0, 500)}...`,
+                'Database Editor',
+                userAgent,
+                timeZone,
+                gtawUsername,
+                gtawUser
+            );
             const dbRef = ref(database, path);
             await update(dbRef, dataToSave);
             showNotification('Data updated successfully!', 'check-circle');
@@ -80,6 +107,17 @@ const DatabaseEditor = ({ showNotification }) => {
         const reader = new FileReader();
         reader.onload = async (e) => {
             try {
+                const { userAgent, timeZone } = getUserContext();
+                logAdminAction(
+                    currentUser?.email || gtawUsername,
+                    'Restored Reports from Backup',
+                    `File: ${restoreFile.name}`,
+                    'Database Editor',
+                    userAgent,
+                    timeZone,
+                    gtawUsername,
+                    gtawUser
+                );
                 const fileContent = e.target.result;
                 const parsedData = JSON.parse(fileContent);
 
@@ -117,6 +155,18 @@ const DatabaseEditor = ({ showNotification }) => {
         const reader = new FileReader();
         reader.onload = async (e) => {
             try {
+                const { userAgent, timeZone } = getUserContext();
+                logAdminAction(
+                    currentUser?.email || gtawUsername,
+                    'Restored BBCode from Backup',
+                    `File: ${restoreFile.name}`,
+                    'Database Editor',
+                    userAgent,
+                    timeZone,
+                    gtawUsername,
+                    gtawUser
+                );
+
                 const fileContent = e.target.result;
                 const parsedData = JSON.parse(fileContent);
 
@@ -151,6 +201,17 @@ const DatabaseEditor = ({ showNotification }) => {
         }
         setIsLoadingOptions(true);
         try {
+            const { userAgent, timeZone } = getUserContext();
+            logAdminAction(
+                currentUser?.email || gtawUsername,
+                'Loaded Select Options Category',
+                `Category: ${optionCategory}`,
+                'Database Editor',
+                userAgent,
+                timeZone,
+                gtawUsername,
+                gtawUser
+            );
             const optionsRef = ref(database, `/selectOptions/${optionCategory}`);
             const snapshot = await get(optionsRef);
             if (snapshot.exists()) {
@@ -165,7 +226,7 @@ const DatabaseEditor = ({ showNotification }) => {
         } finally {
             setIsLoadingOptions(false);
         }
-    }, [optionCategory, showNotification]);
+    }, [optionCategory, showNotification, currentUser, gtawUser, gtawUsername]);
 
     const handleAddNewOption = async () => {
         if (!newOptionLabel || !newOptionValue) {
@@ -179,6 +240,17 @@ const DatabaseEditor = ({ showNotification }) => {
         const updatedOptions = [...(currentOptions || []), newOption];
 
         try {
+            const { userAgent, timeZone } = getUserContext();
+            logAdminAction(
+                currentUser?.email || gtawUsername,
+                'Added New Select Option',
+                `Category: ${optionCategory}\nLabel: ${newOptionLabel}\nValue: ${newOptionValue}`,
+                'Database Editor',
+                userAgent,
+                timeZone,
+                gtawUsername,
+                gtawUser
+            );
             const categoryRef = ref(database, `/selectOptions/${optionCategory}`);
             await set(categoryRef, updatedOptions);
             
@@ -200,10 +272,21 @@ const DatabaseEditor = ({ showNotification }) => {
         }
 
         setIsLoadingOptions(true);
-
+        const optionToDelete = currentOptions[indexToDelete];
         const updatedOptions = currentOptions.filter((_, index) => index !== indexToDelete);
 
         try {
+            const { userAgent, timeZone } = getUserContext();
+            logAdminAction(
+                currentUser?.email || gtawUsername,
+                'Deleted Select Option',
+                `Category: ${optionCategory}\nLabel: ${optionToDelete.label}\nValue: ${optionToDelete.value}`,
+                'Database Editor',
+                userAgent,
+                timeZone,
+                gtawUsername,
+                gtawUser
+            );
             const categoryRef = ref(database, `/selectOptions/${optionCategory}`);
             await set(categoryRef, updatedOptions);
             

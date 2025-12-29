@@ -283,11 +283,6 @@ const SavedReportsModal = ({
             isManualSelectionRef.current = false;
             return;
         }
-
-        // Logic to set selectedEmployee when modal is shown and employeeOptions are available
-        // This runs if:
-        // 1. Not a manual selection AND not disableAutoLoad (normal auto-load)
-        // 2. OR disableAutoLoad is true (we still need to set the employee in the UI)
         if (show && employeeOptions) { // Only proceed if modal is shown and employeeOptions have potentially loaded
             let employeeToSelectValue = null;
             

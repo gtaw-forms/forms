@@ -5,7 +5,7 @@ import { database } from '../../firebase';
 import { ref, get, set } from 'firebase/database';
 import * as Sentry from "@sentry/react";
 
-const EditBingoPhrasesModal = ({ show, onHide, showNotification, commitInfo, sendAdminActionWebhook, adminUserEmail, bingoType }) => {
+const EditBingoPhrasesModal = ({ show, onHide, showNotification, commitInfo, logAdminAction, adminUserEmail, bingoType }) => {
     const [phrasesText, setPhrasesText] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -92,8 +92,8 @@ const EditBingoPhrasesModal = ({ show, onHide, showNotification, commitInfo, sen
             await set(masterPhrasesRef, newPhrasesArray);
             showNotification(`Master ${bingoType.name} phrases updated successfully!`, "check-circle");
             
-            if (sendAdminActionWebhook && adminUserEmail) {
-                sendAdminActionWebhook(
+            if (logAdminAction && adminUserEmail) {
+                logAdminAction(
                     adminUserEmail,
                     `Edited Master ${bingoType.name} Bingo Phrases`,
                     `Updated ${newPhrasesArray.length} phrases.`,

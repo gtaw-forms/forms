@@ -1,11 +1,11 @@
-// LsccEditModal.jsx
+import { logAdminAction, getUserContext } from '../../utils/adminLogger';
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { database } from '../../firebase';
 import { ref, get, set } from 'firebase/database';
 import './CctvRequestWebhookModal.css'; // Keep your styling
 
-const LsccEditModal = ({ show, onHide, item, onSave, categories, loading: parentLoading }) => {
+const LsccEditModal = ({ show, onHide, item, onSave, categories, loading: parentLoading, logAdminAction, gtawUser, gtawUsername }) => {
   const [currentItem, setCurrentItem] = useState(item || {
     name: '',
     content: '',
@@ -27,122 +27,6 @@ const normalizeProtocols = (data) => {
     protocols: Array.isArray(cat.protocols) ? cat.protocols : []
   }));
 };
-const sendDiscordWebhook = async (title, description, color = 3447003, fields = []) => {
-  const webhookUrl = import.meta.env.VITE_DEV_WEBHOOK;
-  if (!webhookUrl) return; // Only skip if webhookUrl is not defined
-
-  const embed = {
-    title,
-    description,
-    color,
-    fields,
-    timestamp: new Date().toISOString(),
-    footer: { text: 'LSCC Protocol Manager • Edited by Admin' },
-  };
-
-  try {
-    await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ embeds: [embed] }),
-    });
-  } catch (err) {
-    console.warn('Discord webhook failed (non-blocking):', err);
-  }
-};
-
-const formatProtocolText = (text = '', images = []) => {
-  if (!text) return text;
-
-  // First, apply inline formatting (bold, underline)
-  let formattedText = text
-    .replace(/\*([^*]+)\*/g, '<strong>$1</strong>')   // *bold*
-    .replace(/_([^_]+)_/g, '<u>$1</u>');               // _underline_
-
-  // Then, handle image placeholders
-  formattedText = formattedText.replace(/\{image(\d+)\}/g, (match, index) => {
-    const imgIndex = parseInt(index) - 1;
-    if (images[imgIndex]) {
-      return `<span style="color: #007bff; font-weight: bold;">[Image ${index}: ${images[imgIndex]}]</span>`;
-    }
-    return `<span style="color: #dc3545; font-weight: bold;">[Image ${index}: URL not found]</span>`;
-  });
-
-  // Then, handle bullet points and nested lists
-  const lines = formattedText.split('\n');
-  let html = [];
-  let openLists = []; // Stack to keep track of open <ul> tags
-
-  lines.forEach(line => {
-    const trimmedLine = line.trim();
-    let currentLevel = 0;
-
-    if (trimmedLine.startsWith('>>')) {
-      currentLevel = 2;
-    } else if (trimmedLine.startsWith('>')) {
-      currentLevel = 1;
-    }
-
-    const content = trimmedLine.substring(currentLevel > 0 ? currentLevel : 0).trim();
-
-    if (currentLevel > 0) {
-      // Close lists that are at a higher level than the current line
-      while (openLists.length > currentLevel) {
-        html.push('</ul>');
-        openLists.pop();
-      }
-      // Open new lists if the current level is deeper than the stack
-      while (openLists.length < currentLevel) {
-        html.push('<ul>');
-        openLists.push('ul');
-      }
-      html.push(`<li>${content}</li>`);
-    } else {
-      // Not a list item, close all open lists
-      while (openLists.length > 0) {
-        html.push('</ul>');
-        openLists.pop();
-      }
-      if (trimmedLine.length > 0) {
-        html.push(`<p>${trimmedLine}</p>`);
-      }
-    }
-  });
-
-  // Close any remaining open lists
-  while (openLists.length > 0) {
-    html.push('</ul>');
-    openLists.pop();
-  }
-
-  return html.join('');
-};
-
-
-const handleChange = (e) => {
-  const { name, value } = e.target;
-
-  if (name === 'images') {
-    // Split by lines, keep empty ones, only trim whitespace, don't filter them out
-    const imageArray = value
-      .split('\n')
-      .map(line => line.trimEnd())  // Only trim trailing spaces (keep empty lines!)
-      .map(line => {
-        const trimmed = line.trim();
-        // Only remove line if it's completely empty AND not between URLs
-        return trimmed === '' ? '' : trimmed;
-      })
-      .filter(line => line !== null); // keep everything
-
-    // Optional: Clean up duplicate empty lines later on save
-    setCurrentItem(prev => ({ ...prev, images: imageArray }));
-  } else if (name === 'uniqueWords') {
-    setRawUniqueWordsInput(value); // Store raw input
-  } else {
-    setCurrentItem(prev => ({ ...prev, [name]: value }));
-  }
-};
-
 const handleSave = async () => {
     if (!currentItem.name.trim() || !currentItem.category.trim()) {
       alert('Name and Category are required!');
@@ -210,32 +94,20 @@ const handleSave = async () => {
 
       await set(protocolsRef, protocols);
 
-      // DISCORD WEBHOOK NOTIFICATION
-      if (isEditing) {
-        const moved = oldCategory !== newCategory;
-        await sendDiscordWebhook(
-          moved ? 'Protocol Moved & Edited' : 'Protocol Edited',
-          `**${savedItem.name}**`,
-          moved ? 15158332 : 3066993, // Red if moved, green if just edited
-          [
-            { name: 'Category', value: moved ? `${oldCategory} → **${newCategory}**` : newCategory, inline: true },
-            { name: 'Editor', value: 'Admin Panel', inline: true },
-            { name: 'Images', value: savedItem.images.length.toString(), inline: true },
-            { name: 'Protocol ID', value: savedItem.id, inline: false },
-          ]
+      // Logging
+        const { userAgent, timeZone } = getUserContext();
+        const action = isEditing ? 'Edited LSCC Protocol' : 'Added LSCC Protocol';
+        const details = `Protocol: ${savedItem.name}\nCategory: ${newCategory}\nID: ${savedItem.id}`;
+        logAdminAction(
+            gtawUsername,
+            action,
+            details,
+            'LSCC Management',
+            userAgent,
+            timeZone,
+            gtawUsername,
+            gtawUser
         );
-      } else {
-        await sendDiscordWebhook(
-          'New Protocol Created',
-          `**${savedItem.name}**`,
-          5763719, // Teal
-          [
-            { name: 'Category', value: newCategory, inline: true },
-            { name: 'Images', value: savedItem.images.length.toString(), inline: true },
-            { name: 'Protocol ID', value: savedItem.id, inline: true },
-          ]
-        );
-      }
 
       onSave?.(savedItem);
       onHide();

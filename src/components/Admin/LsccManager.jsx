@@ -1,4 +1,6 @@
 // LsccManager.jsx — FINAL FIXED & CLEAN VERSION
+import { logAdminAction, getUserContext } from '../../utils/adminLogger';
+import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import React, { useState, useEffect, useCallback } from 'react';
 import { database } from '../../firebase';
 import { ref, get, set, onValue } from 'firebase/database';
@@ -20,36 +22,13 @@ import {
 } from '@dnd-kit/sortable';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+
 const normalizeProtocols = (data) => {
   if (!Array.isArray(data)) return [];
   return data.map(cat => ({
     ...cat,
     protocols: Array.isArray(cat.protocols) ? cat.protocols : []
   }));
-};
-
-const sendDiscordWebhook = async (title, description, color = 3447003, fields = []) => {
-  const webhookUrl = import.meta.env.VITE_DEV_WEBHOOK;
-  if (!webhookUrl) return; // Only skip if webhookUrl is not defined
-
-  const embed = {
-    title,
-    description,
-    color,
-    fields,
-    timestamp: new Date().toISOString(),
-    footer: { text: 'LSCC Protocol Manager • Edited by Admin' },
-  };
-
-  try {
-    await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ embeds: [embed] }),
-    });
-  } catch (err) {
-    console.warn('Discord webhook failed (non-blocking):', err);
-  }
 };
 
 import './LsccManager.css';
@@ -84,6 +63,7 @@ const SortableProtocolItem = ({ protocol, category, onEdit, onDelete }) => {
 };
 
 const LsccManager = () => {
+  const { user: gtawUser, username: gtawUsername } = useGtaWorldAuth();
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -172,18 +152,17 @@ useEffect(() => {
     }
 
     if (!window.confirm(`Delete protocol "${protocolToDelete.name}"?`)) return;
-
-    // Send webhook notification BEFORE deletion
-    await sendDiscordWebhook(
-      'Protocol Deletion Initiated',
-      `**${protocolToDelete.name}** is about to be deleted.`,
-      16711680, // Red color for deletion
-      [
-        { name: 'Protocol ID', value: protocolToDelete.id, inline: true },
-        { name: 'Category', value: protocolToDelete.category || 'N/A', inline: true },
-        { name: 'Content Preview', value: protocolToDelete.content?.substring(0, 100) || 'N/A', inline: false },
-        { name: 'Full Data (for recovery)', value: '```json\n' + JSON.stringify(protocolToDelete, null, 2).substring(0, 1000) + '\n```', inline: false },
-      ]
+    
+    const { userAgent, timeZone } = getUserContext();
+    logAdminAction(
+        gtawUsername,
+        'Deleted LSCC Protocol',
+        `Protocol: ${protocolToDelete.name}\nID: ${id}`,
+        'LSCC Management',
+        userAgent,
+        timeZone,
+        gtawUsername,
+        gtawUser
     );
 
     const newData = items
@@ -202,6 +181,18 @@ useEffect(() => {
   const handleDragEnd = async (event) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
+
+    const { userAgent, timeZone } = getUserContext();
+    logAdminAction(
+        gtawUsername,
+        'Reordered LSCC Protocols',
+        `Dragged item ID: ${active.id}\nOver item ID: ${over.id}`,
+        'LSCC Management',
+        userAgent,
+        timeZone,
+        gtawUsername,
+        gtawUser
+    );
 
     const newData = JSON.parse(JSON.stringify(items));
     let draggedItem = null;
@@ -340,6 +331,9 @@ useEffect(() => {
         item={editingItem}
         onSave={handleSaveComplete}
         categories={categories}
+        logAdminAction={logAdminAction}
+        gtawUser={gtawUser}
+        gtawUsername={gtawUsername}
       />
 
       {/* Keyword Manager Modal */}
@@ -575,6 +569,18 @@ useEffect(() => {
       tip: ''
     }}
     onSave={async (id, data) => {
+      const { userAgent, timeZone } = getUserContext();
+      const action = id ? 'Updated Injury Type' : 'Added Injury Type';
+      logAdminAction(
+          gtawUsername,
+          action,
+          `Name: ${data.name}\nWords: ${data.words}`,
+          'LSCC Management',
+          userAgent,
+          timeZone,
+          gtawUsername,
+          gtawUser
+      );
       const injuryData = {
         name: data.keyword.trim(),
         words: data.definition.trim(),
@@ -595,6 +601,18 @@ useEffect(() => {
         }}
         keyword={editingKeyword}
         onSave={async (id, data) => {
+            const { userAgent, timeZone } = getUserContext();
+            const action = id ? 'Updated Keyword' : 'Added Keyword';
+            logAdminAction(
+                gtawUsername,
+                action,
+                `Keyword: ${data.keyword}\nDefinition: ${data.definition}\nTip: ${data.tip}`,
+                'LSCC Management',
+                userAgent,
+                timeZone,
+                gtawUsername,
+                gtawUser
+            );
           const refPath = id ? `lscc/keywords/${id}` : `lscc/keywords/${Date.now()}`;
           await set(ref(database, refPath), data);
           setShowKeywordEditModal(false);

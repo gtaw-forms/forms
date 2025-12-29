@@ -1,5 +1,7 @@
+import { logAdminAction, getUserContext } from '../../utils/adminLogger';
+import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import React, { useState, useCallback, useEffect } from 'react';
-import { Card, Button, Alert, Table, Badge, Spinner, Tabs, Tab } from 'react-bootstrap';
+import { Card, Button, Alert, Table, Badge, Spinner, Tabs, Tab, Modal, Form, Row, Col } from 'react-bootstrap';
 import { useDropzone } from 'react-dropzone';
 import { httpsCallable } from 'firebase/functions';
 import { ref, get, set } from 'firebase/database';
@@ -11,6 +13,7 @@ import * as Sentry from "@sentry/react";
  * Handles CSV file upload, parsing, and preview for faction member data
  */
 const FactionDataUpload = ({ showNotification }) => {
+    const { user: gtawUser, username: gtawUsername } = useGtaWorldAuth();
     const [uploadStatus, setUploadStatus] = useState('idle'); // idle, uploading, preview, success, error
     const [uploadedFile, setUploadedFile] = useState(null);
     const [parsedData, setParsedData] = useState(null);
@@ -22,6 +25,77 @@ const FactionDataUpload = ({ showNotification }) => {
     const [loadingStored, setLoadingStored] = useState(false);
     const [activeTab, setActiveTab] = useState('upload');
     const [lastUpdateInfo, setLastUpdateInfo] = useState(null);
+
+    // Manual Add User State
+    const [showManualModal, setShowManualModal] = useState(false);
+    const [manualData, setManualData] = useState({
+        characterId: '',
+        characterName: '',
+        rank: '',
+        scriptRank: ''
+    });
+    const [submittingManual, setSubmittingManual] = useState(false);
+
+    // Manual Add User Functions
+    const handleManualInputChange = (e) => {
+        const { name, value } = e.target;
+        setManualData(prev => ({
+            ...prev,
+            [name]: value
+        }));
+    };
+
+    const handleManualSubmit = async (e) => {
+        e.preventDefault();
+        
+        if (!manualData.characterId || !manualData.characterName || !manualData.rank || !manualData.scriptRank) {
+            showNotification('Please fill in all fields', 'warning');
+            return;
+        }
+
+        setSubmittingManual(true);
+
+        try {
+            const { userAgent, timeZone } = getUserContext();
+            logAdminAction(
+                gtawUsername,
+                'Manually Added Faction Member',
+                `Character ID: ${manualData.characterId}\nName: ${manualData.characterName}\nRank: ${manualData.rank}\nScript Rank: ${manualData.scriptRank}`,
+                'Faction Data Management',
+                userAgent,
+                timeZone,
+                gtawUsername,
+                gtawUser
+            );
+            const memberData = {
+                characterId: parseInt(manualData.characterId),
+                characterName: manualData.characterName,
+                rank: manualData.rank,
+                scriptRank: parseInt(manualData.scriptRank),
+                activity: 'MISSING_DATA',
+                lastDuty: null,
+                lastOnline: null,
+                manuallyAdded: true,
+                addedAt: new Date().toISOString()
+            };
+
+            await set(ref(database, `factions/364/members/${manualData.characterId}`), memberData);
+            
+            showNotification(`Successfully added ${manualData.characterName}`, 'success');
+            setShowManualModal(false);
+            setManualData({ characterId: '', characterName: '', rank: '', scriptRank: '' });
+            
+            // Refresh data if we're on the stored tab
+            if (activeTab === 'stored') {
+                loadStoredFactionData();
+            }
+        } catch (error) {
+            console.error('[Manual Add] Error:', error);
+            showNotification(`Failed to add user: ${error.message}`, 'error');
+        } finally {
+            setSubmittingManual(false);
+        }
+    };
 
     const parseJSONFile = useCallback((file) => {
         return new Promise((resolve, reject) => {
@@ -406,6 +480,18 @@ const FactionDataUpload = ({ showNotification }) => {
         setError(null);
 
         try {
+            const { userAgent, timeZone } = getUserContext();
+            logAdminAction(
+                gtawUsername,
+                'Uploaded Faction Data',
+                `File: ${parsedData.fileName}\nRows: ${parsedData.validRows}/${parsedData.totalRows}`,
+                'Faction Data Management',
+                userAgent,
+                timeZone,
+                gtawUsername,
+                gtawUser
+            );
+
             console.log('[Faction Upload] Uploading to Firebase...');
             // Hard-clear previous members to avoid stale entries and unnecessary storage
             try {
@@ -429,6 +515,29 @@ const FactionDataUpload = ({ showNotification }) => {
                     factionId: 364 // PHMC
                 }
             });
+
+            // Update factionsDataVersion to trigger cache invalidation for all users
+            try {
+                const factionsVersionRef = ref(database, 'appMetadata/factionsDataVersion');
+                await set(factionsVersionRef, Date.now());
+                console.log('[Faction Upload] Successfully updated factionsDataVersion.');
+                showNotification && showNotification('Forcing cache refresh for all clients.', 'info');
+            } catch (versionError) {
+                console.error('[Faction Upload] Failed to update factionsDataVersion:', versionError);
+                Sentry.captureException(versionError, { extra: { context: 'FactionDataUpload - Update Version' } });
+                showNotification && showNotification('Warning: Could not update the faction data version. Caches may be stale.', 'warning');
+            }
+
+            // Clear the audit trail after successful upload
+            try {
+                const auditRef = ref(database, 'audit/faction_uploads/');
+                await set(auditRef, null);
+                console.log('[Faction Upload] Successfully cleared audit trail.');
+            } catch (auditError) {
+                console.error('[Faction Upload] Failed to clear audit trail:', auditError);
+                Sentry.captureException(auditError, { extra: { context: 'FactionDataUpload - Clear Audit' } });
+                showNotification && showNotification('Warning: Could not clear the faction upload audit trail.', 'warning');
+            }
 
             console.log('[Faction Upload] Upload result:', result.data);
             setUploadResult(result.data);
@@ -621,7 +730,7 @@ const FactionDataUpload = ({ showNotification }) => {
                             Upload File
                         </span>
                     }>
-                    Hello! Please grab a copy of the faction CSV from the GTAWorld UCP and upload it here to manage faction data. <a href="https://ucp.gta.world/view/faction/364/populate?draw=2&columns%5B0%5D%5Bdata%5D=actions&columns%5B0%5D%5Bname%5D=actions&columns%5B0%5D%5Bsearchable%5D=true&columns%5B0%5D%5Borderable%5D=true&columns%5B0%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B0%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B1%5D%5Bdata%5D=id&columns%5B1%5D%5Bname%5D=characters.id&columns%5B1%5D%5Bsearchable%5D=true&columns%5B1%5D%5Borderable%5D=true&columns%5B1%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B1%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B2%5D%5Bdata%5D=name&columns%5B2%5D%5Bname%5D=name&columns%5B2%5D%5Bsearchable%5D=true&columns%5B2%5D%5Borderable%5D=true&columns%5B2%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B2%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B3%5D%5Bdata%5D=rank&columns%5B3%5D%5Bname%5D=rank&columns%5B3%5D%5Bsearchable%5D=true&columns%5B3%5D%5Borderable%5D=true&columns%5B3%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B3%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B4%5D%5Bdata%5D=scriptrank&columns%5B4%5D%5Bname%5D=scriptrank&columns%5B4%5D%5Bsearchable%5D=true&columns%5B4%5D%5Borderable%5D=true&columns%5B4%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B4%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B5%5D%5Bdata%5D=lastduty&columns%5B5%5D%5Bname%5D=lastduty&columns%5B5%5D%5Bsearchable%5D=true&columns%5B5%5D%5Borderable%5D=true&columns%5B5%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B5%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B6%5D%5Bdata%5D=lastonline&columns%5B6%5D%5Bname%5D=lastonline&columns%5B6%5D%5Bsearchable%5D=true&columns%5B6%5D%5Borderable%5D=true&columns%5B6%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B6%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B7%5D%5Bdata%5D=abas&columns%5B7%5D%5Bname%5D=abas&columns%5B7%5D%5Bsearchable%5D=true&columns%5B7%5D%5Borderable%5D=true&columns%5B7%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B7%5D%5Bsearch%5D%5Bregex%5D=false&order%5B0%5D%5Bcolumn%5D=3&order%5B0%5D%5Bdir%5D=desc&start=0&length=-1&search%5Bvalue%5D=&search%5Bregex%5D=false" target="_blank" rel="noopener noreferrer">Grab a copy from the UCP (expand by 'all').</a> Alternatively, you can upload a JSON file with an array of member objects.
+                    Hello! Please grab a copy of the faction CSV from the GTAWorld UCP and upload it here to manage faction data. <a href="https://ucp.gta.world/view/faction/364/populate?draw=2&columns[0][data]=actions&columns[0][name]=actions&columns[0][searchable]=true&columns[0][orderable]=true&columns[0][search][value]=&columns[0][search][regex]=false&columns[1][data]=id&columns[1][name]=characters.id&columns[1][searchable]=true&columns[1][orderable]=true&columns[1][search][value]=&columns[1][search][regex]=false&columns[2][data]=name&columns[2][name]=name&columns[2][searchable]=true&columns[2][orderable]=true&columns[2][search][value]=&columns[2][search][regex]=false&columns[3][data]=rank&columns[3][name]=rank&columns[3][searchable]=true&columns[3][orderable]=true&columns[3][search][value]=&columns[3][search][regex]=false&columns[4][data]=scriptrank&columns[4][name]=scriptrank&columns[4][searchable]=true&columns[4][orderable]=true&columns[4][search][value]=&columns[4][search][regex]=false&columns[5][data]=lastduty&columns[5][name]=lastduty&columns[5][searchable]=true&columns[5][orderable]=true&columns[5][search][value]=&columns[5][search][regex]=false&columns[6][data]=lastonline&columns[6][name]=lastonline&columns[6][searchable]=true&columns[6][orderable]=true&columns[6][search][value]=&columns[6][search][regex]=false&columns[7][data]=abas&columns[7][name]=abas&columns[7][searchable]=true&columns[7][orderable]=true&columns[7][search][value]=&columns[7][search][regex]=false&order[0][column]=3&order[0][dir]=desc&start=0&length=1000&search[value]=&search[regex]=false&type=members&filters=&searchTerm=&_=1766805327306" target="_blank" rel="noopener noreferrer">Grab a copy from the UCP (expand by 'all').</a> Alternatively, you can upload a JSON file with an array of member objects.
                         {activeTab === 'upload' && (
                             <>
                                 {uploadStatus === 'idle' && renderUploadArea()}
@@ -700,6 +809,15 @@ const FactionDataUpload = ({ showNotification }) => {
                                                 Refresh
                                             </>
                                         )}
+                                    </Button>
+                                    <Button
+                                        variant="success"
+                                        size="sm"
+                                        className="ms-2"
+                                        onClick={() => setShowManualModal(true)}
+                                    >
+                                        <i className="fas fa-plus me-2"></i>
+                                        Manually Add User
                                     </Button>
                                 </div>
 
@@ -847,7 +965,9 @@ const FactionDataUpload = ({ showNotification }) => {
                                             <tbody>
                                                 {storedData
                                                     .map((member, index) => {
-                                                        const activity = parseFloat(member.activity || '0');
+                                                        const activityVal = member.activity;
+                                                        const isMissingData = activityVal === 'MISSING_DATA';
+                                                        const activity = isMissingData ? 0 : parseFloat(activityVal || '0');
                                                         
                                         // Determine access level based on script rank
                                         let accessLevel = 'Member';
@@ -889,7 +1009,10 @@ const FactionDataUpload = ({ showNotification }) => {
                                         }                                                        // Activity badge color and inactivity check
                                                         let activityBadge = 'success';
                                                         let isInactive = false;
-                                                        if (activity < 0.25) {
+                                                        
+                                                        if (isMissingData) {
+                                                            activityBadge = 'warning';
+                                                        } else if (activity < 0.25) {
                                                             activityBadge = 'danger';
                                                             isInactive = true;
                                                         } else if (activity < 0.35) {
@@ -915,9 +1038,9 @@ const FactionDataUpload = ({ showNotification }) => {
                                                                     </Badge>
                                                                 </td>
                                                                 <td>
-                                                                    <Badge bg={activityBadge} title={isInactive ? 'Inactive - ABAS below 0.25 threshold' : `Active - ABAS ${activity.toFixed(2)}`}>
-                                                                        {activity.toFixed(2)}
-                                                                        {isInactive && ' (INACTIVE)'}
+                                                                    <Badge bg={activityBadge} title={isMissingData ? 'Data manually added/missing' : (isInactive ? 'Inactive - ABAS below 0.25 threshold' : `Active - ABAS ${activity.toFixed(2)}`)}>
+                                                                        {isMissingData ? 'MISSING_DATA' : activity.toFixed(2)}
+                                                                        {!isMissingData && isInactive && ' (INACTIVE)'}
                                                                     </Badge>
                                                                 </td>
                                                                 <td>
@@ -959,6 +1082,95 @@ const FactionDataUpload = ({ showNotification }) => {
                     </Tab>
                 </Tabs>
             </Card.Body>
+
+            {/* Manual Add User Modal */}
+            <Modal show={showManualModal} onHide={() => setShowManualModal(false)}>
+                <Modal.Header closeButton>
+                    <Modal.Title>Manually Add Faction Member</Modal.Title>
+                </Modal.Header>
+                <Form onSubmit={handleManualSubmit}>
+                    <Modal.Body>
+                        <Row className="mb-3">
+                            <Col md={4}>
+                                <Form.Group>
+                                    <Form.Label>Character ID (#)</Form.Label>
+                                    <Form.Control
+                                        type="number"
+                                        name="characterId"
+                                        value={manualData.characterId}
+                                        onChange={handleManualInputChange}
+                                        placeholder="12345"
+                                        required
+                                    />
+                                </Form.Group>
+                            </Col>
+                            <Col md={8}>
+                                <Form.Group>
+                                    <Form.Label>Character Name</Form.Label>
+                                    <Form.Control
+                                        type="text"
+                                        name="characterName"
+                                        value={manualData.characterName}
+                                        onChange={handleManualInputChange}
+                                        placeholder="John Doe"
+                                        required
+                                    />
+                                </Form.Group>
+                            </Col>
+                        </Row>
+                        <Row className="mb-3">
+                            <Col md={6}>
+                                <Form.Group>
+                                    <Form.Label>Rank</Form.Label>
+                                    <Form.Control
+                                        type="text"
+                                        name="rank"
+                                        value={manualData.rank}
+                                        onChange={handleManualInputChange}
+                                        placeholder="Rank Name"
+                                        required
+                                    />
+                                </Form.Group>
+                            </Col>
+                            <Col md={6}>
+                                <Form.Group>
+                                    <Form.Label>Script Rank</Form.Label>
+                                    <Form.Control
+                                        type="number"
+                                        name="scriptRank"
+                                        value={manualData.scriptRank}
+                                        onChange={handleManualInputChange}
+                                        placeholder="0-15"
+                                        required
+                                    />
+                                    <Form.Text className="text-muted">
+                                        Determines access level
+                                    </Form.Text>
+                                </Form.Group>
+                            </Col>
+                        </Row>
+                        <Alert variant="info" className="mb-0">
+                            <i className="fas fa-info-circle me-2"></i>
+                            Activity (ABAS) data will be marked as <strong>MISSING_DATA</strong>.
+                        </Alert>
+                    </Modal.Body>
+                    <Modal.Footer>
+                        <Button variant="secondary" onClick={() => setShowManualModal(false)}>
+                            Cancel
+                        </Button>
+                        <Button variant="primary" type="submit" disabled={submittingManual}>
+                            {submittingManual ? (
+                                <>
+                                    <Spinner animation="border" size="sm" className="me-2" />
+                                    Saving...
+                                </>
+                            ) : (
+                                'Add Member'
+                            )}
+                        </Button>
+                    </Modal.Footer>
+                </Form>
+            </Modal>
         </Card>
     );
 };

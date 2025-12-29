@@ -1,12 +1,15 @@
 
 import './EmployeeManagerModal.css';
 import './CctvRequestWebhookModal.css';
+import { logAdminAction, getUserContext } from '../../utils/adminLogger';
+import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import React, { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { database } from '../../firebase';
 import { ref, get, set, update, remove } from 'firebase/database';
 import { Table, Button, Form, Spinner, Alert } from 'react-bootstrap';
 const EmployeeManager = () => {
+    const { user: gtawUser, username: gtawUsername } = useGtaWorldAuth();
     const [employees, setEmployees] = useState([]);
     const [showModal, setShowModal] = useState(false);
     const [editingEmployee, setEditingEmployee] = useState(null);
@@ -51,6 +54,17 @@ const EmployeeManager = () => {
         }
         setLoading(true);
         try {
+            const { userAgent, timeZone } = getUserContext();
+            logAdminAction(
+                gtawUsername,
+                'Updated Employee Record',
+                `Employee: ${editingEmployee.name} ${editingEmployee.surname} (ID: ${editingEmployee.id})`,
+                'Employee Manager',
+                userAgent,
+                timeZone,
+                gtawUsername,
+                gtawUser
+            );
             const employeeRef = ref(database, `Nursing_Records/${editingEmployee.id}`);
             await update(employeeRef, editingEmployee);
             
@@ -86,6 +100,17 @@ const EmployeeManager = () => {
         setError(null);
         console.log('[Debug] Starting sync process...');
         try {
+            const { userAgent, timeZone } = getUserContext();
+            logAdminAction(
+                gtawUsername,
+                'Synced Employee Records',
+                'Synced nursing staff from faction data to employee records.',
+                'Employee Manager',
+                userAgent,
+                timeZone,
+                gtawUsername,
+                gtawUser
+            );
             // 1. Fetch faction members from Realtime Database
             const factionMembersRef = ref(database, 'factions/364/members');
             const factionSnapshot = await get(factionMembersRef);

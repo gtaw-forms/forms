@@ -14,156 +14,14 @@ import CctvRequestWebhookModal from './CctvRequestWebhookModal'; // Import the n
 import UserManagementModal from './UserManagementModal';
 import AdminDashboard from './AdminDashboard';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
-import { isGoogleAuthenticated, getGoogleUser, logout as gtaLogout } from '../../services/gtaWorldAuth';
-
-
+import { getGoogleUser, isGoogleAuthenticated, logout as gtaLogout } from '../../services/gtaWorldAuth';
+import { getUserContext, logAdminAction } from '../../utils/adminLogger';
 
 const BINGO_TYPES = [
     { id: 'er', name: 'Emergency Room', path: 'ER' },
     { id: 'ems', name: 'EMS', path: 'EMS' },
     { id: 'coroner', name: 'Coroner', path: 'Coroner' }
 ];
-const requestNotificationPermission = async () => {
-    console.log("[Desktop Notify] Requesting permission...");
-    if (!("Notification" in window)) {
-        console.warn("[Desktop Notify] This browser does not support desktop notification.");
-        return false;
-    } else if (Notification.permission === "granted") {
-        console.log("[Desktop Notify] Permission already granted.");
-        return true;
-    } else if (Notification.permission !== "denied") {
-        console.log("[Desktop Notify] Permission is default, prompting user.");
-        const permission = await Notification.requestPermission();
-        console.log("[Desktop Notify] User responded with permission:", permission);
-        return permission === "granted";
-    }
-    console.log("[Desktop Notify] Permission is denied.");
-    return false;
-};
-
-const showDesktopNotification = (title, options) => {
-    console.log("[Desktop Notify] Attempting to show notification. Current permission:", Notification.permission);
-    if (Notification.permission === "granted") {
-        try {
-            const notification = new Notification(title, options);
-            console.log("[Desktop Notify] Notification created:", notification);
-            notification.onclick = () => {
-                console.log("[Desktop Notify] Notification clicked.");
-                window.focus();
-                notification.close();
-            };
-            notification.onerror = (err) => {
-                console.error("[Desktop Notify] Error displaying notification:", err);
-            };
-            notification.onshow = () => {
-                console.log("[Desktop Notify] Notification shown successfully.");
-            };
-        } catch (error) {
-            console.error("[Desktop Notify] Error creating Notification object:", error);
-        }
-    } else {
-        console.warn("[Desktop Notify] Permission not granted, cannot show notification.");
-    }
-};
-
-// Helper to get user agent and timezone
-const getUserContext = () => {
-    const userAgent = navigator.userAgent || "N/A";
-    let timeZone = "N/A";
-    try {
-        timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    } catch (e) {
-        console.warn("Could not determine user timezone:", e);
-    }
-    return { userAgent, timeZone };
-};
-
-const sendAdminActionWebhook = async (adminEmail, action, details, categoryName = null, userAgent = "N/A", userTimezone = "N/A", oauthUsername = null, characterData = null) => {
-    const webhookURL = import.meta.env.VITE_ADMIN_ACTION_DISCORD_WEBHOOK_URL || import.meta.env.VITE_DEV_WEBHOOK;
-    if (!webhookURL) {
-        console.warn("Admin action webhook URL not configured. Skipping log.");
-        captureMessage("Admin Action Webhook URL not configured", "warning");
-        return;
-    }
-
-    // Use OAuth username if available, otherwise fall back to email
-    const userIdentifier = oauthUsername ? `${oauthUsername} (${adminEmail})` : (adminEmail || "Unknown");
-
-    // Simplified description for a cleaner look
-    let description = categoryName
-        ? `**Action:** ${action || "Unknown Action"}\n**Admin:** ${userIdentifier}\n**Category:** ${categoryName}`
-        : `**Action:** ${action || "Unknown Action"}\n**Admin:** ${userIdentifier}`;
-
-    // Add character information if available
-    if (characterData && characterData.debugInfo) {
-        const { debugInfo } = characterData;
-        if (debugInfo.foundMember && debugInfo.charactersChecked?.length > 0) {
-            const primaryCharacter = characterData.faction;
-            description += `\n**Primary Character:** ${primaryCharacter?.characterName || 'Unknown'} (ID: ${primaryCharacter?.characterId || 'N/A'}) - Rank ${primaryCharacter?.scriptRank || 'N/A'}`;
-            
-            if (debugInfo.charactersChecked.length > 1) {
-                description += `\n**All Characters:** ${debugInfo.charactersChecked.length} total`;
-            }
-        }
-    }
-
-    const fields = [
-        { name: "Details", value: `\`\`\`${details.substring(0, 1000)}\`\`\``, inline: false }
-    ];
-
-    // Add detailed character information as a separate field if available
-    if (characterData && characterData.debugInfo?.charactersChecked?.length > 0) {
-        const characterDetails = characterData.debugInfo.charactersChecked.map((char, index) => {
-            return `${index + 1}. ${char.name || 'Unknown'} (ID: ${char.id || 'N/A'})`;
-        }).join('\n');
-        
-        const factionMembers = characterData.debugInfo.charactersChecked.filter(char => 
-            characterData.faction && char.id === characterData.faction.characterId
-        );
-        
-        let characterField = `**All Characters (${characterData.debugInfo.charactersChecked.length}):**\n${characterDetails}`;
-        
-        if (characterData.debugInfo.foundMember) {
-            characterField += `\n\n**PHMC Member:** ${characterData.faction?.characterName || 'Unknown'} (Rank ${characterData.faction?.scriptRank || 'N/A'})`;
-            characterField += `\n**Access Level:** ${characterData.accessLevel || 'none'}`;
-        } else {
-            characterField += `\n\n**PHMC Status:** Not a faction member`;
-        }
-        
-        fields.push({ 
-            name: "Character Information", 
-            value: characterField.substring(0, 1024), // Discord field limit
-            inline: false 
-        });
-    }
-
-    const embed = {
-        title: "Admin Action Logged",
-        color: 0xFFA500, // Orange
-        description: description,
-        fields: fields,
-        timestamp: new Date().toISOString(),
-        footer: { text: `PHMC Tools | ${userTimezone}` }
-    };
-
-    try {
-        const response = await fetch(webhookURL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ embeds: [embed] })
-        });
-        if (!response.ok) {
-            console.error(`Failed to send admin action webhook. Status: ${response.status}`);
-            captureMessage(`Admin Action Discord webhook failed: ${response.status}`, "error");
-        } else {
-            console.log(`Admin action logged to Discord: ${action}`);
-        }
-    } catch (error) {
-        console.error('Error sending admin action webhook:', error);
-        captureException(error, { extra: { context: 'Admin Action Webhook Submission' } });
-    }
-};
-
 
 
 const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAppNotification, commitInfo }) => {
@@ -286,12 +144,12 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
         try {
             await update(lockdownRef, lockdownConfig);
             showInAppNotification(`Lockdown status updated.`, "check-circle");
-            sendAdminActionWebhook(
+            logAdminAction(
                 unifiedCurrentUser?.email || "Unknown User",
                 "Updated Lockdown Status",
-                `Enabled: ${lockdownConfig.enabled}\
-Notification: ${lockdownConfig.notification}\
-Dialog: ${lockdownConfig.dialog}\
+                `Enabled: ${lockdownConfig.enabled}
+Notification: ${lockdownConfig.notification}
+Dialog: ${lockdownConfig.dialog}
 Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                 "Lockdown Status",
                 userAgent,
@@ -300,7 +158,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
         } catch (error) {
             console.error("Error updating lockdown status:", error);
             showInAppNotification("Failed to update lockdown status.", "error");
-            sendAdminActionWebhook(
+            logAdminAction(
                 unifiedCurrentUser?.email || "Unknown User",
                 "Failed to Update Lockdown Status",
                 `Error: ${error.message}`,
@@ -358,7 +216,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                 return false;
             } else {
                 if (showInAppNotification) showInAppNotification('CCTV Test Webhook sent successfully!', "check-circle");
-                sendAdminActionWebhook(currentUser?.email, "Sent CCTV Test Webhook", `Sent a test webhook for a CCTV request to the dev channel.`, "Developer Testing", userAgent, timeZone, gtaAuthUsername);
+                logAdminAction(currentUser?.email, "Sent CCTV Test Webhook", `Sent a test webhook for a CCTV request to the dev channel.`, "Developer Testing", userAgent, timeZone, gtaAuthUsername);
                 return true;
             }
         } catch (error) {
@@ -424,7 +282,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                     adminUserEmail: user.email
                 }));
                 
-                sendAdminActionWebhook(user.email, "Admin Login", "User successfully logged in to the Admin Panel.", null, userAgent, timeZone, gtaAuthUsername, gtaAuthUser);
+                logAdminAction(user.email, "Admin Login", "User successfully logged in to the Admin Panel.", null, userAgent, timeZone, gtaAuthUsername, gtaAuthUser);
                 if (showInAppNotification) showInAppNotification(`Welcome, ${user.email}!`, "check-circle");
             } else if (!isLoggedIn && wasLoggedIn) {
                 // User just logged out
@@ -438,7 +296,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                 sessionStorage.removeItem('google-admin-user');
                 sessionStorage.removeItem('admin-auth-context');
                 
-                sendAdminActionWebhook(loggedOutEmail, "Admin Logout", "User successfully logged out from the Admin Panel.", null, userAgent, timeZone, gtaAuthUsername, gtaAuthUser);
+                logAdminAction(loggedOutEmail, "Admin Logout", "User successfully logged out from the Admin Panel.", null, userAgent, timeZone, gtaAuthUsername, gtaAuthUser);
                 if (showInAppNotification) showInAppNotification(`Logged out from Admin Panel.`, "info-circle");
             } else if (isLoggedIn && wasLoggedIn) {
                 // User is still logged in (e.g., component re-rendered)
@@ -492,7 +350,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
             const scriptRank = gtaAuthUser.faction?.scriptRank;
             
             // Send OAuth login webhook
-            sendAdminActionWebhook(
+            logAdminAction(
                 oauthUserEmail,
                 "Admin OAuth Login",
                 `GTA World OAuth user successfully logged in to Admin Panel.\nCharacter: ${characterName}\n${scriptRank ? `Script Rank: ${scriptRank}` : 'No rank data'}`,
@@ -514,7 +372,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
             // Try to get the username from previous state or fallback
             const loggedOutUsername = prevGtaAuthStateRef.current?.username || 'Unknown OAuth User';
             
-            sendAdminActionWebhook(
+            logAdminAction(
                 loggedOutUsername,
                 "Admin OAuth Logout",
                 "GTA World OAuth user logged out from Admin Panel.",
@@ -558,7 +416,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
             });
             // --- MODIFICATION END ---
 
-            sendAdminActionWebhook(email, "Admin Login Failed", `Attempted login with email: ${email}. Error: ${err.message}`, null, userAgent, timeZone, gtaAuthUsername);
+            logAdminAction(email, "Admin Login Failed", `Attempted login with email: ${email}. Error: ${err.message}`, null, userAgent, timeZone, gtaAuthUsername);
             if (showInAppNotification) showInAppNotification(`Login failed: ${err.message}`, "error");
         }
     };
@@ -604,7 +462,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
             console.log('[Admin Logout] Local admin state cleared');
             
             // Send success webhook
-            sendAdminActionWebhook(
+            logAdminAction(
                 userIdentifier, 
                 "Admin Logout Successful", 
                 `Successfully logged out from ${logoutType} authentication.`, 
@@ -627,7 +485,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
             console.error('[Admin Logout] Error during logout:', err);
             setError(err.message || "Failed to logout.");
             
-            sendAdminActionWebhook(
+            logAdminAction(
                 userIdentifier, 
                 "Admin Logout Failed", 
                 `Failed to log out from ${logoutType}. Error: ${err.message}`, 
@@ -740,7 +598,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
         setDesktopNotificationPermission(currentPermission);
         const { userAgent, timeZone } = getUserContext(); // Capture user context
         if (currentUser?.email) {
-            sendAdminActionWebhook(unifiedCurrentUser?.email || "Unknown User", "Desktop Notification Preference Changed", `Permission status: ${currentPermission}${granted ? ' (Granted by user)' : ' (Not granted or dismissed)'}`, null, userAgent, timeZone, gtaAuthUsername);
+            logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Desktop Notification Preference Changed", `Permission status: ${currentPermission}${granted ? ' (Granted by user)' : ' (Not granted or dismissed)'}`, null, userAgent, timeZone, gtaAuthUsername);
         }
         if (granted) {
             if (showInAppNotification) showInAppNotification("Desktop notifications enabled for this site! Please ensure your OS settings also allow notifications from your browser.", "check-circle", 7000);
@@ -762,7 +620,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
         if (!webhookURL) {
             if (showInAppNotification) showInAppNotification('Admin Webhook URL (PHMC_DISCORD) not configured.', 'error');
             Sentry.captureMessage("Admin Custom Webhook URL (PHMC_DISCORD) not configured for AdminAuthAndActions", "error");
-            sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", "Webhook URL not configured.", null, userAgent, timeZone, gtaAuthUsername);
+            logAdminAction(currentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", "Webhook URL not configured.", null, userAgent, timeZone, gtaAuthUsername);
             return false;
         }
         try {
@@ -779,12 +637,12 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                     extra: { statusText: response.statusText, responseBody: errorText }
                 });
                 if (showInAppNotification) showInAppNotification(`Failed to send admin webhook. Status: ${response.status}`, 'error');
-                sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", `Status: ${response.status}, Error: ${errorText}`, null, userAgent, timeZone, gtaAuthUsername);
+                logAdminAction(currentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", `Status: ${response.status}, Error: ${errorText}`, null, userAgent, timeZone, gtaAuthUsername);
                 return false;
             } else {
                 if (showInAppNotification) showInAppNotification('Admin webhook message sent successfully!', "check-circle");
                 // setShowAdminCustomWebhookModal(false); // REMOVED - state no longer exists
-                sendAdminActionWebhook(currentUser?.email || "Unknown User", "Sent Admin Custom Webhook", "Admin successfully sent a custom webhook to the Admin Action channel.", null, userAgent, timeZone, gtaAuthUsername);
+                logAdminAction(currentUser?.email || "Unknown User", "Sent Admin Custom Webhook", "Admin successfully sent a custom webhook to the Admin Action channel.", null, userAgent, timeZone, gtaAuthUsername);
                 logWebhookToFirebase('Admin Custom Webhook Sent', { admin: currentUser?.email, title: payloadFromModal.embeds[0].title });
                 return true;
             }
@@ -792,7 +650,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
             console.error('Error sending admin custom webhook:', error);
             Sentry.captureException(error, { extra: { context: 'Admin Custom Webhook Submission Fetch (AdminAuthAndActions)' } });
             if (showInAppNotification) showInAppNotification('A network error occurred sending the admin webhook.', "error");
-            sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", `Network Error: ${error.message}`, null, userAgent, timeZone, gtaAuthUsername);
+            logAdminAction(currentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", `Network Error: ${error.message}`, null, userAgent, timeZone, gtaAuthUsername);
             return false;
         }
     };
@@ -818,7 +676,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
         try {
             await remove(bingoLogRef);
             showInAppNotification(`${selectedType.name} Bingo activity log has been cleared.`, "check-circle");
-            sendAdminActionWebhook(
+            logAdminAction(
                 unifiedCurrentUser?.email || "Unknown User",
                 `Cleared ${selectedType.name} Bingo Activity`,
                 `The 'bingo/logs/${selectedType.path}/activityLog' path was deleted from Firebase.`,
@@ -829,7 +687,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
         } catch (dbError) {
             console.error("Error clearing bingo activity log:", dbError);
             showInAppNotification(`Failed to clear ${selectedType.name} bingo activity log.`, "error");
-            sendAdminActionWebhook(
+            logAdminAction(
                 unifiedCurrentUser?.email || "Unknown User",
                 `Failed to Clear ${selectedType.name} Bingo Activity`,
                 `Error: ${dbError.message}`,
@@ -862,7 +720,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
             const snapshot = await get(masterPhrasesRef);
             if (!snapshot.exists()) {
                 showInAppNotification(`Error: Master phrases for ${selectedType.name} not found. Cannot generate new card.`, "error");
-                sendAdminActionWebhook(
+                logAdminAction(
                     currentUser.email,
                     `Failed to Generate New ${selectedType.name} Bingo Card`,
                     `Master phrases not found in Firebase at 'bingo/phrases/${selectedType.path}'.`,
@@ -882,7 +740,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
 
             if (masterPhrases.length < 24) {
                 showInAppNotification(`Error: Not enough master phrases for ${selectedType.name} (need at least 24).`, "error");
-                sendAdminActionWebhook(
+                logAdminAction(
                     currentUser.email,
                     `Failed to Generate New ${selectedType.name} Bingo Card`,
                     `Not enough master phrases (${masterPhrases.length} found, need 24).`,
@@ -902,7 +760,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
             await remove(activityLogRef);
 
             showInAppNotification(`New ${selectedType.name} Bingo card generated and activity log cleared!`, "check-circle");
-            sendAdminActionWebhook(
+            logAdminAction(
                 unifiedCurrentUser?.email || "Unknown User",
                 `Generated New ${selectedType.name} Bingo Card`,
                 `A new card was generated and the activity log cleared for all users.`,
@@ -913,7 +771,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
         } catch (dbError) {
             console.error("Error generating new bingo card:", dbError);
             showInAppNotification("Failed to generate new bingo card.", "error");
-            sendAdminActionWebhook(
+            logAdminAction(
                 unifiedCurrentUser?.email || "Unknown User",
                 `Failed to Generate New ${selectedType.name} Bingo Card`,
                 `Error: ${dbError.message}`,
@@ -947,7 +805,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
             await remove(logNodeRef);
 
             showInAppNotification(`${selectedType.name} Bingo has been disabled and all data cleared.`, "check-circle");
-            sendAdminActionWebhook(
+            logAdminAction(
                 unifiedCurrentUser?.email || "Unknown User",
                 `Disabled ${selectedType.name} Bingo Card`,
                 `The card and activity log for '${selectedType.name}' were deleted from Firebase.`,
@@ -958,7 +816,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
         } catch (dbError) {
             console.error("Error disabling bingo card:", dbError);
             showInAppNotification(`Failed to disable ${selectedType.name} bingo card.`, "error");
-            sendAdminActionWebhook(
+            logAdminAction(
                 unifiedCurrentUser?.email || "Unknown User",
                 `Failed to Disable ${selectedType.name} Bingo Card`,
                 `Error: ${dbError.message}`,
@@ -1044,7 +902,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
         if (results.errors.length > 0) details += `❌ Errors: ${results.errors.join(', ')}\
 `;
     
-        sendAdminActionWebhook(
+        logAdminAction(
             unifiedCurrentUser?.email || "Unknown User", // Use the unified user email
             "Manual Bingo Reset", // Change action text
             details.trim(),
@@ -1067,7 +925,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
         if (!webhookURL) {
             if (showInAppNotification) showInAppNotification('Coroner Webhook URL (CORONER_DISCORD_UPDATES) not configured.', 'error');
             Sentry.captureMessage("Coroner Webhook URL (CORONER_DISCORD_UPDATES) not configured", "error");
-            sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", "Webhook URL not configured.", null, userAgent, timeZone);
+            logAdminAction(currentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", "Webhook URL not configured.", null, userAgent, timeZone);
             return false;
         }
         try {
@@ -1084,12 +942,12 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                     extra: { statusText: response.statusText, responseBody: errorText }
                 });
                 if (showInAppNotification) showInAppNotification(`Failed to send Coroner webhook. Status: ${response.status}`, 'error');
-                sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", `Status: ${response.status}, Error: ${errorText}`, null, userAgent, timeZone);
+                logAdminAction(currentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", `Status: ${response.status}, Error: ${errorText}`, null, userAgent, timeZone);
                 return false;
             } else {
                 if (showInAppNotification) showInAppNotification('Coroner webhook message sent successfully!', "check-circle");
                 // setShowCoronerWebhookModal(false); // REMOVED - state no longer exists
-                sendAdminActionWebhook(currentUser?.email || "Unknown User", "Sent Coroner Custom Webhook", "Admin successfully sent a custom webhook to the Coroner Updates channel.", null, userAgent, timeZone);
+                logAdminAction(currentUser?.email || "Unknown User", "Sent Coroner Custom Webhook", "Admin successfully sent a custom webhook to the Coroner Updates channel.", null, userAgent, timeZone);
                 logWebhookToFirebase('Coroner Custom Webhook Sent', { admin: currentUser?.email, title: payloadFromModal.embeds[0].title });
                 return true;
             }
@@ -1097,7 +955,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
             console.error('Error sending Coroner webhook:', error);
             Sentry.captureException(error, { extra: { context: 'Coroner Webhook Submission Fetch' } });
             if (showInAppNotification) showInAppNotification('A network error occurred sending the Coroner webhook.', "error");
-            sendAdminActionWebhook(currentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", `Network Error: ${error.message}`, null, userAgent, timeZone);
+            logAdminAction(currentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", `Network Error: ${error.message}`, null, userAgent, timeZone);
             return false;
         }
     };
@@ -1362,7 +1220,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                 onHide={() => setShowEditBingoPhrasesModal(false)}
                 showNotification={showInAppNotification}
                 commitInfo={commitInfo}
-                sendAdminActionWebhook={sendAdminActionWebhook}
+                logAdminAction={logAdminAction}
                 adminUserEmail={currentUser?.email}
                 bingoType={selectedTypeForEdit}
             />
@@ -1370,7 +1228,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                 show={showReviewPhrasesModal}
                 onHide={() => setShowReviewPhrasesModal(false)}
                 showNotification={showInAppNotification}
-                sendAdminActionWebhook={sendAdminActionWebhook}
+                logAdminAction={logAdminAction}
                 adminUserEmail={currentUser?.email}
             />
             <CctvRequestWebhookModal
@@ -1390,7 +1248,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                 show={showOAuthTokenExchangeModal}
                 onHide={() => setShowOAuthTokenExchangeModal(false)}
                 showNotification={showInAppNotification}
-                sendAdminActionWebhook={sendAdminActionWebhook}
+                logAdminAction={logAdminAction}
                 adminUserEmail={currentUser?.email}
                 onUserDataReceived={(userData) => {
                     // The user data will be automatically updated by the GTA auth hook
@@ -1401,7 +1259,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                 show={showUserDataExchangeModal}
                 onHide={() => setShowUserDataExchangeModal(false)}
                 showNotification={showInAppNotification}
-                sendAdminActionWebhook={sendAdminActionWebhook}
+                logAdminAction={logAdminAction}
                 adminUserEmail={currentUser?.email}
             />
  */}        </>
