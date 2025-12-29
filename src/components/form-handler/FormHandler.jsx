@@ -37,7 +37,8 @@ import formStyles from './FormHandler.module.css';
 
 
 const FormHandler = () => {
-  useInactivityReload(); // NEW HOOK CALL
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  useInactivityReload(); 
   const { trackMetric } = useUserMetrics();
 
   const [selectedForm, setSelectedForm] = useState(null);
@@ -74,13 +75,46 @@ const FormHandler = () => {
   // Hooks
   const { showNotification, removeNotification } = useNotification();
   const {
-    user,
-    isAuthenticated,
-    isPhmcMember,
-    characterName,
+    user: realUser,
+    isAuthenticated: realIsAuthenticated,
+    isPhmcMember: realIsPhmcMember,
+    characterName: realCharacterName,
     swappableCharacters,
     selectOptions: authSelectOptions,
   } = useGtaWorldAuth();
+
+  // DEV: Auth Override Logic
+  const [devAuthStage, setDevAuthStage] = useState(0); // 0: Real, 1: Guest, 2: Civilian, 3: PHMC
+
+  useEffect(() => {
+    if (!isDevelopment) return;
+    const stages = ["Real Data", "Guest (Unauth)", "Civilian (Auth, No Faction)", "PHMC Member"];
+    console.log(`%c[DEV TEST] Auth Stage: ${stages[devAuthStage]}`, "color: #ff00ff; font-weight: bold; font-size: 12px;");
+  }, [devAuthStage, isDevelopment]);
+
+  let user = realUser;
+  let isAuthenticated = realIsAuthenticated;
+  let isPhmcMember = realIsPhmcMember;
+  let characterName = realCharacterName;
+
+  if (isDevelopment && devAuthStage !== 0) {
+      if (devAuthStage === 1) { // Guest
+          user = null; 
+          isAuthenticated = false; 
+          isPhmcMember = false; 
+          characterName = null;
+      } else if (devAuthStage === 2) { // Civilian
+          user = { username: 'DevCiv', faction: null }; 
+          isAuthenticated = true; 
+          isPhmcMember = false; 
+          characterName = 'Dev Civilian';
+      } else if (devAuthStage === 3) { // PHMC
+           user = { username: 'DevDoc', faction: { name: 'PHMC', firstname: 'Dev', lastname: 'Doctor' } }; 
+           isAuthenticated = true; 
+           isPhmcMember = true; 
+           characterName = 'Dev Doctor';
+      }
+  }
 
   useEffect(() => {
     const hasSeenPrompt = localStorage.getItem('seenKeepCredentialsPrompt') === 'true';
@@ -130,7 +164,6 @@ const FormHandler = () => {
   } = useData();
   const { showEmsBingoModal, setShowEmsBingoModal } = useModal();
   const { saveReport: saveNewReport } = useFormSaver();
-  const isDevelopment = process.env.NODE_ENV === 'development';
   const modalCloseTimer = React.useRef(null);
 
   const isPatientForm = useMemo(() => {
@@ -411,7 +444,12 @@ const FormHandler = () => {
   );
 
   const handleNavToggleSavedReports = () => {
-    const type = selectedForm?.accessType === 'Coroner' ? 'Coroner' : 'PHMC';
+    let type = 'PHMC'; // Default to PHMC
+    if (selectedForm) {
+        if (selectedForm.accessType === 'Coroner' || (selectedForm.primaryFor && selectedForm.primaryFor.includes('coroner'))) {
+            type = 'Coroner';
+        }
+    }
     toggleSavedReports(null, type, null);
   };
 
@@ -669,26 +707,25 @@ const FormHandler = () => {
       let shouldDisplay = false;
       let reason = "";
 
-      if (isDevelopment) {
-        shouldDisplay = true;
-        reason = "Development Mode";
+      if (form.isHidden) {
+          shouldDisplay = false;
+          reason = "Hidden form";
       } else {
-        if (form.isHidden) {
-            shouldDisplay = false;
-            reason = "Hidden form";
-        } else {
-            const isRestricted = form.accessType === "PHMC" || form.accessType === "Coroner" || form.accessType === "Mental Health" || form.accessType === "Civilian";
-            const hasRequiredAccess = isAuthenticated && (isPhmcMember || (user && user.faction));
-            
-            if (!isRestricted) {
-                shouldDisplay = true;
-                reason = "Public form";
-            }
-            else { // Form is restricted
-                shouldDisplay = hasRequiredAccess;
-                reason = hasRequiredAccess ? "Access granted" : "Access denied";
-            }
-        }
+          const isRestricted = form.accessType === "PHMC" || form.accessType === "Coroner" || form.accessType === "Mental Health";
+          const isCivilian = form.accessType === "Civilian";
+          const hasRequiredAccess = isAuthenticated && (isPhmcMember || (user && user.faction));
+          
+          if (isCivilian) {
+              shouldDisplay = isAuthenticated;
+              reason = isAuthenticated ? "Access granted" : "Access denied";
+          } else if (!isRestricted) {
+              shouldDisplay = true;
+              reason = "Public form";
+          }
+          else { // Form is restricted
+              shouldDisplay = hasRequiredAccess;
+              reason = hasRequiredAccess ? "Access granted" : "Access denied";
+          }
       }
 
       if (matchesSearchTerm && shouldDisplay) {
@@ -835,6 +872,15 @@ const FormHandler = () => {
 
       <div className={styles.header}>
         <h2>PHMC Tools - Form Generator and more!</h2>
+        {isDevelopment && (
+            <button 
+                onClick={() => setDevAuthStage(prev => (prev + 1) % 4)}
+                className="btn btn-sm btn-outline-warning"
+                style={{ marginLeft: '20px', fontWeight: 'bold' }}
+            >
+                DEV: Test Auth ({["Real", "Guest", "Civilian", "PHMC"][devAuthStage]})
+            </button>
+        )}
       </div>
 
       <div className={styles.mainLayout}>
