@@ -130,12 +130,12 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
     const CACHE_PREFIX = 'firebaseCache';
     const CACHE_EXPIRY = 1000 * 60 * 60 * 24 * 30; // 30 days in milliseconds
 
-    // Version configuration for each segment
+    // Version configuration for each segment, some versions are dynamic updated in Firebase but manually bump if required
     const SEGMENT_VERSIONS = {
-        [CACHE_SEGMENTS.FACTIONS]: '1.1',
+        [CACHE_SEGMENTS.FACTIONS]: '1.2',
         [CACHE_SEGMENTS.AGENCIES]: '1.1',
-        [CACHE_SEGMENTS.SELECT_OPTIONS]: '1.2.3', // Bumped version for structural changes and cache cleanup
-        [CACHE_SEGMENTS.FORMS]: '1.2.3', // Bumped version for structural changes and cache cleanup
+        [CACHE_SEGMENTS.SELECT_OPTIONS]: '1.2.3', 
+        [CACHE_SEGMENTS.FORMS]: '1.2.3', 
         [CACHE_SEGMENTS.LSCC]: '1.0',
     };
 
@@ -299,6 +299,59 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 }
             });
         })(); // Immediately Invoked Async Function Expression
+
+        // --- Listener for Global Factions Version ---
+        (async () => {
+            const factionsVersionRef = ref(database, 'appMetadata/factionsDataVersion');
+            let initialServerVersion = null;
+
+            try {
+                const snapshot = await get(factionsVersionRef);
+                if (snapshot.exists()) {
+                    initialServerVersion = String(snapshot.val());
+                    console.log(`[DataContext] Initial factionsDataVersion fetched from server: v${initialServerVersion}`);
+                } else {
+                    console.log('[DataContext] factionsDataVersion does not exist on server initially. (This is fine)');
+                }
+                localStorage.setItem('factionsDataVersion', initialServerVersion || '0'); 
+            } catch (error) {
+                console.error('[DataContext] Failed to get initial factionsDataVersion from server:', error);
+                localStorage.setItem('factionsDataVersion', '0');
+            }
+
+            firebaseListeners.current.factionsVersion = onValue(factionsVersionRef, async (snapshot) => {
+                if (!dataInitializedRef.current) {
+                    console.log('[DataContext] Global factions version listener triggered, but DataContext not initialized. Skipping.');
+                    return;
+                }
+                const serverVersion = snapshot.exists() ? String(snapshot.val()) : null;
+                const localVersion = localStorage.getItem('factionsDataVersion');
+
+                console.log(`Global Factions Version - Local: ${localVersion || 'N/A'}, Server: ${serverVersion || 'N/A'}`);
+
+                if (serverVersion !== null && localVersion !== serverVersion) { 
+                    console.log(`🔄 Global factions version mismatch (v${localVersion} → v${serverVersion}). Clearing and refreshing factions cache...`);
+
+                    localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.FACTIONS));
+                    localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.FACTIONS));
+                    localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.FACTIONS));
+
+                    localStorage.setItem('factionsDataVersion', serverVersion);
+
+                    showNotification("Employee data has been updated.", "success", 4000);
+
+                    await refreshSegments([CACHE_SEGMENTS.FACTIONS]);
+                } else if (serverVersion === null && localVersion !== null) {
+                    console.log(`🗑️ Global factions version deleted from server. Clearing local cache.`);
+                    localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.FACTIONS));
+                    localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.FACTIONS));
+                    localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.FACTIONS));
+                    localStorage.removeItem('factionsDataVersion');
+                    showNotification("Employee data cleared due to server-side deletion.", "info", 4000);
+                    await refreshSegments([CACHE_SEGMENTS.FACTIONS]);
+                }
+            });
+        })();
     }, [updateCacheSegment, showNotification, refreshSegments]);
 
 
@@ -601,6 +654,21 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             }
         });
 
+        // Explicitly remove old factions cache versions
+        const oldFactionsCacheKeys = [
+            'firebaseCache_factions_v1.0',
+            'firebaseCache_factions_v1.0_timestamp',
+            'firebaseCache_factions_v1.0_version',
+            'firebaseCache_factions_v1.1',
+            'firebaseCache_factions_v1.1_timestamp',
+            'firebaseCache_factions_v1.1_version',
+        ];
+        oldFactionsCacheKeys.forEach(key => {
+            if (localStorage.getItem(key) !== null) {
+                console.log(`🧹 Explicitly cleaning up old factions cache key: ${key}`);
+                localStorage.removeItem(key);
+            }
+        });
 
         const prefix = CACHE_PREFIX + '_';
         for (let i = 0; i < localStorage.length; i++) {

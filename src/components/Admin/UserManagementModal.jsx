@@ -1,10 +1,12 @@
+import { logAdminAction, getUserContext } from '../../utils/adminLogger';
+import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import React, { useState, useEffect } from 'react';
 import { Modal, Button, Form, Alert } from 'react-bootstrap';
 import { ref, get, set, remove, update } from "firebase/database";
 import './UserManagementModal.css';
-import { sendDiscordNotification } from './adminUtils';
 
 const UserManagementModal = ({ show, onHide, database, showNotification }) => {
+    const { user: gtawUser, username: gtawUsername } = useGtaWorldAuth();
     const [users, setUsers] = useState([]);
     const [sourceUser, setSourceUser] = useState('');
     const [destinationUser, setDestinationUser] = useState('');
@@ -43,23 +45,21 @@ const UserManagementModal = ({ show, onHide, database, showNotification }) => {
         return str.replace(/[.#$[\/ \]]/g, '_');
     };
 
-    const sendMigrationNotification = async (source, destination, count) => {
-        const webhookURL = import.meta.env.VITE_DEV_WEBHOOK;
-        const payload = {
-            embeds: [{
-                title: "User Data Migration",
-                description: `Successfully migrated ${count} reports from **${source}** to **${destination}**.**This is a test notification.**`,
-                color: 0x00ff00, // Green
-                timestamp: new Date().toISOString(),
-            }]
-        };
-        await sendDiscordNotification(webhookURL, payload, "User Data Migration", null);
-    };
-
     const handleSanitizeAllUsernames = async () => {
         if (!window.confirm("Are you sure you want to sanitize all usernames? This will clean up spaces and multiple underscores. This is a one-time operation and cannot be undone.")) {
             return;
         }
+        const { userAgent, timeZone } = getUserContext();
+        logAdminAction(
+            gtawUsername,
+            'Sanitized All Usernames',
+            'Triggered sanitization for all usernames.',
+            'User Management',
+            userAgent,
+            timeZone,
+            gtawUsername,
+            gtawUser
+        );
 
         const savedReportsRef = ref(database, 'savedReports');
         try {
@@ -115,6 +115,18 @@ const UserManagementModal = ({ show, onHide, database, showNotification }) => {
         if (!window.confirm("Are you sure you want to migrate all usernames with spaces to use underscores? This is a one-time operation and cannot be undone.")) {
             return;
         }
+
+        const { userAgent, timeZone } = getUserContext();
+        logAdminAction(
+            gtawUsername,
+            'Migrated All Usernames',
+            'Triggered migration for all usernames with spaces.',
+            'User Management',
+            userAgent,
+            timeZone,
+            gtawUsername,
+            gtawUser
+        );
     
         const savedReportsRef = ref(database, 'savedReports');
         try {
@@ -181,6 +193,18 @@ const UserManagementModal = ({ show, onHide, database, showNotification }) => {
 
         setError('');
 
+        const { userAgent, timeZone } = getUserContext();
+        logAdminAction(
+            gtawUsername,
+            'Migrated User Data',
+            `From: ${sourceUser}\nTo: ${destinationUser}`,
+            'User Management',
+            userAgent,
+            timeZone,
+            gtawUsername,
+            gtawUser
+        );
+
         const sourceUserRef = ref(database, `savedReports/${sourceUser}`);
         const destinationUserRef = ref(database, `savedReports/${destinationUser}`);
         const backupDate = new Date().toISOString().replace(/:/g, '-').replace(/\./g, '-');
@@ -225,7 +249,7 @@ const UserManagementModal = ({ show, onHide, database, showNotification }) => {
             }
             
             if (migratedCount > 0) {
-                await sendMigrationNotification(sourceUser, destinationUser, migratedCount);
+                // Not sending notification for each migration anymore.
             }
 
             onHide();

@@ -1,4 +1,6 @@
 // src/components/admin/FormManager.jsx
+import { logAdminAction, getUserContext } from '../../utils/adminLogger';
+import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import React, { useState, useEffect } from "react";
 import { database, deleteForm } from "../../firebase"; // Import deleteForm
 import { ref, onValue } from "firebase/database";
@@ -7,6 +9,7 @@ import styles from "../ems-dashboard/EmsDashboard.module.css";
 import { useNotification } from '../../contexts/NotificationContext'; // Import useNotification
 
 const FormManager = ({ currentUser }) => {
+  const { user: gtawUser, username: gtawUsername } = useGtaWorldAuth();
   const [forms, setForms] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
@@ -51,6 +54,17 @@ const FormManager = ({ currentUser }) => {
     e.stopPropagation(); // Prevent the form card's onClick from firing
     if (window.confirm(`Are you sure you want to delete the form "${formName}"? This action cannot be undone.`)) {
       try {
+        const { userAgent, timeZone } = getUserContext();
+        logAdminAction(
+            currentUser?.email || gtawUsername,
+            'Deleted Form',
+            `Form Name: ${formName}\nID: ${formId}`,
+            'Form Management',
+            userAgent,
+            timeZone,
+            gtawUsername,
+            gtawUser
+        );
         await deleteForm(formId);
         showNotification(`Form "${formName}" deleted successfully!`, 'success');
         setPreviewingForm(null); // Clear preview if deleted form was previewed

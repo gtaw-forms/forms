@@ -11,7 +11,7 @@ const BINGO_TYPES = [
     { id: 'coroner', name: 'Coroner', path: 'Coroner' }
 ];
 
-const ReviewPhraseRequestsModal = ({ show, onHide, showNotification, sendAdminActionWebhook, adminUserEmail }) => {
+const ReviewPhraseRequestsModal = ({ show, onHide, showNotification, logAdminAction, adminUserEmail }) => {
     const [requests, setRequests] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isProcessing, setIsProcessing] = useState(null);
@@ -55,8 +55,8 @@ const ReviewPhraseRequestsModal = ({ show, onHide, showNotification, sendAdminAc
             console.log(`Deleted request ${requestId}`);
 
             // 3. Send the webhook notification AFTER successful deletion
-            if (sendAdminActionWebhook && requestData) { // Check if webhook function exists and we have data
-                sendAdminActionWebhook(
+            if (logAdminAction && requestData) { // Check if webhook function exists and we have data
+                logAdminAction(
                     adminUserEmail,
                     "Scheduled Bingo Phrase Request Deleted", // New Action Name
                     `Request ID: ${requestId}\nPhrase: "${requestData.phrase}"\nStatus: ${requestData.status}\nRequested by: ${requestData.requestedBy}\nBingo Type: ${requestData.bingoType || 'General'}`,
@@ -129,9 +129,9 @@ const ReviewPhraseRequestsModal = ({ show, onHide, showNotification, sendAdminAc
 
             showNotification(`Phrase(s) added to ${bingoTypeObject.name} list!`, 'check-circle');
 
-            if (sendAdminActionWebhook) {
+            if (logAdminAction) {
                 const phraseList = phrasesToApprove.map(phrase => `"${phrase}"`).join('\n'); // Create a list of phrases
-                sendAdminActionWebhook(
+                logAdminAction(
                     adminUserEmail,
                     "Approved Bingo Phrase Request",
                     `Phrases:\n${phraseList}\nRequested by: ${request.requestedBy}\nFor Bingo: ${request.bingoType || 'General'}`,
@@ -155,8 +155,8 @@ const ReviewPhraseRequestsModal = ({ show, onHide, showNotification, sendAdminAc
             await update(requestRef, { status: reason, processedBy: adminUserEmail, processedAt: new Date().toISOString() });
             showNotification(`Request for phrase(s) has been denied.`, 'info-circle');
 
-            if (sendAdminActionWebhook) {
-                sendAdminActionWebhook(
+            if (logAdminAction) {
+                logAdminAction(
                     adminUserEmail,
                     "Denied Bingo Phrase Request",
                     `Phrase: "${request.phrase}"\nRequested by: ${request.requestedBy}\nFor Bingo: ${request.bingoType || 'General'}\nReason: ${reason}`,

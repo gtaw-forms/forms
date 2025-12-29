@@ -1,9 +1,12 @@
+import { logAdminAction, getUserContext } from '../../utils/adminLogger';
+import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import React, { useState, useEffect } from 'react';
 import { useWebhook } from '../../contexts/WebhookProvider';
 import { Form, Button, Alert } from 'react-bootstrap';
 import { getDatabase, ref, get } from 'firebase/database';
 
 const WebhookManager = () => {
+    const { user: gtawUser, username: gtawUsername } = useGtaWorldAuth();
     const {
         webhookTitle,
         setWebhookTitle,
@@ -80,6 +83,18 @@ const WebhookManager = () => {
         setCustomResult(null);
 
         try {
+            const { userAgent, timeZone } = getUserContext();
+            logAdminAction(
+                gtawUsername,
+                'Sent Custom Webhook',
+                `Title: ${webhookTitle}\nMessage: ${webhookMessage.substring(0, 100)}...\nMedia URLs: ${mediaUrls.join(', ')}`,
+                'Webhook Manager',
+                userAgent,
+                timeZone,
+                gtawUsername,
+                gtawUser
+            );
+
             // Prepare webhook payload similar to WebhookProvider logic
             const title = webhookTitle.trim() || 'PHMC Form Generator Notification';
             const description = webhookMessage.trim() || undefined;
