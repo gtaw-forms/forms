@@ -34,7 +34,7 @@ import '../../buttons.css';
 import styles from "../ems-dashboard/EmsDashboard.module.css";
 import formStyles from './FormHandler.module.css';
 
-
+import MapModal from "../Modals/MapModal";
 
 const FormHandler = () => {
   const isDevelopment = process.env.NODE_ENV === 'development';
@@ -71,6 +71,10 @@ const FormHandler = () => {
   });
   const [showBugReportModal, setShowBugReportModal] = useState(false);
   const [isAutoUpdatingBbcode, setIsAutoUpdatingBbcode] = useState(false);
+  const [showMapModal, setShowMapModal] = useState(false);
+  const [mapTargetField, setMapTargetField] = useState(null);
+  const [isUploadingMapImage, setIsUploadingMapImage] = useState({});
+
 
   // Hooks
   const { showNotification, removeNotification } = useNotification();
@@ -299,6 +303,45 @@ const FormHandler = () => {
       };
     });
   }, []);
+
+  const handleMapSelect = useCallback((locationData) => {
+    if (mapTargetField && locationData) {
+      console.log(`[FormHandler] Received map data for field '${mapTargetField}':`, locationData);
+      
+      const { name: formattedName, rawName, isFromMap } = locationData; // Destructure new properties
+      let targetFieldName = mapTargetField;
+
+      if (mapTargetField.includes('.')) {
+        const [arrayName, indexStr, fieldName] = mapTargetField.split('.');
+        const index = parseInt(indexStr, 10);
+        
+        if (arrayName === 'decedents' && !isNaN(index) && fieldName === 'decedentLocation') {
+            setFormValues(prev => {
+                const newDecedents = [...(prev.decedents || [])];
+                if (newDecedents[index]) {
+                    newDecedents[index] = { 
+                        ...newDecedents[index], 
+                        [fieldName]: formattedName, // Store BBCode for BBCode generator
+                        [`${fieldName}_display`]: rawName, // Store raw name for input display
+                        [`${fieldName}_isFromMap`]: isFromMap // Store map source flag
+                    };
+                    return { ...prev, decedents: newDecedents };
+                }
+                return prev; // Or handle error
+            });
+        }
+      } else {
+        handleChange(targetFieldName, formattedName); // Store BBCode for BBCode generator
+        handleChange(`${targetFieldName}_display`, rawName); // Store raw name for input display
+        handleChange(`${targetFieldName}_isFromMap`, isFromMap); // Store map source flag
+      }
+    } else {
+      console.warn("[FormHandler] Map selection occurred but no target field was set.");
+    }
+    setShowMapModal(false);
+  }, [mapTargetField, handleChange, setFormValues]);
+
+
 
   const sendBingoWebhook = useCallback(async (payload) => {
     console.log("sendBingoWebhook called with payload:", payload);
@@ -868,6 +911,14 @@ const FormHandler = () => {
         selectedForm={selectedForm}
         attachmentTargetField={currentAttachmentTargetFieldRef.current} // Add this line
       />
+      <MapModal
+        show={showMapModal}
+        onHide={() => setShowMapModal(false)}
+        onSelect={handleMapSelect}
+        initialQuery={mapTargetField && formValues[mapTargetField] ? formValues[mapTargetField] : ''}
+        setIsUploadingMapImage={setIsUploadingMapImage}
+        mapTargetField={mapTargetField}
+      />
       <FormHandlerNavButtons onToggleSavedReports={handleNavToggleSavedReports} />
 
       <div className={styles.header}>
@@ -1012,6 +1063,9 @@ const FormHandler = () => {
                       showNotification={showNotification}
                       isUploading={isUploading}
                       handleDiagramUpload={handleDiagramUpload}
+                      setShowMapModal={setShowMapModal}
+                      setMapTargetField={setMapTargetField}
+                      isUploadingMapImage={isUploadingMapImage}
                     />
                   ));
                 })()}

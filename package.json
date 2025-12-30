@@ -44,7 +44,7 @@
   },
   "scripts": {
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d build",
+    "deploy": "node scripts/deploy.js",
     "start": "vite",
     "build": "vite build",
     "test": "vite test"
