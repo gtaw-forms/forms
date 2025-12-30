@@ -260,7 +260,7 @@ export const generateMonthlyCoronerReport = onCall({
 export const weeklyCoronerSummary = onSchedule({
     schedule: "every monday 09:00",
     timeZone: "UTC",
-    secrets: ["ADMIN_ACTION_WEBHOOK_URL"],
+    secrets: ["ADMIN_ACTION_WEBHOOK_URL", "DISCORD_WEBHOOK_FUNCTIONS"],
 }, async (event) => {
     const now = new Date();
     const endOfWeek = now.getTime();
@@ -339,7 +339,7 @@ export const weeklyCoronerSummary = onSchedule({
 export const yearlyCoronerSummary = onSchedule({
     schedule: "5 0 1 1 *", // January 1st at 00:05
     timeZone: "UTC",
-    secrets: ["ADMIN_ACTION_WEBHOOK_URL"],
+    secrets: ["ADMIN_ACTION_WEBHOOK_URL", "DISCORD_WEBHOOK_FUNCTIONS"],
 }, async (event) => {
     const now = new Date();
     const startOfYear = new Date(now.getFullYear(), 0, 1).getTime();
@@ -410,7 +410,7 @@ export const yearlyCoronerSummary = onSchedule({
  * Manually trigger a coroner report summary to be sent to the webhook.
  */
 export const triggerCoronerReport = onCall({
-    secrets: ["ADMIN_ACTION_WEBHOOK_URL"],
+    secrets: ["ADMIN_ACTION_WEBHOOK_URL", "DISCORD_WEBHOOK_FUNCTIONS"],
 }, async (request) => {
     const { type } = request.data;
     const now = new Date();
@@ -514,7 +514,7 @@ export const triggerCoronerReport = onCall({
  * Scans reports from the last 30 days to identify untracked locations.
  */
 export const scanUntrackedLocations = onCall({
-    secrets: ["ADMIN_ACTION_WEBHOOK_URL"],
+    secrets: ["ADMIN_ACTION_WEBHOOK_URL", "DISCORD_WEBHOOK_FUNCTIONS"],
 }, async (request) => {
     const now = Date.now();
     const SixtyDaysAgo = now - (60 * 24 * 60 * 60 * 1000);
@@ -534,7 +534,7 @@ export const scanUntrackedLocations = onCall({
 export const monthlyCoronerSummary = onSchedule({
     schedule: "1 0 1 * *",
     timeZone: "UTC",
-    secrets: ["ADMIN_ACTION_WEBHOOK_URL"],
+    secrets: ["ADMIN_ACTION_WEBHOOK_URL", "DISCORD_WEBHOOK_FUNCTIONS"],
 }, async (event) => {
     const targetDate = new Date();
     targetDate.setMonth(targetDate.getMonth() - 1);

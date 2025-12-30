@@ -100,9 +100,10 @@ const EmployeeModal = ({
     };
     const sendMissingAccountWebhook = async (reportData) => {
         try {
-            const webhookURL = import.meta.env.VITE_DEV_WEBHOOK;
+            // Use Admin webhook for missing account reports
+            const webhookURL = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
             if (!webhookURL) {
-                console.warn('Dev webhook URL not configured for missing account reports.');
+                console.warn('Admin/Dev webhook URL not configured for missing account reports.');
                 return;
             }
 

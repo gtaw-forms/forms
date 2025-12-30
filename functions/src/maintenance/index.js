@@ -9,7 +9,7 @@ export const dailyMaintenanceTask = onSchedule({
     schedule: "every day 09:00",
     timeZone: "UTC",
     // --- MODIFICATION: Add the 'secrets' option to grant access to the webhook URL
-    secrets: ["ADMIN_ACTION_WEBHOOK_URL"],
+    secrets: ["ADMIN_ACTION_WEBHOOK_URL", "DISCORD_WEBHOOK_FUNCTIONS"],
 }, async (event) => {
     console.log(`Running daily maintenance task. Event ID: ${event.id}`);
 
@@ -398,7 +398,7 @@ export const dailyMaintenanceTask = onSchedule({
 export const weeklyMetricsSummary = onSchedule({
     schedule: "every monday 09:00", // Weekly trigger
     timeZone: "UTC",
-    secrets: ["ADMIN_ACTION_WEBHOOK_URL"],
+    secrets: ["ADMIN_ACTION_WEBHOOK_URL", "DISCORD_WEBHOOK_FUNCTIONS"],
 }, async (event) => {
     console.log(`[Metrics Summary] Running weekly user metrics summary. Event ID: ${event.id}`);
 

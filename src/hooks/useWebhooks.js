@@ -18,7 +18,7 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
     };
 
     const sendEasterEggNotification = async (type = 'normal') => {
-        const webhookUrl = import.meta.env.VITE_DEV_WEBHOOK;
+        const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
         if (!webhookUrl) {
             console.error("Discord webhook URL is not configured.");
             return;
@@ -114,7 +114,7 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
     };
 
     const sendDataRequestLog = async (file, cached, source, cachedDataSize, networkTransferSize, loggedIn, user, requestedPortions, missingPortions, segmentSizes = {}, error = null) => {
-        const webhookUrl = import.meta.env.VITE_DEV_WEBHOOK;
+        const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
         if (!webhookUrl) {
             console.error("Discord webhook URL is not configured.");
             return;
@@ -236,7 +236,7 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
 
     const handleWebhookSubmit = async (payload) => {
         if (!payload) return;
-        const webhookURL = import.meta.env.VITE_DEV_WEBHOOK;
+        const webhookURL = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
         await sendWebhookPayload(webhookURL, payload, 'Dev webhook embed sent successfully!', 'Dev', showNotification);
     };
 

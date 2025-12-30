@@ -151,7 +151,8 @@ export const migrateReportsToNewStructure = onCall({
 });
 
 export const syncReportCounts = onCall({
-    secrets: ["ADMIN_ACTION_WEBHOOK_URL"],
+    region: "us-central1",
+    secrets: ["ADMIN_ACTION_WEBHOOK_URL", "DISCORD_WEBHOOK_FUNCTIONS"],
 }, async (request) => {
     console.log('[Sync Counts] Starting combined report count sync process.');
 

@@ -463,7 +463,7 @@ const EmployeeCredentialsSection = ({
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                 <input type="checkbox" checked={persistEnabled} onChange={handleTogglePersist} style={{ accentColor: '#28a745' }} />
                 <span style={{ color: '#cfe6cf' }}>
-                  Save OAuth Details for next time (stores only non-sensitive profile data)
+                  Keep me logged in on this device
                 </span>
               </label>
               {persistEnabled && (

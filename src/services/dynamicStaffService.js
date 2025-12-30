@@ -35,9 +35,9 @@ const logWebhookToFirebase = async (type, payload) => {
  */
 const sendDynamicStaffWebhook = async (gtaWorldUser, staffType, characterName, newStaffEntry) => {
     try {
-        const webhookURL = import.meta.env.VITE_DEV_WEBHOOK;
+        const webhookURL = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
         if (!webhookURL) {
-            console.log('[DynamicStaff] DEV webhook URL not configured, skipping webhook');
+            console.log('[DynamicStaff] Admin/Dev webhook URL not configured, skipping webhook');
             return;
         }
 
