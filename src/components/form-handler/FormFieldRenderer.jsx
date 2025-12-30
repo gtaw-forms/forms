@@ -9,7 +9,7 @@ import DecedentItemRenderer from './DecedentItemRenderer'; // Import the new com
 import AutopsyDiagramModal from '../Modals/AutopsyDiagramModal'; // Import AutopsyDiagramModal
 import CharacterSelector from '../Modals/CharacterSelector';
 
-const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore, toggleSavedReports, showNotification, handleDiagramUpload }) => {
+const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore, toggleSavedReports, showNotification, handleDiagramUpload, setShowMapModal, setMapTargetField, isUploadingMapImage = {} }) => {
   const { factionsData } = useData();
 
   const employeeOptions = useMemo(() => {
@@ -845,6 +845,9 @@ case "textarea":
               currentUtcTime={currentUtcTime}
               agencyDataStore={agencyDataStore}
               showNotification={showNotification}
+              setShowMapModal={setShowMapModal}
+              setMapTargetField={setMapTargetField}
+              isUploadingMapImage={isUploadingMapImage}
             />
           ))}
           <button onClick={addDecedent} style={{ background: "#10b981", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, cursor: "pointer", width: "100%" }}>
@@ -961,13 +964,45 @@ case "textarea":
       return (
         <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
           <label style={labelStyle}>{field.label}</label>
+          {formValues[`${field.name}_isFromMap`] && (
+            <div style={{ fontSize: '0.75rem', color: '#34d399', marginBottom: '0.4rem' }}>
+              USING MAP MARKER
+            </div>
+          )}
           <input
             type="text"
-            value={formValues[field.name] || ""}
-            onChange={e => handleChange(field.name, e.target.value)}
+            value={formValues[`${field.name}_display`] || formValues[field.name] || ""}
+            onChange={e => handleChange(field.name, e.target.value)} // Keep original field.name for BBCode generation
             placeholder={field.placeholder || ""}
             style={inputStyle}
           />
+          <div style={{ display: 'flex', gap: '5px', marginTop: '5px' }}>
+            {field.name === 'placeOfDeath' && !isUploadingMapImage[field.name] && !formValues[`${field.name}_isFromMap`] && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && (
+              <button
+                onClick={() => {
+                  setMapTargetField('placeOfDeath');
+                  setShowMapModal(true);
+                }}
+                className="btn btn-sm btn-info"
+                style={{ flex: 1 }}
+              >
+                <i className="fas fa-map-marked-alt"></i> Select from Map
+              </button>
+            )}
+            {field.name === 'placeOfDeath' && formValues[`${field.name}_isFromMap`] && (
+              <button
+                onClick={() => {
+                  handleChange('placeOfDeath_isFromMap', false);
+                  handleChange('placeOfDeath_display', '');
+                  handleChange('placeOfDeath', formValues.placeOfDeath_display || ''); // Set BBCode to current display value
+                }}
+                className="btn btn-sm btn-secondary"
+                style={{ flex: 1 }}
+              >
+                Use Manual Text
+              </button>
+            )}
+          </div>
         </div>
       );
   }
