@@ -5,9 +5,19 @@ import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 const UnifiedGtaCallback = () => {
   const [status, setStatus] = useState('processing');
   const [error, setError] = useState(null);
+  const [timeoutMessage, setTimeoutMessage] = useState(null); // New state for timeout message
   const location = useLocation();
   const navigate = useNavigate();
   const { processCallback } = useGtaWorldAuth();
+
+  useEffect(() => {
+    // Set a timeout for a message after a few seconds
+    const timer = setTimeout(() => {
+      setTimeoutMessage("The GTA World API is currently taking longer than usual to respond. This might be due to heavy load or network delays. Please wait...");
+    }, 7000); // Show message after 7 seconds
+
+    return () => clearTimeout(timer); // Clear timer if component unmounts or status changes
+  }, [status]); // Re-run effect if status changes
 
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
@@ -120,7 +130,10 @@ const UnifiedGtaCallback = () => {
             <span className="visually-hidden">Processing...</span>
           </div>
           <h4 className="mt-3">GTA World Authentication</h4>
-          <p className="text-muted">Processing authentication...</p>
+          <p className="text-muted">
+            Processing authentication...
+            {timeoutMessage && <><br /><small>{timeoutMessage}</small></>}
+          </p>
         </div>
       </div>
     );

@@ -101,7 +101,7 @@ export const useFormSaver = () => {
         }
 
         // Send to Discord
-        const discordWebhookUrl = import.meta.env.VITE_DEV_WEBHOOK;
+        const discordWebhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_FORMS || import.meta.env.VITE_DEV_WEBHOOK;
         if (discordWebhookUrl) {
             console.log('Attempting to send report saved webhook to Discord...');
             try {
