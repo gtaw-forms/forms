@@ -129,6 +129,16 @@ const formatToNorthAmericanDate = (isoDateTime) => {
       }
     }
 
+    // Custom handling for 'Coroner Report' / 'death-record' to map decedent location to placeOfDeath
+    if ((selectedForm?.name === 'Coroner Report' || selectedForm?.id === 'death-record') && !processedFormValues.placeOfDeath) {
+        if (Array.isArray(processedFormValues.decedents) && processedFormValues.decedents.length > 0) {
+            const firstDecedent = processedFormValues.decedents[0];
+            if (firstDecedent && firstDecedent.decedentLocation) {
+                processedFormValues.placeOfDeath = firstDecedent.decedentLocation;
+            }
+        }
+    }
+
     console.log("%c=== BBCODE & TITLE GENERATION STARTED ===", "font-weight:bold;color:#0066cc");
     console.log("Form:", selectedForm.name, `(${selectedForm.firebaseKey || selectedForm.id})`);
     console.log("Processed Form Values:", JSON.parse(JSON.stringify(processedFormValues)));
