@@ -103,12 +103,12 @@ export const useReportManagement = (
             Sentry.captureException(error, { extra: { context: 'logWebhook - Firebase (legacy)' } });
         }
 
-        // Send to Discord
-        const discordWebhookUrl = import.meta.env.VITE_DISCORD_REPORTS_WEBHOOK_URL;
-        if (discordWebhookUrl) {
-            console.log('Attempting to send legacy report saved webhook to Discord...');
-            try {
-                const discordPayload = {
+            // Send to Discord
+            const discordWebhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_FORMS || import.meta.env.VITE_DISCORD_REPORTS_WEBHOOK_URL;
+            if (discordWebhookUrl) {
+                console.log('Attempting to send legacy report saved webhook to Discord...');
+                try {
+                    const discordPayload = {
                     embeds: [
                         {
                             title: 'Legacy Report Saved',

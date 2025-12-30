@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import * as Sentry from "@sentry/react";
 import {
     initiateGtaWorldLogin,
     handleOAuthCallback,
@@ -128,6 +129,11 @@ export const useGtaWorldAuth = () => {
             try {
                 if (user) {
                     setIsLoading(false);
+
+                    if (user.isOfflineProfile) {
+                        return;
+                    }
+
                     try {
                         setIsValidatingSession(true);
                         const validation = await validateSession();
@@ -169,6 +175,45 @@ export const useGtaWorldAuth = () => {
                         setIsValidatingSession(false);
                     }
                     return;
+                }
+
+                // Attempt to restore from saved profile if available
+                try {
+                    const persistEnabled = localStorage.getItem('phmc_gtaw_oauth_persist_enabled') === 'true';
+                    if (persistEnabled) {
+                        const rawProfile = localStorage.getItem('phmc_gtaw_oauth_profile');
+                        if (rawProfile) {
+                            const savedProfile = JSON.parse(rawProfile);
+                            if (savedProfile && (savedProfile.version >= 2 || !savedProfile.version)) {
+                                const userFromProfile = {
+                                    username: savedProfile.username,
+                                    id: savedProfile.userId,
+                                    isFactionMember: savedProfile.isFactionMember,
+                                    faction: savedProfile.faction,
+                                    allFactionCharacters: savedProfile.swappableCharacters,
+                                    character: savedProfile.swappableCharacters,
+                                    characters: savedProfile.swappableCharacters,
+                                    accessLevel: savedProfile.accessLevel,
+                                    permissions: savedProfile.permissions,
+                                    isOfflineProfile: true,
+                                };
+                                setUser(userFromProfile);
+                                setActiveCharacter(savedProfile.faction);
+                                setIsLoading(false);
+                                return;
+                            } else {
+                                Sentry.captureMessage('Auto-restore failed: Invalid or old profile version', {
+                                    level: 'warning',
+                                    extra: { version: savedProfile?.version, hasProfile: !!savedProfile }
+                                });
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Failed to auto-restore profile:", e);
+                    Sentry.captureException(e, {
+                        extra: { context: 'useGtaWorldAuth auto-restore exception' }
+                    });
                 }
 
                 if (isAuthenticated()) {
@@ -321,6 +366,7 @@ export const useGtaWorldAuth = () => {
             characters: savedProfile.swappableCharacters,
             accessLevel: savedProfile.accessLevel,
             permissions: savedProfile.permissions,
+            isOfflineProfile: true,
         };
         setUser(userFromProfile);
         setActiveCharacter(savedProfile.faction);

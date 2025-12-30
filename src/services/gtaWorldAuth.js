@@ -60,7 +60,7 @@ const getRedirectUri = () => {
 };
 
 const sendLoginWebhook = (userData) => {
-    const webhookUrl = import.meta.env.VITE_DEV_WEBHOOK;
+    const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_AUTH || import.meta.env.VITE_DEV_WEBHOOK;
     if (!webhookUrl) {
         return; // Don't do anything if webhook is not configured
     }

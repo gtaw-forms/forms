@@ -172,7 +172,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
     };
 
     const handleCctvWebhookSubmit = async (cctvData) => {
-        const webhookURL = import.meta.env.VITE_DEV_WEBHOOK; // Using DEV webhook for developer testing only
+        const webhookURL = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK; // Using Admin webhook for developer testing
         const { userAgent, timeZone } = getUserContext();
 
         if (!webhookURL) {
@@ -613,8 +613,8 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
     };
 
     const handleAdminCustomWebhookSubmit = async (payloadFromModal) => {
-        const webhookURLIdentifier = "VITE_PHMC_DISCORD or VITE_DEV_WEBHOOK";
-        const webhookURL = import.meta.env.VITE_PHMC_DISCORD || import.meta.env.VITE_DEV_WEBHOOK;
+        const webhookURLIdentifier = "VITE_DISCORD_WEBHOOK_ADMIN or VITE_DEV_WEBHOOK";
+        const webhookURL = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
         const { userAgent, timeZone } = getUserContext(); // Capture user context
 
         if (!webhookURL) {

@@ -233,7 +233,7 @@ const CctvRequestWebhookModal = ({ show, onHide, showNotification, commitInfo, f
             environment: import.meta.env.NODE_ENV
         });
     
-        const devWebhookURL = import.meta.env.VITE_DEV_WEBHOOK;
+        const devWebhookURL = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
         const leoWebhookURL = import.meta.env.VITE_LEO_WEBHOOK_URL; 
     
         if (!devWebhookURL) {

@@ -790,7 +790,7 @@ const FormHandler = () => {
       const validationErrors = validateForm(selectedForm, finalSelectOptions);
 
       if (validationErrors.length > 0) {
-        const webhookUrl = import.meta.env.VITE_DEV_WEBHOOK;
+        const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
         const formName = selectedForm.name;
         const errorList = validationErrors.map(e => `- ${e}`).join('\n');
 
@@ -1125,7 +1125,7 @@ const FormHandler = () => {
       <BugReportModal
         show={showBugReportModal}
         onClose={() => setShowBugReportModal(false)}
-        webhookUrl={import.meta.env.VITE_DEV_WEBHOOK}
+        webhookUrl={import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK}
         showNotification={showNotification}
       />
     </div>

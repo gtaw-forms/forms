@@ -256,13 +256,14 @@ const OnboardingModal = ({
     };
 
     const sendOnboardingCompletionWebhook = async (preferences) => {
-        try {
-            const webhookURL = import.meta.env.VITE_DEV_WEBHOOK;
-            if (!webhookURL) {
-                console.warn('Dev webhook URL not configured for onboarding notifications.');
-                return;
-            }
+        // Use Admin webhook for onboarding notifications
+        const webhookURL = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
+        if (!webhookURL) {
+            console.warn('Admin/Dev webhook URL not configured for onboarding notifications.');
+            return;
+        }
 
+        try {
             const embed = {
                 title: "🎯 User Onboarding Completed",
                 color: 0x28a745, // Green color for success

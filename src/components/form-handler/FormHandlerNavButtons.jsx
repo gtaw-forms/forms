@@ -11,6 +11,7 @@ import FormRequestModal from '../Modals/FormRequestModal';
 
 import seasonalEvents from '../UI/SeasonalEvents';
 import BusinessCardModal from '../Modals/BusinessCardModal';
+import MapModal from '../Modals/MapModal';
 import { uploadDataUrlToImgBB } from '../../utils/imageUploadUtils';
 
 const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
@@ -28,6 +29,7 @@ const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
   const [showCctvModal, setShowCctvModal] = useState(false);
   const [showFormRequestModal, setShowFormRequestModal] = useState(false);
   const [showBusinessCardModal, setShowBusinessCardModal] = useState(false);
+  const [showMapModal, setShowMapModal] = useState(false);
   const [userPrefs, setUserPrefs] = useState(null);
   const [showCctvPopup, setShowCctvPopup] = useState(false);
 
@@ -165,6 +167,9 @@ const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
               <Dropdown.Item onClick={() => setShowBusinessCardModal(true)}>
                 <i className="fas fa-id-card"></i> Business Card
               </Dropdown.Item>
+              <Dropdown.Item onClick={() => setShowMapModal(true)}>
+                <i className="fas fa-map"></i> GTA Map (Experimental)
+              </Dropdown.Item>
               <Dropdown.Item onClick={() => setSeasonalEffectsEnabled(!seasonalEffectsEnabled)}>
                 <i className={`fas ${seasonalEffectsEnabled ? "fa-toggle-on" : "fa-toggle-off"}`}></i>
                 {seasonalEffectsEnabled ? "Effects ON" : "Effects OFF"}
@@ -246,6 +251,11 @@ const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
           handleImageUpload={uploadDataUrlToImgBB}
         />
       )}
+
+      <MapModal
+        show={showMapModal}
+        onHide={() => setShowMapModal(false)}
+      />
     </React.Fragment>
   );
 };
