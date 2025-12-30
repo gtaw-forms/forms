@@ -89,13 +89,18 @@ export const processGtaWorldAuth = onCall({
         });
 
         const tokenController = new AbortController();
-        const tokenTimeout = setTimeout(() => tokenController.abort(), 25000); // 25s timeout
+        const tokenTimeout = setTimeout(() => tokenController.abort(), 45000); // 45s timeout
 
         const tokenResponse = await fetch('https://ucp.gta.world/oauth/token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)' },
             body: tokenRequestBody,
             signal: tokenController.signal
+        }).catch(err => {
+            if (err.name === 'AbortError') {
+                throw new functions.https.HttpsError('deadline-exceeded', 'The request to GTA World timed out. Please try again later.');
+            }
+            throw err;
         });
         clearTimeout(tokenTimeout);
         logPerf('token_exchange_api');
@@ -118,11 +123,16 @@ export const processGtaWorldAuth = onCall({
         // 3. --- User Profile Fetch ---
         console.log('[UnifiedAuth] Token exchange successful, fetching user profile.');
         const userController = new AbortController();
-        const userTimeout = setTimeout(() => userController.abort(), 30000); // 30s timeout
+        const userTimeout = setTimeout(() => userController.abort(), 60000); // 60s timeout
 
         const userResponse = await fetch('https://ucp.gta.world/api/user', {
             headers: { 'Authorization': `Bearer ${tokenData.access_token}`, 'Accept': 'application/json', 'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)' },
             signal: userController.signal
+        }).catch(err => {
+            if (err.name === 'AbortError') {
+                throw new functions.https.HttpsError('deadline-exceeded', 'The request to GTA World for your user profile timed out. Please try again later.');
+            }
+            throw err;
         });
         clearTimeout(userTimeout);
         logPerf('user_profile_api');

@@ -21,10 +21,11 @@ export const getShuffledPhrases = (phrases) => {
 };
 
 export const sendWebhook = async (payload) => {
-    // Use process.env for secrets in Firebase Functions v2
-    const webhookURL = process.env.ADMIN_ACTION_WEBHOOK_URL;
+    // Priority: DISCORD_WEBHOOK_FUNCTIONS -> ADMIN_ACTION_WEBHOOK_URL
+    const webhookURL = process.env.DISCORD_WEBHOOK_FUNCTIONS || process.env.ADMIN_ACTION_WEBHOOK_URL;
+
     if (!webhookURL) {
-        console.error("FATAL: ADMIN_ACTION_WEBHOOK_URL secret is not set or not accessible. Webhook cannot be sent.");
+        console.error("FATAL: DISCORD_WEBHOOK_FUNCTIONS (or fallback ADMIN_ACTION_WEBHOOK_URL) secret is not set or not accessible. Webhook cannot be sent.");
         return false;
     }
 

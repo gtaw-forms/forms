@@ -6,7 +6,7 @@ import { sendWebhook } from '../utils/helpers.js';
 export const systemHealthMonitor = onSchedule({
     schedule: "every 30 minutes",
     timeZone: "UTC",
-    secrets: ["ADMIN_ACTION_WEBHOOK_URL"],
+    secrets: ["ADMIN_ACTION_WEBHOOK_URL", "DISCORD_WEBHOOK_FUNCTIONS"],
 }, async (event) => {
     console.log('[System Monitor] Starting health checks...');
     
@@ -31,7 +31,24 @@ export const systemHealthMonitor = onSchedule({
             console.log(`[System Monitor] Cloudflare Status: ${cfData.status.indicator} - ${cfData.status.description}`);
 
             // Find the most recent active incident (not resolved or postmortem)
-            const activeIncident = cfData.incidents && cfData.incidents.find(i => i.status !== 'resolved' && i.status !== 'postmortem');
+            const activeIncident = cfData.incidents && cfData.incidents.find(i => {
+                const isResolved = i.status === 'resolved' || i.status === 'postmortem';
+                if (isResolved && previousState.cloudflare?.activeIncidentId === i.id) {
+                    // This incident was the one we were tracking, and it's now resolved.
+                    // We need to clear our stored incident data.
+                    console.log(`[System Monitor] Detected resolved incident: ${i.id}. Clearing from state.`);
+                    updates['cloudflare'] = {
+                        ...updates['cloudflare'], // Keep any other updates
+                        activeIncidentId: null,
+                        lastUpdateId: null,
+                    };
+                }
+                // An incident is only considered "active" for our purposes if it's not resolved AND it has been updated in the last 24 hours.
+                // This prevents very old, stale incidents from being picked up.
+                const lastUpdated = new Date(i.updated_at || i.created_at);
+                const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+                return !isResolved && lastUpdated > twentyFourHoursAgo;
+            });
             
             let alertTriggered = false;
 

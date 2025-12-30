@@ -146,7 +146,7 @@ const getCurrentFormType = () => {
 const processDiscordErrorQueue = async () => {
     if (isProcessingDiscordQueue || discordErrorWebhookQueue.length === 0) return;
 
-    const webhookURL = import.meta.env.VITE_ERROR_DISCORD_WEBHOOK_URL || import.meta.env.VITE_DEV_WEBHOOK;
+    const webhookURL = import.meta.env.VITE_DISCORD_WEBHOOK_ERRORS || import.meta.env.VITE_ERROR_DISCORD_WEBHOOK_URL || import.meta.env.VITE_DEV_WEBHOOK;
     if (!webhookURL) {
         console.error("Discord Error Webhook: URL is not configured. Cannot process queue.");
         discordErrorWebhookQueue.length = 0; // Clear queue if no URL

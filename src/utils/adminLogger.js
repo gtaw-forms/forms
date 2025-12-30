@@ -13,8 +13,8 @@ export const getUserContext = () => {
     return { userAgent, timeZone };
 };
 
-export const logAdminAction = async (adminEmail, action, details, categoryName = null, userAgent = "N/A", userTimezone = "N/A", oauthUsername = null, characterData = null) => {
-    const webhookURL = import.meta.env.VITE_ADMIN_ACTION_DISCORD_WEBHOOK_URL || import.meta.env.VITE_DEV_WEBHOOK;
+export const logAdminAction = async (adminEmail, action, details, context = null, userAgent = null, timeZone = null, gtaAuthUsername = null, characterData = null) => {
+    const webhookURL = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_ADMIN_ACTION_DISCORD_WEBHOOK_URL || import.meta.env.VITE_DEV_WEBHOOK;
     if (!webhookURL) {
         console.warn("Admin action webhook URL not configured. Skipping log.");
         captureMessage("Admin Action Webhook URL not configured", "warning");
@@ -22,11 +22,11 @@ export const logAdminAction = async (adminEmail, action, details, categoryName =
     }
 
     // Use OAuth username if available, otherwise fall back to email
-    const userIdentifier = oauthUsername ? `${oauthUsername} (${adminEmail})` : (adminEmail || "Unknown");
+    const userIdentifier = gtaAuthUsername ? `${gtaAuthUsername} (${adminEmail})` : (adminEmail || "Unknown");
 
     // Simplified description for a cleaner look
-    let description = categoryName
-        ? `**Action:** ${action || "Unknown Action"}\n**Admin:** ${userIdentifier}\n**Category:** ${categoryName}`
+    let description = context
+        ? `**Action:** ${action || "Unknown Action"}\n**Admin:** ${userIdentifier}\n**Category:** ${context}`
         : `**Action:** ${action || "Unknown Action"}\n**Admin:** ${userIdentifier}`;
 
     // Add character information if available
@@ -78,7 +78,7 @@ export const logAdminAction = async (adminEmail, action, details, categoryName =
         description: description,
         fields: fields,
         timestamp: new Date().toISOString(),
-        footer: { text: `PHMC Tools | ${userTimezone}` }
+        footer: { text: `PHMC Tools | ${timeZone}` }
     };
 
     try {
