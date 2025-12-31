@@ -1,52 +1,38 @@
 import domtoimage from 'dom-to-image';
+import { functions } from '../firebase';
+import { httpsCallable } from 'firebase/functions';
 
 export const captureMapScreenshotAndUpload = async (mapNode) => {
     if (!mapNode) return { screenshotUrl: null, error: "Map node not found." };
     try {
-        const blob = await domtoimage.toBlob(mapNode, {
+        // Convert map node to base64
+        const dataUrl = await domtoimage.toPng(mapNode, {
             width: mapNode.offsetWidth,
             height: mapNode.offsetHeight,
-            filter: (node) => true // Include all nodes for now
+            filter: (node) => true
         });
 
-        const imgurClientId = import.meta.env.VITE_IMGUR_CLIENT_ID;
-        const imgurAccessToken = import.meta.env.VITE_IMGUR_ACCESS_TOKEN;
+        // Split dataUrl to get base64 part
+        const base64Image = dataUrl.split(',')[1];
 
-        if (!imgurClientId && !imgurAccessToken) {
-            console.error("DEBUG: Missing Imgur credentials");
-            return { screenshotUrl: null, error: "Missing Imgur credentials" };
-        }
-
-        const formData = new FormData();
-        formData.append('image', blob);
-        formData.append('type', 'file');
-        formData.append('title', `Map Screenshot ${Date.now()}`);
-
-        const headers = {};
-        if (imgurAccessToken) {
-            headers['Authorization'] = `Bearer ${imgurAccessToken}`;
-        } else {
-            headers['Authorization'] = `Client-ID ${imgurClientId}`;
-        }
-
-        const response = await fetch('https://api.imgur.com/3/image', {
-            method: 'POST',
-            headers: headers,
-            body: formData,
+        // Call the Firebase Function proxy
+        const uploadProxy = httpsCallable(functions, 'uploadImageProxy');
+        const result = await uploadProxy({
+            image: base64Image,
+            service: 'imgur',
+            title: `Map Screenshot ${Date.now()}`
         });
 
-        console.log("DEBUG: Imgur API Response Status:", response.status, response.statusText);
-
-        const data = await response.json();
+        const data = result.data;
         if (data.success) {
-            console.log("DEBUG: Screenshot uploaded to Imgur:", data.data.link);
-            return { screenshotUrl: data.data.link, error: null };
+            console.log("DEBUG: Screenshot uploaded via proxy:", data.url);
+            return { screenshotUrl: data.url, error: null };
         } else {
-            console.error("DEBUG: Imgur upload failed:", data.data.error);
-            return { screenshotUrl: null, error: `Imgur upload failed: ${data.data.error.message || data.data.error}` };
+            console.error("DEBUG: Proxy upload failed:", data.error);
+            return { screenshotUrl: null, error: `Upload failed: ${data.error}` };
         }
     } catch (error) {
-        console.error("DEBUG: Screenshot capture failed:", error);
-        return { screenshotUrl: null, error: `Screenshot capture failed: ${error.message}` };
+        console.error("DEBUG: Screenshot capture/upload failed:", error);
+        return { screenshotUrl: null, error: `Screenshot process failed: ${error.message}` };
     }
 };

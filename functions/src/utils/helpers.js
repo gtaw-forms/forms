@@ -1,4 +1,5 @@
 import fetch from 'node-fetch';
+import FormData from 'form-data';
 import { db } from './firebase.js';
 
 // Helper to safely check if secrets exist during deployment
@@ -111,5 +112,38 @@ export const scheduleDeletion = async (request) => {
             console.error(`Error deleting request ${requestId}:`, error);
             // Consider logging this error to Sentry
         }
+    }
+};
+
+export const sendWebhookWithFile = async (content, filename, messagePayload = {}) => {
+    const webhookURL = process.env.DISCORD_WEBHOOK_FUNCTIONS || process.env.ADMIN_ACTION_WEBHOOK_URL;
+    if (!webhookURL) return false;
+
+    try {
+        const form = new FormData();
+        // Add the file
+        form.append('file', Buffer.from(content), { filename });
+        
+        // Add optional message content/embeds
+        if (Object.keys(messagePayload).length > 0) {
+            form.append('payload_json', JSON.stringify(messagePayload));
+        }
+
+        const response = await fetch(webhookURL, {
+            method: 'POST',
+            body: form,
+            headers: form.getHeaders(),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`Error sending webhook with file. Status: ${response.status}. Response: ${errorText}`);
+            return false;
+        }
+
+        return true;
+    } catch (error) {
+        console.error("Error sending webhook with file:", error);
+        return false;
     }
 };
