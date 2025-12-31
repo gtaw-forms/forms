@@ -20,7 +20,6 @@ import LsccManager from './LsccManager';
 import FormsManager from './FormsManager';
 import LegacyReportMigrator from './LegacyReportMigrator';
 import MetricsDashboard from './MetricsDashboard';
-import UntrackedLocationManager from './UntrackedLocationManager';
 
 const AdminDashboard = ({
 
@@ -83,8 +82,24 @@ const AdminDashboard = ({
     const [isAppendingLegacyFlag, setIsAppendingLegacyFlag] = useState(false);
     const [isSyncingCounts, setIsSyncingCounts] = useState(false);
     const [isTriggeringReport, setIsTriggeringReport] = useState(false);
+    const [isScanningLocations, setIsScanningLocations] = useState(false);
     const [showMigrator, setShowMigrator] = useState(false);
     const navigate = useNavigate();
+
+    const handleScanLocations = async () => {
+        setIsScanningLocations(true);
+        showInAppNotification && showInAppNotification("Scanning reports for unknown locations...", "info");
+        try {
+            const functions = getFunctions();
+            const scanFunc = httpsCallable(functions, 'scanUntrackedLocations');
+            const result = await scanFunc();
+            showInAppNotification && showInAppNotification(result.data.message, result.data.success ? "success" : "error");
+        } catch (error) {
+            showInAppNotification && showInAppNotification("Error scanning locations.", "error");
+        } finally {
+            setIsScanningLocations(false);
+        }
+    };
     
     // Use the unified GTA World auth hook
     const { 
@@ -438,7 +453,6 @@ const AdminDashboard = ({
                         <button className={`nav-link ${selectedSection === 'factions' ? 'active' : ''}`} onClick={() => setSelectedSection('factions')}><i className="fas fa-users me-2"></i>Faction Data</button>
                         <button className={`nav-link ${selectedSection === 'dev' ? 'active' : ''}`} onClick={() => setSelectedSection('dev')}><i className="fas fa-code me-2"></i>Developer</button>
                         <button className={`nav-link ${selectedSection === 'database' ? 'active' : ''}`} onClick={() => setSelectedSection('database')}><i className="fas fa-database me-2"></i>Database</button>
-                        <button className={`nav-link ${selectedSection === 'untrackedLocations' ? 'active' : ''}`} onClick={() => setSelectedSection('untrackedLocations')}><i className="fas fa-map-marker-alt me-2"></i>Untracked Locations</button>
                         {hasRankPermissionsAccess && (
                             <button className={`nav-link ${selectedSection === 'rankPermissions' ? 'active' : ''}`} onClick={() => setSelectedSection('rankPermissions')}><i className="fas fa-user-shield me-2"></i>Rank Permissions</button>
                         )}
@@ -1247,6 +1261,16 @@ const AdminDashboard = ({
                                             <i className="fas fa-magic me-2"></i>
                                             Migrate Legacy Report (Experimental)
                                         </Button>
+                                        <Button
+                                            variant="outline-warning"
+                                            size="sm"
+                                            onClick={handleScanLocations}
+                                            disabled={isScanningLocations || !hasAdminAccess}
+                                            title="Scan reports for unknown locations and log them for mapping."
+                                        >
+                                            {isScanningLocations ? <Spinner as="span" animation="border" size="sm" /> : <i className="fas fa-search-location me-2"></i>}
+                                            Scan for Untracked
+                                        </Button>
                                     </div>
 
                                     <h6 className="mt-4">Coroner Report Manual Triggers (Webhook Test)</h6>
@@ -1395,29 +1419,6 @@ const AdminDashboard = ({
                                     <div className="alert alert-info">
                                         <i className="fas fa-info-circle me-2"></i>
                                         Please log in with your GTA World account to access database management features.
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                    {selectedSection === 'untrackedLocations' && (
-                        <div className="card">
-                            <div className="card-body">
-                                {isGtaAuthenticated || currentUser ? (
-                                    hasDatabaseAccess ? (
-                                        <UntrackedLocationManager showNotification={showInAppNotification} />
-                                    ) : (
-                                        <div className="alert alert-warning">
-                                            <i className="fas fa-exclamation-triangle me-2"></i>
-                                            <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have database access permissions.
-                                            <br />
-                                            <small>Required: Script Rank 12 or higher</small>
-                                        </div>
-                                    )
-                                ) : (
-                                    <div className="alert alert-info">
-                                        <i className="fas fa-info-circle me-2"></i>
-                                        Please log in with your GTA World account to access location management features.
                                     </div>
                                 )}
                             </div>

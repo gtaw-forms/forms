@@ -10,3 +10,4 @@ export * from './src/auth/index.js';
 export * from './src/maintenance/index.js';
 export * from './src/maintenance/monitor.js';
 export * from './src/reports/index.js';
+export * from './src/utils/media.js';

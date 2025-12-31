@@ -4,7 +4,7 @@ import { sendWebhook } from './helpers.js';
 // In-memory cache to prevent spam during a single function execution (e.g., a loop)
 const reportedThisExecution = new Set();
 
-export async function processUntrackedLocation(place, street = null, area = null, reportKey = null) {
+export async function processUntrackedLocation(place, street = null, area = null, reportKey = null, source = "Unknown", metadata = {}) {
     if (!place || typeof place !== 'string') {
         return { success: false, message: "Missing or invalid 'place' data." };
     }
@@ -26,69 +26,29 @@ export async function processUntrackedLocation(place, street = null, area = null
     try {
         const snapshot = await logRef.once('value');
         const oneHourAgo = Date.now() - (60 * 60 * 1000);
+        const isReportSource = source === "REPORT";
 
-        if (snapshot.exists() && snapshot.val().timestamp > oneHourAgo) {
+        // Only skip if it's NOT a report source and was reported recently
+        // We always want to update/overwrite if it's a discovery from a scan to ensure metadata is fresh
+        if (!isReportSource && snapshot.exists() && snapshot.val().timestamp > oneHourAgo) {
             console.log(`[Untracked Location] Skipping report for '${normalizedPlace}' as it was reported recently.`);
-            reportedThisExecution.add(lookupKey); // Add to cache anyway
+            reportedThisExecution.add(lookupKey); 
             return { success: true, message: "Already reported recently." };
         }
 
-                // Add to memory cache immediately before sending webhook to prevent race conditions
-
-                reportedThisExecution.add(lookupKey);
-
-        
-
-                /* Webhook temporarily disabled for manual scan/purge cleanup
-
-                const embed = {
-
-                    title: "🗺️ New Untracked Location Detected",
-
-                    description: `A location from a coroner report could not be confidently matched. Please review and consider adding it to the Location Manager in the Admin Dashboard.`,
-
-                    color: 0x3498DB, // Blue
-
-                    fields: [
-
-                        { name: "Original Input", value: `\n${normalizedPlace}\n`, inline: false },
-
-                        { name: "Suggested Street", value: street || 'N/A', inline: true },
-
-                        { name: "Suggested Area", value: area || 'N/A', inline: true },
-
-                    ],
-
-                    footer: { text: "PHMC Tools - Automated Location Discovery" },
-
-                    timestamp: new Date().toISOString()
-
-                };
-
-        
-
-                if (reportKey) {
-
-                    embed.fields.push({ name: "Source Report Key", value: reportKey, inline: false });
-
-                }
-
-        
-
-                await sendWebhook({ embeds: [embed] });
-
-                */
-
-        
-
-                // Log that we've reported this place to prevent spam.
-
-        
-        await logRef.set({
+        const dataToSet = {
             place: normalizedPlace,
             timestamp: Date.now(),
-            lastReportKey: reportKey || 'N/A'
-        });
+            lastReportKey: reportKey || 'N/A',
+            source: source,
+            ...metadata
+        };
+
+        if (street) dataToSet.suggestedStreet = street;
+        if (area) dataToSet.suggestedArea = area;
+        
+        await logRef.set(dataToSet);
+        reportedThisExecution.add(lookupKey);
 
         return { success: true, message: "Reported successfully." };
     } catch (error) {

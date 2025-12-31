@@ -3,42 +3,78 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as functions from "firebase-functions";
 import { getFunctions } from 'firebase-admin/functions';
 import { db } from '../utils/firebase.js';
-import { sendWebhook } from '../utils/helpers.js';
+import { sendWebhook, sendWebhookWithFile } from '../utils/helpers.js';
 import { processUntrackedLocation } from '../utils/locationReporting.js';
 
 async function getProcessedLocations() {
     try {
-        const snapshot = await db.ref('locationData').once('value');
-        const locations = snapshot.val();
+        // Fetch both legacy locationData and new verified_locations
+        const [locSnapshot, verifiedSnapshot] = await Promise.all([
+            db.ref('locationData').once('value'),
+            db.ref('verified_locations').once('value')
+        ]);
+        
+        const locations = locSnapshot.val();
+        const verified = verifiedSnapshot.val();
         
         const streetToAreaMap = new Map();
         const allAreas = new Set();
         const allStreets = new Set();
 
-        if (!locations) {
-            console.warn("[Location Match] No locationData found in database. Using empty defaults.");
+        if (!locations && !verified) {
+            console.warn("[Location Match] No location data found in database. Using empty defaults.");
             return { streetToAreaMap, allAreas, allStreets };
         }
 
-        // Renamed blaine_county to los_santos_county for unity
-        const regions = [...(locations.los_santos_city || []), ...(locations.los_santos_county || [])];
-        
-        regions.forEach(region => {
-            const areaLower = region.area.toLowerCase();
-            allAreas.add(areaLower);
-            region.streets.forEach(street => {
-                const streetLower = street.toLowerCase();
-                allStreets.add(streetLower);
-                streetToAreaMap.set(streetLower, areaLower);
+        // 1. Process legacy locationData (provides initial Area mapping)
+        if (locations) {
+            const regions = [...(locations.los_santos_city || []), ...(locations.los_santos_county || [])];
+            regions.forEach(region => {
+                const areaLower = region.area.toLowerCase();
+                allAreas.add(areaLower);
+                region.streets.forEach(street => {
+                    const streetLower = street.toLowerCase();
+                    allStreets.add(streetLower);
+                    streetToAreaMap.set(streetLower, areaLower);
+                });
             });
-        });
 
-        (locations.major_highways || []).forEach(highway => {
-            const highwayLower = highway.toLowerCase();
-            allStreets.add(highwayLower);
-            streetToAreaMap.set(highwayLower, 'highway');
-        });
-        allAreas.add('highway');
+            (locations.major_highways || []).forEach(highway => {
+                const highwayLower = highway.toLowerCase();
+                allStreets.add(highwayLower);
+                streetToAreaMap.set(highwayLower, 'highway');
+            });
+            allAreas.add('highway');
+        }
+
+        // 2. Process verified_locations (PRECDENCE: Overrides legacy data with high-confidence mapped data)
+        if (verified) {
+            Object.values(verified).forEach(loc => {
+                if (!loc.name) return;
+                const nameLower = loc.name.toLowerCase();
+                
+                // Add to candidate set (or ensure it's there)
+                allStreets.add(nameLower);
+
+                // If this is a verified location, it might have an explicit area or type
+                if (loc.area) {
+                    const areaLower = loc.area.toLowerCase();
+                    allAreas.add(areaLower);
+                    streetToAreaMap.set(nameLower, areaLower);
+                } else {
+                    // For verified locations without an explicit area, we assign a better default than legacy if unknown
+                    // or keep the legacy mapping if it exists and hasn't been overridden.
+                    if (!streetToAreaMap.has(nameLower)) {
+                        if (loc.type === 'Building' || loc.type === 'Hospital') {
+                            streetToAreaMap.set(nameLower, loc.type);
+                            allAreas.add(loc.type.toLowerCase());
+                        } else {
+                            streetToAreaMap.set(nameLower, 'Verified Street');
+                        }
+                    }
+                }
+            });
+        }
 
         return { streetToAreaMap, allAreas, allStreets };
     } catch (error) {
@@ -47,44 +83,122 @@ async function getProcessedLocations() {
     }
 }
 
-async function matchLocation(place, processedLocations, reportKey = null) {
+async function matchLocation(place, processedLocations, reportKey = null, skipReport = false) {
     if (!place || typeof place !== 'string') {
-        return { area: 'Unknown', street: null, confidence: 0 };
+        return { area: 'Unknown', street: null, confidence: 0, level: "VERY LOW", matchedName: "N/A" };
     }
 
     const { streetToAreaMap, allAreas, allStreets } = processedLocations;
-    const cleanedPlace = place.toLowerCase().trim();
+    
+    // Abbreviation expansion mapping
+    const abbrevMap = {
+        'st': 'street',
+        'ave': 'avenue',
+        'blvd': 'boulevard',
+        'rd': 'road',
+        'dr': 'drive',
+        'ln': 'lane',
+        'pl': 'place',
+        'pkwy': 'parkway',
+        'ct': 'court',
+        'cir': 'circle',
+        'hwy': 'highway'
+    };
+
+    // Normalization helper
+    const normalize = (str) => {
+        let normalized = str.toLowerCase()
+            .replace(/\s*\(.*?\)\s*/g, ' ') 
+            .replace(/\s*zone\s*\d+\s*/g, ' ') 
+            .replace(/[^a-z0-9\s]/g, ' ') 
+            .replace(/\s+/g, ' ') 
+            .trim();
+        
+        // Expand abbreviations
+        return normalized.split(' ').map(word => abbrevMap[word] || word).join(' ');
+    };
+
+    const cleanedPlace = normalize(place);
+    if (!cleanedPlace) return { area: 'Unknown', street: null, confidence: 0, level: "VERY LOW", matchedName: "N/A" };
+
+    // Common suffixes to ignore for "loose" matching
+    const suffixes = ['avenue', 'street', 'boulevard', 'road', 'way', 'drive', 'lane', 'place', 'parkway', 'court', 'circle', 'highway'];
+    const getSignificantName = (name) => {
+        let parts = normalize(name).split(' ');
+        if (parts.length > 1 && suffixes.includes(parts[parts.length - 1])) {
+            parts.pop();
+        }
+        return parts.join(' ');
+    };
+
+    // Exact match check
+    for (const street of allStreets) {
+        if (normalize(street) === cleanedPlace) {
+            return { area: streetToAreaMap.get(street), street: street, confidence: 100, level: "VERY HIGH", matchedName: street };
+        }
+    }
+
+    // Intersection detection
+    const intersectionSeps = [' and ', ' & ', ' at ', ' / '];
+    let isIntersection = false;
+    let parts = [cleanedPlace];
+    
+    for (const sep of intersectionSeps) {
+        if (place.toLowerCase().includes(sep)) {
+            parts = place.toLowerCase().split(sep).map(p => normalize(p));
+            isIntersection = true;
+            break;
+        }
+    }
+
     const candidates = [];
 
-    allStreets.forEach(street => {
-        if (cleanedPlace.includes(street)) {
-            candidates.push({ type: 'street', name: street, area: streetToAreaMap.get(street) });
-        }
-    });
-    allAreas.forEach(area => {
-        if (cleanedPlace.includes(area)) {
-            candidates.push({ type: 'area', name: area, area: area });
-        }
+    // Match logic for each part (or the whole string if not an intersection)
+    parts.forEach(part => {
+        allStreets.forEach(street => {
+            const normStreet = normalize(street);
+            const sigStreet = getSignificantName(street);
+            if (!normStreet || !sigStreet) return;
+
+            if (part === normStreet || part === sigStreet) {
+                candidates.push({ type: 'street', name: street, area: streetToAreaMap.get(street), matchType: 'full' });
+            } else if (part.includes(normStreet) || part.includes(sigStreet)) {
+                candidates.push({ type: 'street', name: street, area: streetToAreaMap.get(street), matchType: 'full' });
+            } else if (part.length >= 4 && (normStreet.includes(part) || sigStreet.includes(part))) {
+                candidates.push({ type: 'street', name: street, area: streetToAreaMap.get(street), matchType: 'partial' });
+            }
+        });
     });
 
     if (candidates.length === 0) {
-        console.log(`[Location Match] No candidates found for '${place}'.`);
-        await processUntrackedLocation(place, null, null, reportKey);
-        return { area: place, street: null, confidence: 0 };
+        // Area check fallback
+        allAreas.forEach(area => {
+            const normArea = normalize(area);
+            if (normArea && cleanedPlace.includes(normArea)) {
+                candidates.push({ type: 'area', name: area, area: area });
+            }
+        });
     }
 
+    if (candidates.length === 0) {
+        if (!skipReport) await processUntrackedLocation(place, null, null, reportKey, "REPORT", { confidenceLevel: "VERY LOW", confidenceScore: 0 });
+        return { area: place, street: null, confidence: 0, level: "VERY LOW", matchedName: "N/A" };
+    }
+
+    // Scoring
     let bestCandidate = null;
     let highestScore = -1;
+    const uniqueMatches = new Set(candidates.map(c => c.name));
 
     candidates.forEach(candidate => {
         let score = 0;
         if (candidate.type === 'street') {
-            score = 50 + candidate.name.length;
-            if (cleanedPlace.includes(candidate.area)) {
-                score += 40;
-            }
+            score = (candidate.matchType === 'full' ? 65 : 45) + candidate.name.length;
+            if (candidate.area && cleanedPlace.includes(normalize(candidate.area))) score += 30;
+            // Boost for intersection discovery
+            if (isIntersection && uniqueMatches.size > 1) score += 20;
         } else {
-            score = 40 + candidate.name.length;
+            score = 45 + candidate.name.length;
         }
 
         if (score > highestScore) {
@@ -94,20 +208,28 @@ async function matchLocation(place, processedLocations, reportKey = null) {
     });
 
     const confidence = Math.min(Math.round(highestScore), 100);
+    let level = "VERY LOW";
+    if (confidence > 85) level = "VERY HIGH";
+    else if (confidence > 65) level = "HIGH";
+    else if (confidence > 45) level = "MEDIUM";
+    else if (confidence > 25) level = "LOW";
 
-    if (bestCandidate && confidence > 40) { // Confidence threshold
-        const result = {
+    const matchedNameOutput = isIntersection ? Array.from(uniqueMatches).join(' & ') : (bestCandidate?.name || "N/A");
+
+    if (bestCandidate && confidence > 45) {
+        return {
             area: bestCandidate.area,
-            street: bestCandidate.type === 'street' ? bestCandidate.name : null,
-            confidence: confidence
+            street: matchedNameOutput,
+            confidence: confidence,
+            level: level,
+            matchedName: matchedNameOutput
         };
-        console.log(`[Location Match] For '${place}', best match is Area: '${result.area}' (Street: ${result.street || 'N/A'}) with score ${highestScore}.`);
-        return result;
     }
 
-    // Reported if low confidence
-    await processUntrackedLocation(place, bestCandidate?.type === 'street' ? bestCandidate.name : null, bestCandidate?.area, reportKey);
-    return { area: place, street: null, confidence: 0 };
+    if (!skipReport) {
+        await processUntrackedLocation(place, null, bestCandidate?.area, reportKey, "REPORT", { confidenceLevel: level, confidenceScore: confidence });
+    }
+    return { area: place, street: null, confidence: confidence, level: level, matchedName: matchedNameOutput };
 }
 
 
@@ -511,7 +633,8 @@ export const triggerCoronerReport = onCall({
 });
 
 /**
- * Scans reports from the last 30 days to identify untracked locations.
+ * Scans reports from the last 60 days to identify untracked locations.
+ * Results are sent via Webhook as a .txt file.
  */
 export const scanUntrackedLocations = onCall({
     secrets: ["ADMIN_ACTION_WEBHOOK_URL", "DISCORD_WEBHOOK_FUNCTIONS"],
@@ -522,9 +645,80 @@ export const scanUntrackedLocations = onCall({
     console.log('[Scan Untracked] Starting manual scan of reports from the last 60 days...');
 
     try {
-        // aggregateCoronerStats internally calls matchLocation -> processUntrackedLocation
+        // 1. Run the scan (updates untracked_locations_log in DB with new findings)
         await aggregateCoronerStats(SixtyDaysAgo, now);
-        return { success: true, message: "Scan complete. Any new locations found have been added to the list." };
+
+        // 2. Fetch the updated results
+        const logSnapshot = await db.ref('untracked_locations_log').once('value');
+        const logs = logSnapshot.val() || {};
+        
+        // 3. Filter out things that are now tracked (Cleanup Step)
+        const processedLocations = await getProcessedLocations();
+        const trulyUntracked = [];
+        const updates = {};
+
+        for (const [key, entry] of Object.entries(logs)) {
+            // Use matchLocation with skipReport=true to check if we now know about this place
+            const matched = await matchLocation(entry.place, processedLocations, null, true);
+            
+            // CLEANUP LOGIC: If the system can now match this with at least MEDIUM confidence (> 45),
+            // it is no longer "untracked" and should be purged from the log.
+            if (matched.confidence > 45) {
+                updates[`untracked_locations_log/${key}`] = null;
+            } else {
+                // REPORT FILTER: Only include discoveries from actual report scans in the .txt file
+                if (entry.source === 'REPORT' || (entry.lastReportKey && entry.lastReportKey !== 'N/A')) {
+                    trulyUntracked.push({ ...entry, matchAnalysis: matched });
+                }
+            }
+        }
+
+        // Apply cleanup updates to Firebase
+        if (Object.keys(updates).length > 0) {
+            console.log(`[Scan Untracked] Purged ${Object.keys(updates).length} matched locations from untracked log.`);
+            await db.ref().update(updates);
+        }
+
+        if (trulyUntracked.length === 0) {
+            return { success: true, message: "Scan complete. All discovered locations are already mapped!" };
+        }
+
+        const sortedEntries = trulyUntracked.sort((a, b) => b.timestamp - a.timestamp);
+
+        // 4. Format into a text file
+        let reportText = `PHMC UNTRACKED LOCATIONS REPORT\n`;
+        reportText += `Generated: ${new Date().toISOString()}\n`;
+        reportText += `Total Locations Requiring Mapping: ${sortedEntries.length}\n`;
+        reportText += `(Note: Results with > 45% confidence are auto-accepted and were purged from this log)\n`;
+        reportText += `------------------------------------------\n\n`;
+
+        sortedEntries.forEach(entry => {
+            const analysis = entry.matchAnalysis || {};
+            const confidenceStr = analysis.level ? `${analysis.level} (${analysis.confidence || 0}%)` : 'UNKNOWN (0%)';
+
+            reportText += `PLACE: ${entry.place}\n`;
+            reportText += `NEAREST: ${entry.nearestStreet || analysis.matchedName || 'N/A'}\n`;
+            reportText += `CONFIDENCE: ${confidenceStr}\n`;
+            reportText += `DATABASE SEARCH: ${entry.place} - MATCH RATING: ${analysis.confidence || 0}% (FOUND: ${analysis.matchedName || "None"})\n`;
+            reportText += `TYPE: REPORT\n`;
+            reportText += `REPORT ID: ${entry.lastReportKey || 'N/A'}\n`;
+            reportText += `------------------------------------------\n`;
+        });
+
+        // 5. Send Webhook with File
+        const webhookPayload = {
+            embeds: [{
+                title: "🗺️ Untracked Locations Scan Results",
+                description: `Scan of the last 60 days complete. Found **${sortedEntries.length}** locations that truly require mapping.`,
+                color: 0xFFAA00,
+                footer: { text: "PHMC Tools - Automated Discovery & Cleanup" }
+            }]
+        };
+
+        const fileName = `untracked_locations_${new Date().toISOString().split('T')[0]}.txt`;
+        await sendWebhookWithFile(reportText, fileName, webhookPayload);
+
+        return { success: true, message: `Scan complete. Found ${sortedEntries.length} truly untracked locations. Results sent to Discord.` };
     } catch (error) {
         console.error('[Scan Untracked] Error:', error);
         return { success: false, message: error.message };

@@ -1,70 +1,62 @@
 // src/utils/imageUploadUtils.js
 import * as Sentry from "@sentry/react";
+import { functions } from '../firebase';
+import { httpsCallable } from 'firebase/functions';
 
 export const uploadImageToImgBB = async (file) => {
-  const imgbbApiKey = import.meta.env.VITE_IMGBB_API_KEY;
-  if (!imgbbApiKey) {
-    throw new Error('ImgBB API Key is not configured.');
-  }
-
   try {
-    const formData = new FormData();
     const base64Image = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result.split(',')[1]);
         reader.onerror = reject;
         reader.readAsDataURL(file);
     });
-    formData.append('image', base64Image);
 
-    const response = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbApiKey}`, {
-      method: 'POST',
-      body: formData,
+    const uploadProxy = httpsCallable(functions, 'uploadImageProxy');
+    const result = await uploadProxy({
+        image: base64Image,
+        service: 'imgbb'
     });
 
-    const data = await response.json();
+    const data = result.data;
 
     if (data.success) {
-      return data.data.url;
-    } else {
-      console.error('ImgBB upload failed:', data.error.message);
-      throw new Error(`ImgBB upload failed: ${data.error.message}`);
+      return data.url;
+    }
+    else {
+      console.error('ImgBB proxy upload failed:', data.error);
+      throw new Error(`ImgBB upload failed: ${data.error}`);
     }
   } catch (error) {
     console.error('Upload failed:', error);
-    Sentry.captureException(error, { extra: { context: 'imageUploadUtils' } });
+    Sentry.captureException(error, { extra: { context: 'imageUploadUtils proxy' } });
     throw error;
   }
 };
 
 
 export const uploadDataUrlToImgBB = async (dataUrl) => {
-  const imgbbApiKey = import.meta.env.VITE_IMGBB_API_KEY;
-  if (!imgbbApiKey) {
-    throw new Error('ImgBB API Key is not configured.');
-  }
-
   try {
-    const formData = new FormData();
     const base64Image = dataUrl.split(',')[1];
-    formData.append('image', base64Image);
 
-    const response = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbApiKey}`, {
-      method: 'POST',
-      body: formData,
+    const uploadProxy = httpsCallable(functions, 'uploadImageProxy');
+    const result = await uploadProxy({
+        image: base64Image,
+        service: 'imgbb'
     });
 
-    const data = await response.json();
+    const data = result.data;
 
     if (data.success) {
-      return data.data.url;
-    } else {
-      console.error('ImgBB upload failed:', data.error.message);
-      throw new Error(`ImgBB upload failed: ${data.error.message}`);
+      return data.url;
+    }
+    else {
+      console.error('ImgBB proxy upload failed:', data.error);
+      throw new Error(`ImgBB upload failed: ${data.error}`);
     }
   } catch (error) {
     console.error('Upload failed:', error);
-    Sentry.captureException(error, { extra: { context: 'imageUploadUtils dataUrl' } });
+    Sentry.captureException(error, { extra: { context: 'imageUploadUtils dataUrl proxy' } });
     throw error;
   }
 };
