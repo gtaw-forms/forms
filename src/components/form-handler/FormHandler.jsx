@@ -720,6 +720,22 @@ const FormHandler = () => {
     localStorage.setItem("formSearchTerm", searchTerm);
   }, [searchTerm]);
 
+  // Effect to auto-clear attached reports for Coroner Email after 30 minutes of inactivity
+  useEffect(() => {
+    const isCoronerEmail = selectedForm?.id === 'coroner_email' || selectedForm?.name === 'Coroner Email';
+    if (isCoronerEmail && formValues.attachedReports) {
+      const timer = setTimeout(() => {
+        setFormValues(prev => ({
+          ...prev,
+          attachedReports: ''
+        }));
+        showNotification('Attached reports have been automatically cleared (30-minute limit).', 'info');
+      }, 30 * 60 * 1000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [selectedForm, formValues.attachedReports, showNotification]);
+
   // Effect to synchronize selectedForm with updates from formsData context
   useEffect(() => {
     if (selectedForm && formsData.length > 0) {
@@ -1075,13 +1091,21 @@ const FormHandler = () => {
                 <button onClick={handleClearForm} className={formStyles.clearButton}>
                   Clear Form
                 </button>
-                <button onClick={() => {
-                  generateBBCode();
-                  setIsAutoUpdatingBbcode(true);
-                  showNotification('Auto-updating BBCode enabled!', 'info', 2000);
-                  trackMetric('form_handler', `generate_bbcode_${selectedForm.name}`);
-                }} className={formStyles.generateButton}>
-                  Generate BBCode
+                <button 
+                  onClick={() => {
+                    if (isAutoUpdatingBbcode) {
+                      setIsAutoUpdatingBbcode(false);
+                      showNotification('Auto-updating BBCode disabled.', 'info', 2000);
+                    } else {
+                      generateBBCode();
+                      setIsAutoUpdatingBbcode(true);
+                      showNotification('Auto-updating BBCode enabled!', 'info', 2000);
+                    }
+                    trackMetric('form_handler', `toggle_auto_bbcode_${selectedForm.name}`);
+                  }} 
+                  className={isAutoUpdatingBbcode ? formStyles.clearButton : formStyles.generateButton}
+                >
+                  {isAutoUpdatingBbcode ? "Disable Auto-Update" : "Generate BBCode"}
                 </button>
               </div>
             </>

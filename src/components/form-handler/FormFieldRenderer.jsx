@@ -977,7 +977,7 @@ case "textarea":
             style={inputStyle}
           />
           <div style={{ display: 'flex', gap: '5px', marginTop: '5px' }}>
-            {field.name === 'placeOfDeath' && !isUploadingMapImage[field.name] && !formValues[`${field.name}_isFromMap`] && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && (
+            {field.name === 'placeOfDeath' && !isUploadingMapImage[field.name] && !formValues[`${field.name}_isFromMap`] && (
               <button
                 onClick={() => {
                   setMapTargetField('placeOfDeath');

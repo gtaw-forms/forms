@@ -172,7 +172,7 @@ const Admin = ({ formData, setFormData, showNotification }) => {
             if (hasLoggedUnauthorizedAccess) return;
             
             try {
-                const webhookURL = import.meta.env.VITE_ADMIN_ACTION_DISCORD_WEBHOOK_URL || import.meta.env.VITE_DEV_WEBHOOK;
+                const webhookURL = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
                 if (webhookURL) {
                     const embed = {
                         title: "⚠️ Unauthorized Admin Access Attempt",
