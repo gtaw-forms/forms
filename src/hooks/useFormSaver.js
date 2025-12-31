@@ -131,6 +131,18 @@ export const useFormSaver = () => {
                     );
                 }
 
+                if (payload.requestingOfficer) {
+                    discordPayload.embeds[0].fields.push(
+                        { name: 'Requesting Officer', value: payload.requestingOfficer, inline: true }
+                    );
+                }
+
+                if (payload.department) {
+                    discordPayload.embeds[0].fields.push(
+                        { name: 'Department', value: payload.department, inline: true }
+                    );
+                }
+
                 const response = await fetch(discordWebhookUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -245,6 +257,14 @@ export const useFormSaver = () => {
                 webhookPayload.gtawUsername = gtaWorldUser.username;
                 webhookPayload.gtawCharacterId = getCharacterID(gtaWorldUser);
                 webhookPayload.gtawCharacterName = getCharacterName(gtaWorldUser);
+            }
+
+            // Include Requesting Officer if it's a Coroner Report and one was requested
+            if (selectedForm.firebaseKey === 'coroner-report' && (formValues.ReportRequested === true || formValues.ReportRequested === 'true')) {
+                webhookPayload.requestingOfficer = formValues['Requesting Officer'] || formValues.requestingOfficer || 'N/A';
+                
+                const deptVal = formValues.department;
+                webhookPayload.department = (typeof deptVal === 'object' && deptVal !== null) ? (deptVal.label || deptVal.value) : deptVal;
             }
 
             await logWebhook(`report_saved (new) by ${currentAuthor}`, webhookPayload);
