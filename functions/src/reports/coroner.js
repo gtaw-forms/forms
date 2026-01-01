@@ -238,19 +238,36 @@ async function aggregateCoronerStats(startOfMonth, endOfMonth) {
     
     const agencyDataStore = (await db.ref('/agencies').once('value')).val() || {};
     const processedLocations = await getProcessedLocations();
+    const processedReportIds = new Set();
+
 
     const stats = {
-        coronerReports: { total: 0, mannerOfDeath: {}, placeOfDeath: {}, topCoroners: {} },
+        coronerReports: { total: 0, mannerOfDeath: {}, placeOfDeath: {} }, // Removed topCoroners from here
         coronerEmails: { total: 0, departments: {} },
-        massFatalities: { total: 0, locations: {}, totalDecedents: 0, reports: [] }
+        massFatalities: { total: 0, locations: {}, totalDecedents: 0, reports: [] },
+        reportBreakdown: {},
+        topUsers: {}, // New object to track all top users
+        totalReports: 0 // New field for total reports processed
     };
 
     for (const path of reportsPaths) {
         const reportsRef = db.ref(path);
         const snapshot = await reportsRef.once('value');
-        if (!snapshot.exists()) continue;
+        if (!snapshot.exists()) {
+            console.log(`[CoronerStats] No reports found in path: ${path}`);
+            continue;
+        }
 
         const allUsersReports = snapshot.val();
+        let reportsInPath = 0;
+        for (const userId in allUsersReports) {
+            const userReports = allUsersReports[userId];
+            if (userReports && typeof userReports === 'object') {
+                reportsInPath += Object.keys(userReports).length;
+            }
+        }
+        console.log(`[CoronerStats] Located ${reportsInPath} reports in path: ${path}`);
+
         for (const userId in allUsersReports) {
             // Only process 'CIVILIAN' reports from the legacy savedReports path
             if (path === 'savedReports' && userId !== 'CIVILIAN') continue;
@@ -259,11 +276,20 @@ async function aggregateCoronerStats(startOfMonth, endOfMonth) {
             if (!userReports || typeof userReports !== 'object') continue;
 
             for (const reportId in userReports) {
+                if (processedReportIds.has(reportId)) continue;
+                
                 const report = userReports[reportId];
                 if (!report.timestamp || report.timestamp < startOfMonth || report.timestamp > endOfMonth) continue;
+                
+                processedReportIds.add(reportId);
+                stats.totalReports++;
 
                 const formId = report.formId || report.data?.formId;
                 const data = report.data || report;
+                const author = report.authorName || userId || 'Unknown'; // Get author for topUsers
+
+                stats.topUsers[author] = (stats.topUsers[author] || 0) + 1; // Increment for all reports
+                stats.totalReports++; // Increment total reports count
 
                 let reportType = 'unknown';
                 if (formId === 'coroner-report' || (!formId && data.mannerOfDeath)) {
@@ -273,6 +299,8 @@ async function aggregateCoronerStats(startOfMonth, endOfMonth) {
                 } else if (formId === 'mass-ftality-test') {
                     reportType = 'mass-fatality';
                 }
+
+                stats.reportBreakdown[formId || 'unknown'] = (stats.reportBreakdown[formId || 'unknown'] || 0) + 1; // Increment report breakdown
 
                 switch (reportType) {
                     case 'coroner-report':
@@ -288,8 +316,6 @@ async function aggregateCoronerStats(startOfMonth, endOfMonth) {
                         if (matched.street) {
                             stats.coronerReports.placeOfDeath[matched.area].streets[matched.street] = (stats.coronerReports.placeOfDeath[matched.area].streets[matched.street] || 0) + 1;
                         }
-                        const coroner = data.coronerEmployee || report.authorName || 'Unknown';
-                        stats.coronerReports.topCoroners[coroner] = (stats.coronerReports.topCoroners[coroner] || 0) + 1;
                         break;
 
                     case 'coroner_email':
@@ -329,6 +355,11 @@ async function aggregateCoronerStats(startOfMonth, endOfMonth) {
                             decedents: decedentCount,
                             author: userId
                         });
+                        break;
+                    
+                    default:
+                        // This will catch any reports that don't match the above types
+                        // and ensure they are still counted in the breakdown.
                         break;
                 }
             }
@@ -401,9 +432,9 @@ export const weeklyCoronerSummary = onSchedule({
 
         let coronerReportSummary = `**${coronerReports.total}** death investigations filed.`;
         if (coronerReports.total > 0) {
-            const topAreasData = Object.entries(coronerReports.placeOfDeath).sort(([, a], [, b]) => b.total - a.total).slice(0, 3);
+            const topAreasData = Object.entries(coronerReports.placeOfDeath || {}).sort(([, a], [, b]) => b.total - a.total).slice(0, 3);
             let topAreasDescription = topAreasData.map(([area, data]) => {
-                const topStreets = Object.entries(data.streets).sort(([, a], [, b]) => b - a).slice(0, 2).map(([street, count]) => `${street} (${count})`).join(', ');
+                const topStreets = Object.entries(data.streets || {}).sort(([, a], [, b]) => b - a).slice(0, 2).map(([street, count]) => `${street} (${count})`).join(', ');
                 return `**${area}** (${data.total}) - _Top Streets: ${topStreets || 'N/A'}_`;
             }).join('\n');
             if (topAreasDescription) {
@@ -411,9 +442,9 @@ export const weeklyCoronerSummary = onSchedule({
             }
         }
 
-        const topCoroners = Object.entries(coronerReports.topCoroners).sort(([, a], [, b]) => b - a).slice(0, 3).map(([name, count]) => `${name} (${count})`).join(', ');
-        if (topCoroners) {
-            coronerReportSummary += `\n**Top Coroners**: ${topCoroners}`;
+        const topUsers = Object.entries(fullStats.topUsers || {}).sort(([, a], [, b]) => b - a).slice(0, 3).map(([name, count]) => `${name} (${count})`).join(', ');
+        if (topUsers) {
+            coronerReportSummary += `\n**Top Users**: ${topUsers}`;
         }
 
         let emailSummary = `**${coronerEmails.total}** emails sent.`;
@@ -491,11 +522,6 @@ export const yearlyCoronerSummary = onSchedule({
             }
         }
 
-        const topCoroners = Object.entries(coronerReports.topCoroners).sort(([, a], [, b]) => b - a).slice(0, 5).map(([name, count]) => `${name} (${count})`).join(', ');
-        if (topCoroners) {
-            coronerReportSummary += `\n**Top Coroners of ${year}**: ${topCoroners}`;
-        }
-
         let emailSummary = `**${coronerEmails.total}** emails sent.`;
         if (coronerEmails.total > 0) {
             const topDepts = Object.entries(coronerEmails.departments).sort(([, a], [, b]) => b.count - a.count).slice(0, 5).map(([dept, data]) => {
@@ -506,14 +532,36 @@ export const yearlyCoronerSummary = onSchedule({
 
         let massFatalitySummary = `**${massFatalities.total}** events, **${massFatalities.totalDecedents}** total decedents.`;
 
+        const reportNameMapping = {
+            1: "Forensic Services",
+            4: "Autopsy Report",
+            2: "Coroner Email",
+            8: "Certificate of Death",
+            11: "Mass Fatality Report",
+            37: "Death Record",
+            'coroner-report': "Forensic Services",
+            'coroner_email': "Coroner Email",
+            'mass-ftality-test': "Mass Fatality Report"
+        };
+        
+        const reportBreakdown = Object.entries(fullStats.reportBreakdown || {}).map(([formId, count]) => {
+            const name = reportNameMapping[formId] || formId;
+            return `${name}: ${count}`;
+        }).join('\n') || 'No reports filed.';
+
+        const topUsers = Object.entries(fullStats.topUsers || {}).sort(([, a], [, b]) => b - a).slice(0, 10).map(([name, count]) => `${name} (${count})`).join(', ');
+
         const embed = {
             title: `🗓️ Yearly Coroner's Office Summary: ${year}`,
             description: "Annual performance and statistics overview.",
             color: 0xE67E22, // Orange
             fields: [
+                { name: "__Total Reports Processed__", value: fullStats.totalReports.toString(), inline: false },
                 { name: "__Annual Coroner Reports__", value: coronerReportSummary, inline: false },
                 { name: "__Annual Coroner Emails__", value: emailSummary, inline: false },
-                { name: "__Annual Mass Fatality Stats__", value: massFatalitySummary, inline: false }
+                { name: "__Annual Mass Fatality Stats__", value: massFatalitySummary, inline: false },
+                { name: "__Report Breakdown__", value: reportBreakdown, inline: false },
+                { name: "__Top 10 Users (Annual)__", value: topUsers || 'N/A', inline: false }
             ],
             footer: { text: "PHMC Tools - Automated Yearly Historical Report" },
             timestamp: new Date().toISOString()
@@ -577,9 +625,9 @@ export const triggerCoronerReport = onCall({
 
         let coronerReportSummary = `**${coronerReports.total}** death investigations filed.`;
         if (coronerReports.total > 0) {
-            const topAreasData = Object.entries(coronerReports.placeOfDeath).sort(([, a], [, b]) => b.total - a.total).slice(0, 3);
+            const topAreasData = Object.entries(coronerReports.placeOfDeath || {}).sort(([, a], [, b]) => b.total - a.total).slice(0, 3);
             let topAreasDescription = topAreasData.map(([area, data]) => {
-                const topStreets = Object.entries(data.streets).sort(([, a], [, b]) => b - a).slice(0, 2).map(([street, count]) => `${street} (${count})`).join(', ');
+                const topStreets = Object.entries(data.streets || {}).sort(([, a], [, b]) => b - a).slice(0, 2).map(([street, count]) => `${street} (${count})`).join(', ');
                 return `**${area}** (${data.total}) - _Top Streets: ${topStreets || 'N/A'}_`;
             }).join('\n');
             if (topAreasDescription) {
@@ -587,14 +635,14 @@ export const triggerCoronerReport = onCall({
             }
         }
 
-        const topCoroners = Object.entries(coronerReports.topCoroners).sort(([, a], [, b]) => b - a).slice(0, 3).map(([name, count]) => `${name} (${count})`).join(', ');
-        if (topCoroners) {
-            coronerReportSummary += `\n**Top Coroners**: ${topCoroners}`;
+        const topUsers = Object.entries(fullStats.topUsers || {}).sort(([, a], [, b]) => b - a).slice(0, 3).map(([name, count]) => `${name} (${count})`).join(', ');
+        if (topUsers) {
+            coronerReportSummary += `\n**Top Users**: ${topUsers}`;
         }
 
         let emailSummary = `**${coronerEmails.total}** emails sent.`;
         if (coronerEmails.total > 0) {
-            const topDepts = Object.entries(coronerEmails.departments).sort(([, a], [, b]) => b.count - a.count).slice(0, 3).map(([dept, data]) => {
+            const topDepts = Object.entries(coronerEmails.departments || {}).sort(([, a], [, b]) => b.count - a.count).slice(0, 3).map(([dept, data]) => {
                 return `${dept} (${data.count})`;
             }).join(', ');
             emailSummary += `\n**Top Departments**: ${topDepts}`;
@@ -809,3 +857,4 @@ export const monthlyCoronerSummary = onSchedule({
     }
     return null;
 });
+
