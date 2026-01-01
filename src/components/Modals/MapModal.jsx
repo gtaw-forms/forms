@@ -1,15 +1,17 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { Button, Form, ListGroup, InputGroup, Badge } from 'react-bootstrap';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { captureMapScreenshotAndUpload } from '../../utils/mapImageUploadUtils';
+import { captureMapScreenshot } from '../../utils/mapImageUploadUtils';
+import { useImageUpload } from '../../hooks/useImageUpload';
 import 'leaflet/dist/leaflet.css';
-import { database } from '../../firebase';
-import { ref, set, get } from 'firebase/database';
+import { ref, set, get, getDatabase } from 'firebase/database';
 import { useGtaWorldAuth } from '../../hooks/useGtaWorldAuth';
+import { isGoogleAuthenticated, getGoogleUser } from '../../services/gtaWorldAuth';
 import { sendDiscordWebhook } from '../../utils/webhookUtils';
-
+import { useAuth } from '../../contexts/AuthContext';
+import { database } from '../../firebase';
 // --- LEAFLET ICON FIXES ---
 const DefaultIcon = L.icon({
     iconUrl: `${import.meta.env.BASE_URL}assets/leaflet/marker-icon.png`,
@@ -36,6 +38,10 @@ const BodyIcon = L.divIcon({
 const BuildingIcon = L.divIcon({
     html: '<div style="background-color: #4a5568; border-radius: 50%; width: 30px; height: 30px; display: flex; justify-content: center; align-items: center; border: 2px solid #cbd5e0; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"><i class="fas fa-building" style="color: #fff; font-size: 16px;"></i></div>',
     className: 'custom-building-icon', iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -15]
+});
+const FireStationIcon = L.divIcon({
+    html: '<div style="background-color: #fd7e14; border-radius: 50%; width: 30px; height: 30px; display: flex; justify-content: center; align-items: center; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"><i class="fas fa-fire" style="color: #fff; font-size: 16px;"></i></div>',
+    className: 'custom-fire-icon', iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -15]
 });
 
 // --- CONSTANTS ---
@@ -69,12 +75,36 @@ const findClosestBetween = (l1, l2) => {
     }); return best;
 };
 
-const MapEvents = ({ onMapClick, onMapRightClick }) => {
-    useMapEvents({ click(e){if(onMapClick) onMapClick(e);}, contextmenu(e){if(onMapRightClick) onMapRightClick(e);}}); return null;
+const MapEvents = ({ onMapDblClick, onMapRightClick }) => {
+    useMapEvents({ dblclick(e){if(onMapDblClick) onMapDblClick(e);}, contextmenu(e){if(onMapRightClick) onMapRightClick(e);}}); return null;
 };
 
+const Info = () => {
+    const map = useMap();
+    useEffect(() => {
+        const info = L.control({ position: 'bottomright' });
+        info.onAdd = function () {
+            this._div = L.DomUtil.create('div', 'info');
+            this.update();
+            return this._div;
+        };
+        info.update = function () {
+            this._div.innerHTML = '<h4>Map Controls</h4>' +
+                '<b>Double-click</b> to place a marker.<br/>' +
+                '<b>Right-click</b> a path node to remove it.<br/>' +
+                'Use the search bar to find locations.';
+        };
+        info.addTo(map);
+        return () => {
+            info.remove();
+        }
+    }, [map]);
+    return null;
+}
+
 const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapImage, mapTargetField }) => {
-    const { user, isAuthenticated, characterName } = useGtaWorldAuth();
+    const { user: gtawUser, isAuthenticated, characterName } = useGtaWorldAuth();
+    const { currentUser } = useAuth();
     const [debugMode, setDebugMode] = useState(false);
     const [adminFixMode, setAdminFixMode] = useState(false);
     const [isDrawing, setIsDrawing] = useState(false);
@@ -93,8 +123,42 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
     const [selectedStreetForEditing, setSelectedStreetForEditing] = useState(null);
     const [liveMapData, setLiveMapData] = useState({ streets: [], hospitals: [], buildings: [] });
     const [strobeOpacity, setStrobeOpacity] = useState(1.0);
-    const [hasAcknowledgedProductionWarning, setHasAcknowledgedProductionWarning] = useState(false);
+    const [fakeRestriction, setFakeRestriction] = useState(true);
+    const [mapEnabled, setMapEnabled] = useState(false);
+    const [viewPaths, setViewPaths] = useState(false);
     const mapRef = useRef(null);
+
+    useEffect(() => {
+        const fetchMapStatus = async () => {
+            try {
+                const dbRef = ref(database, '/map/settings/enabled');
+                const snapshot = await get(dbRef);
+                if (snapshot.exists()) {
+                    setMapEnabled(snapshot.val());
+                }
+            } catch (error) {
+                console.error("Error fetching map status:", error);
+            }
+        };
+        fetchMapStatus();
+    }, []);
+
+    const isGoogleAdmin = isGoogleAuthenticated();
+    const googleUser = getGoogleUser();
+    const isAuthorized = isGoogleAdmin || (gtawUser?.faction_rank_id >= 13 && gtawUser?.faction === 'PHMC');
+    console.log(`[MapModal] isAuthorized: ${isAuthorized} (Google Auth: ${isGoogleAdmin}, PHMC Rank 13+: ${gtawUser?.faction_rank_id >= 13 && gtawUser?.faction === 'PHMC'})`);
+
+    const showNotification = (msg, type) => console.log(`[MapModal Notification] ${type}: ${msg}`);
+    const { isUploading: isUploadingHook, handleImageUpload } = useImageUpload(showNotification, null);
+
+    const isProduction = import.meta.env.PROD;
+
+    // Manage restriction overlay based on mapEnabled status
+    useEffect(() => {
+        if (show) {
+            setFakeRestriction(!mapEnabled);
+        }
+    }, [show, mapEnabled]);
 
     // Manual Strobe Logic (Bypasses Leaflet SVG Overrides)
     useEffect(() => {
@@ -104,7 +168,6 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
         return () => clearInterval(interval);
     }, []);
 
-    const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
     const formatDisplayName = (n) => n ? n.replace(/\s*\(zone\s*\d+\)\s*/gi, '').trim() : 'Unknown';
 
     // Styles
@@ -119,7 +182,7 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
 
     const logMapAction = async (action, details) => {
         const url = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK; if (!url) return;
-        const payload = { embeds: [{ title: `🗺️ Map Action: ${action}`, color: action.toLowerCase().includes('fix')||action.toLowerCase().includes('path')?0xFFAA00:0x28A745, fields: [{name:"Env",value:isProduction?"🚀 Prod":"🛠️ Local",inline:true},{name:"User",value:user?.username||"Unknown",inline:true},{name:"Char",value:characterName||"N/A",inline:true},{name:"Action",value:action,inline:false},...details], timestamp: new Date().toISOString() }] };
+        const payload = { embeds: [{ title: `🗺️ Map Action: ${action}`, color: action.toLowerCase().includes('fix')||action.toLowerCase().includes('path')?0xFFAA00:0x28A745, fields: [{name:"Env",value:isProduction?"🚀 Prod":"🛠️ Local",inline:true},{name:"User",value:gtawUser?.username||"Unknown",inline:true},{name:"Char",value:characterName||"N/A",inline:true},{name:"Action",value:action,inline:false},...details], timestamp: new Date().toISOString() }] };
         try { await sendDiscordWebhook(url, payload); } catch(err){console.error(err);}
     };
 
@@ -227,7 +290,7 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
         ].filter(item => item.name.toLowerCase().includes(q)).slice(0, 8);
     }, [searchQuery, liveMapData]);
 
-    const handleMapClick = (e) => {
+    const handleMapDblClick = (e) => {
         if (!e || !e.latlng || (!isAuthenticated && isProduction)) return;
         const { lat, lng } = e.latlng; const g = mapToGame(lat, lng);
         if (isDrawing) { setTempPath(p => [...p, { ...g, lat, lng }]); return; }
@@ -240,7 +303,7 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
         const p2 = sorted.find(l => l.type === 'Street' && formatDisplayName(l.name) !== formatDisplayName(p1?.name));
         let cross = (p1?.type === 'Street' && p2 && p2.distance < 60) ? p2.name : null;
         
-        const nm = { id: Date.now(), position: [lat, lng], gameX: g.x.toFixed(2), gameY: g.y.toFixed(2), nearest: p1?.name || 'Unknown', crossStreet: cross, source: 'Manual', type: 'Location', distance: p1 ? p1.distance.toFixed(1) : "0" };
+        const nm = { id: Date.now(), position: [lat, lng], gameX: g.x.toFixed(2), gameY: g.y.toFixed(2), nearest: p1?.name || 'Unknown', crossStreet: cross, source: 'Manual', type: 'Body', distance: p1 ? p1.distance.toFixed(1) : "0" };
         setMarkers(onSelect ? [nm] : (p => [...p, nm]));
     };
 
@@ -276,8 +339,18 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
         let sU = null; let fN = name;
         try {
             if (snapshot) {
-                const { screenshotUrl: url, error } = await captureMapScreenshotAndUpload(mapRef.current.getContainer());
-                if (url) { sU = url; fN = `[url=${sU}]${name}[/url]`; } else if (error) alert("Img Upload Failed");
+                const { dataUrl, error } = await captureMapScreenshot(mapRef.current.getContainer());
+                if (dataUrl) {
+                    const urls = await handleImageUpload(dataUrl);
+                    if (urls && urls.length > 0) {
+                        sU = urls[0];
+                        fN = `[url=${sU}]${name}[/url]`;
+                    } else {
+                        alert("Img Upload Failed");
+                    }
+                } else if (error) {
+                    alert("Screenshot Failed: " + error);
+                }
             }
 
             const key = name.toLowerCase().trim().replace(/[.#$[\\\]\/]/g, "_");
@@ -326,6 +399,18 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                     .leaflet-tile { transition: opacity 0.4s; } 
                     .leaflet-tile-loading { opacity: 0; } 
                     .search-results-list { max-height: 300px; overflow-y: auto; z-index: 1001; position: absolute; width: 100%; } 
+                    @keyframes glitch {
+                        0% { text-shadow: 2px 2px 0px #ff00ff, -2px -2px 0px #00ffff; transform: translate(0); }
+                        20% { text-shadow: -2px 2px 0px #ff00ff, 2px -2px 0px #00ffff; transform: translate(-2px, 2px); }
+                        40% { text-shadow: 2px -2px 0px #ff00ff, -2px 2px 0px #00ffff; transform: translate(2px, -2px); }
+                        60% { text-shadow: -2px -2px 0px #ff00ff, 2px 2px 0px #00ffff; transform: translate(-2px, -2px); }
+                        80% { text-shadow: 2px 2px 0px #ff00ff, -2px -2px 0px #00ffff; transform: translate(2px, 2px); }
+                        100% { text-shadow: 2px 2px 0px #ff00ff, -2px -2px 0px #00ffff; transform: translate(0); }
+                    }
+                    .glitch-text { animation: glitch 0.3s infinite; }
+                    .pixelated-text { font-family: 'Courier New', Courier, monospace; letter-spacing: 2px; }
+                    .info { padding: 6px 8px; font: 14px/16px Arial, Helvetica, sans-serif; background: white; background: rgba(255,255,255,0.8); box-shadow: 0 0 15px rgba(0,0,0,0.2); border-radius: 5px; color: #333; }
+                    .info h4 { margin: 0 0 5px; color: #777; }
                 `}</style>
                 <div style={containerStyle} onClick={(e) => e.stopPropagation()}>                <div style={headerStyle}>
                     <h5 style={{ margin: 0 }}><i className="fas fa-map-marked-alt me-2"></i>{onSelect ? "Select Location" : "GTA V Map"}</h5>
@@ -336,12 +421,23 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                 </div>
 
                 <div style={{ flexGrow: 1, position: 'relative', overflow: 'hidden' }}>
-                    {isProduction && !hasAcknowledgedProductionWarning && (
-                        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 3000, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '40px', textAlign: 'center' }}>
-                            <div style={{ color: '#ffc107', fontSize: '4rem', marginBottom: '20px' }}><i className="fas fa-exclamation-triangle"></i></div>
-                            <h2 style={{ color: '#fff', marginBottom: '20px' }}>Experimental Feature</h2>
-                            <p style={{ color: '#ccc', fontSize: '1.2rem', maxWidth: '600px', marginBottom: '30px' }}>This is not ready for production and is merely to test, please do not use this.</p>
-                            <Button variant="warning" onClick={() => setHasAcknowledgedProductionWarning(true)}>I Understand</Button>
+                    {fakeRestriction && (
+                        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 3100, backgroundColor: 'rgba(0,0,0,0.95)', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '40px', textAlign: 'center', backdropFilter: 'blur(10px)' }}>
+                            <div style={{ color: '#dc3545', fontSize: '5rem', marginBottom: '20px' }}>
+                                <i className="fas fa-tools"></i>
+                            </div>
+                            <h2 style={{ color: '#fff', marginBottom: '20px', fontWeight: 'bold' }}>
+                                MAP UNDER MAINTENANCE
+                            </h2>
+                            <p style={{ color: '#8b949e', fontSize: '1.2rem', maxWidth: '600px', marginBottom: '30px', lineHeight: '1.5' }}>
+                                The map feature is currently disabled for maintenance or system updates. <br /><br />
+                                Please check back later or contact an administrator if you believe this is an error.
+                            </p>
+                            {!isProduction && (
+                                <Button variant="outline-secondary" size="sm" onClick={() => setFakeRestriction(false)} style={{ marginTop: '20px', fontFamily: 'monospace' }}>
+                                    [DEBUG: BYPASS RESTRICTION]
+                                </Button>
+                            )}
                         </div>
                     )}
 
@@ -360,15 +456,20 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                     </div>
 
                     <div style={{ position: 'absolute', top: 15, right: 15, zIndex: 1000, background: 'rgba(13,17,23,0.9)', padding: '12px', borderRadius: '10px', border: '1px solid #30363d' }}>
-                        <Form.Check type="switch" label="Debug" checked={debugMode} onChange={e => setDebugMode(e.target.checked)} className="text-light small mb-2" />
-                        <Form.Check type="switch" label="Admin Fix" checked={adminFixMode} onChange={e => setAdminFixMode(e.target.checked)} className="text-warning small mb-2" />
-                        {adminFixMode && (
-                            <div className="d-flex flex-column gap-1">
-                                <Button variant="warning" size="sm" onClick={() => { handleLoadFixMarkers(); setShowFixMarkers(true); }} style={{ fontSize: '0.7rem' }}>Load Markers</Button>
-                                <Form.Check type="switch" label="Hide Markers" checked={!showFixMarkers} onChange={e => setShowFixMarkers(!e.target.checked)} className="text-light small mb-2" />
-                                <Button variant={isDrawing ? "danger" : "info"} size="sm" onClick={() => { setIsDrawing(!isDrawing); setTempPath([]); setSelectedStreetForEditing(null); }} style={{ fontSize: '0.7rem' }}>{isDrawing ? "Cancel Path" : "Draw Path"}</Button>
-                                {isDrawing && tempPath.length > 1 && <Button variant="success" size="sm" onClick={handleSavePath} style={{ fontSize: '0.7rem' }}>Save Path ({tempPath.length})</Button>}
-                            </div>
+                        {isAuthorized && (
+                            <>
+                                <Form.Check type="switch" label="Debug" checked={debugMode} onChange={e => setDebugMode(e.target.checked)} className="text-light small mb-2" />
+                                <Form.Check type="switch" label="Debug: View Paths" checked={viewPaths} onChange={e => setViewPaths(e.target.checked)} className="text-info small mb-2" />
+                                <Form.Check type="switch" label="Admin Fix" checked={adminFixMode} onChange={e => setAdminFixMode(e.target.checked)} className="text-warning small mb-2" />
+                                {adminFixMode && (
+                                    <div className="d-flex flex-column gap-1">
+                                        <Button variant="warning" size="sm" onClick={() => { handleLoadFixMarkers(); setShowFixMarkers(true); }} style={{ fontSize: '0.7rem' }}>Load Markers</Button>
+                                        <Form.Check type="switch" label="Hide Markers" checked={!showFixMarkers} onChange={e => setShowFixMarkers(!e.target.checked)} className="text-light small mb-2" />
+                                        <Button variant={isDrawing ? "danger" : "info"} size="sm" onClick={() => { setIsDrawing(!isDrawing); setTempPath([]); setSelectedStreetForEditing(null); }} style={{ fontSize: '0.7rem' }}>{isDrawing ? "Cancel Path" : "Draw Path"}</Button>
+                                        {isDrawing && tempPath.length > 1 && <Button variant="success" size="sm" onClick={handleSavePath} style={{ fontSize: '0.7rem' }}>Save Path ({tempPath.length})</Button>}
+                                    </div>
+                                )}
+                            </>
                         )}
                     </div>
 
@@ -383,7 +484,8 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                     <MapContainer center={[MAP_HEIGHT / 2, MAP_WIDTH / 2]} zoom={2} minZoom={0} maxZoom={MAX_ZOOM} scrollWheelZoom={true} crs={crs} style={{ height: '100%', width: '100%', background: '#000' }} maxBounds={bounds} ref={mapRef}>
                         <TileLayer url={tileUrl} noWrap={true} bounds={bounds} minNativeZoom={0} maxNativeZoom={MAX_ZOOM} eventHandlers={{ loading: () => setIsLoading(true), load: () => setIsLoading(false) }} />
                         {showGrid && <TileLayer url="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNTYiIGhlaWdodD0iMjU2Ij48cmVjdCB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMikiIHN0cm9rZS13aWR0aD0iMSIvPjx0ZXh0IHg9IjUiIHk9IjIwIiBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuNSkiIGZvbnQtZmFtaWx5PSJtb25vc3BhY2UiIGZvbnQtc2l6ZT0iMTIiPng6e3h9IHk6e3l9IHo6e3p9PC90ZXh0Pjwvc3ZnPg==" noWrap={true} opacity={0.8} />}
-                        <MapEvents onMapClick={handleMapClick} onMapRightClick={handleMapRightClick} />
+                        <MapEvents onMapDblClick={handleMapDblClick} onMapRightClick={handleMapRightClick} />
+                        <Info />
                                                                         {isDrawing && tempPath.length > 0 && (
                                                                             <Polyline 
                                                                                 positions={tempPath.map(p => [p.lat, p.lng])} 
@@ -391,11 +493,11 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                                                                                     color: "#ff0000", 
                                                                                     weight: 6, 
                                                                                     dashArray: "10, 10",
-                                                                                    opacity: strobeOpacity 
+                                                                                    opacity: isProduction ? 0 : strobeOpacity 
                                                                                 }} 
                                                                             />
                                                                         )}
-                                                                        {liveMapData.streets.filter(s => s.path).map((s, i) => (
+                                                                        {(viewPaths || !isProduction) && liveMapData.streets.filter(s => s.path).map((s, i) => (
                                                                             <Polyline 
                                                                                 key={i} 
                                                                                 positions={s.path.map(p => gameToMap(p.x, p.y))} 
@@ -413,7 +515,7 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                                                                             />
                                                                         ))}
                         {showFixMarkers && adminFixMode && fixMarkers.map((m) => (
-                            <Marker key={m.id} position={m.position} draggable={true} icon={m.type === 'Hospital' ? HospitalIcon : (m.type === 'Body' ? BodyIcon : (m.type === 'Building' ? BuildingIcon : DefaultIcon))} eventHandlers={{ dragend: (e) => handleFixMarkerDragEnd(e, m) }}><Popup><div style={{ color: '#000' }}><strong>{formatDisplayName(m.name)}</strong></div></Popup></Marker>
+                            <Marker key={m.id} position={m.position} draggable={true} icon={m.type === 'Hospital' ? HospitalIcon : (m.type === 'Body' ? BodyIcon : (m.type === 'Building' ? BuildingIcon : (m.type === 'Fire Station' ? FireStationIcon : DefaultIcon)))} eventHandlers={{ dragend: (e) => handleFixMarkerDragEnd(e, m) }}><Popup><div style={{ color: '#000' }}><strong>{formatDisplayName(m.name)}</strong></div></Popup></Marker>
                         ))}
                         {liveMapData.hospitals.map((h, i) => (
                             <Marker key={`permanent-h-${i}`} position={gameToMap(h.x, h.y)} icon={HospitalIcon}>
@@ -438,18 +540,18 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                             </Marker>
                         ))}
                         {markers.map((m) => (
-                            <Marker key={m.id} position={m.position} icon={m.type === 'Hospital' ? HospitalIcon : (m.type === 'Body' ? BodyIcon : (m.type === 'Building' ? BuildingIcon : DefaultIcon))}>
+                            <Marker key={m.id} position={m.position} icon={m.type === 'Hospital' ? HospitalIcon : (m.type === 'Body' ? BodyIcon : (m.type === 'Building' ? BuildingIcon : (m.type === 'Fire Station' ? FireStationIcon : DefaultIcon)))}>
                                 <Popup>
                                     <div style={{ color: '#000', minWidth: '180px' }}>
                                         <div style={{ borderBottom: '1px solid #ccc', marginBottom: '8px', paddingBottom: '4px' }}><strong style={{ fontSize: '1.1rem' }}>Location Info</strong></div>
                                         <div style={{ marginBottom: '5px' }}><strong>{debugMode ? "DEBUG: Location:" : "Location:"}</strong><br /><span style={{ color: '#007bff', fontWeight: 'bold' }}>{formatDisplayName(m.nearest)}{m.crossStreet && ` & ${formatDisplayName(m.crossStreet)}`}</span>{debugMode && <small className="text-muted ms-1">({m.distance}m)</small>}</div>
                                         <div className="mt-2 mb-2 d-flex flex-wrap gap-1 justify-content-center">
-                                            <Badge bg={m.type === 'Location' ? "primary" : "secondary"} style={{ cursor: 'pointer'} } onClick={() => setMarkers(prev => prev.map(marker => marker.id === m.id ? { ...marker, type: 'Location' } : marker))}>Location</Badge>
                                             <Badge bg={m.type === 'Body' ? "dark" : "secondary"} style={{ cursor: 'pointer'} } onClick={() => setMarkers(prev => prev.map(marker => marker.id === m.id ? { ...marker, type: 'Body' } : marker))}>Body</Badge>
                                             <Badge bg={m.type === 'Building' ? "info" : "secondary"} style={{ cursor: 'pointer'} } onClick={() => setMarkers(prev => prev.map(marker => marker.id === m.id ? { ...marker, type: 'Building' } : marker))}>Building</Badge>
+                                            <Badge bg={m.type === 'Fire Station' ? "danger" : "secondary"} style={{ cursor: 'pointer'} } onClick={() => setMarkers(prev => prev.map(marker => marker.id === m.id ? { ...marker, type: 'Fire Station' } : marker))}>Fire Station</Badge>
                                         </div>
                                         <div className="mt-3 pt-2" style={{ borderTop: '1px solid #eee' }}>
-                                            <Button variant={onSelect ? "primary" : "success"} size="sm" className="w-100" onClick={() => handleReportLocation(m)} disabled={reporting === m.id || isSnapshotting}>{isSnapshotting ? '...' : (reporting === m.id ? '...' : (onSelect ? 'Confirm' : 'Report'))}</Button>
+                                            <Button variant={onSelect ? "primary" : "success"} size="sm" className="w-100" onClick={() => handleReportLocation(m)} disabled={reporting === m.id || isSnapshotting}>{isSnapshotting ? 'Uploading File' : (reporting === m.id ? 'Uploading File... ' : (onSelect ? 'Confirm' : 'Report'))}</Button>
                                             <Button variant="link" size="sm" className="w-100 mt-1 text-danger p-0" onClick={() => setMarkers(prev => prev.filter(marker => marker.id !== m.id))} style={{ fontSize: '0.75rem', textDecoration: 'none' }}>Remove</Button>
                                         </div>
                                     </div>

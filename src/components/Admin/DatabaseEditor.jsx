@@ -1,10 +1,13 @@
 import React, { useState, useCallback } from 'react';
-import { Button, Form, Spinner, Card, Alert, Col, Row, ListGroup } from 'react-bootstrap';
+import { Button, Form, Spinner, Card, Alert, Col, Row, ListGroup, Badge } from 'react-bootstrap';
 import { ref, get, update, set } from 'firebase/database';
 import { database } from '../../firebase';
 
 import { logAdminAction, getUserContext } from '../../utils/adminLogger';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
+import { formDefinitions } from '../../formDefinitions';
+
+const versionToNameMap = new Map(formDefinitions.map(def => [def.version, def.name]));
 
 const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUser: propGtawUser }) => {
     const { user: gtawUser, username: gtawUsername } = useGtaWorldAuth();
@@ -22,6 +25,10 @@ const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUs
     const [newOptionLabel, setNewOptionLabel] = useState('');
     const [newOptionValue, setNewOptionValue] = useState('');
     const [isLoadingOptions, setIsLoadingOptions] = useState(false);
+
+    // New state for metrics
+    const [metrics, setMetrics] = useState(null);
+    const [isFetchingMetrics, setIsFetchingMetrics] = useState(false);
 
     const handleFetch = async () => {
         if (!path) {
@@ -301,6 +308,76 @@ const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUs
         }
     };
 
+    const handleFetchMetrics = async () => {
+        setIsFetchingMetrics(true);
+        setMetrics(null);
+        try {
+            const { userAgent, timeZone } = getUserContext();
+            logAdminAction(
+                currentUser?.email || gtawUsername,
+                'Fetched Database Metrics',
+                'Triggered fetching of database metrics.',
+                'Database Editor',
+                userAgent,
+                timeZone,
+                gtawUsername,
+                gtawUser
+            );
+
+            const [newReportsSnapshot, legacyReportsSnapshot] = await Promise.all([
+                get(ref(database, 'newSavedReports')),
+                get(ref(database, 'savedReports'))
+            ]);
+
+            const allReports = [];
+            if (newReportsSnapshot.exists()) {
+                const newReports = newReportsSnapshot.val();
+                for (const user in newReports) {
+                    for (const reportId in newReports[user]) {
+                        allReports.push({ ...newReports[user][reportId], author: user });
+                    }
+                }
+            }
+            if (legacyReportsSnapshot.exists()) {
+                const legacyReports = legacyReportsSnapshot.val();
+                for (const user in legacyReports) {
+                    for (const reportId in legacyReports[user]) {
+                        allReports.push({ ...legacyReports[user][reportId], author: user, isLegacy: true });
+                    }
+                }
+            }
+
+            const totalReports = allReports.length;
+            const reportTypes = allReports.reduce((acc, report) => {
+                const type = report.isLegacy 
+                    ? `${versionToNameMap.get(report.bbCodeVersion) || `Legacy (v${report.bbCodeVersion})`} (LEGACY)`
+                    : `${report.formName || 'Unknown'} (MODERN)`;
+                acc[type] = (acc[type] || 0) + 1;
+                return acc;
+            }, {});
+
+            const topUsers = allReports.reduce((acc, report) => {
+                const user = report.authorName || report.author || 'Unknown';
+                acc[user] = (acc[user] || 0) + 1;
+                return acc;
+            }, {});
+
+            const sortedTopUsers = Object.entries(topUsers).sort(([, a], [, b]) => b - a).slice(0, 10);
+
+            setMetrics({
+                totalReports,
+                reportTypes: Object.entries(reportTypes).sort(([, a], [, b]) => b - a),
+                topUsers: sortedTopUsers,
+            });
+
+        } catch (e) {
+            setError(e.message);
+            showNotification(`Error fetching metrics: ${e.message}`, 'error');
+        } finally {
+            setIsFetchingMetrics(false);
+        }
+    };
+
     return (
         <>
             <Card className="mb-4">
@@ -322,6 +399,9 @@ const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUs
                     <Button onClick={handleFetch} disabled={isLoading} className="me-2">
                         {isLoading ? <Spinner as="span" animation="border" size="sm" /> : 'Fetch Data'}
                     </Button>
+                    <Button onClick={handleFetchMetrics} disabled={isFetchingMetrics} variant="info">
+                        {isFetchingMetrics ? <Spinner as="span" animation="border" size="sm" /> : 'Fetch Metrics'}
+                    </Button>
                     <hr />
                     <Form.Group className="mb-3">
                         <Form.Label>JSON Data</Form.Label>
@@ -339,6 +419,39 @@ const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUs
                     </Button>
                 </Card.Body>
             </Card>
+
+            {metrics && (
+                <Card className="mb-4">
+                    <Card.Header>Database Metrics</Card.Header>
+                    <Card.Body>
+                        <h5>Total Reports: {metrics.totalReports}</h5>
+                        <hr />
+                        <h5>Report Types</h5>
+                        <ListGroup>
+                            {metrics.reportTypes.map(([type, count]) => (
+                                <ListGroup.Item key={type} className="d-flex justify-content-between align-items-center">
+                                    {type}
+                                    <Badge bg="primary" pill>
+                                        {count}
+                                    </Badge>
+                                </ListGroup.Item>
+                            ))}
+                        </ListGroup>
+                        <hr />
+                        <h5>Top 10 Users</h5>
+                        <ListGroup>
+                            {metrics.topUsers.map(([user, count]) => (
+                                <ListGroup.Item key={user} className="d-flex justify-content-between align-items-center">
+                                    {user}
+                                    <Badge bg="success" pill>
+                                        {count}
+                                    </Badge>
+                                </ListGroup.Item>
+                            ))}
+                        </ListGroup>
+                    </Card.Body>
+                </Card>
+            )}
 
             <Card className="mb-4">
                 <Card.Header>Restore from JSON Backup</Card.Header>

@@ -12,6 +12,7 @@ import { useImageUpload } from '../../hooks/useImageUpload';
 import EmsAmaModal from '../Modals/EmsAmaModal';
 import EmsBingoModal from '../Modals/EmsBingoModal'; // New import
 import BusinessCardModal from '../Modals/BusinessCardModal'; // New import
+import MapModal from '../Modals/MapModal'; // New import
 import { useData } from '../../contexts/DataContext.jsx'; // New import
 import { useModal } from '../../contexts/ModalProvider.jsx'; // New import
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth'; // New import
@@ -47,6 +48,7 @@ const EmsDashboard = () => {
 
   const [showEmsBingoModal, setShowEmsBingoModal] = useState(false); // New state for Bingo Modal
   const [showBusinessCardModal, setShowBusinessCardModal] = useState(false);
+  const [showMapModal, setShowMapModal] = useState(false); // New state for Map Modal
 
   const { phmcListData, coronerListData: originalCoronerListData } = useData(); // Get raw lists
   const { setShowEmployeeModal } = useModal();
@@ -415,6 +417,7 @@ return (
               <Button type="button" variant="primary" className="changelog-button" onClick={() => { setShowEmsAmaModal(true); trackMetric('ems_dashboard', 'open_ama_modal'); }} title="Open EMS AMA Form" > <i className="fa-solid fa-truck-medical"></i> EMS AMA</Button>
               <Button type="button" variant="warning" className="changelog-button" onClick={() => { setShowEmsBingoModal(true); trackMetric('ems_dashboard', 'open_bingo_modal'); }} title="Open Bingo Night!" > <i className="fas fa-trophy"></i> Bingo Night!</Button>
               <Button type="button" variant="info" className="changelog-button" onClick={() => { setShowBusinessCardModal(true); trackMetric('ems_dashboard', 'open_business_card_modal'); }} title="Open Business Card Generator"> <i className="fas fa-id-card"></i> Business Card</Button>
+              <Button type="button" variant="secondary" className="changelog-button" onClick={() => { setShowMapModal(true); trackMetric('ems_dashboard', 'open_map_modal'); }} title="Open PHMC Map"> <i className="fas fa-map-marked-alt"></i> PHMC Map</Button>
             </div>
       <div className={styles.mainLayout}>
         {/* Left Panel */}
@@ -640,6 +643,10 @@ return (
   showNotification={showNotification}
   commitInfo={commitInfo}
   handleImageUpload={handleImageUpload}
+/>
+<MapModal
+  show={showMapModal}
+  onHide={() => setShowMapModal(false)}
 />
     </div>
   );
