@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Button, Spinner, Alert } from 'react-bootstrap';
+import React, { useState, useEffect } from 'react';
+import { Button, Spinner, Alert, Form } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import './AdminDashboard.css';
 import DatabaseEditor from './DatabaseEditor';
@@ -10,6 +10,7 @@ import GtaWorldLoginButton from '../Auth/GtaWorldLoginButton';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import useFactionPermissions from '../../hooks/useFactionPermissions';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { getDatabase, ref, get, set } from 'firebase/database';
 import { isGoogleAuthenticated, getGoogleUser } from '../../services/gtaWorldAuth';
 import { runOAuthDiagnostics, testFirebaseFunctions, testProfileRetrieval, logEnvironmentInfo } from '../../services/firebaseDebug';
 import WebhookManager from './WebhookManager';
@@ -84,7 +85,35 @@ const AdminDashboard = ({
     const [isTriggeringReport, setIsTriggeringReport] = useState(false);
     const [isScanningLocations, setIsScanningLocations] = useState(false);
     const [showMigrator, setShowMigrator] = useState(false);
+    const [mapEnabled, setMapEnabled] = useState(false);
     const navigate = useNavigate();
+
+    const handleToggleMap = async () => {
+        const newStatus = !mapEnabled;
+        try {
+            const dbRef = ref(getDatabase(), '/map/settings/enabled');
+            await set(dbRef, newStatus);
+            setMapEnabled(newStatus);
+            showInAppNotification(`Map feature has been ${newStatus ? 'enabled' : 'disabled'}.`, 'success');
+        } catch (error) {
+            showInAppNotification('Failed to update map status.', 'error');
+        }
+    };
+
+    useEffect(() => {
+        const fetchMapStatus = async () => {
+            try {
+                const dbRef = ref(getDatabase(), '/map/settings/enabled');
+                const snapshot = await get(dbRef);
+                if (snapshot.exists()) {
+                    setMapEnabled(snapshot.val());
+                }
+            } catch (error) {
+                console.error("Error fetching map status:", error);
+            }
+        };
+        fetchMapStatus();
+    }, []);
 
     const handleScanLocations = async () => {
         setIsScanningLocations(true);
@@ -1272,6 +1301,16 @@ const AdminDashboard = ({
                                             Scan for Untracked
                                         </Button>
                                     </div>
+
+                                    <h6 className="mt-4">Feature Toggles</h6>
+                                    <Form.Check 
+                                        type="switch"
+                                        id="map-toggle-switch"
+                                        label="Enable Map Feature"
+                                        checked={mapEnabled}
+                                        onChange={handleToggleMap}
+                                        disabled={!hasAdminAccess}
+                                    />
 
                                     <h6 className="mt-4">Coroner Report Manual Triggers (Webhook Test)</h6>
                                     <div className="d-flex gap-2 mb-3 flex-wrap">
