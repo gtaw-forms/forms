@@ -2,7 +2,7 @@ import { setGlobalOptions } from "firebase-functions/v2";
 
 // Set global options for all v2 functions in this file
 setGlobalOptions({
-    region: "us-central1"
+    region: "europe-west2"
 });
 
 // Export all functions from sub-modules

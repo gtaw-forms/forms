@@ -21,12 +21,12 @@ export const getShuffledPhrases = (phrases) => {
     return array;
 };
 
-export const sendWebhook = async (payload) => {
-    // Priority: DISCORD_WEBHOOK_FUNCTIONS -> ADMIN_ACTION_WEBHOOK_URL
-    const webhookURL = process.env.DISCORD_WEBHOOK_FUNCTIONS || process.env.ADMIN_ACTION_WEBHOOK_URL;
+export const sendWebhook = async (payload, urlOverride = null) => {
+    // Priority: urlOverride -> DISCORD_WEBHOOK_FUNCTIONS -> ADMIN_ACTION_WEBHOOK_URL
+    const webhookURL = urlOverride || process.env.DISCORD_WEBHOOK_FUNCTIONS || process.env.ADMIN_ACTION_WEBHOOK_URL;
 
     if (!webhookURL) {
-        console.error("FATAL: DISCORD_WEBHOOK_FUNCTIONS (or fallback ADMIN_ACTION_WEBHOOK_URL) secret is not set or not accessible. Webhook cannot be sent.");
+        console.error("FATAL: Webhook URL is not set. Webhook cannot be sent.");
         return false;
     }
 
