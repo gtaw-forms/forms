@@ -87,6 +87,11 @@ const EmployeeCredentialsSection = ({
   // Keep authed faction data in sync
   useEffect(() => {
     if (useGtawName && isGtaAuthenticated && gtaWorldUser && factionData && !isCivilianForm) {
+      // Guard against incomplete faction data (e.g. missing characterName) to prevent clearing form values
+      if (!factionData.characterName) {
+        return;
+      }
+
       const cleanRank = factionData.rank ? cleanRankText(factionData.rank) : 'GTAW User';
       setFormData(prev => ({
         ...prev,
@@ -343,15 +348,6 @@ const EmployeeCredentialsSection = ({
       />
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
         <Form.Label style={{ marginBottom: 0 }}>Employee Name</Form.Label>
-        <button
-          type="button"
-          onClick={() => setShowEmployeeModal(true)}
-          className="close-button"
-          style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', lineHeight: '1.2' }}
-        >
-          <i className="fas fa-question-circle" style={{ marginRight: '5px' }}></i>
-          Missing Name?
-        </button>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>

@@ -86,6 +86,7 @@ const AdminDashboard = ({
     const [isScanningLocations, setIsScanningLocations] = useState(false);
     const [showMigrator, setShowMigrator] = useState(false);
     const [mapEnabled, setMapEnabled] = useState(false);
+    const [enablePatientForms, setEnablePatientForms] = useState(false);
     const navigate = useNavigate();
 
     const handleToggleMap = async () => {
@@ -100,19 +101,37 @@ const AdminDashboard = ({
         }
     };
 
+    const handleTogglePatientForms = async () => {
+        const newStatus = !enablePatientForms;
+        try {
+            const dbRef = ref(getDatabase(), '/settings/enablePatientForms');
+            await set(dbRef, newStatus);
+            setEnablePatientForms(newStatus);
+            showInAppNotification(`Patient forms have been ${newStatus ? 're-enabled' : 'restricted to Discord'}.`, 'success');
+        } catch (error) {
+            showInAppNotification('Failed to update patient forms status.', 'error');
+        }
+    };
+
     useEffect(() => {
-        const fetchMapStatus = async () => {
+        const fetchStatus = async () => {
             try {
-                const dbRef = ref(getDatabase(), '/map/settings/enabled');
-                const snapshot = await get(dbRef);
-                if (snapshot.exists()) {
-                    setMapEnabled(snapshot.val());
-                }
+                const db = getDatabase();
+                const mapRef = ref(db, '/map/settings/enabled');
+                const patientRef = ref(db, '/settings/enablePatientForms');
+                
+                const [mapSnap, patientSnap] = await Promise.all([
+                    get(mapRef),
+                    get(patientRef)
+                ]);
+
+                if (mapSnap.exists()) setMapEnabled(mapSnap.val());
+                if (patientSnap.exists()) setEnablePatientForms(patientSnap.val());
             } catch (error) {
-                console.error("Error fetching map status:", error);
+                console.error("Error fetching settings:", error);
             }
         };
-        fetchMapStatus();
+        fetchStatus();
     }, []);
 
     const handleScanLocations = async () => {
@@ -382,7 +401,7 @@ const AdminDashboard = ({
             return;
         }
 
-        setIsMigratingLegacy(true);
+        setIsAppendingLegacyFlag(true);
         showInAppNotification && showInAppNotification('Starting legacy report migration...', 'info');
 
         try {
@@ -411,7 +430,7 @@ const AdminDashboard = ({
             );
             Sentry.captureException(error, { extra: { context: 'handleMigrateLegacyReports' } });
         } finally {
-            setIsMigratingLegacy(false);
+            setIsAppendingLegacyFlag(false);
         }
     };
 
@@ -1310,6 +1329,15 @@ const AdminDashboard = ({
                                         checked={mapEnabled}
                                         onChange={handleToggleMap}
                                         disabled={!hasAdminAccess}
+                                    />
+                                    <Form.Check 
+                                        type="switch"
+                                        id="patient-forms-toggle-switch"
+                                        label="Enable Patient Forms (Bypass Discord Migration)"
+                                        checked={enablePatientForms}
+                                        onChange={handleTogglePatientForms}
+                                        disabled={!hasAdminAccess}
+                                        className="mt-2"
                                     />
 
                                     <h6 className="mt-4">Coroner Report Manual Triggers (Webhook Test)</h6>
