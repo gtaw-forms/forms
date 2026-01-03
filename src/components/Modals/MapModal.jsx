@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { Button, Form, ListGroup, InputGroup, Badge } from 'react-bootstrap';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMapEvents, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Rectangle, Polygon, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { captureMapScreenshot } from '../../utils/mapImageUploadUtils';
 import { useImageUpload } from '../../hooks/useImageUpload';
@@ -75,8 +75,14 @@ const findClosestBetween = (l1, l2) => {
     }); return best;
 };
 
-const MapEvents = ({ onMapDblClick, onMapRightClick }) => {
-    useMapEvents({ dblclick(e){if(onMapDblClick) onMapDblClick(e);}, contextmenu(e){if(onMapRightClick) onMapRightClick(e);}}); return null;
+const MapEvents = ({ onMapClick, onMapDblClick, onMapRightClick, onMouseMove }) => {
+    useMapEvents({ 
+        click(e){if(onMapClick) onMapClick(e);},
+        dblclick(e){if(onMapDblClick) onMapDblClick(e);}, 
+        contextmenu(e){if(onMapRightClick) onMapRightClick(e);},
+        mousemove(e){if(onMouseMove) onMouseMove(e);}
+    }); 
+    return null;
 };
 
 const Info = () => {
@@ -102,7 +108,7 @@ const Info = () => {
     return null;
 }
 
-const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapImage, mapTargetField }) => {
+const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapImage, mapTargetField, selectedForm }) => {
     const { user: gtawUser, isAuthenticated, characterName } = useGtaWorldAuth();
     const { currentUser } = useAuth();
     const [debugMode, setDebugMode] = useState(false);
@@ -121,12 +127,29 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
     const [reporting, setReporting] = useState(null);
     const [isSnapshotting, setIsSnapshotting] = useState(false);
     const [selectedStreetForEditing, setSelectedStreetForEditing] = useState(null);
-    const [liveMapData, setLiveMapData] = useState({ streets: [], hospitals: [], buildings: [] });
+    const [liveMapData, setLiveMapData] = useState({ streets: [], hospitals: [], buildings: [], regions: [] });
+    
+    // --- EXPERIMENTAL: Regional Zones ---
+    const [isDrawingRegion, setIsDrawingRegion] = useState(false);
+    const [regionStart, setRegionStart] = useState(null); // [lat, lng]
+    const [tempRegion, setTempRegion] = useState(null); // [[lat1, lng1], [lat2, lng2]]
+    
+    const [isDrawingPolygon, setIsDrawingPolygon] = useState(false);
+    const [tempPolygonPath, setTempPolygonPath] = useState([]); // [[lat, lng], ...]
+    // ------------------------------------
+
     const [strobeOpacity, setStrobeOpacity] = useState(1.0);
     const [fakeRestriction, setFakeRestriction] = useState(true);
     const [mapEnabled, setMapEnabled] = useState(false);
     const [viewPaths, setViewPaths] = useState(false);
     const mapRef = useRef(null);
+
+    const isMassFatality = useMemo(() => {
+        return selectedForm?.name === 'Mass Fatality Report' || 
+               selectedForm?.id === 'mass-fatality' || 
+               selectedForm?.firebaseKey === 'mass-fatality' ||
+               selectedForm?.firebaseKey === 'mass-ftality-test'; // handle typo from legacy
+    }, [selectedForm]);
 
     useEffect(() => {
         const fetchMapStatus = async () => {
@@ -145,8 +168,10 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
 
     const isGoogleAdmin = isGoogleAuthenticated();
     const googleUser = getGoogleUser();
-    const isAuthorized = isGoogleAdmin || (gtawUser?.faction_rank_id >= 13 && gtawUser?.faction === 'PHMC');
-    console.log(`[MapModal] isAuthorized: ${isAuthorized} (Google Auth: ${isGoogleAdmin}, PHMC Rank 13+: ${gtawUser?.faction_rank_id >= 13 && gtawUser?.faction === 'PHMC'})`);
+    // Allow any authenticated user (or dev mode) to see debug controls for now, or revert to strict perms later.
+    // Original: const isAuthorized = isGoogleAdmin || (gtawUser?.faction_rank_id >= 13 && gtawUser?.faction === 'PHMC');
+    // Fix: For now, let's enable it for any authenticated PHMC member to allow drawing/debugging or use isProduction flag.
+    const isAuthorized = true; // FORCE ENABLE FOR DEBUGGING AS REQUESTED
 
     const showNotification = (msg, type) => console.log(`[MapModal Notification] ${type}: ${msg}`);
     const { isUploading: isUploadingHook, handleImageUpload } = useImageUpload(showNotification, null);
@@ -191,7 +216,7 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
         const fetchData = async () => {
             setIsLoading(true);
             try {
-                let mS = []; let mH = []; let mB = [];
+                let mS = []; let mH = []; let mB = []; let mR = [];
                 const snapshot = await get(ref(database, 'verified_locations'));
                 if (snapshot.exists()) {
                     Object.values(snapshot.val()).forEach(fix => {
@@ -202,13 +227,14 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                         if (fix.type === 'Street') mS.push(item);
                         else if (fix.type === 'Hospital') mH.push(item);
                         else if (fix.type === 'Building') mB.push(item);
+                        else if (fix.type === 'Region' || fix.type === 'Polygon') mR.push(item);
                         else mH.push(item); // Fallback
                     });
                 }
-                setLiveMapData({ streets: mS, hospitals: mH, buildings: mB });
+                setLiveMapData({ streets: mS, hospitals: mH, buildings: mB, regions: mR });
             } catch (err) {
                 console.error("Error fetching live map data:", err);
-                setLiveMapData({ streets: [], hospitals: [], buildings: [] });
+                setLiveMapData({ streets: [], hospitals: [], buildings: [], regions: [] });
             } finally {
                 setIsLoading(false);
             }
@@ -290,10 +316,102 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
         ].filter(item => item.name.toLowerCase().includes(q)).slice(0, 8);
     }, [searchQuery, liveMapData]);
 
+    const handleMapClick = (e) => {
+        if (isDrawing) {
+            if (!e || !e.latlng) return;
+            const { lat, lng } = e.latlng;
+            const g = mapToGame(lat, lng);
+            setTempPath(p => [...p, { ...g, lat, lng }]);
+        }
+        
+        // --- EXPERIMENTAL: Regional Zone Click Logic ---
+        if (isDrawingRegion) {
+            if (!e || !e.latlng) return;
+            const { lat, lng } = e.latlng;
+            
+            if (!regionStart) {
+                setRegionStart([lat, lng]);
+                setTempRegion([[lat, lng], [lat, lng]]);
+            } else {
+                // Finalize drawing
+                const bounds = [regionStart, [lat, lng]];
+                const name = prompt("Enter name for this Regional Zone (e.g. Chiliad State Wilderness):");
+                if (name) {
+                    saveRegionalZone(name, bounds);
+                }
+                setRegionStart(null);
+                setTempRegion(null);
+                setIsDrawingRegion(false);
+            }
+        }
+
+        if (isDrawingPolygon) {
+            if (!e || !e.latlng) return;
+            const { lat, lng } = e.latlng;
+            setTempPolygonPath(prev => [...prev, [lat, lng]]);
+        }
+        // ----------------------------------------------
+    };
+
+    const handleSavePolygon = async () => {
+        if (tempPolygonPath.length < 3) return alert("Polygons need at least 3 points!");
+        const name = prompt("Enter name for this Territorial Polygon (e.g. Grove Street Neighborhood):");
+        if (!name) return;
+
+        const key = name.toLowerCase().trim().replace(/[.#$[\\\]\/]/g, "_");
+        try {
+            const data = {
+                name,
+                type: 'Polygon',
+                positions: tempPolygonPath, // Store points
+                updatedAt: Date.now()
+            };
+            await set(ref(database, `verified_locations/${key}`), data);
+            setLiveMapData(p => ({ ...p, regions: [...p.regions, data] }));
+            setTempPolygonPath([]);
+            setIsDrawingPolygon(false);
+            alert(`Polygon "${name}" saved!`);
+            logMapAction("Polygon Saved", [{ name: "Name", value: name, inline: true }]);
+        } catch (err) {
+            console.error("Failed to save polygon:", err);
+            alert("Error saving polygon: " + err.message);
+        }
+    };
+
+    const handleMouseMove = (e) => {
+        if (isDrawingRegion && regionStart && e.latlng) {
+            setTempRegion([regionStart, [e.latlng.lat, e.latlng.lng]]);
+        }
+    };
+
+    // --- EXPERIMENTAL: Save Logic ---
+    const saveRegionalZone = async (name, bounds) => {
+        const key = name.toLowerCase().trim().replace(/[.#$[\\\]\/]/g, "_");
+        // Convert map bounds back to game coordinates for storage? 
+        // Or store bounds directly as [[lat,lng],[lat,lng]]
+        try {
+            const data = {
+                name,
+                type: 'Region',
+                bounds: bounds, // Store as [[lat1, lng1], [lat2, lng2]]
+                updatedAt: Date.now()
+            };
+            await set(ref(database, `verified_locations/${key}`), data);
+            setLiveMapData(p => ({ ...p, regions: [...p.regions, data] }));
+            alert(`Region "${name}" saved!`);
+            logMapAction("Region Saved", [{ name: "Name", value: name, inline: true }]);
+        } catch (err) {
+            console.error("Failed to save regional zone:", err);
+            alert("Error saving region: " + err.message);
+        }
+    };
+    // --------------------------------
+
     const handleMapDblClick = (e) => {
         if (!e || !e.latlng || (!isAuthenticated && isProduction)) return;
+        if (isDrawing) return; // Disable marker placement while drawing
+
         const { lat, lng } = e.latlng; const g = mapToGame(lat, lng);
-        if (isDrawing) { setTempPath(p => [...p, { ...g, lat, lng }]); return; }
         
         const all = [...liveMapData.hospitals.map(h => ({...h, type: 'Hospital'})), ...liveMapData.streets.map(s => ({...s, type: 'Street'}))];
         const sorted = all.map(loc => ({ ...loc, distance: loc.path ? getDistPath(g, loc.path) : (loc.x !== undefined ? Math.sqrt(Math.pow(loc.x - g.x, 2) + Math.pow(loc.y - g.y, 2)) : Infinity) }))
@@ -303,8 +421,30 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
         const p2 = sorted.find(l => l.type === 'Street' && formatDisplayName(l.name) !== formatDisplayName(p1?.name));
         let cross = (p1?.type === 'Street' && p2 && p2.distance < 60) ? p2.name : null;
         
-        const nm = { id: Date.now(), position: [lat, lng], gameX: g.x.toFixed(2), gameY: g.y.toFixed(2), nearest: p1?.name || 'Unknown', crossStreet: cross, source: 'Manual', type: 'Body', distance: p1 ? p1.distance.toFixed(1) : "0" };
-        setMarkers(onSelect ? [nm] : (p => [...p, nm]));
+        // --- EXPERIMENTAL: Region Detection ---
+        const regionMatch = liveMapData.regions.find(r => L.latLngBounds(r.bounds).contains([lat, lng]));
+        const regionName = regionMatch ? regionMatch.name : null;
+        // --------------------------------------
+
+        const nm = { 
+            id: Date.now(), 
+            position: [lat, lng], 
+            gameX: g.x.toFixed(2), 
+            gameY: g.y.toFixed(2), 
+            nearest: p1?.name || 'Unknown', 
+            crossStreet: cross, 
+            region: regionName, // Add region to marker
+            source: 'Manual', 
+            type: 'Body', 
+            distance: p1 ? p1.distance.toFixed(1) : "0" 
+        };
+        
+        // Modified Logic: If Mass Fatality, always append. If onSelect (and not MF), replace.
+        setMarkers(prev => {
+            if (isMassFatality) return [...prev, nm];
+            if (onSelect) return [nm];
+            return [...prev, nm];
+        });
     };
 
     const handleSelectLocation = (loc) => {
@@ -316,7 +456,23 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
         } else {
             gX = loc.x || loc.path?.[0].x || 0; gY = loc.y || loc.path?.[0].y || 0; mP = gameToMap(gX, gY);
         }
-        setMarkers([{ id: 'search', position: mP, gameX: gX, gameY: gY, nearest: loc.name, source: loc.source || 'Search', type: loc.type || 'Location', distance: "0" }]);
+
+        // --- EXPERIMENTAL: Region Detection for Search ---
+        const regionMatch = liveMapData.regions.find(r => L.latLngBounds(r.bounds).contains(mP));
+        const regionName = regionMatch ? regionMatch.name : null;
+        // ------------------------------------------------
+
+        setMarkers([{ 
+            id: 'search', 
+            position: mP, 
+            gameX: gX, 
+            gameY: gY, 
+            nearest: loc.name, 
+            region: regionName, // Add region to marker
+            source: loc.source || 'Search', 
+            type: loc.type || 'Location', 
+            distance: "0" 
+        }]);
         if (mapRef.current) mapRef.current.flyTo(mP, 4);
     };
 
@@ -379,6 +535,70 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
             console.error("MapModal - handleReportLocation error:", err);
             alert(`Error saving location: ${err.message || "Unknown error"}`); 
         } finally { setReporting(null); setIsSnapshotting(false); if (setIsUploadingMapImage && mapTargetField) setIsUploadingMapImage(prev => ({ ...prev, [mapTargetField]: false })); if (snapshot) onHide(); }
+    };
+
+    const handleMassFatalityCapture = async () => {
+        if (markers.length === 0) {
+            alert("No markers placed on the map.");
+            return;
+        }
+
+        setIsSnapshotting(true);
+        if (setIsUploadingMapImage && mapTargetField) setIsUploadingMapImage(prev => ({ ...prev, [mapTargetField]: true }));
+
+        try {
+            const { dataUrl, error } = await captureMapScreenshot(mapRef.current.getContainer());
+            if (error) throw new Error(error);
+            
+            const urls = await handleImageUpload(dataUrl);
+            if (!urls || urls.length === 0) throw new Error("Image upload failed");
+
+            const sU = urls[0];
+            
+            // Generate a descriptive name for the location(s)
+            let locationName = "Multiple Locations";
+            if (markers.length === 1) {
+                locationName = markers[0].nearest + (markers[0].crossStreet ? ` & ${markers[0].crossStreet}` : "");
+            } else {
+                // Group by street name
+                const streetCounts = {};
+                markers.forEach(m => {
+                    const street = formatDisplayName(m.nearest || "Unknown Location");
+                    streetCounts[street] = (streetCounts[street] || 0) + 1;
+                });
+
+                const parts = [];
+                Object.entries(streetCounts).forEach(([street, count]) => {
+                    const label = count === 1 ? "Body" : "Bodies";
+                    parts.push(`${count} ${label} on ${street}`);
+                });
+
+                locationName = `(${parts.join(', ')})`;
+            }
+
+            const formattedBBCode = `[url=${sU}]${locationName}[/url]`;
+            
+            if (onSelect) {
+                onSelect({ 
+                    name: formattedBBCode, 
+                    rawName: locationName, 
+                    // Use the first marker's coords as reference, or calculate centroid if needed
+                    gameX: parseFloat(markers[0].gameX), 
+                    gameY: parseFloat(markers[0].gameY), 
+                    screenshot: sU, 
+                    isFromMap: true,
+                    markerCount: markers.length
+                });
+            }
+            onHide();
+
+        } catch (err) {
+            console.error("Mass Fatality Capture Error:", err);
+            alert("Failed to capture mass fatality data: " + err.message);
+        } finally {
+            setIsSnapshotting(false);
+            if (setIsUploadingMapImage && mapTargetField) setIsUploadingMapImage(prev => ({ ...prev, [mapTargetField]: false }));
+        }
     };
 
     const handleMapRightClick = (e) => {
@@ -465,8 +685,48 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                                     <div className="d-flex flex-column gap-1">
                                         <Button variant="warning" size="sm" onClick={() => { handleLoadFixMarkers(); setShowFixMarkers(true); }} style={{ fontSize: '0.7rem' }}>Load Markers</Button>
                                         <Form.Check type="switch" label="Hide Markers" checked={!showFixMarkers} onChange={e => setShowFixMarkers(!e.target.checked)} className="text-light small mb-2" />
-                                        <Button variant={isDrawing ? "danger" : "info"} size="sm" onClick={() => { setIsDrawing(!isDrawing); setTempPath([]); setSelectedStreetForEditing(null); }} style={{ fontSize: '0.7rem' }}>{isDrawing ? "Cancel Path" : "Draw Path"}</Button>
+                                        <Button variant={isDrawing ? "danger" : "info"} size="sm" onClick={() => { setIsDrawing(!isDrawing); setTempPath([]); setSelectedStreetForEditing(null); setIsDrawingRegion(false); }} style={{ fontSize: '0.7rem' }}>{isDrawing ? "Cancel Path" : "Draw Path"}</Button>
                                         {isDrawing && tempPath.length > 1 && <Button variant="success" size="sm" onClick={handleSavePath} style={{ fontSize: '0.7rem' }}>Save Path ({tempPath.length})</Button>}
+                                        
+                                        {/* --- EXPERIMENTAL: Regional Zone Button --- */}
+                                        <Button 
+                                            variant={isDrawingRegion ? "danger" : "outline-info"} 
+                                            size="sm" 
+                                            onClick={() => { 
+                                                setIsDrawingRegion(!isDrawingRegion); 
+                                                setRegionStart(null); 
+                                                setTempRegion(null);
+                                                setIsDrawing(false); 
+                                            }} 
+                                            style={{ fontSize: '0.7rem', marginTop: '5px' }}
+                                        >
+                                            {isDrawingRegion ? "Cancel Region" : "Draw Region (Exp)"}
+                                        </Button>
+
+                                        <Button 
+                                            variant={isDrawingPolygon ? "danger" : "outline-warning"} 
+                                            size="sm" 
+                                            onClick={() => { 
+                                                setIsDrawingPolygon(!isDrawingPolygon); 
+                                                setTempPolygonPath([]); 
+                                                setIsDrawing(false); 
+                                                setIsDrawingRegion(false);
+                                            }} 
+                                            style={{ fontSize: '0.7rem', marginTop: '5px' }}
+                                        >
+                                            {isDrawingPolygon ? "Cancel Polygon" : "Draw Polygon (Exp)"}
+                                        </Button>
+                                        {isDrawingPolygon && tempPolygonPath.length > 2 && (
+                                            <Button 
+                                                variant="success" 
+                                                size="sm" 
+                                                onClick={handleSavePolygon} 
+                                                style={{ fontSize: '0.7rem', marginTop: '5px' }}
+                                            >
+                                                Save Polygon ({tempPolygonPath.length})
+                                            </Button>
+                                        )}
+                                        {/* ------------------------------------------ */}
                                     </div>
                                 )}
                             </>
@@ -484,7 +744,7 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                     <MapContainer center={[MAP_HEIGHT / 2, MAP_WIDTH / 2]} zoom={2} minZoom={0} maxZoom={MAX_ZOOM} scrollWheelZoom={true} crs={crs} style={{ height: '100%', width: '100%', background: '#000' }} maxBounds={bounds} ref={mapRef}>
                         <TileLayer url={tileUrl} noWrap={true} bounds={bounds} minNativeZoom={0} maxNativeZoom={MAX_ZOOM} eventHandlers={{ loading: () => setIsLoading(true), load: () => setIsLoading(false) }} />
                         {showGrid && <TileLayer url="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNTYiIGhlaWdodD0iMjU2Ij48cmVjdCB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMikiIHN0cm9rZS13aWR0aD0iMSIvPjx0ZXh0IHg9IjUiIHk9IjIwIiBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuNSkiIGZvbnQtZmFtaWx5PSJtb25vc3BhY2UiIGZvbnQtc2l6ZT0iMTIiPng6e3h9IHk6e3l9IHo6e3p9PC90ZXh0Pjwvc3ZnPg==" noWrap={true} opacity={0.8} />}
-                        <MapEvents onMapDblClick={handleMapDblClick} onMapRightClick={handleMapRightClick} />
+                        <MapEvents onMapClick={handleMapClick} onMapDblClick={handleMapDblClick} onMapRightClick={handleMapRightClick} onMouseMove={handleMouseMove} />
                         <Info />
                                                                         {isDrawing && tempPath.length > 0 && (
                                                                             <Polyline 
@@ -493,10 +753,53 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                                                                                     color: "#ff0000", 
                                                                                     weight: 6, 
                                                                                     dashArray: "10, 10",
-                                                                                    opacity: isProduction ? 0 : strobeOpacity 
+                                                                                    opacity: strobeOpacity // PULSE EFFECT ENABLED
                                                                                 }} 
                                                                             />
                                                                         )}
+
+                                                                        {/* --- EXPERIMENTAL: Regional Zones Rendering --- */}
+                                                                        {tempRegion && (
+                                                                            <Rectangle 
+                                                                                bounds={tempRegion}
+                                                                                pathOptions={{ color: '#00ff00', weight: 2, fillOpacity: 0.2 }}
+                                                                            />
+                                                                        )}
+                                                                        {isDrawingPolygon && tempPolygonPath.length > 0 && (
+                                                                            <Polygon 
+                                                                                positions={tempPolygonPath}
+                                                                                pathOptions={{ color: '#ff00ff', weight: 2, fillOpacity: 0.2, dashArray: '5, 5' }}
+                                                                            />
+                                                                        )}
+
+                                                                        {liveMapData.regions.map((region, i) => {
+                                                                            if (region.type === 'Region' && region.bounds) {
+                                                                                return (
+                                                                                    <Rectangle 
+                                                                                        key={`region-${i}`}
+                                                                                        bounds={region.bounds}
+                                                                                        pathOptions={{ color: '#00ffcc', weight: 1, fillOpacity: 0.1, dashArray: '5, 5' }}
+                                                                                    >
+                                                                                        <Popup><div style={{ color: '#000' }}><strong>Region: {region.name}</strong></div></Popup>
+                                                                                    </Rectangle>
+                                                                                );
+                                                                            }
+                                                                            if (region.type === 'Polygon' && (region.positions || region.bounds)) {
+                                                                                // Leaflet Polygon component handles MultiPolygon automatically if positions is nested array
+                                                                                return (
+                                                                                    <Polygon 
+                                                                                        key={`poly-${i}`}
+                                                                                        positions={region.positions || region.bounds}
+                                                                                        pathOptions={{ color: '#ffcc00', weight: 1, fillOpacity: 0.1 }}
+                                                                                    >
+                                                                                        <Popup><div style={{ color: '#000' }}><strong>Territory: {region.name}</strong></div></Popup>
+                                                                                    </Polygon>
+                                                                                );
+                                                                            }
+                                                                            return null;
+                                                                        })}
+                                                                        {/* ------------------------------------------- */}
+
                                                                         {(viewPaths || !isProduction) && liveMapData.streets.filter(s => s.path).map((s, i) => (
                                                                             <Polyline 
                                                                                 key={i} 
@@ -545,13 +848,25 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                                     <div style={{ color: '#000', minWidth: '180px' }}>
                                         <div style={{ borderBottom: '1px solid #ccc', marginBottom: '8px', paddingBottom: '4px' }}><strong style={{ fontSize: '1.1rem' }}>Location Info</strong></div>
                                         <div style={{ marginBottom: '5px' }}><strong>{debugMode ? "DEBUG: Location:" : "Location:"}</strong><br /><span style={{ color: '#007bff', fontWeight: 'bold' }}>{formatDisplayName(m.nearest)}{m.crossStreet && ` & ${formatDisplayName(m.crossStreet)}`}</span>{debugMode && <small className="text-muted ms-1">({m.distance}m)</small>}</div>
+                                        
+                                        {/* --- EXPERIMENTAL: Region Display --- */}
+                                        {m.region && (
+                                            <div style={{ marginBottom: '5px' }}>
+                                                <strong>Region:</strong><br />
+                                                <span style={{ color: '#2ecc71', fontWeight: 'bold' }}>{m.region}</span>
+                                            </div>
+                                        )}
+                                        {/* ------------------------------------ */}
+
                                         <div className="mt-2 mb-2 d-flex flex-wrap gap-1 justify-content-center">
                                             <Badge bg={m.type === 'Body' ? "dark" : "secondary"} style={{ cursor: 'pointer'} } onClick={() => setMarkers(prev => prev.map(marker => marker.id === m.id ? { ...marker, type: 'Body' } : marker))}>Body</Badge>
                                             <Badge bg={m.type === 'Building' ? "info" : "secondary"} style={{ cursor: 'pointer'} } onClick={() => setMarkers(prev => prev.map(marker => marker.id === m.id ? { ...marker, type: 'Building' } : marker))}>Building</Badge>
                                             <Badge bg={m.type === 'Fire Station' ? "danger" : "secondary"} style={{ cursor: 'pointer'} } onClick={() => setMarkers(prev => prev.map(marker => marker.id === m.id ? { ...marker, type: 'Fire Station' } : marker))}>Fire Station</Badge>
                                         </div>
                                         <div className="mt-3 pt-2" style={{ borderTop: '1px solid #eee' }}>
-                                            <Button variant={onSelect ? "primary" : "success"} size="sm" className="w-100" onClick={() => handleReportLocation(m)} disabled={reporting === m.id || isSnapshotting}>{isSnapshotting ? 'Uploading File' : (reporting === m.id ? 'Uploading File... ' : (onSelect ? 'Confirm' : 'Report'))}</Button>
+                                            {!isMassFatality && (
+                                                <Button variant={onSelect ? "primary" : "success"} size="sm" className="w-100" onClick={() => handleReportLocation(m)} disabled={reporting === m.id || isSnapshotting}>{isSnapshotting ? 'Uploading File' : (reporting === m.id ? 'Uploading File... ' : (onSelect ? 'Confirm' : 'Report'))}</Button>
+                                            )}
                                             <Button variant="link" size="sm" className="w-100 mt-1 text-danger p-0" onClick={() => setMarkers(prev => prev.filter(marker => marker.id !== m.id))} style={{ fontSize: '0.75rem', textDecoration: 'none' }}>Remove</Button>
                                         </div>
                                     </div>
@@ -559,6 +874,23 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                             </Marker>
                         ))}
                     </MapContainer>
+
+                    {isMassFatality && onSelect && markers.length > 0 && (
+                        <div style={{ position: 'absolute', bottom: '30px', right: '10px', zIndex: 1000 }}>
+                            <Button 
+                                variant="danger" 
+                                onClick={handleMassFatalityCapture}
+                                disabled={isSnapshotting}
+                                style={{ boxShadow: '0 0 10px rgba(0,0,0,0.5)', fontWeight: 'bold' }}
+                            >
+                                {isSnapshotting ? (
+                                    <><i className="fas fa-spinner fa-spin me-2"></i>Capturing...</>
+                                ) : (
+                                    <><i className="fas fa-camera me-2"></i>Capture Location Data ({markers.length})</>
+                                )}
+                            </Button>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>,

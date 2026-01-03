@@ -430,9 +430,12 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
         const oauthEmployeeRank = gtaWorldUser.faction?.rank || 'N/A'; // Rank might be less directly available for non-faction activeCharacter
 
         if (formEmployeeName && oauthEmployeeName && formEmployeeName !== oauthEmployeeName) {
+            console.warn(`[BbcodeGenerator] Consistency Warning: Form Employee Name (${formEmployeeName}) does not match OAuth Name (${oauthEmployeeName}).`);
         }
 
         if (formEmployeeRank && oauthEmployeeRank && formEmployeeRank !== oauthEmployeeRank) {
+             // Rank comparison is tricky due to formatting (spaces vs underscores), so maybe just a debug log
+             // console.debug(`[BbcodeGenerator] Rank mismatch check: Form(${formEmployeeRank}) vs OAuth(${oauthEmployeeRank})`);
         }
       }
     }

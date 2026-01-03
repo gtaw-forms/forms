@@ -10,7 +10,8 @@ import {
     triggerGetGtaWorldProfile,
     triggerUploadFactionData,
     triggerBatchCheckFactionMembership,
-    triggerCheckFactionMembership
+    triggerCheckFactionMembership,
+    triggerTestHealthAlert
 } from '../../services/firebaseFunctions';
 
 const FirebaseFunctionsTester = ({ showInAppNotification }) => {
@@ -95,6 +96,14 @@ const FirebaseFunctionsTester = ({ showInAppNotification }) => {
                     <Button variant="primary" size="sm" onClick={() => handleTriggerFunction(triggerUploadFactionData, { factionData: JSON.parse(factionData), metadata: JSON.parse(metadata) })} disabled={loading || !factionData || !metadata}>
                         {loading ? <Spinner as="span" animation="border" size="sm" /> : 'uploadFactionData'}
                     </Button>
+                </div>
+
+                <h7 className="mt-3">System Health Monitor</h7>
+                <div className="d-flex flex-wrap gap-2 mb-3">
+                    <Button variant="danger" size="sm" onClick={() => handleTriggerFunction(triggerTestHealthAlert)} disabled={loading}>
+                        {loading ? <Spinner as="span" animation="border" size="sm" /> : 'Trigger Test Health Alert'}
+                    </Button>
+                    <p className="text-muted small w-100">Dispatches a mock "Critical Outage" alert to verify Discord webhooks and User pings.</p>
                 </div>
 
                 {result && (
