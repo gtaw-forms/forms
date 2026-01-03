@@ -1,12 +1,78 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import fetch from 'node-fetch';
+import { onCall } from "firebase-functions/v2/https";
 import { db, admin } from '../utils/firebase.js';
 import { sendWebhook } from '../utils/helpers.js';
 
+/**
+ * Manually triggers a test "Critical Outage" alert to verify webhook delivery and pings.
+ */
+export const triggerTestHealthAlert = onCall({
+    secrets: ["DISCORD_WEBHOOK_FUNCTIONS", "PHMC_DISCORD"],
+}, async (request) => {
+    // Check if user is authenticated and is an admin (optional, but good practice)
+    // For now, focusing on the trigger logic as requested.
+
+    const testAlerts = [
+        {
+            title: "🔴 TEST: Cloudflare Critical Outage",
+            description: "Widespread API errors detected globally. Manual trigger for testing.",
+            color: 0xFF0000,
+            source: 'cloudflare'
+        },
+        {
+            title: "🔴 TEST: GTA World UCP Unreachable",
+            description: "Connection timed out to https://ucp.gta.world/ (France/OVH Node).",
+            color: 0xFF0000,
+            source: 'gtaw'
+        }
+    ];
+
+    const developerUser = "<@228306972204597248>"; 
+    const phmcLeaderUser = "<@216339303926595586>"; 
+
+    const tasks = [];
+
+    // Process Cloudflare Test Alert
+    const cfAlert = testAlerts.find(a => a.source === 'cloudflare');
+    const cfPayload = {
+        username: "System Uptime Alert",
+        content: `🚨 **TEST: CLOUDFLARE INCIDENT** 🚨\nForms Developer: ${developerUser}\nPHMC Bot Manager: ${phmcLeaderUser}`,
+        embeds: [{
+            title: "Cloudflare System Health Alert (TEST)",
+            fields: [{ name: cfAlert.title, value: cfAlert.description }],
+            color: 0xFF0000,
+            timestamp: new Date().toISOString(),
+            footer: { text: "PHMC Tools - System Monitor (Test)" }
+        }]
+    };
+    tasks.push(sendWebhook(cfPayload, process.env.DISCORD_WEBHOOK_FUNCTIONS));
+    tasks.push(sendWebhook(cfPayload, process.env.PHMC_DISCORD));
+
+    // Process GTAW Test Alert
+    const gtawAlert = testAlerts.find(a => a.source === 'gtaw');
+    const gtawPayload = {
+        username: "System Uptime Alert",
+        content: `🚨 **TEST: GTAW INCIDENT** 🚨\nForms Developer: ${developerUser}`,
+        embeds: [{
+            title: "GTAW System Health Alert (TEST)",
+            fields: [{ name: gtawAlert.title, value: gtawAlert.description }],
+            color: 0xFF0000,
+            timestamp: new Date().toISOString(),
+            footer: { text: "PHMC Tools - System Monitor (Test)" }
+        }]
+    };
+    tasks.push(sendWebhook(gtawPayload, process.env.DISCORD_WEBHOOK_FUNCTIONS));
+
+    await Promise.all(tasks);
+
+    return { success: true, message: "Test alerts dispatched to respective channels." };
+});
+
 export const systemHealthMonitor = onSchedule({
-    schedule: "every 30 minutes",
+    schedule: "every 15 minutes",
     timeZone: "UTC",
-    secrets: ["ADMIN_ACTION_WEBHOOK_URL", "DISCORD_WEBHOOK_FUNCTIONS"],
+    region: "europe-west2",
+    secrets: ["DISCORD_WEBHOOK_FUNCTIONS", "PHMC_DISCORD"],
 }, async (event) => {
     console.log('[System Monitor] Starting health checks...');
     
@@ -62,7 +128,8 @@ export const systemHealthMonitor = onSchedule({
                     alerts.push({
                         title: `⚠️ Cloudflare: ${activeIncident.name}`,
                         description: `**${latestUpdate.status}**: ${latestUpdate.body}`,
-                        color: 0xF1C40F // Orange
+                        color: 0xF1C40F, // Orange
+                        source: 'cloudflare'
                     });
 
                     updates['cloudflare'] = {
@@ -77,19 +144,18 @@ export const systemHealthMonitor = onSchedule({
             }
 
             // Fallback: If no specific incident update caused an alert, check for overall status changes
-            // This catches cases where the indicator changes but maybe there isn't a specific incident object yet, or it was just resolved.
             if (!alertTriggered) {
                  if (currentIndicator !== 'none' && currentIndicator !== previousState.cloudflare?.indicator) {
                     alerts.push({
                         title: "⚠️ Cloudflare Status Changed",
                         description: `Status changed to: **${currentDescription}** (${currentIndicator})`,
-                        color: 0xF1C40F // Orange
+                        color: 0xF1C40F, // Orange
+                        source: 'cloudflare'
                     });
                     updates['cloudflare'] = {
                         indicator: currentIndicator,
                         description: currentDescription,
                         lastChecked: admin.database.ServerValue.TIMESTAMP,
-                        // Reset incident trackers if we're just seeing a generic status change (or preserve them if needed)
                          activeIncidentId: null,
                          lastUpdateId: null
                     };
@@ -97,7 +163,8 @@ export const systemHealthMonitor = onSchedule({
                     alerts.push({
                         title: "✅ Cloudflare Status Resolved",
                         description: "Cloudflare systems are back to normal.",
-                        color: 0x00FF00 // Green
+                        color: 0x00FF00, // Green
+                        source: 'cloudflare'
                     });
                     updates['cloudflare'] = {
                         indicator: 'none',
@@ -115,12 +182,12 @@ export const systemHealthMonitor = onSchedule({
     }
 
     // 2. Check GTA World UCP Latency
-    const LATENCY_THRESHOLD = 2000; // 2 seconds
+    const LATENCY_THRESHOLD = 30000; // 30 seconds
     try {
         const start = Date.now();
         // Use a timeout to detect timeouts as failures
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+        const timeout = setTimeout(() => controller.abort(), 45000); 
 
         const gtawResponse = await fetch('https://ucp.gta.world/', { 
             method: 'GET',
@@ -140,21 +207,18 @@ export const systemHealthMonitor = onSchedule({
              alerts.push({
                 title: "🐢 GTA World UCP High Latency",
                 description: `UCP is responding slowly. Latency: **${latency}ms** (Threshold: ${LATENCY_THRESHOLD}ms)`,
-                color: 0xE67E22 // Orange
+                color: 0xE67E22, // Orange
+                source: 'gtaw'
             });
         } else if (!isSlow && previousState.gtaw?.status === 'slow') {
              alerts.push({
                 title: "🚀 GTA World UCP Latency Normal",
                 description: `UCP latency has returned to normal (${latency}ms).`,
-                color: 0x00FF00 // Green
+                color: 0x00FF00, // Green
+                source: 'gtaw'
             });
         }
         
-        if (!gtawResponse.ok) {
-             console.warn(`[System Monitor] GTAW UCP returned status ${gtawResponse.status}`);
-             // Optional: Alert on HTTP errors? keeping it to latency for now as requested.
-        }
-
         updates['gtaw'] = {
             status: currentStatus,
             lastLatency: latency,
@@ -163,12 +227,12 @@ export const systemHealthMonitor = onSchedule({
 
     } catch (error) {
         console.error('[System Monitor] Error checking GTAW UCP:', error);
-        // Treat timeout/network error as potential outage or critical slowness
         if (previousState.gtaw?.status !== 'error') {
             alerts.push({
                 title: "🔴 GTA World UCP Unreachable",
                 description: `Failed to reach UCP. Error: ${error.message}`,
-                color: 0xFF0000 // Red
+                color: 0xFF0000, // Red
+                source: 'gtaw'
             });
             updates['gtaw'] = {
                 status: 'error',
@@ -186,21 +250,55 @@ export const systemHealthMonitor = onSchedule({
     // Send alerts if any
     if (alerts.length > 0) {
         console.log(`[System Monitor] Sending ${alerts.length} alerts.`);
-        const embed = {
-            title: "System Health Alert",
-            fields: alerts.map(a => ({
-                name: a.title,
-                value: a.description,
-                inline: false
-            })),
-            color: alerts[0].color, // Use color of first alert
-            timestamp: new Date().toISOString(),
-            footer: { text: "PHMC Tools - System Monitor" }
-        };
         
-        // Use loop to handle different colors if necessary, but single embed is cleaner. 
-        // If multiple mixed alerts (Good + Bad), maybe just send separate or neutral color.
-        // For simplicity, sending one webhook with multiple fields.
-        await sendWebhook({ embeds: [embed] });
+        const developerUser = "<@228306972204597248>"; 
+        const phmcLeaderUser = "<@216339303926595586>"; 
+
+        const tasks = [];
+
+        // Route alerts based on source
+        const cfAlerts = alerts.filter(a => a.source === 'cloudflare');
+        const gtawAlerts = alerts.filter(a => a.source === 'gtaw');
+
+        if (cfAlerts.length > 0) {
+            const isHighPriority = cfAlerts.some(a => 
+                a.title.includes('Critical') || a.title.includes('Major') || a.title.includes('🔴') || a.title.includes('🟠')
+            );
+
+            const cfPayload = {
+                username: "System Uptime Alert",
+                content: isHighPriority ? `🚨 **CLOUDFLARE INCIDENT DETECTED** 🚨\nForms Developer: ${developerUser}\nPHMC Bot Manager: ${phmcLeaderUser}` : null,
+                embeds: [{
+                    title: isHighPriority ? "🚨 Cloudflare System Health Alert" : "Cloudflare System Health Alert",
+                    fields: cfAlerts.map(a => ({ name: a.title, value: a.description, inline: false })),
+                    color: isHighPriority ? 0xFF0000 : cfAlerts[0].color,
+                    timestamp: new Date().toISOString(),
+                    footer: { text: "PHMC Tools - System Monitor" }
+                }]
+            };
+            tasks.push(sendWebhook(cfPayload, process.env.DISCORD_WEBHOOK_FUNCTIONS));
+            tasks.push(sendWebhook(cfPayload, process.env.PHMC_DISCORD));
+        }
+
+        if (gtawAlerts.length > 0) {
+            const isHighPriority = gtawAlerts.some(a => 
+                a.title.includes('Unreachable') || a.title.includes('🔴')
+            );
+
+            const gtawPayload = {
+                username: "System Uptime Alert",
+                content: isHighPriority ? `🚨 **GTAW UCP INCIDENT DETECTED** 🚨\nForms Developer: ${developerUser}` : null,
+                embeds: [{
+                    title: isHighPriority ? "🚨 GTAW System Health Alert" : "GTAW System Health Alert",
+                    fields: gtawAlerts.map(a => ({ name: a.title, value: a.description, inline: false })),
+                    color: isHighPriority ? 0xFF0000 : gtawAlerts[0].color,
+                    timestamp: new Date().toISOString(),
+                    footer: { text: "PHMC Tools - System Monitor" }
+                }]
+            };
+            tasks.push(sendWebhook(gtawPayload, process.env.DISCORD_WEBHOOK_FUNCTIONS));
+        }
+
+        await Promise.all(tasks);
     }
 });

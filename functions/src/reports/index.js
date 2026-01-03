@@ -151,8 +151,13 @@ export const migrateReportsToNewStructure = onCall({
 });
 
 export const syncReportCounts = onCall({
-    region: "us-central1",
-    secrets: ["ADMIN_ACTION_WEBHOOK_URL", "DISCORD_WEBHOOK_FUNCTIONS"],
+    cors: [
+        "https://phmc-forms.web.app",
+        "https://phmc-forms.firebaseapp.com",
+        "https://phmc.gta.world",
+        "http://localhost:5173",
+        "http://localhost:3000"
+    ]
 }, async (request) => {
     console.log('[Sync Counts] Starting combined report count sync process.');
 

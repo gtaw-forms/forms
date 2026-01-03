@@ -7,7 +7,6 @@ import { processUntrackedLocation } from '../utils/locationReporting.js';
  * that it cannot confidently match to the known list.
  */
 export const reportUntrackedLocation = onCall({
-    region: "us-central1",
     secrets: ["ADMIN_ACTION_WEBHOOK_URL", "DISCORD_WEBHOOK_FUNCTIONS"],
 }, async (request) => {
     const { place, street, area, reportKey } = request.data;
