@@ -8,5 +8,10 @@
  */
 export const cleanRankText = (text) => {
   if (!text) return '';
-  return String(text).replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+  // 1. Remove trailing special chars (dashes, underscores, etc) often found in GTAW ranks
+  let cleaned = String(text).replace(/[-_ \s]+$/, '');
+  // 2. Replace internal hyphens/underscores with spaces
+  cleaned = cleaned.replace(/[-_]/g, ' ');
+  // 3. Collapse multiple whitespace and trim
+  return cleaned.replace(/\s+/g, ' ').trim();
 };

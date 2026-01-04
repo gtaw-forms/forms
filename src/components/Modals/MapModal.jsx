@@ -12,6 +12,8 @@ import { isGoogleAuthenticated, getGoogleUser } from '../../services/gtaWorldAut
 import { sendDiscordWebhook } from '../../utils/webhookUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { database } from '../../firebase';
+import phmcLogo from '../../assets/hospital_logo.png';
+
 // --- LEAFLET ICON FIXES ---
 const DefaultIcon = L.icon({
     iconUrl: `${import.meta.env.BASE_URL}assets/leaflet/marker-icon.png`,
@@ -27,10 +29,14 @@ L.Icon.Default.mergeOptions({
     shadowUrl: `${import.meta.env.BASE_URL}assets/leaflet/marker-shadow.png`,
 });
 
-const HospitalIcon = L.divIcon({
-    html: '<div style="background-color: white; border-radius: 50%; width: 30px; height: 30px; display: flex; justify-content: center; align-items: center; border: 2px solid #dc3545; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"><i class="fas fa-hospital" style="color: #dc3545; font-size: 18px;"></i></div>',
-    className: 'custom-hospital-icon', iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -15]
+const HospitalIcon = L.icon({
+    iconUrl: phmcLogo,
+    iconSize: [35, 35],
+    iconAnchor: [17, 17],
+    popupAnchor: [0, -17],
+    className: 'custom-hospital-icon'
 });
+
 const BodyIcon = L.divIcon({
     html: '<div style="background-color: #333; border-radius: 50%; width: 30px; height: 30px; display: flex; justify-content: center; align-items: center; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"><i class="fas fa-skull-crossbones" style="color: #fff; font-size: 16px;"></i></div>',
     className: 'custom-body-icon', iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -15]
@@ -142,6 +148,8 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
     const [fakeRestriction, setFakeRestriction] = useState(true);
     const [mapEnabled, setMapEnabled] = useState(false);
     const [viewPaths, setViewPaths] = useState(false);
+    const [showRegions, setShowRegions] = useState(true);
+    const [showStreets, setShowStreets] = useState(true);
     const mapRef = useRef(null);
 
     const isMassFatality = useMemo(() => {
@@ -409,7 +417,7 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
 
     const handleMapDblClick = (e) => {
         if (!e || !e.latlng || (!isAuthenticated && isProduction)) return;
-        if (isDrawing) return; // Disable marker placement while drawing
+        if (isDrawing || isDrawingRegion || isDrawingPolygon) return; // Disable marker placement while drawing
 
         const { lat, lng } = e.latlng; const g = mapToGame(lat, lng);
         
@@ -422,7 +430,15 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
         let cross = (p1?.type === 'Street' && p2 && p2.distance < 60) ? p2.name : null;
         
         // --- EXPERIMENTAL: Region Detection ---
-        const regionMatch = liveMapData.regions.find(r => L.latLngBounds(r.bounds).contains([lat, lng]));
+        const regionMatch = liveMapData.regions.find(r => {
+            if (r.type === 'Region' && r.bounds) {
+                return L.latLngBounds(r.bounds).contains([lat, lng]);
+            }
+            if (r.type === 'Polygon' && r.positions) {
+                return L.latLngBounds(r.positions).contains([lat, lng]);
+            }
+            return false;
+        });
         const regionName = regionMatch ? regionMatch.name : null;
         // --------------------------------------
 
@@ -458,7 +474,15 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
         }
 
         // --- EXPERIMENTAL: Region Detection for Search ---
-        const regionMatch = liveMapData.regions.find(r => L.latLngBounds(r.bounds).contains(mP));
+        const regionMatch = liveMapData.regions.find(r => {
+            if (r.type === 'Region' && r.bounds) {
+                return L.latLngBounds(r.bounds).contains(mP);
+            }
+            if (r.type === 'Polygon' && r.positions) {
+                return L.latLngBounds(r.positions).contains(mP);
+            }
+            return false;
+        });
         const regionName = regionMatch ? regionMatch.name : null;
         // ------------------------------------------------
 
@@ -685,48 +709,53 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                                     <div className="d-flex flex-column gap-1">
                                         <Button variant="warning" size="sm" onClick={() => { handleLoadFixMarkers(); setShowFixMarkers(true); }} style={{ fontSize: '0.7rem' }}>Load Markers</Button>
                                         <Form.Check type="switch" label="Hide Markers" checked={!showFixMarkers} onChange={e => setShowFixMarkers(!e.target.checked)} className="text-light small mb-2" />
+                                        <Form.Check type="switch" label="Hide Regions" checked={!showRegions} onChange={e => setShowRegions(!e.target.checked)} className="text-light small mb-2" />
+                                        <Form.Check type="switch" label="Hide Streets" checked={!showStreets} onChange={e => setShowStreets(!e.target.checked)} className="text-light small mb-2" />
                                         <Button variant={isDrawing ? "danger" : "info"} size="sm" onClick={() => { setIsDrawing(!isDrawing); setTempPath([]); setSelectedStreetForEditing(null); setIsDrawingRegion(false); }} style={{ fontSize: '0.7rem' }}>{isDrawing ? "Cancel Path" : "Draw Path"}</Button>
                                         {isDrawing && tempPath.length > 1 && <Button variant="success" size="sm" onClick={handleSavePath} style={{ fontSize: '0.7rem' }}>Save Path ({tempPath.length})</Button>}
                                         
-                                        {/* --- EXPERIMENTAL: Regional Zone Button --- */}
-                                        <Button 
-                                            variant={isDrawingRegion ? "danger" : "outline-info"} 
-                                            size="sm" 
-                                            onClick={() => { 
-                                                setIsDrawingRegion(!isDrawingRegion); 
-                                                setRegionStart(null); 
-                                                setTempRegion(null);
-                                                setIsDrawing(false); 
-                                            }} 
-                                            style={{ fontSize: '0.7rem', marginTop: '5px' }}
-                                        >
-                                            {isDrawingRegion ? "Cancel Region" : "Draw Region (Exp)"}
-                                        </Button>
+                                        {!isProduction && (
+                                            <>
+                                                {/* --- EXPERIMENTAL: Regional Zone Button --- */}
+                                                <Button 
+                                                    variant={isDrawingRegion ? "danger" : "outline-info"} 
+                                                    size="sm" 
+                                                    onClick={() => { 
+                                                        setIsDrawingRegion(!isDrawingRegion); 
+                                                        setRegionStart(null); 
+                                                        setTempRegion(null);
+                                                        setIsDrawing(false); 
+                                                    }} 
+                                                    style={{ fontSize: '0.7rem', marginTop: '5px' }}
+                                                >
+                                                    {isDrawingRegion ? "Cancel Region" : "Draw Region (Exp)"}
+                                                </Button>
 
-                                        <Button 
-                                            variant={isDrawingPolygon ? "danger" : "outline-warning"} 
-                                            size="sm" 
-                                            onClick={() => { 
-                                                setIsDrawingPolygon(!isDrawingPolygon); 
-                                                setTempPolygonPath([]); 
-                                                setIsDrawing(false); 
-                                                setIsDrawingRegion(false);
-                                            }} 
-                                            style={{ fontSize: '0.7rem', marginTop: '5px' }}
-                                        >
-                                            {isDrawingPolygon ? "Cancel Polygon" : "Draw Polygon (Exp)"}
-                                        </Button>
-                                        {isDrawingPolygon && tempPolygonPath.length > 2 && (
-                                            <Button 
-                                                variant="success" 
-                                                size="sm" 
-                                                onClick={handleSavePolygon} 
-                                                style={{ fontSize: '0.7rem', marginTop: '5px' }}
-                                            >
-                                                Save Polygon ({tempPolygonPath.length})
-                                            </Button>
+                                                <Button 
+                                                    variant={isDrawingPolygon ? "danger" : "outline-warning"} 
+                                                    size="sm" 
+                                                    onClick={() => { 
+                                                        setIsDrawingPolygon(!isDrawingPolygon); 
+                                                        setTempPolygonPath([]); 
+                                                        setIsDrawing(false); 
+                                                        setIsDrawingRegion(false);
+                                                    }} 
+                                                    style={{ fontSize: '0.7rem', marginTop: '5px' }}
+                                                >
+                                                    {isDrawingPolygon ? "Cancel Polygon" : "Draw Polygon (Exp)"}
+                                                </Button>
+                                                {isDrawingPolygon && tempPolygonPath.length > 2 && (
+                                                    <Button 
+                                                        variant="success" 
+                                                        size="sm" 
+                                                        onClick={handleSavePolygon} 
+                                                        style={{ fontSize: '0.7rem', marginTop: '5px' }}
+                                                    >
+                                                        Save Polygon ({tempPolygonPath.length})
+                                                    </Button>
+                                                )}
+                                            </>
                                         )}
-                                        {/* ------------------------------------------ */}
                                     </div>
                                 )}
                             </>
@@ -759,48 +788,52 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                                                                         )}
 
                                                                         {/* --- EXPERIMENTAL: Regional Zones Rendering --- */}
-                                                                        {tempRegion && (
-                                                                            <Rectangle 
-                                                                                bounds={tempRegion}
-                                                                                pathOptions={{ color: '#00ff00', weight: 2, fillOpacity: 0.2 }}
-                                                                            />
-                                                                        )}
-                                                                        {isDrawingPolygon && tempPolygonPath.length > 0 && (
-                                                                            <Polygon 
-                                                                                positions={tempPolygonPath}
-                                                                                pathOptions={{ color: '#ff00ff', weight: 2, fillOpacity: 0.2, dashArray: '5, 5' }}
-                                                                            />
-                                                                        )}
-
-                                                                        {liveMapData.regions.map((region, i) => {
-                                                                            if (region.type === 'Region' && region.bounds) {
-                                                                                return (
+                                                                        {!isProduction && (
+                                                                            <>
+                                                                                {tempRegion && (
                                                                                     <Rectangle 
-                                                                                        key={`region-${i}`}
-                                                                                        bounds={region.bounds}
-                                                                                        pathOptions={{ color: '#00ffcc', weight: 1, fillOpacity: 0.1, dashArray: '5, 5' }}
-                                                                                    >
-                                                                                        <Popup><div style={{ color: '#000' }}><strong>Region: {region.name}</strong></div></Popup>
-                                                                                    </Rectangle>
-                                                                                );
-                                                                            }
-                                                                            if (region.type === 'Polygon' && (region.positions || region.bounds)) {
-                                                                                // Leaflet Polygon component handles MultiPolygon automatically if positions is nested array
-                                                                                return (
+                                                                                        bounds={tempRegion}
+                                                                                        pathOptions={{ color: '#00ff00', weight: 2, fillOpacity: 0.2 }}
+                                                                                    />
+                                                                                )}
+                                                                                {isDrawingPolygon && tempPolygonPath.length > 0 && (
                                                                                     <Polygon 
-                                                                                        key={`poly-${i}`}
-                                                                                        positions={region.positions || region.bounds}
-                                                                                        pathOptions={{ color: '#ffcc00', weight: 1, fillOpacity: 0.1 }}
-                                                                                    >
-                                                                                        <Popup><div style={{ color: '#000' }}><strong>Territory: {region.name}</strong></div></Popup>
-                                                                                    </Polygon>
-                                                                                );
-                                                                            }
-                                                                            return null;
-                                                                        })}
+                                                                                        positions={tempPolygonPath}
+                                                                                        pathOptions={{ color: '#ff00ff', weight: 2, fillOpacity: 0.2, dashArray: '5, 5' }}
+                                                                                    />
+                                                                                )}
+
+                                                                                {showRegions && liveMapData.regions.map((region, i) => {
+                                                                                    if (region.type === 'Region' && region.bounds) {
+                                                                                        return (
+                                                                                            <Rectangle 
+                                                                                                key={`region-${i}`}
+                                                                                                bounds={region.bounds}
+                                                                                                pathOptions={{ color: '#00ffcc', weight: 1, fillOpacity: 0.1, dashArray: '5, 5' }}
+                                                                                            >
+                                                                                                <Popup><div style={{ color: '#000' }}><strong>Region: {region.name}</strong></div></Popup>
+                                                                                            </Rectangle>
+                                                                                        );
+                                                                                    }
+                                                                                    if (region.type === 'Polygon' && (region.positions || region.bounds)) {
+                                                                                        // Leaflet Polygon component handles MultiPolygon automatically if positions is nested array
+                                                                                        return (
+                                                                                            <Polygon 
+                                                                                                key={`poly-${i}`}
+                                                                                                positions={region.positions || region.bounds}
+                                                                                                pathOptions={{ color: '#ffcc00', weight: 1, fillOpacity: 0.1 }}
+                                                                                            >
+                                                                                                <Popup><div style={{ color: '#000' }}><strong>Territory: {region.name}</strong></div></Popup>
+                                                                                            </Polygon>
+                                                                                        );
+                                                                                    }
+                                                                                    return null;
+                                                                                })}
+                                                                            </>
+                                                                        )}
                                                                         {/* ------------------------------------------- */}
 
-                                                                        {(viewPaths || !isProduction) && liveMapData.streets.filter(s => s.path).map((s, i) => (
+                                                                        {showStreets && (viewPaths || !isProduction) && liveMapData.streets.filter(s => s.path).map((s, i) => (
                                                                             <Polyline 
                                                                                 key={i} 
                                                                                 positions={s.path.map(p => gameToMap(p.x, p.y))} 

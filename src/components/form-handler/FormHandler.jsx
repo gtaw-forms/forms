@@ -46,6 +46,7 @@ const FormHandler = () => {
   
   // Track visited forms for debug traces
   const visitedFormsRef = React.useRef([]);
+  const transitionHistoryRef = React.useRef([]);
 
   const [selectedForm, setSelectedForm] = useState(null);
   const [formValues, setFormValues] = useState({});
@@ -423,63 +424,58 @@ const FormHandler = () => {
 
   const updateEmployeeCredentials = useCallback((employeeName, empType) => {
     const updates = {};
+    const normalizeName = (name) => String(name || '').trim().toLowerCase();
+    const targetNameNormalized = normalizeName(employeeName);
+    
     updates[`${empType}Employee`] = employeeName || ''; 
 
     if (employeeName) {
+      const currentUserCharName = user?.faction?.characterName || user?.activeCharacter?.characterName;
+      const isCurrentUser = normalizeName(currentUserCharName) === targetNameNormalized;
+
+      if (isCurrentUser) {
+          console.log(`%c[DEBUG] Credential Sync Origin: LIVE OAUTH (${employeeName})`, "color: #2ecc71; font-weight: bold;");
+          const factionData = user?.faction || user?.activeCharacter || {};
+          
+          let rawRank = factionData.rank || factionData.scriptRank || '';
+          updates[`${empType}Rank`] = rawRank ? cleanRankText(String(rawRank)) : '';
+          updates[`${empType}Badge`] = factionData.characterId || factionData.badge || '';
+          updates[`${empType}Discord`] = user.username || ''; 
+          updates[`${empType}PHNumber`] = '50056';
+
+          if (factionData.firstname && factionData.lastname) {
+              updates[`${empType}FirstName`] = factionData.firstname;
+              updates[`${empType}LastName`] = factionData.lastname;
+          } else {
+               const parts = employeeName.split(' ');
+               updates[`${empType}FirstName`] = parts[0] || '';
+               updates[`${empType}LastName`] = parts.slice(1).join(' ') || '';
+          }
+          return updates;
+      }
+
       const selectedOption = employeeOptions.flatMap(group => group.options).find(opt => opt.value === employeeName);
-      // Find the full employee data from the original list (phmcListData or coronerListData) for rank/badge
       const fullEmployeeData = [...phmcListData, ...coronerListData].find(e => e.name === employeeName);
 
       if (selectedOption && fullEmployeeData) {
-          updates[`${empType}Rank`] = fullEmployeeData.rank || '';
+          console.log(`%c[DEBUG] Credential Sync Origin: STATIC LIST (${employeeName})`, "color: #3498db; font-weight: bold;");
+          updates[`${empType}Rank`] = fullEmployeeData.rank ? cleanRankText(fullEmployeeData.rank) : '';
           updates[`${empType}Badge`] = fullEmployeeData.badge || '';
           updates[`${empType}Discord`] = fullEmployeeData.discord || ''; 
           updates[`${empType}PHNumber`] = fullEmployeeData.phNumber || '';
-          
-          // Add firstname and lastname from the selectedOption itself
           updates[`${empType}FirstName`] = selectedOption.firstname || '';
           updates[`${empType}LastName`] = selectedOption.lastname || '';
       } else {
-         // Fallback: Check against current OAuth user if not found in static lists
-         // This handles cases where the user is authenticated but not yet in the cached employee lists
-         const currentUserCharName = user?.faction?.characterName || user?.activeCharacter?.characterName;
-         
-         // Robust comparison: Trim and lowercase both names to ensure matching works despite format differences
-         const normalizeName = (name) => String(name || '').trim().toLowerCase();
-         
-         if (normalizeName(currentUserCharName) === normalizeName(employeeName)) {
-             console.log(`[FormHandler] Using OAuth fallback for credentials: ${employeeName}`);
-             const factionData = user?.faction || user?.activeCharacter || {};
-             
-             let rawRank = factionData.rank || factionData.scriptRank || '';
-             // If rank is just a number (scriptRank), cleanRankText handles strings, so ensure string
-             rawRank = String(rawRank);
-             
-             updates[`${empType}Rank`] = rawRank ? cleanRankText(rawRank) : '';
-             updates[`${empType}Badge`] = factionData.characterId || factionData.badge || '';
-             updates[`${empType}Discord`] = user.username || ''; 
-             updates[`${empType}PHNumber`] = '50056'; // Default PH number
-
-             if (factionData.firstname && factionData.lastname) {
-                 updates[`${empType}FirstName`] = factionData.firstname;
-                 updates[`${empType}LastName`] = factionData.lastname;
-             } else {
-                  const parts = employeeName.split(' ');
-                  updates[`${empType}FirstName`] = parts[0] || '';
-                  updates[`${empType}LastName`] = parts.slice(1).join(' ') || '';
-             }
-         } else {
-            // If selectedOption not found AND not current user, clear dependent fields
-            updates[`${empType}Rank`] = '';
-            updates[`${empType}Badge`] = '';
-            updates[`${empType}FirstName`] = '';
-            updates[`${empType}LastName`] = '';
-            updates[`${empType}Discord`] = '';
-            updates[`${empType}PHNumber`] = '';
-         }
+          console.warn(`%c[DEBUG] Credential Sync Origin: UNKNOWN/CLEAR (${employeeName})`, "color: #e67e22; font-weight: bold;");
+          updates[`${empType}Rank`] = '';
+          updates[`${empType}Badge`] = '';
+          updates[`${empType}FirstName`] = '';
+          updates[`${empType}LastName`] = '';
+          updates[`${empType}Discord`] = '';
+          updates[`${empType}PHNumber`] = '';
       }
     } else {
-      // If employeeName is null/empty, clear all related fields
+      console.log(`%c[DEBUG] Credential Sync Origin: EMPTY/RESET`, "color: #95a5a6;");
       updates[`${empType}Rank`] = '';
       updates[`${empType}Badge`] = '';
       updates[`${empType}FirstName`] = '';
@@ -576,6 +572,7 @@ const FormHandler = () => {
           timestamp: new Date().toISOString(),
           missingFields: missingFields,
           visitedForms: visitedFormsRef.current,
+          credentialTransitions: transitionHistoryRef.current,
           localStorageKeys: Object.keys(localStorage).filter(k => k.includes('form_') || k.includes('oauth') || k.includes('firebase'))
       };
 
@@ -597,6 +594,7 @@ const FormHandler = () => {
                   { name: "Missing Fields", value: missingFields.join(', '), inline: false },
                   { name: "OAuth Data", value: `\`\`\`json\n${JSON.stringify(debugData.user, null, 2).substring(0, 1000)}\n\`\`\`` },
                   { name: "Form Values (Snapshot)", value: `\`\`\`json\n${JSON.stringify(formValues, null, 2).substring(0, 1000)}\n\`\`\`` },
+                  { name: "Credential State Transitions", value: `\`\`\`json\n${JSON.stringify(transitionHistoryRef.current, null, 2).substring(0, 1000)}\n\`\`\`` },
                   { name: "Recent Navigation", value: `\`\`\`json\n${JSON.stringify(visitedFormsRef.current, null, 2).substring(0, 1000)}\n\`\`\`` }
               ],
               footer: { text: "Triggered by user via Panic Button" }
@@ -854,6 +852,38 @@ const FormHandler = () => {
     });
 
   }, [user, isAuthenticated, selectedForm, isPatientForm, setFormValues, updateEmployeeCredentials, characterName]);
+
+  useEffect(() => {
+    const monitoringFields = ['coronerEmployee', 'phmcEmployee', 'coronerBadge', 'phmcBadge', 'coronerRank', 'phmcRank'];
+    const currentValues = monitoringFields.reduce((acc, field) => {
+        acc[field] = formValues[field] || '';
+        return acc;
+    }, {});
+
+    // Only log if one of these fields actually changed
+    if (window.prevMonitoredValues) {
+        const changes = {};
+        let hasChanges = false;
+        monitoringFields.forEach(f => {
+            if (window.prevMonitoredValues[f] !== currentValues[f]) {
+                changes[f] = { from: window.prevMonitoredValues[f], to: currentValues[f] };
+                hasChanges = true;
+            }
+        });
+
+        if (hasChanges) {
+            console.log(`%c[DEBUG] Credential State Transition:`, "color: #8e44ad; font-weight: bold;", changes);
+            
+            // Push to local history ref for Discord Webhook (Keep last 15)
+            const historyEntry = {
+                timestamp: new Date().toISOString(),
+                changes: changes
+            };
+            transitionHistoryRef.current = [historyEntry, ...transitionHistoryRef.current].slice(0, 15);
+        }
+    }
+    window.prevMonitoredValues = currentValues;
+  }, [formValues.coronerEmployee, formValues.phmcEmployee, formValues.coronerBadge, formValues.phmcBadge, formValues.coronerRank, formValues.phmcRank]);
 
   // Existing useEffect for patient character selector
   useEffect(() => {
