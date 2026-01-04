@@ -3,20 +3,10 @@
 // IT SHOULD NOT BE CONFUSED WITH THE FORM HANDLER COMPONENT 
 // IT SHOULD NOT BE REFERENCED OR USED DIRECTLY, SCHEDULED FOR DEPRECATION
 import { lazy } from 'react';
-import { generateDevTest } from './phmc-bbcode-generators/devTest';
-
-// Lazy load form field components
 
 // Import generators normally as they are not components
 import {
-    generateDeathReport, generateEmail, generateSurgicalOps, generatePatientFile,
-    generatePhysEvalInternalMed, generatePhysEvalInternalMedPBC, generateMentalHealthPHMC,
-    generateMentalHealthPBC, generateConsultationNotesPHMC,
-    generateEmergencyProtocol, generateCommentaryNotePHMC, generateCommentaryNotePBC,
-    generateMedicalRecords, generateEmailPHMCEmail,
-    generateConsultationNotesPBC, generatePsychEvalPHMC, generatePsychEvalPBC,
-    generateAutopsy, generateCertificate, generateMassFatality, generateDeathRecord,
-    generateSicknessEmail
+    generateMassFatality
 } from './phmc-bbcode-generators';
 
 
@@ -39,28 +29,7 @@ import application from './assets/application.png'; // Assuming this is for SAAA
 
 // Dynamic component loaders - components are loaded only when needed
 const componentLoaders = {
-    // High priority components (commonly used forms) - prefetch
-    // DeathReport: () => import(/* webpackPrefetch: true */ './phmc-field-data/deathReport.jsx'),
-    // CoronerEmail: () => import(/* webpackPrefetch: true */ './phmc-field-data/CoronerEmail.jsx'),
-    // PhysEval: () => import(/* webpackPrefetch: true */ './phmc-field-data/PhysEvalPHMC.jsx'),
-    // GeneralConsult: () => import(/* webpackPrefetch: true */ './phmc-field-data/GeneralConsult.jsx'),
-    // EmergencyForm: () => import(/* webpackPrefetch: true */ './phmc-field-data/EmergencyForm.jsx'),
-    // DevTest: () => import('./phmc-field-data/devTest.jsx'),
-
-    // // Medium priority components - lazy load normally
-    // CommNotePHMC: () => import('./phmc-field-data/CommNotePHMC.jsx'),
-    // CommNotePBC: () => import('./phmc-field-data/CommNotePBC.jsx'),
-    // PatientFile: () => import('./phmc-field-data/PatientFile.jsx'),
-    // MentalHealth: () => import('./phmc-field-data/MentalHealth.jsx'),
-    // EmailInternal: () => import('./phmc-field-data/EmailInternal.jsx'),
-    // Surgical: () => import('./phmc-field-data/Surgical.jsx'),
-    // MedicalRecords: () => import('./phmc-field-data/MedicalRecords.jsx'),
-    // Shrink: () => import('./phmc-field-data/Shrink.jsx'),
-    // Autopsy: () => import('./phmc-field-data/Autopsy.jsx'),
-    // Certificate: () => import('./phmc-field-data/Certificate.jsx'),
-    // MassFatality: () => import('./phmc-field-data/MassFatality.jsx'),
-    // DeathRecord: () => import('./phmc-field-data/DeathRecord.jsx'),
-    // SicknessEmail: () => import('./phmc-field-data/SicknessEmail.jsx'),
+    // Legacy loaders removed
 };
 
 
@@ -109,47 +78,7 @@ export const generateAdminView = (viewData) => {
 };
 
 export const formDefinitions = [
-    // Civilian Forms First
-    { version: 24, name: "[Civilian] Medical Records", group: "PHMC", icon: Civilian, generator: generateMedicalRecords, componentLoader: null, titleKey: "medicalRecords", sortOrder: 1, hasCustomTitle: true, userTypes: ['civilian', 'other'], primaryFor: ['civilian'] },
-    { version: 25, name: "[Civilian] Patient Files", group: "PHMC", icon: Civilian, generator: generatePatientFile, componentLoader: null, titleKey: "patientFile", sortOrder: 2, hasCustomTitle: true, userTypes: ['civilian', 'other'], primaryFor: ['civilian'] },
-    // PHMC Tools (Forensic Services next, then others)
-    { version: 1, name: "Forensic Services ", group: "PHMC", icon: folder, generator: generateDeathReport, componentLoader: null, titleKey: "deathReport", sortOrder: 10, hasCustomTitle: true, userTypes: ['phmcStaff', 'coroner', 'other'], primaryFor: ['coroner'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true },
-    { version: 4, name: "Autopsy Report", group: "PHMC", icon: autopsy /* Placeholder */, generator: generateAutopsy, componentLoader: null, titleKey: "autopsyReport", sortOrder: 11, isHiddenInSelector: true, hasCustomTitle: true, userTypes: ['phmcStaff', 'coroner', 'other'], primaryFor: ['coroner'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true },
-    {
-        version: 2,
-        name: "Coroner Email",
-        group: "PHMC",
-        icon: emailIcon,
-        generator: generateEmail,
-        componentLoader: null,
-        titleKey: "coronerEmail",
-        sortOrder: 12,
-        isHiddenInSelector: true,
-        hasCustomTitle: true,
-        userTypes: ['phmcStaff', 'coroner', 'other'], primaryFor: ['coroner'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true
-    },
-    { version: 8, name: "Certificate of Death", group: "PHMC", icon: deathCertificate, generator: generateCertificate, componentLoader: null, titleKey: "certificateOfDeath", sortOrder: 13, isHiddenInSelector: true, hasCustomTitle: true, userTypes: ['phmcStaff', 'coroner', 'other'], primaryFor: ['coroner'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true },
-    { version: 5, name: "Surgical Ops", group: "PHMC", icon: surgeon, generator: generateSurgicalOps, componentLoader: null, titleKey: "surgicalOps", sortOrder: 20, userTypes: ['phmcStaff', 'other'], primaryFor: ['phmcStaff'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true },
-    { version: 6, name: "Physical Evaluation", group: "PHMC", icon: nurse, generator: generatePhysEvalInternalMed, componentLoader: null, titleKey: "physEvalPHMC", sortOrder: 21, userTypes: ['phmcStaff', 'other'], primaryFor: ['phmcStaff'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true },
     { version: 11, name: "Mass Fatality Report", group: "PHMC", icon: graveyard, generator: generateMassFatality, componentLoader: null, titleKey: "massFatalityReport", sortOrder: 14, isHiddenInSelector: true, hasCustomTitle: true, userTypes: ['phmcStaff', 'coroner', 'other'], primaryFor: ['coroner'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true },
-    // Add isHiddenInSelector: true to the PBC version
-    { version: 7, name: "Physical Evaluation (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generatePhysEvalInternalMedPBC, componentLoader: null, titleKey: "physEvalPBC", sortOrder: 22, isHiddenInSelector: true, userTypes: ['phmcStaff', 'other'], primaryFor: ['phmcStaff'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true },
-    { version: 14, name: "Mental Health", group: "PHMC", icon: psychology, generator: generateMentalHealthPHMC, componentLoader: null, titleKey: "mentalHealthPHMC", sortOrder: 23, hasCustomTitle: true, userTypes: ['phmcStaff', 'other'], primaryFor: ['phmcStaff'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true },
-    // Add isHiddenInSelector: true to the PBC version
-    { version: 16, name: "Mental Health (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generateMentalHealthPBC, componentLoader: null, titleKey: "mentalHealthPBC", sortOrder: 24, isHiddenInSelector: true, hasCustomTitle: true, userTypes: ['phmcStaff', 'other'], primaryFor: ['phmcStaff'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true },
-    { version: 19, name: "ER Protocol", group: "PHMC", icon: emergency, generator: generateEmergencyProtocol, componentLoader: null, titleKey: "erProtocol", sortOrder: 25, userTypes: ['phmcStaff', 'other'], primaryFor: ['phmcStaff'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true },
-    { version: 20, name: "General Consultation", group: "PHMC", icon: empathy, generator: generateConsultationNotesPHMC, componentLoader: null, titleKey: "generalConsultPHMC", sortOrder: 26, userTypes: ['phmcStaff', 'other'], primaryFor: ['phmcStaff'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true },
-    // Add isHiddenInSelector: true to the PBC version
-    { version: 21, name: "General Consultation (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generateConsultationNotesPBC, componentLoader: null, titleKey: "generalConsultPBC", sortOrder: 27, isHiddenInSelector: true, userTypes: ['phmcStaff', 'other'], primaryFor: ['phmcStaff'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true },
-    { version: 22, name: "Commentary Notes", group: "PHMC", icon: paperwork, generator: generateCommentaryNotePHMC, componentLoader: null, titleKey: "commNotePHMC", sortOrder: 28, userTypes: ['phmcStaff', 'other'], primaryFor: ['phmcStaff'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true },
-    // Add isHiddenInSelector: true to the PBC version
-    { version: 23, name: "Commentary Notes (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generateCommentaryNotePBC, componentLoader: null, titleKey: "commNotePBC", sortOrder: 29, isHiddenInSelector: true, userTypes: ['phmcStaff', 'other'], primaryFor: ['phmcStaff'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true },
-    { version: 27, name: "PHMC Internal Email", group: "PHMC", icon: emailIcon, generator: generateEmailPHMCEmail, componentLoader: null, titleKey: "internalEmail", sortOrder: 30, userTypes: ['phmcStaff', 'other'], primaryFor: ['phmcStaff'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true },
-    { version: 28, name: "Psychological Evaluation", group: "PHMC", icon: psychology, generator: generatePsychEvalPHMC, componentLoader: null, titleKey: "psychEvalPHMC", sortOrder: 31, userTypes: ['phmcStaff', 'other'], primaryFor: ['phmcStaff'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true },
-    // Add isHiddenInSelector: true to the PBC version
-    { version: 29, name: "Psychological Evaluation (PBC)", group: "PHMC", icon: phmcpaletobay, generator: generatePsychEvalPBC, componentLoader: null, titleKey: "psychEvalPBC", sortOrder: 32, isHiddenInSelector: true, userTypes: ['phmcStaff', 'other'], primaryFor: ['phmcStaff'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true },
-    { version: 35, name: "Medical Sickness Email", group: "PHMC", icon: emailIcon, generator: generateSicknessEmail, componentLoader: null, titleKey: "sicknessEmail", sortOrder: 33, isHiddenInSelector: true, userTypes: ['phmcStaff', 'other'], primaryFor: ['phmcStaff'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true }, // No FieldComponent for this one
-
     {
         version: 999,
         name: "Admin Control Panel",
@@ -160,34 +89,6 @@ export const formDefinitions = [
         titleKey: "adminControlPanel",
         sortOrder: 999,
         userTypes: ['other'], primaryFor: ['other']
-    },
-    {
-        version: 37, 
-        name: "Death Record",
-        group: "PHMC",
-        icon: conference,
-        generator: generateDeathRecord,
-        componentLoader: null,
-        titleKey: "deathRecord",
-        sortOrder: 15,
-        hasCustomTitle: true,
-        isHiddenInSelector: true,
-        userTypes: ['phmcStaff', 'coroner', 'other'], primaryFor: ['coroner'], requiredFaction: ['PHMC'], requiredRank: 1, isPHMC: true
-    },
-    {
-        version: 1000,
-        name: "dev-testing",
-        group: "PHMC",
-        icon: application,
-        generator: generateDevTest,
-        componentLoader: null,
-        titleKey: "devTesting",
-        sortOrder: 1000,
-        hasCustomTitle: true,
-        userTypes: ['phmcStaff', 'other'],
-        requiredFaction: ['PHMC'],
-        requiredRank: 1,
-        isPHMC: true,
     },
 ];
 
