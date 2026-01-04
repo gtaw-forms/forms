@@ -1,53 +1,53 @@
-[GTA Auth] Token exchange completed: 
-Object { success: true, hasToken: true, hasUser: true, errorCode: undefined, originalRedirectUri: "https://gtaw-forms.github.io/forms/#/auth/gta/callback" }
-main.a20007d1.js:2:853446
-🔍 [GTA Auth] Faction membership check - userData structure: 
-Object { userId: 43132, username: "ItsMitch", userDataKeys: (6) […], hasCharacterField: true, hasCharactersField: false, characterFieldType: "object", characterFieldContent: (3) […], actualFieldUsed: "character", charactersCount: 3, rawCharacterArray: (3) […] }
-main.a20007d1.js:2:853446
-🔍 [GTA Auth] Main user info: 
-Object { userId: 43132, username: "ItsMitch", note: "This is the memberid, not used for faction lookup - we need individual character IDs" }
-main.a20007d1.js:2:853446
-📝 [GTA Auth] Processing character array for BATCH faction check: 
-Object { arrayLength: 3, validCharacters: 3, characterIds: (3) […], characterNames: (3) […] }
-main.a20007d1.js:2:853446
-[Perf] faction_cache_hit: 1.00ms main.a20007d1.js:2:853446
-💾 [GTA Auth] Using cached faction data [1761011685982-9hwkj]: 
-Object { cacheKey: "factionData_364_5573_12154_123285", cacheAge: "614s", cacheValidFor: "1186s more", characterIds: (3) […], cachedMembersCount: 0 }
-main.a20007d1.js:2:853446
-🏆 [GTA Auth] Selected highest-ranking character from batch: 
-Object { characterId: 5573, characterName: "Alyson Frost", scriptRank: 7, rank: "Coroner Investigator -", accessLevel: "mid_level", totalFactionMembers: 2 }
-main.a20007d1.js:2:853446
-📊 [GTA Auth] Enhanced user data with faction info [1761011685982-9hwkj]: 
-Object { username: "ItsMitch", mainCharacterId: 43132, isFactionMember: true, accessLevel: "mid_level", permissionCount: 2, factionCharacter: {…}, charactersChecked: 3, debugInfo: {…} }
-main.a20007d1.js:2:853446
-[GTAW Debug] OAuth User Data: 
-Object { username: "ItsMitch", faction: {…}, factionData: undefined, userData: undefined, characterArray: (3) […], fullRank: "Coroner Investigator -", cleanedRank: "Coroner Investigator" }
-main.a20007d1.js:2:853446
-⏱️ [GTA Auth] BATCH faction membership check completed [1761011685982-9hwkj]: 
-Object { duration: "1ms", durationSeconds: "0.00s", foundMember: true, totalCharactersChecked: 3, factionMembersFound: 0, selectedResult: {…}, note: "Member access granted", dataSource: "cached data (no API call)", batchOptimization: "Single batch call instead of individual character checks" }
-main.a20007d1.js:2:853446
-[GTA Auth] Authentication successful main.a20007d1.js:2:853446
-[Perf] OAuth completed successfully [1761011684141-lfp92]: 
-Object { totalDuration: "1844.00ms", phases: {…}, efficiency: "excellent", cacheUsed: false }
-main.a20007d1.js:2:853446
-[Perf Summary] Last 3 OAuth attempts: avg 1989ms, 100% success main.a20007d1.js:2:853446
-🎯 [useGtaWorldAuth] handleOAuthCallback onSuccess called: 
-Object { duration: 1845, hasUserData: true, username: "ItsMitch", returnPath: "#/" }
-main.a20007d1.js:2:853446
-✅ [UnifiedGtaCallback] processCallback completed successfully main.a20007d1.js:2:853446
-🔄 [UnifiedGtaCallback] Setting up navigation to homepage in 800ms main.a20007d1.js:2:853446
-Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource at https://ucp.gta.world/api/user. (Reason: CORS header 'Access-Control-Allow-Origin' does not match 'https://global.gta.world').
-
-Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource at https://ucp.gta.world/api/user. (Reason: CORS request did not succeed). Status code: (null).
-
-[GTA Auth] API request failed: TypeError: NetworkError when attempting to fetch resource. (ucp.gta.world) main.a20007d1.js:2:853446
-[GTA Auth] Session validation failed: TypeError: NetworkError when attempting to fetch resource. (ucp.gta.world) main.a20007d1.js:2:853446
-[GTA Auth] Logging out user main.a20007d1.js:2:853446
-[GTA Auth] User logged out successfully main.a20007d1.js:2:853446
-[GTA Auth] No complete session data found for restoration main.a20007d1.js:2:853446
-🚀 [UnifiedGtaCallback] Navigating to homepage (preserving sessionStorage) main.a20007d1.js:2:853446
-📦 [UnifiedGtaCallback] SessionStorage before navigation: 
-Object { userData: false, accessToken: false, storageKeys: (5) […] }
-main.a20007d1.js:2:853446
-[GTA Auth] No complete session data found for restoration 2 main.a20007d1.js:2:853446
-[GTA Auth] No complete session data found for restoration
+🐞 User Debug Trace Report
+User
+Rog Fulace
+Form
+Autopsy
+Missing Fields
+Badge
+OAuth Data
+{
+  "username": "Rog Fulace",
+  "faction": {
+    "characterName": "Roger Rose",
+    "characterId": 1552,
+    "rank": "Senior Medical Examiner -",
+    "scriptRank": 8
+  },
+  "isFactionMember": true
+}
+Form Values (Snapshot)
+{
+  "coronerEmployee": "Roger Rose",
+  "coronerBadge": "",
+  "coronerRank": "Senior Medical Examiner -",
+  "coronerDiscord": "",
+  "coronerPHNumber": "50056",
+  "RadiologyResult": "X-rays found a single, deformed projectile matching the size of a 9x19mm Parabellum cartridge, recovered from the base of the skull at the clivus. (( $Bullet found with striation marks (9mm) #71343728 ))",
+  "anatomicSummaryListItems": [
+    "Perforating gunshot wound of the right frontal scalp (Gunshot Wound 'A') - 9x19mm Parabellum, <1-2m",
+    "Penetrating gunshot wound of the left facial region (Gunshot Wound 'A') - 9x19mm Parabellum, <1-2m"
+  ],
+  "autopsyDiagramBBCode": "https://i.ibb.co/mFJYWghX/fa6cda246f6f.png",
+  "autopsyDiagramBBCode_markers": [
+    {
+      "id": "mjw3veg2pa6z4",
+      "label": "GSW",
+      "labelSide": "left",
+      "type": "circle",
+      "x": 237.22932917316692,
+      "y": 112.64396450858032
+    },
+    {
+      "id": "mjw3vssvuk8pi",
+      "label": "GSW",
+      "labelSide": "rig
+Recent Navigation
+[
+  {
+    "name": "Autopsy",
+    "id": "autopsy",
+    "timestamp": "2026-01-03T02:11:48.311Z"
+  }
+]
+Triggered by user via Panic Button
