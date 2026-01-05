@@ -11,20 +11,7 @@ import {
 
 
 // Import your icons
-import folder from './assets/folder.png';
-import autopsy from './assets/autopsy.png';
-import deathCertificate from './assets/death-certificate.png';
 import graveyard from './assets/graveyard.png';
-import conference from './assets/conference.png';
-import emailIcon from './assets/email.png';
-import Civilian from './assets/Civilian.png';
-import phmcpaletobay from './assets/phmcpaletobaylogo.png';
-import surgeon from './assets/surgeon.png';
-import nurse from './assets/nurse.png';
-import emergency from './assets/emergency.png';
-import empathy from './assets/empathy.png';
-import paperwork from './assets/paperwork.png';
-import psychology from './assets/psychology.png';
 import application from './assets/application.png'; // Assuming this is for SAAA or generic
 
 // Dynamic component loaders - components are loaded only when needed

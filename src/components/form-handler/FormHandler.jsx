@@ -1,26 +1,20 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from "react";
 import * as Sentry from "@sentry/react";
 import useGtaWorldAuth from "../../hooks/useGtaWorldAuth";
 import { useModal } from "../../contexts/ModalProvider";
 import { useData } from "../../contexts/DataContext";
 import FormFieldRenderer from './FormFieldRenderer';
 import FormHandlerNavButtons from './FormHandlerNavButtons';
-import EmsBingoModal from '../Modals/EmsBingoModal';
 import useBbcodeGenerator from '../../hooks/useBbcodeGenerator';
 
 import { uploadImageToImgBB, uploadDataUrlToImgBB } from '../../utils/imageUploadUtils'; 
 import { useNotification } from '../../contexts/NotificationContext';
 import { getUtcFormattedDateTime } from '../../utils/dateTimeUtils';
 import { useReportManagement } from '../../hooks/useReportManagement';
-import EmployeeCredentialsSection from '../Modals/EmployeeCredentialsSection';
 import { useFormSaver } from '../../hooks/useFormSaver';
-import SavedReportsModal from '../Modals/SavedReportsModal';
-import OnboardingModal from '../Modals/OnboardingModal';
-import PatientMigrationModal from '../Modals/PatientMigrationModal';
 import seasonalEvents from '../UI/SeasonalEvents';
 import FormQuickLinks from './FormQuickLinks';
 import PermanentNotification from '../UI/PermanentNotification';
-import BugReportModal from '../Modals/BugReportModal';
 import { validateForm } from '../../utils/formValidation';
 import { sendDiscordWebhook } from '../../utils/webhookUtils';
 import { ref, get } from 'firebase/database';
@@ -37,7 +31,17 @@ import '../../buttons.css';
 import styles from "../ems-dashboard/EmsDashboard.module.css";
 import formStyles from './FormHandler.module.css';
 
-import MapModal from "../Modals/MapModal";
+import { Spinner } from 'react-bootstrap';
+
+// Lazy load modals and heavy components
+const EmsBingoModal = lazy(() => import('../Modals/EmsBingoModal'));
+const EmployeeCredentialsSection = lazy(() => import('../Modals/EmployeeCredentialsSection'));
+const SavedReportsModal = lazy(() => import('../Modals/SavedReportsModal'));
+const OnboardingModal = lazy(() => import('../Modals/OnboardingModal'));
+const PatientMigrationModal = lazy(() => import('../Modals/PatientMigrationModal'));
+const BugReportModal = lazy(() => import('../Modals/BugReportModal'));
+const MapModal = lazy(() => import("../Modals/MapModal"));
+const AgencyIncidentModal = lazy(() => import('../Modals/AgencyIncidentModal'));
 
 const FormHandler = () => {
   const isDevelopment = process.env.NODE_ENV === 'development';
@@ -79,6 +83,7 @@ const FormHandler = () => {
     return localStorage.getItem('phmc_gtaw_oauth_persist_enabled') === 'true';
   });
   const [showBugReportModal, setShowBugReportModal] = useState(false);
+  const [showAgencyIncidentModal, setShowAgencyIncidentModal] = useState(false);
   const [isAutoUpdatingBbcode, setIsAutoUpdatingBbcode] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false);
   const [mapTargetField, setMapTargetField] = useState(null);
@@ -128,6 +133,26 @@ const FormHandler = () => {
            characterName = 'Dev Doctor';
       }
   }
+
+  useEffect(() => {
+    const hasSeenIncidentNotice = localStorage.getItem('seenAgencyIncidentNotice') === 'true';
+    if (isAuthenticated && !hasSeenIncidentNotice) {
+      showNotification(
+        <span>You can report Agency Incidents in the <i className="fas fa-cog"></i> More Panel, this can be pushed up to Faction Leadership.</span>,
+        'info',
+        0,
+        [
+          {
+            label: 'Dismiss',
+            handler: (id) => {
+              localStorage.setItem('seenAgencyIncidentNotice', 'true');
+              removeNotification(id);
+            },
+          },
+        ]
+      );
+    }
+  }, [isAuthenticated, showNotification, removeNotification]);
 
   useEffect(() => {
     const hasSeenPrompt = localStorage.getItem('seenKeepCredentialsPrompt') === 'true';
@@ -312,6 +337,15 @@ const FormHandler = () => {
           { label: 'Coroner Staff', options: coronerOptions }
       ];
   }, [phmcListData, coronerListData, swappableCharacters]);
+
+  const isFoundInStaffList = useMemo(() => {
+    if (!characterName) return false;
+    const allNames = [
+      ...phmcListData.map(e => e.name),
+      ...coronerListData.map(e => e.name)
+    ].filter(Boolean).map(n => n.toLowerCase());
+    return allNames.includes(characterName.toLowerCase());
+  }, [characterName, phmcListData, coronerListData]);
 
   const employeeType = useMemo(() => {
     if (selectedForm?.accessType === 'Coroner') return 'coroner';
@@ -1114,51 +1148,61 @@ const FormHandler = () => {
   return (
     <div className={styles.container}>
       {seasonalEffectsEnabled && effect}
-      <OnboardingModal show={showOnboardingModal} onComplete={handleOnboardingComplete} onSkip={handleOnboardingSkip} showNotification={showNotification} />
-      <PatientMigrationModal show={showMigrationModal} onHide={() => setShowMigrationModal(false)} />
-            <EmsBingoModal
-              show={showEmsBingoModal}
-              onHide={() => setShowEmsBingoModal(false)}
-              phmcGroupedOptions={employeeOptions.find(group => group.label === 'PHMC Staff')?.options || []}
-              coronerGroupedOptions={employeeOptions.find(group => group.label === 'Coroner Staff')?.options || []}
-              currentPhmcEmployee={mainEmployeeName}
-              showNotification={showNotification}
-              setShowEmployeeModal={setShowEmployeeModal}
-              isAdmin={isPhmcMember} // Assuming PHMC members are admins for bingo
-              sendBingoWebhook={sendBingoWebhook}
-              sendPhraseRequestWebhook={sendPhraseRequestWebhook}
-            />
-      <SavedReportsModal
-        show={showSavedReports}
-        onHide={() => setShowSavedReports(false)}
-        onClose={() => setShowSavedReports(false)}
-        showNotification={showNotification}
-        reportsForSelectedUser={savedReports}
-        onEmployeeSelect={loadUserSavedReports}
-        employeeOptions={employeeOptions}
-        isLoadingReports={isLoadingUserReports}
-        loadReport={loadReportForUser}
-        deleteReportForUser={deleteReportForUser}
-        handleReportSelectedForAttachment={handleReportSelectedForAttachment}
-        currentCoronerEmployee={formValues.coronerEmployee}
-        currentPhmcEmployee={formValues.phmcEmployee}
-        filterByBbCodeVersions={reportSelectionFilter}
-        preselectedEmployeeType={preselectedEmployeeType}
-        reportSelectionFilter={reportSelectionFilter}
-        pendingReportAttachmentCallback={pendingReportAttachmentCallback}
-        selectedForm={selectedForm}
-        attachmentTargetField={currentAttachmentTargetFieldRef.current} // Add this line
+      <Suspense fallback={null}>
+        <OnboardingModal show={showOnboardingModal} onComplete={handleOnboardingComplete} onSkip={handleOnboardingSkip} showNotification={showNotification} />
+        <PatientMigrationModal show={showMigrationModal} onHide={() => setShowMigrationModal(false)} />
+              <EmsBingoModal
+                show={showEmsBingoModal}
+                onHide={() => setShowEmsBingoModal(false)}
+                phmcGroupedOptions={employeeOptions.find(group => group.label === 'PHMC Staff')?.options || []}
+                coronerGroupedOptions={employeeOptions.find(group => group.label === 'Coroner Staff')?.options || []}
+                currentPhmcEmployee={mainEmployeeName}
+                showNotification={showNotification}
+                setShowEmployeeModal={setShowEmployeeModal}
+                isAdmin={isPhmcMember} // Assuming PHMC members are admins for bingo
+                sendBingoWebhook={sendBingoWebhook}
+                sendPhraseRequestWebhook={sendPhraseRequestWebhook}
+              />
+        <SavedReportsModal
+          show={showSavedReports}
+          onHide={() => setShowSavedReports(false)}
+          onClose={() => setShowSavedReports(false)}
+          showNotification={showNotification}
+          reportsForSelectedUser={savedReports}
+          onEmployeeSelect={loadUserSavedReports}
+          employeeOptions={employeeOptions}
+          isLoadingReports={isLoadingUserReports}
+          loadReport={loadReportForUser}
+          deleteReportForUser={deleteReportForUser}
+          handleReportSelectedForAttachment={handleReportSelectedForAttachment}
+          currentCoronerEmployee={formValues.coronerEmployee}
+          currentPhmcEmployee={formValues.phmcEmployee}
+          filterByBbCodeVersions={reportSelectionFilter}
+          preselectedEmployeeType={preselectedEmployeeType}
+          reportSelectionFilter={reportSelectionFilter}
+          pendingReportAttachmentCallback={pendingReportAttachmentCallback}
+          selectedForm={selectedForm}
+          attachmentTargetField={currentAttachmentTargetFieldRef.current} // Add this line
+        />
+        <MapModal
+          show={showMapModal}
+          onHide={() => setShowMapModal(false)}
+          onSelect={handleMapSelect}
+          initialQuery={mapTargetField && formValues[mapTargetField] ? formValues[mapTargetField] : ''}
+          setIsUploadingMapImage={setIsUploadingMapImage}
+          mapTargetField={mapTargetField}
+          selectedForm={selectedForm}
+        />
+        <AgencyIncidentModal
+          show={showAgencyIncidentModal}
+          onHide={() => setShowAgencyIncidentModal(false)}
+          showNotification={showNotification}
+        />
+      </Suspense>
+      <FormHandlerNavButtons 
+        onToggleSavedReports={handleNavToggleSavedReports} 
+        onToggleAgencyIncident={() => setShowAgencyIncidentModal(true)}
       />
-      <MapModal
-        show={showMapModal}
-        onHide={() => setShowMapModal(false)}
-        onSelect={handleMapSelect}
-        initialQuery={mapTargetField && formValues[mapTargetField] ? formValues[mapTargetField] : ''}
-        setIsUploadingMapImage={setIsUploadingMapImage}
-        mapTargetField={mapTargetField}
-        selectedForm={selectedForm}
-      />
-      <FormHandlerNavButtons onToggleSavedReports={handleNavToggleSavedReports} />
 
       <div className={styles.header}>
         <h2>PHMC Tools - Form Generator and more!</h2>
@@ -1376,23 +1420,29 @@ const FormHandler = () => {
 
         <div className={styles.rightPanel}>
           <div style={{ background: "linear-gradient(135deg, #2d1b69, #1e1b4b)", padding: "1.5rem", borderRadius: 12, marginBottom: "1.5rem" }}>
-            <h3 style={{ color: "#a78bfa", margin: "0 0 1rem" }}>Signed in as</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ color: "#a78bfa", margin: 0 }}>
+                Signed in as {mainEmployeeName || characterName || 'Guest'}
+              </h3>
+            </div>
             {isPatientForm ? (
               <div style={{ padding: '10px', backgroundColor: '#f59e0b', color: 'black', borderRadius: '4px', textAlign: 'center', fontWeight: 'bold' }}>
                 <i className="fas fa-exclamation-triangle" style={{ marginRight: '8px' }}></i>
                 Use the Select Patient Character. Employee Credentials are disabled during Patient Files.
               </div>
             ) : (
-              <EmployeeCredentialsSection
-                formData={formValues}
-                setFormData={setFormValues}
-                groupedOptions={employeeOptions}
-                handleSelectChange={handleSelectChange}
-                setShowEmployeeModal={setShowEmployeeModal}
-                employeeType={employeeType}
-                showNotification={showNotification}
-                context={selectedForm?.name}
-              />
+              <Suspense fallback={<Spinner animation="border" size="sm" />}>
+                <EmployeeCredentialsSection
+                  formData={formValues}
+                  setFormData={setFormValues}
+                  groupedOptions={employeeOptions}
+                  handleSelectChange={handleSelectChange}
+                  setShowEmployeeModal={setShowEmployeeModal}
+                  employeeType={employeeType}
+                  showNotification={showNotification}
+                  context={selectedForm?.name}
+                />
+              </Suspense>
             )}
           </div>
 
@@ -1462,12 +1512,14 @@ const FormHandler = () => {
         discordLink="https://discord.gg/fg7ssSMkj9"
         onReportBugClick={() => setShowBugReportModal(true)}
       />
-      <BugReportModal
-        show={showBugReportModal}
-        onClose={() => setShowBugReportModal(false)}
-        webhookUrl={import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK}
-        showNotification={showNotification}
-      />
+      <Suspense fallback={null}>
+        <BugReportModal
+          show={showBugReportModal}
+          onClose={() => setShowBugReportModal(false)}
+          webhookUrl={import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK}
+          showNotification={showNotification}
+        />
+      </Suspense>
     </div>
   );
 };

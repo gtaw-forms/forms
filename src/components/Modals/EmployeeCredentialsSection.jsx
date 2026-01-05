@@ -9,6 +9,7 @@ import DiscordNameModal from './DiscordNameModal';
 import { database } from '../../firebase';
 import { ref, update } from 'firebase/database';
 import { useNotification } from '../../contexts/NotificationContext.jsx';
+import { sendDiscordWebhook } from '../../utils/webhookUtils';
 
 /**
  * EmployeeCredentialsSection (Universal)
@@ -36,6 +37,7 @@ const EmployeeCredentialsSection = ({
   const {
     user: gtaWorldUser,
     isAuthenticated: isGtaAuthenticated,
+    isPhmcMember,
     canSwapCharacters,
     swapCharacter,
     swappableCharacters,
@@ -48,6 +50,55 @@ const EmployeeCredentialsSection = ({
   const [useGtawName, setUseGtawName] = useState(false);
   const [showDiscordModal, setShowDiscordModal] = useState(false);
   const [customDiscordName, setCustomDiscordName] = useState('');
+  const [showFloatingText, setShowFloatingText] = useState(false);
+
+  // Trigger floating text on sign-in if not recognized or missing from DB
+  useEffect(() => {
+    if (isGtaAuthenticated && gtaWorldUser) {
+      const characterName = getCharacterName(gtaWorldUser);
+      const allOptions = groupedOptions?.flatMap(group => group.options || []) || [];
+      const isFoundInDb = allOptions.some(opt => opt.value.toLowerCase() === characterName.toLowerCase());
+
+      if (!isPhmcMember || !isFoundInDb) {
+        setShowFloatingText(true);
+        const timer = setTimeout(() => setShowFloatingText(false), 5000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isGtaAuthenticated, gtaWorldUser?.id, isPhmcMember, groupedOptions]);
+
+  const handleNewEmployeeClick = async () => {
+    setShowFloatingText(false);
+    
+    // Send basic webhook to auth channel
+    const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_AUTH || import.meta.env.VITE_DEV_WEBHOOK;
+    if (webhookUrl) {
+        const payload = {
+            embeds: [{
+
+                title: "🚨 Missing from Database Report",
+                color: 0xFFAA00,
+                content: "<@>.",
+                fields: [
+                    { name: "Character Name", value: factionData?.characterName || getCharacterName(gtaWorldUser) || "Unknown", inline: true },
+                    { name: "UCP Username", value: gtaWorldUser?.username || "Unknown", inline: true },
+                    { name: "Issue", value: "User is missing from Database", inline: false },
+                    { name: "Source", value: "New Employee Button Click", inline: true }
+                ],
+                timestamp: new Date().toISOString()
+            }]
+        };
+        try {
+            await sendDiscordWebhook(webhookUrl, payload);
+            (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('Missing name reported to developers.', 'success');
+        } catch (e) {
+            console.error("Failed to send missing name webhook", e);
+        }
+    }
+    
+    setShowEmployeeModal(true);
+  };
+
   const employeeNameField = `${employeeType}Employee`;
   const employeeBadgeField = `${employeeType}Badge`;
   const employeeRankField = `${employeeType}Rank`;
@@ -443,7 +494,7 @@ const EmployeeCredentialsSection = ({
                 <br />
               </>
             )}
-            <div style={{ marginTop: '10px' }}>
+            <div style={{ marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap', position: 'relative' }}>
               <button
                 type="button"
                 onClick={handleRefreshFactionInfo}
@@ -454,6 +505,49 @@ const EmployeeCredentialsSection = ({
                 <i className={`fas ${isRefreshing ? 'fa-spinner fa-spin' : 'fa-rotate'}`} style={{ marginRight: '6px' }}></i>
                 {isRefreshing ? 'Refreshing…' : 'Refresh Rank/Permissions'}
               </button>
+              {isGtaAuthenticated && !usingSavedProfile && (
+                <div style={{ position: 'relative' }}>
+                  {showFloatingText && (
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '100%',
+                      right: '0',
+                      marginBottom: '10px',
+                      backgroundColor: '#f59e0b',
+                      color: 'black',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      fontSize: '0.75rem',
+                      fontWeight: 'bold',
+                      whiteSpace: 'nowrap',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                      zIndex: 100,
+                      pointerEvents: 'none'
+                    }}>
+                      Missing from Database? Click here!
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        right: '20px',
+                        width: '0',
+                        height: '0',
+                        borderLeft: '6px solid transparent',
+                        borderRight: '6px solid transparent',
+                        borderTop: '6px solid #f59e0b'
+                      }}></div>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleNewEmployeeClick}
+                    className="btn btn-outline-warning btn-sm"
+                    title="If your character name is missing or you are not recognized, click here to be added."
+                  >
+                    <i className="fas fa-user-plus" style={{ marginRight: '6px' }}></i>
+                    New Employee
+                  </button>
+                </div>
+              )}
             </div>
             <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed #2f3b52' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
