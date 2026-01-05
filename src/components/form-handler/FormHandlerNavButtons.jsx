@@ -14,7 +14,7 @@ import BusinessCardModal from '../Modals/BusinessCardModal';
 import MapModal from '../Modals/MapModal';
 import { uploadDataUrlToImgBB } from '../../utils/imageUploadUtils';
 
-const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
+const FormHandlerNavButtons = ({ onToggleSavedReports, onToggleAgencyIncident }) => {
   const navigate = useNavigate();
   const { user, isAuthenticated, isPhmcMember, characterName, login, logout } = useGtaWorldAuth();
   const { setShowEmsBingoModal } = useModal();
@@ -169,6 +169,9 @@ const FormHandlerNavButtons = ({ onToggleSavedReports }) => {
               </Dropdown.Item>
               <Dropdown.Item onClick={() => setShowMapModal(true)}>
                 <i className="fas fa-map"></i> GTA Map (Experimental)
+              </Dropdown.Item>
+              <Dropdown.Item onClick={onToggleAgencyIncident}>
+                <i className="fas fa-shield-alt"></i> Agency Incident
               </Dropdown.Item>
               <Dropdown.Item onClick={() => setSeasonalEffectsEnabled(!seasonalEffectsEnabled)}>
                 <i className={`fas ${seasonalEffectsEnabled ? "fa-toggle-on" : "fa-toggle-off"}`}></i>

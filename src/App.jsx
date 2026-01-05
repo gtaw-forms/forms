@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import { HashRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext.jsx';
 import { NotificationProvider, useNotification } from './contexts/NotificationContext.jsx';
@@ -6,22 +6,31 @@ import { FormProvider } from './contexts/FormContext.jsx';
 import { SeasonalEffectsProvider } from './contexts/SeasonalEffectsContext';
 import * as Sentry from "@sentry/react";
 import { sendDiscordErrorWebhook } from './utils/errorUtils';
+import { Spinner } from 'react-bootstrap';
 
-import GtaLogin from './components/Auth/GtaLogin.jsx';
-import UnifiedGtaCallback from './components/Auth/UnifiedGtaCallback.jsx';
-import OAuthUrlDiagnostic from './components/Auth/OAuthUrlDiagnostic.jsx';
-import ProtectedRoute from './components/Auth/ProtectedRoute.jsx';
-import PaymentCallback from './components/Common/PaymentCallback.jsx';
-
-import Admin from './components/Admin/Admin.jsx';
-import EmsDashboard from './components/ems-dashboard/EmsDashboard.jsx';
 import FormHandler from './components/form-handler/FormHandler.jsx';
+import ProtectedRoute from './components/Auth/ProtectedRoute.jsx';
+import Admin from './components/Admin/Admin.jsx';
+
+// Lazy load non-critical components
+const GtaLogin = lazy(() => import('./components/Auth/GtaLogin.jsx'));
+const UnifiedGtaCallback = lazy(() => import('./components/Auth/UnifiedGtaCallback.jsx'));
+const OAuthUrlDiagnostic = lazy(() => import('./components/Auth/OAuthUrlDiagnostic.jsx'));
+const PaymentCallback = lazy(() => import('./components/Common/PaymentCallback.jsx'));
+const EmsDashboard = lazy(() => import('./components/ems-dashboard/EmsDashboard.jsx'));
+
 function App() {
     const [formData, setFormData] = useState({});
     const [lastWebhookIdentifier, setLastWebhookIdentifier] = useState(null);
     const [setShowAdblockNotification] = useState(false);
 
     const { showNotification, removeNotification } = useNotification();
+
+    const LoadingFallback = () => (
+        <div className="d-flex justify-content-center align-items-center" style={{ height: '100vh', backgroundColor: '#0d1117' }}>
+            <Spinner animation="border" variant="primary" />
+        </div>
+    );
 
     return (
         <Sentry.ErrorBoundary
@@ -86,18 +95,19 @@ function App() {
                     <AuthProvider>
                         <Router>
                                 <SeasonalEffectsProvider> {/* Wrap Routes with SeasonalEffectsProvider */}
-                                    <Routes>
-                                        <Route path="/" element={<FormHandler formData={formData} setFormData={setFormData} lastWebhookIdentifier={lastWebhookIdentifier} setLastWebhookIdentifier={setLastWebhookIdentifier} showNotification={showNotification} removeNotification={removeNotification} setShowAdblockNotification={setShowAdblockNotification} />} />
-                                        <Route path="/login" element={<GtaLogin />} />
-                                        <Route path="/auth/gta/callback" element={<UnifiedGtaCallback />} />
-                                        <Route path="/auth/gta/diagnostic" element={<OAuthUrlDiagnostic />} />
-                                        <Route path="/auth/gtapayment/callback/:token" element={<PaymentCallback />} />
-                                        <Route path="/admin" element={<ProtectedRoute><Admin formData={formData} setFormData={setFormData} showNotification={showNotification} /></ProtectedRoute>} />
-                                        <Route path="/ems-dashboard" element={<ProtectedRoute><EmsDashboard /></ProtectedRoute>} />
-                                        <Route path="/form-handler" element={<ProtectedRoute><FormHandler /></ProtectedRoute>} />
-{/*                                         <Route path="/legacy-forms" element={<MainApp formData={formData} setFormData={setFormData} lastWebhookIdentifier={lastWebhookIdentifier} setLastWebhookIdentifier={setLastWebhookIdentifier} showNotification={showNotification} removeNotification={removeNotification} />} />
- */}                                        <Route path="*" element={<Navigate to="/" replace />} />
-                                    </Routes>
+                                    <Suspense fallback={<LoadingFallback />}>
+                                        <Routes>
+                                            <Route path="/" element={<FormHandler formData={formData} setFormData={setFormData} lastWebhookIdentifier={lastWebhookIdentifier} setLastWebhookIdentifier={setLastWebhookIdentifier} showNotification={showNotification} removeNotification={removeNotification} setShowAdblockNotification={setShowAdblockNotification} />} />
+                                            <Route path="/login" element={<GtaLogin />} />
+                                            <Route path="/auth/gta/callback" element={<UnifiedGtaCallback />} />
+                                            <Route path="/auth/gta/diagnostic" element={<OAuthUrlDiagnostic />} />
+                                            <Route path="/auth/gtapayment/callback/:token" element={<PaymentCallback />} />
+                                            <Route path="/admin" element={<ProtectedRoute><Admin formData={formData} setFormData={setFormData} showNotification={showNotification} /></ProtectedRoute>} />
+                                            <Route path="/ems-dashboard" element={<ProtectedRoute><EmsDashboard /></ProtectedRoute>} />
+                                            <Route path="/form-handler" element={<ProtectedRoute><FormHandler /></ProtectedRoute>} />
+                                            <Route path="*" element={<Navigate to="/" replace />} />
+                                        </Routes>
+                                    </Suspense>
                                 </SeasonalEffectsProvider>
                         </Router>
                     </AuthProvider>
