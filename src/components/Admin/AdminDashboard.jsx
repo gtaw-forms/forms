@@ -1,11 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { Button, Spinner, Alert, Form } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import './AdminDashboard.css';
-import DatabaseEditor from './DatabaseEditor';
-import UserStats from './UserStats';
-import WebhookLogs from './WebhookLogs';
-import FactionDataUpload from './FactionDataUpload';
 import GtaWorldLoginButton from '../Auth/GtaWorldLoginButton';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import useFactionPermissions from '../../hooks/useFactionPermissions';
@@ -13,14 +9,21 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getDatabase, ref, get, set } from 'firebase/database';
 import { isGoogleAuthenticated, getGoogleUser } from '../../services/gtaWorldAuth';
 import { runOAuthDiagnostics, testFirebaseFunctions, testProfileRetrieval, logEnvironmentInfo } from '../../services/firebaseDebug';
-import WebhookManager from './WebhookManager';
 import { WebhookProvider } from '../../contexts/WebhookProvider';
+
+// Static imports for managers (removed lazy loading)
+import DatabaseEditor from './DatabaseEditor';
+import UserStats from './UserStats';
+import WebhookLogs from './WebhookLogs';
+import FactionDataUpload from './FactionDataUpload';
+import WebhookManager from './WebhookManager';
 import FirebaseFunctionsTester from './FirebaseFunctionsTester';
 import EmployeeManager from './EmployeeManager';
 import LsccManager from './LsccManager';
 import FormsManager from './FormsManager';
 import LegacyReportMigrator from './LegacyReportMigrator';
 import MetricsDashboard from './MetricsDashboard';
+import AgencyIncidentManager from './AgencyIncidentManager';
 
 const AdminDashboard = ({
 
@@ -196,6 +199,14 @@ const AdminDashboard = ({
     const hasUsersAccess = isGoogleAdminActive || isRank14OrHigher;
     const hasRankPermissionsAccess = isGoogleAdminActive || isRank15OrHigher;
     const hasEmployeeManagerAccess = isGoogleAdminActive || isRank13OrHigher;
+    
+    // Agency Incident Access: Rank 14+ OR Special Coroner Ranks
+    const currentRankName = factionData?.rank || gtaWorldUser?.faction?.rank || '';
+    const isSpecialCoronerRank = currentRankName.includes("Deputy Chief Medical-Examiner Coroner -") || 
+                                currentRankName.includes("Chief Medical-Examiner Coroner -");
+    
+    const hasAgencyIncidentAccess = isGoogleAdminActive || isRank14OrHigher || isSpecialCoronerRank;
+    
     const canUseGoogleAdminOverride = isEmailSignin; // Only available for email signin
     
     // Override permissions for Google-authenticated users
@@ -487,6 +498,9 @@ const AdminDashboard = ({
                         {hasUsersAccess && (
                             <button className={`nav-link ${selectedSection === 'metrics' ? 'active' : ''}`} onClick={() => setSelectedSection('metrics')}><i className="fas fa-chart-line me-2"></i>Metrics</button>
                         )}
+                        {hasAgencyIncidentAccess && (
+                            <button className={`nav-link ${selectedSection === 'agencyIncidents' ? 'active' : ''}`} onClick={() => setSelectedSection('agencyIncidents')}><i className="fas fa-shield-alt me-2 text-danger"></i>Agency Incidents</button>
+                        )}
                         {hasEmployeeManagerAccess && (
                             <button className={`nav-link ${selectedSection === 'employeeManager' ? 'active' : ''}`} onClick={() => setSelectedSection('employeeManager')}><i className="fas fa-users me-2"></i>Employee Manager</button>
                         )}
@@ -526,42 +540,43 @@ const AdminDashboard = ({
                 <div className="main-content">
                     {/* Welcome Section for PHMC Users */}
                     {isGtaAuthenticated && isFactionMember && factionData && (
-                        <div className="card mb-4">
-                            <div className="card-header bg-primary text-white">
-                                <h5 className="mb-0">
-                                    <i className="fas fa-user-shield me-2"></i>
-                                    Welcome to PHMC Admin Panel
-                                </h5>
-                            </div>
-                            <div className="card-body">
-                                <div className="row">
-                                    <div className="col-md-6">
-                                        <h6 className="text-primary">Character Information</h6>
-                                        <p className="mb-1"><strong>Character Name:</strong> {factionData.characterName}</p>
-                                        <p className="mb-1"><strong>Character ID:</strong> {factionData.characterId}</p>
-                                        <p className="mb-1"><strong>UCP User:</strong> {gtaWorldUser.username}</p>
-                                    </div>
-                                    <div className="col-md-6">
-                                        <h6 className="text-primary">PHMC Status</h6>
-                                        <p className="mb-1"><strong>Rank:</strong> {factionData.rank}</p>
-                                        <p className="mb-1"><strong>Script Rank:</strong> {factionData.scriptRank}</p>
-                                        <p className="mb-1"><strong>Access Level:</strong> <span className="badge bg-success">{accessLevel}</span></p>
-                                        {factionData.activity && (
-                                            <p className="mb-1"><strong>Activity:</strong> {factionData.activity}</p>
-                                        )}
-                                    </div>
+                            <div className="card mb-4">
+                                <div className="card-header bg-primary text-white">
+                                    <h5 className="mb-0">
+                                        <i className="fas fa-user-shield me-2"></i>
+                                        Welcome to PHMC Admin Panel
+                                    </h5>
                                 </div>
-                                {factionData.lastOnline && (
-                                    <div className="mt-2">
-                                        <small className="text-muted">
-                                            <i className="fas fa-clock me-1"></i>
-                                            Last online: {factionData.lastOnline}
-                                        </small>
+                                <div className="card-body">
+                                    <div className="row">
+                                        <div className="col-md-6">
+                                            <h6 className="text-primary">Character Information</h6>
+                                            <p className="mb-1"><strong>Character Name:</strong> {factionData.characterName}</p>
+                                            <p className="mb-1"><strong>Character ID:</strong> {factionData.characterId}</p>
+                                            <p className="mb-1"><strong>UCP User:</strong> {gtaWorldUser.username}</p>
+                                        </div>
+                                        <div className="col-md-6">
+                                            <h6 className="text-primary">PHMC Status</h6>
+                                            <p className="mb-1"><strong>Rank:</strong> {factionData.rank}</p>
+                                            <p className="mb-1"><strong>Script Rank:</strong> {factionData.scriptRank}</p>
+                                            <p className="mb-1"><strong>Access Level:</strong> <span className="badge bg-success">{accessLevel}</span></p>
+                                            {factionData.activity && (
+                                                <p className="mb-1"><strong>Activity:</strong> {factionData.activity}</p>
+                                            )}
+                                        </div>
                                     </div>
-                                )}
+                                    {factionData.lastOnline && (
+                                        <div className="mt-2">
+                                            <small className="text-muted">
+                                                <i className="fas fa-clock me-1"></i>
+                                                Last online: {factionData.lastOnline}
+                                            </small>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        )}
+                        {/* ... existing conditional sections ... */}
                     {selectedSection === 'lockdown' && (
                         <div className="card">
                             <div className="card-header">Site Lockdown</div>
@@ -765,6 +780,22 @@ const AdminDashboard = ({
                                     <div className="alert alert-danger">
                                         <i className="fas fa-exclamation-triangle me-2"></i>
                                         <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to view metrics.
+                                        <br />
+                                        <small>Required: Script Rank 14 or higher, or Google Admin access</small>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    {selectedSection === 'agencyIncidents' && (
+                        <div className="card">
+                            <div className="card-body">
+                                {hasAgencyIncidentAccess ? (
+                                    <AgencyIncidentManager />
+                                ) : (
+                                    <div className="alert alert-danger">
+                                        <i className="fas fa-exclamation-triangle me-2"></i>
+                                        <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to view agency incidents.
                                         <br />
                                         <small>Required: Script Rank 14 or higher, or Google Admin access</small>
                                     </div>
@@ -1553,7 +1584,9 @@ const AdminDashboard = ({
                     )}
                 </div>
             </div>
-            {showMigrator && <LegacyReportMigrator onClose={() => setShowMigrator(false)} showNotification={showInAppNotification} />}
+            {showMigrator && (
+                <LegacyReportMigrator onClose={() => setShowMigrator(false)} showNotification={showInAppNotification} />
+            )}
         </div>
     );
 };
