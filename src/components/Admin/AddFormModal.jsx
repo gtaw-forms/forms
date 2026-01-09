@@ -69,6 +69,7 @@ const AddFormModal = ({ show, onClose, editingForm = null, user }) => {
     content: '', // Default for information_state
     decedentItemSchemaJson: "", // New: Schema for decedent list items
     paymentTotal: 0,
+    listType: "",
   });
 
   const [newField, setNewField] = useState(createDefaultNewField());
@@ -403,6 +404,19 @@ const AddFormModal = ({ show, onClose, editingForm = null, user }) => {
             }
             return [...prevFields, { ...fieldToSave, name: finalName, id: fieldToSave.id }];
         });
+    } else if (fieldToSave.type === "medicine_block") {
+        if (!fieldToSave.label || !fieldToSave.name) {
+            alert("Label and Name are required for Medicine Block!");
+            return;
+        }
+        setFields(prevFields => {
+            if (editingFieldIndex !== null) {
+                const updatedFields = [...prevFields];
+                updatedFields[editingFieldIndex] = { ...fieldToSave, id: fieldToSave.id };
+                return updatedFields;
+            }
+            return [...prevFields, { ...fieldToSave, id: fieldToSave.id }];
+        });
     } else if (fieldToSave.type === "image") {
   if (!fieldToSave.label || !fieldToSave.name) {
     alert("Label and Name are required for Image field!");
@@ -655,6 +669,16 @@ const handleBulkAddFields = (fieldsToAdd) => {
 
     try {
       await update(ref(database, `forms/${formId}`), formData);
+
+      try {
+        const metadataRef = ref(database, 'appMetadata/formsDataVersion');
+        await runTransaction(metadataRef, (currentVersion) => (currentVersion || 0) + 1);
+        console.log("Global form version bumped successfully!");
+      } catch (error) {
+        console.error("Failed to bump global form version:", error);
+        alert("Form saved, but failed to update the global version. Clients may not see changes immediately.");
+      }
+
       alert("Form saved!");
 
       const action = editingForm ? 'Modified Form' : 'Created Form';
@@ -675,15 +699,6 @@ const handleBulkAddFields = (fieldsToAdd) => {
         oauthUsername,
         gtawUser
       );
-
-      try {
-        const metadataRef = ref(database, 'appMetadata/formsDataVersion');
-        await runTransaction(metadataRef, (currentVersion) => (currentVersion || 0) + 1);
-        console.log("Global form version bumped successfully!");
-      } catch (error) {
-        console.error("Failed to bump global form version:", error);
-        alert("Form saved, but failed to update the global version. Clients may not see changes immediately.");
-      }
 
       onClose();
     } catch (err) {
@@ -742,15 +757,42 @@ const handleBulkAddFields = (fieldsToAdd) => {
             placeholder={`[FORM_NAME] - {{PatientName}}\n\nExample for decedents:\n(formName, formData) => {\n  let title = formName;\n  if (formData.decedents && Array.isArray(formData.decedents)) {\n    const decedentNames = formData.decedents\n      .map(dec => dec.decedentName)\n      .filter(name => name && name.trim() !== '')\n      .join(', ');\n    if (decedentNames) {\n      title += \` - \${decedentNames}\`;\n    }\n  }\n  return title;\n}`}
           />
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h4 style={{ color: "#60a5fa", marginTop: "2rem" }}>BBCode Template</h4>
-<button
-  onClick={() => {
-    if (!bbcodeTemplate.trim()) {
-      alert("Please paste a BBCode template first!");
-      return;
-    }
-
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '1rem' }}>
+            <h4 style={{ color: "#60a5fa", margin: 0 }}>BBCode Template</h4>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button
+                onClick={() => {
+                  if (!bbcodeTemplate.trim()) {
+                    alert("Please paste a BBCode template first!");
+                    return;
+                  }
+                  const newTemplate = bbcodeTemplate
+                    .replace(/\[b\]/gi, '[bold]')
+                    .replace(/\[\/b\]/gi, '[/bold]');
+                  setBbcodeTemplate(newTemplate);
+                  alert("Bold tags [b] converted to [bold]!");
+                }}
+                style={{
+                  background: "linear-gradient(135deg, #f59e0b, #d97706)",
+                  color: "white",
+                  border: "none",
+                  padding: "1rem 2rem",
+                  borderRadius: 12,
+                  fontWeight: "bold",
+                  fontSize: "1.1rem",
+                  cursor: "pointer",
+                  boxShadow: "0 4px 20px rgba(245, 158, 11, 0.5)"
+                }}
+              >
+                Fix Bolds
+              </button>
+              <button
+                onClick={() => {
+                  if (!bbcodeTemplate.trim()) {
+                    alert("Please paste a BBCode template first!");
+                    return;
+                  }
+                  // ... rest of the existing ULTIMATE button logic ...
     let newTemplate = bbcodeTemplate;
 
     // ──────────────────────────────────────────────────────────────
@@ -864,6 +906,7 @@ const handleBulkAddFields = (fieldsToAdd) => {
 >
   Parse & Fix Legacy BBCode (ULTIMATE)
 </button>
+            </div>
           </div>
           <div style={{ color: "#94a3b8", fontSize: "0.9rem", marginBottom: "1rem", padding: "1rem", background: "#162032", borderRadius: 8 }}>
             <h5 style={{ color: "#a78bfa", marginTop: 0 }}>BBCode Syntax Guide</h5>
@@ -921,6 +964,7 @@ const handleBulkAddFields = (fieldsToAdd) => {
                             <option value="dynamic_text_list">Dynamic Text List</option>
                             <option value="autopsy_diagram_button">Autopsy Diagram Button</option>
                             <option value="information_state">Information State</option>
+                            <option value="medicine_block">Medicine Block</option>
                           </select>
               
                                                     {newField.type === "information_state" && (
@@ -961,12 +1005,24 @@ const handleBulkAddFields = (fieldsToAdd) => {
                             />
                           )}
                           {newField.type === "dynamic_text_list" && (
-                            <input
-                              placeholder="Button Label"
-                              value={newField.buttonLabel}
-                              onChange={e => setNewField({ ...newField, buttonLabel: e.target.value })}
-                              style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}
-                            />
+                            <>
+                              <input
+                                placeholder="Button Label"
+                                value={newField.buttonLabel}
+                                onChange={e => setNewField({ ...newField, buttonLabel: e.target.value })}
+                                style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}
+                              />
+                              <select
+                                value={newField.listType || ""}
+                                onChange={e => setNewField({ ...newField, listType: e.target.value })}
+                                style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}
+                              >
+                                <option value="">Default List (Bullet)</option>
+                                <option value="1">Numbered List (1, 2, 3)</option>
+                                <option value="a">Lettered List (a, b, c)</option>
+                                <option value="none">No List Tag (Raw)</option>
+                              </select>
+                            </>
                           )}
               
                           {newField.type === "attach_report_button" && (
@@ -1022,6 +1078,24 @@ const handleBulkAddFields = (fieldsToAdd) => {
                               onChange={e => setNewField({ ...newField, rows: +e.target.value || 4 })} 
                               style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
                             />
+                          )}
+                          {newField.type === "medicine_block" && (
+                            <>
+                              <input 
+                                type="number" 
+                                placeholder="Textarea Rows" 
+                                value={newField.rows} 
+                                onChange={e => setNewField({ ...newField, rows: +e.target.value || 4 })} 
+                                style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
+                              />
+                              <input
+                                type="number"
+                                placeholder="Max Images"
+                                value={newField.maxImages}
+                                onChange={e => setNewField({ ...newField, maxImages: +e.target.value || 6 })}
+                                style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}
+                              />
+                            </>
                           )}
                                       {newField.type === "image" && (
                                         <input
@@ -1463,11 +1537,13 @@ const handleBulkAddFields = (fieldsToAdd) => {
                                         ) : f.type === "decedent_list" ? (
                                             <span style={{ color: "#a78bfa" }}>Decedent List: <strong>{f.name}</strong></span>
                                         ) : f.type === "dynamic_text_list" ? (
-                                          <span style={{ color: "#a78bfa" }}>Dynamic List: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (Button: {f.buttonLabel})</span>
+                                          <span style={{ color: "#a78bfa" }}>Dynamic List: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (Button: {f.buttonLabel}) {f.listType ? `[Type: ${f.listType}]` : ''}</span>
                                         ) : f.type === "autopsy_diagram_button" ? (
                                           <span style={{ color: "#a78bfa" }}>Autopsy Diagram Button: <strong>{f.label}</strong> → stores URL in <code>{"{{" + f.name + "}}"}</code></span>
                                         ) : f.type === "information_state" ? (
                                           <span style={{ color: "#a78bfa" }}>Info State: <strong>{f.infoType}</strong> → <code>{f.content.substring(0, 50)}...</code></span>
+                                        ) : f.type === "medicine_block" ? (
+                                          <span style={{ color: "#a78bfa" }}>Medicine Block: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code> (Rows: {f.rows}, Images: {f.maxImages})</span>
                                         ) : f.type === "character_selector" ? (
                                           <span style={{ color: "#a78bfa" }}>Dropdown - Character Select: <strong>{f.label}</strong> → <code>{"{{" + f.name + "}}"}</code></span>
                                         ) : f.type === "multi_employee_select" ? (

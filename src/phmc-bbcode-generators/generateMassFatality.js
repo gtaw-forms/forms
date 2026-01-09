@@ -31,13 +31,13 @@ const generateDecedentBBCode = (decedents, coronerInfo = {}) => {
         bbCode += `
 [divbox=transparent][altspoiler=${idx + 1} - ${dec.decedentName || 'Unidentified'} - OOC ${dec.decedentOOC || 'Unknown'}]
 [divbox=transparent][center][bold]DECEDENT INFORMATION[/bold][/center]
-[b] DECEDENT NAME: [/b] ${dec.decedentName || 'Unidentified Decedent'}
-[b] DECEDENT OOC NAME: [/b] (( ${dec.decedentOOC || 'Unknown'} ))
-[b] PRONOUNCED TIME OF DEATH: [/b] ${dec.pronouncedTimeOfDeath || 'Unknown Time'}
-[b] PROBABLE CAUSE OF DEATH: [/b] ${dec.probableCauseOfDeath || 'Unknown Cause'}
-[b] MANNER OF DEATH: [/b] ${dec.mannerOfDeath || 'Unknown Manner'}
-[b] TYPE OF DEATH: [/b] ${dec.typeOfDeath || 'Unknown Type'}
-[b] Decedent Injuries / Things of Note: [/b] ${dec.synopsis || 'No Synopsis Provided'}
+[bold] DECEDENT NAME: [/bold] ${dec.decedentName || 'Unidentified Decedent'}
+[bold] DECEDENT OOC NAME: [/bold] (( ${dec.decedentOOC || 'Unknown'} ))
+[bold] PRONOUNCED TIME OF DEATH: [/bold] ${dec.pronouncedTimeOfDeath || 'Unknown Time'}
+[bold] PROBABLE CAUSE OF DEATH: [/bold] ${dec.probableCauseOfDeath || 'Unknown Cause'}
+[bold] MANNER OF DEATH: [/bold] ${dec.mannerOfDeath || 'Unknown Manner'}
+[bold] TYPE OF DEATH: [/bold] ${dec.typeOfDeath || 'Unknown Type'}
+[bold] Decedent Injuries / Things of Note: [/bold] ${dec.synopsis || 'No Synopsis Provided'}
 
 [hr][/hr]
 [/divbox]

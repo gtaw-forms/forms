@@ -3,7 +3,7 @@ import { logAdminAction, getUserContext } from '../../utils/adminLogger';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import React, { useState, useEffect } from "react";
 import { database, deleteForm } from "../../firebase"; // Import deleteForm
-import { ref, onValue } from "firebase/database";
+import { ref, onValue, update } from "firebase/database";
 import AddFormModal from "./AddFormModal";
 import styles from "../ems-dashboard/EmsDashboard.module.css";
 import { useNotification } from '../../contexts/NotificationContext'; // Import useNotification
@@ -50,6 +50,52 @@ const FormManager = ({ currentUser }) => {
     setEditingForm(null);
   };
 
+  const handleFixBBCode = async () => {
+    if (!window.confirm("Are you sure you want to scan all forms and replace [b] tags with [bold]? This will modify the database.")) {
+      return;
+    }
+
+    let updatedCount = 0;
+    const updates = {};
+
+    forms.forEach(form => {
+      if (form.template && (form.template.includes('[b]') || form.template.includes('[/b]'))) {
+        const newTemplate = form.template
+          .replace(/\[b\]/gi, '[bold]')
+          .replace(/\[\/b\]/gi, '[/bold]');
+        
+        updates[`forms/${form.firebaseKey}/template`] = newTemplate;
+        updatedCount++;
+      }
+    });
+
+    if (updatedCount > 0) {
+      try {
+        await update(ref(database), updates);
+        showNotification(`Successfully updated BBCode in ${updatedCount} forms!`, 'success');
+        
+        // Log the action
+        const { userAgent, timeZone } = getUserContext();
+        logAdminAction(
+            currentUser?.email || gtawUsername,
+            'Bulk Fix BBCode',
+            `Replaced [b] with [bold] in ${updatedCount} forms.`,
+            'Form Management',
+            userAgent,
+            timeZone,
+            gtawUsername,
+            gtawUser
+        );
+
+      } catch (error) {
+        console.error("Error updating forms:", error);
+        showNotification(`Failed to update forms: ${error.message}`, 'error');
+      }
+    } else {
+      showNotification("No forms needed BBCode fixes.", 'info');
+    }
+  };
+
   const handleDeleteForm = async (formId, formName, e) => {
     e.stopPropagation(); // Prevent the form card's onClick from firing
     if (window.confirm(`Are you sure you want to delete the form "${formName}"? This action cannot be undone.`)) {
@@ -80,21 +126,38 @@ const FormManager = ({ currentUser }) => {
         <h1>
           <span style={{ color: "#8b5cf6" }}>Form Manager</span> — Admin Panel
         </h1>
-        <button
-          onClick={() => setShowAddModal(true)}
-          style={{
-            padding: "0.8rem 2rem",
-            background: "#10b981",
-            color: "white",
-            border: "none",
-            borderRadius: 12,
-            fontWeight: "700",
-            fontSize: "1.1rem",
-            cursor: "pointer"
-          }}
-        >
-          + Add New Form
-        </button>
+        <div style={{ display: 'flex', gap: '1rem' }}>
+          <button
+            onClick={handleFixBBCode}
+            style={{
+              padding: "0.8rem 2rem",
+              background: "#f59e0b",
+              color: "white",
+              border: "none",
+              borderRadius: 12,
+              fontWeight: "700",
+              fontSize: "1.1rem",
+              cursor: "pointer"
+            }}
+          >
+            Fix BBCode [b] → [bold]
+          </button>
+          <button
+            onClick={() => setShowAddModal(true)}
+            style={{
+              padding: "0.8rem 2rem",
+              background: "#10b981",
+              color: "white",
+              border: "none",
+              borderRadius: 12,
+              fontWeight: "700",
+              fontSize: "1.1rem",
+              cursor: "pointer"
+            }}
+          >
+            + Add New Form
+          </button>
+        </div>
       </div>
 
       <div className={styles.mainLayout}>

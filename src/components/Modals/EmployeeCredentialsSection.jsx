@@ -52,20 +52,43 @@ const EmployeeCredentialsSection = ({
   const [customDiscordName, setCustomDiscordName] = useState('');
   const [showFloatingText, setShowFloatingText] = useState(false);
 
-  // Trigger floating text on sign-in if not recognized or missing from DB
+  const hasShownFloatingTextRef = React.useRef(false);
+  const lastUserRef = React.useRef(null);
+
+  // Effect 1: Determine if we should show the floating text
   useEffect(() => {
     if (isGtaAuthenticated && gtaWorldUser) {
+      // Reset if user changes
+      if (lastUserRef.current !== gtaWorldUser.id) {
+          hasShownFloatingTextRef.current = false;
+          lastUserRef.current = gtaWorldUser.id;
+      }
+
+      // If already shown, skip check
+      if (hasShownFloatingTextRef.current) return;
+
       const characterName = getCharacterName(gtaWorldUser);
       const allOptions = groupedOptions?.flatMap(group => group.options || []) || [];
+      
+      // Wait for options to populate to avoid false positives
+      if (allOptions.length === 0) return; 
+
       const isFoundInDb = allOptions.some(opt => opt.value.toLowerCase() === characterName.toLowerCase());
 
       if (!isPhmcMember || !isFoundInDb) {
         setShowFloatingText(true);
-        const timer = setTimeout(() => setShowFloatingText(false), 5000);
-        return () => clearTimeout(timer);
+        hasShownFloatingTextRef.current = true;
       }
     }
-  }, [isGtaAuthenticated, gtaWorldUser?.id, isPhmcMember, groupedOptions]);
+  }, [isGtaAuthenticated, gtaWorldUser, isPhmcMember, groupedOptions]);
+
+  // Effect 2: Handle the timer for the floating text
+  useEffect(() => {
+      if (showFloatingText) {
+          const timer = setTimeout(() => setShowFloatingText(false), 10000);
+          return () => clearTimeout(timer);
+      }
+  }, [showFloatingText]);
 
   const handleNewEmployeeClick = async () => {
     setShowFloatingText(false);
