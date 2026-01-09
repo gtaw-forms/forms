@@ -64,6 +64,10 @@ const formatToNorthAmericanDate = (isoDateTime) => {
 
   const parseCaseNumber = (url) => {
     if (!url) return '';
+    // Try to match phpBB t= parameter first
+    const tMatch = url.match(/[?&]t=(\d+)/);
+    if (tMatch) return tMatch[1];
+    
     const match = url.match(/\d+$/);
     return match ? match[0] : '';
   };
@@ -204,7 +208,7 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
 
       finalTitle = `[Mass Fatality Report] ${namesList} - ${dateStr}`;
     }
-    else if (selectedForm.firebaseKey === 'death-record' || selectedForm.id === 'death-record') {
+    else if (selectedForm.firebaseKey === 'death-record' || selectedForm.id === 'death-record' || selectedForm.name === 'Death Record') {
       const year = new Date().getFullYear();
       const caseNum = parseCaseNumber(processedFormValues.deathReportPostId) || parseCaseNumber(processedFormValues.caseNumber) || 'UNKNOWN';
       const name = processedFormValues.decedentName || 'UNKNOWN_NAME';
@@ -246,6 +250,7 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
         '{{phmcEmployee}}': processedFormValues.phmcEmployee || "",
         '{{date}}': formatToNorthAmericanDate(processedFormValues.dateTime || processedFormValues.date) || "NO_DATE",
         '{{agency}}': processedFormValues.agency || "",
+        '{{year}}': new Date().getFullYear(),
       };
 
       Object.entries(fallbackTitleReplacements).forEach(([ph, val]) => {
@@ -342,6 +347,80 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
   return conditionMet ? inner.trim() : '';
 });
     // ──────────────────────────────────────────────────────────────
+    // 4.5. FIELD WITH PLACEHOLDER (e.g., {{fieldName|Placeholder Text}})
+    // ──────────────────────────────────────────────────────────────
+    bbcode = bbcode.replace(/\{\{([a-zA-Z0-9_]+)\|((?:(?!}}).)+)\}\}/g, (match, key, placeholderText) => {
+        const value = processedFormValues[key];
+        let replacement = '';
+        
+        // Determine if we should use the value or the placeholder
+        // Treating null, undefined, empty string, false, and empty arrays as "empty"
+        const isEmpty = value === null || 
+                        value === undefined || 
+                        value === '' || 
+                        value === false || 
+                        (Array.isArray(value) && value.length === 0);
+
+        if (isEmpty) {
+            replacement = placeholderText;
+            console.debug(`[BbcodeGenerator] Field '${key}' is empty/false. Using placeholder: '${placeholderText}'`);
+        } else {
+             // Logic matched from Section 5 for formatting
+            replacement = String(value);
+            const field = selectedForm.fields?.find(f => f.name === key);
+
+            if (field) {
+                if ((field.type === "image" || field.type === "image_upload") && value) {
+                     // Image formatting logic
+                    const isImageUrl = (url) => typeof url === 'string' && /\.(jpg|jpeg|png|gif|webp)$/i.test(url.trim());
+                    const formatItem = (item) => (typeof item === 'string' && isImageUrl(item)) ? `[img]${item}[/img]` : (item || '');
+                    
+                    if (Array.isArray(value)) {
+                        replacement = value.map(formatItem).filter(Boolean).join('\n');
+                    } else if (typeof value === 'string') {
+                        replacement = formatItem(value);
+                    }
+                }
+                else if (field.type === "checkbox" && typeof value === "boolean") {
+                    replacement = value ? "Yes" : "No";
+                } 
+                else if (field.type === "multi_select" && Array.isArray(value)) {
+                    replacement = value.join(", ");
+                }
+                else if (field.type === "dynamic_text_list" && Array.isArray(value)) {
+                    const items = value.filter(val => val && String(val).trim() !== "");
+                    if (items.length > 0) {
+                        if (field.listType === "none") {
+                            replacement = items.join("\n");
+                        } else {
+                            const listOpen = (field.listType && field.listType !== "") ? `[list=${field.listType}]` : "[list]";
+                            replacement = `${listOpen}\n[*]${items.join("\n[*]")}\n[/list]`;
+                        }
+                    } else {
+                        replacement = "";
+                    }
+                }
+                else if (["dateTime", "pronouncedTimeOfDeath"].includes(field.name)) {
+                    replacement = String(value).split("T")[0] || String(value);
+                }
+                else if (field.type === "medicine_block" && value && typeof value === 'object') {
+                    const prescribedText = value.prescribed || "None";
+                    let proofImages = "";
+                    if (Array.isArray(value.proof) && value.proof.length > 0) {
+                        proofImages = "\n" + value.proof.map(url => `[img]${url}[/img]`).join("\n");
+                    }
+                    replacement = `${prescribedText}${proofImages}`;
+                }
+            }
+             // Handle objects (like payment buttons)
+            if (typeof value === 'object' && value !== null && !Array.isArray(value) && Object.prototype.hasOwnProperty.call(value, 'confirmedAt')) {
+                replacement = String(value.confirmedAt);
+            }
+        }
+        return replacement;
+    });
+
+    // ──────────────────────────────────────────────────────────────
     // 5. FIELD REPLACEMENT — NOW BASED ON VALUES, NOT FIELD DEFS
     // ──────────────────────────────────────────────────────────────
     Object.keys(processedFormValues).forEach(key => {
@@ -379,11 +458,31 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
             else if (field.type === "multi_select" && Array.isArray(value)) {
                 replacement = value.join(", ");
             }
+            else if (field.type === "dynamic_text_list" && Array.isArray(value)) {
+                const items = value.filter(val => val && String(val).trim() !== "");
+                if (items.length > 0) {
+                    if (field.listType === "none") {
+                        replacement = items.join("\n");
+                    } else {
+                        const listOpen = (field.listType && field.listType !== "") ? `[list=${field.listType}]` : "[list]";
+                        replacement = `${listOpen}\n[*]${items.join("\n[*]")}\n[/list]`;
+                    }
+                } else {
+                    replacement = "";
+                }
+            }
             else if (["dateTime", "pronouncedTimeOfDeath"].includes(field.name)) {
                 replacement = String(value).split("T")[0] || String(value);
             }
-        }
-        
+            else if (field.type === "medicine_block" && value && typeof value === 'object') {
+                const prescribedText = value.prescribed || "None";
+                let proofImages = "";
+                if (Array.isArray(value.proof) && value.proof.length > 0) {
+                    proofImages = "\n" + value.proof.map(url => `[img]${url}[/img]`).join("\n");
+                }
+                replacement = `${prescribedText}${proofImages}`;
+            }
+        }        
         // This handles cases where value is an object, like from payment buttons
         if (typeof value === 'object' && value !== null && !Array.isArray(value) && Object.prototype.hasOwnProperty.call(value, 'confirmedAt')) {
             replacement = String(value.confirmedAt);

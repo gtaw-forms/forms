@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { Button, Form, Spinner, Card, Alert, Col, Row, ListGroup, Badge } from 'react-bootstrap';
-import { ref, get, update, set } from 'firebase/database';
+import { ref, get, update, set, runTransaction } from 'firebase/database';
 import { database } from '../../firebase';
 
 import { logAdminAction, getUserContext } from '../../utils/adminLogger';
@@ -260,6 +260,10 @@ const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUs
             );
             const categoryRef = ref(database, `/selectOptions/${optionCategory}`);
             await set(categoryRef, updatedOptions);
+
+            // Bump global version
+            const versionRef = ref(database, 'appMetadata/selectOptionsDataVersion');
+            await runTransaction(versionRef, (currentVersion) => (currentVersion || 0) + 1);
             
             showNotification('Option added successfully!', 'check-circle');
             
@@ -296,6 +300,10 @@ const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUs
             );
             const categoryRef = ref(database, `/selectOptions/${optionCategory}`);
             await set(categoryRef, updatedOptions);
+
+            // Bump global version
+            const versionRef = ref(database, 'appMetadata/selectOptionsDataVersion');
+            await runTransaction(versionRef, (currentVersion) => (currentVersion || 0) + 1);
             
             showNotification('Option deleted successfully!', 'check-circle');
             

@@ -11,7 +11,8 @@ import {
     triggerUploadFactionData,
     triggerBatchCheckFactionMembership,
     triggerCheckFactionMembership,
-    triggerTestHealthAlert
+    triggerTestHealthAlert,
+    triggerFetchExternalUrl
 } from '../../services/firebaseFunctions';
 
 const FirebaseFunctionsTester = ({ showInAppNotification }) => {
@@ -25,6 +26,8 @@ const FirebaseFunctionsTester = ({ showInAppNotification }) => {
     const [factionData, setFactionData] = useState('');
     const [metadata, setMetadata] = useState('');
     const [characterIds, setCharacterIds] = useState('');
+    const [externalUrl, setExternalUrl] = useState('https://phmc.gta.world/viewforum.php?f=265');
+    const [cookie, setCookie] = useState('');
 
     const handleTriggerFunction = async (func, ...args) => {
         setLoading(true);
@@ -104,6 +107,16 @@ const FirebaseFunctionsTester = ({ showInAppNotification }) => {
                         {loading ? <Spinner as="span" animation="border" size="sm" /> : 'Trigger Test Health Alert'}
                     </Button>
                     <p className="text-muted small w-100">Dispatches a mock "Critical Outage" alert to verify Discord webhooks and User pings.</p>
+                </div>
+
+                <h7 className="mt-3">External Proxy Tester</h7>
+                <div className="d-flex flex-wrap gap-2 mb-3">
+                    <Form.Control type="text" placeholder="External URL" value={externalUrl} onChange={(e) => setExternalUrl(e.target.value)} className="w-50" />
+                    <Form.Control type="text" placeholder="Cookie (e.g., phpbb3_..._sid=...)" value={cookie} onChange={(e) => setCookie(e.target.value)} className="w-25" />
+                    <Button variant="primary" size="sm" onClick={() => handleTriggerFunction(triggerFetchExternalUrl, { url: externalUrl, cookie })} disabled={loading || !externalUrl}>
+                        {loading ? <Spinner as="span" animation="border" size="sm" /> : 'Fetch URL'}
+                    </Button>
+                    <p className="text-muted small w-100">Fetches the raw content of the specified URL via Firebase Functions proxy. <strong>Note:</strong> Protected pages require a valid session cookie.</p>
                 </div>
 
                 {result && (
