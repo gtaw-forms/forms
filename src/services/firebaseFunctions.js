@@ -24,3 +24,4 @@ export const triggerUploadFactionData = (data) => triggerFunction('uploadFaction
 export const triggerBatchCheckFactionMembership = (data) => triggerFunction('batchCheckFactionMembership', data);
 export const triggerCheckFactionMembership = (data) => triggerFunction('checkFactionMembership', data);
 export const triggerTestHealthAlert = (data) => triggerFunction('triggerTestHealthAlert', data);
+export const triggerFetchExternalUrl = (data) => triggerFunction('fetchExternalUrl', data);

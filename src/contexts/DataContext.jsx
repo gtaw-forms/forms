@@ -134,12 +134,16 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
     const SEGMENT_VERSIONS = {
         [CACHE_SEGMENTS.FACTIONS]: '1.2',
         [CACHE_SEGMENTS.AGENCIES]: '1.1',
-        [CACHE_SEGMENTS.SELECT_OPTIONS]: '1.2.3', 
         [CACHE_SEGMENTS.FORMS]: '1.2.3', 
         [CACHE_SEGMENTS.LSCC]: '1.0',
     };
 
-    const getSegmentVersion = (segment) => SEGMENT_VERSIONS[segment] || '1.0';
+    const getSegmentVersion = (segment) => {
+        if (segment === CACHE_SEGMENTS.FORMS) return localStorage.getItem('formsDataVersion') || '0';
+        if (segment === CACHE_SEGMENTS.FACTIONS) return localStorage.getItem('factionsDataVersion') || '0';
+        if (segment === CACHE_SEGMENTS.SELECT_OPTIONS) return localStorage.getItem('selectOptionsDataVersion') || '0';
+        return SEGMENT_VERSIONS[segment] || '1.0';
+    };
 
     const getCacheKey = (segment) => `${CACHE_PREFIX}_${segment}_v${getSegmentVersion(segment)}`;
     const getTimestampKey = (segment) => `${CACHE_PREFIX}_${segment}_v${getSegmentVersion(segment)}_timestamp`;
@@ -349,6 +353,59 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                     localStorage.removeItem('factionsDataVersion');
                     showNotification("Employee data cleared due to server-side deletion.", "info", 4000);
                     await refreshSegments([CACHE_SEGMENTS.FACTIONS]);
+                }
+            });
+        })();
+
+        // --- Listener for Global Select Options Version ---
+        (async () => {
+            const optionsVersionRef = ref(database, 'appMetadata/selectOptionsDataVersion');
+            let initialServerVersion = null;
+
+            try {
+                const snapshot = await get(optionsVersionRef);
+                if (snapshot.exists()) {
+                    initialServerVersion = String(snapshot.val());
+                    console.log(`[DataContext] Initial selectOptionsDataVersion fetched from server: v${initialServerVersion}`);
+                } else {
+                    console.log('[DataContext] selectOptionsDataVersion does not exist on server initially. (This is fine)');
+                }
+                localStorage.setItem('selectOptionsDataVersion', initialServerVersion || '0'); 
+            } catch (error) {
+                console.error('[DataContext] Failed to get initial selectOptionsDataVersion from server:', error);
+                localStorage.setItem('selectOptionsDataVersion', '0');
+            }
+
+            firebaseListeners.current.optionsVersion = onValue(optionsVersionRef, async (snapshot) => {
+                if (!dataInitializedRef.current) {
+                    console.log('[DataContext] Global options version listener triggered, but DataContext not initialized. Skipping.');
+                    return;
+                }
+                const serverVersion = snapshot.exists() ? String(snapshot.val()) : null;
+                const localVersion = localStorage.getItem('selectOptionsDataVersion');
+
+                console.log(`Global Select Options Version - Local: ${localVersion || 'N/A'}, Server: ${serverVersion || 'N/A'}`);
+
+                if (serverVersion !== null && localVersion !== serverVersion) { 
+                    console.log(`🔄 Global select options version mismatch (v${localVersion} → v${serverVersion}). Clearing and refreshing options cache...`);
+
+                    localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.SELECT_OPTIONS));
+                    localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.SELECT_OPTIONS));
+                    localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.SELECT_OPTIONS));
+
+                    localStorage.setItem('selectOptionsDataVersion', serverVersion);
+
+                    showNotification("Select options have been updated.", "success", 4000);
+
+                    await refreshSegments([CACHE_SEGMENTS.SELECT_OPTIONS]);
+                } else if (serverVersion === null && localVersion !== null) {
+                    console.log(`🗑️ Global select options version deleted from server. Clearing local cache.`);
+                    localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.SELECT_OPTIONS));
+                    localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.SELECT_OPTIONS));
+                    localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.SELECT_OPTIONS));
+                    localStorage.removeItem('selectOptionsDataVersion');
+                    showNotification("Select options data cleared due to server-side deletion.", "info", 4000);
+                    await refreshSegments([CACHE_SEGMENTS.SELECT_OPTIONS]);
                 }
             });
         })();
@@ -666,6 +723,19 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         oldFactionsCacheKeys.forEach(key => {
             if (localStorage.getItem(key) !== null) {
                 console.log(`🧹 Explicitly cleaning up old factions cache key: ${key}`);
+                localStorage.removeItem(key);
+            }
+        });
+
+        // Explicitly remove old selectOptions cache versions
+        const oldSelectOptionsCacheKeys = [
+            'firebaseCache_selectOptions_v1.2.3',
+            'firebaseCache_selectOptions_v1.2.3_timestamp',
+            'firebaseCache_selectOptions_v1.2.3_version',
+        ];
+        oldSelectOptionsCacheKeys.forEach(key => {
+            if (localStorage.getItem(key) !== null) {
+                console.log(`🧹 Explicitly cleaning up old selectOptions cache key: ${key}`);
                 localStorage.removeItem(key);
             }
         });

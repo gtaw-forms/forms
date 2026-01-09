@@ -18,6 +18,7 @@ import PermanentNotification from '../UI/PermanentNotification';
 import { validateForm } from '../../utils/formValidation';
 import { sendDiscordWebhook } from '../../utils/webhookUtils';
 import { ref, get } from 'firebase/database';
+import { database } from '../../firebase';
 import { useInactivityReload } from '../../hooks/useInactivityReload';
 import { useUserMetrics } from '../../hooks/useUserMetrics';
 import { cleanRankText } from '../../utils/textUtils';

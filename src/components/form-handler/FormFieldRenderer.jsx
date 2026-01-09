@@ -737,33 +737,28 @@ case "textarea":
       );
     }
     case "attach_report_button": {
-      const [attachedReportSummaries, setAttachedReportSummaries] = useState([]);
+      const storageKey = field.name || field.id || 'attach_report_summary';
+      const attachedReportSummaries = formValues[storageKey] || [];
       const targetField = field.targetField;
 
       useEffect(() => {
         // If the target field is cleared from outside, clear the summaries.
         if (!formValues[targetField]) {
-          setAttachedReportSummaries([]);
+          handleChange(storageKey, []);
         }
-      }, [formValues[targetField]]);
+      }, [formValues[targetField], handleChange, storageKey]);
 
       return (
         <div style={fieldWrapperStyle}>
           <button
             onClick={() => {
-              // console.log("Attach report button clicked!");
               const callback = (reportData) => {
-                // console.log(`[FormFieldRenderer Callback] Received reportData:`, reportData);
-                // console.log(`[FormFieldRenderer Callback] reportData.bbCode value:`, reportData?.bbCode);
                 if (reportData && reportData.bbCode) {
-                  const targetField = field.targetField;
-                  // Use functional update to ensure we always get the latest state
-                  // The useReportManagement hook now handles updating formValues directly.
-                  // This callback is now only responsible for local UI updates and notifications.
+                  const currentSummaries = formValues[storageKey] || [];
                   if(showNotification) showNotification('Report attached!', 'success');
                   
-                  // Add the confirmation message to the array
-                  setAttachedReportSummaries(prev => [...prev, `Report "${reportData.originalKey}" attached to "${targetField}"!`]);
+                  // Add the confirmation message to the persistent store
+                  handleChange(storageKey, [...currentSummaries, `Report "${reportData.originalKey}" attached to "${targetField}"!`]);
                 }
               };
               toggleSavedReports(null, field.employeeType, callback, field.targetField);
@@ -958,6 +953,37 @@ case "textarea":
                   forceDropdown={true}
               />
           </div>
+      );
+    case "medicine_block":
+      return (
+        <div style={{ ...fieldWrapperStyle, padding: '1rem', border: '1px solid #334155', borderRadius: '8px', background: '#162032' }}>
+          <h5 style={{ color: '#a78bfa', marginBottom: '1rem' }}>{field.label}  </h5>
+          You MUST document the medicines prescribed and upload proof of prescription images. Failure to do so may result in disciplinary action. 
+          
+          <label style={{ ...labelStyle, fontSize: '0.9rem' }}>Medicine Prescribed</label>
+          <textarea
+            name={`${field.name}_prescribed`}
+            rows={field.rows || 4}
+            value={formValues[field.name] ? formValues[field.name].prescribed : ""}
+            onChange={e => {
+              const currentVal = formValues[field.name] || { prescribed: "", proof: [] };
+              handleChange(field.name, { ...currentVal, prescribed: e.target.value });
+            }}
+            placeholder="List the medicines prescribed..."
+            style={{ ...inputStyle, marginBottom: '1rem' }}
+          />
+
+          <label style={{ ...labelStyle, fontSize: '0.9rem' }}>Proof of Prescription (Images)</label>
+          <ImageUploader
+            images={formValues[field.name] ? (formValues[field.name].proof || []) : []}
+            onImagesChange={(newImages) => {
+              const currentVal = formValues[field.name] || { prescribed: "", proof: [] };
+              handleChange(field.name, { ...currentVal, proof: newImages });
+            }}
+            maxImages={field.maxImages || 6}
+            fieldName={`${field.name}_proof`}
+          />
+        </div>
       );
     case "input":
     default:

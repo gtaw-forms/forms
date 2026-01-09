@@ -34,9 +34,28 @@ const PermanentNotification = ({ discordLink, onReportBugClick }) => {
     fontWeight: '600',
   };
 
+  const [isDismissed, setIsDismissed] = React.useState(false);
+
+  if (isDismissed) return null;
+
   return (
     <div style={notificationStyle}>
-      You are using a beta website build. Please report bugs to the (<a href={discordLink} target="_blank" rel="noopener noreferrer" style={linkStyle}>PHMC Discord</a>) and notify 'PHMC Leadership' in the Visitor Chat or DM.
+      <button
+        onClick={() => setIsDismissed(true)}
+        style={{
+          position: 'absolute',
+          top: '8px',
+          right: '8px',
+          background: 'none',
+          border: 'none',
+          color: '#fff',
+          cursor: 'pointer',
+          fontSize: '1.2rem',
+        }}
+      >
+        ×
+      </button>
+      You are using a beta website build. Please report bugs to the (<a href={discordLink} target="_blank" rel="noopener noreferrer" style={linkStyle}>PHMC Discord</a>). Please notify 'PHMC Leadership' in the Visitor Chat or DM.
       <button style={buttonStyle} onClick={onReportBugClick}>
         Report Bug
       </button>
