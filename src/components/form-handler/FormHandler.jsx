@@ -562,23 +562,33 @@ const FormHandler = () => {
   }, [generatedBBCode, selectedForm, formValues, generatedTitle, saveNewReport, showNotification]);
 
   const handleClearForm = useCallback(() => {
-    console.log("[FormHandler] Clearing form values. Keep credentials:", keepCredentials);
+    console.log("[FormHandler] 🗑️ handleClearForm triggered.");
+    console.log("[FormHandler] Current State - Keep credentials:", keepCredentials, "Is Auth:", isAuthenticated, "Employee Type:", employeeType);
+    
     const credentialFieldsToPreserve = [
       `${employeeType}Employee`,
       `${employeeType}Badge`,
       `${employeeType}Rank`,
       `${employeeType}Discord`,
-      `${employeeType}PHNumber`
+      `${employeeType}PHNumber`,
+      `${employeeType}FirstName`,
+      `${employeeType}LastName`
     ];
 
     const preservedValues = {};
-    if (keepCredentials) {
+    if (keepCredentials || isAuthenticated) {
         credentialFieldsToPreserve.forEach(fieldName => {
             if (formValues[fieldName]) {
                 preservedValues[fieldName] = formValues[fieldName];
+            } else {
+                console.warn(`[FormHandler] Credential field '${fieldName}' was missing or empty in formValues before clear.`);
             }
         });
+    } else {
+        console.log("[FormHandler] Not preserving credentials (KeepCredentials=false AND IsAuth=false)");
     }
+    
+    console.log("[FormHandler] Final preservedValues object:", preservedValues);
     
     setFormValues(preservedValues);
     if (selectedForm?.firebaseKey) {
@@ -587,7 +597,7 @@ const FormHandler = () => {
     setShowBBCode(false);
     setIsAutoUpdatingBbcode(false);
     showNotification('Form cleared!', 'info');
-  }, [formValues, employeeType, setFormValues, selectedForm?.firebaseKey, showNotification, keepCredentials, setShowBBCode, setIsAutoUpdatingBbcode]);
+  }, [formValues, employeeType, setFormValues, selectedForm?.firebaseKey, showNotification, keepCredentials, isAuthenticated, setShowBBCode, setIsAutoUpdatingBbcode]);
 
   const sendDebugTrace = useCallback(async (missingFields) => {
       const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
