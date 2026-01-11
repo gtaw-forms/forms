@@ -502,6 +502,9 @@ const FormHandler = () => {
           updates[`${empType}LastName`] = selectedOption.lastname || '';
       } else {
           console.warn(`%c[DEBUG] Credential Sync Origin: UNKNOWN/CLEAR (${employeeName})`, "color: #e67e22; font-weight: bold;");
+          if (!employeeName) {
+            console.trace("[DEBUG] Credentials wiped due to empty employee name. Trace:");
+          }
           updates[`${empType}Rank`] = '';
           updates[`${empType}Badge`] = '';
           updates[`${empType}FirstName`] = '';
@@ -511,6 +514,7 @@ const FormHandler = () => {
       }
     } else {
       console.log(`%c[DEBUG] Credential Sync Origin: EMPTY/RESET`, "color: #95a5a6;");
+      console.trace("[DEBUG] Credentials reset trace:");
       updates[`${empType}Rank`] = '';
       updates[`${empType}Badge`] = '';
       updates[`${empType}FirstName`] = '';
@@ -867,7 +871,35 @@ const FormHandler = () => {
 
         if (shouldUpdateCredentials) {
             console.log(`[FormHandler] Syncing credentials for ${currentEmployeeType}. OAuth: ${oauthEmployeeName}, Form: ${currentFormEmployeeName || 'N/A'}`);
-            const credentialUpdates = updateEmployeeCredentials(oauthEmployeeName, currentEmployeeType);
+            let credentialUpdates = updateEmployeeCredentials(oauthEmployeeName, currentEmployeeType);
+
+            // --- REDUNDANCY/FALLBACK CHECK ---
+            // If the standard sync returned incomplete data (missing rank/badge) but we have a valid OAuth user,
+            // forcefully inject the data from the user object to prevent clearing credentials.
+            if (!credentialUpdates[`${currentEmployeeType}Rank`] || !credentialUpdates[`${currentEmployeeType}Badge`]) {
+                console.warn(`[FormHandler] ⚠️ Credential Sync returned empty values despite valid OAuth user. Engaging Emergency Fallback.`);
+                console.warn(`[FormHandler] Failed update object:`, credentialUpdates);
+                
+                const fData = user?.faction || user?.activeCharacter || {};
+                console.warn(`[FormHandler] Forcefully using OAuth Data:`, fData);
+
+                credentialUpdates[`${currentEmployeeType}Employee`] = oauthEmployeeName;
+                credentialUpdates[`${currentEmployeeType}Rank`] = fData.rank ? cleanRankText(String(fData.rank)) : (fData.scriptRank || '');
+                credentialUpdates[`${currentEmployeeType}Badge`] = fData.characterId || fData.badge || '';
+                credentialUpdates[`${currentEmployeeType}Discord`] = user.username || '';
+                credentialUpdates[`${currentEmployeeType}PHNumber`] = '50056';
+                
+                if (fData.firstname && fData.lastname) {
+                    credentialUpdates[`${currentEmployeeType}FirstName`] = fData.firstname;
+                    credentialUpdates[`${currentEmployeeType}LastName`] = fData.lastname;
+                } else {
+                     const parts = oauthEmployeeName.split(' ');
+                     credentialUpdates[`${currentEmployeeType}FirstName`] = parts[0] || '';
+                     credentialUpdates[`${currentEmployeeType}LastName`] = parts.slice(1).join(' ') || '';
+                }
+            }
+            // --- END REDUNDANCY CHECK ---
+
             Object.assign(updates, credentialUpdates); // Merge credential updates
         }
       } else {
@@ -1249,6 +1281,7 @@ const FormHandler = () => {
                           <li
                             key={form.firebaseKey}
                             onClick={() => {
+                              if (selectedForm?.firebaseKey === form.firebaseKey) return;
                               // Preserve essential credential fields across form switches.
                               const credentialFields = [
                                 'phmcEmployee', 'phmcBadge', 'phmcRank', 'phmcDiscord', 'phmcPHNumber',
