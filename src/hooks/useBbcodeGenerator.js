@@ -540,6 +540,13 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
     }
     // --- End Consistency Check ---
 
+    // Final Polish: Convert internal [bold] to standard [b]
+    // This is specifically required for Coroner Email only as it consumes standard BBCode.
+    const isCoronerEmail = selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email";
+    if (isCoronerEmail && (bbcode.includes('[bold]') || bbcode.includes('[/bold]'))) {
+        bbcode = bbcode.replace(/\[bold\]/gi, '[b]').replace(/\[\/bold\]/gi, '[/b]');
+    }
+
     setShowBBCode(true);
     setGeneratedBBCode(bbcode);
     setGeneratedTitle(finalTitle); // Set the accumulated finalTitle here

@@ -12,6 +12,7 @@ import FormRequestModal from '../Modals/FormRequestModal';
 import seasonalEvents from '../UI/SeasonalEvents';
 import BusinessCardModal from '../Modals/BusinessCardModal';
 import MapModal from '../Modals/MapModal';
+import HallOfFameModal from '../Modals/HallOfFameModal';
 import { uploadDataUrlToImgBB } from '../../utils/imageUploadUtils';
 
 const FormHandlerNavButtons = ({ onToggleSavedReports, onToggleAgencyIncident }) => {
@@ -30,6 +31,7 @@ const FormHandlerNavButtons = ({ onToggleSavedReports, onToggleAgencyIncident })
   const [showFormRequestModal, setShowFormRequestModal] = useState(false);
   const [showBusinessCardModal, setShowBusinessCardModal] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false);
+  const [showHallOfFameModal, setShowHallOfFameModal] = useState(false);
   const [userPrefs, setUserPrefs] = useState(null);
   const [showCctvPopup, setShowCctvPopup] = useState(false);
 
@@ -170,6 +172,9 @@ const FormHandlerNavButtons = ({ onToggleSavedReports, onToggleAgencyIncident })
               <Dropdown.Item onClick={() => setShowMapModal(true)}>
                 <i className="fas fa-map"></i> GTA Map (Experimental)
               </Dropdown.Item>
+              <Dropdown.Item onClick={() => setShowHallOfFameModal(true)}>
+                <i className="fas fa-trophy"></i> Hall of Fame
+              </Dropdown.Item>
               <Dropdown.Item onClick={onToggleAgencyIncident}>
                 <i className="fas fa-shield-alt"></i> Agency Incident
               </Dropdown.Item>
@@ -258,6 +263,11 @@ const FormHandlerNavButtons = ({ onToggleSavedReports, onToggleAgencyIncident })
       <MapModal
         show={showMapModal}
         onHide={() => setShowMapModal(false)}
+      />
+
+      <HallOfFameModal
+        show={showHallOfFameModal}
+        onHide={() => setShowHallOfFameModal(false)}
       />
     </React.Fragment>
   );

@@ -226,6 +226,12 @@ export const useFormSaver = () => {
             reportDataToSave.gtawSyncTimestamp = new Date().toISOString();
         }
 
+        // Add Coroner Report specific metadata
+        if (selectedForm.firebaseKey === 'coroner-report') {
+            reportDataToSave.isCK = formValues.typeOfDeath === 'CK';
+            reportDataToSave.processed = !!formValues.processed;
+        }
+
         const reportPath = `newSavedReports/${sanitizedAuthorId}/${sanitizedKey}`;
         const bbCodePath = `newSavedReportBBCode/${sanitizedAuthorId}/${sanitizedKey}`;
 
@@ -235,11 +241,29 @@ export const useFormSaver = () => {
             const userReportCountRef = ref(database, `userReportCounts/${sanitizedAuthorId}/total`);
 
             // Save both main report data and BBCode data in parallel
-            await Promise.all([
+            // We use individual sets here to be safe, though a multi-path update at root would be more atomic.
+            // given existing imports, we stick to set/runTransaction.
+            
+            const promises = [
                 set(reportRef, reportDataToSave),
                 set(bbCodeRef, { bbCode: bbCode }),
                 runTransaction(userReportCountRef, (currentCount) => (currentCount || 0) + 1),
-            ]);
+            ];
+
+            if (selectedForm.firebaseKey === 'coroner-report' && reportDataToSave.isCK && !reportDataToSave.processed) {
+                 const ckRef = ref(database, `unprocessedCKs/${sanitizedKey}`);
+                 promises.push(set(ckRef, {
+                    reportPath: reportPath,
+                    authorId: sanitizedAuthorId,
+                    reportKey: sanitizedKey,
+                    decedentName: formValues.decedentName || 'Unknown',
+                    decedentOOC: formValues.decedentOOC || 'Unknown',
+                    dateOfDeath: formValues.dateTime || new Date().toISOString(),
+                    timestamp: Date.now()
+                 }));
+            }
+
+            await Promise.all(promises);
 
             showNotification(`Report "${finalTitle}" saved successfully!`, 'save');
 

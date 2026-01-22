@@ -34,7 +34,7 @@ const inputStyle = {
   fontSize: "1rem"
 };
 
-const AddFormModal = ({ show, onClose, editingForm = null, user }) => {
+const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = false }) => {
   const { user: gtawUser, isAuthenticated } = useGtaWorldAuth(); // Get authenticated user for logging
 
   const [formId, setFormId] = useState("");
@@ -98,8 +98,8 @@ const AddFormModal = ({ show, onClose, editingForm = null, user }) => {
 
   useEffect(() => {
     if (editingForm) {
-      setFormId(editingForm.id || "");
-      setFormName(editingForm.name || "");
+      setFormId(isDuplicate ? `${editingForm.id}_copy` : (editingForm.id || ""));
+      setFormName(isDuplicate ? `${editingForm.name} (Copy)` : (editingForm.name || ""));
       setCategory(editingForm.category || "");
       setBbcodeTemplate(editingForm.template || "");
       setTitleGeneratorCode(editingForm.titleGeneratorCode || ""); // Load existing code
@@ -117,7 +117,7 @@ const AddFormModal = ({ show, onClose, editingForm = null, user }) => {
     } else {
       resetForm();
     }
-  }, [editingForm]);
+  }, [editingForm, isDuplicate]);
 
   const resetForm = () => {
     setFormId("");
@@ -681,7 +681,7 @@ const handleBulkAddFields = (fieldsToAdd) => {
 
       alert("Form saved!");
 
-      const action = editingForm ? 'Modified Form' : 'Created Form';
+      const action = isDuplicate ? 'Duplicated Form' : (editingForm ? 'Modified Form' : 'Created Form');
       const userForLogging = user || gtawUser;
       const adminEmail = userForLogging?.email || userForLogging?.username || 'Unknown';
       const oauthUsername = gtawUser?.username || null;
@@ -711,11 +711,11 @@ const handleBulkAddFields = (fieldsToAdd) => {
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.9)", zIndex: 9999, overflow: "auto" }}>
       <div style={{ maxWidth: 1100, margin: "2rem auto", background: "#0f172a", borderRadius: 16, overflow: "hidden" }} onClick={e => e.stopPropagation()}>
         <div style={{ background: "#1e293b", padding: "1.5rem", textAlign: "center" }}>
-          <h2 style={{ margin: 0, color: "#e2e8f0" }}>{editingForm ? "Edit" : "Create"} Form</h2>
+          <h2 style={{ margin: 0, color: "#e2e8f0" }}>{isDuplicate ? "Duplicate" : (editingForm ? "Edit" : "Create")} Form</h2>
         </div>
 
         <div style={{ padding: "2rem" }}>
-          <input placeholder="Form ID (e.g. medical_release)" value={formId} onChange={e => setFormId(e.target.value.replace(/\s/g, "_").toLowerCase())} style={inputStyle} disabled={!!editingForm} />
+          <input placeholder="Form ID (e.g. medical_release)" value={formId} onChange={e => setFormId(e.target.value.replace(/\s/g, "_").toLowerCase())} style={inputStyle} disabled={!!editingForm && !isDuplicate} />
           <input placeholder="Form Name" value={formName} onChange={e => setFormName(e.target.value)} style={inputStyle} />
           <input placeholder="Category" value={category} onChange={e => setCategory(e.target.value)} style={inputStyle} />
           <textarea placeholder="Form Description" rows={3} value={formDescription} onChange={e => setFormDescription(e.target.value)} style={{ ...inputStyle, height: "auto" }} />

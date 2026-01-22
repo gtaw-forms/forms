@@ -8,7 +8,7 @@ import * as Sentry from "@sentry/react";
 import { sendDiscordErrorWebhook } from './utils/errorUtils';
 import { Spinner } from 'react-bootstrap';
 
-import FormHandler from './components/form-handler/FormHandler.jsx';
+import { FormHandler } from './components/form-handler/FormHandler.jsx';
 import ProtectedRoute from './components/Auth/ProtectedRoute.jsx';
 import Admin from './components/Admin/Admin.jsx';
 
