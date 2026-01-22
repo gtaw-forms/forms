@@ -1,0 +1,94 @@
+placeholder
+:""
+rows
+:4
+timerType
+:""
+type
+:"image"
+19
+allowImagePaste
+:true
+id
+:"nar-1764069924774"
+label
+:"CDamages | CDNA | Morgue Photo Upload - Notes"
+layout
+:"full"
+linkedImageField
+:"additionalPhotos"
+name
+:"additionalPhotos_narrative"
+placeholder
+:"Paste the raw CDamages, CDNA | You can upload images via the clipboard, click here and Ctrl V"
+rows
+:4
+type
+:"textarea"
+formDescription
+:"Fill out all the fields, especially Decedent and Date. Report bugs on Discord"
+id
+:"coroner-report"
+isHidden
+:false
+lastUpdated
+:1768916907039
+name
+:"Coroner Report"
+template
+:"[divbox=transparent][center][img]https://i.ibb.co/0pgw9hHm/phmc.png[/img][/center][/divbox] [divbox=transparent][br][/br][center]DEATH INVESTIGATION REPORT[/center] [hr][/hr] [center][bold]A. WRITTEN REPORT[/bold][/center] The County Coroner's Office has been called regarding the decease that occurred at the location of [bold]{{placeOfDeath}}[/bold]. Upon receiving the call from[bold] {{getDepartmentFullName(formData.department, agencyDataStore)}},[/bold], Coroner's Office dispatched a {{coronerRank}} to the crime scene to conduct an investigation on the [bold]{{dateTime}}[/bold]. The {{coronerRank}}, [bold]{{coronerEmployee}}[/bold], Serial Number [bold]{{coronerBadge}}[/bold], arrived at the scene and identified the individual as [bold]{{decedentName}}[/bold], who is estimated to have died at [bold]{{pronouncedTimeOfDeath}}[/bold]. Following an initial investigation, The {{coronerRank}} came up with the following [bold]synopsis[/bold]: {{synopsis}} Based on the information gathered from the scene investigation and the decedent's medical history (if available), the probable cause of death was determined to be [bold]{{probableCauseOfDeath}}[/bold]. The manner of death was classified as [bold]{{mannerOfDeath}}[/bold]. [conditional field="evidenceLocker" value="true"] {{coronerEmployee}} has placed {{evidenceLockerItems}} in the Evidence Locker. [/conditional] [/divbox] [divbox=transparent][center][bold]B. PHOTOGRAPHIC DOCUMENTARY RECORD[/center] [hr][/hr] [center][size=85][bold][u]SCENE PHOTOGRAPHY[/u][/bold][/size][/center] {{scenePhotosBBCode}} [/divbox] [divbox=transparent] [center][bold]C. STATEMENT[/bold][/center] [hr][/hr] [size=85]As a {{coronerRank}}, I have made detailed notes of my findings and conclusions, and these notes are available for review if necessary. However, I must note that these notes do not contain any personal opinions and are solely based on the evidence and facts available to me. In conclusion, I hope that this report provides the necessary information required for the agency to move forward with any necessary actions. Please let me know if you require any additional information or if I can be of further assistance. I certify that the information contained in this report is true and accurate to the best of my knowledge and belief. I have reviewed the report and ensured that all information included is complete and accurate. [/size][/divbox] [divbox=transparent][center][bold]D. PRIVACY AND CONFIDENTIALITY[/bold][/center] [hr][/hr] [center][size=85]This document from the Forensic Medicine and Pathology Department of Pillbox Hill Medical Center certifies the authenticity of the information contained within. Any unauthorized distribution or use of this information is in violation of the Health Insurance Portability and Accountability Act (HIPAA), as well as state and federal privacy laws, including but not limited to the San Andreas Confidentiality of Medical Information Act (CMIA) and the San Andreas Information Practices Act (IPA). It is imperative that all parties handling this document respect the privacy and confidentiality of the decedent and their family. Any violation of these laws may result in legal action being taken against the responsible parties. This document is provided for official purposes only and is not to be construed as legal advice or medical diagnosis. If additional information or clarification is needed, please contact the Forensic Medicine and Pathology Department of Pillbox Hill Medical Center.[/size][/divbox] [divbox=transparent][center][bold][u](( OUT OF CHARACTER IMAGES ))[/u][/bold][/center][hr][/hr] This section clarifies whether or not if the player was character killed or player killed. In this case the player was: {{typeOfDeath}} Player OOC Name: {{decedentOOC}} Morgue screen, cinjuries, cdna links: {{morgueStatusMessage}} [size=85][u] THESE IMAGES ARE [bold]OUT OF CHARACTER[/bold] FOR INTERNAL RECORDS, DO NOT USE THESE AS EVIDENCE. [/u][/size] {{additionalPhotos}} {{additionalPhotos_narrative}} Decedent Attributes: {{decedentAttributes}} [/divbox]"
+titleGeneratorCode
+:"[{{typeOfDeath}}] {{decedentName}} (({{decedentOOC}})) - {{date}}"
+
+-- 
+27
+buttonAction
+:""
+buttonLabel
+:""
+decedentItemSchemaJson
+:""
+displayCurrentTime
+:false
+id
+:"field-1764175153280"
+inputType
+:""
+label
+:"Comments"
+layout
+:"full"
+maxImages
+:6
+name
+:"comments"
+optionsKey
+:""
+placeholder
+:"Extra notes, any other identifying information"
+rows
+:4
+showIf
+field
+:"deathRecordType"
+value
+:"Unidentified"
+timerType
+:""
+type
+:"input"
+formDescription
+:""
+id
+:"death_record"
+isHidden
+:false
+lastUpdated
+:1768920617356
+name
+:"Death Record"
+template
+:"[divbox=#FFFFFF] [center][img]https://i.ibb.co/Rk5bRDxX/image.png[/img][/center] [/divbox] [divbox=#4D4D4D][center][bold][size=150]PUBLIC DECEDENT RECORD[/size][/bold][/center][/divbox] [divbox=#000000][center][size=130]{{decedentName}}[/size][/center] [center]Date of Death: {{formattedDateOfDeath}}[/center] [center]Age: {{age}} [/center][/divbox] [table] [tr] [td bgcolor=#E6E6E6][bold]Case Number[/bold]: {{caseNumber}}[/td] [td bgcolor=#E6E6E6][bold]Case Status[/bold]: {{coldCaseStatus}}[/td] [td bgcolor=#E6E6E6][bold]Body Status[/bold]: {{bodyStatus}}[/td] [/tr] [tr] [td bgcolor=#E6E6E6][bold]Sex[/bold]: {{sex}}[/td] [td bgcolor=#E6E6E6][bold]Ethnicity[/bold]: {{ethnicity}}[/td] [/tr] [/table] [table] [tr] [td bgcolor=#E6E6E6][bold]Place of Death[/bold]: {{placeOfDeath}}[/td] [td bgcolor=#E6E6E6][bold]Manner[/bold]: {{Manner}}[/td] [/tr] [tr] [td bgcolor=#E6E6E6][bold]Investigator[/bold]: {{selectEmployee}} [/td] [td bgcolor=#E6E6E6][bold]Chief Medical Examiner[/bold]: Anne Carter[/td] [/tr] [/table] [conditional field="deathRecordType" value="Identified"] [table] [tr] [td bgcolor=#E6E6E6][bold]Cause A[/bold]: {{causeA}}[/td] [td bgcolor=#E6E6E6][bold]Cause B[/bold]: {{causeB}}[/td] [/tr] [tr] [td bgcolor=#E6E6E6][bold]Cause C[/bold]: {{causeC}}[/td] [td bgcolor=#E6E6E6][bold]Cause D[/bold]: {{causeD}}[/td] [/tr] [tr] [td bgcolor=#E6E6E6][bold]Other Significant Conditions[/bold]: {{otherSignificantConditions}}[/td] [/tr] [/table] [/conditional] [conditional field="deathRecordType" value="Unidentified"][table] [tr] [td bgcolor=#E6E6E6][bold]Hair Color[/bold]: {{hairColor}}[/td] [td bgcolor=#E6E6E6][bold]Eye Color[/bold]: {{eyeColor}}[/td] [/tr] [tr] [td bgcolor=#E6E6E6][bold]Weight[/bold]: {{weight}}[/td] [td bgcolor=#E6E6E6][bold]Height[/bold]: {{height}}[/td] [/tr] [tr] [td bgcolor=#E6E6E6][bold]Tattoos[/bold]: {{tattoos}}[/td] [td bgcolor=#E6E6E6][bold]Jewelry[/bold]: {{jewelry}}[/td] [/tr] [tr] [td bgcolor=#E6E6E6][bold]Comments[/bold]: {{comments}}[/td] [/tr] [/table] [/conditional] [divbox=#4D4D4D][center][bold]These public records are of disclosed cases involving a Medical Examiner from the Department of Pathology & Forensic Medicine only. These are not records of every death that occurs in Los Santos County. For further inquiries into any cases or for further documentation: The Chief/Deputy Chief Medical Examiner-Coroner can be emailed through PHMC's online portal [url=https://phmc.gta.world/ucp.php?i=pm&mode=compose]HERE[/url]. PHMC's landline can be reached through the number 50056 for any physical records or the next-of-kin process.[/bold][/center][/divbox]"
+titleGeneratorCode
+:"[CASE #YEAR-{{caseNumber}}] {{decedentName}} (({{decedentOOC}})) | {{formattedDateOfDeath}} "
+Database location: Belgium (europe-west1) 

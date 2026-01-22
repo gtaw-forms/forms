@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+    <rect width="200" height="200" fill="#1e293b" />
+    <rect x="70" y="10" width="60" height="180" rx="30" fill="#334155" stroke="#94a3b8" stroke-width="2"/>
+    <text x="100" y="105" font-size="30" text-anchor="middle" fill="#e2e8f0" font-family="sans-serif">Leg</text>
+</svg>

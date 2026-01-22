@@ -16,6 +16,7 @@ const FormManager = ({ currentUser }) => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingForm, setEditingForm] = useState(null);
   const [previewingForm, setPreviewingForm] = useState(null);
+  const [isDuplicate, setIsDuplicate] = useState(false);
 
   const { showNotification } = useNotification(); // Initialize notification hook
 
@@ -42,12 +43,20 @@ const FormManager = ({ currentUser }) => {
 
   const openEditModal = (form) => {
     setEditingForm(form);
+    setIsDuplicate(false);
+    setShowAddModal(true);
+  };
+
+  const openDuplicateModal = (form) => {
+    setEditingForm(form);
+    setIsDuplicate(true);
     setShowAddModal(true);
   };
 
   const closeModal = () => {
     setShowAddModal(false);
     setEditingForm(null);
+    setIsDuplicate(false);
   };
 
   const handleFixBBCode = async () => {
@@ -213,7 +222,7 @@ const FormManager = ({ currentUser }) => {
                   onMouseEnter={(e) => e.currentTarget.style.background = "#334155"}
                   onMouseLeave={(e) => e.currentTarget.style.background = "#1e293b"}
                 >
-                  <div style={{ fontWeight: "700", fontSize: "1.1rem", color: "#e2e8f0" }}>
+                  <div style={{ fontWeight: "700", fontSize: "1.1rem", color: "#e2e8f0", paddingRight: "180px" }}>
                     {form.name}
                   </div>
                   <div style={{ fontSize: "0.9rem", color: "#94a3b8", margin: "0.4rem 0" }}>
@@ -239,43 +248,59 @@ const FormManager = ({ currentUser }) => {
                     })()}
                   </div>
 
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openEditModal(form);
-                    }}
-                    style={{
-                      position: "absolute",
-                      top: 12,
-                      right: 12,
-                      padding: "0.5rem 1rem",
-                      background: "#6366f1",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 8,
-                      fontSize: "0.9rem",
-                      fontWeight: "600"
-                    }}
-                  >
-                    Edit Form
-                  </button>
-                  <button
-                    onClick={(e) => handleDeleteForm(form.firebaseKey, form.name, e)}
-                    style={{
-                      position: "absolute",
-                      top: 12,
-                      right: 120, // Adjust right position to make space for both buttons
-                      padding: "0.5rem 1rem",
-                      background: "#ef4444", // Red color for delete
-                      color: "white",
-                      border: "none",
-                      borderRadius: 8,
-                      fontSize: "0.9rem",
-                      fontWeight: "600"
-                    }}
-                  >
-                    Delete Form
-                  </button>
+                  <div style={{ position: "absolute", top: 12, right: 12, display: "flex", gap: "6px" }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEditModal(form);
+                      }}
+                      style={{
+                        padding: "0.25rem 0.6rem",
+                        background: "#6366f1",
+                        color: "white",
+                        border: "none",
+                        borderRadius: 6,
+                        fontSize: "0.7rem",
+                        fontWeight: "600",
+                        cursor: "pointer"
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openDuplicateModal(form);
+                      }}
+                      style={{
+                        padding: "0.25rem 0.6rem",
+                        background: "#f59e0b",
+                        color: "white",
+                        border: "none",
+                        borderRadius: 6,
+                        fontSize: "0.7rem",
+                        fontWeight: "600",
+                        cursor: "pointer"
+                      }}
+                    >
+                      Dup
+                    </button>
+                    <button
+                      onClick={(e) => handleDeleteForm(form.firebaseKey, form.name, e)}
+                      style={{
+                        padding: "0.25rem 0.6rem",
+                        background: "#ef4444",
+                        color: "white",
+                        border: "none",
+                        borderRadius: 6,
+                        fontSize: "0.7rem",
+                        fontWeight: "600",
+                        cursor: "pointer"
+                      }}
+                    >
+                      Del
+                    </button>
+                  </div>
                 </div>
               ))
             )}
@@ -442,6 +467,7 @@ const FormManager = ({ currentUser }) => {
         onClose={closeModal}
         editingForm={editingForm}
         user={currentUser}
+        isDuplicate={isDuplicate}
       />
     </div>
   );

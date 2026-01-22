@@ -43,8 +43,10 @@ const PatientMigrationModal = lazy(() => import('../Modals/PatientMigrationModal
 const BugReportModal = lazy(() => import('../Modals/BugReportModal'));
 const MapModal = lazy(() => import("../Modals/MapModal"));
 const AgencyIncidentModal = lazy(() => import('../Modals/AgencyIncidentModal'));
+const AutopsyAssist = lazy(() => import('./AutopsyAssist'));
+import UnprocessedCKsViewer from './UnprocessedCKsViewer';
 
-const FormHandler = () => {
+export const FormHandler = () => {
   const isDevelopment = process.env.NODE_ENV === 'development';
   useInactivityReload(); 
   const { trackMetric } = useUserMetrics();
@@ -89,6 +91,10 @@ const FormHandler = () => {
   const [showMapModal, setShowMapModal] = useState(false);
   const [mapTargetField, setMapTargetField] = useState(null);
   const [isUploadingMapImage, setIsUploadingMapImage] = useState({});
+  
+  // Autopsy Assist State
+  const [showAutopsyAssistModal, setShowAutopsyAssistModal] = useState(false);
+  const [autopsyAssistTargetField, setAutopsyAssistTargetField] = useState(null);
 
 
   // Hooks
@@ -443,7 +449,17 @@ const FormHandler = () => {
     setShowMapModal(false);
   }, [mapTargetField, handleChange, setFormValues]);
 
-
+  const handleAutopsyAssistInsert = useCallback((text) => {
+      if (!autopsyAssistTargetField) return;
+      
+      setFormValues(prev => {
+          const currentVal = prev[autopsyAssistTargetField] || "";
+          const newVal = currentVal ? `${currentVal}\n${text}` : text;
+          return { ...prev, [autopsyAssistTargetField]: newVal };
+      });
+      // Do not close modal automatically? Or maybe close it? User might want to add more.
+      // For now, let's keep it open? The modal has "Insert & Close".
+  }, [autopsyAssistTargetField]);
 
   const sendBingoWebhook = useCallback(async (payload) => {
     console.log("sendBingoWebhook called with payload:", payload);
@@ -1241,6 +1257,12 @@ const FormHandler = () => {
           onHide={() => setShowAgencyIncidentModal(false)}
           showNotification={showNotification}
         />
+        <AutopsyAssist
+          show={showAutopsyAssistModal}
+          onHide={() => setShowAutopsyAssistModal(false)}
+          onInsert={handleAutopsyAssistInsert}
+          formValues={formValues}
+        />
       </Suspense>
       <FormHandlerNavButtons 
         onToggleSavedReports={handleNavToggleSavedReports} 
@@ -1363,6 +1385,8 @@ const FormHandler = () => {
                       {selectedForm.formDescription}
                   </div>
               )}
+
+              <UnprocessedCKsViewer selectedForm={selectedForm} />
               
               <div style={{ margin: "0 -8px" }}>
                 {(() => {
@@ -1395,6 +1419,8 @@ const FormHandler = () => {
                       setShowMapModal={setShowMapModal}
                       setMapTargetField={setMapTargetField}
                       isUploadingMapImage={isUploadingMapImage}
+                      setShowAutopsyAssistModal={setShowAutopsyAssistModal}
+                      setAutopsyAssistTargetField={setAutopsyAssistTargetField}
                     />
                   ));
                 })()}
@@ -1568,4 +1594,4 @@ const FormHandler = () => {
   );
 };
 
-export default FormHandler;
+
