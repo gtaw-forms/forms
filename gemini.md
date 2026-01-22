@@ -1,102 +1,22 @@
-# CRITICAL PROJECT GUIDELINES
-
-## Operating System Commands
-**CRITICAL: This project operates in a Windows environment.** All shell commands executed via `run_shell_command` MUST use Windows-native commands (e.g., `dir`, `copy`, `del`, `move`) or PowerShell cmdlets (e.g., `Get-ChildItem`, `Copy-Item`, `Remove-Item`, `Move-Item`). **DO NOT use Linux/Unix-based commands** such as `ls`, `cp`, `rm`, or `mv`, as they will fail.
-
-## Refactoring Plan Adherence
-Always prioritize and strictly adhere to the instructions and phases outlined in the `@REFACTOR_PLAN.md` file. All tasks related to form management migration must be executed according to this plan.
-
-## BBCodeVersion Deprecation
-**CRITICAL WARNING: The `bbCodeVersion` concept is deprecated and considered legacy. IT MUST BE AVOIDED AT ALL COSTS IN NEW CODE OR MODIFICATIONS.** Prioritize using `selectedForm.name` or other dynamic form properties from Firebase instead. Do NOT introduce or rely on `bbCodeVersion` under any circumstances.
-
-## `cb:variable` Formatting in `src/components/Admin/AddFormModal.jsx`
-When generating or modifying BBCode within `src/components/Admin/AddFormModal.jsx` that uses `{{cb:variable}}`, always ensure the output format adheres to `[cb:variable]TEXT` with no space between `[cb:variable]` and the subsequent text. **NEVER** use `[cb:variable] Text` (with a space).
-
-If the Agent (Gemini) fails to replace blocks or takes significant time (over 5 minutes of thinking), stop the operation and inform the user of what block needs to be replaced.
-
-# GRIP (Grep-on-Replace-Interrupt Protocol)
-
-
-
-**Rule:** This protocol is a critical safeguard against common `replace` tool failures,
-
-such as those caused by file state desynchronization or ambiguous matches,
-
-as documented in gemini-cli issue [https://github.com/google-gemini/gemini-cli/issues/1028](https://github.com/google-gemini/gemini-cli/issues/1028).
-
-
-
-**Goal:** To perform code modifications robustly with greater pre-emptive checks and clearer fallback paths, while providing the user with more control.
-
-
-
-## The Revised Protocol
-
-
-
-1.  **Pre-check for `replace` viability**:
-
-    *   Before calling `replace`, use `Select-String` to count occurrences of `old_string`.
-
-    *   **If `count == 0`**: Immediately assume `old_string` is absent. Proceed to **Scenario C**.
-
-    *   **If `count > 1`**: Inform me (the agent) that `old_string` is ambiguous. Proceed to **Scenario A (Direct PowerShell)**.
-
-    *   **If `count == 1`**: Proceed to **Attempt Standard `replace`**.
-
-
-
-2.  **Attempt Standard `replace`**: Call the `replace` tool.
-
-    *   **If `replace` succeeds**: Done.
-
-    *   **If `replace` fails (but `count` was 1)**: This is unexpected. Re-verify `old_string` presence with `Select-String`.
-
-        *   **If `Select-String` still finds 1 occurrence**: It's a `replace` tool internal issue. Proceed to **Scenario A (Direct PowerShell)**.
-
-        *   **If `Select-String` now finds 0 occurrences**: The file state changed unexpectedly. Proceed to **Scenario C**.
-
-        *   **If `Select-String` now finds >1 occurrences**: The file state changed unexpectedly. Proceed to **Scenario A (Direct PowerShell)**.
-
-
-
-3.  **Scenario A: Direct PowerShell Replacement (for ambiguous or `replace` tool issues)**
-
-    *   **Diagnosis**: The `old_string` exists (possibly ambiguously), but the `replace` tool is unsuitable or failed.
-
-    *   **My Action**:
-
-        1.  Acknowledge the issue (ambiguity or `replace` failure).
-
-        2.  Use `Select-String` with `context` (e.g., 5 lines before/after) to fetch a detailed surrounding snippet of the `old_string`. Present this snippet to me.
-
-        3.  Formulate a precise PowerShell command using `Get-Content | ForEach-Object { $_ -replace 'old_pattern', 'new_pattern' } | Set-Content` or equivalent.
-
-        4.  **PROPOSE THIS POWERSHELL COMMAND TO THE USER FOR CONFIRMATION**. Explain why it's necessary and its potential impact.
-
-        5.  **Execute the PowerShell command ONLY IF CONFIRMED BY THE USER.**
-
-        6.  After execution, re-read the file and verify `new_string` presence.
-
-
-
-4.  **Scenario C: `old_string` Not Found (Pre-check or Post-failure)**
-
-    *   **Diagnosis**: The `old_string` was not found in initial pre-check, or it disappeared after a `replace` attempt. This implies the change might be applied already or the file state is severely out of sync.
-
-    *   **My Action**:
-
-        1.  State clearly that `old_string` was not found.
-
-        2.  **Hypothesis**: "It is likely the change has already been applied, possibly by a previous step or manual edit."
-
-        3.  Verify this hypothesis by using `Select-String` to search for `new_string`.
-
-        4.  **If `new_string` is found**: Conclude the task is complete. No further action needed for this specific `replace`.
-
-        5.  **If `new_string` is NOT found**: Report this anomaly: "Neither the original string nor the intended new string could be found. This indicates an unexpected state in the file." Ask for user clarification or provide raw file content for inspection.
-
-# AGENT EXECUTION CLARITY
-
-## Thought vs. Tool Execution
-Ensure that internal planning (`thought` blocks) is always distinct from intended actions (tool calls). Never output internal thought blocks as direct responses to the user or as tool calls. Always wrap tool calls in the appropriate FC2.0 format.
+# Gemini Added Memories
+- The MainApp.jsx file should be absolutely avoided unless required, its depricated but holds some important legacy features that maybe utilized in future. 
+- The Firebase Functions refactoring plan involves moving from a single index.js to a domain-driven structure: src/utils (shared DB/webhooks), src/auth (OAuth/tokens), src/maintenance (scheduled tasks/monitor), and src/reports (API/migrations). The goal is to modularize the 2300+ line index.js file into independent, maintainable modules.
+- We have successfully implemented a high-performance 8k GTA V map using Leaflet in 'src/components/Modals/MapModal.jsx'. Key features include: 1. Custom tile generation and deployment. 2. Firebase live-sync for 'verified_locations'. 3. Polyline drawing for street mapping. 4. Reverse geocoding with cross-street detection. 5. A revamped 'UntrackedLocationManager.jsx' that uses the map as a picker. The map is calibrated for the current 'source.png', and we are ready to refine location data next session.
+- The user wants to implement a feature where placing a marker on the map captures a screenshot of the location and uploads it using `useImageUpload.js`. The uploaded image URL should be formatted as `[url=IMAGE_URL]Street_Name(or nearest Street_Name)[/url]` and passed via the `onSelect` callback.
+- The Map Tool now uses dynamic Firebase data ('verified_locations') instead of hardcoded JSON. Hospitals and Buildings are permanent, interactive markers. Path drawing now features a React-state-based strobe effect (800ms pulse) to bypass Leaflet SVG overrides and improve readability. We refactored the location matching algorithm with aggressive normalization, abbreviation expansion (e.g., 'St' to 'Street'), and intersection handling. Untracked discoveries are now delivered as a .txt file via Discord, featuring an automatic database cleanup step that purges logs matching existing map data with >45% confidence. Legacy location assets and the UntrackedLocationManager UI have been decommissioned. Coroner Report webhooks now include 'Requesting Officer' and 'Department' metadata.
+- Fixed a race condition in EmployeeCredentialsSection.jsx where incomplete factionData (missing characterName) from OAuth would overwrite and clear valid employee credentials in the form state. Added a guard clause to the useEffect sync.
+- Modified FormHandler.jsx to automatically send a debug trace webhook when form validation fails (missing employee credentials), removing the requirement for user approval via a notification button.
+- Enhanced FormHandler.jsx debug tracing by: 1. Importing Sentry. 2. Implementing a `visitedFormsRef` to track user navigation history. 3. Updating `sendDebugTrace` to capture validation errors to Sentry (with contexts) and include navigation history in the Discord webhook payload.
+- Implemented multi-marker support for Mass Fatality forms in MapModal.jsx. Users can now place multiple bodies on the map and capture a single screenshot of all locations using a new "Capture Location Data" button, which uploads the image and returns a BBCode link.
+- Updated MapModal.jsx path drawing logic: 1. Changed node placement to single-click instead of double-click. 2. Added pulsing 'strobeOpacity' to the active drawing line for better visibility. 3. Separated marker placement (double-click) from path drawing (single-click) to prevent conflicts.
+- Roadmap for PHMC Forms:
+1. [Experimental] Implement 'regionalZone' (square areas) in MapModal.jsx to mark mountain ranges and national parks using Leaflet Rectangles.
+2. Refine Mass Fatality logic to ensure grouping by street name works correctly for all edge cases (intersections, unnamed areas).
+3. Monitor automatic debug traces and Sentry logs for any recurring credential loss issues using the newly added navigation history context.
+4. Add 'Draw Region' UI tool to Admin Fix mode for defining regional zones.
+- Optimized systemHealthMonitor billing by reducing schedule frequency from 30 to 60 minutes and setting explicit memory limit to 128MiB. Advising user to clean up old Artifact Registry images to further reduce Cloud Run costs.
+- When implementing inline icons or small decorative images in components (like the Discord logo or UI status indicators), prefer using inline SVGs instead of external icon libraries (like FontAwesome) or direct <img> tags where possible. This prevents external scripts, browser extensions, or CSS auto-replacers from mispositioning the assets and ensures UI stability.
+- Always use custom div-based overlays for modals/dialogs instead of standard React-Bootstrap Modal components to avoid UI issues.
+- Added 'fetchExternalUrl' Firebase Function in 'src/utils/proxy.js' to proxy GET requests, accessible via the FirebaseFunctionsTester UI.
+- Updated 'fetchExternalUrl' and 'FirebaseFunctionsTester' to support custom Cookies, allowing access to protected pages via proxy.
+- **CRITICAL**: Do NOT use React-Bootstrap `Modal` components for modals/dialogs. Always prefer custom `div`-based overlays to prevent UI issues and glitches.

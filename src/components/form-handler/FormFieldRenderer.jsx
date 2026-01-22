@@ -9,7 +9,7 @@ import DecedentItemRenderer from './DecedentItemRenderer'; // Import the new com
 import AutopsyDiagramModal from '../Modals/AutopsyDiagramModal'; // Import AutopsyDiagramModal
 import CharacterSelector from '../Modals/CharacterSelector';
 
-const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore, toggleSavedReports, showNotification, handleDiagramUpload, setShowMapModal, setMapTargetField, isUploadingMapImage = {} }) => {
+const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore, toggleSavedReports, showNotification, handleDiagramUpload, setShowMapModal, setMapTargetField, isUploadingMapImage = {}, setShowAutopsyAssistModal, setAutopsyAssistTargetField }) => {
   const { factionsData } = useData();
 
   const employeeOptions = useMemo(() => {
@@ -43,8 +43,10 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         } else { // Exact value
             if (Array.isArray(currentValue)) {
                 conditionMet = currentValue.includes(expectedValue);
-            } else if (expectedValue === 'Yes' && currentValue === true) {
-                conditionMet = true; // Fix for 'Yes' string matching boolean true
+            } else if (currentValue === true && ['yes', 'true', 'on'].includes(String(expectedValue).toLowerCase())) {
+                conditionMet = true; // Fix for 'Yes'/'True' string matching boolean true
+            } else if (currentValue === false && ['no', 'false', 'off'].includes(String(expectedValue).toLowerCase())) {
+                conditionMet = true; // Fix for 'No'/'False' string matching boolean false
             } else {
                 conditionMet = currentValue === expectedValue;
             }
@@ -395,18 +397,49 @@ case "textarea":
         style={inputStyle}
         data-field={field.name}
       />
-      {field.allowImagePaste && (
-        <div style={{
-          marginTop: "0.5rem",
-          padding: "0.6rem",
-          background: "#162032",
-          borderRadius: 6,
-          fontSize: "0.85rem",
-          color: "#94a3b8"
-        }}>
-          <strong>Pro tip:</strong> You can paste screenshots directly here with <strong>Ctrl+V</strong>
-        </div>
-      )}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: "0.5rem" }}>
+          {field.allowImagePaste && (
+            <div style={{
+              padding: "0.6rem",
+              background: "#162032",
+              borderRadius: 6,
+              fontSize: "0.85rem",
+              color: "#94a3b8",
+              flex: 1,
+              marginRight: "10px"
+            }}>
+              <strong>Pro tip:</strong> You can paste screenshots directly here with <strong>Ctrl+V</strong>
+            </div>
+          )}
+          
+          {(selectedForm?.id === 'autopsy' || selectedForm?.name?.toLowerCase().includes('autopsy')) && (
+               <button
+                   onClick={(e) => {
+                       e.preventDefault();
+                       setAutopsyAssistTargetField(field.name);
+                       setShowAutopsyAssistModal(true);
+                   }}
+                   className="btn btn-sm"
+                   style={{
+                       padding: "0.5rem 1rem",
+                       background: "#8b5cf6",
+                       color: "white",
+                       border: "1px solid #7c3aed",
+                       borderRadius: 6,
+                       fontSize: "0.85rem",
+                       cursor: "pointer",
+                       whiteSpace: "nowrap",
+                       display: "flex",
+                       alignItems: "center",
+                       gap: "0.5rem",
+                       alignSelf: field.allowImagePaste ? "stretch" : "flex-start" // Match height if tip exists
+                   }}
+                   title="Open Autopsy Assistant"
+               >
+                   <i className="fas fa-magic"></i> Autopsy Assist
+               </button>
+           )}
+      </div>
     </div>
   );    case "image":
       return (
