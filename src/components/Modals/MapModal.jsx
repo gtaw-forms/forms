@@ -593,11 +593,11 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
 
                 const parts = [];
                 Object.entries(streetCounts).forEach(([street, count]) => {
-                    const label = count === 1 ? "Body" : "Bodies";
+                    const label = count === 1 ? "body" : "bodies";
                     parts.push(`${count} ${label} on ${street}`);
                 });
 
-                locationName = `(${parts.join(', ')})`;
+                locationName = parts.join(', ');
             }
 
             const formattedBBCode = `[url=${sU}]${locationName}[/url]`;

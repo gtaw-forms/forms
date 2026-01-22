@@ -24,6 +24,7 @@ import FormsManager from './FormsManager';
 import LegacyReportMigrator from './LegacyReportMigrator';
 import MetricsDashboard from './MetricsDashboard';
 import AgencyIncidentManager from './AgencyIncidentManager';
+import HallOfFameManager from './HallOfFameManager';
 
 const AdminDashboard = ({
 
@@ -199,6 +200,7 @@ const AdminDashboard = ({
     const hasUsersAccess = isGoogleAdminActive || isRank14OrHigher;
     const hasRankPermissionsAccess = isGoogleAdminActive || isRank15OrHigher;
     const hasEmployeeManagerAccess = isGoogleAdminActive || isRank13OrHigher;
+    const hasHallOfFameAccess = isGoogleAdminActive || isRank13OrHigher;
     
     // Agency Incident Access: Rank 14+ OR Special Coroner Ranks
     const currentRankName = factionData?.rank || gtaWorldUser?.faction?.rank || '';
@@ -503,6 +505,9 @@ const AdminDashboard = ({
                         )}
                         {hasEmployeeManagerAccess && (
                             <button className={`nav-link ${selectedSection === 'employeeManager' ? 'active' : ''}`} onClick={() => setSelectedSection('employeeManager')}><i className="fas fa-users me-2"></i>Employee Manager</button>
+                        )}
+                        {hasHallOfFameAccess && (
+                            <button className={`nav-link ${selectedSection === 'hallOfFame' ? 'active' : ''}`} onClick={() => setSelectedSection('hallOfFame')}><i className="fas fa-trophy me-2"></i>Hall of Fame</button>
                         )}
                         {hasLsccManagerAccess && (
                             <button className={`nav-link ${selectedSection === 'lscc' ? 'active' : ''}`} onClick={() => setSelectedSection('lscc')}><i className="fas fa-building me-2"></i>LSCC Panel</button>
@@ -812,6 +817,22 @@ const AdminDashboard = ({
                                     <div className="alert alert-danger">
                                         <i className="fas fa-exclamation-triangle me-2"></i>
                                         <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to manage employees.
+                                        <br />
+                                        <small>Required: Script Rank 13 or higher, or Google Admin access</small>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    {selectedSection === 'hallOfFame' && (
+                        <div className="card">
+                            <div className="card-body">
+                                {hasHallOfFameAccess ? (
+                                    <HallOfFameManager showNotification={showInAppNotification} />
+                                ) : (
+                                    <div className="alert alert-danger">
+                                        <i className="fas fa-exclamation-triangle me-2"></i>
+                                        <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to manage the Hall of Fame.
                                         <br />
                                         <small>Required: Script Rank 13 or higher, or Google Admin access</small>
                                     </div>

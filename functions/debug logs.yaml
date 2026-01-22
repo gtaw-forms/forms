@@ -1,53 +1,204 @@
+| Timestamp | Type | Category | Level | Message | Data |
+|-----------|------|----------|-------|---------|------|
+| 2026-01-11T01:08:18.862Z | http | xhr | info |  | {"method":"GET","response_body_size":158220,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/fa-solid-900-CTAAxXor.woff2"} |
+| 2026-01-11T01:08:18.863Z | http | xhr | info |  | {"method":"GET","response_body_size":118684,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/fa-brands-400-D_cYUPeE.woff2"} |
+| 2026-01-11T01:08:18.863Z | http | xhr | info |  | {"method":"GET","response_body_size":25472,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/fa-regular-400-BjRzuEpd.woff2"} |
+| 2026-01-11T01:08:18.864Z | http | xhr | info |  | {"method":"GET","response_body_size":4796,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/fa-v4compatibility-C9RhG_FT.woff2"} |
+| 2026-01-11T01:08:18.864Z | http | xhr | info |  | {"method":"GET","response_body_size":45179,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/LufgaMedium-CoKAChfp.ttf"} |
+| 2026-01-11T01:08:18.865Z | http | xhr | info |  | {"method":"GET","response_body_size":70766,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/Poppins-Medium-Cxde2ZoM.ttf"} |
+| 2026-01-11T01:08:18.991Z | http | xhr | info |  | {"method":"GET","response_body_size":123518,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/fa-brands-400-D1LuMI3I.ttf"} |
+| 2026-01-11T01:08:18.992Z | http | xhr | info |  | {"method":"GET","response_body_size":26966,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/fa-regular-400-DZaxPHgR.ttf"} |
+| 2026-01-11T01:08:18.993Z | http | xhr | info |  | {"method":"GET","response_body_size":123518,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/fa-brands-400-D1LuMI3I.ttf"} |
+| 2026-01-11T01:08:19.005Z | http | xhr | info |  | {"method":"GET","response_body_size":176288,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/fa-solid-900-D0aA9rwL.ttf"} |
+| 2026-01-11T01:08:19.006Z | http | xhr | info |  | {"method":"GET","response_body_size":26966,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/fa-regular-400-DZaxPHgR.ttf"} |
+| 2026-01-11T01:08:19.006Z | http | xhr | info |  | {"method":"GET","response_body_size":176288,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/fa-solid-900-D0aA9rwL.ttf"} |
+| 2026-01-11T01:08:19.007Z | http | xhr | info |  | {"method":"GET","response_body_size":176288,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/fa-solid-900-D0aA9rwL.ttf"} |
+| 2026-01-11T01:08:19.007Z | http | xhr | info |  | {"method":"GET","response_body_size":26966,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/fa-regular-400-DZaxPHgR.ttf"} |
+| 2026-01-11T01:08:19.008Z | http | xhr | info |  | {"method":"GET","response_body_size":5059,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/fa-v4compatibility-CCth-dXg.ttf"} |
+| 2026-01-11T01:08:19.011Z | http | xhr | info |  | {"method":"GET","response_body_size":123518,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/fa-brands-400-D1LuMI3I.ttf"} |
+| 2026-01-11T01:08:19.246Z | http | xhr | info |  | {"method":"GET","response_body_size":69182,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/hospital_logo-DBt8liS5.png"} |
+| 2026-01-11T01:08:19.247Z | http | xhr | info |  | {"method":"GET","response_body_size":69182,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/hospital_logo-DBt8liS5.png"} |
+| 2026-01-11T01:08:19.247Z | http | xhr | info |  | {"method":"GET","response_body_size":69182,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/hospital_logo-DBt8liS5.png"} |
+| 2026-01-11T01:08:19.248Z | http | xhr | info |  | {"method":"GET","response_body_size":69182,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/hospital_logo-DBt8liS5.png"} |
+| 2026-01-11T01:08:19.248Z | http | xhr | info |  | {"method":"GET","response_body_size":10599,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/21/14.jpg"} |
+| 2026-01-11T01:08:19.249Z | http | xhr | info |  | {"method":"GET","response_body_size":11335,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/21/15.jpg"} |
+| 2026-01-11T01:08:19.274Z | http | xhr | info |  | {"method":"GET","response_body_size":10326,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/22/14.jpg"} |
+| 2026-01-11T01:08:19.278Z | http | xhr | info |  | {"method":"GET","response_body_size":11486,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/22/15.jpg"} |
+| 2026-01-11T01:08:19.278Z | http | xhr | info |  | {"method":"GET","response_body_size":13007,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/20/14.jpg"} |
+| 2026-01-11T01:08:19.278Z | http | xhr | info |  | {"method":"GET","response_body_size":10652,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/20/15.jpg"} |
+| 2026-01-11T01:08:19.279Z | http | xhr | info |  | {"method":"GET","response_body_size":9926,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/21/13.jpg"} |
+| 2026-01-11T01:08:19.286Z | http | xhr | info |  | {"method":"GET","response_body_size":10272,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/21/16.jpg"} |
+| 2026-01-11T01:08:19.295Z | http | xhr | info |  | {"method":"GET","response_body_size":12470,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/22/13.jpg"} |
+| 2026-01-11T01:08:19.317Z | http | xhr | info |  | {"method":"GET","response_body_size":10894,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/22/16.jpg"} |
+| 2026-01-11T01:08:19.321Z | http | xhr | info |  | {"method":"GET","response_body_size":11187,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/23/14.jpg"} |
+| 2026-01-11T01:08:19.321Z | http | xhr | info |  | {"method":"GET","response_body_size":12197,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/23/15.jpg"} |
+| 2026-01-11T01:08:19.322Z | http | xhr | info |  | {"method":"GET","response_body_size":11600,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/20/13.jpg"} |
+| 2026-01-11T01:08:19.322Z | http | xhr | info |  | {"method":"GET","response_body_size":6209,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/20/16.jpg"} |
+| 2026-01-11T01:08:19.324Z | http | xhr | info |  | {"method":"GET","response_body_size":11369,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/23/13.jpg"} |
+| 2026-01-11T01:08:19.326Z | http | xhr | info |  | {"method":"GET","response_body_size":9162,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/23/16.jpg"} |
+| 2026-01-11T01:08:19.326Z | http | xhr | info |  | {"method":"GET","response_body_size":14187,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/21/12.jpg"} |
+| 2026-01-11T01:08:19.332Z | http | xhr | info |  | {"method":"GET","response_body_size":11177,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/21/17.jpg"} |
+| 2026-01-11T01:08:19.332Z | http | xhr | info |  | {"method":"GET","response_body_size":13028,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/22/12.jpg"} |
+| 2026-01-11T01:08:19.333Z | http | xhr | info |  | {"method":"GET","response_body_size":13487,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/22/17.jpg"} |
+| 2026-01-11T01:08:19.334Z | http | xhr | info |  | {"method":"GET","response_body_size":13588,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/20/12.jpg"} |
+| 2026-01-11T01:08:19.336Z | http | xhr | info |  | {"method":"GET","response_body_size":9088,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/20/17.jpg"} |
+| 2026-01-11T01:08:19.336Z | http | xhr | info |  | {"method":"GET","response_body_size":8864,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/23/12.jpg"} |
+| 2026-01-11T01:08:19.337Z | http | xhr | info |  | {"method":"GET","response_body_size":14517,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/23/17.jpg"} |
+| 2026-01-11T01:08:19.337Z | http | xhr | info |  | {"method":"GET","response_body_size":9323,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/21/11.jpg"} |
+| 2026-01-11T01:08:19.339Z | http | xhr | info |  | {"method":"GET","response_body_size":3366,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/21/18.jpg"} |
+| 2026-01-11T01:08:19.339Z | http | xhr | info |  | {"method":"GET","response_body_size":13021,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/22/11.jpg"} |
+| 2026-01-11T01:08:19.341Z | http | xhr | info |  | {"method":"GET","response_body_size":3446,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/22/18.jpg"} |
+| 2026-01-11T01:08:19.342Z | http | xhr | info |  | {"method":"GET","response_body_size":11597,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/20/11.jpg"} |
+| 2026-01-11T01:08:19.343Z | http | xhr | info |  | {"method":"GET","response_body_size":2566,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/20/18.jpg"} |
+| 2026-01-11T01:08:19.348Z | http | xhr | info |  | {"method":"GET","response_body_size":14407,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/23/11.jpg"} |
+| 2026-01-11T01:08:19.350Z | http | xhr | info |  | {"method":"GET","response_body_size":5664,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/23/18.jpg"} |
+| 2026-01-11T01:08:19.350Z | http | xhr | info |  | {"method":"GET","response_body_size":9662,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/19/14.jpg"} |
+| 2026-01-11T01:08:19.351Z | http | xhr | info |  | {"method":"GET","response_body_size":8386,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/19/15.jpg"} |
+| 2026-01-11T01:08:19.351Z | http | xhr | info |  | {"method":"GET","response_body_size":9944,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/19/13.jpg"} |
+| 2026-01-11T01:08:19.352Z | http | xhr | info |  | {"method":"GET","response_body_size":4343,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/19/16.jpg"} |
+| 2026-01-11T01:08:19.352Z | http | xhr | info |  | {"method":"GET","response_body_size":10047,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/19/12.jpg"} |
+| 2026-01-11T01:08:19.352Z | http | xhr | info |  | {"method":"GET","response_body_size":6520,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/19/17.jpg"} |
+| 2026-01-11T01:08:19.352Z | http | xhr | info |  | {"method":"GET","response_body_size":6272,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/19/11.jpg"} |
+| 2026-01-11T01:08:19.353Z | http | xhr | info |  | {"method":"GET","response_body_size":4357,"status_code":200,"url":"https://gtaw-forms.github.io/forms/assets/map-tiles/5/19/18.jpg"} |
+| 2026-01-11T01:08:22.217Z | http | fetch | info |  | {"__span":"9636d7bf06ac07ca","method":"POST","request_body_size":2964976,"status_code":200,"url":"https://api.imgbb.com/1/upload?key=bc8a1a6273ac8d229eef458de4a31d2d"} |
+| 2026-01-11T01:08:22.258Z | debug | console | info | [MapModal Notification] check-circle: 1 image(s) uploaded successfully! | {"arguments":["[MapModal Notification] check-circle: 1 image(s) uploaded successfully!"],"logger":"console"} |
+| 2026-01-11T01:08:22.259Z | debug | console | info | [MapModal] Skipping untracked log for 'Alta Street' as it is already a known location. | {"arguments":["[MapModal] Skipping untracked log for 'Alta Street' as it is already a known location."],"logger":"console"} |
+| 2026-01-11T01:08:22.260Z | debug | console | info | [FormHandler] Received map data for field 'placeOfDeath': [object Object] | {"arguments":["[FormHandler] Received map data for field 'placeOfDeath':",{"gameX":201.26,"gameY":-753.08,"isFromMap":true,"name":"[url=https://i.ibb.co/JRjZ5Hcs/ec681ece4c5f.png]Alta Street[/url]","rawName":"Alta Street","screenshot":"https://i.ibb.co/JRjZ5Hcs/ec681ece4c5f.png"}],"logger":"console"} |
+| 2026-01-11T01:08:22.702Z | http | fetch | info |  | {"__span":"a9cdf12e1a4bc4f0","method":"POST","request_body_size":554,"status_code":204,"url":"https://discord.com/api/webhooks/1455296447514808381/HAeZRKKP6POoYCOK1-No3PFK1wuk7-y9cW27PY4LIu742tH4Tbm2GMoIQjIiaM5iuSU5"} |
+| 2026-01-11T01:08:26.832Z | ui | ui.click | info | div > div > div.image-uploader-container > label > div |  |
+| 2026-01-11T01:08:26.835Z | ui | ui.click | info | div > div > div.image-uploader-container > label > input[type="file"] |  |
+| 2026-01-11T01:08:39.054Z | http | fetch | info |  | {"__span":"84c9a39a8c6c7e49","method":"POST","request_body_size":3088315,"response_body_size":78,"status_code":200,"url":"https://us-central1-gtaw-forms.cloudfunctions.net/uploadImageProxy"} |
+| 2026-01-11T01:08:43.033Z | http | fetch | info |  | {"__span":"8a1827469863ccbc","method":"POST","request_body_size":2798823,"response_body_size":78,"status_code":200,"url":"https://us-central1-gtaw-forms.cloudfunctions.net/uploadImageProxy"} |
+| 2026-01-11T01:10:16.075Z | ui | ui.click | info | div > div > div > input[type="time"][name="pronouncedTimeOfDeath"] |  |
+| 2026-01-11T01:10:27.815Z | ui | ui.click | info | div > div > textarea[name="scenePhotosBBCode_narrative"] |  |
+| 2026-01-11T01:10:29.356Z | ui | ui.click | info | div > div > textarea[name="additionalPhotos_narrative"] |  |
+| 2026-01-11T01:11:09.104Z | ui | ui.click | info | div > div > textarea[name="scenePhotosBBCode_narrative"] |  |
+| 2026-01-11T01:11:11.819Z | ui | ui.click | info | div > div > textarea[name="additionalPhotos_narrative"] |  |
+| 2026-01-11T01:11:26.420Z | ui | ui.click | info | div > div > textarea[name="additionalPhotos_narrative"] |  |
+| 2026-01-11T01:11:27.858Z | ui | ui.click | info | div > div > textarea[name="additionalPhotos_narrative"] |  |
+| 2026-01-11T01:11:28.939Z | ui | ui.click | info | div > div > textarea[name="additionalPhotos_narrative"] |  |
+| 2026-01-11T01:11:32.675Z | ui | ui.click | info | div > div > textarea[name="additionalPhotos_narrative"] |  |
+| 2026-01-11T01:11:34.201Z | ui | ui.click | info | div > div > textarea[name="additionalPhotos_narrative"] |  |
+| 2026-01-11T01:12:15.594Z | ui | ui.click | info | div._mainContent_195vb_233 > div > div > textarea[name="synopsis"] |  |
+| 2026-01-11T01:12:19.217Z | ui | ui.input | info | div._mainContent_195vb_233 > div > div > textarea[name="synopsis"] |  |
+| 2026-01-11T01:12:21.369Z | ui | ui.input | info | div._mainContent_195vb_233 > div > div > textarea[name="synopsis"] |  |
+| 2026-01-11T01:12:28.228Z | ui | ui.input | info | div._mainContent_195vb_233 > div > div > textarea[name="synopsis"] |  |
+| 2026-01-11T01:12:32.414Z | ui | ui.input | info | div._mainContent_195vb_233 > div > div > textarea[name="synopsis"] |  |
+| 2026-01-11T01:12:40.930Z | ui | ui.input | info | div._mainContent_195vb_233 > div > div > textarea[name="synopsis"] |  |
+| 2026-01-11T01:12:43.906Z | ui | ui.input | info | div._mainContent_195vb_233 > div > div > textarea[name="synopsis"] |  |
+| 2026-01-11T01:12:45.504Z | ui | ui.input | info | div._mainContent_195vb_233 > div > div > textarea[name="synopsis"] |  |
+| 2026-01-11T01:12:48.997Z | ui | ui.input | info | div._mainContent_195vb_233 > div > div > textarea[name="synopsis"] |  |
+| 2026-01-11T01:12:50.354Z | ui | ui.click | info | div._mainContent_195vb_233 > div > div > input[type="text"] |  |
+| 2026-01-11T01:12:50.749Z | ui | ui.input | info | div._mainContent_195vb_233 > div > div > input[type="text"] |  |
+| 2026-01-11T01:12:53.022Z | ui | ui.click | info | div._mainContent_195vb_233 > div > div > input[type="text"] |  |
+| 2026-01-11T01:12:53.340Z | ui | ui.input | info | div._mainContent_195vb_233 > div > div > input[type="text"] |  |
+| 2026-01-11T01:13:11.349Z | ui | ui.click | info | div > div > textarea[name="additionalPhotos_narrative"] |  |
+| 2026-01-11T01:13:29.327Z | ui | ui.click | info | div._mainLayout_195vb_115 > div._mainContent_195vb_233 > div > div > label |  |
+| 2026-01-11T01:13:36.566Z | ui | ui.click | info | div > div > div.image-uploader-container > label > div |  |
+| 2026-01-11T01:13:36.568Z | ui | ui.click | info | div > div > div.image-uploader-container > label > input[type="file"] |  |
+| 2026-01-11T01:13:47.211Z | http | fetch | info |  | {"__span":"a729cedc63977bab","method":"POST","request_body_size":211659,"response_body_size":78,"status_code":200,"url":"https://us-central1-gtaw-forms.cloudfunctions.net/uploadImageProxy"} |
+| 2026-01-11T01:13:50.007Z | ui | ui.click | info | div._mainContent_195vb_233 > div > button._generateButton_1m3f5_77 |  |
+| 2026-01-11T01:13:50.008Z | debug | console | info | [DEBUG] FOUND PHMC EMPLOYEE: N/A \| N/A \| N/A \| (Coroner: TRUE) \| | {"arguments":["[DEBUG] FOUND PHMC EMPLOYEE: N/A \| N/A \| N/A \| (Coroner: TRUE) \|"],"logger":"console"} |
+| 2026-01-11T01:13:50.009Z | debug | console | warning | [DEBUG] Form Validation Failed: Missing Name, Rank, Badge | {"arguments":["[DEBUG] Form Validation Failed: Missing Name, Rank, Badge"],"logger":"console"} |
+| 2026-01-11T01:13:50.010Z | info | message | warning | [FormHandler] Validation Failed: Name, Rank, Badge |  |
+
 🐞 User Debug Trace Report
 User
-Rog Fulace
+Whiskyy23
 Form
-Autopsy
+Coroner Report
 Missing Fields
-Badge
+Name, Rank, Badge
 OAuth Data
 {
-  "username": "Rog Fulace",
+  "username": "Whiskyy23",
   "faction": {
-    "characterName": "Roger Rose",
-    "characterId": 1552,
-    "rank": "Senior Medical Examiner -",
-    "scriptRank": 8
+    "characterId": 159303,
+    "characterName": "Sadie Voss",
+    "rank": "Forensic Attendant -",
+    "scriptRank": 5
   },
   "isFactionMember": true
 }
 Form Values (Snapshot)
 {
-  "coronerEmployee": "Roger Rose",
-  "coronerBadge": "",
-  "coronerRank": "Senior Medical Examiner -",
-  "coronerDiscord": "",
-  "coronerPHNumber": "50056",
-  "RadiologyResult": "X-rays found a single, deformed projectile matching the size of a 9x19mm Parabellum cartridge, recovered from the base of the skull at the clivus. (( $Bullet found with striation marks (9mm) #71343728 ))",
-  "anatomicSummaryListItems": [
-    "Perforating gunshot wound of the right frontal scalp (Gunshot Wound 'A') - 9x19mm Parabellum, <1-2m",
-    "Penetrating gunshot wound of the left facial region (Gunshot Wound 'A') - 9x19mm Parabellum, <1-2m"
+  "dateTime": "2026-01-11T00:36",
+  "ReportRequested": true,
+  "Requesting Officer": "Detective Kessler",
+  "department": "Los Santos Police Department",
+  "decedentName": "John Doe",
+  "typeOfDeath": "PK",
+  "mannerOfDeath": "Homicide",
+  "placeOfDeath": "[url=https://i.ibb.co/JRjZ5Hcs/ec681ece4c5f.png]Alta Street[/url]",
+  "placeOfDeath_display": "Alta Street",
+  "placeOfDeath_isFromMap": true,
+  "scenePhotosBBCode": [
+    "https://i.ibb.co/1tYXLt3L/0841db4794f7.png",
+    "https://i.ibb.co/ccqKCJxL/03666b81442e.png"
   ],
-  "autopsyDiagramBBCode": "https://i.ibb.co/mFJYWghX/fa6cda246f6f.png",
-  "autopsyDiagramBBCode_markers": [
-    {
-      "id": "mjw3veg2pa6z4",
-      "label": "GSW",
-      "labelSide": "left",
-      "type": "circle",
-      "x": 237.22932917316692,
-      "y": 112.64396450858032
-    },
-    {
-      "id": "mjw3vssvuk8pi",
-      "label": "GSW",
-      "labelSide": "rig
+  "pronouncedTimeOfDeath": "10:50",
+  "additionalPhotos_narrative": "___((Unknown (( Ronnie Anderson ))'s)) Corpse Damage & Injuries:___\n(10:45:25) PISTOL MK II : Left Shoulder : 22 (9.834381 meters)\n(10:45:26) PISTOL MK II : Lower Abdomen : 26 (9.705962 meters)\n(10:48:40) PISTOL MK II : Head : 47 (13.5641985 meters)\nThis corpse does not have any other visible injuries.",
+  "synopsis": "Coroners Voss and McFlaren got dispatched to a scene with a deceased male b
+Credential State Transitions
+[
+  {
+    "timestamp": "2026-01-11T01:05:57.319Z",
+    "changes": {
+      "coronerEmployee": {
+        "from": "Sadie Voss",
+        "to": ""
+      },
+      "coronerBadge": {
+        "from": 159303,
+        "to": ""
+      },
+      "coronerRank": {
+        "from": "Forensic Attendant",
+        "to": ""
+      }
+    }
+  },
+  {
+    "timestamp": "2026-01-11T01:05:53.180Z",
+    "changes": {
+      "coronerEmployee": {
+        "from": "",
+        "to": "Sadie Voss"
+      },
+      "phmcEmployee": {
+        "from": "Sadie Voss",
+        "to": ""
+      },
+      "coronerBadge": {
+        "from": "",
+        "to": 159303
+      },
+      "phmcBadge": {
+        "from": 159303,
+        "to": ""
+      },
+      "coronerRank": {
+        "from": "",
+        "to": "Forensic Attendant"
+      },
+      "phmcRank": {
+        "from": "Forensic Attendant",
+        "to": ""
+      }
+    }
+  },
+  {
+    "timestamp": "2026-01-11T01:05:47.930Z",
+    "changes": {
+      "phmcEmployee": {
+        "from": "",
+        "to":
 Recent Navigation
 [
   {
-    "name": "Autopsy",
-    "id": "autopsy",
-    "timestamp": "2026-01-03T02:11:48.311Z"
+    "name": "Coroner Report",
+    "id": "coroner-report",
+    "timestamp": "2026-01-11T01:05:53.179Z"
   }
 ]
 Triggered by user via Panic Button

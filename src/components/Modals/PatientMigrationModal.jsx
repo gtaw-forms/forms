@@ -151,7 +151,7 @@ const PatientMigrationModal = ({ show, onHide }) => {
   <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
   <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
 </svg>                        </span>
-                        <code style={{ color: '#e6edf3', fontSize: '1rem', background: 'none', padding: 0 }}>medical-records channel</code>
+                        <code style={{ color: '#e6edf3', fontSize: '1rem', background: 'none', padding: 0 }}>patient-appointments channel</code>
                     </div>
                 </div>
 
