@@ -10,7 +10,9 @@ import useBbcodeGenerator from '../../hooks/useBbcodeGenerator';
 import { uploadImageToImgBB, uploadDataUrlToImgBB } from '../../utils/imageUploadUtils'; 
 import { useNotification } from '../../contexts/NotificationContext';
 import { getUtcFormattedDateTime } from '../../utils/dateTimeUtils';
-import { useReportManagement } from '../../hooks/useReportManagement';
+import { useReportLoader } from '../../hooks/useReportLoader';
+import { useReportActions } from '../../hooks/useReportActions';
+import { useReportAttachment } from '../../hooks/useReportAttachment';
 import { useFormSaver } from '../../hooks/useFormSaver';
 import seasonalEvents from '../UI/SeasonalEvents';
 import FormQuickLinks from './FormQuickLinks';
@@ -591,24 +593,26 @@ export const FormHandler = () => {
 
 
   const { 
-      toggleSavedReports,
-      showSavedReports,
-      setShowSavedReports,
       savedReports,
       isLoadingUserReports,
       loadUserSavedReports,
+      loadReportForUser
+  } = useReportLoader();
+
+  const { deleteReportForUser } = useReportActions();
+
+  const { 
+      toggleSavedReports,
+      showSavedReports,
+      setShowSavedReports,
       handleReportSelectedForAttachment,
-      deleteReportForUser,
-      loadReportForUser,
       preselectedEmployeeType,
       reportSelectionFilter,
       pendingReportAttachmentCallback,
-      currentAttachmentTargetFieldRef // Add this line
-  } = useReportManagement(
-      formValues, setFormValues, null, () => {}, () => '', getCurrentReportAuthor, () => ({}), finalSelectOptions,
-      showNotification, removeNotification, () => {}, () => {}, () => {}, modalCloseTimer, selectedForm,
-      () => formsData, // Changed from forms to () => formsData
-      setSelectedForm
+      currentAttachmentTargetFieldRef
+  } = useReportAttachment(
+      loadReportForUser,
+      formValues, setFormValues, selectedForm, showNotification, removeNotification, modalCloseTimer
   );
 
   const handleNavToggleSavedReports = () => {
