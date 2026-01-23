@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { database } from '../../firebase';
 import { get, ref, onValue } from 'firebase/database';
-import { useReportManagement } from '../../hooks/useReportManagement';
+import { useReportLoader } from '../../hooks/useReportLoader';
+import { useReportActions } from '../../hooks/useReportActions';
+import { useMigrationSaver } from '../../hooks/useMigrationSaver';
 import { useFormSaver } from '../../hooks/useFormSaver';
 import useBbcodeGenerator from '../../hooks/useBbcodeGenerator';
 import { useData } from '../../contexts/DataContext';
@@ -66,48 +68,25 @@ const LegacyReportMigrator = ({ onClose }) => {
         return defaultOptions;
     }, [employeeOptions, userToMigrate]);
 
-    // Minimal set of dependencies for useReportManagement
+    // Minimal set of dependencies for useReportManagement replaced by focused hooks
     const { 
         savedReports,
         isLoadingUserReports,
         loadUserSavedReports,
         loadReportForUser,
-        saveMigratedReport,
-        backupUserReports: backupReports, // Renamed for clarity here
-        checkIfMigratedReportExists, // New
-        deleteReportForUser, // Needed for duplicate handling
-        countAllUserReports // New: Import countAllUserReports
-    } = useReportManagement(
-        // Arguments based on useReportManagement.js signature:
-        // 1. formData: (not used by migration, so empty object is fine)
-        {},
-        // 2. setFormData: (not used by migration, so dummy function is fine)
-        () => {},
-        // 3. bbCodeVersion_DEPRECATED: (set to null as it's deprecated and not used for saving new format)
-        null, 
-        // 4. setBbCodeVersion_DEPRECATED: (not used by migration, so dummy function is fine)
-        () => {}, 
-        // 5. getBBCodeContent: (not used by migration, as we save migratedReport directly)
-        () => '', 
-        // 6. getCurrentReportAuthor:
-        () => 'MIGRATION_USER', 
-        // 7. filterFormData: (not used by migration for saving)
-        () => ({}), 
-        // 8. selectOptions:
-        displayEmployeeOptions, 
-        // 9. showNotification:
-        showNotification, 
-        // 10. removeNotification:
-        removeNotification,
-        // 11-14 (setShowEasterEggModal, setEasterEggType, sendEasterEggNotification, modalCloseTimer):
-        () => {}, () => {}, () => {}, { current: null }, 
-        // 15. selectedForm: (null initially, will be determined dynamically for save)
-        null, 
-        // 16. getForms: (a getter function for forms)
-        () => forms, 
-        // 17. setSelectedForm: (not used by migration, so dummy function is fine)
-        () => {}
-    );
+        checkIfMigratedReportExists, 
+        countAllUserReports 
+    } = useReportLoader();
+
+    const { 
+        deleteReportForUser, 
+        backupUserReports: backupReports 
+    } = useReportActions();
+
+    const { saveMigratedReport } = useMigrationSaver();
+
+    // The legacy hook required a lot of props we don't need anymore.
+    // We can just rely on the specialized hooks.
     
     // --- Logic ---
 
