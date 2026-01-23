@@ -47,7 +47,7 @@ const AutopsyAssist = lazy(() => import('./AutopsyAssist'));
 import UnprocessedCKsViewer from './UnprocessedCKsViewer';
 
 export const FormHandler = () => {
-  const isDevelopment = process.env.NODE_ENV === 'development';
+  const isDevelopment = process.env.NODE_ENV === 'development' || window.location.hostname === 'localhost';
   useInactivityReload(); 
   const { trackMetric } = useUserMetrics();
   
@@ -87,7 +87,6 @@ export const FormHandler = () => {
   });
   const [showBugReportModal, setShowBugReportModal] = useState(false);
   const [showAgencyIncidentModal, setShowAgencyIncidentModal] = useState(false);
-  const [isAutoUpdatingBbcode, setIsAutoUpdatingBbcode] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false);
   const [mapTargetField, setMapTargetField] = useState(null);
   const [isUploadingMapImage, setIsUploadingMapImage] = useState({});
@@ -108,38 +107,12 @@ export const FormHandler = () => {
     selectOptions: authSelectOptions,
   } = useGtaWorldAuth();
 
-  // DEV: Auth Override Logic
-  const [devAuthStage, setDevAuthStage] = useState(0); // 0: Real, 1: Guest, 2: Civilian, 3: PHMC
-
-  useEffect(() => {
-    if (!isDevelopment) return;
-    const stages = ["Real Data", "Guest (Unauth)", "Civilian (Auth, No Faction)", "PHMC Member"];
-    console.log(`%c[DEV TEST] Auth Stage: ${stages[devAuthStage]}`, "color: #ff00ff; font-weight: bold; font-size: 12px;");
-  }, [devAuthStage, isDevelopment]);
 
   let user = realUser;
   let isAuthenticated = realIsAuthenticated;
   let isPhmcMember = realIsPhmcMember;
   let characterName = realCharacterName;
 
-  if (isDevelopment && devAuthStage !== 0) {
-      if (devAuthStage === 1) { // Guest
-          user = null; 
-          isAuthenticated = false; 
-          isPhmcMember = false; 
-          characterName = null;
-      } else if (devAuthStage === 2) { // Civilian
-          user = { username: 'DevCiv', faction: null }; 
-          isAuthenticated = true; 
-          isPhmcMember = false; 
-          characterName = 'Dev Civilian';
-      } else if (devAuthStage === 3) { // PHMC
-           user = { username: 'DevDoc', faction: { name: 'PHMC', firstname: 'Dev', lastname: 'Doctor' } }; 
-           isAuthenticated = true; 
-           isPhmcMember = true; 
-           characterName = 'Dev Doctor';
-      }
-  }
 
   useEffect(() => {
     const hasSeenIncidentNotice = localStorage.getItem('seenAgencyIncidentNotice') === 'true';
@@ -611,69 +584,9 @@ export const FormHandler = () => {
         localStorage.removeItem(`form_progression_${selectedForm.firebaseKey}`);
     }
     setShowBBCode(false);
-    setIsAutoUpdatingBbcode(false);
     showNotification('Form cleared!', 'info');
-  }, [formValues, employeeType, setFormValues, selectedForm?.firebaseKey, showNotification, keepCredentials, isAuthenticated, setShowBBCode, setIsAutoUpdatingBbcode]);
+  }, [formValues, employeeType, setFormValues, selectedForm?.firebaseKey, showNotification, keepCredentials, isAuthenticated, setShowBBCode]);
 
-  const sendDebugTrace = useCallback(async (missingFields) => {
-      const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
-      
-      showNotification('Sending debug trace...', 'spinner fa-spin');
-
-      const debugData = {
-          user: user ? {
-              username: user.username,
-              faction: user.faction,
-              activeCharacter: user.activeCharacter,
-              isFactionMember: user.isFactionMember
-          } : 'Not Authenticated',
-          formValues: formValues,
-          selectedForm: {
-              name: selectedForm?.name,
-              id: selectedForm?.id,
-              accessType: selectedForm?.accessType
-          },
-          browserInfo: navigator.userAgent,
-          timestamp: new Date().toISOString(),
-          missingFields: missingFields,
-          visitedForms: visitedFormsRef.current,
-          credentialTransitions: transitionHistoryRef.current,
-          localStorageKeys: Object.keys(localStorage).filter(k => k.includes('form_') || k.includes('oauth') || k.includes('firebase'))
-      };
-
-      // Log to Sentry
-      Sentry.captureMessage(`[FormHandler] Validation Failed: ${missingFields.join(', ')}`, {
-          level: "warning",
-          contexts: {
-              debugData
-          }
-      });
-
-      const payload = {
-          embeds: [{
-              title: "🐞 User Debug Trace Report",
-              color: 16711680, // Red
-              fields: [
-                  { name: "User", value: user?.username || "Unknown", inline: true },
-                  { name: "Form", value: selectedForm?.name || "Unknown", inline: true },
-                  { name: "Missing Fields", value: missingFields.join(', '), inline: false },
-                  { name: "OAuth Data", value: `\`\`\`json\n${JSON.stringify(debugData.user, null, 2).substring(0, 1000)}\n\`\`\`` },
-                  { name: "Form Values (Snapshot)", value: `\`\`\`json\n${JSON.stringify(formValues, null, 2).substring(0, 1000)}\n\`\`\`` },
-                  { name: "Credential State Transitions", value: `\`\`\`json\n${JSON.stringify(transitionHistoryRef.current, null, 2).substring(0, 1000)}\n\`\`\`` },
-                  { name: "Recent Navigation", value: `\`\`\`json\n${JSON.stringify(visitedFormsRef.current, null, 2).substring(0, 1000)}\n\`\`\`` }
-              ],
-              footer: { text: "Triggered by user via Panic Button" }
-          }]
-      };
-      
-      try {
-          await sendDiscordWebhook(webhookUrl, payload);
-          showNotification('Debug trace sent to developers. Thank you!', 'success');
-      } catch (e) {
-          showNotification('Failed to send debug trace.', 'error');
-          console.error(e);
-      }
-  }, [user, formValues, selectedForm, showNotification]);
 
 
 
@@ -830,20 +743,6 @@ export const FormHandler = () => {
         localStorage.removeItem(`form_progression_${selectedForm.firebaseKey}`);
     }
   }, [formValues, selectedForm?.firebaseKey]);
-
-  useEffect(() => {
-    // Debounced effect for auto-updating BBCode
-    if (isAutoUpdatingBbcode) {
-      const handler = setTimeout(() => {
-        generateBBCode();
-      }, 300); // Wait for 300ms of inactivity before generating
-
-      // Cleanup function to cancel the timer if the user is still typing
-      return () => {
-        clearTimeout(handler);
-      };
-    }
-  }, [formValues, isAutoUpdatingBbcode, generateBBCode]); // Reruns on every change to formValues
 
   useEffect(() => {
     // Only proceed if a form is selected and user is authenticated for PHMC/Coroner forms
@@ -1083,6 +982,9 @@ export const FormHandler = () => {
       if (form.isHidden) {
           shouldDisplay = false;
           reason = "Hidden form";
+      } else if (isDevelopment) {
+          shouldDisplay = true;
+          reason = "Development Mode Access";
       } else {
           const isRestricted = form.accessType === "PHMC" || form.accessType === "Coroner" || form.accessType === "Mental Health";
           const isCivilian = form.accessType === "Civilian";
@@ -1271,15 +1173,6 @@ export const FormHandler = () => {
 
       <div className={styles.header}>
         <h2>PHMC Tools - Form Generator and more!</h2>
-        {isDevelopment && (
-            <button 
-                onClick={() => setDevAuthStage(prev => (prev + 1) % 4)}
-                className="btn btn-sm btn-outline-warning"
-                style={{ marginLeft: '20px', fontWeight: 'bold' }}
-            >
-                DEV: Test Auth ({["Real", "Guest", "Civilian", "PHMC"][devAuthStage]})
-            </button>
-        )}
       </div>
 
       <div className={styles.mainLayout}>
@@ -1340,7 +1233,6 @@ export const FormHandler = () => {
                               setSelectedForm(form);
                               setFormValues({ ...baseValues, ...savedValues });
                               setShowBBCode(false);
-                              setIsAutoUpdatingBbcode(false);
                               trackMetric('form_handler', `view_form_${form.name}`);
                             }}
                             className={`${styles.formCard} ${selectedForm?.firebaseKey === form.firebaseKey ? styles.selected : ""}`}
@@ -1442,46 +1334,14 @@ export const FormHandler = () => {
                         
                         console.log(`[DEBUG] FOUND PHMC EMPLOYEE: ${dName} | ${dRank} | ${dBadge} | (Coroner: ${dIsCoroner}) |`);
 
-                        const missing = [];
-                        if (dName === "N/A") missing.push("Name");
-                        if (dRank === "N/A") missing.push("Rank");
-                        if (dBadge === "N/A") missing.push("Badge");
-                        
-                        if (missing.length > 0) {
-                            console.warn(`[DEBUG] Form Validation Failed: Missing ${missing.join(', ')}`);
-                            sendDebugTrace(missing);
-                            showNotification(
-                                `Something unexpected happened. The developer has been notified.`,
-                                'warning',
-                                5000
-                            );
-                        }
                     }
-                    // --- DEBUG LOG END ---
 
-                    if (isAutoUpdatingBbcode) {
-                      setIsAutoUpdatingBbcode(false);
-                    } else {
-                      generateBBCode();
-                      setIsAutoUpdatingBbcode(true);
-                      
-                      if (!("Notification" in window)) {
-                        console.log("This browser does not support desktop notification");
-                      } else if (Notification.permission === "granted") {
-                        new Notification("Auto-updating BBCode enabled!");
-                      } else if (Notification.permission !== "denied") {
-                        Notification.requestPermission().then((permission) => {
-                          if (permission === "granted") {
-                            new Notification("Auto-updating BBCode enabled!");
-                          }
-                        });
-                      }
-                    }
-                    trackMetric('form_handler', `toggle_auto_bbcode_${selectedForm.name}`);
+                    generateBBCode();
+                    trackMetric('form_handler', `generate_bbcode_${selectedForm.name}`);
                   }} 
-                  className={isAutoUpdatingBbcode ? formStyles.clearButton : formStyles.generateButton}
+                  className={formStyles.generateButton}
                 >
-                  {isAutoUpdatingBbcode ? "Disable Auto-Update" : "Generate BBCode"}
+                  Generate BBCode
                 </button>
               </div>
             </>
