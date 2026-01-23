@@ -104,6 +104,11 @@ const formatToNorthAmericanDate = (isoDateTime) => {
       }
     });
 
+    // Normalize decedents if it's an object-based array (Firebase quirk)
+    if (processedFormValues.decedents && typeof processedFormValues.decedents === 'object' && !Array.isArray(processedFormValues.decedents)) {
+        processedFormValues.decedents = Object.values(processedFormValues.decedents);
+    }
+
     // Custom handling for 'Patient Files' category to auto-populate date
     if (selectedForm?.category === 'Patient Files') {
         if (!processedFormValues.date) {
@@ -142,10 +147,6 @@ const formatToNorthAmericanDate = (isoDateTime) => {
             }
         }
     }
-
-    console.log("%c=== BBCODE & TITLE GENERATION STARTED ===", "font-weight:bold;color:#0066cc");
-    console.log("Form:", selectedForm.name, `(${selectedForm.firebaseKey || selectedForm.id})`);
-    console.log("Processed Form Values:", JSON.parse(JSON.stringify(processedFormValues)));
 
     let bbcode = selectedForm.template;
     let finalTitle = "";
@@ -525,10 +526,19 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
         const formEmployeeRank = processedFormValues[`${employeeTypeLower}Rank`];
 
         // OAuth data can come from faction or activeCharacter
-        const oauthEmployeeName = gtaWorldUser.faction?.name || gtaWorldUser.activeCharacter?.characterName;
-        const oauthEmployeeRank = gtaWorldUser.faction?.rank || 'N/A'; // Rank might be less directly available for non-faction activeCharacter
+        // Fix: Do not use faction.name as it is the faction name (e.g. PHMC), not the character name.
+        const factionData = gtaWorldUser.faction || {};
+        const activeCharData = gtaWorldUser.activeCharacter || {};
+        
+        const oauthEmployeeName = factionData.characterName || 
+                                   activeCharData.characterName || 
+                                   (factionData.firstname && factionData.lastname ? `${factionData.firstname} ${factionData.lastname}` : null) ||
+                                   (activeCharData.firstname && activeCharData.lastname ? `${activeCharData.firstname} ${activeCharData.lastname}` : null);
 
-        if (formEmployeeName && oauthEmployeeName && formEmployeeName !== oauthEmployeeName) {
+        const oauthEmployeeRank = factionData.rank || 'N/A'; // Rank might be less directly available for non-faction activeCharacter
+
+        const isDev = import.meta.env.DEV || window.location.hostname === 'localhost';
+        if (!isDev && formEmployeeName && oauthEmployeeName && formEmployeeName !== oauthEmployeeName) {
             console.warn(`[BbcodeGenerator] Consistency Warning: Form Employee Name (${formEmployeeName}) does not match OAuth Name (${oauthEmployeeName}).`);
         }
 

@@ -761,7 +761,16 @@ export const useReportManagement = (
             ]);                if (reportSnapshot.exists()) {
                     const reportData = reportSnapshot.val();
                     const bbCodeData = bbCodeSnapshot.val();
-                    const loadedVersion = reportData.bbCodeVersion;
+                    let loadedVersion = reportData.bbCodeVersion;
+
+                    // Fallback: Infer version from title if missing
+                    if (!loadedVersion && reportData.originalKey) {
+                        if (reportData.originalKey.includes('[Mass Fatality Report]')) {
+                            loadedVersion = 11;
+                            reportData.bbCodeVersion = 11; // Update the object so caller sees it
+                            console.log('[useReportManagement] Inferred version 11 (Mass Fatality) from title.');
+                        }
+                    }
                     
                     if (sendDataRequestLog) {
                         const reportSize = new TextEncoder().encode(JSON.stringify(reportData)).length;
@@ -913,68 +922,70 @@ export const useReportManagement = (
                             }
                         }
                         
-                        if (loadedVersion === 11 || reportData.formId === 'mass-ftality-test') {
-                            // Mass Fatality Report: set decedents array and other relevant fields
-                            const decedents = Array.isArray(loadedFormData.decedents) ? loadedFormData.decedents.map(dec => ({
-                                ...dec,
-                                decedentName: dec.decedentName || dec.DecedentName,
-                                decedentOOC: dec.decedentOOC || dec.DecedentOOC,
-                            })) : [];
+                        if (!returnOnly) {
+                            if (loadedVersion === 11 || reportData.formId === 'mass-ftality-test') {
+                                // Mass Fatality Report: set decedents array and other relevant fields
+                                const decedents = Array.isArray(loadedFormData.decedents) ? loadedFormData.decedents.map(dec => ({
+                                    ...dec,
+                                    decedentName: dec.decedentName || dec.DecedentName,
+                                    decedentOOC: dec.decedentOOC || dec.DecedentOOC,
+                                })) : [];
 
-                            setFormData(prev => ({
-                                ...prev,
-                                ...loadedFormData,
-                                decedents: decedents,
-                                coronerEmployee: loadedFormData.coronerEmployee || prev.coronerEmployee,
-                                phmcEmployee: loadedFormData.phmcEmployee || prev.phmcEmployee,
-                            }));
-                            showNotification(`Mass Fatality Report loaded.`, 'upload');
-                        } else if ((selectedForm?.name === 'Coroner Email' || selectedForm?.id === 'coroner_email') && loadedVersion === 1) {
-                            // ...existing code for v2 loading v1...
-                            const currentDeathReportIsEmpty = !formData.deathReport || formData.deathReport.trim() === '';
-                            let notificationMessage = '';
-                            setFormData(prevFormData => {
-                                let updatedName = prevFormData.decedentName || '';
-                                let updatedOoc = prevFormData.decedentOOC || '';
-                                let updatedDeathReport = prevFormData.deathReport || '';
-                                let updatedAdditionalReports = prevFormData.additionalReports || [];
-                                if (prevFormData.decedentName && loadedFormData.decedentName) {
-                                    updatedName = `${prevFormData.decedentName}, ${loadedFormData.decedentName}`;
-                                } else {
-                                    updatedName = loadedFormData.decedentName || prevFormData.decedentName || '';
-                                }
-                                if (prevFormData.decedentOOC && loadedFormData.decedentOOC) {
-                                    updatedOoc = `${prevFormData.decedentOOC}, ${loadedFormData.decedentOOC}`;
-                                } else {
-                                    updatedOoc = loadedFormData.decedentOOC || prevFormData.decedentOOC || '';
-                                }
-                                if (currentDeathReportIsEmpty) {
-                                    updatedDeathReport = loadedBbCode;
-                                    notificationMessage = `Loaded report for ${loadedFormData.decedentName || reportData.originalKey} into main Death Report field.`;
-                                } else {
-                                    updatedAdditionalReports = [...updatedAdditionalReports, loadedBbCode];
-                                    notificationMessage = `Added report for ${loadedFormData.decedentName || reportData.originalKey} as an additional report.`;
-                                }
-                                const finalDataToSet = {
-                                    ...prevFormData,
+                                setFormData(prev => ({
+                                    ...prev,
                                     ...loadedFormData,
-                                    decedentName: updatedName,
-                                    decedentOOC: updatedOoc,
-                                    deathReport: updatedDeathReport,
-                                    additionalReports: updatedAdditionalReports,
-                                };
-                                return finalDataToSet;
-                            });
-                            showNotification(notificationMessage, 'plus-circle');
-                        } else {
-                            setFormData(prev => ({
-                                ...prev,
-                                ...loadedFormData,
-                                coronerEmployee: loadedFormData.coronerEmployee || prev.coronerEmployee,
-                                phmcEmployee: loadedFormData.phmcEmployee || prev.phmcEmployee,
-                            }));
-                                                    showNotification(`Report "${reportData.originalKey || reportFirebaseKey}" loaded.`, 'upload');
-                                                }                    }
+                                    decedents: decedents,
+                                    coronerEmployee: loadedFormData.coronerEmployee || prev.coronerEmployee,
+                                    phmcEmployee: loadedFormData.phmcEmployee || prev.phmcEmployee,
+                                }));
+                                showNotification(`Mass Fatality Report loaded.`, 'upload');
+                            } else if ((selectedForm?.name === 'Coroner Email' || selectedForm?.id === 'coroner_email') && loadedVersion === 1) {
+                                // ...existing code for v2 loading v1...
+                                const currentDeathReportIsEmpty = !formData.deathReport || formData.deathReport.trim() === '';
+                                let notificationMessage = '';
+                                setFormData(prevFormData => {
+                                    let updatedName = prevFormData.decedentName || '';
+                                    let updatedOoc = prevFormData.decedentOOC || '';
+                                    let updatedDeathReport = prevFormData.deathReport || '';
+                                    let updatedAdditionalReports = prevFormData.additionalReports || [];
+                                    if (prevFormData.decedentName && loadedFormData.decedentName) {
+                                        updatedName = `${prevFormData.decedentName}, ${loadedFormData.decedentName}`;
+                                    } else {
+                                        updatedName = loadedFormData.decedentName || prevFormData.decedentName || '';
+                                    }
+                                    if (prevFormData.decedentOOC && loadedFormData.decedentOOC) {
+                                        updatedOoc = `${prevFormData.decedentOOC}, ${loadedFormData.decedentOOC}`;
+                                    } else {
+                                        updatedOoc = loadedFormData.decedentOOC || prevFormData.decedentOOC || '';
+                                    }
+                                    if (currentDeathReportIsEmpty) {
+                                        updatedDeathReport = loadedBbCode;
+                                        notificationMessage = `Loaded report for ${loadedFormData.decedentName || reportData.originalKey} into main Death Report field.`;
+                                    } else {
+                                        updatedAdditionalReports = [...updatedAdditionalReports, loadedBbCode];
+                                        notificationMessage = `Added report for ${loadedFormData.decedentName || reportData.originalKey} as an additional report.`;
+                                    }
+                                    const finalDataToSet = {
+                                        ...prevFormData,
+                                        ...loadedFormData,
+                                        decedentName: updatedName,
+                                        decedentOOC: updatedOoc,
+                                        deathReport: updatedDeathReport,
+                                        additionalReports: updatedAdditionalReports,
+                                    };
+                                    return finalDataToSet;
+                                });
+                                showNotification(notificationMessage, 'plus-circle');
+                            } else {
+                                setFormData(prev => ({
+                                    ...prev,
+                                    ...loadedFormData,
+                                    coronerEmployee: loadedFormData.coronerEmployee || prev.coronerEmployee,
+                                    phmcEmployee: loadedFormData.phmcEmployee || prev.phmcEmployee,
+                                }));
+                                showNotification(`Report "${reportData.originalKey || reportFirebaseKey}" loaded.`, 'upload');
+                            }
+                        }                    }
                     // Always return the processed data, regardless of `returnOnly`
                     return { success: true, reportData: { ...reportData, data: loadedFormData, bbCode: loadedBbCode } };
                 } else {
@@ -1060,10 +1071,21 @@ export const useReportManagement = (
                 // --- MODIFICATION START: Generalized Field Population ---
 
                 setFormData(prev => {
+                    console.log(`[useReportManagement] Checking attachment logic. Form: ${selectedForm?.name} (${selectedForm?.id}), Loaded Version: ${loadedVersion}`);
 
                     if ((selectedForm?.name === 'Coroner Email' || selectedForm?.id === 'coroner_email') && loadedVersion === 11) { // Attaching Mass Fatality to Coroner Email
+                        console.log('[useReportManagement] Attaching Mass Fatality to Coroner Email. Loaded Data:', loadedFormData);
+                        let decedents = loadedFormData.decedents;
+                        
+                        console.log('[useReportManagement] Raw Decedents Field:', decedents, 'Type:', typeof decedents, 'Is Array:', Array.isArray(decedents));
 
-                        const decedents = loadedFormData.decedents;
+                        // Handle Firebase array-as-object conversion
+                        if (decedents && typeof decedents === 'object' && !Array.isArray(decedents)) {
+                            console.log('[useReportManagement] converting object-based decedents to array...');
+                            decedents = Object.values(decedents);
+                        }
+                        
+                        console.log('[useReportManagement] Processed Decedents Array:', decedents);
 
                         if (decedents && decedents.length > 0) {
 
