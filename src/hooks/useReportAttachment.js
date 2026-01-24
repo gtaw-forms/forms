@@ -69,11 +69,16 @@ export const useReportAttachment = (
                     if (decedents && decedents.length > 0) {
                         const firstDecedent = decedents[0];
                         let icName = firstDecedent.decedentName || firstDecedent.DecedentName || '';
-                        let oocName = firstDecedent.decedentOOC || firstDecedent.DecedentOOC || '';
+                        
+                        // Extract and join all OOC names for the title list
+                        const oocNamesList = decedents
+                            .map(d => d.decedentOOC || d.DecedentOOC)
+                            .filter(n => n && String(n).trim() !== '');
+                        
+                        let oocName = oocNamesList.length > 0 ? oocNamesList.join(', ') : 'N/A';
 
                         if (decedents.length > 1) {
                             icName += ` (x${decedents.length})`;
-                            oocName += ` (x${decedents.length})`;
                         }
                         
                         const currentDeathReportIsEmpty = !prev.deathReport || prev.deathReport.trim() === '';
