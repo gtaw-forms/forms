@@ -124,7 +124,7 @@ export const useReportAttachment = (
                     const existingNames = new Set((prev.decedentName || '').split(', ').filter(Boolean));
                     let decedentNameToAdd = null;
                     if (reportData.originalKey && reportData.originalKey.startsWith('[DEATH-REPORT]')) {
-                        const nameMatch = reportData.originalKey.match(/[\[]DEATH-REPORT[^\]]*[\s]*([^-]+)/);
+                        const nameMatch = reportData.originalKey.match(/[\[]DEATH-REPORT[^\]]*\][\s]*([^-]+)/);
                         if (nameMatch && nameMatch[1]) {
                             decedentNameToAdd = nameMatch[1].trim();
                         }

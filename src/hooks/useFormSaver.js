@@ -54,9 +54,12 @@ const formatToNorthAmericanDate = (isoDateTime) => {
 const formatToMMM_DD_YYYY = (isoDateTime) => {
     if (!isoDateTime) return 'NO_DATE';
     try {
-        const date = new Date(isoDateTime);
+        // Handle date-only strings by splitting at 'T' and taking the date part.
+        const dateString = isoDateTime.split('T')[0];
+        const date = new Date(dateString);
+
         if (isNaN(date.getTime())) {
-            const parts = isoDateTime.split('T')[0].split('-');
+            const parts = dateString.split('-');
             if (parts.length === 3) {
                  const year = parseInt(parts[0], 10);
                  const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
@@ -166,7 +169,7 @@ export const useFormSaver = () => {
         }
     }, []);
 
-    const saveReport = useCallback(async (selectedForm, formValues, title, bbCode) => {
+    const saveReport = useCallback(async (selectedForm, formValues, title, bbCode, options = {}) => {
         if (!selectedForm || !formValues || !title || !bbCode) {
             const missingFields = [];
             if (!selectedForm) missingFields.push('selectedForm');
@@ -174,7 +177,9 @@ export const useFormSaver = () => {
             if (!title) missingFields.push('title');
             if (!bbCode) missingFields.push('bbCode');
             console.error('[DEBUG useFormSaver] Save failed due to missing required data:', missingFields.join(', '));
-            showNotification('Missing data required to save the report.', 'error');
+            if (!options.silent) {
+                showNotification('Missing data required to save the report.', 'error');
+            }
             return { success: false, error: 'Missing data.' };
         }
 
@@ -194,14 +199,16 @@ export const useFormSaver = () => {
             const caseNumber = parseCaseNumber(formValues.deathReportPostId) || formValues.caseNumber || 'UNKNOWN';
             const decedentName = formValues.decedentName || 'UNKNOWN';
             const decedentOOC = formValues.decedentOOC || 'N/A';
-            const formattedDateOfDeath = formatToMMM_DD_YYYY(formValues.dateOfDeath);
+            const formattedDateOfDeath = formatToMMM_DD_YYYY(formValues.dateOfDeath || formValues.formattedDateOfDeath);
 
-            finalTitle = `[CASE-#${currentYear}-${caseNumber}] ${decedentName} ((${decedentOOC} | ${formattedDateOfDeath}))`;
+            finalTitle = `[CASE #${currentYear}-${caseNumber}] ${decedentName} ((${decedentOOC})) - ${formattedDateOfDeath}`;
         }
 
         const currentAuthor = getCharacterName(gtaWorldUser);
         if (!currentAuthor) {
-            showNotification('Cannot determine report author. Please ensure you are signed in.', 'error');
+            if (!options.silent) {
+                showNotification('Cannot determine report author. Please ensure you are signed in.', 'error');
+            }
             return { success: false, error: 'Cannot determine report author.' };
         }
 
@@ -265,7 +272,9 @@ export const useFormSaver = () => {
 
             await Promise.all(promises);
 
-            showNotification(`Report "${finalTitle}" saved successfully!`, 'save');
+            if (!options.silent) {
+                showNotification(`Report "${finalTitle}" saved successfully!`, 'save');
+            }
 
             // Webhook Logging
             const webhookPayload = {
@@ -298,7 +307,9 @@ export const useFormSaver = () => {
         } catch (error) {
             console.error("Error saving new report to Firebase:", error);
             Sentry.captureException(error, { extra: { context: 'useFormSaver - saveReport' } });
-            showNotification('Something went wrong while saving the report.', 'error');
+            if (!options.silent) {
+                showNotification('Something went wrong while saving the report.', 'error');
+            }
             return { success: false, error: error.message };
         }
     }, [gtaWorldUser, isGtaAuthenticated, showNotification, logWebhook]);
