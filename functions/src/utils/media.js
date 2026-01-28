@@ -1,12 +1,13 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import fetch from "node-fetch";
 import FormData from "form-data";
+import { getConfigValue } from "./config.js";
 
 /**
  * Proxy image uploads to ImgBB or Imgur to bypass regional blocks.
  */
 export const uploadImageProxy = onCall({
-    secrets: ["IMGBB_API_KEY", "IMGUR_CLIENT_ID", "IMGUR_ACCESS_TOKEN"],
+    secrets: ["PHMC_CONFIG"],
     cors: [
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',
@@ -23,7 +24,7 @@ export const uploadImageProxy = onCall({
 
     try {
         if (targetService === "imgbb") {
-            const apiKey = process.env.IMGBB_API_KEY;
+            const apiKey = getConfigValue("IMGBB_API_KEY");
             if (!apiKey) {
                 throw new HttpsError("failed-precondition", "ImgBB API Key is not configured on the server.");
             }
@@ -45,8 +46,8 @@ export const uploadImageProxy = onCall({
             }
 
         } else if (targetService === "imgur") {
-            const clientId = process.env.IMGUR_CLIENT_ID;
-            const accessToken = process.env.IMGUR_ACCESS_TOKEN;
+            const clientId = getConfigValue("IMGUR_CLIENT_ID");
+            const accessToken = getConfigValue("IMGUR_ACCESS_TOKEN");
 
             if (!clientId && !accessToken) {
                 throw new HttpsError("failed-precondition", "Imgur credentials are not configured on the server.");

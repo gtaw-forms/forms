@@ -3,6 +3,7 @@ import * as functions from "firebase-functions";
 import { createHash } from 'crypto';
 import fetch from 'node-fetch';
 import { db, admin } from '../utils/firebase.js';
+import { getConfigValue } from '../utils/config.js';
 
 /**
  * Helper function to get permissions based on script rank
@@ -41,7 +42,7 @@ function getAccessLevel(scriptRank) {
 }
 
 export const processGtaWorldAuth = onCall({
-    secrets: ["GTAWORLD_CLIENT_ID", "GTAWORLD_CLIENT_SECRET"],
+    secrets: ["PHMC_CONFIG"],
     cors: [
         'https://ancad-studios.github.io',
         'http://localhost:3000',
@@ -69,10 +70,10 @@ export const processGtaWorldAuth = onCall({
     if (!code || !redirectUri) {
         throw new functions.https.HttpsError('invalid-argument', 'Authorization code and redirect URI are required.');
     }
-    const clientId = process.env.GTAWORLD_CLIENT_ID;
-    const clientSecret = process.env.GTAWORLD_CLIENT_SECRET;
+    const clientId = getConfigValue("GTAWORLD_CLIENT_ID");
+    const clientSecret = getConfigValue("GTAWORLD_CLIENT_SECRET");
     if (!clientId || !clientSecret) {
-        console.error('[UnifiedAuth] Missing OAuth client credentials in environment');
+        console.error('[UnifiedAuth] Missing OAuth client credentials in configuration');
         throw new functions.https.HttpsError('internal', 'OAuth client credentials not configured properly on the server.');
     }
     logPerf('validation');
@@ -260,7 +261,7 @@ export const processGtaWorldAuth = onCall({
  * This function performs OAuth and clearly logs the token for easy copying
  */
 export const getTokenForSecrets = onCall({
-    secrets: ["GTAWORLD_CLIENT_ID", "GTAWORLD_CLIENT_SECRET"],
+    secrets: ["PHMC_CONFIG"],
     cors: [
         'https://ancad-studios.github.io',
         'http://localhost:3000',
@@ -273,8 +274,8 @@ export const getTokenForSecrets = onCall({
     
     const data = request.data;
     const { code, redirectUri } = data || {};
-    const clientId = process.env.GTAWORLD_CLIENT_ID;
-    const clientSecret = process.env.GTAWORLD_CLIENT_SECRET;
+    const clientId = getConfigValue("GTAWORLD_CLIENT_ID");
+    const clientSecret = getConfigValue("GTAWORLD_CLIENT_SECRET");
 
     if (!code || !redirectUri) {
         throw new functions.https.HttpsError('invalid-argument', 'Authorization code and redirect URI are required');
@@ -363,7 +364,7 @@ export const getTokenForSecrets = onCall({
  * Get or refresh the persistent GTA World access token
  */
 export const getManagedGtaWorldToken = onCall({
-    secrets: ["GTAWORLD_PERSISTENT_TOKEN", "GTAWORLD_REFRESH_TOKEN", "GTAWORLD_CLIENT_ID", "GTAWORLD_CLIENT_SECRET"],
+    secrets: ["PHMC_CONFIG"],
     cors: [
         'https://ancad-studios.github.io',
         'http://localhost:3000',
@@ -374,14 +375,13 @@ export const getManagedGtaWorldToken = onCall({
 }, async (request) => {
     console.log('[Managed Token] Getting persistent access token');
     
-    const persistentToken = process.env.GTAWORLD_PERSISTENT_TOKEN;
-    const refreshToken = process.env.GTAWORLD_REFRESH_TOKEN;
+    const persistentToken = getConfigValue("GTAWORLD_PERSISTENT_TOKEN");
+    const refreshToken = getConfigValue("GTAWORLD_REFRESH_TOKEN");
     
     if (!persistentToken) {
         return {
-            success: false,
-            error: 'No persistent token configured',
-            message: 'Please set GTAWORLD_PERSISTENT_TOKEN secret using: firebase functions:secrets:set GTAWORLD_PERSISTENT_TOKEN',
+// ...
+// ...
             setupInstructions:
                 [
                     '1. First call getTokenForSecrets to get your access token',
@@ -393,6 +393,8 @@ export const getManagedGtaWorldToken = onCall({
     }
     
     try {
+// ...
+// ...
         // First, try to validate the existing token
         console.log('[Managed Token] Validating existing persistent token');
         const validationResponse = await fetch('https://global.gta.world/api/user', {
@@ -420,8 +422,8 @@ export const getManagedGtaWorldToken = onCall({
         
         // If token is expired and we have a refresh token, try to refresh
         if (refreshToken) {
-            const clientId = process.env.GTAWORLD_CLIENT_ID;
-            const clientSecret = process.env.GTAWORLD_CLIENT_SECRET;
+            const clientId = getConfigValue("GTAWORLD_CLIENT_ID");
+            const clientSecret = getConfigValue("GTAWORLD_CLIENT_SECRET");
             
             if (!clientId || !clientSecret) {
                 throw new functions.https.HttpsError('failed-precondition', 
@@ -483,7 +485,7 @@ export const getManagedGtaWorldToken = onCall({
  * Get user profile using the managed persistent token
  */
 export const getProfileWithManagedToken = onCall({
-    secrets: ["GTAWORLD_PERSISTENT_TOKEN"],
+    secrets: ["PHMC_CONFIG"],
     cors: [
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',
@@ -492,7 +494,7 @@ export const getProfileWithManagedToken = onCall({
 }, async (request) => {
     console.log('[Profile Managed] Getting profile with managed token');
     
-    const persistentToken = process.env.GTAWORLD_PERSISTENT_TOKEN;
+    const persistentToken = getConfigValue("GTAWORLD_PERSISTENT_TOKEN");
     
     if (!persistentToken) {
         return {
