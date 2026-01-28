@@ -4,6 +4,7 @@ import { database } from "../../firebase";
 import { ref, update, runTransaction } from "firebase/database";
 import Select from 'react-select';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
+import { useData } from '../../contexts/DataContext';
 import { logAdminAction, getUserContext } from '../../utils/adminLogger';
 import BulkAddFieldsModal from './BulkAddFieldsModal'; // Import the new modal
 import {
@@ -36,6 +37,7 @@ const inputStyle = {
 
 const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = false }) => {
   const { user: gtawUser, isAuthenticated } = useGtaWorldAuth(); // Get authenticated user for logging
+  const { refreshSegments } = useData();
 
   const [formId, setFormId] = useState("");
   const [formName, setFormName] = useState("");
@@ -680,6 +682,10 @@ const handleBulkAddFields = (fieldsToAdd) => {
       }
 
       alert("Form saved!");
+
+      // Force a refresh of the forms cache for the current user (admin)
+      // to ensure they see the changes immediately without needing to clear cache manually.
+      refreshSegments(['forms']);
 
       const action = isDuplicate ? 'Duplicated Form' : (editingForm ? 'Modified Form' : 'Created Form');
       const userForLogging = user || gtawUser;

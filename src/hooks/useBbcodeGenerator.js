@@ -36,9 +36,12 @@ const formatToNorthAmericanDate = (isoDateTime) => {
   const formatToMMM_DD_YYYY = (isoDateTime) => {
     if (!isoDateTime) return 'NO_DATE';
     try {
-      const date = new Date(isoDateTime);
+      // Handle date-only strings by splitting at 'T' and taking the date part.
+      const dateString = isoDateTime.split('T')[0];
+      const date = new Date(dateString);
+
       if (isNaN(date.getTime())) {
-        const parts = isoDateTime.split('T')[0].split('-');
+        const parts = dateString.split('-');
         if (parts.length === 3) {
           const year = parseInt(parts[0], 10);
           const month = parseInt(parts[1], 10) - 1;
@@ -49,20 +52,18 @@ const formatToNorthAmericanDate = (isoDateTime) => {
             return `${monthNames[reconsDate.getMonth()]}-${reconsDate.getDate().toString().padStart(2, '0')}-${reconsDate.getFullYear()}`;
           }
         }
-        return isoDateTime;
-      }
-      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      const month = monthNames[date.getMonth()];
-      const day = date.getDate().toString().padStart(2, '0');
-      const year = date.getFullYear();
-      return `${month}-${day}-${year}`;
-    } catch (e) {
-      console.error("Error formatting date for title (MMM-DD-YYYY):", e);
-      return isoDateTime || 'INVALID_DATE';
-    }
-  };
-
-  const parseCaseNumber = (url) => {
+                                return isoDateTime;
+                          }
+                          const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                          const month = monthNames[date.getMonth()];
+                          const day = date.getDate().toString().padStart(2, '0');
+                          const year = date.getFullYear();
+                          return `${month}-${day}-${year}`;
+                        } catch (e) {
+                          console.error("Error formatting date for title (MMM-DD-YYYY):", e);
+                          return isoDateTime || 'INVALID_DATE';
+                        }
+                      };  const parseCaseNumber = (url) => {
     if (!url) return '';
     // Try to match phpBB t= parameter first
     const tMatch = url.match(/[?&]t=(\d+)/);
@@ -214,9 +215,9 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
       const caseNum = parseCaseNumber(processedFormValues.deathReportPostId) || parseCaseNumber(processedFormValues.caseNumber) || 'UNKNOWN';
       const name = processedFormValues.decedentName || 'UNKNOWN_NAME';
       const ooc = processedFormValues.decedentOOC || 'N/A';
-      const dod = formatToMMM_DD_YYYY(processedFormValues.dateOfDeath || processedFormValues.dateTime);
+      const dod = formatToMMM_DD_YYYY(processedFormValues.dateOfDeath || processedFormValues.dateTime || processedFormValues.formattedDateOfDeath);
 
-      finalTitle = `[CASE-#${year}-${caseNum}] ${name} ((${ooc} | ${dod}))`;
+      finalTitle = `[CASE #${year}-${caseNum}] ${name} ((${ooc})) | ${dod}`;
     }
     
     else if (selectedForm.titleGeneratorCode) {
@@ -474,6 +475,19 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
             }
             else if (["dateTime", "pronouncedTimeOfDeath"].includes(field.name)) {
                 replacement = String(value).split("T")[0] || String(value);
+            }
+            else if (field.name === "formattedDateOfDeath") {
+                replacement = formatToMMM_DD_YYYY(value);
+            }
+            else if (field.name === "caseNumber") {
+                const url = String(value).trim();
+                const caseId = parseCaseNumber(url);
+                // If the input looks like a URL (starts with http) and we found a caseId, wrap it
+                if (url.startsWith('http') && caseId) {
+                    replacement = `[url=${url}]${caseId}[/url]`;
+                } else {
+                    replacement = caseId || url; // Fallback to just the ID or original text
+                }
             }
             else if (field.type === "medicine_block" && value && typeof value === 'object') {
                 const prescribedText = value.prescribed || "None";

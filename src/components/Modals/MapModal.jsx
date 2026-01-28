@@ -102,7 +102,7 @@ const Info = () => {
         };
         info.update = function () {
             this._div.innerHTML = '<h4>Map Controls</h4>' +
-                '<b>Double-click</b> to place a marker.<br/>' +
+                '<b>Double-click</b> to place a marker.<br/> - Click Confirm after placing it! <br/>' +
                 '<b>Right-click</b> a path node to remove it.<br/>' +
                 'Use the search bar to find locations.';
         };
@@ -151,6 +151,7 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
     const [showRegions, setShowRegions] = useState(true);
     const [showStreets, setShowStreets] = useState(true);
     const mapRef = useRef(null);
+    const hasConfirmedRef = useRef(false);
 
     const isMassFatality = useMemo(() => {
         return selectedForm?.name === 'Mass Fatality Report' || 
@@ -158,6 +159,33 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                selectedForm?.firebaseKey === 'mass-fatality' ||
                selectedForm?.firebaseKey === 'mass-ftality-test'; // handle typo from legacy
     }, [selectedForm]);
+
+    // Handle Abrupt Close (Auto-Save Draft)
+    useEffect(() => {
+        if (show) {
+            hasConfirmedRef.current = false;
+        } else {
+            // Modal closing
+            if (!hasConfirmedRef.current && onSelect && markers.length > 0 && !isMassFatality) {
+                const m = markers[markers.length - 1]; // Use last placed marker
+                const name = m.nearest + (m.crossStreet ? ` & ${m.crossStreet}` : "");
+                
+                console.log("[MapModal] Abrupt close detected. Auto-saving draft location:", name);
+                
+                onSelect({ 
+                    name: name, // Plain text, no BBCode URL
+                    rawName: name, 
+                    gameX: parseFloat(m.gameX), 
+                    gameY: parseFloat(m.gameY), 
+                    screenshot: null, 
+                    isFromMap: true 
+                });
+                
+                // Optional: clear markers so it doesn't trigger again if state persists (though component might unmount)
+                setMarkers([]); 
+            }
+        }
+    }, [show, markers, onSelect, isMassFatality]);
 
     useEffect(() => {
         const fetchMapStatus = async () => {
@@ -501,6 +529,7 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
     };
 
     const handleReportLocation = async (marker) => {
+        hasConfirmedRef.current = true;
         let rN = marker.nearest + (marker.crossStreet ? ` & ${marker.crossStreet}` : "");
         let name = onSelect ? (searchQuery || rN) : rN;
 
@@ -562,6 +591,7 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
     };
 
     const handleMassFatalityCapture = async () => {
+        hasConfirmedRef.current = true;
         if (markers.length === 0) {
             alert("No markers placed on the map.");
             return;
@@ -898,7 +928,7 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                                         </div>
                                         <div className="mt-3 pt-2" style={{ borderTop: '1px solid #eee' }}>
                                             {!isMassFatality && (
-                                                <Button variant={onSelect ? "primary" : "success"} size="sm" className="w-100" onClick={() => handleReportLocation(m)} disabled={reporting === m.id || isSnapshotting}>{isSnapshotting ? 'Uploading File' : (reporting === m.id ? 'Uploading File... ' : (onSelect ? 'Confirm' : 'Report'))}</Button>
+                                                <Button variant={onSelect ? "primary" : "success"} size="sm" className="w-100" onClick={() => handleReportLocation(m)} disabled={reporting === m.id || isSnapshotting}>{isSnapshotting ? 'Uploading File' : (reporting === m.id ? 'Uploading File... ' : (onSelect ? 'Confirm Death Location' : 'Report'))}</Button>
                                             )}
                                             <Button variant="link" size="sm" className="w-100 mt-1 text-danger p-0" onClick={() => setMarkers(prev => prev.filter(marker => marker.id !== m.id))} style={{ fontSize: '0.75rem', textDecoration: 'none' }}>Remove</Button>
                                         </div>

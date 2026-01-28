@@ -520,9 +520,6 @@ const AdminDashboard = ({
                         <button className={`nav-link ${selectedSection === 'factions' ? 'active' : ''}`} onClick={() => setSelectedSection('factions')}><i className="fas fa-users me-2"></i>Faction Data</button>
                         <button className={`nav-link ${selectedSection === 'dev' ? 'active' : ''}`} onClick={() => setSelectedSection('dev')}><i className="fas fa-code me-2"></i>Developer</button>
                         <button className={`nav-link ${selectedSection === 'database' ? 'active' : ''}`} onClick={() => setSelectedSection('database')}><i className="fas fa-database me-2"></i>Database</button>
-                        {hasRankPermissionsAccess && (
-                            <button className={`nav-link ${selectedSection === 'rankPermissions' ? 'active' : ''}`} onClick={() => setSelectedSection('rankPermissions')}><i className="fas fa-user-shield me-2"></i>Rank Permissions</button>
-                        )}
                     </div>
                     <div className="sidebar-footer">
                         {desktopNotificationPermission === 'default' && (
@@ -1538,66 +1535,6 @@ const AdminDashboard = ({
                                     <div className="alert alert-info">
                                         <i className="fas fa-info-circle me-2"></i>
                                         Please log in with your GTA World account to access database management features.
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                    {selectedSection === 'rankPermissions' && (
-                        <div className="card">
-                            <div className="card-header">
-                                <i className="fas fa-user-shield me-2"></i>
-                                Rank Permissions Management
-                            </div>
-                            <div className="card-body">
-                                {hasRankPermissionsAccess ? (
-                                    <div>
-                                        <div className="alert alert-info">
-                                            <i className="fas fa-info-circle me-2"></i>
-                                            <strong>Rank Permissions Editor</strong>
-                                            <p className="mb-0 mt-2">Configure which ranks have access to different admin panel sections.</p>
-                                        </div>
-                                        
-                                        <div className="row">
-                                            <div className="col-md-6">
-                                                <h6>Current Permission Levels</h6>
-                                                <div className="list-group">
-                                                    <div className="list-group-item">
-                                                        <strong>Faction Data Upload:</strong> Rank 10+
-                                                    </div>
-                                                    <div className="list-group-item">
-                                                        <strong>Database Editor:</strong> Rank 12+
-                                                    </div>
-                                                    <div className="list-group-item">
-                                                        <strong>Bingo Management:</strong> Rank 14+
-                                                    </div>
-                                                    <div className="list-group-item">
-                                                        <strong>User Management:</strong> Rank 14+
-                                                    </div>
-                                                    <div className="list-group-item">
-                                                        <strong>Rank Permissions:</strong> Rank 15+
-                                                    </div>
-                                                    <div className="list-group-item">
-                                                        <strong>Google Admin Override:</strong> Email Login Only
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="col-md-6">
-                                                <h6>Permission Configuration</h6>
-                                                <div className="alert alert-warning">
-                                                    <i className="fas fa-construction me-2"></i>
-                                                    <strong>Coming Soon</strong>
-                                                    <p className="mb-0 mt-2">Dynamic permission configuration interface will be available in a future update.</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="alert alert-danger">
-                                        <i className="fas fa-exclamation-triangle me-2"></i>
-                                        <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to manage rank permissions.
-                                        <br />
-                                        <small>Required: Script Rank 15 or higher, or Google Admin access</small>
                                     </div>
                                 )}
                             </div>

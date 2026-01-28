@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from "react";
+import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense, useRef } from "react";
 import * as Sentry from "@sentry/react";
 import useGtaWorldAuth from "../../hooks/useGtaWorldAuth";
 import { useModal } from "../../contexts/ModalProvider";
@@ -1336,16 +1336,25 @@ export const FormHandler = () => {
                         const dBadge = formValues[`${empType}Badge`] || "N/A";
                         const dIsCoroner = empType === 'coroner' ? "TRUE" : "FALSE";
                         
-                        console.log(`[DEBUG] FOUND PHMC EMPLOYEE: ${dName} | ${dRank} | ${dBadge} | (Coroner: ${dIsCoroner}) |`);
 
+                        
+                    console.log(`[DEBUG] FOUND PHMC EMPLOYEE: ${dName} | ${dRank} | ${dBadge} | (Coroner: ${dIsCoroner}) |`);
+                        
+
+                        
                     }
+                        
 
+                        
                     generateBBCode();
+                        
                     trackMetric('form_handler', `generate_bbcode_${selectedForm.name}`);
+                        
                   }} 
+                        
                   className={formStyles.generateButton}
-                >
-                  Generate BBCode
+                        
+                >                  Generate BBCode
                 </button>
               </div>
             </>
@@ -1425,17 +1434,22 @@ export const FormHandler = () => {
     <FormQuickLinks form={selectedForm} formValues={formValues} agencyDataStore={agencyDataStore} />
 
     {showBBCode && (
-      <pre style={{
-        background: "#0f172a",
-        padding: "1.5rem",
-        borderRadius: 12,
-        color: "#e2e8f0",
-        fontSize: "0.9rem",
-        maxHeight: "60vh",
-        overflow: "auto",
-        marginTop: "1rem",
-        whiteSpace: "pre-wrap"
-      }}>
+      <pre 
+        style={{
+          background: "#0f172a",
+          padding: "1.5rem",
+          borderRadius: 12,
+          color: "#e2e8f0",
+          fontSize: "0.9rem",
+          maxHeight: "60vh",
+          overflow: "auto",
+          marginTop: "1rem",
+          whiteSpace: "pre-wrap",
+          cursor: "pointer"
+        }}
+        onClick={copyAndSaveReport}
+        title="Click to Copy BBCode + Save"
+      >
         {generatedBBCode}
       </pre>
     )}
