@@ -1,11 +1,12 @@
 import fetch from 'node-fetch';
 import FormData from 'form-data';
 import { db } from './firebase.js';
+import { getConfigValue } from './config.js';
 
 // Helper to safely check if secrets exist during deployment
 export const secretsExist = (secretNames) => {
     try {
-        return secretNames.every(name => process.env[name] !== undefined);
+        return secretNames.every(name => getConfigValue(name) !== undefined);
     } catch {
         return false;
     }
@@ -23,7 +24,7 @@ export const getShuffledPhrases = (phrases) => {
 
 export const sendWebhook = async (payload, urlOverride = null) => {
     // Priority: urlOverride -> DISCORD_WEBHOOK_FUNCTIONS -> ADMIN_ACTION_WEBHOOK_URL
-    const webhookURL = urlOverride || process.env.DISCORD_WEBHOOK_FUNCTIONS || process.env.ADMIN_ACTION_WEBHOOK_URL;
+    const webhookURL = urlOverride || getConfigValue("DISCORD_WEBHOOK_FUNCTIONS") || getConfigValue("ADMIN_ACTION_WEBHOOK_URL");
 
     if (!webhookURL) {
         console.error("FATAL: Webhook URL is not set. Webhook cannot be sent.");
@@ -116,7 +117,7 @@ export const scheduleDeletion = async (request) => {
 };
 
 export const sendWebhookWithFile = async (content, filename, messagePayload = {}) => {
-    const webhookURL = process.env.DISCORD_WEBHOOK_FUNCTIONS || process.env.ADMIN_ACTION_WEBHOOK_URL;
+    const webhookURL = getConfigValue("DISCORD_WEBHOOK_FUNCTIONS") || getConfigValue("ADMIN_ACTION_WEBHOOK_URL");
     if (!webhookURL) return false;
 
     try {

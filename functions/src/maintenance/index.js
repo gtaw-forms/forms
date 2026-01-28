@@ -2,405 +2,11 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { createHash } from 'crypto';
 import { db, admin } from '../utils/firebase.js';
 import { sendWebhook, getShuffledPhrases, scheduleDeletion } from '../utils/helpers.js';
+import { runWeeklyCoronerSummary, runMonthlyCoronerSummary, runYearlyCoronerSummary } from '../reports/coroner.js';
 
-// --- Scheduled Cloud Function (v2) ---
-
-export const dailyMaintenanceTask = onSchedule({
-    schedule: "every day 09:00",
-    timeZone: "UTC",
-    // --- MODIFICATION: Add the 'secrets' option to grant access to the webhook URL
-    secrets: ["ADMIN_ACTION_WEBHOOK_URL", "DISCORD_WEBHOOK_FUNCTIONS"],
-}, async (event) => {
-    console.log(`Running daily maintenance task. Event ID: ${event.id}`);
-
-    const REPORTS_PATH = '/newSavedReports';
-    const BBCODE_PATH = '/newSavedReportBBCode';
-    let maintenanceResults = {
-        bingo: { success: [], noCard: [], notEnoughPhrases: [], errors: [] },
-        phraseRequests: { deleted: 0, errors: [] },
-        duplicateCleanup: { scanned: 0, duplicatesFound: 0, duplicatesDeleted: 0, errors: [] },
-        backupCleanup: { oldBackupsCleaned: 0, errors: [] },
-        webhookLogCleanup: { oldLogsCleaned: 0, errors: [] },
-        reportCleanup: { oldReportsCleaned: 0, errors: [] }
-    };
-
-    // --- Bingo Reset Logic ---
-    const BINGO_TYPES = [
-        { id: 'er', name: 'Emergency Room', path: 'ER' },
-        { id: 'ems', name: 'EMS', path: 'EMS' },
-        { id: 'coroner', name: 'Coroner', path: 'Coroner' }
-    ];
-
-    await db.ref('bingo/meta').update({ lastAutoRegenTimestamp: admin.database.ServerValue.TIMESTAMP });
-
-    await Promise.all(BINGO_TYPES.map(async (bingoType) => {
-        const cardPhrasesRef = db.ref(`bingo/cards/${bingoType.path}/phrases`);
-        const masterPhrasesRef = db.ref(`bingo/phrases/${bingoType.path}`);
-        const activityLogRef = db.ref(`bingo/logs/${bingoType.path}/activityLog`);
-
-        try {
-            const cardSnapshot = await cardPhrasesRef.once('value');
-            if (!cardSnapshot.exists()) {
-                maintenanceResults.bingo.noCard.push(bingoType.name);
-                return;
-            }
-
-            const masterSnapshot = await masterPhrasesRef.once('value');
-            if (!masterSnapshot.exists()) {
-                maintenanceResults.bingo.notEnoughPhrases.push(`${bingoType.name} (no master list)`);
-                return;
-            }
-
-            const masterPhrasesData = masterSnapshot.val();
-            // --- IMPROVEMENT: More robustly handle object-or-array data structures from Firebase.
-            const masterPhrases = Array.isArray(masterPhrasesData)
-                ? masterPhrasesData.filter(Boolean)
-                : (typeof masterPhrasesData === 'object' && masterPhrasesData !== null)
-                    ? Object.values(masterPhrasesData).map(p => (typeof p === 'object' ? p.phrase : p)).filter(Boolean)
-                    : [];
-
-            if (masterPhrases.length < 24) {
-                maintenanceResults.bingo.notEnoughPhrases.push(`${bingoType.name} (${masterPhrases.length}/24)`);
-                return;
-            }
-
-            const shuffledPhrases = getShuffledPhrases(masterPhrases).slice(0, 24);
-            await cardPhrasesRef.set(shuffledPhrases);
-            await activityLogRef.remove();
-            maintenanceResults.bingo.success.push(bingoType.name);
-
-        } catch (error) {
-            console.error(`Error processing ${bingoType.name}: ${error?.message || String(error)}`);
-            maintenanceResults.bingo.errors.push(`${bingoType.name}: ${error.message}`);
-        }
-    }));
-
-    // --- Phrase Request Deletion Logic ---
-    try {
-        const requestsRef = db.ref('bingo/phraseRequests');
-        const snapshot = await requestsRef.once('value');
-        if (snapshot.exists()) {
-            const requests = snapshot.val();
-            let deletionCount = 0;
-
-            // Collect deletion promises
-            const deletionPromises = Object.entries(requests)
-                .map(([key, value]) => {
-                    const request = { id: key, ...value };
-                    if (request.status !== 'pending' && request.processedAt) {
-                        return scheduleDeletion(request).then(() => {
-                            deletionCount++; // Increment only on successful deletion
-                        });
-                    }
-                    return null;
-                })
-                .filter(Boolean);
-
-            await Promise.all(deletionPromises);
-            maintenanceResults.phraseRequests.deleted = deletionCount;
-        }
-    } catch (error) {
-        console.error(`Error during phrase request deletion: ${error?.message || String(error)}`);
-        maintenanceResults.phraseRequests.errors.push(`Phrase request deletion error: ${error.message}`);
-    }
-
-    // --- Duplicate Reports Cleanup Logic ---
-    try {
-        console.log('[Maintenance] Starting duplicate reports cleanup...');
-        const reportsRef = db.ref(REPORTS_PATH);
-        const reportsSnapshot = await reportsRef.once('value');
-
-        if (reportsSnapshot.exists()) {
-            const allReports = reportsSnapshot.val();
-            const reportHashes = new Map(); // hash -> [reportPaths]
-            let totalReportsScanned = 0;
-            let duplicatesFound = 0;
-            let duplicatesDeleted = 0;
-
-            // Scan all user directories
-            for (const [userId, userReports] of Object.entries(allReports)) {
-                if (!userReports || typeof userReports !== 'object') continue;
-
-                // Scan all reports for this user
-                for (const [reportKey, reportData] of Object.entries(userReports)) {
-                    if (!reportData || typeof reportData !== 'object') continue;
-
-                    totalReportsScanned++;
-
-                    // Create a hash based on key fields to identify duplicates
-                    // UPDATED: Use reportData.data (form values) for unique content hash as bbCode is stored separately now.
-                    const hashData = {
-                        content: reportData.data ? JSON.stringify(reportData.data) : (reportData.bbCode || ''),
-                        authorName: reportData.authorName,
-                        originalKey: reportData.originalKey
-                    };
-
-                    const hash = createHash('md5').update(JSON.stringify(hashData)).digest('hex');
-                    const reportPath = `${userId}/${reportKey}`;
-
-                    if (!reportHashes.has(hash)) {
-                        reportHashes.set(hash, [reportPath]);
-                    } else {
-                        reportHashes.get(hash).push(reportPath);
-                    }
-                }
-            }
-
-            // Process duplicates - keep the most recent one, delete others
-            for (const [hash, reportPaths] of reportHashes.entries()) {
-                if (reportPaths.length > 1) {
-                    duplicatesFound += reportPaths.length - 1; // All except the first are duplicates
-
-                    const reportsWithTimestamps = await Promise.all(
-                        reportPaths.map(async (path) => {
-                            const [userId, reportKey] = path.split('/');
-                            const reportRef = db.ref(`${REPORTS_PATH}/${userId}/${reportKey}`);
-                            const snapshot = await reportRef.once('value');
-                            const data = snapshot.val();
-                            return {
-                                path,
-                                timestamp: data?.timestamp || 0,
-                                userId,
-                            reportKey
-                        };
-                        })
-                    );
-
-                    reportsWithTimestamps.sort((a, b) => b.timestamp - a.timestamp);
-
-                    const toDelete = reportsWithTimestamps.slice(1);
-                    for (const report of toDelete) {
-                        try {
-                            const deleteRef = db.ref(`${REPORTS_PATH}/${report.userId}/${report.reportKey}`);
-                            const deleteBbCodeRef = db.ref(`${BBCODE_PATH}/${report.userId}/${report.reportKey}`);
-                            await deleteRef.remove();
-                            await deleteBbCodeRef.remove();
-                            duplicatesDeleted++;
-                            console.log(`[Maintenance] Deleted duplicate report: ${report.path}`);
-                        } catch (deleteError) {
-                            console.error(`[Maintenance] Error deleting duplicate report ${report.path}: ${deleteError?.message || String(deleteError)}`);
-                            maintenanceResults.duplicateCleanup.errors.push(`Failed to delete duplicate: ${report.path}`);
-                        }
-                    }
-                }
-            }
-
-            maintenanceResults.duplicateCleanup.scanned = totalReportsScanned;
-            maintenanceResults.duplicateCleanup.duplicatesFound = duplicatesFound;
-            maintenanceResults.duplicateCleanup.duplicatesDeleted = duplicatesDeleted;
-
-            console.log(`[Maintenance] Duplicate cleanup complete: scanned ${totalReportsScanned}, found ${duplicatesFound} duplicates, deleted ${duplicatesDeleted}`);
-        } else {
-            console.log('[Maintenance] No saved reports found to clean up');
-        }
-    } catch (error) {
-        console.error(`Error during duplicate reports cleanup: ${error?.message || String(error)}`);
-        maintenanceResults.duplicateCleanup.errors.push(`Duplicate cleanup error: ${error.message}`);
-    }
-
-    // --- Backup Cleanup Logic ---
-    try {
-		console.log('[Maintenance] Starting backup cleanup...');
-		const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000); // 3 days in milliseconds
-		let oldBackupsCleaned = 0;
-
-		const factionBackupRef = db.ref('factions');
-		const factionSnapshot = await factionBackupRef.once('value');
-
-		if (factionSnapshot.exists()) {
-			const factions = factionSnapshot.val();
-
-			for (const [factionId, factionData] of Object.entries(factions)) {
-				if (factionData?.backups) {
-					const backupPromises = Object.entries(factionData.backups)
-						.map(async ([backupKey, backupData]) => {
-							if (backupData?.backedUpAt && backupData.backedUpAt < threeDaysAgo) {
-								try {
-									const backupRef = db.ref(`factions/${factionId}/backups/${backupKey}`);
-									await backupRef.remove();
-									oldBackupsCleaned++;
-									console.log(`[Maintenance] Deleted old faction backup: ${factionId}/${backupKey}`);
-								} catch (backupError) {
-									console.error(`[Maintenance] Error deleting faction backup ${factionId}/${backupKey}: ${backupError?.message || String(backupError)}`);
-									maintenanceResults.backupCleanup.errors.push(`Failed to delete faction backup: ${factionId}/${backupKey}`);
-								}
-							}
-						});
-					await Promise.all(backupPromises);
-				}
-			}
-		}
-
-		maintenanceResults.backupCleanup.oldBackupsCleaned = oldBackupsCleaned;
-		console.log(`[Maintenance] Backup cleanup complete: cleaned ${oldBackupsCleaned} old backups`);
-	} catch (error) {
-		console.error(`Error during backup cleanup: ${error?.message || String(error)}`);
-		maintenanceResults.backupCleanup.errors.push(`Backup cleanup error: ${error.message}`);
-	}
-
-    // --- Webhook Log Cleanup Logic ---
-    try {
-        console.log('[Maintenance] Starting webhook log cleanup...');
-        const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000); // 3 days in milliseconds
-        const webhookLogsRef = db.ref('webhook_logs');
-        const logsSnapshot = await webhookLogsRef.once('value');
-
-        let oldLogsCleaned = 0;
-
-        if (logsSnapshot.exists()) {
-            const logs = logsSnapshot.val();
-
-            const logDeletionPromises = Object.entries(logs)
-                .map(async ([logKey, logData]) => {
-                    let logTimestamp = parseInt(logKey);
-                    
-                    if (isNaN(logTimestamp)) {
-                        if (logData?.timestamp) {
-                            logTimestamp = parseInt(logData.timestamp);
-                        } else if (logData?.payload?.timestamp) {
-                            logTimestamp = parseInt(logData.payload.timestamp);
-                        } else if (typeof logData === 'number') {
-                            logTimestamp = logData;
-                        }
-                    }
-                    
-                    if (!isNaN(logTimestamp) && logTimestamp > 0 && logTimestamp < threeDaysAgo) {
-                        try {
-                            const logRef = db.ref(`webhook_logs/${logKey}`);
-                            await logRef.remove();
-                            oldLogsCleaned++;
-                        } catch (logError) {
-                            console.error(`[Maintenance] Error deleting webhook log ${logKey}: ${logError?.message || String(logError)}`);
-                            maintenanceResults.webhookLogCleanup.errors.push(`Failed to delete webhook log: ${logKey}`);
-                        }
-                    }
-                });
-
-            await Promise.all(logDeletionPromises);
-        }
-
-        maintenanceResults.webhookLogCleanup.oldLogsCleaned = oldLogsCleaned;
-        console.log(`[Maintenance] Webhook log cleanup complete: cleaned ${oldLogsCleaned} old logs`);
-    } catch (error) {
-        console.error(`Error during webhook log cleanup: ${error?.message || String(error)}`);
-        maintenanceResults.webhookLogCleanup.errors.push(`Webhook log cleanup error: ${error.message}`);
-    }
-
-    // --- Saved Reports Cleanup Logic (365 days) ---
-    try {
-        console.log('[Maintenance] Starting old reports cleanup (365 days)...');
-        const threeSixtyFiveDaysAgo = Date.now() - (365 * 24 * 60 * 60 * 1000);
-        const allUserIdsRef = db.ref(REPORTS_PATH);
-        const allUserIdsSnapshot = await allUserIdsRef.once('value');
-        let oldReportsCleaned = 0;
-        const deletionPromises = [];
-
-        if (allUserIdsSnapshot.exists()) {
-            const allUsers = allUserIdsSnapshot.val();
-
-            for (const userId in allUsers) {
-                const userReportsQuery = db.ref(`${REPORTS_PATH}/${userId}`).orderByChild('timestamp').endAt(threeSixtyFiveDaysAgo);
-                const userReportsSnapshot = await userReportsQuery.once('value');
-
-                if (userReportsSnapshot.exists()) {
-                    userReportsSnapshot.forEach((reportSnapshot) => {
-                        const reportId = reportSnapshot.key;
-                        deletionPromises.push(db.ref(`${REPORTS_PATH}/${userId}/${reportId}`).remove());
-                        deletionPromises.push(db.ref(`${BBCODE_PATH}/${userId}/${reportId}`).remove());
-                        oldReportsCleaned++;
-                    });
-                }
-            }
-
-            await Promise.all(deletionPromises);
-            console.log(`[Maintenance] Old reports cleanup complete: cleaned ${oldReportsCleaned} old reports.`);
-        } else {
-            console.log('[Maintenance] No saved reports found to clean up.');
-        }
-        maintenanceResults.reportCleanup.oldReportsCleaned = oldReportsCleaned;
-    } catch (error) {
-        console.error(`Error during old reports cleanup: ${error?.message || String(error)}`);
-        maintenanceResults.reportCleanup.errors.push(`Old reports cleanup error: ${error.message}`);
-    }
-
-    // Send comprehensive webhook notification with all maintenance results
-    const bingoDetails = [
-        `Success: ${maintenanceResults.bingo.success.join(', ') || 'None'}`,
-        `No Card: ${maintenanceResults.bingo.noCard.join(', ') || 'None'}`,
-        `Not Enough Phrases: ${maintenanceResults.bingo.notEnoughPhrases.join(', ') || 'None'}`
-    ].join('\n');
-
-    const phraseRequestsDetails = `Deleted: ${maintenanceResults.phraseRequests.deleted}`;
-
-    const hasCleanedUp = maintenanceResults.reportCleanup.oldReportsCleaned > 0 || maintenanceResults.duplicateCleanup.duplicatesDeleted > 0 || maintenanceResults.backupCleanup.oldBackupsCleaned > 0 || maintenanceResults.webhookLogCleanup.oldLogsCleaned > 0;
-    const embed = {
-        title: "Daily Maintenance Task",
-        color: hasCleanedUp ? 0xFF6B35 : 0x1E90FF, // Orange if cleanup happened, blue otherwise
-        fields: [
-            {
-                name: "🎯 Bingo Reset Status",
-                value: `${bingoDetails.trim() || "No bingo actions taken."}`,
-                inline: false
-            },
-            {
-                name: "📝 Phrase Request Deletion",
-                value: `${phraseRequestsDetails.trim() || "No phrase request actions taken."}`,
-                inline: false
-            },
-            { name: "📜 Old Reports Cleanup (365 days)", value: `🗑️ **Old Reports Cleaned:** ${maintenanceResults.reportCleanup.oldReportsCleaned}`, inline: true }, // New field
-            {
-                name: "🧹 Duplicate Reports Cleanup",
-                value: `📊 **Scanned:** ${maintenanceResults.duplicateCleanup.scanned} reports\n🔍 **Found:** ${maintenanceResults.duplicateCleanup.duplicatesFound}\n🗑️ **Deleted:** ${maintenanceResults.duplicateCleanup.duplicatesDeleted}`,
-                inline: true
-            },
-            { name: "💾 Backup Cleanup (3 days)", value: `📁 **Old Backups Cleaned:** ${maintenanceResults.backupCleanup.oldBackupsCleaned}`, inline: true },
-            { name: "📋 Webhook Log Cleanup (3 days)", value: `📝 **Old Logs Cleaned:** ${maintenanceResults.webhookLogCleanup.oldLogsCleaned}`, inline: true },
-            {
-                name: "📈 Overall Status",
-                value: hasCleanedUp
-                    ? `✅ Maintenance completed successfully with cleanup actions.`
-                    : `✅ Maintenance completed - no significant cleanup actions needed.`,
-                inline: false
-            }
-        ],
-        footer: { text: "PHMC Tools - Automated Daily Maintenance (v2)" }
-    };
-
-    // Add error details if any
-    const allErrors = [
-        ...maintenanceResults.reportCleanup.errors, // Add reportCleanup errors
-        ...maintenanceResults.bingo.errors,
-        ...maintenanceResults.phraseRequests.errors,
-        ...maintenanceResults.duplicateCleanup.errors,
-        ...maintenanceResults.backupCleanup.errors,
-        ...maintenanceResults.webhookLogCleanup.errors
-    ];
-
-    if (allErrors.length > 0) {
-        embed.fields.push({
-            name: "⚠️ Errors",
-            value: allErrors.slice(0, 5).join('\n'), // Limit to first 5 errors
-            inline: false
-        });
-    }
-
-    const webhookSuccess = await sendWebhook({ embeds: [embed] });
-
-    if (webhookSuccess) {
-        console.log('Daily task handler finished successfully and dispatched webhook.');
-    } else {
-        console.error('Daily task handler finished, but failed to dispatch webhook.');
-    }
-
-    return null;
-});
-
-export const weeklyMetricsSummary = onSchedule({
-    schedule: "every monday 09:00", // Weekly trigger
-    timeZone: "UTC",
-    secrets: ["ADMIN_ACTION_WEBHOOK_URL", "DISCORD_WEBHOOK_FUNCTIONS"],
-}, async (event) => {
-    console.log(`[Metrics Summary] Running weekly user metrics summary. Event ID: ${event.id}`);
+// --- Helper for Metrics Summary ---
+export const runWeeklyMetricsSummary = async () => {
+    console.log(`[Metrics Summary] Running weekly user metrics summary.`);
 
     const metricsRef = db.ref('user_metrics');
     const snapshot = await metricsRef.once('value');
@@ -493,4 +99,352 @@ export const weeklyMetricsSummary = onSchedule({
     console.log(`[Metrics Summary] Weekly summary sent. Active users: ${totalWeeklyUsers}. Total actions: ${totalWeeklyActions}.`);
 
     return null;
+};
+
+
+// --- Scheduled Cloud Function (v2) ---
+
+export const dailyMaintenanceTask = onSchedule({
+    schedule: "every day 09:00",
+    timeZone: "UTC",
+    secrets: ["PHMC_CONFIG"],
+    memory: "512MiB", // Explicitly increase memory for safety, though optimization reduces need
+    timeoutSeconds: 540, // 9 minutes
+}, async (event) => {
+    console.log(`Running daily maintenance task. Event ID: ${event.id}`);
+
+    const now = new Date();
+    const isMonday = now.getUTCDay() === 1;
+    const isFirstOfMonth = now.getUTCDate() === 1;
+    const isFirstOfYear = isFirstOfMonth && now.getUTCMonth() === 0;
+
+    const REPORTS_PATH = '/newSavedReports';
+    const BBCODE_PATH = '/newSavedReportBBCode';
+    
+    // Results Tracker
+    let maintenanceResults = {
+        bingo: { success: [], noCard: [], notEnoughPhrases: [], errors: [] },
+        phraseRequests: { deleted: 0, errors: [] },
+        duplicateCleanup: { scanned: 0, duplicatesFound: 0, duplicatesDeleted: 0, errors: [] },
+        backupCleanup: { oldBackupsCleaned: 0, errors: [] },
+        webhookLogCleanup: { oldLogsCleaned: 0, errors: [] },
+        reportCleanup: { oldReportsCleaned: 0, errors: [] }
+    };
+
+    // --- 1. Bingo Reset Logic ---
+    // ... logic remains same ...
+    const BINGO_TYPES = [
+        { id: 'er', name: 'Emergency Room', path: 'ER' },
+        { id: 'ems', name: 'EMS', path: 'EMS' },
+        { id: 'coroner', name: 'Coroner', path: 'Coroner' }
+    ];
+
+    try {
+        await db.ref('bingo/meta').update({ lastAutoRegenTimestamp: admin.database.ServerValue.TIMESTAMP });
+        await Promise.all(BINGO_TYPES.map(async (bingoType) => {
+            const cardPhrasesRef = db.ref(`bingo/cards/${bingoType.path}/phrases`);
+            const masterPhrasesRef = db.ref(`bingo/phrases/${bingoType.path}`);
+            const activityLogRef = db.ref(`bingo/logs/${bingoType.path}/activityLog`);
+
+            try {
+                const cardSnapshot = await cardPhrasesRef.once('value');
+                if (!cardSnapshot.exists()) {
+                    maintenanceResults.bingo.noCard.push(bingoType.name);
+                    return;
+                }
+
+                const masterSnapshot = await masterPhrasesRef.once('value');
+                if (!masterSnapshot.exists()) {
+                    maintenanceResults.bingo.notEnoughPhrases.push(`${bingoType.name} (no master list)`);
+                    return;
+                }
+
+                const masterPhrasesData = masterSnapshot.val();
+                const masterPhrases = Array.isArray(masterPhrasesData)
+                    ? masterPhrasesData.filter(Boolean)
+                    : (typeof masterPhrasesData === 'object' && masterPhrasesData !== null)
+                        ? Object.values(masterPhrasesData).map(p => (typeof p === 'object' ? p.phrase : p)).filter(Boolean)
+                        : [];
+
+                if (masterPhrases.length < 24) {
+                    maintenanceResults.bingo.notEnoughPhrases.push(`${bingoType.name} (${masterPhrases.length}/24)`);
+                    return;
+                }
+
+                const shuffledPhrases = getShuffledPhrases(masterPhrases).slice(0, 24);
+                await cardPhrasesRef.set(shuffledPhrases);
+                await activityLogRef.remove();
+                maintenanceResults.bingo.success.push(bingoType.name);
+
+            } catch (error) {
+                console.error(`Error processing ${bingoType.name}: ${error?.message}`);
+                maintenanceResults.bingo.errors.push(`${bingoType.name}: ${error.message}`);
+            }
+        }));
+    } catch (e) {
+        console.error("Critical error in Bingo Logic:", e);
+        maintenanceResults.bingo.errors.push(`Critical: ${e.message}`);
+    }
+
+    // --- 2. Phrase Request Deletion Logic ---
+    try {
+        const requestsRef = db.ref('bingo/phraseRequests');
+        const snapshot = await requestsRef.once('value');
+        if (snapshot.exists()) {
+            const requests = snapshot.val();
+            let deletionCount = 0;
+            const deletionPromises = Object.entries(requests)
+                .map(([key, value]) => {
+                    const request = { id: key, ...value };
+                    if (request.status !== 'pending' && request.processedAt) {
+                        return scheduleDeletion(request).then(() => deletionCount++);
+                    }
+                    return null;
+                })
+                .filter(Boolean);
+            await Promise.all(deletionPromises);
+            maintenanceResults.phraseRequests.deleted = deletionCount;
+        }
+    } catch (error) {
+        console.error(`Error during phrase request deletion: ${error.message}`);
+        maintenanceResults.phraseRequests.errors.push(`Phrase request error: ${error.message}`);
+    }
+
+    // --- 3. Optimized User Report Maintenance (Duplicates & Old Reports) ---
+    // Instead of fetching all reports (OOM risk), we fetch user IDs and process per-user.
+    try {
+        console.log('[Maintenance] Starting User Report Maintenance...');
+        const userCountsRef = db.ref('userReportCounts');
+        const userCountsSnapshot = await userCountsRef.once('value');
+        
+        if (userCountsSnapshot.exists()) {
+            const userIds = Object.keys(userCountsSnapshot.val());
+            const threeSixtyFiveDaysAgo = Date.now() - (365 * 24 * 60 * 60 * 1000);
+            const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000);
+
+            // Process users in chunks to control concurrency
+            const CHUNK_SIZE = 10;
+            for (let i = 0; i < userIds.length; i += CHUNK_SIZE) {
+                const chunk = userIds.slice(i, i + CHUNK_SIZE);
+                
+                await Promise.all(chunk.map(async (userId) => {
+                    // A. Old Reports Cleanup (> 365 days)
+                    try {
+                        const oldReportsQuery = db.ref(`${REPORTS_PATH}/${userId}`)
+                            .orderByChild('timestamp')
+                            .endAt(threeSixtyFiveDaysAgo);
+                        
+                        const oldSnapshot = await oldReportsQuery.once('value');
+                        if (oldSnapshot.exists()) {
+                            const updates = {};
+                            oldSnapshot.forEach((snap) => {
+                                updates[`${REPORTS_PATH}/${userId}/${snap.key}`] = null;
+                                updates[`${BBCODE_PATH}/${userId}/${snap.key}`] = null;
+                                maintenanceResults.reportCleanup.oldReportsCleaned++;
+                            });
+                            await db.ref().update(updates);
+                        }
+                    } catch (err) {
+                        console.error(`Error cleaning old reports for user ${userId}:`, err);
+                    }
+
+                    // B. Duplicate Cleanup (Last 3 Days Only)
+                    // Logic: Match on Name/OOC/Date. If match found within 10 minutes of a newer save, delete the older one.
+                    try {
+                        const recentReportsQuery = db.ref(`${REPORTS_PATH}/${userId}`)
+                            .orderByChild('timestamp')
+                            .startAt(threeDaysAgo);
+                        
+                        const recentSnapshot = await recentReportsQuery.once('value');
+                        if (recentSnapshot.exists()) {
+                            const recentReports = [];
+                            recentSnapshot.forEach(snap => {
+                                recentReports.push({ key: snap.key, val: snap.val() });
+                            });
+
+                            // Sort descending by timestamp (Newest FIRST)
+                            recentReports.sort((a, b) => (b.val.timestamp || 0) - (a.val.timestamp || 0));
+
+                            const updates = {};
+                            const keptReports = []; // Stores the 'surviving' reports to compare against
+
+                            // Helper to generate a unique key for the entity (Person + Time)
+                            const getEntityKey = (reportVal) => {
+                                const d = reportVal.data || {};
+                                // If it looks like a death/coroner report
+                                if (d.decedentName || d.decedentOOC) {
+                                    // Use specific fields requested
+                                    return `DECEDENT:${d.decedentName || ''}|${d.decedentOOC || ''}|${d.dateTime || ''}`;
+                                }
+                                // Fallback for other forms: use the Report Title
+                                return `TITLE:${reportVal.originalKey || ''}`;
+                            };
+
+                            for (const report of recentReports) {
+                                maintenanceResults.duplicateCleanup.scanned++;
+                                const currentEntityKey = getEntityKey(report.val);
+                                const currentTimestamp = report.val.timestamp || 0;
+                                
+                                let isDuplicate = false;
+
+                                // Check against reports we've already decided to keep (which are newer than this one)
+                                for (const keptReport of keptReports) {
+                                    const keptEntityKey = getEntityKey(keptReport.val);
+                                    const keptTimestamp = keptReport.val.timestamp || 0;
+
+                                    // If it's the same "Event/Person"
+                                    if (currentEntityKey === keptEntityKey) {
+                                        const timeDiff = Math.abs(keptTimestamp - currentTimestamp);
+                                        // AND it was saved within 10 minutes of the newer version
+                                        if (timeDiff <= 10 * 60 * 1000) {
+                                            isDuplicate = true;
+                                            break; // Stop checking, we found a newer version that supersedes this one
+                                        }
+                                    }
+                                }
+
+                                if (isDuplicate) {
+                                    // Delete this older duplicate
+                                    updates[`${REPORTS_PATH}/${userId}/${report.key}`] = null;
+                                    updates[`${BBCODE_PATH}/${userId}/${report.key}`] = null;
+                                    maintenanceResults.duplicateCleanup.duplicatesFound++;
+                                    maintenanceResults.duplicateCleanup.duplicatesDeleted++;
+                                } else {
+                                    // Keep this report (it's either unique, or the newest version of a set)
+                                    keptReports.push(report);
+                                }
+                            }
+
+                            if (Object.keys(updates).length > 0) {
+                                await db.ref().update(updates);
+                                console.log(`[Maintenance] Cleaned ${Object.keys(updates).length / 2} duplicates for user ${userId}`);
+                            }
+                        }
+                    } catch (err) {
+                        console.error(`Error cleaning duplicates for user ${userId}:`, err);
+                        maintenanceResults.duplicateCleanup.errors.push(`User ${userId}: ${err.message}`);
+                    }
+                }));
+            }
+        }
+    } catch (error) {
+        console.error("Critical error in Report Maintenance:", error);
+        maintenanceResults.reportCleanup.errors.push(`Critical: ${error.message}`);
+    }
+
+    // --- 4. Backup Cleanup Logic ---
+    try {
+		console.log('[Maintenance] Starting backup cleanup...');
+		const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000); 
+		const factionBackupRef = db.ref('factions');
+		const factionSnapshot = await factionBackupRef.once('value');
+
+		if (factionSnapshot.exists()) {
+			const factions = factionSnapshot.val();
+			for (const [factionId, factionData] of Object.entries(factions)) {
+				if (factionData?.backups) {
+					const backupPromises = Object.entries(factionData.backups)
+						.map(async ([backupKey, backupData]) => {
+							if (backupData?.backedUpAt && backupData.backedUpAt < threeDaysAgo) {
+                                await db.ref(`factions/${factionId}/backups/${backupKey}`).remove();
+                                maintenanceResults.backupCleanup.oldBackupsCleaned++;
+							}
+						});
+					await Promise.all(backupPromises);
+				}
+			}
+		}
+	} catch (error) {
+		maintenanceResults.backupCleanup.errors.push(error.message);
+	}
+
+    // --- 5. Webhook Log Cleanup Logic (Optimized) ---
+    try {
+        console.log('[Maintenance] Starting webhook log cleanup...');
+        const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000);
+        
+        // Use server-side query instead of downloading all logs
+        // Assuming keys are timestamps or chronological
+        const oldLogsQuery = db.ref('webhook_logs').orderByKey().endAt(String(threeDaysAgo));
+        const oldLogsSnapshot = await oldLogsQuery.once('value');
+
+        if (oldLogsSnapshot.exists()) {
+            const updates = {};
+            oldLogsSnapshot.forEach(snap => {
+                updates[`webhook_logs/${snap.key}`] = null;
+                maintenanceResults.webhookLogCleanup.oldLogsCleaned++;
+            });
+            await db.ref().update(updates);
+        }
+    } catch (error) {
+        maintenanceResults.webhookLogCleanup.errors.push(error.message);
+    }
+
+    // Send comprehensive webhook notification
+    const bingoDetails = [
+        `Success: ${maintenanceResults.bingo.success.join(', ') || 'None'}`,
+        `No Card: ${maintenanceResults.bingo.noCard.join(', ') || 'None'}`,
+        `Not Enough Phrases: ${maintenanceResults.bingo.notEnoughPhrases.join(', ') || 'None'}`
+    ].join('\n');
+
+    const hasCleanedUp = maintenanceResults.reportCleanup.oldReportsCleaned > 0 || maintenanceResults.duplicateCleanup.duplicatesDeleted > 0 || maintenanceResults.backupCleanup.oldBackupsCleaned > 0 || maintenanceResults.webhookLogCleanup.oldLogsCleaned > 0;
+    
+    const embed = {
+        title: "Daily Maintenance Task",
+        color: hasCleanedUp ? 0xFF6B35 : 0x1E90FF,
+        fields: [
+            { name: "🎯 Bingo Reset Status", value: bingoDetails.trim() || "No bingo actions taken.", inline: false },
+            { name: "📝 Phrase Request Deletion", value: `Deleted: ${maintenanceResults.phraseRequests.deleted}`, inline: false },
+            { name: "📜 Old Reports (365+ days)", value: `Deleted: ${maintenanceResults.reportCleanup.oldReportsCleaned}`, inline: true },
+            { name: "🧹 Recent Duplicates (3 days)", value: `Scanned: ${maintenanceResults.duplicateCleanup.scanned}\nDeleted: ${maintenanceResults.duplicateCleanup.duplicatesDeleted}`, inline: true },
+            { name: "💾 Backup Cleanup", value: `Deleted: ${maintenanceResults.backupCleanup.oldBackupsCleaned}`, inline: true },
+            { name: "📋 Webhook Log Cleanup", value: `Deleted: ${maintenanceResults.webhookLogCleanup.oldLogsCleaned}`, inline: true },
+        ],
+        footer: { text: "PHMC Tools - Automated Daily Maintenance (v2 Optimized)" }
+    };
+
+    const allErrors = [
+        ...maintenanceResults.reportCleanup.errors,
+        ...maintenanceResults.bingo.errors,
+        ...maintenanceResults.phraseRequests.errors,
+        ...maintenanceResults.duplicateCleanup.errors,
+        ...maintenanceResults.backupCleanup.errors,
+        ...maintenanceResults.webhookLogCleanup.errors
+    ];
+
+    if (allErrors.length > 0) {
+        embed.fields.push({
+            name: "⚠️ Errors",
+            value: allErrors.slice(0, 5).join('\n') + (allErrors.length > 5 ? `\n...and ${allErrors.length - 5} more.` : ''),
+            inline: false
+        });
+    }
+
+    await sendWebhook({ embeds: [embed] });
+
+    // --- 6. Trigger Consolidated Summaries ---
+    if (isMonday) {
+        console.log('[Maintenance] Triggering weekly summaries (Monday)...');
+        await Promise.allSettled([
+            runWeeklyMetricsSummary(),
+            runWeeklyCoronerSummary()
+        ]);
+    }
+
+    if (isFirstOfMonth) {
+        console.log('[Maintenance] Triggering monthly summaries (1st of month)...');
+        await Promise.allSettled([
+            runMonthlyCoronerSummary()
+        ]);
+    }
+
+    if (isFirstOfYear) {
+        console.log('[Maintenance] Triggering yearly summaries (January 1st)...');
+        await Promise.allSettled([
+            runYearlyCoronerSummary()
+        ]);
+    }
+
+    return null;
 });
+

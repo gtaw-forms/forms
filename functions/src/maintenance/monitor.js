@@ -2,12 +2,13 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onCall } from "firebase-functions/v2/https";
 import { db, admin } from '../utils/firebase.js';
 import { sendWebhook } from '../utils/helpers.js';
+import { getConfigValue } from '../utils/config.js';
 
 /**
  * Manually triggers a test "Critical Outage" alert to verify webhook delivery and pings.
  */
 export const triggerTestHealthAlert = onCall({
-    secrets: ["DISCORD_WEBHOOK_FUNCTIONS", "PHMC_DISCORD"],
+    secrets: ["PHMC_CONFIG"],
 }, async (request) => {
     // Check if user is authenticated and is an admin (optional, but good practice)
     // For now, focusing on the trigger logic as requested.
@@ -45,8 +46,8 @@ export const triggerTestHealthAlert = onCall({
             footer: { text: "PHMC Tools - System Monitor (Test)" }
         }]
     };
-    tasks.push(sendWebhook(cfPayload, process.env.DISCORD_WEBHOOK_FUNCTIONS));
-    tasks.push(sendWebhook(cfPayload, process.env.PHMC_DISCORD));
+    tasks.push(sendWebhook(cfPayload, getConfigValue("DISCORD_WEBHOOK_FUNCTIONS")));
+    tasks.push(sendWebhook(cfPayload, getConfigValue("PHMC_DISCORD")));
 
     // Process GTAW Test Alert
     const gtawAlert = testAlerts.find(a => a.source === 'gtaw');
@@ -61,7 +62,7 @@ export const triggerTestHealthAlert = onCall({
             footer: { text: "PHMC Tools - System Monitor (Test)" }
         }]
     };
-    tasks.push(sendWebhook(gtawPayload, process.env.DISCORD_WEBHOOK_FUNCTIONS));
+    tasks.push(sendWebhook(gtawPayload, getConfigValue("DISCORD_WEBHOOK_FUNCTIONS")));
 
     await Promise.all(tasks);
 
@@ -72,7 +73,7 @@ export const systemHealthMonitor = onSchedule({
     schedule: "every 15 minutes",
     timeZone: "UTC",
     region: "europe-west2",
-    secrets: ["DISCORD_WEBHOOK_FUNCTIONS", "PHMC_DISCORD"],
+    secrets: ["PHMC_CONFIG"],
 }, async (event) => {
     console.log('[System Monitor] Starting health checks...');
     
@@ -276,8 +277,8 @@ export const systemHealthMonitor = onSchedule({
                     footer: { text: "PHMC Tools - System Monitor" }
                 }]
             };
-            tasks.push(sendWebhook(cfPayload, process.env.DISCORD_WEBHOOK_FUNCTIONS));
-            tasks.push(sendWebhook(cfPayload, process.env.PHMC_DISCORD));
+            tasks.push(sendWebhook(cfPayload, getConfigValue("DISCORD_WEBHOOK_FUNCTIONS")));
+            tasks.push(sendWebhook(cfPayload, getConfigValue("PHMC_DISCORD")));
         }
 
         if (gtawAlerts.length > 0) {
@@ -296,7 +297,7 @@ export const systemHealthMonitor = onSchedule({
                     footer: { text: "PHMC Tools - System Monitor" }
                 }]
             };
-            tasks.push(sendWebhook(gtawPayload, process.env.DISCORD_WEBHOOK_FUNCTIONS));
+            tasks.push(sendWebhook(gtawPayload, getConfigValue("DISCORD_WEBHOOK_FUNCTIONS")));
         }
 
         await Promise.all(tasks);

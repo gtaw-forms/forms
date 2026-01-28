@@ -410,11 +410,7 @@ export const generateMonthlyCoronerReport = onCall({
     }
 });
 
-export const weeklyCoronerSummary = onSchedule({
-    schedule: "every monday 09:00",
-    timeZone: "UTC",
-    secrets: ["ADMIN_ACTION_WEBHOOK_URL", "DISCORD_WEBHOOK_FUNCTIONS"],
-}, async (event) => {
+export const runWeeklyCoronerSummary = async () => {
     const now = new Date();
     const endOfWeek = now.getTime();
     const startOfWeek = endOfWeek - (7 * 24 * 60 * 60 * 1000); // Last 7 days
@@ -487,13 +483,9 @@ export const weeklyCoronerSummary = onSchedule({
         console.error('[Weekly Summary] Error:', error);
     }
     return null;
-});
+};
 
-export const yearlyCoronerSummary = onSchedule({
-    schedule: "5 0 1 1 *", // January 1st at 00:05
-    timeZone: "UTC",
-    secrets: ["ADMIN_ACTION_WEBHOOK_URL", "DISCORD_WEBHOOK_FUNCTIONS"],
-}, async (event) => {
+export const runYearlyCoronerSummary = async () => {
     const now = new Date();
     const startOfYear = new Date(now.getFullYear(), 0, 1).getTime();
     const endOfYear = now.getTime();
@@ -574,13 +566,13 @@ export const yearlyCoronerSummary = onSchedule({
         console.error('[Yearly Summary] Error:', error);
     }
     return null;
-});
+};
 
 /**
  * Manually trigger a coroner report summary to be sent to the webhook.
  */
 export const triggerCoronerReport = onCall({
-    secrets: ["ADMIN_ACTION_WEBHOOK_URL", "DISCORD_WEBHOOK_FUNCTIONS"],
+    secrets: ["PHMC_CONFIG"],
 }, async (request) => {
     const { type } = request.data;
     const now = new Date();
@@ -685,7 +677,7 @@ export const triggerCoronerReport = onCall({
  * Results are sent via Webhook as a .txt file.
  */
 export const scanUntrackedLocations = onCall({
-    secrets: ["ADMIN_ACTION_WEBHOOK_URL", "DISCORD_WEBHOOK_FUNCTIONS"],
+    secrets: ["PHMC_CONFIG"],
 }, async (request) => {
     const now = Date.now();
     const SixtyDaysAgo = now - (60 * 24 * 60 * 60 * 1000);
@@ -773,11 +765,7 @@ export const scanUntrackedLocations = onCall({
     }
 });
 
-export const monthlyCoronerSummary = onSchedule({
-    schedule: "1 0 1 * *",
-    timeZone: "UTC",
-    secrets: ["ADMIN_ACTION_WEBHOOK_URL", "DISCORD_WEBHOOK_FUNCTIONS"],
-}, async (event) => {
+export const runMonthlyCoronerSummary = async () => {
     const targetDate = new Date();
     targetDate.setMonth(targetDate.getMonth() - 1);
     const startOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1).getTime();
@@ -856,5 +844,5 @@ export const monthlyCoronerSummary = onSchedule({
         console.error('[Monthly Summary] Error:', error);
     }
     return null;
-});
+};
 
