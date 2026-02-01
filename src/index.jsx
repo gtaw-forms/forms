@@ -4,6 +4,7 @@ import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 import { init, getClient } from "@sentry/react";
+import { AuthProvider } from './contexts/AuthContext.jsx';
 import { NotificationProvider } from './contexts/NotificationContext.jsx';
 import { DataProvider } from './contexts/DataContext.jsx';
 import { ModalProvider } from './contexts/ModalProvider.jsx';
@@ -303,17 +304,19 @@ const container = document.getElementById('root');
 const root = ReactDOM.createRoot(container);
 root.render(
       <ErrorBoundary>
-        <NotificationProvider>
-          <DataProvider>
-            <ModalProvider>
-              <SettingsProvider>
-                <LockdownProvider>
-                  <Root />
-                </LockdownProvider>
-              </SettingsProvider>
-            </ModalProvider>
-          </DataProvider>
-        </NotificationProvider>
+        <AuthProvider>
+          <NotificationProvider>
+            <DataProvider>
+              <ModalProvider>
+                <SettingsProvider>
+                  <LockdownProvider>
+                    <Root />
+                  </LockdownProvider>
+                </SettingsProvider>
+              </ModalProvider>
+            </DataProvider>
+          </NotificationProvider>
+        </AuthProvider>
       </ErrorBoundary>
 );
 

@@ -92,7 +92,6 @@ function App() {
         >
             <FormProvider formData={formData} setFormData={setFormData} setLastWebhookIdentifier={setLastWebhookIdentifier} showNotification={showNotification}>
                 <NotificationProvider>
-                    <AuthProvider>
                         <Router>
                                 <SeasonalEffectsProvider> {/* Wrap Routes with SeasonalEffectsProvider */}
                                     <Suspense fallback={<LoadingFallback />}>
@@ -110,7 +109,6 @@ function App() {
                                     </Suspense>
                                 </SeasonalEffectsProvider>
                         </Router>
-                    </AuthProvider>
                 </NotificationProvider>
             </FormProvider>
         </Sentry.ErrorBoundary>

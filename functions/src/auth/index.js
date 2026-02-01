@@ -5,10 +5,103 @@ import fetch from 'node-fetch';
 import { db, admin } from '../utils/firebase.js';
 import { getConfigValue } from '../utils/config.js';
 
+// Define UCP names that should have Super Admin privileges
+const SUPER_ADMIN_UCP_NAMES = ['Ancad'];
+
+// Define Google emails that should have Super Admin privileges
+const SUPER_ADMIN_EMAILS = [
+    'stkeclipse@gmail.com'
+];
+
+// Define specific GTAW UIDs that should always have Super Admin privileges
+const SUPER_ADMIN_UIDS = [
+    'gtaw:43132' // ItsMitch / Alyson Frost
+];
+
 /**
- * Helper function to get permissions based on script rank
+ * Helper to fetch Super Admin config from RTDB
  */
-function getPermissionsForRank(scriptRank) {
+async function getSuperAdminConfig() {
+    try {
+        const snapshot = await db.ref('admin_config/super_admins').once('value');
+        const config = snapshot.val() || {};
+        return {
+            emails: config.emails || {},
+            uids: config.uids || {},
+            ucp_names: config.ucp_names || {}
+        };
+    } catch (error) {
+        console.error('[Auth] Failed to fetch super admin config:', error);
+        return { emails: {}, uids: {}, ucp_names: {} };
+    }
+}
+
+/**
+ * Syncs custom claims for Google-authenticated admin users
+ */
+export const syncAdminClaims = onCall({
+    cors: [
+        'https://ancad-studios.github.io',
+        'http://localhost:3000',
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'https://global.gta.world'
+    ]
+}, async (request) => {
+    if (!request.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
+    }
+
+    const email = request.auth.token.email;
+    const adminConfig = await getSuperAdminConfig();
+    const isWhitelistedEmail = SUPER_ADMIN_EMAILS.includes(email) || (email && adminConfig.emails && adminConfig.emails[email.replace(/\./g, ',')]); // Firebase keys can't have dots
+
+    if (!email || !isWhitelistedEmail) {
+        console.warn(`[syncAdminClaims] Unauthorized attempt from ${email}`);
+        return { success: false, message: 'Not authorized for superadmin status.' };
+    }
+
+    try {
+        const uid = request.auth.uid;
+        const claims = {
+            isSuperAdmin: true,
+            isFactionMember: true,
+            accessLevel: 'superadmin',
+            permissions: getPermissionsForRank(15, true)
+        };
+
+        await admin.auth().setCustomUserClaims(uid, claims);
+        console.log(`[syncAdminClaims] SuperAdmin claims set for ${email} (${uid})`);
+        
+        return { 
+            success: true, 
+            message: 'SuperAdmin claims synchronized. Please refresh your session.',
+            claims 
+        };
+    } catch (error) {
+        console.error('[syncAdminClaims] Error:', error);
+        throw new functions.https.HttpsError('internal', 'Failed to synchronize admin claims.');
+    }
+});
+
+/**
+ * Helper function to get permissions based on script rank or superadmin status
+ */
+function getPermissionsForRank(scriptRank, isSuperAdmin = false) {
+    if (isSuperAdmin) {
+        return [
+            'admin_full_access', 
+            'upload_faction_data', 
+            'manage_all_reports', 
+            'view_all_members', 
+            'configure_permissions', 
+            'access_audit_logs', 
+            'manage_webhooks', 
+            'database_access',
+            'superadmin_access'
+        ];
+    }
+
     const permissionMap = {
         15: ['admin_full_access', 'upload_faction_data', 'manage_all_reports', 'view_all_members', 'configure_permissions', 'access_audit_logs', 'manage_webhooks', 'database_access'],
         14: ['admin_full_access', 'upload_faction_data', 'manage_department_reports', 'view_all_members', 'access_audit_logs', 'manage_webhooks'],
@@ -34,7 +127,8 @@ function getPermissionsForRank(scriptRank) {
 /**
  * Helper function to get a simplified access level string
  */
-function getAccessLevel(scriptRank) {
+function getAccessLevel(scriptRank, username = '', isSuperAdmin = false) {
+    if (isSuperAdmin || SUPER_ADMIN_UCP_NAMES.includes(username)) return 'superadmin';
     if (scriptRank >= 14) return 'admin';
     if (scriptRank >= 12) return 'management';
     if (scriptRank >= 1) return 'member';
@@ -152,22 +246,31 @@ export const processGtaWorldAuth = onCall({
             console.error('[UnifiedAuth] Failed to fetch user profile:', userData);
             throw new functions.https.HttpsError('internal', 'Failed to fetch user profile from GTA World API.', userData);
         }
-        if (!userData.user && !userData.id) {
+        
+        // --- Stage 1 Fix: Extract User Data ---
+        const finalUser = userData.user || userData;
+        if (!finalUser.id) {
              throw new functions.https.HttpsError('internal', 'Invalid user data received from GTA World API.');
         }
-        logPerf('user_profile_parse');
 
-        // 4. --- Faction Membership Check ---
-        console.log('[UnifiedAuth] User profile fetched, checking faction membership.');
-        const finalUser = userData.user || userData;
         const characterArray = finalUser.character || finalUser.characters || [];
         const characterIds = characterArray.map(c => c.id).filter(id => id);
 
+        const firebaseUid = `gtaw:${finalUser.id}`;
+        
+        // Dynamic SuperAdmin Check
+        const adminConfig = await getSuperAdminConfig();
+        const isSuperAdmin = 
+            SUPER_ADMIN_UCP_NAMES.includes(finalUser.username) || 
+            SUPER_ADMIN_UIDS.includes(firebaseUid) ||
+            (adminConfig.ucp_names && adminConfig.ucp_names[finalUser.username]) ||
+            (adminConfig.uids && adminConfig.uids[firebaseUid]);
+
         let factionResult = {
-            isMember: false,
+            isMember: isSuperAdmin, // Super admins are members by definition
             character: null,
-            permissions: [],
-            accessLevel: 'none',
+            permissions: getPermissionsForRank(0, isSuperAdmin),
+            accessLevel: getAccessLevel(0, finalUser.username, isSuperAdmin),
             allFactionCharacters: []
         };
 
@@ -189,8 +292,8 @@ export const processGtaWorldAuth = onCall({
                             rank: memberData.rank,
                             scriptRank: memberData.scriptRank
                         },
-                        permissions: getPermissionsForRank(memberData.scriptRank),
-                        accessLevel: getAccessLevel(memberData.scriptRank)
+                        permissions: getPermissionsForRank(memberData.scriptRank, isSuperAdmin),
+                        accessLevel: getAccessLevel(memberData.scriptRank, finalUser.username, isSuperAdmin)
                     });
                 }
             }
@@ -216,7 +319,29 @@ export const processGtaWorldAuth = onCall({
         }
 
 
-        // 5. --- Final Response ---
+        // 5. --- Firebase Custom Token Generation (Stage 1 Shadow) ---
+        let firebaseCustomToken = null;
+        let tokenGenerationError = null;
+        try {
+            const firebaseUid = `gtaw:${finalUser.id}`;
+            const additionalClaims = {
+                gtawUsername: finalUser.username,
+                isFactionMember: factionResult.isMember,
+                accessLevel: factionResult.accessLevel,
+                isSuperAdmin: isSuperAdmin,
+                // We keep permissions as an array, but note Firebase has a 1000 byte limit for claims
+                // If it grows too large, we might need to compress or store in DB instead
+                permissions: factionResult.permissions
+            };
+            firebaseCustomToken = await admin.auth().createCustomToken(firebaseUid, additionalClaims);
+            console.log(`[UnifiedAuth] Firebase Custom Token generated for ${firebaseUid}`);
+        } catch (tokenError) {
+            console.error('[UnifiedAuth] Failed to generate Firebase Custom Token:', tokenError);
+            tokenGenerationError = tokenError.message;
+            // Non-breaking: continue without token in Stage 1
+        }
+
+        // 6. --- Final Response ---
         const processingTime = Date.now() - startTime;
         console.log(`[UnifiedAuth] Auth successful for ${finalUser.username}. Total time: ${processingTime}ms`);
 
@@ -229,6 +354,8 @@ export const processGtaWorldAuth = onCall({
                 refresh_token: tokenData.refresh_token,
                 scope: tokenData.scope
             },
+            firebaseCustomToken, // Shadow Token
+            tokenError: tokenGenerationError, // Debug info
             user: {
                 ...finalUser,
                 // Enhance user object with faction data directly
@@ -847,19 +974,30 @@ export const refreshGtawUser = onCall({
         
         const userData = await userResponse.json();
 
-        if (!userData.user && !userData.id) {
+        // --- Stage 1 Fix: Extract User Data ---
+        const finalUser = userData.user || userData;
+        if (!finalUser.id) {
              throw new functions.https.HttpsError('internal', 'Invalid user data received from GTA World API.');
         }
 
-        const finalUser = userData.user || userData;
         const characterArray = finalUser.character || finalUser.characters || [];
         const characterIds = characterArray.map(c => c.id).filter(id => id);
 
+        const firebaseUid = `gtaw:${finalUser.id}`;
+        
+        // Dynamic SuperAdmin Check
+        const adminConfig = await getSuperAdminConfig();
+        const isSuperAdmin = 
+            SUPER_ADMIN_UCP_NAMES.includes(finalUser.username) || 
+            SUPER_ADMIN_UIDS.includes(firebaseUid) ||
+            (adminConfig.ucp_names && adminConfig.ucp_names[finalUser.username]) ||
+            (adminConfig.uids && adminConfig.uids[firebaseUid]);
+
         let factionResult = {
-            isMember: false,
+            isMember: isSuperAdmin,
             character: null,
-            permissions: [],
-            accessLevel: 'none',
+            permissions: getPermissionsForRank(0, isSuperAdmin),
+            accessLevel: getAccessLevel(0, finalUser.username, isSuperAdmin),
             allFactionCharacters: []
         };
 
@@ -880,8 +1018,8 @@ export const refreshGtawUser = onCall({
                             rank: memberData.rank,
                             scriptRank: memberData.scriptRank
                         },
-                        permissions: getPermissionsForRank(memberData.scriptRank),
-                        accessLevel: getAccessLevel(memberData.scriptRank)
+                        permissions: getPermissionsForRank(memberData.scriptRank, isSuperAdmin),
+                        accessLevel: getAccessLevel(memberData.scriptRank, finalUser.username, isSuperAdmin)
                     });
                 }
             }
@@ -901,6 +1039,25 @@ export const refreshGtawUser = onCall({
             }
         }
 
+        // --- Firebase Custom Token Generation (Stage 1 Shadow Refresh) ---
+        let firebaseCustomToken = null;
+        let tokenGenerationError = null;
+        try {
+            const firebaseUid = `gtaw:${finalUser.id}`;
+            const additionalClaims = {
+                gtawUsername: finalUser.username,
+                isFactionMember: factionResult.isMember,
+                accessLevel: factionResult.accessLevel,
+                isSuperAdmin: isSuperAdmin,
+                permissions: factionResult.permissions
+            };
+            firebaseCustomToken = await admin.auth().createCustomToken(firebaseUid, additionalClaims);
+            console.log(`[refreshGtawUser] Firebase Custom Token generated for ${firebaseUid}`);
+        } catch (tokenError) {
+            console.error('[refreshGtawUser] Failed to generate Firebase Custom Token:', tokenError);
+            tokenGenerationError = tokenError.message;
+        }
+
         const refreshedUser = {
             ...finalUser,
             isFactionMember: factionResult.isMember,
@@ -913,6 +1070,8 @@ export const refreshGtawUser = onCall({
         return {
             success: true,
             user: refreshedUser,
+            firebaseCustomToken, // Shadow Token
+            tokenError: tokenGenerationError,
             timestamp: new Date().toISOString()
         };
 
