@@ -39,6 +39,7 @@ const DecedentItemRenderer = ({
             onChange: (e) => onItemChange(fieldName, e.target.value),
             placeholder: subField.placeholder || '',
             style: inputStyle,
+            rows: subField.rows, // Add rows here
         };
 
         return (
@@ -59,6 +60,7 @@ const DecedentItemRenderer = ({
                                     <textarea
                                         rows={subField.rows || 3}
                                         {...commonProps}
+                                        style={{ ...commonProps.style, height: subField.rows ? `${subField.rows * 1.5}rem` : 'auto' }}
                                     />
                                     {subField.allowImagePaste && (
                                         <div style={{

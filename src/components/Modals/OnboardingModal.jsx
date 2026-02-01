@@ -19,7 +19,6 @@ const ONBOARDING_STEPS = {
 
 // User type categories
 const USER_TYPES = {
-    CIVILIAN: 'civilian',
     PHMC_STAFF: 'phmcStaff',
     CORONER: 'coroner',
     LEO: 'leo',
@@ -28,7 +27,6 @@ const USER_TYPES = {
 
 // Form categories for each user type
 const FORM_CATEGORIES = {
-    [USER_TYPES.CIVILIAN]: ['PHMC', 'Patient Files'],
     [USER_TYPES.PHMC_STAFF]: ['PHMC'],
     [USER_TYPES.CORONER]: ['DMEC'],
     [USER_TYPES.LEO]: ['PHMC'],
@@ -37,10 +35,9 @@ const FORM_CATEGORIES = {
 
 // Recommended categories for each user type
 const RECOMMENDED_CATEGORIES = {
-    [USER_TYPES.CIVILIAN]: ['Patient Files'],
     [USER_TYPES.PHMC_STAFF]: ['PHMC'],
     [USER_TYPES.CORONER]: ['DMEC'],
-    [USER_TYPES.LEO]: ['Patient Files'],
+    [USER_TYPES.LEO]: ['PHMC'],
     [USER_TYPES.OTHER]: 'ALL_CATEGORIES'
 };
 
@@ -393,30 +390,6 @@ const OnboardingModal = ({
         );
     };
 
-    const handleBusinessCardOnly = () => {
-        console.log(`[ONBOARDING_LOG] handleBusinessCardOnly called - UserType: CIVILIAN, NotificationType: BUSINESS_CARD_ONLY`);
-
-        const businessCardForm = Object.values(formsData).find(form => form.name && form.name.toLowerCase().includes('business card'));
-        const businessCardKey = businessCardForm ? businessCardForm.firebaseKey : null;
-
-        const preferences = {
-            userType: USER_TYPES.CIVILIAN,
-            role: null,
-            recommendedForms: businessCardKey ? [businessCardKey] : [],
-            allowedCategories: FORM_CATEGORIES[USER_TYPES.CIVILIAN],
-            onboardingComplete: true,
-            completedAt: new Date().toISOString(),
-            defaultForm: businessCardKey,
-        };
-
-        localStorage.setItem('userOnboardingPreferences', JSON.stringify(preferences));
-        localStorage.setItem('onboardingComplete', 'true');
-        localStorage.removeItem('onboardingProgress');
-        sendOnboardingCompletionWebhook(preferences);
-        onComplete(preferences);
-    };
-
-
     const renderWelcomeStep = () => (
         <div style={stepContentStyle}>
             <div style={welcomeIconStyle}>
@@ -447,9 +420,6 @@ const OnboardingModal = ({
             <p style={timeEstimateStyle}>
                 Are you looking for a translated version for a Official GTA World Community? Reach out on Discord!
             </p>
-            <Button variant="secondary" onClick={handleBusinessCardOnly} style={{ marginTop: '20px' }}>
-                Just use Business Cards
-            </Button>
 
         </div>
     );
@@ -461,22 +431,6 @@ const OnboardingModal = ({
                 Select the option that best matches how you'll be using the forms system:
             </p>
             <div style={userTypeGridStyle}>
-                <button
-                    style={{
-                        ...userTypeButtonStyle,
-                        ...(selectedUserType === USER_TYPES.CIVILIAN ? selectedButtonStyle : {}),
-                        backgroundColor: selectedUserType === USER_TYPES.CIVILIAN ? '#1a3a5c' : '#2a2a2a',
-                        borderColor: selectedUserType === USER_TYPES.CIVILIAN ? '#007bff' : '#444'
-                    }}
-                    onClick={() => setSelectedUserType(USER_TYPES.CIVILIAN)}
-                >
-                    <i className="fas fa-user" style={userTypeIconStyle}></i>
-                    <h4 style={userTypeButtonTitleStyle}>Civilian</h4>
-                    <p style={userTypeButtonDescStyle}>
-                        I need to submit a form on the forums (patient files, medical releases, etc.)
-                    </p>
-                </button>
-
                 <button
                     style={{
                         ...userTypeButtonStyle,
@@ -773,7 +727,6 @@ const OnboardingModal = ({
 
     const getUserTypeLabel = (userType) => {
         const labels = {
-            [USER_TYPES.CIVILIAN]: 'Civilian',
             [USER_TYPES.PHMC_STAFF]: 'PHMC Staff',
             [USER_TYPES.CORONER]: 'Coroner',
             [USER_TYPES.LEO]: 'Law Enforcement',

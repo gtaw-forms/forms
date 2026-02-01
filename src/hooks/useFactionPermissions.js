@@ -99,6 +99,22 @@ const useFactionPermissions = () => {
         console.warn('[Faction Hook] Error getting faction status:', err);
     }
 
+    // DEBUG: Log permissions on load or change
+    useEffect(() => {
+        const userData = getCurrentUser();
+        if (userData) {
+            console.group('🔐 [DEBUG] Auth & Permissions');
+            console.log('User:', userData.username || userData.email);
+            console.log('Access Level:', currentAccessLevel);
+            console.log('Is PHMC Member:', isMember);
+            console.log('Permissions:', currentPermissions);
+            if (factionInfo) {
+                console.log('Faction Data:', factionInfo);
+            }
+            console.groupEnd();
+        }
+    }, [currentAccessLevel, isMember, currentPermissions, factionInfo]);
+
     return {
         // Faction data
         factionData,

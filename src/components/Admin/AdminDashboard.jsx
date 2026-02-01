@@ -186,36 +186,38 @@ const AdminDashboard = ({
     // Permission helper functions based on ranks and auth type
     const isEmailSignin = currentUser && !currentUser.isGtaAuth && !currentUser.isGoogleAuth;
     const scriptRank = gtaWorldUser?.faction?.scriptRank;
+    const isSuperAdminAccess = accessLevel === 'superadmin' || permissions.includes('superadmin_access');
+
     const isRank13OrHigher = scriptRank >= 13;
     const isRank14OrHigher = scriptRank >= 14;
     const isRank15OrHigher = scriptRank >= 15;
     const isRank11OrHigher = scriptRank >= 11;
-    const hasLsccManagerAccess = isGoogleAdminActive || scriptRank >= 10;
-    const hasFormsManagerAccess = isGoogleAdminActive || scriptRank >= 10;
+    const hasLsccManagerAccess = isGoogleAdminActive || isSuperAdminAccess || scriptRank >= 10;
+    const hasFormsManagerAccess = isGoogleAdminActive || isSuperAdminAccess || scriptRank >= 10;
 
     // Determine access levels for specific sections
-    const hasServiceStatusAccess = isGoogleAdminActive || isRank14OrHigher;
-    const hasLockdownAccess = isGoogleAdminActive || isRank14OrHigher;
-    const hasBingoAccess = isGoogleAdminActive || isRank14OrHigher;
-    const hasUsersAccess = isGoogleAdminActive || isRank14OrHigher;
-    const hasRankPermissionsAccess = isGoogleAdminActive || isRank15OrHigher;
-    const hasEmployeeManagerAccess = isGoogleAdminActive || isRank13OrHigher;
-    const hasHallOfFameAccess = isGoogleAdminActive || isRank13OrHigher;
+    const hasServiceStatusAccess = isGoogleAdminActive || isSuperAdminAccess || isRank14OrHigher;
+    const hasLockdownAccess = isGoogleAdminActive || isSuperAdminAccess || isRank14OrHigher;
+    const hasBingoAccess = isGoogleAdminActive || isSuperAdminAccess || isRank14OrHigher;
+    const hasUsersAccess = isGoogleAdminActive || isSuperAdminAccess || isRank14OrHigher;
+    const hasRankPermissionsAccess = isGoogleAdminActive || isSuperAdminAccess || isRank15OrHigher;
+    const hasEmployeeManagerAccess = isGoogleAdminActive || isSuperAdminAccess || isRank13OrHigher;
+    const hasHallOfFameAccess = isGoogleAdminActive || isSuperAdminAccess || isRank13OrHigher;
     
     // Agency Incident Access: Rank 14+ OR Special Coroner Ranks
     const currentRankName = factionData?.rank || gtaWorldUser?.faction?.rank || '';
     const isSpecialCoronerRank = currentRankName.includes("Deputy Chief Medical-Examiner Coroner -") || 
                                 currentRankName.includes("Chief Medical-Examiner Coroner -");
     
-    const hasAgencyIncidentAccess = isGoogleAdminActive || isRank14OrHigher || isSpecialCoronerRank;
+    const hasAgencyIncidentAccess = isGoogleAdminActive || isSuperAdminAccess || isRank14OrHigher || isSpecialCoronerRank;
     
     const canUseGoogleAdminOverride = isEmailSignin; // Only available for email signin
     
     // Override permissions for Google-authenticated users
-    const hasAdminAccess = isGoogleAdminActive || canAccessAdmin;
-    const hasFactionUpload = isGoogleAdminActive || canUploadFactionData || (scriptRank >= 10); // Direct rank check for faction upload
-    const hasDatabaseAccess = isGoogleAdminActive || canAccessDatabase || (scriptRank >= 12); // Direct rank check for database
-    const hasWebhookAccess = isGoogleAdminActive || canManageWebhooks || isRank11OrHigher; // Direct rank check for webhook management
+    const hasAdminAccess = isGoogleAdminActive || isSuperAdminAccess || canAccessAdmin;
+    const hasFactionUpload = isGoogleAdminActive || isSuperAdminAccess || canUploadFactionData || (scriptRank >= 10); // Direct rank check for faction upload
+    const hasDatabaseAccess = isGoogleAdminActive || isSuperAdminAccess || canAccessDatabase || (scriptRank >= 12); // Direct rank check for database
+    const hasWebhookAccess = isGoogleAdminActive || isSuperAdminAccess || canManageWebhooks || isRank11OrHigher; // Direct rank check for webhook management
 
     const handleRunDiagnostics = async () => {
         setIsRunningDiagnostics(true);
@@ -337,43 +339,6 @@ const AdminDashboard = ({
         }
     };
 
-    const handleSyncReportCounts = async () => {
-        if (!window.confirm("Are you sure you want to sync all report counts? This will recalculate and overwrite existing counts.")) {
-            return;
-        }
-
-        setIsSyncingCounts(true);
-        showInAppNotification && showInAppNotification('Starting report count sync...', 'info');
-
-        try {
-            const functions = getFunctions();
-            const syncCounts = httpsCallable(functions, 'syncReportCounts');
-            const result = await syncCounts();
-
-            if (result.data.success) {
-                showInAppNotification && showInAppNotification(
-                    `Sync complete: ${result.data.syncedUsers} users' report counts updated.`,
-                    'success'
-                );
-                console.log('Sync result:', result.data);
-            } else {
-                showInAppNotification && showInAppNotification(
-                    `Sync failed: ${result.data.message || 'Unknown error'}`,
-                    'error'
-                );
-                console.error('Sync failed:', result.data);
-            }
-        } catch (error) {
-            console.error('Error calling syncReportCounts:', error);
-            showInAppNotification && showInAppNotification(
-                `Error during sync: ${error.message}`,
-                'error'
-            );
-        } finally {
-            setIsSyncingCounts(false);
-        }
-    };
-
     const handleTriggerCoronerReport = async (type) => {
         if (!window.confirm(`Are you sure you want to force trigger a ${type} coroner report? This will send a webhook to the admin channel.`)) {
             return;
@@ -453,12 +418,7 @@ const AdminDashboard = ({
                 <div className="sidebar">
                     <div className="sidebar-header">
                         <h5>Admin Panel</h5>
-                        <p>Logged in as: {(() => {
-                            if (isGtaAuthenticated && gtaWorldUser) {
-                                return gtaWorldUser.username;
-                            }
-                            return currentUser?.email || 'Unknown';
-                        })()}</p>
+                        <p>Logged in as: {currentUser?.displayName || currentUser?.email || 'Unknown User'}</p>
                         {gtaWorldUser && (
                             <p className="text-info">
                                 <i className="fas fa-user me-1"></i>
@@ -1111,18 +1071,10 @@ const AdminDashboard = ({
                                                     <div className="alert alert-success d-flex align-items-center mb-3">
                                                         <i className="fas fa-check-circle me-2"></i>
                                                         <div>
-                                                            <strong>Connected as:</strong> {(() => {
-                                                                if (gtaWorldUser?.isFactionMember && gtaWorldUser?.faction) {
-                                                                    const characterName = (gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? 
-                                                                        `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : 
-                                                                        gtaWorldUser.faction.characterName;
-                                                                    return characterName ? `${characterName} (${gtaWorldUser.username})` : gtaWorldUser.username;
-                                                                }
-                                                                return gtaWorldUser?.username || gtaWorldUser?.name || currentUser?.email || 'Unknown';
-                                                            })()}
+                                                            <strong>Connected as:</strong> {currentUser?.displayName || currentUser?.email || 'Unknown User'}
                                                             <br />
                                                             <small className="text-muted">
-                                                                User ID: {gtaWorldUser?.id || currentUser?.uid} | 
+                                                                User ID: {currentUser?.uid} | 
                                                                 {gtaWorldUser?.isFactionMember && gtaWorldUser?.faction?.scriptRank !== undefined ? 
                                                                     ` Script Rank: ${gtaWorldUser.faction.scriptRank} |` : ''} 
                                                                 Last login: {new Date().toLocaleDateString()}
@@ -1257,6 +1209,51 @@ const AdminDashboard = ({
                                                     {gtaAuthError}
                                                 </div>
                                             )}
+
+                                            {/* NEW: SuperAdmin Authorization Linker */}
+                                            {isGoogleAdminActive && gtaWorldUser && (
+                                                <div className="card mt-3 border-danger">
+                                                    <div className="card-header bg-danger text-white py-2">
+                                                        <h6 className="mb-0 small"><i className="fas fa-link me-2"></i>SuperAdmin Authorization</h6>
+                                                    </div>
+                                                    <div className="card-body py-2">
+                                                        <p className="small mb-2">You are currently in <strong>Dual-Auth Mode</strong>. You can link this character identity to permanent SuperAdmin access.</p>
+                                                        <div className="d-flex align-items-center justify-content-between">
+                                                            <code className="text-danger">UID: gtaw:{gtaWorldUser.id}</code>
+                                                            <div className="d-flex gap-2">
+                                                                <Button 
+                                                                    variant="outline-secondary" 
+                                                                    size="sm"
+                                                                    onClick={() => {
+                                                                        const cmd = `gtaw:${gtaWorldUser.id}`;
+                                                                        navigator.clipboard.writeText(cmd);
+                                                                        showInAppNotification(`UID ${cmd} copied to clipboard!`, 'info');
+                                                                    }}
+                                                                >
+                                                                    Copy
+                                                                </Button>
+                                                                <Button 
+                                                                    variant="danger" 
+                                                                    size="sm"
+                                                                    onClick={async () => {
+                                                                        if (!window.confirm(`Are you sure you want to GRANT PERMANENT SUPERADMIN ACCESS to ${gtaWorldUser.username} (gtaw:${gtaWorldUser.id})?`)) return;
+                                                                        try {
+                                                                            const db = getDatabase();
+                                                                            await set(ref(db, `admin_config/super_admins/uids/gtaw:${gtaWorldUser.id}`), true);
+                                                                            showInAppNotification(`Successfully granted SuperAdmin access to gtaw:${gtaWorldUser.id}`, 'success');
+                                                                        } catch (error) {
+                                                                            console.error('Failed to grant superadmin:', error);
+                                                                            showInAppNotification(`Failed to grant access: ${error.message}`, 'error');
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    Grant Access
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -1286,20 +1283,6 @@ const AdminDashboard = ({
                                                 <i className="fas fa-database me-2"></i>
                                             )}
                                             Migrate Reports
-                                        </Button>
-                                        <Button
-                                            variant="info"
-                                            size="sm"
-                                            onClick={handleSyncReportCounts}
-                                            disabled={isSyncingCounts || !hasAdminAccess}
-                                            title={hasAdminAccess ? "Recalculate and save the total report count for every user." : "Requires admin access permission"}
-                                        >
-                                            {isSyncingCounts ? (
-                                                <Spinner as="span" animation="border" size="sm" />
-                                            ) : (
-                                                <i className="fas fa-sync me-2"></i>
-                                            )}
-                                            Sync Report Counts
                                         </Button>
                                         <Button 
                                             variant="success" 
@@ -1478,6 +1461,60 @@ const AdminDashboard = ({
                                 <div className="mt-3">
                                     <FirebaseFunctionsTester showInAppNotification={showInAppNotification} />
                                 </div>
+
+                                {/* HOTFIX: Local SuperAdmin Whitelist Manager */}
+                                {window.location.hostname === 'localhost' && isGoogleAdminActive && (
+                                    <div className="mt-4 border-top pt-4">
+                                        <h6 className="text-danger"><i className="fas fa-tools me-2"></i>[DEV] SuperAdmin Whitelist Manager</h6>
+                                        <p className="small text-muted">Directly manage the dynamic SuperAdmin whitelist in Realtime Database. Only visible on localhost.</p>
+                                        
+                                        <div className="row g-2">
+                                            <div className="col-md-4">
+                                                <div className="input-group input-group-sm">
+                                                    <input type="text" id="dev-ucp-name" className="form-control" placeholder="UCP Name" />
+                                                    <Button variant="outline-danger" onClick={async () => {
+                                                        const val = document.getElementById('dev-ucp-name').value;
+                                                        if (!val) return;
+                                                        try {
+                                                            await set(ref(getDatabase(), `admin_config/super_admins/ucp_names/${val}`), true);
+                                                            showInAppNotification(`Added UCP ${val} to whitelist`, 'success');
+                                                            document.getElementById('dev-ucp-name').value = '';
+                                                        } catch (e) { showInAppNotification(e.message, 'error'); }
+                                                    }}>Add UCP</Button>
+                                                </div>
+                                            </div>
+                                            <div className="col-md-4">
+                                                <div className="input-group input-group-sm">
+                                                    <input type="text" id="dev-uid" className="form-control" placeholder="gtaw:ID" />
+                                                    <Button variant="outline-danger" onClick={async () => {
+                                                        const val = document.getElementById('dev-uid').value;
+                                                        if (!val) return;
+                                                        try {
+                                                            await set(ref(getDatabase(), `admin_config/super_admins/uids/${val}`), true);
+                                                            showInAppNotification(`Added UID ${val} to whitelist`, 'success');
+                                                            document.getElementById('dev-uid').value = '';
+                                                        } catch (e) { showInAppNotification(e.message, 'error'); }
+                                                    }}>Add UID</Button>
+                                                </div>
+                                            </div>
+                                            <div className="col-md-4">
+                                                <div className="input-group input-group-sm">
+                                                    <input type="text" id="dev-email" className="form-control" placeholder="Email" />
+                                                    <Button variant="outline-danger" onClick={async () => {
+                                                        const val = document.getElementById('dev-email').value;
+                                                        if (!val) return;
+                                                        try {
+                                                            const safeEmail = val.replace(/\./g, ',');
+                                                            await set(ref(getDatabase(), `admin_config/super_admins/emails/${safeEmail}`), true);
+                                                            showInAppNotification(`Added Email ${val} to whitelist`, 'success');
+                                                            document.getElementById('dev-email').value = '';
+                                                        } catch (e) { showInAppNotification(e.message, 'error'); }
+                                                    }}>Add Email</Button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}

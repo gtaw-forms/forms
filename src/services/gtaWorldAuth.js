@@ -1,5 +1,6 @@
 import { httpsCallable } from 'firebase/functions';
-import { functions } from '../firebase';
+import { signInWithCustomToken, signOut } from 'firebase/auth';
+import { functions, auth } from '../firebase';
 import * as Sentry from "@sentry/react";
 import { getCharacterID, getCharacterName } from '../utils/characterUtils';
 import { logAuthErrorToDiscord } from '../utils/authLogger';
@@ -351,6 +352,35 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
             sendLoginWebhook(result.userData);
             console.log(`[GTA Auth] User data received from unified backend.`);
             
+            // --- Stage 2: Firebase Custom Token Sign-in (Shadow) ---
+            if (result.firebaseCustomToken) {
+                const migrationTraceId = `mig-${Math.random().toString(36).substr(2, 4)}`;
+                
+                // NEW: If we are already a Google Admin, DO NOT sign in with the custom token
+                // This allows 'Dual Auth' where the Google Admin session persists for DB rules
+                const currentFirebaseUser = auth.currentUser;
+                const isExistingGoogleAdmin = currentFirebaseUser && !currentFirebaseUser.uid.startsWith('gtaw:');
+
+                if (isExistingGoogleAdmin) {
+                    console.log(`[JWT Migration][${migrationTraceId}] Dual-Auth Mode: Keeping Google Admin session, skipping GTAW sign-in.`);
+                } else {
+                    console.log(`[JWT Migration][${migrationTraceId}] Phase 1: Custom token received. Transitioning to Firebase Auth...`);
+                    signInWithCustomToken(auth, result.firebaseCustomToken)
+                        .then((userCredential) => {
+                            console.log(`[JWT Migration][${migrationTraceId}] Phase 2: Success. Firebase UID: ${userCredential.user.uid}`);
+                        })
+                        .catch((err) => {
+                            console.error(`[JWT Migration][${migrationTraceId}] Phase 2: FAILED.`, err.message);
+                            Sentry.captureException(err, { extra: { context: 'Shadow Firebase Auth sign-in', traceId: migrationTraceId } });
+                        });
+                }
+            } else {
+                console.warn('[JWT Migration] Warning: No custom token returned from backend. Stage 2 bypass.');
+                if (result.tokenError) {
+                    console.error('[JWT Migration] Backend Error Details:', result.tokenError);
+                }
+            }
+
             sessionStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(result.userData));
             sessionStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, result.accessToken);
             
@@ -519,6 +549,8 @@ const exchangeAuthCodeForToken = async (code, redirectUri) => {
                         scope: result.data.token.scope,
                         userData: result.data.user,
                         tokenData: result.data.token,
+                        firebaseCustomToken: result.data.firebaseCustomToken, // Shadow Token
+                        tokenError: result.data.tokenError, // Debug info
                         timestamp: result.data.timestamp
                     };
                 } else {
@@ -704,6 +736,12 @@ export const getStoredUserData = () => {
  */
 export const isGoogleAuthenticated = () => {
     try {
+        // New security check: Verify the current Firebase user is NOT a GTAW-prefixed user
+        const firebaseUser = auth.currentUser;
+        if (firebaseUser && firebaseUser.uid.startsWith('gtaw:')) {
+            return false;
+        }
+
         // Check for Google-authenticated user data in session storage
         // This would be set by the AdminAuthAndActions component when a user logs in via Google
         const googleAuthData = sessionStorage.getItem('google-admin-user');
@@ -777,6 +815,11 @@ export const isAuthenticated = () => {
 export const logout = () => {
     console.info('[GTA Auth] Logging out user');
     
+    // Sign out from Firebase
+    signOut(auth)
+        .then(() => console.log('[JWT Migration] Firebase session terminated.'))
+        .catch(err => console.error('[JWT Migration] Firebase signout error:', err));
+
     // Clear all stored authentication data from sessionStorage
     Object.values(STORAGE_KEYS).forEach(key => {
         sessionStorage.removeItem(key);
@@ -1081,6 +1124,31 @@ export const refreshFactionData = async () => {
         }
         
         const updatedUserData = result.data.user;
+        const newCustomToken = result.data.firebaseCustomToken;
+
+        // --- Stage 2: Firebase Custom Token Sign-in (Refresh Shadow) ---
+        if (newCustomToken) {
+            const refreshTraceId = `ref-${Math.random().toString(36).substr(2, 4)}`;
+            
+            const currentFirebaseUser = auth.currentUser;
+            const isExistingGoogleAdmin = currentFirebaseUser && !currentFirebaseUser.uid.startsWith('gtaw:');
+
+            if (isExistingGoogleAdmin) {
+                console.log(`[JWT Migration][${refreshTraceId}] Dual-Auth: Keeping Google Admin during refresh.`);
+            } else {
+                console.log(`[JWT Migration][${refreshTraceId}] Session refresh: Updating Firebase token...`);
+                signInWithCustomToken(auth, newCustomToken)
+                    .then(() => {
+                        console.log(`[JWT Migration][${refreshTraceId}] Session refresh: Firebase token updated.`);
+                    })
+                    .catch((err) => {
+                        console.error(`[JWT Migration][${refreshTraceId}] Session refresh: Firebase update FAILED.`, err.message);
+                    });
+            }
+        } else if (result.data.tokenError) {
+             console.error('[JWT Migration] Session refresh backend error:', result.data.tokenError);
+        }
+
         sessionStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(updatedUserData));
         
         console.log('[GTA Auth] Faction data refreshed via refreshGtawUser.');

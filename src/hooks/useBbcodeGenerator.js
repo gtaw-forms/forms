@@ -110,13 +110,6 @@ const formatToNorthAmericanDate = (isoDateTime) => {
         processedFormValues.decedents = Object.values(processedFormValues.decedents);
     }
 
-    // Custom handling for 'Patient Files' category to auto-populate date
-    if (selectedForm?.category === 'Patient Files') {
-        if (!processedFormValues.date) {
-            processedFormValues.date = formatToNorthAmericanDate(new Date().toISOString());
-        }
-    }
-
     // Custom handling for request-medical-files form to inject OAuth names
     if (selectedForm?.id === 'request-medical-files' && gtaWorldUser) {
       let oauthFirstName = gtaWorldUser?.faction?.firstname || gtaWorldUser?.activeCharacter?.firstname || null;

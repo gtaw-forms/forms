@@ -103,19 +103,6 @@ export const useMigrationSaver = () => {
         if (isGtaAuthenticated && gtaWorldUser) {
             gtawDataFound = true;
             userForGtawData = gtaWorldUser;
-        } else {
-            const storedProfileRaw = localStorage.getItem('phmc_gtaw_oauth_profile');
-            if (storedProfileRaw) {
-                try {
-                    const storedProfile = JSON.parse(storedProfileRaw);
-                    if (storedProfile) {
-                        gtawDataFound = true;
-                        userForGtawData = storedProfile;
-                    }
-                } catch (e) {
-                    console.error("Error parsing stored profile:", e);
-                }
-            }
         }
 
         try {
