@@ -254,23 +254,12 @@ useEffect(() => {
         }
     }, [formData, employeeNameField, selectedBingoType, filteredGroupedOptions]);
 
-    const [savedProfile, setSavedProfile] = useState(() => {
-        try {
-            const raw = localStorage.getItem('phmc_gtaw_oauth_profile');
-            return raw ? JSON.parse(raw) : null;
-        } catch {
-            return null;
-        }
-    });
-
     // Set selectedEmployee for OAuth users or cached data
     useEffect(() => {
         if (isGtawAuthenticated && factionData && factionData.characterName && selectedBingoType) {
             setSelectedEmployee({ value: factionData.characterName, label: factionData.characterName });
-        } else if (!isGtawAuthenticated && savedProfile && savedProfile.preferredEmployee && savedProfile.preferredEmployee.name && selectedBingoType) {
-            setSelectedEmployee({ value: savedProfile.preferredEmployee.name, label: savedProfile.preferredEmployee.name });
         }
-    }, [isGtawAuthenticated, factionData, selectedBingoType, savedProfile]);
+    }, [isGtawAuthenticated, factionData, selectedBingoType]);
 
     // Effect to listen for Firebase activity log updates and sync marked squares
 useEffect(() => {
@@ -689,9 +678,9 @@ setCompletedBingoLines(prevCompletedLines => {
                             </div>
                         </div>
                         <div className="bingo-sidebar">
-                            {(isGtawAuthenticated && factionData) || (!isGtawAuthenticated && savedProfile) ? (
+                            {isGtawAuthenticated && factionData ? (
                                 <div>
-                                    <h5>Playing as: {(isGtawAuthenticated && factionData) ? factionData.characterName : (savedProfile?.preferredEmployee?.name || 'Unknown')}</h5>
+                                    <h5>Playing as: {factionData.characterName}</h5>
                                 </div>
                             ) : selectedEmployee ? (
                                 <h5 className="welcome-message">Welcome {selectedEmployee.value}!</h5>

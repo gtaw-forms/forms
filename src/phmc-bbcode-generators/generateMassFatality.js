@@ -10,12 +10,34 @@ const generateDecedentBBCode = (decedents, coronerInfo = {}) => {
         // Image URL Processing
         const scenePhotosArray = Array.isArray(dec.scenePhotos) ? dec.scenePhotos.filter(url => url) : [];
         const additionalImagesArray = Array.isArray(dec.additionalImages) ? dec.additionalImages.filter(url => url) : [];
-        const scenePhotosBBCode = scenePhotosArray.length > 0
-            ? scenePhotosArray.map(photo => `[img]${photo}[/img]`).join('\n')
-            : '[i]No scene photos provided.[/i]';
-        const additionalImagesBBCode = additionalImagesArray.length > 0
-            ? additionalImagesArray.map(photo => `[img]${photo}[/img]`).join('\n')
-            : '[i]No additional images provided.[/i]';
+        
+        let scenePhotosBBCode = "";
+        if (scenePhotosArray.length > 0) {
+            scenePhotosBBCode = scenePhotosArray.map(photo => `[img]${photo}[/img]`).join('\n');
+        }
+        
+        if (dec.scenePhotos_narrative && dec.scenePhotos_narrative.trim()) {
+            if (scenePhotosBBCode) scenePhotosBBCode += "\n\n";
+            scenePhotosBBCode += dec.scenePhotos_narrative.trim();
+        }
+        
+        if (!scenePhotosBBCode) {
+            scenePhotosBBCode = '[i]No scene photos provided.[/i]';
+        }
+
+        let additionalImagesBBCode = "";
+        if (additionalImagesArray.length > 0) {
+            additionalImagesBBCode = additionalImagesArray.map(photo => `[img]${photo}[/img]`).join('\n');
+        }
+
+        if (dec.additionalImages_narrative && dec.additionalImages_narrative.trim()) {
+            if (additionalImagesBBCode) additionalImagesBBCode += "\n\n";
+            additionalImagesBBCode += dec.additionalImages_narrative.trim();
+        }
+
+        if (!additionalImagesBBCode) {
+            additionalImagesBBCode = '[i]No additional images provided.[/i]';
+        }
 
         // Evidence Locker Logic
         let evidenceLockerText = 'No';

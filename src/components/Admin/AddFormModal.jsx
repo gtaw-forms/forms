@@ -289,6 +289,13 @@ const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = f
             layout: "compact-50"
           },
           {
+            name: "decedentLocation",
+            label: "Decedent Location",
+            type: "text",
+            placeholder: "Select from map or enter address",
+            layout: "compact-50"
+          },
+          {
             name: "synopsis",
             label: "Decedent Injuries / Things of Note", // Updated label for synopsis
             type: "textarea",
@@ -733,9 +740,6 @@ const handleBulkAddFields = (fieldsToAdd) => {
               <option value="PHMC">PHMC Staff Only</option>
               <option value="Coroner">Coroner / DMEC Only</option>
               <option value="Mental Health">Mental Health Only</option> 
-              {isAuthenticated && (
-                <option value="Civilian">Civilian / Patient Files</option>
-              )}
             </select>
           </label>
 

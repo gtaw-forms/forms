@@ -14,6 +14,7 @@ import CctvRequestWebhookModal from './CctvRequestWebhookModal'; // Import the n
 import UserManagementModal from './UserManagementModal';
 import AdminDashboard from './AdminDashboard';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
+import { useAuth } from '../../contexts/AuthContext';
 import { getGoogleUser, isGoogleAuthenticated, logout as gtaLogout } from '../../services/gtaWorldAuth';
 import { getUserContext, logAdminAction } from '../../utils/adminLogger';
 
@@ -37,9 +38,15 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
-    const [currentUser, setCurrentUser] = useState(null);
     const [isLoadingAuth, setIsLoadingAuth] = useState(true);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+    const { 
+        user: authUser, 
+        displayName: authDisplayName, 
+        email: authEmail,
+        isLoading: authLoading
+    } = useAuth();
 
     // GTA World authentication hook
     const { 
@@ -115,10 +122,10 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
 
     // Load webhooks on component mount
     useEffect(() => {
-        if (currentUser) {
+        if (authUser) {
             loadWebhooks();
         }
-    }, [currentUser]);
+    }, [authUser]);
 
     useEffect(() => {
         const lockdownRef = ref(database, 'adminSettings/lockdownConfig');
@@ -216,7 +223,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                 return false;
             } else {
                 if (showInAppNotification) showInAppNotification('CCTV Test Webhook sent successfully!', "check-circle");
-                logAdminAction(currentUser?.email, "Sent CCTV Test Webhook", `Sent a test webhook for a CCTV request to the dev channel.`, "Developer Testing", userAgent, timeZone, gtaAuthUsername);
+                logAdminAction(unifiedCurrentUser?.email, "Sent CCTV Test Webhook", `Sent a test webhook for a CCTV request to the dev channel.`, "Developer Testing", userAgent, timeZone, gtaAuthUsername);
                 return true;
             }
         } catch (error) {
@@ -258,81 +265,49 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
     const [webhookMessage, setWebhookMessage] = useState('');
 
     useEffect(() => {
-        setIsLoadingAuth(true);
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-            const wasLoggedIn = prevUserUidRef.current !== null;
-            const isLoggedIn = user !== null;
-            const { userAgent, timeZone } = getUserContext(); // Capture user context
+        setIsLoadingAuth(authLoading);
+        const { userAgent, timeZone } = getUserContext();
 
-            if (isLoggedIn && !wasLoggedIn) {
-                // User just logged in
-                setCurrentUser(user);
-                setFormData(prev => ({ ...prev, isAdminAuthenticated: true, adminUserEmail: user.email, adminDisplayData: null, adminSelectedCategoryName: null }));
-                
-                // Store Google authentication data for permission system
+        if (authUser) {
+            const isGtawFirebaseUser = authUser.uid.startsWith('gtaw:');
+            
+            setFormData(prev => ({ 
+                ...prev, 
+                isAdminAuthenticated: true, 
+                adminUserEmail: authEmail, 
+                adminDisplayData: null, 
+                adminSelectedCategoryName: null 
+            }));
+            
+            if (!isGtawFirebaseUser) {
                 const googleAuthData = {
-                    email: user.email,
-                    uid: user.uid,
+                    email: authEmail,
+                    uid: authUser.uid,
                     isAdmin: true,
                     loginTime: new Date().toISOString()
                 };
                 sessionStorage.setItem('google-admin-user', JSON.stringify(googleAuthData));
                 sessionStorage.setItem('admin-auth-context', JSON.stringify({
                     isAdminAuthenticated: true,
-                    adminUserEmail: user.email
+                    adminUserEmail: authEmail
                 }));
-                
-                logAdminAction(user.email, "Admin Login", "User successfully logged in to the Admin Panel.", null, userAgent, timeZone, gtaAuthUsername, gtaAuthUser);
-                if (showInAppNotification) showInAppNotification(`Welcome, ${user.email}!`, "check-circle");
-            } else if (!isLoggedIn && wasLoggedIn) {
-                // User just logged out
-                const loggedOutEmail = currentUser?.email || "Unknown User";
-                setCurrentUser(null);
-                setFormData(prev => ({ ...prev, isAdminAuthenticated: false, adminUserEmail: null, adminDisplayData: null, adminSelectedCategoryName: null }));
-                setCurrentRecruitmentData({});
-                setSelectedRecruitmentCategory('');
-                
-                // Clear Google authentication data
-                sessionStorage.removeItem('google-admin-user');
-                sessionStorage.removeItem('admin-auth-context');
-                
-                logAdminAction(loggedOutEmail, "Admin Logout", "User successfully logged out from the Admin Panel.", null, userAgent, timeZone, gtaAuthUsername, gtaAuthUser);
-                if (showInAppNotification) showInAppNotification(`Logged out from Admin Panel.`, "info-circle");
-            } else if (isLoggedIn && wasLoggedIn) {
-                // User is still logged in (e.g., component re-rendered)
-                setCurrentUser(user);
-                setFormData(prev => ({ ...prev, isAdminAuthenticated: true, adminUserEmail: user.email }));
-                
-                // Ensure Google auth data is maintained
-                const existingData = sessionStorage.getItem('google-admin-user');
-                if (!existingData) {
-                    const googleAuthData = {
-                        email: user.email,
-                        uid: user.uid,
-                        isAdmin: true,
-                        loginTime: new Date().toISOString()
-                    };
-                    sessionStorage.setItem('google-admin-user', JSON.stringify(googleAuthData));
-                    sessionStorage.setItem('admin-auth-context', JSON.stringify({
-                        isAdminAuthenticated: true,
-                        adminUserEmail: user.email
-                    }));
-                }
             } else {
-                // User is still logged out
-                setCurrentUser(null);
-                setFormData(prev => ({ ...prev, isAdminAuthenticated: false, adminUserEmail: null }));
-                
-                // Ensure Google auth data is cleared
+                // Ensure we don't have stale admin data for GTAW users
                 sessionStorage.removeItem('google-admin-user');
                 sessionStorage.removeItem('admin-auth-context');
             }
-
-            prevUserUidRef.current = user ? user.uid : null;
-            setIsLoadingAuth(false);
-        });
-        return () => unsubscribe();
-    }, [setFormData, showInAppNotification]);
+        } else {
+            setFormData(prev => ({ 
+                ...prev, 
+                isAdminAuthenticated: false, 
+                adminUserEmail: null, 
+                adminDisplayData: null, 
+                adminSelectedCategoryName: null 
+            }));
+            sessionStorage.removeItem('google-admin-user');
+            sessionStorage.removeItem('admin-auth-context');
+        }
+    }, [authUser, authEmail, authLoading, setFormData]);
 
     // Monitor GTA World OAuth authentication changes
     const prevGtaAuthStateRef = useRef(null);
@@ -443,7 +418,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
             console.log(`[Admin Logout] Logging out ${logoutType} user: ${userIdentifier}`);
             
             // Firebase logout
-            if (currentUser) {
+            if (authUser) {
                 await signOut(auth);
                 console.log('[Admin Logout] Firebase auth signed out');
             }
@@ -455,7 +430,6 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
             }
             
             // CRITICAL SECURITY FIX: Immediately clear local state to prevent admin panel access
-            setCurrentUser(null);
             setError('');
             setEmail('');
             setPassword('');
@@ -642,8 +616,8 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
             } else {
                 if (showInAppNotification) showInAppNotification('Admin webhook message sent successfully!', "check-circle");
                 // setShowAdminCustomWebhookModal(false); // REMOVED - state no longer exists
-                logAdminAction(currentUser?.email || "Unknown User", "Sent Admin Custom Webhook", "Admin successfully sent a custom webhook to the Admin Action channel.", null, userAgent, timeZone, gtaAuthUsername);
-                logWebhookToFirebase('Admin Custom Webhook Sent', { admin: currentUser?.email, title: payloadFromModal.embeds[0].title });
+                logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Sent Admin Custom Webhook", "Admin successfully sent a custom webhook to the Admin Action channel.", null, userAgent, timeZone, gtaAuthUsername);
+                logWebhookToFirebase('Admin Custom Webhook Sent', { admin: authEmail, title: payloadFromModal.embeds[0].title });
                 return true;
             }
         } catch (error) {
@@ -721,7 +695,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
             if (!snapshot.exists()) {
                 showInAppNotification(`Error: Master phrases for ${selectedType.name} not found. Cannot generate new card.`, "error");
                 logAdminAction(
-                    currentUser.email,
+                    unifiedCurrentUser?.email,
                     `Failed to Generate New ${selectedType.name} Bingo Card`,
                     `Master phrases not found in Firebase at 'bingo/phrases/${selectedType.path}'.`,
                     `${selectedType.name} Bingo`,
@@ -741,7 +715,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
             if (masterPhrases.length < 24) {
                 showInAppNotification(`Error: Not enough master phrases for ${selectedType.name} (need at least 24).`, "error");
                 logAdminAction(
-                    currentUser.email,
+                    unifiedCurrentUser?.email,
                     `Failed to Generate New ${selectedType.name} Bingo Card`,
                     `Not enough master phrases (${masterPhrases.length} found, need 24).`,
                     `${selectedType.name} Bingo`,
@@ -925,7 +899,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
         if (!webhookURL) {
             if (showInAppNotification) showInAppNotification('Coroner Webhook URL (CORONER_DISCORD_UPDATES) not configured.', 'error');
             Sentry.captureMessage("Coroner Webhook URL (CORONER_DISCORD_UPDATES) not configured", "error");
-            logAdminAction(currentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", "Webhook URL not configured.", null, userAgent, timeZone);
+            logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", "Webhook URL not configured.", null, userAgent, timeZone);
             return false;
         }
         try {
@@ -942,20 +916,20 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                     extra: { statusText: response.statusText, responseBody: errorText }
                 });
                 if (showInAppNotification) showInAppNotification(`Failed to send Coroner webhook. Status: ${response.status}`, 'error');
-                logAdminAction(currentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", `Status: ${response.status}, Error: ${errorText}`, null, userAgent, timeZone);
+                logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", `Status: ${response.status}, Error: ${errorText}`, null, userAgent, timeZone);
                 return false;
             } else {
                 if (showInAppNotification) showInAppNotification('Coroner webhook message sent successfully!', "check-circle");
                 // setShowCoronerWebhookModal(false); // REMOVED - state no longer exists
-                logAdminAction(currentUser?.email || "Unknown User", "Sent Coroner Custom Webhook", "Admin successfully sent a custom webhook to the Coroner Updates channel.", null, userAgent, timeZone);
-                logWebhookToFirebase('Coroner Custom Webhook Sent', { admin: currentUser?.email, title: payloadFromModal.embeds[0].title });
+                logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Sent Coroner Custom Webhook", "Admin successfully sent a custom webhook to the Coroner Updates channel.", null, userAgent, timeZone);
+                logWebhookToFirebase('Coroner Custom Webhook Sent', { admin: authEmail, title: payloadFromModal.embeds[0].title });
                 return true;
             }
         } catch (error) {
             console.error('Error sending Coroner webhook:', error);
             Sentry.captureException(error, { extra: { context: 'Coroner Webhook Submission Fetch' } });
             if (showInAppNotification) showInAppNotification('A network error occurred sending the Coroner webhook.', "error");
-            logAdminAction(currentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", `Network Error: ${error.message}`, null, userAgent, timeZone);
+            logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", `Network Error: ${error.message}`, null, userAgent, timeZone);
             return false;
         }
     };
@@ -986,21 +960,17 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
 
     // Check if user is authenticated via Google admin OR GTA World OR Google override
     const isGoogleAdmin = isGoogleAuthenticated();
-    const hasAnyAuthentication = currentUser || isGtaAuthenticated || isGoogleAdmin;
+    const hasAnyAuthentication = authUser || isGtaAuthenticated || isGoogleAdmin;
 
     // Create a unified current user object for components that expect it
-    const unifiedCurrentUser = currentUser || (isGtaAuthenticated && gtaAuthUser ? {
-        email: gtaAuthUser.username,
-        uid: gtaAuthUser.id?.toString() || 'gta-user',
-        displayName: gtaAuthUser.username,
-        isGtaAuth: true,
+    const unifiedCurrentUser = authUser ? {
+        email: authEmail,
+        uid: authUser.uid,
+        displayName: authDisplayName,
+        isGtaAuth: authUser.uid.startsWith('gtaw:'),
+        isGoogleAuth: !authUser.uid.startsWith('gtaw:'),
         ...gtaAuthUser
-    } : null) || (isGoogleAdmin ? {
-        email: getGoogleUser()?.email || 'admin@google.auth',
-        uid: 'google-admin',
-        displayName: 'Google Admin',
-        isGoogleAuth: true
-    } : null);
+    } : null;
 
     if (!hasAnyAuthentication) {
         return (
@@ -1221,7 +1191,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                 showNotification={showInAppNotification}
                 commitInfo={commitInfo}
                 logAdminAction={logAdminAction}
-                adminUserEmail={currentUser?.email}
+                adminUserEmail={authEmail}
                 bingoType={selectedTypeForEdit}
             />
             <ReviewPhraseRequestsModal
@@ -1229,7 +1199,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                 onHide={() => setShowReviewPhrasesModal(false)}
                 showNotification={showInAppNotification}
                 logAdminAction={logAdminAction}
-                adminUserEmail={currentUser?.email}
+                adminUserEmail={authEmail}
             />
             <CctvRequestWebhookModal
                 show={showCctvWebhookModal}
