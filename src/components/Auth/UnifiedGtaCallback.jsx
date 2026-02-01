@@ -44,62 +44,6 @@ const UnifiedGtaCallback = () => {
         const result = await processCallback(code, state);
         console.log('✅ [UnifiedGtaCallback] processCallback completed successfully');
         setStatus('success');
-        // EXPERIMENTAL: Prepare a compact, safe OAuth profile object for optional persistence
-        try {
-          const rawUser = sessionStorage.getItem('gta-user-data') || sessionStorage.getItem('gtaworld_user_data');
-          const userData = rawUser ? JSON.parse(rawUser) : null;
-
-          if (userData) {
-            const faction = userData.faction || null;
-            const preferredName = faction?.characterName || null;
-            const preferredBadge = faction?.characterId || null;
-            const preferredRank = faction?.rank || faction?.scriptRank || null;
-            const compactProfile = {
-              username: userData.username || null,
-              userId: userData.id || null,
-              isFactionMember: !!userData.isFactionMember,
-              faction: faction
-                ? {
-                    characterName: faction.characterName || null,
-                    characterId: faction.characterId || null,
-                    rank: faction.rank || null,
-                    scriptRank: faction.scriptRank || null,
-                  }
-                : null,
-              // Derived fields commonly used by forms (no secrets)
-              preferredEmployee: {
-                name: preferredName || null,
-                badge: preferredBadge || null,
-                rank: preferredRank || null,
-                discord: userData.username || null,
-                phNumber: '50056',
-              },
-              accessLevel: userData.accessLevel || 'none',
-              permissions: Array.isArray(userData.permissions) ? userData.permissions : [],
-              savedAt: Date.now(),
-              version: 1,
-            };
-
-            // Always place the latest profile in sessionStorage for intra-session consumers
-            sessionStorage.setItem('phmc_gtaw_oauth_latest', JSON.stringify(compactProfile));
-
-            // If the user had previously opted in, persist to localStorage as well
-            const persistEnabled = localStorage.getItem('phmc_gtaw_oauth_persist_enabled') === 'true';
-            if (persistEnabled) {
-              localStorage.setItem('phmc_gtaw_oauth_profile', JSON.stringify(compactProfile));
-            }
-
-            console.log('[UnifiedGtaCallback] Prepared compact OAuth profile for persistence.', {
-              hasUser: !!userData,
-              wroteSessionKey: 'phmc_gtaw_oauth_latest',
-              persistedToLocalStorage: persistEnabled,
-            });
-          } else {
-            console.warn('[UnifiedGtaCallback] No user data found in sessionStorage to prepare persistence profile.');
-          }
-        } catch (persistErr) {
-          console.warn('[UnifiedGtaCallback] Failed to prepare/persist compact OAuth profile:', persistErr);
-        }
         
         const destinationPath = result?.returnPath || '/';
         console.log(`🔄 [UnifiedGtaCallback] Setting up navigation to ${destinationPath} in 800ms`);

@@ -9,7 +9,6 @@ const SwitchableFormButtons = ({ bbCodeVersion, openSwitchableModal, formGroups 
         generalConsultFormsSubGroup,
         commentaryNoteFormsSubGroup,
         mentalHealthFormsSubGroup,
-        civilianFormsSubGroup,
         phmcInternalEmails
     } = formGroups;
 
@@ -20,7 +19,6 @@ const SwitchableFormButtons = ({ bbCodeVersion, openSwitchableModal, formGroups 
         { versions: [20, 21], text: "Switch General Consultation Forms", icon: "fas fa-exchange-alt", modalArgs: ["Select General Consultation Form", generalConsultFormsSubGroup] },
         { versions: [22, 23], text: "Switch Commentary Note Form", icon: "fas fa-exchange-alt", modalArgs: ["Select Commentary Note Form", commentaryNoteFormsSubGroup] },
         { versions: [14, 16], text: "Switch Mental Health Form", icon: "fas fa-exchange-alt", modalArgs: ["Select Mental Health Form", mentalHealthFormsSubGroup] },
-        { versions: [3, 24, 25, 26], text: "Change Civilian Hospital Forms", icon: "fas fa-exchange-alt", modalArgs: ["Select Civilian Forms", civilianFormsSubGroup] },
         { versions: [27, 35], text: "Change Email Forms", icon: "fas fa-exchange-alt", modalArgs: ["Select Email Form", phmcInternalEmails] },
     ];
 

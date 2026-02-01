@@ -16,7 +16,6 @@ import { useReportAttachment } from '../../hooks/useReportAttachment';
 import { useFormSaver } from '../../hooks/useFormSaver';
 import seasonalEvents from '../UI/SeasonalEvents';
 import FormQuickLinks from './FormQuickLinks';
-import PermanentNotification from '../UI/PermanentNotification';
 import { validateForm } from '../../utils/formValidation';
 import { sendDiscordWebhook } from '../../utils/webhookUtils';
 import { ref, get } from 'firebase/database';
@@ -24,6 +23,7 @@ import { database } from '../../firebase';
 import { useInactivityReload } from '../../hooks/useInactivityReload';
 import { useUserMetrics } from '../../hooks/useUserMetrics';
 import { cleanRankText } from '../../utils/textUtils';
+import phmcLogo from '../../assets/phmc.png';
 
 // Critical CSS imports
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -41,7 +41,6 @@ const EmsBingoModal = lazy(() => import('../Modals/EmsBingoModal'));
 const EmployeeCredentialsSection = lazy(() => import('../Modals/EmployeeCredentialsSection'));
 const SavedReportsModal = lazy(() => import('../Modals/SavedReportsModal'));
 const OnboardingModal = lazy(() => import('../Modals/OnboardingModal'));
-const PatientMigrationModal = lazy(() => import('../Modals/PatientMigrationModal'));
 const BugReportModal = lazy(() => import('../Modals/BugReportModal'));
 const MapModal = lazy(() => import("../Modals/MapModal"));
 const AgencyIncidentModal = lazy(() => import('../Modals/AgencyIncidentModal'));
@@ -79,8 +78,6 @@ export const FormHandler = () => {
     }
   });
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
-  const [showMigrationModal, setShowMigrationModal] = useState(false);
-  const [enablePatientForms, setEnablePatientForms] = useState(false);
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
   const [currentUtcTime, setCurrentUtcTime] = useState(getUtcFormattedDateTime());
   const [isUploading, setIsUploading] = useState(false);
@@ -243,12 +240,6 @@ export const FormHandler = () => {
   const { showEmsBingoModal, setShowEmsBingoModal } = useModal();
   const { saveReport: saveNewReport } = useFormSaver();
   const modalCloseTimer = React.useRef(null);
-
-  const isPatientForm = useMemo(() => {
-    return selectedForm?.accessType === 'Civilian' ||
-           selectedForm?.category?.includes('Patient') ||
-           selectedForm?.category?.includes('Medical');
-  }, [selectedForm]);
 
   // Memos
   const finalSelectOptions = useMemo(() => {
@@ -750,7 +741,7 @@ export const FormHandler = () => {
 
   useEffect(() => {
     // Only proceed if a form is selected and user is authenticated for PHMC/Coroner forms
-    if (!selectedForm || !isAuthenticated || isPatientForm) {
+    if (!selectedForm || !isAuthenticated) {
       // If it's a patient form, employee credentials are not relevant here.
       // If not authenticated, we don't have OAuth data to sync.
       // If no form is selected, there's no employeeType context.
@@ -768,7 +759,7 @@ export const FormHandler = () => {
       
       // Update patientName based on characterName if not a patient form,
       // and if patientName is not already set by patientCharacterSelector.
-      if (!isPatientForm && characterName && currentFormValues.patientName !== characterName) {
+      if (characterName && currentFormValues.patientName !== characterName) {
         // Only set patientName from characterName if patientCharacterSelector hasn't taken precedence
         if (!currentFormValues.patientCharacterSelector) {
             updates.patientName = characterName;
@@ -847,7 +838,7 @@ export const FormHandler = () => {
       }
     });
 
-  }, [user, isAuthenticated, selectedForm, isPatientForm, setFormValues, updateEmployeeCredentials, characterName]);
+  }, [user, isAuthenticated, selectedForm, setFormValues, updateEmployeeCredentials, characterName]);
 
   useEffect(() => {
     const monitoringFields = ['coronerEmployee', 'phmcEmployee', 'coronerBadge', 'phmcBadge', 'coronerRank', 'phmcRank'];
@@ -880,28 +871,6 @@ export const FormHandler = () => {
     }
     window.prevMonitoredValues = currentValues;
   }, [formValues.coronerEmployee, formValues.phmcEmployee, formValues.coronerBadge, formValues.phmcBadge, formValues.coronerRank, formValues.phmcRank]);
-
-  // Existing useEffect for patient character selector
-  useEffect(() => {
-    if (!selectedForm || !selectedForm.fields) {
-      return;
-    }
-
-    setFormValues(currentFormValues => {
-        const updates = {};
-        const patientNameFromSelector = currentFormValues.patientCharacterSelector;
-
-        if (isPatientForm && patientNameFromSelector && currentFormValues.patientName !== patientNameFromSelector) {
-            updates.patientName = patientNameFromSelector;
-        }
-
-        if (Object.keys(updates).length > 0) {
-            return { ...currentFormValues, ...updates };
-        } else {
-            return currentFormValues;
-        }
-    });
-  }, [selectedForm, isPatientForm, setFormValues, formValues.patientCharacterSelector, formValues.patientName]);
 
   useEffect(() => {
     if (!selectedForm || !generatedTitle) return;
@@ -952,27 +921,6 @@ export const FormHandler = () => {
     }
   }, [formsData, selectedForm, showNotification]);
 
-  useEffect(() => {
-    const fetchPatientFormsStatus = async () => {
-      try {
-        const dbRef = ref(database, '/settings/enablePatientForms');
-        const snapshot = await get(dbRef);
-        if (snapshot.exists()) {
-          setEnablePatientForms(snapshot.val());
-        }
-      } catch (error) {
-        console.error("Error fetching patient forms status:", error);
-      }
-    };
-    fetchPatientFormsStatus();
-  }, []);
-
-  useEffect(() => {
-    if (selectedForm && isPatientForm && !enablePatientForms) {
-      setShowMigrationModal(true);
-    }
-  }, [selectedForm, isPatientForm, enablePatientForms]);
-
   const [groupedForms, notDisplayedFormsDetails] = React.useMemo(() => {
     const categoriesMap = {};
     const tempNotDisplayedFormsDetails = [];
@@ -991,13 +939,9 @@ export const FormHandler = () => {
           reason = "Development Mode Access";
       } else {
           const isRestricted = form.accessType === "PHMC" || form.accessType === "Coroner" || form.accessType === "Mental Health";
-          const isCivilian = form.accessType === "Civilian";
           const hasRequiredAccess = isAuthenticated && (isPhmcMember || (user && user.faction));
           
-          if (isCivilian) {
-              shouldDisplay = isAuthenticated;
-              reason = isAuthenticated ? "Access granted" : "Access denied";
-          } else if (!isRestricted) {
+          if (!isRestricted) {
               shouldDisplay = true;
               reason = "Public form";
           }
@@ -1026,7 +970,7 @@ export const FormHandler = () => {
     });
 
     const sortedCategoryNames = Object.keys(categoriesMap).sort((a, b) => {
-        const categoryOrder = ['Patient Files', 'DMEC', 'PHMC Staff'];
+        const categoryOrder = ['DMEC', 'PHMC Staff'];
         const indexA = categoryOrder.indexOf(a);
         const indexB = categoryOrder.indexOf(b);
 
@@ -1115,7 +1059,6 @@ export const FormHandler = () => {
       {seasonalEffectsEnabled && effect}
       <Suspense fallback={null}>
         <OnboardingModal show={showOnboardingModal} onComplete={handleOnboardingComplete} onSkip={handleOnboardingSkip} showNotification={showNotification} />
-        <PatientMigrationModal show={showMigrationModal} onHide={() => setShowMigrationModal(false)} />
               <EmsBingoModal
                 show={showEmsBingoModal}
                 onHide={() => setShowEmsBingoModal(false)}
@@ -1258,12 +1201,10 @@ export const FormHandler = () => {
           {!selectedForm ? (
             !isAuthenticated ? (
                 <div style={{ textAlign: "center", marginTop: "8rem", color: "#c9d1d9" }}>
-                    <i className="fas fa-lock" style={{ fontSize: "3rem",  marginBottom: "1rem", display: 'block' }}></i>
+                    <img src={phmcLogo} alt="PHMC Logo" style={{ height: '120px', marginBottom: '1.5rem', opacity: 0.8 }} />
                     <h3 style={{ color: "#880a03ff", fontWeight: "bold" }}>Authentication Required</h3>
                     <p style={{ fontSize: "1.1rem", marginTop: "1rem" }}>
-                        These forms are restricted to GTA WORLD EU OAUTH.
-                        <br />
-                        You must sign in to preview these forms. Civilian Forms will be retired in the future.
+                        These forms are restricted to PHMC Employees.
                         <br /><br />
                         Please sign in with your GTA World account to continue.
                     </p>
@@ -1287,16 +1228,6 @@ export const FormHandler = () => {
               <div style={{ margin: "0 -8px" }}>
                 {(() => {
                   let fieldsToRender = [...(selectedForm.fields || [])];
-                  if (isPatientForm) {
-                    const defaultCharacterSelectorField = {
-                      name: 'patientCharacterSelector',
-                      label: 'Select Patient Character',
-                      type: 'character_selector',
-                      id: 'synthetic-char-selector',
-                      layout: 'full',
-                    };
-                    fieldsToRender.unshift(defaultCharacterSelectorField);
-                  }
 
                   return fieldsToRender.map((field) => (
                     <FormFieldRenderer
@@ -1329,7 +1260,7 @@ export const FormHandler = () => {
                 <button 
                   onClick={() => {
                     // --- DEBUG LOG START ---
-                    if (selectedForm && !isPatientForm) {
+                    if (selectedForm) {
                         const empType = selectedForm.accessType === 'Coroner' ? 'coroner' : 'phmc';
                         const dName = formValues[`${empType}Employee`] || "N/A";
                         const dRank = formValues[`${empType}Rank`] || "N/A";
@@ -1368,12 +1299,7 @@ export const FormHandler = () => {
                 Signed in as {mainEmployeeName || characterName || 'Guest'}
               </h3>
             </div>
-            {isPatientForm ? (
-              <div style={{ padding: '10px', backgroundColor: '#f59e0b', color: 'black', borderRadius: '4px', textAlign: 'center', fontWeight: 'bold' }}>
-                <i className="fas fa-exclamation-triangle" style={{ marginRight: '8px' }}></i>
-                Use the Select Patient Character. Employee Credentials are disabled during Patient Files.
-              </div>
-            ) : (
+            {
               <Suspense fallback={<Spinner animation="border" size="sm" />}>
                 <EmployeeCredentialsSection
                   formData={formValues}
@@ -1386,7 +1312,7 @@ export const FormHandler = () => {
                   context={selectedForm?.name}
                 />
               </Suspense>
-            )}
+            }
           </div>
 
 {generatedBBCode ? (
@@ -1456,10 +1382,6 @@ export const FormHandler = () => {
   </>
 )}        </div>
       </div>
-      <PermanentNotification
-        discordLink="https://discord.gg/fg7ssSMkj9"
-        onReportBugClick={() => setShowBugReportModal(true)}
-      />
       <Suspense fallback={null}>
         <BugReportModal
           show={showBugReportModal}

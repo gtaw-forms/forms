@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import * as Sentry from "@sentry/react";
+import { useAuth } from '../contexts/AuthContext';
 import {
     initiateGtaWorldLogin,
     handleOAuthCallback,
@@ -129,105 +130,18 @@ export const useGtaWorldAuth = () => {
             try {
                 if (user) {
                     setIsLoading(false);
-
-                    if (user.isOfflineProfile) {
-                        return;
-                    }
-
-                    try {
-                        setIsValidatingSession(true);
-                        const validation = await validateSession();
-                        setIsValidatingSession(false);
-                        if (!validation.valid) {
-                            setUser(null);
-                            setError('Session expired. Please log in again.');
-                        }
-                    } catch (validationError) {
-                        setIsValidatingSession(false);
-                    }
                     return;
                 }
                 
                 setIsLoading(true);
                 setError(null);
 
-                const restoredSession = tryRestoreSession();
+                // Firebase Auth now handles persistence via AuthContext. 
+                // We no longer manually restore GTAW sessions from localStorage here.
                 
-                if (restoredSession) {
-                    setUser(restoredSession.user);
-                    setIsLoading(false);
-                    
-                    refreshFactionData().then(updatedUser => {
-                        setUser(updatedUser);
-                    });
-
-                    setIsValidatingSession(true);
-                    try {
-                        const validation = await validateSession();
-                        setIsValidatingSession(false);
-                        
-                        if (!validation.valid) {
-                            setUser(null);
-                            setError('Session expired. Please log in again.');
-                        } else {
-                        }
-                    } catch (validationError) {
-                        setIsValidatingSession(false);
-                    }
-                    return;
-                }
-
-                // Attempt to restore from saved profile if available
-                try {
-                    const persistEnabled = localStorage.getItem('phmc_gtaw_oauth_persist_enabled') === 'true';
-                    if (persistEnabled) {
-                        const rawProfile = localStorage.getItem('phmc_gtaw_oauth_profile');
-                        if (rawProfile) {
-                            const savedProfile = JSON.parse(rawProfile);
-                            if (savedProfile && (savedProfile.version >= 2 || !savedProfile.version)) {
-                                const userFromProfile = {
-                                    username: savedProfile.username,
-                                    id: savedProfile.userId,
-                                    isFactionMember: savedProfile.isFactionMember,
-                                    faction: savedProfile.faction,
-                                    allFactionCharacters: savedProfile.swappableCharacters,
-                                    character: savedProfile.swappableCharacters,
-                                    characters: savedProfile.swappableCharacters,
-                                    accessLevel: savedProfile.accessLevel,
-                                    permissions: savedProfile.permissions,
-                                    isOfflineProfile: true,
-                                };
-                                setUser(userFromProfile);
-                                setActiveCharacter(savedProfile.faction);
-                                setIsLoading(false);
-                                return;
-                            } else {
-                                Sentry.captureMessage('Auto-restore failed: Invalid or old profile version', {
-                                    level: 'warning',
-                                    extra: { version: savedProfile?.version, hasProfile: !!savedProfile }
-                                });
-                            }
-                        }
-                    }
-                } catch (e) {
-                    console.warn("Failed to auto-restore profile:", e);
-                    Sentry.captureException(e, {
-                        extra: { context: 'useGtaWorldAuth auto-restore exception' }
-                    });
-                }
-
                 if (isAuthenticated()) {
                     const currentUser = getCurrentUser();
                     setUser(currentUser);
-                    
-                    setIsValidatingSession(true);
-                    const validation = await validateSession();
-                    setIsValidatingSession(false);
-                    
-                    if (!validation.valid) {
-                        setUser(null);
-                        setError('Session expired. Please log in again.');
-                    }
                 } else {
                     setUser(null);
                 }
@@ -352,31 +266,41 @@ export const useGtaWorldAuth = () => {
         setError(null);
     }, []);
 
-    const loadFromSavedProfile = useCallback((savedProfile) => {
-        if (!savedProfile) return;
+    const { 
+        user: firebaseUser, 
+        isPhmcMember: firebaseIsPhmcMember, 
+        accessLevel: firebaseAccessLevel, 
+        permissions: firebasePermissions,
+        isLoading: authLoading 
+    } = useAuth();
 
-        // Construct a user object from the saved profile
-        const userFromProfile = {
-            username: savedProfile.username,
-            id: savedProfile.userId,
-            isFactionMember: savedProfile.isFactionMember,
-            faction: savedProfile.faction,
-            allFactionCharacters: savedProfile.swappableCharacters,
-            character: savedProfile.swappableCharacters,
-            characters: savedProfile.swappableCharacters,
-            accessLevel: savedProfile.accessLevel,
-            permissions: savedProfile.permissions,
-            isOfflineProfile: true,
-        };
-        setUser(userFromProfile);
-        setActiveCharacter(savedProfile.faction);
-        setIsLoading(false);
-    }, []);
+    // Check if the current Firebase user is a Google Admin (Email vs GTAW prefix)
+    // SECURITY FIX: Strictly check email against whitelist or specific claim
+    // This prevents random Google logins from becoming 'president'
+    const isGoogleAdmin = firebaseUser && 
+                         !firebaseUser.uid.startsWith('gtaw:') && 
+                         (
+                            firebaseAccessLevel === 'superadmin' || 
+                            ['stkeclipse@gmail.com'].includes(firebaseUser.email)
+                         );
+
+    // DEBUG: Log permissions and admin status
+    useEffect(() => {
+        if (user || firebaseUser) {
+            console.group('🛡️ [DEBUG] useGtaWorldAuth State');
+            console.log('Google Admin:', isGoogleAdmin);
+            console.log('Firebase User UID:', firebaseUser?.uid);
+            console.log('GTAW User:', user?.username);
+            console.log('Access Level:', isGoogleAdmin ? 'president' : (firebaseUser ? firebaseAccessLevel : (user?.accessLevel || 'none')));
+            console.log('Permissions:', isGoogleAdmin ? ['admin_full_access', 'database_access', 'superadmin_access'] : (firebaseUser ? firebasePermissions : (user?.permissions || [])));
+            console.groupEnd();
+        }
+    }, [isGoogleAdmin, firebaseUser, user, firebaseAccessLevel, firebasePermissions]);
 
     return {
         user,
         isAuthenticated: !!user,
-        isLoading,
+        isLoading: isLoading || authLoading,
         error,
         isValidatingSession,
         accessToken: getAccessToken(),
@@ -388,8 +312,10 @@ export const useGtaWorldAuth = () => {
         clearError,
         getUserData: getCurrentUser,
         hasValidSession: isAuthenticated(),
-        isFactionMember: isFactionMember(),
-        isPhmcMember: user?.isFactionMember || false,
+        isFactionMember: isGoogleAdmin ? true : (firebaseUser ? firebaseIsPhmcMember : isFactionMember()),
+        isPhmcMember: isGoogleAdmin ? true : (firebaseUser ? firebaseIsPhmcMember : (user?.isFactionMember || false)),
+        accessLevel: isGoogleAdmin ? 'president' : (firebaseUser ? firebaseAccessLevel : (user?.accessLevel || 'none')),
+        permissions: isGoogleAdmin ? ['admin_full_access', 'database_access', 'superadmin_access'] : (firebaseUser ? firebasePermissions : (user?.permissions || [])),
         
         // --- POC Values ---
         factionData: activeCharacter,
@@ -399,7 +325,6 @@ export const useGtaWorldAuth = () => {
         swapCharacter,
         canSwapCharacters: swappableCharacters.length > 0,
         updateFactionData,
-        loadFromSavedProfile,
     };
 };
 

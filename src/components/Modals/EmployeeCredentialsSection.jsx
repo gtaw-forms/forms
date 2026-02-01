@@ -43,7 +43,6 @@ const EmployeeCredentialsSection = ({
     swappableCharacters,
     factionData,
     updateFactionData,
-    loadFromSavedProfile,
   } = useGtaWorldAuth();
   const { showNotification: notifyFromContext } = useNotification?.() || {};
 
@@ -191,99 +190,6 @@ const EmployeeCredentialsSection = ({
 
   const gtawCharacterName = factionData?.characterName || null;
 
-  // Saved profile support (opt-in persistence)
-  const [savedProfile, setSavedProfile] = useState(() => {
-    try {
-      const raw = localStorage.getItem('phmc_gtaw_oauth_profile');
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  });
-  const [usingSavedProfile, setUsingSavedProfile] = useState(false);
-  const [persistEnabled, setPersistEnabled] = useState(
-    () => localStorage.getItem('phmc_gtaw_oauth_persist_enabled') === 'true'
-  );
-  const [persistedAt, setPersistedAt] = useState(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('phmc_gtaw_oauth_profile') || 'null');
-      return saved?.savedAt ? new Date(saved.savedAt) : null;
-    } catch {
-      return null;
-    }
-  });
-
-  const buildCompactProfile = () => {
-    const name = factionData?.characterName || getCharacterName(gtaWorldUser) || null;
-    const badge = factionData?.characterId || getCharacterID(gtaWorldUser) || null;
-    const rankRaw = factionData?.rank || gtaWorldUser?.faction?.rank || gtaWorldUser?.faction?.scriptRank || '';
-    const rank = rankRaw ? cleanRankText(rankRaw) : '';
-
-    const getCharId = (c) => c?.character?.characterId ?? c?.id ?? null;
-    const getCharName = (c) => c?.character?.characterName ?? c?.name ?? null;
-
-    const normalizedSwappable = swappableCharacters.map(c => {
-      const charId = getCharId(c);
-      let charData = {
-        characterId: charId,
-        characterName: getCharName(c),
-      };
-
-      // If this is the currently active character, we have full data for it.
-      if (charId === factionData.characterId) {
-        charData = { ...charData, ...factionData };
-      }
-      
-      return { character: charData };
-    }).filter(c => c.character.characterId);
-
-
-    return {
-      username: gtaWorldUser?.username || null,
-      userId: gtaWorldUser?.id || null,
-      isFactionMember: !!(gtaWorldUser?.isFactionMember || factionData),
-      faction: factionData
-        ? {
-            characterName: factionData.characterName || null,
-            characterId: factionData.characterId || null,
-            rank: factionData.rank || null,
-            scriptRank: factionData.scriptRank || null,
-          }
-        : null,
-      swappableCharacters: normalizedSwappable,
-      preferredEmployee: {
-        name,
-        badge,
-        rank,
-        discord: gtaWorldUser?.username || null,
-        phNumber: '50056',
-      },
-      accessLevel: gtaWorldUser?.accessLevel || 'none',
-      permissions: Array.isArray(gtaWorldUser?.permissions) ? gtaWorldUser.permissions : [],
-      savedAt: Date.now(),
-      version: 2,
-    };
-  };
-
-  const handleTogglePersist = e => {
-    const next = e.target.checked;
-    setPersistEnabled(next);
-    if (next) {
-      try {
-        const profile = buildCompactProfile();
-        localStorage.setItem('phmc_gtaw_oauth_profile', JSON.stringify(profile));
-        localStorage.setItem('phmc_gtaw_oauth_persist_enabled', 'true');
-        setPersistedAt(new Date(profile.savedAt));
-      } catch (err) {
-        console.warn('[EmployeeCredentialsSection] Failed to persist OAuth profile:', err);
-      }
-    } else {
-      localStorage.setItem('phmc_gtaw_oauth_persist_enabled', 'false');
-      localStorage.removeItem('phmc_gtaw_oauth_profile');
-      setPersistedAt(null);
-    }
-  };
-
   const handleSwap = () => {
     if (!canSwapCharacters || !factionData || !swappableCharacters || swappableCharacters.length < 2) {
         console.log("Cannot swap characters", { canSwapCharacters, factionData, swappableCharacters });
@@ -378,40 +284,6 @@ const EmployeeCredentialsSection = ({
     setShowDiscordModal(false);
   };
 
-  const handleUseSavedProfile = () => {
-    if (!savedProfile) return;
-
-    if (savedProfile.version >= 2 && loadFromSavedProfile) {
-      loadFromSavedProfile(savedProfile);
-    }
-
-    const pref = savedProfile.preferredEmployee || {};
-    const preferredRank = pref.rank ? cleanRankText(pref.rank) : '';
-    setFormData(prev => ({
-      ...prev,
-      [employeeNameField]: pref.name || '',
-      [employeeBadgeField]: pref.badge || '',
-      [employeeRankField]: preferredRank,
-      [employeeDiscordField]: savedProfile.username || pref.discord || '',
-      [employeePHNumberField]: pref.phNumber || '50056',
-    }));
-    // Set local Discord state for edit button
-    setCustomDiscordName(savedProfile.username || pref.discord || '');
-    setUsingSavedProfile(true);
-    setUseGtawName(true); // Show the "Using GTAW OAuth Credentials" panel after using saved profile
-  };
-
-  const handleClearSavedProfile = () => {
-    try {
-      localStorage.removeItem('phmc_gtaw_oauth_profile');
-      localStorage.setItem('phmc_gtaw_oauth_persist_enabled', 'false');
-      setSavedProfile(null);
-      setPersistEnabled(false);
-      setPersistedAt(null);
-      setUsingSavedProfile(false);
-    } catch {}
-  };
-
   return (
     <>
       <DiscordNameModal
@@ -499,20 +371,13 @@ const EmployeeCredentialsSection = ({
             Using GTAW OAuth Credentials
           </div>
           <div style={{ color: '#eeeeeeb0' }}>
-            <div style={{ color: '#cfe6cf', fontSize: '0.9rem', marginBottom: '10px' }}>
-              {persistEnabled ? (
-                <><i className="fas fa-bookmark" style={{ marginRight: '5px' }}></i> Your credentials will be saved automatically.</>
-              ) : (
-                <><i className="fas fa-eraser" style={{ marginRight: '5px' }}></i> Your credentials will NOT be saved automatically.</>
-              )}
-            </div>
-            <strong>Character Name:</strong> {usingSavedProfile ? formData[employeeNameField] : gtawCharacterName}<br />
-            <strong>UCP User:</strong> {usingSavedProfile ? formData[employeeDiscordField] : gtaWorldUser?.username}<br />
-            <strong>Badge Number:</strong> {usingSavedProfile ? formData[employeeBadgeField] : (factionData?.characterId || gtaWorldUser?.id)}<br />
-            <strong>Rank:</strong> {usingSavedProfile ? formData[employeeRankField] : (factionData?.rank ? cleanRankText(factionData.rank) : '')}<br />
+            <strong>Character Name:</strong> {gtawCharacterName}<br />
+            <strong>UCP User:</strong> {gtaWorldUser?.username}<br />
+            <strong>Badge Number:</strong> {factionData?.characterId || gtaWorldUser?.id}<br />
+            <strong>Rank:</strong> {factionData?.rank ? cleanRankText(factionData.rank) : ''}<br />
             {enableDiscordEdit && (
               <>
-                <strong>Discord:</strong> {usingSavedProfile ? formData[employeeDiscordField] : (customDiscordName || gtaWorldUser?.username)}
+                <strong>Discord:</strong> {customDiscordName || gtaWorldUser?.username}
                 <Button variant="link" size="sm" onClick={() => setShowDiscordModal(true)}>(Edit)</Button>
                 <br />
               </>
@@ -528,7 +393,7 @@ const EmployeeCredentialsSection = ({
                 <i className={`fas ${isRefreshing ? 'fa-spinner fa-spin' : 'fa-rotate'}`} style={{ marginRight: '6px' }}></i>
                 {isRefreshing ? 'Refreshing…' : 'Refresh Rank/Permissions'}
               </button>
-              {isGtaAuthenticated && !usingSavedProfile && (
+              {isGtaAuthenticated && (
                 <div style={{ position: 'relative' }}>
                   {showFloatingText && (
                     <div style={{
@@ -572,92 +437,18 @@ const EmployeeCredentialsSection = ({
                 </div>
               )}
             </div>
-            <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed #2f3b52' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                <input type="checkbox" checked={persistEnabled} onChange={handleTogglePersist} style={{ accentColor: '#28a745' }} />
-                <span style={{ color: '#cfe6cf' }}>
-                  Keep me logged in on this browser.
-                </span>
-              </label>
-              {persistEnabled && (
-                <div style={{ color: '#9fb59f', fontSize: '0.85rem', marginTop: '6px' }}>
-                  <i className="fas fa-save" style={{ marginRight: '6px' }}></i>
-                  Saved{persistedAt ? ` on ${persistedAt.toLocaleString()}` : ''}
-                </div>
-              )}
-            </div>
           </div>
         </div>
       ) : (
-        <>
-          {savedProfile ? (
-            <div style={{ padding: '12px', backgroundColor: '#1a2332', border: '1px solid #198754', borderRadius: '4px', marginBottom: '1rem' }}>
-              <div style={{ color: '#20c997', fontWeight: 'bold', marginBottom: '6px' }}>
-                <i className="fas fa-id-badge" style={{ marginRight: '8px' }}></i>
-                Saved OAuth Details Available
-              </div>
-              <div style={{ color: '#cfe6cf', fontSize: '0.9rem', marginBottom: '10px' }}>
-                {persistEnabled ? (
-                  <><i className="fas fa-bookmark" style={{ marginRight: '5px' }}></i> Your credentials will be saved automatically.</>
-                ) : (
-                  <><i className="fas fa-eraser" style={{ marginRight: '5px' }}></i> Your credentials will NOT be saved automatically.</>
-                )}
-              </div>
-              <div style={{ color: '#eeeeeeb0', marginBottom: '8px' }}>
-                <strong>Character Name:</strong> {savedProfile?.preferredEmployee?.name || 'Unknown'}
-                <br />
-                <strong>UCP User:</strong> {savedProfile?.username || 'Unknown'}
-                <br />
-                {savedProfile?.preferredEmployee?.badge && (
-                  <>
-                    <strong>Badge Number:</strong> {savedProfile.preferredEmployee.badge}
-                    <br />
-                  </>
-                )}
-                {savedProfile?.preferredEmployee?.rank && (
-                  <>
-                    <strong>Rank:</strong> {cleanRankText(savedProfile.preferredEmployee.rank)}
-                    <br />
-                  </>
-                )}
-                {/* Show Discord and Edit if using Coroner context */}
-                {enableDiscordEdit && (
-                  <>
-                    <strong>Discord:</strong> {customDiscordName || savedProfile.username || savedProfile?.preferredEmployee?.discord || ''}
-                    <Button variant="link" size="sm" onClick={() => setShowDiscordModal(true)}>(Edit)</Button>
-                    <br />
-                  </>
-                )}
-              </div>
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                <button type="button" className="btn btn-success btn-sm" onClick={handleUseSavedProfile}>
-                  <i className="fas fa-check" style={{ marginRight: '6px' }}></i>
-                  Use Saved Details
-                </button>
-                <button type="button" className="btn btn-outline-secondary btn-sm" onClick={handleClearSavedProfile}>
-                  <i className="fas fa-trash" style={{ marginRight: '6px' }}></i>
-                  Clear Saved
-                </button>
-              </div>
-              {usingSavedProfile && (
-                <div style={{ color: '#9fb59f', fontSize: '0.85rem', marginTop: '8px' }}>
-                  <i className="fas fa-check-circle" style={{ marginRight: '6px' }}></i>
-                  Applied saved details to this report.
-                </div>
-              )}
-            </div>
-          ) : (
-            <div style={{ padding: '15px', backgroundColor: '#2a2a2a', border: '1px solid #6c757d', borderRadius: '4px', marginBottom: '1rem', textAlign: 'center' }}>
-              <div style={{ color: '#6c757d', marginBottom: '10px' }}>
-                <i className="fas fa-exclamation-triangle" style={{ marginRight: '8px' }}></i>
-                GTAW Authentication Required
-              </div>
-              <div style={{ color: '#ccc', fontSize: '0.9rem' }}>
-                Please log in with your GTAW account to automatically populate your credentials.
-              </div>
-            </div>
-          )}
-        </>
+        <div style={{ padding: '15px', backgroundColor: '#2a2a2a', border: '1px solid #6c757d', borderRadius: '4px', marginBottom: '1rem', textAlign: 'center' }}>
+          <div style={{ color: '#6c757d', marginBottom: '10px' }}>
+            <i className="fas fa-exclamation-triangle" style={{ marginRight: '8px' }}></i>
+            GTAW Authentication Required
+          </div>
+          <div style={{ color: '#ccc', fontSize: '0.9rem' }}>
+            Please log in with your GTAW account to automatically populate your credentials.
+          </div>
+        </div>
       )}
 
       {/* Note: The non-dev unauthenticated message is merged to allow saved-profile CTA */}
