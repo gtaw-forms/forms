@@ -5,7 +5,7 @@ import * as Sentry from "@sentry/react";
 
 const comprehensiveSanitize = (str) => {
     if (!str) return '';
-    let sanitized = str.trim().replace(/[.#$[\/ \]]+/g, '_');
+    let sanitized = str.trim().replace(/[.#$[/ \]]+/g, '_');
     sanitized = sanitized.replace(/_{2,}/g, '_');
     sanitized = sanitized.replace(/^_+|_+$/g, '');
     return sanitized;
@@ -21,7 +21,7 @@ export const useFormHandler = (showNotification) => {
 
         const key = `[BBCODE] ${reportName} - ${new Date().toISOString().split('T')[0]}`;
         const sanitizedAuthorId = comprehensiveSanitize(author);
-        const sanitizedKey = key.trim().replace(/[.#$[\/ \]]+/g, '_') + '_' + Date.now();
+        const sanitizedKey = key.trim().replace(/[.#$[/ \]]+/g, '_') + '_' + Date.now();
 
         const reportDataToSave = {
             bbCodeVersion: 'FormHandler',

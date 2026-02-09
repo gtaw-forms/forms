@@ -1,0 +1,184 @@
+{
+  "id": "coroner-report",
+  "name": "Coroner Report",
+  "category": "DMEC",
+  "accessType": "Coroner",
+  "formDescription": "Standard death investigation report for DMEC staff. Supports sections and icons.",
+  "titleGeneratorCode": "[{{typeOfDeath}}] {{decedentName}} (({{decedentOOC}})) - {{date}}",
+  "template": "[divbox=transparent][center][img]https://i.ibb.co/0pgw9hHm/phmc.png[/img][/center][/divbox]\n\n[divbox=transparent][br][/br][center]DEATH INVESTIGATION REPORT[/center]\n[hr][/hr]\n\n[center][bold]A.   WRITTEN REPORT[/bold][/center]\n\nThe County Coroner's Office has been called regarding the decease that occurred at the location of [bold]{{placeOfDeath}}[/bold]. Upon receiving the call from [bold]{{department}}[/bold], Coroner's Office dispatched a Staff Member to the crime scene to conduct an investigation on the [bold]{{dateTime}}[/bold].\n\n[bold]{{coronerEmployee}}[/bold], Serial Number [bold]{{coronerBadge}}[/bold], arrived at the scene and identified the individual as [bold]{{decedentName}}[/bold], who is estimated to have died at [bold]{{pronouncedTimeOfDeath}}[/bold]. Following an initial investigation, the following [bold]synopsis[/bold] was recorded: {{synopsis}}\n\n[conditional field=\"ReportRequested\" value=\"true\"]\nA Coroner's Report was requested by the {{department}}, {{requestingOfficer}}.\n[/conditional]\n\nBased on the information gathered from the scene investigation and the decedent's medical history (if available), the probable cause of death was determined to be [bold]{{probableCauseOfDeath}}[/bold]. The manner of death was classified as [bold]{{mannerOfDeath}}[/bold].\n\n[conditional field=\"evidenceLocker\" value=\"true\"]\nStaff has placed {{evidenceLockerItems}} in the Evidence Locker.\n[/conditional]\n[/divbox]\n[divbox=transparent][center][bold]B. PHOTOGRAPHIC DOCUMENTARY RECORD[/center]\n[hr][/hr]\n[center][size=85][bold][u]SCENE PHOTOGRAPHY[/u][/bold][/size][/center]\n{{scenePhotosBBCode}}\n[/divbox]\n\n[divbox=transparent]\n[center][bold]C. STATEMENT[/bold][/center]\n[hr][/hr]\n[size=85]I have made detailed notes of my findings and conclusions, and these notes are available for review if necessary. I certify that the information contained in this report is true and accurate to the best of my knowledge and belief.[/size]\n[/divbox]",
+  "fields": [
+    {
+      "type": "section",
+      "label": "Scene Information",
+      "icon": "fas fa-map-marker-alt",
+      "id": "sec-scene-info"
+    },
+    {
+      "name": "dateTime",
+      "label": "Dispatched to scene",
+      "type": "timer",
+      "timerType": "datetime-local",
+      "layout": "compact-50",
+      "displayCurrentTime": true,
+      "buttonAction": "set_current_time",
+      "buttonLabel": "Dispatched",
+      "id": "field-dt-dispatched"
+    },
+    {
+      "name": "pronouncedTimeOfDeath",
+      "label": "Decedent Time of Death",
+      "type": "timer",
+      "timerType": "time",
+      "layout": "compact-50",
+      "displayCurrentTime": true,
+      "id": "field-dt-death"
+    },
+    {
+      "type": "section",
+      "label": "Request Details",
+      "icon": "fas fa-file-contract",
+      "id": "sec-request-details"
+    },
+    {
+      "name": "ReportRequested",
+      "label": "Report Requested?",
+      "type": "checkbox",
+      "associatedInputField": {
+        "name": "requestingOfficer",
+        "placeholder": "Requesting Officer Name",
+        "type": "input"
+      },
+      "layout": "full",
+      "id": "field-req-check"
+    },
+    {
+      "name": "department",
+      "label": "Department",
+      "type": "select",
+      "optionsKey": "agencies",
+      "placeholder": "Department Name",
+      "layout": "full",
+      "id": "field-req-dept"
+    },
+    {
+      "type": "section",
+      "label": "Decedent Identification",
+      "icon": "fas fa-id-card",
+      "id": "sec-decedent-id"
+    },
+    {
+      "type": "information_state",
+      "content": "(( If you are dealing with a PK, the Decedent Name is always John Doe or Jane Doe. For CKs, attempt to identify the body via IC means. )) ",
+      "infoType": "Information",
+      "layout": "full",
+      "name": "info_id_guidance",
+      "id": "field-info-pkck"
+    },
+    {
+      "name": "decedentName",
+      "label": "Decedent Name",
+      "type": "input",
+      "layout": "compact-50",
+      "placeholder": "Full Name",
+      "id": "field-dec-name"
+    },
+    {
+      "name": "decedentOOC",
+      "label": "OOC Decedent Name",
+      "type": "input",
+      "layout": "compact-50",
+      "placeholder": "OOC Name",
+      "id": "field-dec-ooc"
+    },
+    {
+      "name": "typeOfDeath",
+      "label": "Type of Death",
+      "type": "select",
+      "optionsKey": "typeOfDeathOptions",
+      "layout": "compact-50",
+      "id": "field-dec-type"
+    },
+    {
+      "name": "mannerOfDeath",
+      "label": "Manner of Death",
+      "type": "select",
+      "optionsKey": "mannerOfDeathOptions",
+      "layout": "compact-50",
+      "id": "field-dec-manner"
+    },
+    {
+      "type": "section",
+      "label": "Investigation Findings",
+      "icon": "fas fa-search",
+      "id": "sec-findings"
+    },
+    {
+      "name": "placeOfDeath",
+      "label": "Place of Death",
+      "type": "input",
+      "layout": "compact-50",
+      "placeholder": "Street / Area Name",
+      "id": "field-find-place"
+    },
+    {
+      "name": "probableCauseOfDeath",
+      "label": "Probable Cause",
+      "type": "input",
+      "layout": "compact-50",
+      "placeholder": "Cause of death",
+      "id": "field-find-cause"
+    },
+    {
+      "name": "synopsis",
+      "label": "Case Synopsis",
+      "type": "textarea",
+      "rows": 4,
+      "placeholder": "What did you find on scene? Condition of the decedent?",
+      "layout": "full",
+      "id": "field-find-synopsis"
+    },
+    {
+      "type": "section",
+      "label": "Evidence & Documentation",
+      "icon": "fas fa-camera",
+      "id": "sec-evidence"
+    },
+    {
+      "name": "evidenceLocker",
+      "label": "Evidence Locker Used?",
+      "type": "checkbox",
+      "associatedInputField": {
+        "name": "evidenceLockerItems",
+        "placeholder": "EL#REF-CODE",
+        "type": "input"
+      },
+      "layout": "full",
+      "id": "field-evid-locker"
+    },
+    {
+      "name": "scenePhotosBBCode",
+      "label": "Scene Photos",
+      "type": "image",
+      "maxImages": 6,
+      "layout": "full",
+      "id": "field-evid-scene"
+    },
+    {
+      "name": "additionalPhotos",
+      "label": "Morgue / Damages / CDNA",
+      "type": "image",
+      "maxImages": 6,
+      "layout": "full",
+      "id": "field-evid-morgue"
+    },
+    {
+      "name": "additionalPhotos_narrative",
+      "label": "Evidence Notes",
+      "type": "textarea",
+      "placeholder": "Additional context or raw text links if needed.",
+      "rows": 4,
+      "layout": "full",
+      "id": "field-evid-notes"
+    }
+  ]
+}

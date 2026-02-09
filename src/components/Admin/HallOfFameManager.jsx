@@ -18,6 +18,10 @@ const HallOfFameManager = ({ showNotification }) => {
         (updater) => {
             setEditingEntry(prev => {
                 const newState = updater(prev || {});
+                // For HallOfFame, assume single image, so if imageUrl is an array of objects, take the first url
+                if (newState.imageUrl && Array.isArray(newState.imageUrl) && newState.imageUrl.length > 0) {
+                    return { ...newState, imageUrl: newState.imageUrl[0].url };
+                }
                 return newState;
             });
         }

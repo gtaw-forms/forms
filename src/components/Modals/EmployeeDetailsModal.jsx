@@ -76,6 +76,7 @@ const EmployeeDetailsModal = ({ show, onHide, user, showNotification }) => {
         }
 
         setIsSaving(true);
+        let updates = {};
         try {
             // Use character ID from faction data for consistency
             const characterId = user.faction?.characterId || user.characterArray?.[0]?.id || user.id;
@@ -88,7 +89,7 @@ const EmployeeDetailsModal = ({ show, onHide, user, showNotification }) => {
             // Use the current OAuth faction rank instead of form state to avoid stale data
             const currentFactionRank = user.faction?.rank || employeeDetails.rank || '';
             
-            const updates = {
+            updates = {
                 characterId: characterId || '',
                 name: firstName || '',
                 surname: lastName || '',

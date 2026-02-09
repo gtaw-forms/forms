@@ -189,7 +189,7 @@ const ReviewPhraseRequestsModal = ({ show, onHide, showNotification, logAdminAct
                                     <p className="mb-0"><strong>Phrase(s):</strong></p>
                                     {req.phrase.split('\n').map((phrase, index) => (
                                         <p key={index} className="mb-1">
-                                            "{phrase.trim()}"
+                                            &quot;{phrase.trim()}&quot;
                                         </p>
                                     ))}
                                     {req.bingoType && (
