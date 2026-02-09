@@ -250,13 +250,11 @@ export const useGtaWorldAuth = () => {
     }, [handleLogout]);
 
     const refreshUser = useCallback(async () => {
+        setIsValidatingSession(true);
         try {
-            setIsValidatingSession(true);
             const userData = await apiRequest('/user');
             setUser(userData.user || userData);
             return userData;
-        } catch (err) {
-            throw err;
         } finally {
             setIsValidatingSession(false);
         }
@@ -285,17 +283,6 @@ export const useGtaWorldAuth = () => {
                          );
 
     // DEBUG: Log permissions and admin status
-    useEffect(() => {
-        if (user || firebaseUser) {
-            console.group('🛡️ [DEBUG] useGtaWorldAuth State');
-            console.log('Google Admin:', isGoogleAdmin);
-            console.log('Firebase User UID:', firebaseUser?.uid);
-            console.log('GTAW User:', user?.username);
-            console.log('Access Level:', isGoogleAdmin ? 'president' : (firebaseUser ? firebaseAccessLevel : (user?.accessLevel || 'none')));
-            console.log('Permissions:', isGoogleAdmin ? ['admin_full_access', 'database_access', 'superadmin_access'] : (firebaseUser ? firebasePermissions : (user?.permissions || [])));
-            console.groupEnd();
-        }
-    }, [isGoogleAdmin, firebaseUser, user, firebaseAccessLevel, firebasePermissions]);
 
     return {
         user,

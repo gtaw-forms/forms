@@ -342,7 +342,7 @@ ${JSON.stringify(cctvData.DEBUG, null, 2)}
                 <div className="cctv-modal-body">
                     {/* Authentication Status */}
                                         <div className="cctv-danger-text">
-                        <strong>⚠️ Important Notice:</strong> This form is sent directly to PHMC supervisors to request CCTV Footage. It will be handled within the next 24 hours and you'll be contacted via Cell Phone or Departmental. <strong>Abuse of this form will be reported to Legal Faction Management.</strong>
+                        <strong>⚠️ Important Notice:</strong> This form is sent directly to PHMC supervisors to request CCTV Footage. It will be handled within the next 24 hours and you&apos;ll be contacted via Cell Phone or Departmental. <strong>Abuse of this form will be reported to Legal Faction Management.</strong>
                     </div>
 
                     <div className={`cctv-form-section ${(isGtawAuthenticated || import.meta.env.DEV) ? 'auth-success' : 'auth-required'}`}>

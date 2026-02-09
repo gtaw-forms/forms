@@ -251,7 +251,6 @@ const SavedReportsModal = ({
     pendingReportAttachmentCallback,
     selectedForm,
     attachmentTargetField, // Add this line
-    legacyOnly = false,
     loadButtonText = 'Load',
     disableAutoLoad = false,
 }) => {
@@ -354,9 +353,6 @@ const SavedReportsModal = ({
 
     const searchedAndFilteredReports = useMemo(() => {
         let reports = sortedReports;
-        if (legacyOnly) {
-            reports = reports.filter(report => report.legacy);
-        }
 
         // If in attach mode, only show relevant coroner reports.
         if (isAttachMode) {
@@ -375,7 +371,7 @@ const SavedReportsModal = ({
             );
         }
         return reports;
-    }, [sortedReports, legacyOnly, filterByBbCodeVersions, searchQuery, isAttachMode]);
+    }, [sortedReports, filterByBbCodeVersions, searchQuery, isAttachMode]);
 
     useEffect(() => {
         setCurrentPage(1);
@@ -407,12 +403,6 @@ const SavedReportsModal = ({
     const handleLoadSelected = async () => {
         if (selectedReportKeys.length === 0 || !selectedEmployee?.value) {
             showNotification('No reports selected or no employee identified.', 'warning');
-            return;
-        }
-
-        const reportsToLoadCheck = sortedReports.filter((r) => selectedReportKeys.includes(r.key));
-        if (reportsToLoadCheck.some(report => report.legacy) && loadButtonText === 'Load') {
-            showNotification('Legacy reports cannot be loaded. Please unselect them to proceed.', 'warning');
             return;
         }
 
@@ -619,7 +609,6 @@ const SavedReportsModal = ({
                                     </th>
                                     <th style={thStyle}>Name / Identifier</th>
                                     <th style={thStyle}>Saved Date & Time</th>
-                                    <th style={thStyle}>Legacy</th>
                                     <th style={thStyle}>Actions</th>
                                 </tr>
                             </thead>
@@ -638,26 +627,14 @@ const SavedReportsModal = ({
                                             </td>
                                             <td style={tdStyle} title={report.originalKey}>
                                                 {report.originalKey}
-                                                {report.legacy && <span style={{ color: '#f85149', marginLeft: '10px', fontWeight: 'bold' }}>LEGACY</span>}
                                             </td>
                                             <td style={tdStyle}>{new Date(report.timestamp).toLocaleString()}</td>
-                                            <td style={tdStyle}>
-                                                {report.legacy ? (
-                                                    <span style={{ color: '#f85149', fontWeight: 'bold' }}>Yes</span>
-                                                ) : (
-                                                    <span style={{ color: '#28a745' }}>No</span>
-                                                )}
-                                            </td>
                                             <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
                                                 <Button
                                                     variant="primary"
                                                     size="sm"
                                                     className="me-2"
                                                     onClick={() => {
-                                                        if (report.legacy && loadButtonText === 'Load') {
-                                                            showNotification('This report is flagged as Legacy, you cannot load it at this time.', 'warning');
-                                                            return;
-                                                        }
                                                         if (loadButtonText !== 'Load') {
                                                             loadReport(report, selectedEmployee.value);
                                                             // Keep modal open for migration tasks unless explicitly closed by the handler
@@ -679,8 +656,7 @@ const SavedReportsModal = ({
                                                         }
                                                         onHide(); // Close modal after action
                                                     }}
-                                                    disabled={(report.legacy && loadButtonText === 'Load') || isLoadingReports || !selectedEmployee}
-                                                    title={report.legacy && loadButtonText === 'Load' ? 'This report is flagged as Legacy, you cannot load it at this time.' : ''}
+                                                    disabled={isLoadingReports || !selectedEmployee}
                                                 >
                                                     {isAttachMode ? 'Attach' : (loadButtonText || (isParseDecedentMode ? 'Parse' : 'Load'))}
                                                 </Button>

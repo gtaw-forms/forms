@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
+import { createRoot } from 'react-dom/client';
 import { Button, Form, ListGroup, InputGroup, Badge } from 'react-bootstrap';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Rectangle, Polygon, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -12,6 +13,7 @@ import { isGoogleAuthenticated, getGoogleUser } from '../../services/gtaWorldAut
 import { sendDiscordWebhook } from '../../utils/webhookUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { database } from '../../firebase';
+import { useNotification } from '../../contexts/NotificationContext';
 import phmcLogo from '../../assets/hospital_logo.png';
 
 // --- LEAFLET ICON FIXES ---
@@ -209,7 +211,7 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
     // Fix: For now, let's enable it for any authenticated PHMC member to allow drawing/debugging or use isProduction flag.
     const isAuthorized = true; // FORCE ENABLE FOR DEBUGGING AS REQUESTED
 
-    const showNotification = (msg, type) => console.log(`[MapModal Notification] ${type}: ${msg}`);
+    const { showNotification } = useNotification();
     const { isUploading: isUploadingHook, handleImageUpload } = useImageUpload(showNotification, null);
 
     const isProduction = import.meta.env.PROD;
@@ -287,7 +289,7 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
 
     const handleFixMarkerDragEnd = async (e, m) => {
         const { lat, lng } = e.target.getLatLng(); const g = mapToGame(lat, lng);
-        const key = m.name.toLowerCase().trim().replace(/[.#$[\\\]\/]/g, "_");
+        const key = m.name.toLowerCase().trim().replace(/[.#$[\\\]/]/g, "_");
         try {
             await set(ref(database, `verified_locations/${key}`), { name: m.name, type: m.type, gameX: parseFloat(g.x.toFixed(2)), gameY: parseFloat(g.y.toFixed(2)), updatedAt: Date.now() });
             setFixMarkers(p => p.map(x => x.id === m.id ? { ...x, position: [lat, lng] } : x));
@@ -297,14 +299,14 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
 
     const handleDeletePath = async (s) => {
         if (!window.confirm(`Delete path for "${s.name}"?`)) return;
-        const key = s.name.toLowerCase().trim().replace(/[.#$[\\\]\/]/g, "_");
+        const key = s.name.toLowerCase().trim().replace(/[.#$[\\\]/]/g, "_");
         try {
             await set(ref(database, `verified_locations/${key}`), null);
             setLiveMapData(p => ({ ...p, streets: p.streets.filter(x => x.name !== s.name) }));
             logMapAction("Path Deleted", [{ name: "Street", value: s.name, inline: true }]);
         } catch (err) { 
             console.error("MapModal - handleDeletePath error:", err);
-            alert(`Failed to delete path: ${err.message}`); 
+            showNotification(`Failed to delete path: ${err.message}`, "error"); 
         }
     };
 
@@ -315,8 +317,8 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
 
     const confirmSavePath = async () => {
         const name = selectedStreetForEditing ? selectedStreetForEditing.name : savePathName;
-        if (!name) return alert("Name required!");
-        const key = name.toLowerCase().trim().replace(/[.#$[\\\]\/]/g, "_");
+        if (!name) return showNotification("Name required!", "warning");
+        const key = name.toLowerCase().trim().replace(/[.#$[\\\]/]/g, "_");
         const pathData = tempPath.map(p => ({ x: p.x, y: p.y }));
         try {
             await set(ref(database, `verified_locations/${key}`), { name, type: 'Street', path: pathData, updatedAt: Date.now() });
@@ -325,11 +327,11 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                 if (idx !== -1) { const u = [...p.streets]; u[idx] = { ...u[idx], path: pathData }; return { ...p, streets: u }; }
                 return { ...p, streets: [...p.streets, { name, type: 'Street', path: pathData }] };
             });
-            setTempPath([]); setIsDrawing(false); setSavePathModalVisible(false); setSelectedStreetForEditing(null); alert("Saved!");
+            setTempPath([]); setIsDrawing(false); setSavePathModalVisible(false); setSelectedStreetForEditing(null); showNotification("Saved!", "success");
             logMapAction("Path Saved", [{ name: "Street", value: name, inline: true }, { name: "Nodes", value: `${pathData.length} pts`, inline: true }]);
         } catch (err) { 
             console.error("MapModal - confirmSavePath error:", err);
-            alert(`Failed to save path: ${err.message}`); 
+            showNotification(`Failed to save path: ${err.message}`, "error"); 
         }
     };
 
@@ -390,11 +392,11 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
     };
 
     const handleSavePolygon = async () => {
-        if (tempPolygonPath.length < 3) return alert("Polygons need at least 3 points!");
+        if (tempPolygonPath.length < 3) return showNotification("Polygons need at least 3 points!", "warning");
         const name = prompt("Enter name for this Territorial Polygon (e.g. Grove Street Neighborhood):");
         if (!name) return;
 
-        const key = name.toLowerCase().trim().replace(/[.#$[\\\]\/]/g, "_");
+        const key = name.toLowerCase().trim().replace(/[.#$[\\\]/]/g, "_");
         try {
             const data = {
                 name,
@@ -406,11 +408,11 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
             setLiveMapData(p => ({ ...p, regions: [...p.regions, data] }));
             setTempPolygonPath([]);
             setIsDrawingPolygon(false);
-            alert(`Polygon "${name}" saved!`);
+            showNotification(`Polygon "${name}" saved!`, "success");
             logMapAction("Polygon Saved", [{ name: "Name", value: name, inline: true }]);
         } catch (err) {
             console.error("Failed to save polygon:", err);
-            alert("Error saving polygon: " + err.message);
+            showNotification("Error saving polygon: " + err.message, "error");
         }
     };
 
@@ -422,7 +424,7 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
 
     // --- EXPERIMENTAL: Save Logic ---
     const saveRegionalZone = async (name, bounds) => {
-        const key = name.toLowerCase().trim().replace(/[.#$[\\\]\/]/g, "_");
+        const key = name.toLowerCase().trim().replace(/[.#$[\\\]/]/g, "_");
         // Convert map bounds back to game coordinates for storage? 
         // Or store bounds directly as [[lat,lng],[lat,lng]]
         try {
@@ -434,11 +436,11 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
             };
             await set(ref(database, `verified_locations/${key}`), data);
             setLiveMapData(p => ({ ...p, regions: [...p.regions, data] }));
-            alert(`Region "${name}" saved!`);
+            showNotification(`Region "${name}" saved!`, "success");
             logMapAction("Region Saved", [{ name: "Name", value: name, inline: true }]);
         } catch (err) {
             console.error("Failed to save regional zone:", err);
-            alert("Error saving region: " + err.message);
+            showNotification("Error saving region: " + err.message, "error");
         }
     };
     // --------------------------------
@@ -550,19 +552,19 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
             if (snapshot) {
                 const { dataUrl, error } = await captureMapScreenshot(mapRef.current.getContainer());
                 if (dataUrl) {
-                    const urls = await handleImageUpload(dataUrl);
-                    if (urls && urls.length > 0) {
-                        sU = urls[0];
+                    const result = await handleImageUpload(dataUrl);
+                    if (result && result.length > 0) {
+                        sU = result[0].url;
                         fN = `[url=${sU}]${name}[/url]`;
                     } else {
-                        alert("Img Upload Failed");
+                        showNotification("Img Upload Failed", "error");
                     }
                 } else if (error) {
-                    alert("Screenshot Failed: " + error);
+                    showNotification("Screenshot Failed: " + error, "error");
                 }
             }
 
-            const key = name.toLowerCase().trim().replace(/[.#$[\\\]\/]/g, "_");
+            const key = name.toLowerCase().trim().replace(/[.#$[\\\]/]/g, "_");
 
             if (marker.type === 'Building') {
                 await set(ref(database, `verified_locations/${key}`), { name, type: 'Building', gameX: parseFloat(marker.gameX), gameY: parseFloat(marker.gameY), updatedAt: Date.now() });
@@ -582,18 +584,18 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
             }
 
             if (onSelect) onSelect({ name: fN, rawName: name, gameX: parseFloat(marker.gameX), gameY: parseFloat(marker.gameY), screenshot: sU, isFromMap: true });
-            else alert("Reported successfully!");
+            else showNotification("Reported successfully!", "success");
             logMapAction("Location Reported", [{ name: "Type", value: marker.type, inline: true }, { name: "Name", value: name, inline: true }, { name: "Nearest", value: marker.nearest, inline: true }, { name: "Coords", value: `X:${marker.gameX}, Y:${marker.gameY}`, inline: false }]);
         } catch (err) { 
             console.error("MapModal - handleReportLocation error:", err);
-            alert(`Error saving location: ${err.message || "Unknown error"}`); 
+            showNotification(`Error saving location: ${err.message || "Unknown error"}`, "error"); 
         } finally { setReporting(null); setIsSnapshotting(false); if (setIsUploadingMapImage && mapTargetField) setIsUploadingMapImage(prev => ({ ...prev, [mapTargetField]: false })); if (snapshot) onHide(); }
     };
 
     const handleMassFatalityCapture = async () => {
         hasConfirmedRef.current = true;
         if (markers.length === 0) {
-            alert("No markers placed on the map.");
+            showNotification("No markers placed on the map.", "warning");
             return;
         }
 
@@ -607,7 +609,7 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
             const urls = await handleImageUpload(dataUrl);
             if (!urls || urls.length === 0) throw new Error("Image upload failed");
 
-            const sU = urls[0];
+            const sU = urls[0].url;
             
             // Generate a descriptive name for the location(s)
             let locationName = "Multiple Locations";
@@ -648,7 +650,7 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
 
         } catch (err) {
             console.error("Mass Fatality Capture Error:", err);
-            alert("Failed to capture mass fatality data: " + err.message);
+            showNotification("Failed to capture mass fatality data: " + err.message, "error");
         } finally {
             setIsSnapshotting(false);
             if (setIsUploadingMapImage && mapTargetField) setIsUploadingMapImage(prev => ({ ...prev, [mapTargetField]: false }));
@@ -874,8 +876,9 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                                                                                 }}
                                                                                 eventHandlers={{ click: (e) => {
                                                                                     const popupContent = document.createElement('div');
-                                                                                    ReactDOM.render(<div style={{ color: '#000' }}><strong>{formatDisplayName(s.name)}</strong>{adminFixMode && <div className="d-flex flex-column gap-2 mt-2"><Button variant="primary" size="sm" className="w-100" onClick={() => { setSelectedStreetForEditing(s); setTempPath(s.path.map(p => ({ x: p.x, y: p.y, lat: gameToMap(p.x, p.y)[0], lng: gameToMap(p.x, p.y)[1] }))); setIsDrawing(true); mapRef.current.closePopup(); }}>Edit</Button><Button variant="danger" size="sm" className="w-100" onClick={() => { handleDeletePath(s); mapRef.current.closePopup(); }}>Delete</Button></div>}
-                                                                                </div>, popupContent);
+                                                                                    const root = createRoot(popupContent);
+                                                                                    root.render(<div style={{ color: '#000' }}><strong>{formatDisplayName(s.name)}</strong>{adminFixMode && <div className="d-flex flex-column gap-2 mt-2"><Button variant="primary" size="sm" className="w-100" onClick={() => { setSelectedStreetForEditing(s); setTempPath(s.path.map(p => ({ x: p.x, y: p.y, lat: gameToMap(p.x, p.y)[0], lng: gameToMap(p.x, p.y)[1] }))); setIsDrawing(true); mapRef.current.closePopup(); }}>Edit</Button><Button variant="danger" size="sm" className="w-100" onClick={() => { handleDeletePath(s); mapRef.current.closePopup(); }}>Delete</Button></div>}
+                                                                                </div>);
                                                                                     L.popup().setLatLng(e.latlng).setContent(popupContent).openOn(mapRef.current);
                                                                                 }}}
                                                                             />

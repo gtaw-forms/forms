@@ -90,11 +90,12 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             case CACHE_SEGMENTS.SELECT_OPTIONS:
                 setSelectOptions(data);
                 break;
-            case CACHE_SEGMENTS.FORMS:
+            case CACHE_SEGMENTS.FORMS: {
                 // Ensure formsData is always an array
                 const formsAsList = Array.isArray(data) ? data : (data ? Object.keys(data).map(key => ({ ...data[key], firebaseKey: key })) : []);
                 setFormsData(formsAsList);
                 break;
+            }
             case CACHE_SEGMENTS.LSCC:
                 // Assuming you want to set some state for LSCC data as well
                 setLsccData(data || {});
@@ -616,6 +617,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         } catch (error) {
             showNotification("An error has happened, contact the maintainer", 'error');
             console.error("Error fetching data from Realtime Database:", error);
+            const segmentsToFetch = Object.values(CACHE_SEGMENTS);
             webhooks.sendDataRequestLog(
                 'DataContext.jsx',
                 false, // not cached

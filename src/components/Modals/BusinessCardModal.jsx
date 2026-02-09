@@ -281,7 +281,8 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo, handleI
             const dataUrl = canvas.toDataURL('image/png');
 
             showNotification('Uploading...', 'upload');
-            const link = await handleImageUpload(dataUrl);
+            const result = await handleImageUpload(dataUrl);
+            const link = Array.isArray(result) && result.length > 0 ? result[0].url : result.url;
             console.log('Image upload result:', { link, type: typeof link });
 
             setImageUrl(link);

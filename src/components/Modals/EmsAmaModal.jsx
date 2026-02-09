@@ -220,7 +220,8 @@ const EmsAmaModal = ({ show, onHide, showNotification, commitInfo, handleImageUp
             const dataUrl = canvas.toDataURL('image/png');
 
             showNotification('Uploading...', 'upload');
-            const link = await handleImageUpload(dataUrl);
+            const result = await handleImageUpload(dataUrl);
+            const link = result[0].url;
             setImageUrl(link);
             showNotification(`AMA Form Saved & Uploaded: ${link}`, 'save');
             sendDiscordWebhook(patientSignature, date, guardianSignature, paramedicSignature, link);

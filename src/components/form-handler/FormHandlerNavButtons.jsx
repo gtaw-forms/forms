@@ -35,44 +35,6 @@ const FormHandlerNavButtons = ({ onToggleSavedReports, onToggleAgencyIncident })
   const [userPrefs, setUserPrefs] = useState(null);
   const [showCctvPopup, setShowCctvPopup] = useState(false);
 
-  useEffect(() => {
-    const checkCctvPopupState = () => {
-      const storedPrefs = localStorage.getItem('userOnboardingPreferences');
-      let parsedPrefs = null;
-      if (storedPrefs) {
-        try {
-          parsedPrefs = JSON.parse(storedPrefs);
-        } catch (e) {
-          console.error("Failed to parse user onboarding preferences from storage event", e);
-        }
-      }
-      setUserPrefs(parsedPrefs); // Update userPrefs state
-
-      const onboardingComplete = localStorage.getItem('onboardingComplete') === 'true';
-      const cctvPopupDismissed = localStorage.getItem('cctvPopupDismissed') === 'true';
-      const showHint = localStorage.getItem('showCctvHint') === 'true';
-
-      if (onboardingComplete && parsedPrefs?.userType === 'leo' && showHint && !cctvPopupDismissed) {
-        setShowCctvPopup(true);
-      } else {
-        setShowCctvPopup(false);
-      }
-    };
-
-    checkCctvPopupState(); // Initial check on mount
-
-    const handleStorageChange = (event) => {
-      if (['userOnboardingPreferences', 'onboardingComplete', 'showCctvHint', 'cctvPopupDismissed'].includes(event.key)) {
-        checkCctvPopupState();
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, []); // Empty dependency array means this runs once on mount and cleans up on unmount
 
   const isLeo = userPrefs?.userType === 'leo';
 
@@ -82,23 +44,20 @@ const FormHandlerNavButtons = ({ onToggleSavedReports, onToggleAgencyIncident })
     login({ returnPath });
   }, [showNotification, login]);
 
-  const handleRestartOnboarding = () => {
-    if (window.confirm('Are you sure you want to restart the onboarding process? Your current preferences will be lost.')) {
-      localStorage.removeItem('onboardingComplete');
-      localStorage.removeItem('userOnboardingPreferences');
-      localStorage.removeItem('onboardingSkipped');
-      localStorage.removeItem('onboardingProgress');
-      localStorage.removeItem('showCctvHint');
-      localStorage.removeItem('cctvPopupDismissed');
-      window.location.reload();
-    }
-  };
 
   const handleDropdownClick = () => {
     if (showCctvPopup) {
       setShowCctvPopup(false);
       localStorage.setItem('cctvPopupDismissed', 'true');
     }
+  };
+
+  const handleTestNotifications = () => {
+    showNotification('Success: Operation completed successfully.', 'check-circle');
+    showNotification('Info: This is an informational message.', 'info-circle');
+    showNotification('Warning: Please be careful with this action.', 'warning');
+    showNotification('Error: Something went wrong!', 'exclamation-circle');
+    showNotification('Loading...', 'spinner fa-spin', 2000);
   };
 
   return (
@@ -182,10 +141,10 @@ const FormHandlerNavButtons = ({ onToggleSavedReports, onToggleAgencyIncident })
                 <i className={`fas ${seasonalEffectsEnabled ? "fa-toggle-on" : "fa-toggle-off"}`}></i>
                 {seasonalEffectsEnabled ? "Effects ON" : "Effects OFF"}
               </Dropdown.Item>
-              <Dropdown.Divider />
-              <Dropdown.Item onClick={handleRestartOnboarding}>
-                <i className="fas fa-redo"></i> Restart Onboarding
+              <Dropdown.Item onClick={handleTestNotifications}>
+                <i className="fas fa-bell"></i> Test Notifications
               </Dropdown.Item>
+              <Dropdown.Divider />
             </Dropdown.Menu>
           </Dropdown>
           {showCctvPopup && (
@@ -232,7 +191,7 @@ const FormHandlerNavButtons = ({ onToggleSavedReports, onToggleAgencyIncident })
         onClick={() => window.open('https://phmc.gta.world/', '_blank')}
         title="Go to PHMC Website"
       >
-        <img src={phmcLogoSrc} alt="PHMC Logo" className={phmcLogoClassName} style={{ height: '85px' }} />
+        <img src={phmcLogoSrc} alt="PHMC Logo" className={phmcLogoClassName} style={{ height: '65px' }} />
       </div>
 
       {showCctvModal && (

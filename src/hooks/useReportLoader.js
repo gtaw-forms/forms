@@ -9,7 +9,7 @@ import useGtaWorldAuth from './useGtaWorldAuth';
 
 const comprehensiveSanitize = (str) => {
     if (!str) return '';
-    let sanitized = str.trim().replace(/[.#$[\/ \]]+/g, '_');
+    let sanitized = str.trim().replace(/[.#$[/ \]]+/g, '_');
     sanitized = sanitized.replace(/_{2,}/g, '_');
     sanitized = sanitized.replace(/^_+|_+$/g, '');
     return sanitized;
@@ -252,7 +252,7 @@ export const useReportLoader = () => {
                         'mannerOfDeath',
                     ];
                     localStorageManagedFields.forEach(field => {
-                        if (loadedFormData.hasOwnProperty(field) && loadedFormData[field]) {
+                        if (Object.prototype.hasOwnProperty.call(loadedFormData, field) && loadedFormData[field]) {
                             localStorage.setItem(field, loadedFormData[field]);
                             localStorage.setItem(`${field}_timestamp`, currentTimestamp);
                         }
@@ -384,7 +384,7 @@ export const useReportLoader = () => {
             if (snapshot.exists()) {
                 const reports = snapshot.val();
                 for (const key in reports) {
-                    if (reports.hasOwnProperty(key)) {
+                    if (Object.prototype.hasOwnProperty.call(reports, key)) {
                         const report = reports[key];
                         if (report.originalKey === originalKey) {
                             return { exists: true, reportKey: key };

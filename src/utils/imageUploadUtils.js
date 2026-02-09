@@ -21,7 +21,7 @@ export const uploadImageToImgBB = async (file) => {
     const data = result.data;
 
     if (data.success) {
-      return data.url;
+      return { url: data.url, thumb: data.thumb || data.url };
     }
     else {
       console.error('ImgBB proxy upload failed:', data.error);
@@ -48,7 +48,7 @@ export const uploadDataUrlToImgBB = async (dataUrl) => {
     const data = result.data;
 
     if (data.success) {
-      return data.url;
+      return { url: data.url, thumb: data.thumb || data.url };
     }
     else {
       console.error('ImgBB proxy upload failed:', data.error);
@@ -63,3 +63,49 @@ export const uploadDataUrlToImgBB = async (dataUrl) => {
 
 // If uploadToImgBB is distinct, define it here, otherwise use uploadImageToImgBB
 export const uploadToImgBB = uploadImageToImgBB;
+
+export const uploadImageToImgBBWithProgress = (file, onProgress) => {
+    return new Promise((resolve, reject) => {
+        const apiKey = import.meta.env.VITE_IMGBB_API_KEY;
+        if (!apiKey) {
+            reject(new Error("ImgBB API Key is missing"));
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append("image", file);
+
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `https://api.imgbb.com/1/upload?key=${apiKey}`);
+
+        xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable && onProgress) {
+                const percentComplete = (event.loaded / event.total) * 100;
+                onProgress(percentComplete);
+            }
+        };
+
+        xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                    const response = JSON.parse(xhr.responseText);
+                    if (response.success) {
+                        resolve({
+                            url: response.data.url,
+                            thumb: response.data.thumb?.url || response.data.url
+                        });
+                    } else {
+                        reject(new Error(response.error?.message || "Upload failed"));
+                    }
+                } catch (e) {
+                    reject(new Error("Invalid JSON response"));
+                }
+            } else {
+                reject(new Error(`HTTP Error ${xhr.status}`));
+            }
+        };
+
+        xhr.onerror = () => reject(new Error("Network Error"));
+        xhr.send(formData);
+    });
+};

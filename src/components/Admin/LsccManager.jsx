@@ -386,7 +386,7 @@ useEffect(() => {
           {Object.keys(keywords).length === 0 ? (
             <div className="text-center py-12">
               <p className="text-gray-400 text-lg">No keywords defined yet.</p>
-              <p className="text-gray-500 text-sm mt-2">Click "Add New Keyword" to start teaching the app.</p>
+              <p className="text-gray-500 text-sm mt-2">Click &quot;Add New Keyword&quot; to start teaching the app.</p>
             </div>
           ) : (
             Object.entries(keywords).map(([id, kw]) => (
@@ -499,7 +499,7 @@ useEffect(() => {
           {Object.keys(injuries).length === 0 ? (
             <div className="text-center py-12">
               <p className="text-gray-500 text-lg">No injury types defined yet.</p>
-              <p className="text-gray-600 text-sm mt-2">Click "Add New Injury Type" to get started.</p>
+              <p className="text-gray-600 text-sm mt-2">Click &quot;Add New Injury Type&quot; to get started.</p>
             </div>
           ) : (
             Object.entries(injuries).map(([id, injury]) => (

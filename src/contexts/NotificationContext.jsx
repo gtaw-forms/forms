@@ -31,11 +31,34 @@ const getIconClass = (icon) => {
     }
 };
 
+const getNotificationType = (icon) => {
+    switch (icon) {
+        case 'check-circle':
+        case 'success':
+            return 'success';
+        case 'exclamation-circle':
+        case 'error':
+            return 'danger';
+        case 'warning':
+        case 'exclamation-triangle':
+            return 'warning';
+        case 'info-circle':
+        case 'info':
+            return 'info';
+        case 'spinner fa-spin':
+            return 'primary';
+        default:
+            return 'info';
+    }
+};
+
 const NotificationContext = createContext();
 
 export const useNotification = () => {
     return useContext(NotificationContext);
 };
+
+import { ToastContainer } from 'react-bootstrap';
 
 export const NotificationProvider = ({ children }) => {
     const [notifications, setNotifications] = useState([]);
@@ -63,6 +86,7 @@ export const NotificationProvider = ({ children }) => {
             id: newNotificationId,
             message: message,
             icon: getIconClass(icon),
+            type: getNotificationType(icon),
             actions: actions,
         };
 
@@ -74,13 +98,9 @@ export const NotificationProvider = ({ children }) => {
                     updatedNotifications = updatedNotifications.filter(n => n.id !== loadingNotificationIdRef.current);
                 }
                 loadingNotificationIdRef.current = newNotificationId;
-            } else if (!isInteractive) {
-                if (resultNotificationIdRef.current) {
-                    updatedNotifications = updatedNotifications.filter(n => n.id !== resultNotificationIdRef.current);
-                }
-                resultNotificationIdRef.current = newNotificationId;
-            }
-
+            } 
+            // Removed aggressive filtering of 'result' notifications to allow stacking
+            
             updatedNotifications.push(newNotification);
 
             if (!isInteractive && !isPersistentLoading && duration > 0) {
@@ -97,12 +117,13 @@ export const NotificationProvider = ({ children }) => {
     return (
         <NotificationContext.Provider value={{ showNotification, removeNotification }}>
             {children}
-            <div className="notification-container">
+            <ToastContainer position="bottom-end" className="p-3" style={{ zIndex: 1060, position: 'fixed' }}>
                 {notifications.map(notification => (
                     <Notification
                         key={notification.id}
                         message={notification.message}
                         icon={notification.icon}
+                        type={notification.type}
                         onDismiss={() => removeNotification(notification.id)}
                         actions={notification.actions.map(action => ({
                             ...action,
@@ -110,7 +131,7 @@ export const NotificationProvider = ({ children }) => {
                         }))}
                     />
                 ))}
-            </div>
+            </ToastContainer>
         </NotificationContext.Provider>
     );
 };

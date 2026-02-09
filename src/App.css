@@ -561,103 +561,6 @@ input[type="checkbox"]:checked::after {
     font-size: 0.9em;
 }
 
-/* ===== Notification Components ===== */
-/* Container for all notifications */
-.notification-container {
-    position: fixed; /* Position relative to the viewport */
-    top: 20px;       /* Distance from the top */
-    right: 20px;      /* Distance from the right */
-    z-index: 1060;   /* Ensure it's above most other content (like modals) */
-    display: flex;
-    flex-direction: column; /* Stack notifications vertically */
-    align-items: flex-end; /* Align notifications to the right edge of the container */
-    gap: 10px; /* Add space BETWEEN notifications */
-    max-width: 400px; /* Optional: Limit the width of notifications */
-    pointer-events: none; /* Allow clicks to pass through the container itself */
-}
-
-/* Individual notification wrapper/content */
-/* Remove fixed positioning from the element that holds the notification content */
-.notification-wrapper {
-    /* Remove position: fixed, top, right, z-index if they were here */
-    width: 100%; /* Make individual notifications take container width */
-    pointer-events: auto; /* Re-enable pointer events for the actual notification */
-    animation: slideIn 0.3s ease-out; /* Keep the animation if desired */
-    /* min-width: 300px; /* This can likely be removed or adjusted */
-}
-
-/* Ensure the exit animation still works */
-.notification-exit {
-    animation: slideOut 0.3s ease-in forwards;
-}
-
-/* Keep your existing styles for the content inside */
-.notification-content {
-    background-color: #4CAF50; /* Or use specific colors like .error */
-    color: white;
-    padding: 12px 20px;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-    min-width: 300px; /* Apply min-width here if needed */
-}
-
-.notification-content.error {
-    background-color: #f44336;
-}
-
-/* Keep dismiss button styles */
-.notification-dismiss {
-    background: none;
-    border: none;
-    color: white;
-    margin-left: auto;
-    cursor: pointer;
-    padding: 5px;
-    opacity: 0.8;
-}
-
-.notification-dismiss:hover {
-    opacity: 1;
-}
-
-/* Keep keyframes */
-@keyframes slideIn {
-    from {
-        transform: translateX(100%);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
-}
-
-@keyframes slideOut {
-    from {
-        transform: translateX(0);
-        opacity: 1;
-    }
-    to {
-        transform: translateX(100%);
-        opacity: 0;
-    }
-}
-
-/* Other notification styles (icon, text) should remain as they are */
-.notification-icon {
-    font-size: 1.2em;
-    /* color: #fff; */ /* Color might be set by specific classes */
-}
-
-.notification-text {
-    font-size: 1em;
-    font-weight: 500;
-    flex-grow: 1; /* Allow text to take space */
-}
-
 .label-container {
     display: flex;
     align-items: center;
@@ -915,33 +818,6 @@ input[type="checkbox"]:checked::after {
     margin-bottom: 0.5rem;
 }
 
-/* Add to your App.css or index.css */
-.notification-actions {
-    display: flex;
-    justify-content: flex-end; /* Or center, space-around */
-    padding-top: 8px;
-    margin-top: 8px;
-    border-top: 1px solid rgba(255, 255, 255, 0.1); /* Optional separator */
-}
-
-.notification-action-button {
-    background-color: #007bff; /* Example primary color */
-    color: white;
-    border: none;
-    padding: 5px 10px;
-    margin-left: 8px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.85em;
-}
-
-.notification-action-button:hover {
-    opacity: 0.9;
-}
-
-.notification-action-secondary { /* Example for a secondary button style */
-    background-color: #6c757d;
-}
 .floating-admin-button-container {
     position: fixed;
     top: 0px;

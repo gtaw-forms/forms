@@ -381,8 +381,8 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
                 }
             }
 
-            sessionStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(result.userData));
-            sessionStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, result.accessToken);
+            localStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(result.userData));
+            localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, result.accessToken);
             
             console.info('[GTA Auth] Authentication successful');
             
@@ -673,8 +673,8 @@ const exchangeAuthCodeForToken = async (code, redirectUri) => {
  */
 export const tryRestoreSession = () => {
     try {
-        const userData = sessionStorage.getItem(STORAGE_KEYS.USER_DATA);
-        const accessToken = sessionStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+        const userData = localStorage.getItem(STORAGE_KEYS.USER_DATA);
+        const accessToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
         
         if (!userData || !accessToken) {
             console.debug('[GTA Auth] No complete session data found for restoration');
@@ -701,8 +701,8 @@ export const tryRestoreSession = () => {
     } catch (error) {
         console.error('[GTA Auth] Failed to restore session from stored data:', error);
         // Clear potentially corrupted data
-        sessionStorage.removeItem(STORAGE_KEYS.USER_DATA);
-        sessionStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+        localStorage.removeItem(STORAGE_KEYS.USER_DATA);
+        localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
         return null;
     }
 };
@@ -713,7 +713,7 @@ export const tryRestoreSession = () => {
  */
 export const getCurrentUser = () => {
     try {
-        const userData = sessionStorage.getItem(STORAGE_KEYS.USER_DATA);
+        const userData = localStorage.getItem(STORAGE_KEYS.USER_DATA);
         return userData ? JSON.parse(userData) : null;
     } catch (error) {
         console.error('[GTA Auth] Failed to get current user:', error);
@@ -798,7 +798,7 @@ export const getGoogleUser = () => {
  * @returns {string|null} Access token or null if not authenticated
  */
 export const getAccessToken = () => {
-    return sessionStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    return localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
 };
 
 /**
@@ -820,9 +820,9 @@ export const logout = () => {
         .then(() => console.log('[JWT Migration] Firebase session terminated.'))
         .catch(err => console.error('[JWT Migration] Firebase signout error:', err));
 
-    // Clear all stored authentication data from sessionStorage
+    // Clear all stored authentication data from localStorage
     Object.values(STORAGE_KEYS).forEach(key => {
-        sessionStorage.removeItem(key);
+        localStorage.removeItem(key);
     });
 
     // Also clear localStorage flags related to credential persistence
@@ -1149,7 +1149,7 @@ export const refreshFactionData = async () => {
              console.error('[JWT Migration] Session refresh backend error:', result.data.tokenError);
         }
 
-        sessionStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(updatedUserData));
+        localStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(updatedUserData));
         
         console.log('[GTA Auth] Faction data refreshed via refreshGtawUser.');
         

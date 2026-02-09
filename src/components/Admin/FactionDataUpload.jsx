@@ -730,7 +730,7 @@ const FactionDataUpload = ({ showNotification }) => {
                             Upload File
                         </span>
                     }>
-                    Hello! Please grab a copy of the faction CSV from the GTAWorld UCP and upload it here to manage faction data. <a href="https://ucp.gta.world/view/faction/364/populate?draw=2&columns[0][data]=actions&columns[0][name]=actions&columns[0][searchable]=true&columns[0][orderable]=true&columns[0][search][value]=&columns[0][search][regex]=false&columns[1][data]=id&columns[1][name]=characters.id&columns[1][searchable]=true&columns[1][orderable]=true&columns[1][search][value]=&columns[1][search][regex]=false&columns[2][data]=name&columns[2][name]=name&columns[2][searchable]=true&columns[2][orderable]=true&columns[2][search][value]=&columns[2][search][regex]=false&columns[3][data]=rank&columns[3][name]=rank&columns[3][searchable]=true&columns[3][orderable]=true&columns[3][search][value]=&columns[3][search][regex]=false&columns[4][data]=scriptrank&columns[4][name]=scriptrank&columns[4][searchable]=true&columns[4][orderable]=true&columns[4][search][value]=&columns[4][search][regex]=false&columns[5][data]=lastduty&columns[5][name]=lastduty&columns[5][searchable]=true&columns[5][orderable]=true&columns[5][search][value]=&columns[5][search][regex]=false&columns[6][data]=lastonline&columns[6][name]=lastonline&columns[6][searchable]=true&columns[6][orderable]=true&columns[6][search][value]=&columns[6][search][regex]=false&columns[7][data]=abas&columns[7][name]=abas&columns[7][searchable]=true&columns[7][orderable]=true&columns[7][search][value]=&columns[7][search][regex]=false&order[0][column]=3&order[0][dir]=desc&start=0&length=1000&search[value]=&search[regex]=false&type=members&filters=&searchTerm=&_=1766805327306" target="_blank" rel="noopener noreferrer">Grab a copy from the UCP (expand by 'all').</a> Alternatively, you can upload a JSON file with an array of member objects.
+                    Hello! Please grab a copy of the faction CSV from the GTAWorld UCP and upload it here to manage faction data. <a href="https://ucp.gta.world/view/faction/364/populate?draw=2&columns[0][data]=actions&columns[0][name]=actions&columns[0][searchable]=true&columns[0][orderable]=true&columns[0][search][value]=&columns[0][search][regex]=false&columns[1][data]=id&columns[1][name]=characters.id&columns[1][searchable]=true&columns[1][orderable]=true&columns[1][search][value]=&columns[1][search][regex]=false&columns[2][data]=name&columns[2][name]=name&columns[2][searchable]=true&columns[2][orderable]=true&columns[2][search][value]=&columns[2][search][regex]=false&columns[3][data]=rank&columns[3][name]=rank&columns[3][searchable]=true&columns[3][orderable]=true&columns[3][search][value]=&columns[3][search][regex]=false&columns[4][data]=scriptrank&columns[4][name]=scriptrank&columns[4][searchable]=true&columns[4][orderable]=true&columns[4][search][value]=&columns[4][search][regex]=false&columns[5][data]=lastduty&columns[5][name]=lastduty&columns[5][searchable]=true&columns[5][orderable]=true&columns[5][search][value]=&columns[5][search][regex]=false&columns[6][data]=lastonline&columns[6][name]=lastonline&columns[6][searchable]=true&columns[6][orderable]=true&columns[6][search][value]=&columns[6][search][regex]=false&columns[7][data]=abas&columns[7][name]=abas&columns[7][searchable]=true&columns[7][orderable]=true&columns[7][search][value]=&columns[7][search][regex]=false&order[0][column]=3&order[0][dir]=desc&start=0&length=1000&search[value]=&search[regex]=false&type=members&filters=&searchTerm=&_=1766805327306" target="_blank" rel="noopener noreferrer">Grab a copy from the UCP (expand by &apos;all&apos;).</a> Alternatively, you can upload a JSON file with an array of member objects.
                         {activeTab === 'upload' && (
                             <>
                                 {uploadStatus === 'idle' && renderUploadArea()}
@@ -780,7 +780,7 @@ const FactionDataUpload = ({ showNotification }) => {
                                 {/* Stored Data Header */}
                                 <div className="d-flex justify-content-between align-items-center mb-3">
                                     <div>
-                                        <h6 className="mb-1">Current Faction Database - Hit 'Refresh' to get the latest data</h6>
+                                        <h6 className="mb-1">Current Faction Database - Hit &apos;Refresh&apos; to get the latest data</h6>
                                         {lastUpdateInfo && lastUpdateInfo.uploadTime && (
                                             <small className="text-muted">
                                                 Last updated: {new Date(lastUpdateInfo.uploadTime).toLocaleString()} 
@@ -874,75 +874,6 @@ const FactionDataUpload = ({ showNotification }) => {
                                                             <p className="mb-2">
                                                                 <strong>{inactiveMembers.length} members</strong> have an ABAS below 0.25 and are considered inactive.
                                                             </p>
-                                                            <details>
-                                                                <summary className="fw-bold" style={{cursor: 'pointer'}}>
-                                                                    View Inactive Members ({inactiveMembers.length})
-                                                                </summary>
-                                                                <Table striped size="sm" className="mt-2 mb-0">
-                                                                    <thead>
-                                                                        <tr>
-                                                                            <th>Character Name</th>
-                                                                            <th>Rank</th>
-                                                                            <th>Script Rank</th>
-                                                                            <th>ABAS</th>
-                                                                            <th>Status</th>
-                                                                        </tr>
-                                                                    </thead>
-                                                                    <tbody>
-                                                                        {inactiveMembers
-                                                                            .sort((a, b) => parseFloat(a.activity || '0') - parseFloat(b.activity || '0'))
-                                                                            .map((member) => {
-                                                                                const activity = parseFloat(member.activity || '0');
-                                                                                let statusColor = 'danger';
-                                                                                let statusText = 'Critical';
-                                                                                
-                                                                                // Enhanced rank-based categories for Rank 14+ administrators
-                                                                                if (member.scriptRank >= 15) {
-                                                                                    // President Level - Most critical
-                                                                                    statusColor = 'danger';
-                                                                                    statusText = activity >= 0.15 ? 'Presidential Alert' : 
-                                                                                                activity >= 0.05 ? 'Presidential Critical' : 'Presidential Emergency';
-                                                                                } else if (member.scriptRank >= 14) {
-                                                                                    // Executive Level - High priority
-                                                                                    statusColor = 'warning';
-                                                                                    statusText = activity >= 0.15 ? 'Executive Alert' : 
-                                                                                                activity >= 0.05 ? 'Executive Critical' : 'Executive Emergency';
-                                                                                } else {
-                                                                                    // Standard categorization for lower ranks
-                                                                                    if (activity >= 0.15) {
-                                                                                        statusColor = 'warning';
-                                                                                        statusText = 'At Risk';
-                                                                                    } else if (activity >= 0.05) {
-                                                                                        statusColor = 'danger';
-                                                                                        statusText = 'Inactive';
-                                                                                    } else {
-                                                                                        statusColor = 'dark';
-                                                                                        statusText = 'Very Inactive';
-                                                                                    }
-                                                                                }
-                                                                                
-                                                                                return (
-                                                                                    <tr key={member.characterId} className="table-warning">
-                                                                                        <td><strong>{member.characterName}</strong></td>
-                                                                                        <td>{member.rank}</td>
-                                                                                        <td>
-                                                                                            <Badge bg="secondary">{member.scriptRank}</Badge>
-                                                                                        </td>
-                                                                                        <td>
-                                                                                            <Badge bg={activity === 0 ? 'dark' : 'warning'}>
-                                                                                                {activity.toFixed(2)}
-                                                                                            </Badge>
-                                                                                        </td>
-                                                                                        <td>
-                                                                                            <Badge bg={statusColor}>{statusText}</Badge>
-                                                                                        </td>
-                                                                                    </tr>
-                                                                                );
-                                                                            })
-                                                                        }
-                                                                    </tbody>
-                                                                </Table>
-                                                            </details>
                                                         </Alert>
                                                     )}
                                                 </>
@@ -1005,7 +936,7 @@ const FactionDataUpload = ({ showNotification }) => {
                                             badgeVariant = 'secondary';
                                         } else if (member.scriptRank >= 5) {
                                             accessLevel = 'Entry Level';
-                                            badgeVariant = 'light';
+                                            badgeVariant = 'secondary';
                                         }                                                        // Activity badge color and inactivity check
                                                         let activityBadge = 'success';
                                                         let isInactive = false;

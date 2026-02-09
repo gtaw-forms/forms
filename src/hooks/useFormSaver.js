@@ -8,7 +8,7 @@ import { useNotification } from '../contexts/NotificationContext';
 
 const comprehensiveSanitize = (str) => {
     if (!str) return '';
-    let sanitized = str.trim().replace(/[.#$[\/ \]]+/g, '_');
+    let sanitized = str.trim().replace(/[.#$[/ \]]+/g, '_');
     sanitized = sanitized.replace(/_{2,}/g, '_');
     sanitized = sanitized.replace(/^_+|_+$/g, '');
     return sanitized;
@@ -213,7 +213,7 @@ export const useFormSaver = () => {
         }
 
         const sanitizedAuthorId = comprehensiveSanitize(currentAuthor);
-        const sanitizedKey = finalTitle.trim().replace(/[.#$[\/ \]]+/g, '_') + '_' + Date.now();
+        const sanitizedKey = finalTitle.trim().replace(/[.#$[/ \]]+/g, '_') + '_' + Date.now();
 
         const reportDataToSave = {
             formId: selectedForm.firebaseKey,

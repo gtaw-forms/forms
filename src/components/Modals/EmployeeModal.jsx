@@ -208,14 +208,14 @@ const EmployeeModal = ({
             <div style={modalOverlayStyle} onClick={handleClose}>
                 <div style={modalContentStyle} onClick={e => e.stopPropagation()}>
                     <div style={modalHeaderStyle}>
-                        <h5 style={modalTitleStyle}>My Account Isn't Listed</h5>
+                        <h5 style={modalTitleStyle}>My Account Isn&apos;t Listed</h5>
                         <button onClick={handleClose} style={closeButtonStyle} aria-label="Close modal">
                             &times;
                         </button>
                     </div>
                     <div style={modalBodyStyle}>
                         <div style={{ marginBottom: '20px', color: '#c9d1d9', fontSize: '14px' }}>
-                            <p>If your account isn't showing up in the employee list, please fill out this form and an administrator will add it to the system.</p>
+                            <p>If your account isn&apos;t showing up in the employee list, please fill out this form and an administrator will add it to the system.</p>
                         </div>
                         <Form>
                             <Form.Group className="mb-3">

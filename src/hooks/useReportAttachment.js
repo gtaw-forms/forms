@@ -11,12 +11,7 @@ export const useReportAttachment = (
     removeNotification,
     modalCloseTimer
 ) => {
-    const { 
-        ER_PROTOCOL_VERSION, 
-        CONSULTATION_NOTES_PHMC_VERSION, 
-        CONSULTATION_NOTES_PBC_VERSION 
-    } = useData(); // Assuming these versions might be needed, or we pass them in.
-    
+        useData(); // Call hook without empty destructuring
     // Actually, useData doesn't export these versions directly usually, they were passed as args.
     // We'll stick to the args pattern or constants if they are static.
     // For now, let's keep the internal state for the modal logic.
@@ -49,23 +44,19 @@ export const useReportAttachment = (
 
             // --- MODIFICATION START: Generalized Field Population ---
             setFormData(prev => {
-                console.log(`[useReportAttachment] Checking attachment logic. Form: ${selectedForm?.name} (${selectedForm?.id}), Loaded Version: ${loadedVersion}`);
-
                 // Logic for Attaching Mass Fatality to Coroner Email
-                if ((selectedForm?.name === 'Coroner Email' || selectedForm?.id === 'coroner_email') && loadedVersion === 11) { 
-                    console.log('[useReportAttachment] Attaching Mass Fatality to Coroner Email. Loaded Data:', loadedFormData);
+                if ((selectedForm?.name === 'Coroner Email' || selectedForm?.id === 'coroner_email')) { // Simplified condition for logging
+                    console.log(`[useReportAttachment] Current Form: ${selectedForm?.name} (ID: ${selectedForm?.id}), Loaded Version: ${loadedVersion}`);
+                    console.log(`[useReportAttachment] Loaded FormData for debugging:`, loadedFormData);
+
+                    if (loadedVersion === 11) { // Original Mass Fatality block
                     let decedents = loadedFormData.decedents;
                     
-                    console.log('[useReportAttachment] Raw Decedents Field:', decedents, 'Type:', typeof decedents, 'Is Array:', Array.isArray(decedents));
-
                     // Handle Firebase array-as-object conversion
                     if (decedents && typeof decedents === 'object' && !Array.isArray(decedents)) {
-                        console.log('[useReportAttachment] converting object-based decedents to array...');
                         decedents = Object.values(decedents);
                     }
                     
-                    console.log('[useReportAttachment] Processed Decedents Array:', decedents);
-
                     if (decedents && decedents.length > 0) {
                         const firstDecedent = decedents[0];
                         let icName = firstDecedent.decedentName || firstDecedent.DecedentName || '';
@@ -92,10 +83,23 @@ export const useReportAttachment = (
                         } else {
                             newState.additionalReports = [...(prev.additionalReports || []), reportData.bbCode];
                         }
+                        
+                        // Hotfix: If attached Mass Fatality report has requestingOfficer, update the Coroner Email form
+                        if (loadedFormData.requestingOfficer) {
+                            newState.requestingOfficer = loadedFormData.requestingOfficer;
+                            showNotification(`Requesting Officer '${loadedFormData.requestingOfficer}' pre-filled.`, 'info');
+                        }
+
+                        // Hotfix: If attached Mass Fatality report has department, update the Coroner Email form
+                        if (loadedFormData.department) {
+                            newState.department = loadedFormData.department;
+                            showNotification(`Requesting Department '${loadedFormData.department}' pre-filled.`, 'info');
+                        }
+
                         return newState;
                     }
-                    return prev;
                 }
+            }
 
                 // Mass Fatality Report (bbCodeVersion 11): attach BBCode to deathReport and merge decedents
                 if (loadedVersion === 11) {
@@ -124,7 +128,7 @@ export const useReportAttachment = (
                     const existingNames = new Set((prev.decedentName || '').split(', ').filter(Boolean));
                     let decedentNameToAdd = null;
                     if (reportData.originalKey && reportData.originalKey.startsWith('[DEATH-REPORT]')) {
-                        const nameMatch = reportData.originalKey.match(/[\[]DEATH-REPORT[^\]]*\][\s]*([^-]+)/);
+                        const nameMatch = reportData.originalKey.match(/\[DEATH-REPORT[^\]]*\][\s]*([^-]+)/);
                         if (nameMatch && nameMatch[1]) {
                             decedentNameToAdd = nameMatch[1].trim();
                         }
@@ -145,9 +149,8 @@ export const useReportAttachment = (
 
                     const newDeathReport = [prev.deathReport, reportData.bbCode].filter(Boolean).join('\n\n[hr]\n\n');
                     const newAttachedReportKeys = [...(prev.attachedReportKeys || []), reportData.originalKey];
-
-                    return {
-                        ...prev,
+                    
+                    const updates = {
                         decedentName: newDecedentName,
                         decedentOOC: newDecedentOOC,
                         requestingOfficer: loadedFormData.requestingOfficer || prev.requestingOfficer,
@@ -156,6 +159,14 @@ export const useReportAttachment = (
                         attachedReportKeys: newAttachedReportKeys,
                         additionalReports: [], 
                     };
+
+                    // Hotfix: If attached report has requestingOfficer, update the Coroner Email form
+                    if (loadedFormData.requestingOfficer && (selectedForm?.name === 'Coroner Email' || selectedForm?.id === 'coroner_email')) {
+                        updates.requestingOfficer = loadedFormData.requestingOfficer;
+                        showNotification(`Requesting Officer '${loadedFormData.requestingOfficer}' pre-filled.`, 'info');
+                    }
+
+                    return { ...prev, ...updates };
                 } else {
                     let newState = { ...prev };
                     newState.decedentName = fieldsToUpdate.decedentName || prev.decedentName;

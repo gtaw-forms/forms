@@ -5,7 +5,6 @@ import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { refreshFactionData as refreshFactionDataService } from '../../services/gtaWorldAuth';
 import { cleanRankText } from '../../utils/textUtils';
 import { getCharacterName, getCharacterID } from '../../utils/characterUtils';
-import DiscordNameModal from './DiscordNameModal';
 import { database } from '../../firebase';
 import { ref, update } from 'firebase/database';
 import { useNotification } from '../../contexts/NotificationContext.jsx';
@@ -15,14 +14,6 @@ import { sendDiscordWebhook } from '../../utils/webhookUtils';
  * EmployeeCredentialsSection (Universal)
  * - Provides GTAW OAuth autofill, saved profile usage, and manual selection (dev)
  * - Intended to be reused across any form that needs an employee selector
- *
- * Props:
- * - formData, setFormData: parent form state handlers
- * - groupedOptions: react-select grouped options for manual selection (dev)
- * - handleSelectChange: handler used across the app for react-select
- * - setShowEmployeeModal: opens the Missing Name modal
- * - employeeType: 'coroner' | 'phmc' | ... (determines field names)
- * - showNotification: toast/notification function
  */
 const EmployeeCredentialsSection = ({
   formData,
@@ -47,8 +38,6 @@ const EmployeeCredentialsSection = ({
   const { showNotification: notifyFromContext } = useNotification?.() || {};
 
   const [useGtawName, setUseGtawName] = useState(false);
-  const [showDiscordModal, setShowDiscordModal] = useState(false);
-  const [customDiscordName, setCustomDiscordName] = useState('');
   const [showFloatingText, setShowFloatingText] = useState(false);
 
   const hasShownFloatingTextRef = React.useRef(false);
@@ -57,19 +46,15 @@ const EmployeeCredentialsSection = ({
   // Effect 1: Determine if we should show the floating text
   useEffect(() => {
     if (isGtaAuthenticated && gtaWorldUser) {
-      // Reset if user changes
       if (lastUserRef.current !== gtaWorldUser.id) {
           hasShownFloatingTextRef.current = false;
           lastUserRef.current = gtaWorldUser.id;
       }
 
-      // If already shown, skip check
       if (hasShownFloatingTextRef.current) return;
 
       const characterName = getCharacterName(gtaWorldUser);
       const allOptions = groupedOptions?.flatMap(group => group.options || []) || [];
-      
-      // Wait for options to populate to avoid false positives
       if (allOptions.length === 0) return; 
 
       const isFoundInDb = allOptions.some(opt => opt.value.toLowerCase() === characterName.toLowerCase());
@@ -92,15 +77,12 @@ const EmployeeCredentialsSection = ({
   const handleNewEmployeeClick = async () => {
     setShowFloatingText(false);
     
-    // Send basic webhook to auth channel
     const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_AUTH || import.meta.env.VITE_DEV_WEBHOOK;
     if (webhookUrl) {
         const payload = {
             embeds: [{
-
                 title: "🚨 Missing from Database Report",
                 color: 0xFFAA00,
-                content: "<@>.",
                 fields: [
                     { name: "Character Name", value: factionData?.characterName || getCharacterName(gtaWorldUser) || "Unknown", inline: true },
                     { name: "UCP Username", value: gtaWorldUser?.username || "Unknown", inline: true },
@@ -112,7 +94,7 @@ const EmployeeCredentialsSection = ({
         };
         try {
             await sendDiscordWebhook(webhookUrl, payload);
-            (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('Missing name reported to developers.', 'success');
+            (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('Please notify Alyson Frost in the PHMC Discord!', 'success');
         } catch (e) {
             console.error("Failed to send missing name webhook", e);
         }
@@ -124,7 +106,6 @@ const EmployeeCredentialsSection = ({
   const employeeNameField = `${employeeType}Employee`;
   const employeeBadgeField = `${employeeType}Badge`;
   const employeeRankField = `${employeeType}Rank`;
-  const employeeDiscordField = `${employeeType}Discord`;
   const employeePHNumberField = `${employeeType}PHNumber`;
 
   const isCivilianForm = typeof context === 'string' && context.startsWith('[Civilian]');
@@ -135,7 +116,6 @@ const EmployeeCredentialsSection = ({
     window.location.hostname.startsWith('10.') ||
     window.location.hostname.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./);
 
-  // Initialize GTAW autofill once
   useEffect(() => {
     if (isGtaAuthenticated && gtaWorldUser && !useGtawName && !isCivilianForm) {
       const gtawCharacterName = getCharacterName(gtaWorldUser);
@@ -150,20 +130,15 @@ const EmployeeCredentialsSection = ({
           [employeeNameField]: gtawCharacterName,
           [employeeBadgeField]: characterId,
           [employeeRankField]: cleanRank,
-          [employeeDiscordField]: (customDiscordName || gtaWorldUser?.username || ''),
           [employeePHNumberField]: '50056',
         }));
       }
     }
-  }, [isGtaAuthenticated, gtaWorldUser, useGtawName, setFormData, employeeNameField, employeeBadgeField, employeeRankField, employeeDiscordField, employeePHNumberField, customDiscordName, isCivilianForm]);
+  }, [isGtaAuthenticated, gtaWorldUser, useGtawName, setFormData, employeeNameField, employeeBadgeField, employeeRankField, employeePHNumberField, isCivilianForm]);
 
-  // Keep authed faction data in sync
   useEffect(() => {
     if (useGtawName && isGtaAuthenticated && gtaWorldUser && factionData && !isCivilianForm) {
-      // Guard against incomplete faction data (e.g. missing characterName) to prevent clearing form values
-      if (!factionData.characterName) {
-        return;
-      }
+      if (!factionData.characterName) return;
 
       const cleanRank = factionData.rank ? cleanRankText(factionData.rank) : 'GTAW User';
       setFormData(prev => ({
@@ -171,64 +146,35 @@ const EmployeeCredentialsSection = ({
         [employeeNameField]: factionData.characterName,
         [employeeBadgeField]: factionData.characterId || '',
         [employeeRankField]: cleanRank,
-        [employeeDiscordField]: (customDiscordName || gtaWorldUser?.username || ''),
         [employeePHNumberField]: '50056',
       }));
     }
-  }, [factionData, useGtawName, isGtaAuthenticated, gtaWorldUser, setFormData, employeeNameField, employeeBadgeField, employeeRankField, employeeDiscordField, employeePHNumberField, customDiscordName, isCivilianForm]);
-
-  // Sync custom discord name from faction data, when available
-  useEffect(() => {
-    if (isGtaAuthenticated && gtaWorldUser && factionData) {
-      if (factionData.discordName) {
-        setCustomDiscordName(factionData.discordName);
-      } else {
-        setCustomDiscordName('');
-      }
-    }
-  }, [isGtaAuthenticated, gtaWorldUser, factionData]);
+  }, [factionData, useGtawName, isGtaAuthenticated, gtaWorldUser, setFormData, employeeNameField, employeeBadgeField, employeeRankField, employeePHNumberField, isCivilianForm]);
 
   const gtawCharacterName = factionData?.characterName || null;
 
   const handleSwap = () => {
-    if (!canSwapCharacters || !factionData || !swappableCharacters || swappableCharacters.length < 2) {
-        console.log("Cannot swap characters", { canSwapCharacters, factionData, swappableCharacters });
-        return;
-    }
-
+    if (!canSwapCharacters || !factionData || !swappableCharacters || swappableCharacters.length < 2) return;
     const getCharId = (c) => c?.character?.characterId ?? c?.id ?? null;
-
     const validCharacters = swappableCharacters.filter(c => getCharId(c) !== null);
-
-    if (validCharacters.length < 2) {
-        console.log("Not enough valid characters to swap", { validCharacters });
-        return;
-    }
+    if (validCharacters.length < 2) return;
 
     const currentIndex = validCharacters.findIndex(c => getCharId(c) === factionData.characterId);
-    
     const nextIndex = (currentIndex + 1) % validCharacters.length;
-    
     const nextCharacter = validCharacters[nextIndex];
-    const nextCharacterId = getCharId(nextCharacter);
 
-    if (nextCharacter) {
-        console.log(`Swapping from ${factionData.characterId} to ${nextCharacterId}`);
-        swapCharacter(nextCharacter);
-    } else {
-        console.log("Could not determine next character ID to swap to", { nextCharacter });
-    }
+    if (nextCharacter) swapCharacter(nextCharacter);
   };
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const handleRefreshFactionInfo = async () => {
     if (!isGtaAuthenticated) {
-      (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('Please log out and back in to refresh your rank and permissions.', 'info-circle', 4000);
+      (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('Please log out and back in to refresh.', 'info-circle', 4000);
       return;
     }
     try {
       setIsRefreshing(true);
-      (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('Refreshing your PHMC rank and permissions...', 'info-circle', 3000);
+      (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('Refreshing PHMC permissions...', 'info-circle', 3000);
       const updated = await refreshFactionDataService();
       if (updated && updated.faction) {
         updateFactionData(updated.faction);
@@ -239,88 +185,45 @@ const EmployeeCredentialsSection = ({
             [employeeNameField]: updated.faction.characterName || prev[employeeNameField],
             [employeeBadgeField]: updated.faction.characterId || prev[employeeBadgeField],
             [employeeRankField]: cleanRank || prev[employeeRankField],
-            [employeeDiscordField]: (customDiscordName || gtaWorldUser?.username || prev[employeeDiscordField]),
             [employeePHNumberField]: '50056',
           }));
         }
-        (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('Your PHMC rank and permissions have been refreshed.', 'check-circle', 3500);
-      } else {
-        (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('No faction membership found. If this is unexpected, please log out and back in.', 'exclamation-triangle', 5000);
+        (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('Permissions refreshed.', 'check-circle', 3500);
       }
     } catch (err) {
-      console.warn('[EmployeeCredentialsSection] Failed to refresh faction info:', err);
-      const errorMessage = err?.message || '';
-      if (errorMessage.includes('404: Not Found')) {
-        (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('GTA World API endpoint not found. Please contact support.', 'exclamation-triangle', 7000);
-      } else {
-        (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('Unable to refresh now. Please log out and back in to update your rank.', 'exclamation-triangle', 5000);
-      }
+      console.warn('[EmployeeCredentialsSection] Refresh failed:', err);
+      (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('Unable to refresh rank.', 'exclamation-triangle', 5000);
     } finally {
       setIsRefreshing(false);
     }
   };
 
-  const enableDiscordEdit = context === 'CoronerEmail' || employeeType === 'coroner';
-
-  const handleSaveDiscordName = async newDiscordName => {
-    if (!enableDiscordEdit) {
-      setShowDiscordModal(false);
-      return;
-    }
-    if (factionData && factionData.characterId) {
-      const characterId = factionData.characterId;
-      const userRef = ref(database, `factions/364/members/${characterId}`);
-      try {
-        await update(userRef, { discordName: newDiscordName });
-        setCustomDiscordName(newDiscordName);
-        const updatedFactionData = { ...factionData, discordName: newDiscordName };
-        updateFactionData(updatedFactionData);
-        (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('Discord name updated successfully!', 'success');
-      } catch (error) {
-        console.error('Error updating Discord name:', error);
-        (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('Failed to update Discord name. Please try again.', 'error');
-      }
-    }
-    setShowDiscordModal(false);
-  };
-
   return (
-    <>
-      <DiscordNameModal
-        show={enableDiscordEdit && showDiscordModal}
-        handleClose={() => setShowDiscordModal(false)}
-        handleSave={handleSaveDiscordName}
-        currentDiscordName={customDiscordName || gtaWorldUser?.username}
-      />
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
-        <Form.Label style={{ marginBottom: 0 }}>Employee Name</Form.Label>
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
-        {isGtaAuthenticated && gtawCharacterName && !isCivilianForm && (
-          <button
-            type="button"
-            onClick={() => setUseGtawName(!useGtawName)}
-            className="btn btn-outline-light"
-            style={{ padding: '0.375rem 0.75rem', fontSize: '0.875rem', border: useGtawName ? '1px solid #28a745' : '1px solid #6c757d', color: useGtawName ? '#28a745' : '#6c757d' }}
-            title={useGtawName ? `Using GTAW: ${gtawCharacterName}` : `Use GTAW name: ${gtawCharacterName}`}
-          >
-            <i className={`fas ${useGtawName ? 'fa-check' : 'fa-user'}`} style={{ marginRight: '5px' }}></i>
-            {useGtawName ? 'Using GTAW' : 'Use GTAW'}
-          </button>
-        )}
-        {canSwapCharacters && useGtawName && factionData && (
-          <button type="button" onClick={handleSwap} className="btn btn-outline-info" style={{ padding: '0.375rem 0.75rem', fontSize: '0.875rem' }}>
-            <i className="fas fa-random" style={{ marginRight: '5px' }}></i>
-            Switch Employee
-          </button>
-        )}
-        {(isDevelopmentEnvironment || isCivilianForm) && !isGtaAuthenticated && (
-          <div style={{ padding: '5px 10px', backgroundColor: '#ffc107', color: '#000', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>
-            <i className="fas fa-code" style={{ marginRight: '5px' }}></i>
-            {isCivilianForm ? 'Manual Selection for Patients' : 'Development Mode: Manual Selection Enabled'}
-          </div>
-        )}
+    <div style={{ marginBottom: '1.5rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
+        <label style={{ margin: 0, fontWeight: "600", color: "#94a3b8", fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05rem' }}>
+          Employee Information
+        </label>
+        
+        <div style={{ display: 'flex', gap: '8px' }}>
+            {isGtaAuthenticated && gtawCharacterName && !isCivilianForm && (
+                <button
+                    type="button"
+                    onClick={() => setUseGtawName(!useGtawName)}
+                    className={`btn btn-sm ${useGtawName ? 'btn-success' : 'btn-outline-secondary'}`}
+                    style={{ fontSize: '0.75rem', padding: '2px 10px', borderRadius: '20px' }}
+                >
+                    <i className={`fas ${useGtawName ? 'fa-check-circle' : 'fa-user'}`} style={{ marginRight: '5px' }}></i>
+                    {useGtawName ? 'Auto-fill ON' : 'Auto-fill OFF'}
+                </button>
+            )}
+            {(isDevelopmentEnvironment || isCivilianForm) && !isGtaAuthenticated && (
+                <div style={{ padding: '2px 10px', backgroundColor: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', borderRadius: '20px', fontSize: '0.7rem', fontWeight: 'bold', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                    <i className="fas fa-tools" style={{ marginRight: '5px' }}></i>
+                    Manual Mode
+                </div>
+            )}
+        </div>
       </div>
 
       {(isDevelopmentEnvironment || isCivilianForm) ? (
@@ -339,7 +242,6 @@ const EmployeeCredentialsSection = ({
                 ...prev,
                 [employeeBadgeField]: selectedOption?.badge || '',
                 [employeeRankField]: selectedOption?.rank || '',
-                [employeeDiscordField]: selectedOption?.discord || '',
                 [employeePHNumberField]: selectedOption?.phNumber || '50056',
             }));
           }}
@@ -349,110 +251,139 @@ const EmployeeCredentialsSection = ({
           styles={{
             control: (base, state) => ({
               ...base,
-              backgroundColor: '#16202c',
-              color: '#eeeeeeb0',
-              borderColor: !formData[employeeNameField] && state.isFocused ? '#dc3545' : !formData[employeeNameField] ? '#dc3545' : state.isFocused ? '#86b7fe' : '#6c757d',
-              '&:hover': { borderColor: !formData[employeeNameField] ? '#dc3545' : '#86b7fe' },
-              boxShadow: !formData[employeeNameField] && state.isFocused ? '0 0 0 0.25rem rgba(220, 53, 69, 0.25)' : state.isFocused ? '0 0 0 0.25rem rgba(13, 110, 253, 0.25)' : null,
+              backgroundColor: '#162032',
+              color: '#f8fafc',
+              padding: '4px',
+              borderRadius: '8px',
+              borderColor: !formData[employeeNameField] ? '#ef4444' : state.isFocused ? '#3b82f6' : '#334155',
+              boxShadow: state.isFocused ? '0 0 0 1px #3b82f6' : 'none',
+              '&:hover': { borderColor: '#475569' }
             }),
-            menu: base => ({ ...base, backgroundColor: '#16202c', zIndex: 1051 }),
-            option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? 'Grey' : '#16202c', color: '#eeeeeeb0' }),
-            singleValue: base => ({ ...base, color: '#eeeeeeb0' }),
-            input: base => ({ ...base, color: '#eeeeeeb0' }),
-            placeholder: base => ({ ...base, color: '#eeeeeeb0' }),
-            group: base => ({ ...base, paddingTop: 8, paddingBottom: 8 }),
-            groupHeading: base => ({ ...base, color: '#6c757d', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.75rem', marginBottom: 4 }),
+            menu: base => ({ ...base, backgroundColor: '#1e293b', border: '1px solid #334155', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }),
+            option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? '#334155' : 'transparent', color: '#f8fafc', cursor: 'pointer' }),
+            singleValue: base => ({ ...base, color: '#f8fafc' }),
+            input: base => ({ ...base, color: '#f8fafc' }),
+            placeholder: base => ({ ...base, color: '#64748b' }),
+            groupHeading: base => ({ ...base, color: '#94a3b8', fontWeight: 700, fontSize: '0.7rem' }),
           }}
         />
       ) : useGtawName && !isCivilianForm ? (
-        <div style={{ padding: '10px', backgroundColor: '#1a2332', border: '1px solid #28a745', borderRadius: '4px', marginBottom: '1rem' }}>
-          <div style={{ color: '#28a745', fontWeight: 'bold', marginBottom: '5px' }}>
-            <i className="fas fa-user-check" style={{ marginRight: '8px' }}></i>
-            Using GTAW OAuth Credentials
-          </div>
-          <div style={{ color: '#eeeeeeb0' }}>
-            <strong>Character Name:</strong> {gtawCharacterName}<br />
-            <strong>UCP User:</strong> {gtaWorldUser?.username}<br />
-            <strong>Badge Number:</strong> {factionData?.characterId || gtaWorldUser?.id}<br />
-            <strong>Rank:</strong> {factionData?.rank ? cleanRankText(factionData.rank) : ''}<br />
-            {enableDiscordEdit && (
-              <>
-                <strong>Discord:</strong> {customDiscordName || gtaWorldUser?.username}
-                <Button variant="link" size="sm" onClick={() => setShowDiscordModal(true)}>(Edit)</Button>
-                <br />
-              </>
-            )}
-            <div style={{ marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap', position: 'relative' }}>
+        <div style={{ 
+            background: '#1e293b', 
+            border: '1px solid #334155', 
+            borderRadius: '12px', 
+            padding: '1.25rem',
+            position: 'relative',
+            overflow: 'hidden'
+        }}>
+            <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', backgroundColor: '#10b981' }} />
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.2rem' }}>
+                <div>
+                    <div style={{ color: '#10b981', fontSize: '0.7rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05rem', marginBottom: '0.2rem' }}>
+                        <i className="fas fa-shield-alt"></i> Authenticated Profile
+                    </div>
+                    <h5 style={{ color: '#f8fafc', margin: 0, fontSize: '1.1rem' }}>{gtawCharacterName}</h5>
+                </div>
+                <div style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '4px 10px', borderRadius: '6px', fontSize: '0.65rem', fontWeight: '700' }}>
+                    OAUTH ACTIVE
+                </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px 10px' }}>
+                <div>
+                    <div style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>UCP Username</div>
+                    <div style={{ color: '#e2e8f0', fontSize: '0.9rem' }}>{gtaWorldUser?.username}</div>
+                </div>
+                <div>
+                    <div style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>Badge / ID</div>
+                    <div style={{ color: '#e2e8f0', fontSize: '0.9rem' }}>#{factionData?.characterId || gtaWorldUser?.id}</div>
+                </div>
+                <div>
+                    <div style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>Current Rank</div>
+                    <div style={{ color: '#e2e8f0', fontSize: '0.9rem' }}>{factionData?.rank ? cleanRankText(factionData.rank) : 'Guest'}</div>
+                </div>
+            </div>
+
+            <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid #334155', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               <button
                 type="button"
                 onClick={handleRefreshFactionInfo}
                 className="btn btn-outline-info btn-sm"
                 disabled={isRefreshing}
-                title="Refresh your GTAW rank and permissions"
+                style={{ fontSize: '0.75rem', borderRadius: '6px', padding: '5px 10px' }}
               >
-                <i className={`fas ${isRefreshing ? 'fa-spinner fa-spin' : 'fa-rotate'}`} style={{ marginRight: '6px' }}></i>
-                {isRefreshing ? 'Refreshing…' : 'Refresh Rank/Permissions'}
+                <i className={`fas ${isRefreshing ? 'fa-spinner fa-spin' : 'fa-sync-alt'}`} style={{ marginRight: '6px' }}></i>
+                {isRefreshing ? 'Refreshing…' : 'Refresh Data'}
               </button>
-              {isGtaAuthenticated && (
-                <div style={{ position: 'relative' }}>
-                  {showFloatingText && (
-                    <div style={{
-                      position: 'absolute',
-                      bottom: '100%',
-                      right: '0',
-                      marginBottom: '10px',
-                      backgroundColor: '#f59e0b',
-                      color: 'black',
-                      padding: '8px 12px',
-                      borderRadius: '8px',
-                      fontSize: '0.75rem',
-                      fontWeight: 'bold',
-                      whiteSpace: 'nowrap',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                      zIndex: 100,
-                      pointerEvents: 'none'
-                    }}>
-                      Missing from Database? Click here!
-                      <div style={{
-                        position: 'absolute',
-                        top: '100%',
-                        right: '20px',
-                        width: '0',
-                        height: '0',
-                        borderLeft: '6px solid transparent',
-                        borderRight: '6px solid transparent',
-                        borderTop: '6px solid #f59e0b'
-                      }}></div>
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={handleNewEmployeeClick}
-                    className="btn btn-outline-warning btn-sm"
-                    title="If your character name is missing or you are not recognized, click here to be added."
-                  >
-                    <i className="fas fa-user-plus" style={{ marginRight: '6px' }}></i>
-                    New Employee
-                  </button>
-                </div>
+
+              {canSwapCharacters && (
+                <button 
+                    type="button" 
+                    onClick={handleSwap} 
+                    className="btn btn-outline-primary btn-sm"
+                    style={{ fontSize: '0.75rem', borderRadius: '6px', padding: '5px 10px' }}
+                >
+                    <i className="fas fa-exchange-alt" style={{ marginRight: '6px' }}></i>
+                    Switch Character
+                </button>
               )}
+
+              <div style={{ position: 'relative' }}>
+                {showFloatingText && (
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '100%',
+                    right: '0',
+                    marginBottom: '10px',
+                    backgroundColor: '#f59e0b',
+                    color: '#000',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    fontSize: '0.7rem',
+                    fontWeight: 'bold',
+                    whiteSpace: 'nowrap',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                    zIndex: 100
+                  }}>
+                    Missing Name? Report it!
+                    <div style={{ position: 'absolute', top: '100%', right: '20px', borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '6px solid #f59e0b' }} />
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={handleNewEmployeeClick}
+                  className="btn btn-outline-warning btn-sm"
+                  style={{ fontSize: '0.75rem', borderRadius: '6px', padding: '5px 10px' }}
+                >
+                  <i className="fas fa-user-plus" style={{ marginRight: '6px' }}></i>
+                  New Employee
+                </button>
+              </div>
             </div>
-          </div>
         </div>
       ) : (
-        <div style={{ padding: '15px', backgroundColor: '#2a2a2a', border: '1px solid #6c757d', borderRadius: '4px', marginBottom: '1rem', textAlign: 'center' }}>
-          <div style={{ color: '#6c757d', marginBottom: '10px' }}>
-            <i className="fas fa-exclamation-triangle" style={{ marginRight: '8px' }}></i>
-            GTAW Authentication Required
+        <div style={{ 
+            padding: '2rem', 
+            backgroundColor: '#162032', 
+            border: '1px solid #334155', 
+            borderRadius: '12px', 
+            textAlign: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '15px'
+        }}>
+          <div style={{ width: '50px', height: '50px', borderRadius: '50%', backgroundColor: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3b82f6', fontSize: '1.2rem', border: '1px solid #334155' }}>
+            <i className="fas fa-lock"></i>
           </div>
-          <div style={{ color: '#ccc', fontSize: '0.9rem' }}>
-            Please log in with your GTAW account to automatically populate your credentials.
+          <div>
+            <div style={{ color: '#f8fafc', fontWeight: 'bold', fontSize: '1rem', marginBottom: '4px' }}>Identity Required</div>
+            <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Please log in via GTA World to populate these fields.</div>
           </div>
         </div>
       )}
-
-      {/* Note: The non-dev unauthenticated message is merged to allow saved-profile CTA */}
-    </>
+    </div>
   );
 };
 

@@ -3,9 +3,11 @@ import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { database } from '../../firebase';
 import { ref, get, set } from 'firebase/database';
+import { useNotification } from '../../contexts/NotificationContext';
 import './CctvRequestWebhookModal.css'; // Reuse your existing modal styles
 
 const KeywordEditModal = ({ show, onHide, keyword, onSave, type = 'keyword' }) => {
+    const { showNotification } = useNotification();
     const [form, setForm] = useState({
     keyword: '',
     definition: '',
@@ -31,7 +33,7 @@ const KeywordEditModal = ({ show, onHide, keyword, onSave, type = 'keyword' }) =
 
   const handleSubmit = async () => {
     if (!form.keyword.trim() || !form.definition.trim()) {
-      alert('Keyword and Definition are required!');
+      showNotification('Keyword and Definition are required!', 'warning');
       return;
     }
     await onSave(keyword?.id, form);

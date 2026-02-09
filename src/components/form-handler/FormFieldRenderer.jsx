@@ -8,6 +8,7 @@ import useGtaWorldAuth from '../../hooks/useGtaWorldAuth'; // Import useGtaWorld
 import DecedentItemRenderer from './DecedentItemRenderer'; // Import the new component
 import AutopsyDiagramModal from '../Modals/AutopsyDiagramModal'; // Import AutopsyDiagramModal
 import CharacterSelector from '../Modals/CharacterSelector';
+import { decedentItemSchema } from '../../formSchemas/decedentSchema';
 
 const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore, toggleSavedReports, showNotification, handleDiagramUpload, setShowMapModal, setMapTargetField, isUploadingMapImage = {}, setShowAutopsyAssistModal, setAutopsyAssistTargetField }) => {
   const { factionsData } = useData();
@@ -98,10 +99,42 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
           <hr style={{ borderTop: "1px dashed #334155", margin: "0", height: "1px" }} />
         </div>
       );
+    case "section":
+      return (
+        <div style={{ 
+            margin: "2rem 8px 1rem", 
+            width: "calc(100% - 16px)", 
+            boxSizing: "border-box",
+            borderBottom: "2px solid #334155",
+            paddingBottom: "0.5rem"
+        }}>
+            <h3 style={{ 
+                color: "#60a5fa", 
+                margin: 0, 
+                fontSize: "1.2rem", 
+                textTransform: "uppercase", 
+                letterSpacing: "0.1rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "10px"
+            }}>
+                <i className={field.icon || "fas fa-folder-open"} style={{ opacity: 0.7 }}></i>
+                {field.label}
+            </h3>
+        </div>
+      );
     case "small_header":
       return (
-        <div style={{ margin: "0 8px 1.5rem", width: "calc(100% - 16px)", boxSizing: "border-box" }}>
-          <h4 style={{ color: "#a78bfa", marginBottom: "1rem", marginTop: "1rem" }}>
+        <div style={{ margin: "1.5rem 8px 0.8rem", width: "calc(100% - 16px)", boxSizing: "border-box" }}>
+          <h4 style={{ 
+              color: "#a78bfa", 
+              margin: 0, 
+              fontSize: "1rem", 
+              display: "flex", 
+              alignItems: "center", 
+              gap: "8px" 
+          }}>
+            <i className={field.icon || "fas fa-chevron-right"} style={{ fontSize: "0.8rem", opacity: 0.5 }}></i>
             {field.label}
           </h4>
         </div>
@@ -135,7 +168,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         </div>
       );
     }
-    case "timer":
+    case "timer": {
       return (
         <div style={{...fieldWrapperStyle }}>
           <div style={{ display: "flex", flexDirection: "column", marginBottom: "5px" }}> {/* Stacks label and span */}
@@ -180,7 +213,8 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
           </div>
         </div>
       );
-    case "select":
+    }
+    case "select": {
       let optionsToRender = [];
       let warningMessage = null;
 
@@ -227,7 +261,8 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
             </select>
         </div>
       );
-    case "multi_select":
+    }
+    case "multi_select": {
       let multiSelectOptionsToRender = [];
       let multiSelectWarningMessage = null;
 
@@ -328,6 +363,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
           />
         </div>
       );
+    }
     case "multi_employee_select": {
         const customStyles = {
             control: (provided) => ({ ...provided, width: "100%", padding: "0.2rem", background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0", borderRadius: 8, fontSize: "1rem", minHeight: "auto" }),
@@ -663,7 +699,7 @@ case "textarea":
 
       const handlePayment = () => {
         if (!gtawUser) {
-          alert("Authentication error: You must be logged in to proceed with a payment.");
+          showNotification("Authentication error: You must be logged in to proceed with a payment.", "error");
           return;
         }
 
@@ -703,7 +739,7 @@ case "textarea":
             {step === 2 && (
               <div style={{ color: "#f59e0b" }}>
                 <p style={{ margin: 0 }}>Waiting for payment confirmation...</p>
-                <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.5rem' }}>Once you have paid and the Fleeca Bank has indicated 'OK', come back to this tab and click on 'I've Paid'. If you encounter an issue, you can restart.</p>
+                <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.5rem' }}>Once you have paid and the Fleeca Bank has indicated &apos;OK&apos;, come back to this tab and click on &apos;I&apos;ve Paid&apos;. If you encounter an issue, you can restart.</p>
                 <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
                     <button
                       onClick={() => {
@@ -724,7 +760,7 @@ case "textarea":
                         width: '100%',
                       }}
                     >
-                      I've Paid 
+                      I&apos;ve Paid 
                     </button>
                     <button
                       onClick={handleRestartPayment}
@@ -820,28 +856,26 @@ case "textarea":
       );
     }
     case "decedent_list": {
-      const decedentItemSchema = useMemo(() => {
-        try {
-          return JSON.parse(field.decedentItemSchemaJson);
-        } catch (e) {
-          console.error("Error parsing decedentItemSchemaJson:", e);
-          return [];
-        }
-      }, [field.decedentItemSchemaJson]);
+      const currentDecedentItemSchema = useMemo(() => {
+        return decedentItemSchema;
+      }, []);
 
+      const [activeDecedentIndex, setActiveDecedentIndex] = useState(0);
       const decedentList = formValues[field.name] || [];
 
       const addDecedent = useCallback(() => {
         const newDecedent = decedentItemSchema.reduce((acc, subField) => {
           if (subField.type === 'image') {
-            acc[subField.name] = []; // Initialize image fields as empty arrays
-          } else {
+            acc[subField.name] = [];
+          } else if (subField.type !== 'section') {
             acc[subField.name] = '';
           }
           return acc;
         }, {});
-        handleChange(field.name, [...decedentList, newDecedent]);
-      }, [field.name, decedentList, handleChange, decedentItemSchema]);
+        const newList = [...decedentList, newDecedent];
+        handleChange(field.name, newList);
+        setActiveDecedentIndex(newList.length - 1); // Switch to the newly added decedent
+      }, [field.name, decedentList, handleChange]);
 
       const handleDecedentItemChange = useCallback((indexToUpdate, subFieldName, subFieldValue) => {
         const updatedList = decedentList.map((item, idx) => {
@@ -856,19 +890,80 @@ case "textarea":
       const removeDecedent = useCallback((indexToRemove) => {
         const updatedList = decedentList.filter((_, idx) => idx !== indexToRemove);
         handleChange(field.name, updatedList);
-      }, [field.name, decedentList, handleChange]);
+        
+        // Adjust active index if we removed the active one or an earlier one
+        if (indexToRemove <= activeDecedentIndex) {
+            setActiveDecedentIndex(Math.max(0, activeDecedentIndex - 1));
+        }
+      }, [field.name, decedentList, handleChange, activeDecedentIndex]);
 
       return (
         <div style={{ margin: "0 8px 1.5rem", width: "calc(100% - 16px)", boxSizing: "border-box" }}>
-          <label style={labelStyle}>{field.label || "Decedent List"}</label>
-          {decedentList.map((item, index) => (
+          <label style={{ ...labelStyle, marginBottom: '1rem' }}>{field.label || "Decedents"}</label>
+          
+          <div style={{ 
+              display: 'flex', 
+              flexWrap: 'wrap', 
+              gap: '4px', 
+              marginBottom: '0' 
+          }}>
+            {decedentList.map((item, index) => (
+              <button
+                key={index}
+                onClick={() => setActiveDecedentIndex(index)}
+                style={{
+                  padding: '10px 20px',
+                  background: activeDecedentIndex === index ? '#162032' : '#1e293b',
+                  color: activeDecedentIndex === index ? '#3b82f6' : '#94a3b8',
+                  border: '1px solid #334155',
+                  borderBottom: activeDecedentIndex === index ? 'none' : '1px solid #334155',
+                  borderRadius: '8px 8px 0 0',
+                  cursor: 'pointer',
+                  fontWeight: activeDecedentIndex === index ? 'bold' : 'normal',
+                  fontSize: '0.9rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  transition: 'all 0.2s ease',
+                  zIndex: activeDecedentIndex === index ? 2 : 1,
+                  position: 'relative',
+                  top: activeDecedentIndex === index ? '1px' : '0'
+                }}
+              >
+                <i className="fas fa-user" style={{ fontSize: '0.8rem', opacity: 0.7 }}></i>
+                {(item.decedentName && item.decedentOOC) 
+                  ? `${item.decedentName} - ${item.decedentOOC}` 
+                  : (item.decedentName || item.decedentOOC || `Decedent #${index + 1}`)}
+              </button>
+            ))}
+            <button
+              onClick={addDecedent}
+              style={{
+                padding: '10px 15px',
+                background: '#10b981',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px 8px 0 0',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                marginLeft: '4px',
+                transition: 'background 0.2s'
+              }}
+              title="Add Decedent"
+            >
+              <i className="fas fa-plus"></i>
+            </button>
+          </div>
+
+          {decedentList.length > 0 ? (
             <DecedentItemRenderer
-              key={index} // Consider a more stable key if items can be reordered
-              itemValues={item}
-              itemSchema={decedentItemSchema}
-              onItemChange={(subFieldName, subFieldValue) => handleDecedentItemChange(index, subFieldName, subFieldValue)}
-              onRemove={() => removeDecedent(index)}
-              index={index}
+              key={activeDecedentIndex}
+              itemValues={decedentList[activeDecedentIndex]}
+              itemSchema={currentDecedentItemSchema}
+              onItemChange={(subFieldName, subFieldValue) => handleDecedentItemChange(activeDecedentIndex, subFieldName, subFieldValue)}
+              onRemove={() => removeDecedent(activeDecedentIndex)}
+              index={activeDecedentIndex}
+              parentFieldName={field.name}
               finalSelectOptions={finalSelectOptions}
               currentUtcTime={currentUtcTime}
               agencyDataStore={agencyDataStore}
@@ -877,10 +972,22 @@ case "textarea":
               setMapTargetField={setMapTargetField}
               isUploadingMapImage={isUploadingMapImage}
             />
-          ))}
-          <button onClick={addDecedent} style={{ background: "#10b981", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, cursor: "pointer", width: "100%" }}>
-            Add Decedent
-          </button>
+          ) : (
+            <div style={{ 
+                padding: '3rem', 
+                background: '#162032', 
+                borderRadius: 8, 
+                border: '2px dashed #334155', 
+                textAlign: 'center',
+                color: '#94a3b8'
+            }}>
+                <i className="fas fa-users-slash" style={{ fontSize: '3rem', marginBottom: '1rem', opacity: 0.3 }}></i>
+                <p>No decedents added yet.</p>
+                <button onClick={addDecedent} className="btn btn-success">
+                    <i className="fas fa-plus"></i> Add First Decedent
+                </button>
+            </div>
+          )}
         </div>
       );
     }
