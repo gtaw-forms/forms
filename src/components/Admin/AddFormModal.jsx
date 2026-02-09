@@ -24,6 +24,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { SortableFieldItem } from './SortableFieldItem';
+import { useNotification } from "../../contexts/NotificationContext";
+
 const inputStyle = {
   width: "100%",
   padding: "0.75rem",
@@ -36,6 +38,7 @@ const inputStyle = {
 };
 
 const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = false }) => {
+  const { showNotification } = useNotification();
   const { user: gtawUser, isAuthenticated } = useGtaWorldAuth(); // Get authenticated user for logging
   const { refreshSegments } = useData();
 
@@ -105,11 +108,19 @@ const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = f
       setCategory(editingForm.category || "");
       setBbcodeTemplate(editingForm.template || "");
       setTitleGeneratorCode(editingForm.titleGeneratorCode || ""); // Load existing code
-      // Ensure all loaded fields have an 'id' for consistent editing
-      const safeFields = (editingForm.fields || []).map(f => ({
-        ...f,
-        id: f.id || `field-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` // Assign a unique ID if missing
-      }));
+      
+      // Robustly handle fields: handle both arrays and objects (Firebase behavior), and filter nulls
+      const rawFields = Array.isArray(editingForm.fields) 
+        ? editingForm.fields 
+        : (editingForm.fields ? Object.values(editingForm.fields) : []);
+        
+      const safeFields = rawFields
+        .filter(f => f !== null && typeof f === 'object')
+        .map(f => ({
+          ...f,
+          id: f.id || `field-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        }));
+        
       setFields(safeFields);
       setAccessType(editingForm.accessType || "Public"); // Load accessType
       setFormDescription(editingForm.formDescription || ""); // Load form description
@@ -136,10 +147,10 @@ const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = f
   };
 
   const saveField = () => {
-    // Assign a temporary ID if adding a new field without one
+    // Ensure every field has a unique ID for dnd-kit
     const fieldToSave = { ...newField };
-    if (editingFieldIndex === null && !fieldToSave.id) {
-        fieldToSave.id = `field-${Date.now()}`;
+    if (!fieldToSave.id) {
+        fieldToSave.id = `field-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
     }
 
     if (fieldToSave.type === "hr") {
@@ -162,7 +173,7 @@ const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = f
       });
     } else if (fieldToSave.type === "small_header") {
       if (!fieldToSave.label) {
-        alert("Header Text is required for Small Header!");
+        showNotification("Header Text is required for Small Header!", "warning");
         return;
       }
       const finalName = fieldToSave.name || `header_${fields.length + 1}`;
@@ -176,11 +187,11 @@ const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = f
       });
     } else if (fieldToSave.type === "timer") {
         if (!fieldToSave.label || !fieldToSave.name || !fieldToSave.timerType) {
-            alert("Label, Name, and Timer Type are required for Timer!");
+            showNotification("Label, Name, and Timer Type are required for Timer!", "warning");
             return;
         }
         if (fieldToSave.buttonLabel && !fieldToSave.buttonAction) {
-            alert("If Button Label is provided, Button Action is required for Timer!");
+            showNotification("If Button Label is provided, Button Action is required for Timer!", "warning");
             return;
         }
         setFields(prevFields => {
@@ -193,16 +204,16 @@ const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = f
         });
     } else if (fieldToSave.type === "checkbox") {
         if (!fieldToSave.label || !fieldToSave.name) {
-            alert("Label and Name are required for Checkbox!");
+            showNotification("Label and Name are required for Checkbox!", "warning");
             return;
         }
         if (fieldToSave.associatedInputField) {
             if (!fieldToSave.associatedInputField.name || !fieldToSave.associatedInputField.type) {
-                alert("Associated Input Field Name and Type are required!");
+                showNotification("Associated Input Field Name and Type are required!", "warning");
                 return;
             }
             if (fieldToSave.associatedInputField.type === "select" && !fieldToSave.associatedInputField.optionsKey) {
-                alert("Associated Input Options Key is required for Select type!");
+                showNotification("Associated Input Options Key is required for Select type!", "warning");
                 return;
             }
         }
@@ -217,7 +228,7 @@ const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = f
         });
     } else if (fieldToSave.type === "radio") {
         if (!fieldToSave.label || !fieldToSave.name || fieldToSave.options.length === 0) {
-            alert("Label, Name, and Options are required for Radio Buttons!");
+            showNotification("Label, Name, and Options are required for Radio Buttons!", "warning");
             return;
         }
         setFields(prevFields => {
@@ -230,7 +241,7 @@ const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = f
         });
     } else if (fieldToSave.type === "input_button_combo") {
         if (!fieldToSave.label || !fieldToSave.name || !fieldToSave.inputType || !fieldToSave.buttonLabel || !fieldToSave.buttonAction) {
-            alert("Label, Name, Input Type, Button Label, and Button Action are required for Input Button Combo!");
+            showNotification("Label, Name, Input Type, Button Label, and Button Action are required for Input Button Combo!", "warning");
             return;
         }
         setFields(prevFields => {
@@ -243,7 +254,7 @@ const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = f
         });
     } else if (fieldToSave.type === "attach_report_button") {
         if (!fieldToSave.label || !fieldToSave.employeeType || !fieldToSave.targetField) {
-            alert("Label, Employee Type, and Target Field are required for Attach Report Button!");
+            showNotification("Label, Employee Type, and Target Field are required for Attach Report Button!", "warning");
             return;
         }
         setFields(prevFields => {
@@ -256,11 +267,11 @@ const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = f
         });
     } else if (fieldToSave.type === "payment_button") {
         if (!fieldToSave.label || !fieldToSave.name) {
-            alert("Label and Name are required for Payment Button!");
+            showNotification("Label and Name are required for Payment Button!", "warning");
             return;
         }
         if (typeof fieldToSave.paymentTotal !== 'number' || isNaN(fieldToSave.paymentTotal) || fieldToSave.paymentTotal < 0) {
-            alert("Payment Total must be a non-negative number!");
+            showNotification("Payment Total must be a non-negative number!", "warning");
             return;
         }
         setFields(prevFields => {
@@ -375,7 +386,7 @@ const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = f
         });
     } else if (fieldToSave.type === "dynamic_text_list") {
         if (!fieldToSave.label || !fieldToSave.name || !fieldToSave.buttonLabel) {
-            alert("Label, Name and Button Label are required for Dynamic Text List!");
+            showNotification("Label, Name and Button Label are required for Dynamic Text List!", "warning");
             return;
         }
         setFields(prevFields => {
@@ -388,7 +399,7 @@ const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = f
         });
     } else if (fieldToSave.type === "autopsy_diagram_button") {
         if (!fieldToSave.label || !fieldToSave.name) {
-            alert("Label and Name are required for Autopsy Diagram Button!");
+            showNotification("Label and Name are required for Autopsy Diagram Button!", "warning");
             return;
         }
         setFields(prevFields => {
@@ -401,7 +412,7 @@ const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = f
         });
     } else if (fieldToSave.type === "information_state") {
         if (!fieldToSave.content) {
-            alert("Content is required for Information State!");
+            showNotification("Content is required for Information State!", "warning");
             return;
         }
         const finalName = fieldToSave.name || `info_${fields.length + 1}`;
@@ -415,7 +426,7 @@ const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = f
         });
     } else if (fieldToSave.type === "medicine_block") {
         if (!fieldToSave.label || !fieldToSave.name) {
-            alert("Label and Name are required for Medicine Block!");
+            showNotification("Label and Name are required for Medicine Block!", "warning");
             return;
         }
         setFields(prevFields => {
@@ -428,7 +439,7 @@ const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = f
         });
     } else if (fieldToSave.type === "image") {
   if (!fieldToSave.label || !fieldToSave.name) {
-    alert("Label and Name are required for Image field!");
+    showNotification("Label and Name are required for Image field!", "warning");
     return;
   }
 
@@ -477,7 +488,7 @@ const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = f
   return;
     } else if (fieldToSave.type === "multi_select") { // NEW MULTI_SELECT BLOCK
       if (!fieldToSave.label || !fieldToSave.name || !fieldToSave.optionsKey) {
-        alert("Label, Name, and Options Key are required for Dropdown (Multiple Selection)!");
+        showNotification("Label, Name, and Options Key are required for Dropdown (Multiple Selection)!", "warning");
         return;
       }
       setFields(prevFields => {
@@ -490,7 +501,7 @@ const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = f
       });
     } else if (fieldToSave.type === "character_selector") {
         if (!fieldToSave.label || !fieldToSave.name) {
-            alert("Label and Name are required for Character Selector!");
+            showNotification("Label and Name are required for Character Selector!", "warning");
             return;
         }
         setFields(prevFields => {
@@ -503,7 +514,7 @@ const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = f
         });
     } else if (fieldToSave.type === "multi_employee_select") {
       if (!fieldToSave.label || !fieldToSave.name) {
-        alert("Label and Name are required for Dropdown - Multiple Employees!");
+        showNotification("Label and Name are required for Dropdown - Multiple Employees!", "warning");
         return;
       }
       // For multi_employee_select, options are implicitly 'phmcEmployees' and doesn't need to be configurable, and isMulti is true.
@@ -517,7 +528,7 @@ const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = f
       });
     } else if (fieldToSave.type === "employee_select") { // NEW EMPLOYEE_SELECT BLOCK
       if (!fieldToSave.label || !fieldToSave.name) {
-        alert("Label and Name are required for Dropdown - Employee Selector!");
+        showNotification("Label and Name are required for Dropdown - Employee Selector!", "warning");
         return;
       }
       // For employee_select, options are implicitly 'phmcEmployees' and doesn't need to be configurable
@@ -531,7 +542,7 @@ const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = f
       });
     } else {
       if (!fieldToSave.label || !fieldToSave.name) {
-        alert("Label and Name are required!");
+        showNotification("Label and Name are required!", "warning");
         return;
       }
       setFields(prevFields => {
@@ -561,7 +572,7 @@ const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = f
   const handleDragEnd = (event) => {
     const {active, over} = event;
     
-    if (active.id !== over.id) {
+    if (over && active.id !== over.id) {
       setFields((items) => {
         const oldIndex = items.findIndex((item) => item.id === active.id);
         const newIndex = items.findIndex((item) => item.id === over.id);
@@ -608,7 +619,7 @@ const applyAdvancedCondition = () => {
 const addBulkCondition = () => {
     if (!bulkConditionalField) return;
     let value = bulkConditionalValue === "filled" ? true : bulkConditionalValue === "empty" ? false : bulkExactValue;
-    if (bulkConditionalValue === "exact" && !bulkExactValue) return alert("Enter exact value for bulk condition");
+    if (bulkConditionalValue === "exact" && !bulkExactValue) return showNotification("Enter exact value for bulk condition", "warning");
 
     setBulkTempConditions([...bulkTempConditions, { field: bulkConditionalField, value }]);
     setBulkConditionalField("");
@@ -620,11 +631,11 @@ const removeBulkTempCondition = (i) => setBulkTempConditions(bulkTempConditions.
 
 const applyBulkConditionalLogic = () => {
     if (bulkSelectedFields.length === 0) {
-        alert("Please select at least one field to apply the logic to.");
+        showNotification("Please select at least one field to apply the logic to.", "warning");
         return;
     }
     if (bulkTempConditions.length === 0) {
-        alert("Please add at least one conditional rule.");
+        showNotification("Please add at least one conditional rule.", "warning");
         return;
     }
 
@@ -645,7 +656,7 @@ const applyBulkConditionalLogic = () => {
     setBulkSelectedFields([]);
     setBulkTempConditions([]);
     setBulkConditionMode('and');
-    alert(`Conditional logic applied to ${bulkSelectedFields.length} fields.`);
+    showNotification(`Conditional logic applied to ${bulkSelectedFields.length} fields.`, "success");
 };
 
 const handleBulkAddFields = (fieldsToAdd) => {
@@ -659,7 +670,7 @@ const handleBulkAddFields = (fieldsToAdd) => {
 
       const saveForm = async () => {
     if (!formId || !formName) {
-      alert("Form ID and Name required!");
+      showNotification("Form ID and Name required!", "warning");
       return;
     }
 
@@ -685,10 +696,10 @@ const handleBulkAddFields = (fieldsToAdd) => {
         console.log("Global form version bumped successfully!");
       } catch (error) {
         console.error("Failed to bump global form version:", error);
-        alert("Form saved, but failed to update the global version. Clients may not see changes immediately.");
+        showNotification("Form saved, but failed to update the global version. Clients may not see changes immediately.", "warning");
       }
 
-      alert("Form saved!");
+      showNotification("Form saved!", "success");
 
       // Force a refresh of the forms cache for the current user (admin)
       // to ensure they see the changes immediately without needing to clear cache manually.
@@ -715,7 +726,7 @@ const handleBulkAddFields = (fieldsToAdd) => {
 
       onClose();
     } catch (err) {
-      alert("Error: " + err.message);
+      showNotification("Error: " + err.message, "error");
     }
   };
   if (!show) return null;
@@ -756,7 +767,7 @@ const handleBulkAddFields = (fieldsToAdd) => {
           <h4 style={{ color: "#60a5fa", marginTop: "2rem" }}>Title Generator Function</h4>
           <div style={{ color: "#94a3b8", fontSize: "0.9rem", marginBottom: "1rem" }}>
             Create a template for the report title. <br />
-            Use <code>[FORM_NAME]</code> for the form's name. <br />
+            Use <code>[FORM_NAME]</code> for the form&apos;s name. <br />
             Use <code>{"{{fieldName}}"}</code> for form values (e.g., <code>{"{{PatientName}}"}</code>).
           </div>
           <textarea
@@ -773,14 +784,14 @@ const handleBulkAddFields = (fieldsToAdd) => {
               <button
                 onClick={() => {
                   if (!bbcodeTemplate.trim()) {
-                    alert("Please paste a BBCode template first!");
+                    showNotification("Please paste a BBCode template first!", "warning");
                     return;
                   }
                   const newTemplate = bbcodeTemplate
                     .replace(/\[b\]/gi, '[bold]')
                     .replace(/\[\/b\]/gi, '[/bold]');
                   setBbcodeTemplate(newTemplate);
-                  alert("Bold tags [b] converted to [bold]!");
+                  showNotification("Bold tags [b] converted to [bold]!", "success");
                 }}
                 style={{
                   background: "linear-gradient(135deg, #f59e0b, #d97706)",
@@ -799,7 +810,7 @@ const handleBulkAddFields = (fieldsToAdd) => {
               <button
                 onClick={() => {
                   if (!bbcodeTemplate.trim()) {
-                    alert("Please paste a BBCode template first!");
+                    showNotification("Please paste a BBCode template first!", "warning");
                     return;
                   }
                   // ... rest of the existing ULTIMATE button logic ...
@@ -879,7 +890,7 @@ const handleBulkAddFields = (fieldsToAdd) => {
         const index = remaining.indexOf(full);
         const before = remaining.slice(0, index);
         const afterMatch = remaining.slice(index + full.length);
-        const optionText = afterMatch.match(/^([^\[\]]+)/)?.[0]?.trim() || "";
+        const optionText = afterMatch.match(/^([^[\]]+)/)?.[0]?.trim() || "";
 
         if (before.trim()) fixedLines.push(before.trim());
         fixedLines.push(`[cb:${field}]${optionText}`);
@@ -900,7 +911,7 @@ const handleBulkAddFields = (fieldsToAdd) => {
       .replace(/\[cb:([^\]]+)\]\s+/g, "[cb:$1]");
 
     setBbcodeTemplate(newTemplate);
-    alert("Legacy BBCode PARSED & PERFECTED!\n\nAll [cb:field] are on new lines\nOld patterns converted\nLabels bolded\nReady for 2025");
+    showNotification("Legacy BBCode PARSED & PERFECTED!\n\nAll [cb:field] are on new lines\nOld patterns converted\nLabels bolded\nReady for 2025", "success");
   }}
   style={{
     background: "linear-gradient(135deg, #8b5cf6, #6366f1)",
@@ -923,10 +934,10 @@ const handleBulkAddFields = (fieldsToAdd) => {
             <ul style={{ paddingLeft: "20px", margin: 0 }}>
               <li style={{ marginBottom: '0.5rem' }}><strong>Field Values:</strong> <code>{"{{ fieldName }}"}</code><br />Replaces with the value of the specified field.</li>
               <li style={{ marginBottom: '0.5rem' }}><strong>JavaScript Expressions:</strong> <code>{"{{ ctx.field1 + ctx.field2 }}"}</code><br />Allows for simple JS logic. Use `ctx` to access form values.</li>
-              <li style={{ marginBottom: '0.5rem' }}><strong>Checkboxes (for options):</strong> <code>[cb:fieldName]Option Text</code><br />Renders a checkbox for "Option Text". It will be checked if the value of `fieldName` matches "Option Text".</li>
+              <li style={{ marginBottom: '0.5rem' }}><strong>Checkboxes (for options):</strong> <code>[cb:fieldName]Option Text</code><br />{"Renders a checkbox for \"Option Text\". It will be checked if the value of `fieldName` matches \"Option Text\"."}</li>
               <li style={{ marginBottom: '0.5rem' }}><strong>Checkboxes (for presence):</strong> <code>[cb:fieldName]</code><br />Renders a single checkbox that is checked if `fieldName` has any value.</li>
               <li style={{ marginBottom: '0.5rem' }}><strong>Conditional (value exists):</strong> <code>[conditional field="fieldName"]...[/conditional]</code><br />Shows the enclosed content only if `fieldName` has a value.</li>
-              <li style={{ marginBottom: '0.5rem' }}><strong>Conditional (value matches):</strong> <code>[conditional field="fieldName" value="expectedValue"]...[/conditional]</code><br />Shows the enclosed content only if the value of `fieldName` is exactly "expectedValue".</li>
+              <li style={{ marginBottom: '0.5rem' }}><strong>Conditional (value matches):</strong> <code>{"[conditional field=\"fieldName\" value=\"expectedValue\"]...[/conditional]"}</code><br />{"Shows the enclosed content only if the value of `fieldName` is exactly \"expectedValue\"."}</li>
             </ul>
           </div>
 
@@ -955,18 +966,9 @@ const handleBulkAddFields = (fieldsToAdd) => {
             <select value={newField.type} onChange={e => setNewField({ ...createDefaultNewField(), type: e.target.value })} style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}>
               <option value="input">Text Input</option>
               <option value="textarea">Textarea</option>
-              <option value="select">Dropdown</option>
-              <option value="character_selector">Dropdown - Character Select</option>
-              <option value="employee_select">Dropdown - Employee Selector</option>
-              <option value="multi_employee_select">Dropdown - Multiple Employees</option>
-              <option value="multi_select">Dropdown (Multiple Selection)</option> // NEW OPTION
-              <option value="checkbox">Checkbox</option>
-              <option value="radio">Radio Button</option>
-              <option value="image">Image Upload</option>
-              <option value="payment_button">Payment Button</option>
-              <option value="hr">Horizontal Rule</option>
-              <option value="fake_line">Fake Line</option>
+              <option value="section">Section Header</option>
               <option value="small_header">Small Header</option>
+              <option value="select">Dropdown</option>
                             <option value="timer">Timer Field</option>
                             <option value="input_button_combo">Input Button Combo</option>
                             <option value="attach_report_button">Attach Report Button</option>
@@ -998,7 +1000,15 @@ const handleBulkAddFields = (fieldsToAdd) => {
                                                       </>
                                                     )}
               
-                                                    {newField.type !== "hr" && newField.type !== "decedent_list" && newField.type !== "information_state" && (
+                                                    {(newField.type === "section" || newField.type === "small_header") && (
+                            <input 
+                              placeholder="Icon Class (e.g. fas fa-id-card)" 
+                              value={newField.icon || ""} 
+                              onChange={e => setNewField({ ...newField, icon: e.target.value })} 
+                              style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
+                            />
+                          )}
+                          {newField.type !== "hr" && newField.type !== "decedent_list" && newField.type !== "information_state" && (
                                                       <input
                                                         placeholder={newField.type === "small_header" ? "Header Text" : "Label"}
                                                         value={newField.label}
@@ -1278,7 +1288,7 @@ const handleBulkAddFields = (fieldsToAdd) => {
                           onChange={e => setNewField({ ...newField, linkedImageField: e.target.value || undefined })}
                           style={{ ...inputStyle, marginTop: "0.4rem" }}
                         >
-                          <option value="">→ Auto (uses field name + "_images")</option>
+                          <option value="">→ Auto (uses field name + &quot;_images&quot;)</option>
                           {fields
                             .filter(f => f.type === "image")
                             .map(f => (
@@ -1359,7 +1369,7 @@ const handleBulkAddFields = (fieldsToAdd) => {
                           <div key={i} style={{ padding: "0.8rem", background: "#334155", borderRadius: 8, marginBottom: "0.5rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                             <span>
                               <strong>{fields.find(f => f.name === c.field)?.label || c.field}</strong>
-                              {c.value === true ? " is filled" : c.value === false ? " is empty" : ` = "${c.value}"`}
+                              {c.value === true ? " is filled" : c.value === false ? " is empty" : ` = &quot;${c.value}&quot;`}
                             </span>
                             <button onClick={() => removeTempCondition(i)} style={{ background: "#ef4444", color: "white", border: "none", padding: "0.4rem 0.8rem", borderRadius: 6 }}>Remove</button>
                           </div>
@@ -1452,7 +1462,7 @@ const handleBulkAddFields = (fieldsToAdd) => {
                                     <div key={i} style={{ padding: "0.8rem", background: "#334155", borderRadius: 8, marginBottom: "0.5rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                                         <span>
                                             <strong>{fields.find(f => f.name === c.field)?.label || c.field}</strong>
-                                            {c.value === true ? " is filled" : c.value === false ? " is empty" : ` = "${c.value}"`}
+                                            {c.value === true ? " is filled" : c.value === false ? " is empty" : ` = &quot;${c.value}&quot;`}
                                         </span>
                                         <button onClick={() => removeBulkTempCondition(i)} style={{ background: "#ef4444", color: "white", border: "none", padding: "0.4rem 0.8rem", borderRadius: 6 }}>Remove</button>
                                     </div>
@@ -1477,7 +1487,7 @@ const handleBulkAddFields = (fieldsToAdd) => {
                                             {idx > 0 && ", "}
                                             <strong>{fields.find(field => field.name === condition.field)?.label || condition.field}</strong>
                                             {' '}is{' '}
-                                            {condition.value === true ? "filled" : condition.value === false ? "empty" : `"${condition.value}"`}
+                                            {condition.value === true ? "filled" : condition.value === false ? "empty" : `&quot;${condition.value}&quot;`}
                                         </span>
                                     ))}
                                 </>
@@ -1485,7 +1495,7 @@ const handleBulkAddFields = (fieldsToAdd) => {
                                 <>
                                     <strong>{fields.find(field => field.name === newField.showIf.field)?.label || newField.showIf.field}</strong>
                                     {' '}is{' '}
-                                    {newField.showIf.value === true ? "filled" : newField.showIf.value === false ? "empty" : `"${newField.showIf.value}"`}
+                                    {newField.showIf.value === true ? "filled" : newField.showIf.value === false ? "empty" : `&quot;${newField.showIf.value}&quot;`}
                                 </>
                             )}
                             <button onClick={() => setNewField({ ...newField, showIf: null })} style={{ marginLeft: "1rem", color: "#ef4444" }}>Remove</button>
@@ -1500,7 +1510,7 @@ const handleBulkAddFields = (fieldsToAdd) => {
                             onDragEnd={handleDragEnd}
                           >
                             <SortableContext
-                              items={fields.map(f => f.id)}
+                              items={fields.filter(f => f && f.id).map(f => f.id)}
                               strategy={verticalListSortingStrategy}
                             >
                               {fields.map((f, i) => (
@@ -1522,6 +1532,8 @@ const handleBulkAddFields = (fieldsToAdd) => {
                                               → pastes into <strong>{f.linkedImageField}</strong>
                                             </span>
                                           </span>
+                                        ) : f.type === "section" ? (
+                                          <span style={{ color: "#60a5fa", fontWeight: "bold" }}>SECTION: {f.label} {f.icon && <i className={f.icon} style={{ marginLeft: "5px" }}></i>}</span>
                                         ) : f.type === "hr" ? (
                                           <span style={{ color: "#a78bfa" }}>Horizontal Rule</span>
                                         ) : f.type === "fake_line" ? (

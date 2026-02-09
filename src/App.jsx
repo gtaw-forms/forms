@@ -1,6 +1,5 @@
 import React, { useState, lazy, Suspense } from 'react';
 import { HashRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
-import { AuthProvider } from './contexts/AuthContext.jsx';
 import { NotificationProvider, useNotification } from './contexts/NotificationContext.jsx';
 import { FormProvider } from './contexts/FormContext.jsx';
 import { SeasonalEffectsProvider } from './contexts/SeasonalEffectsContext';

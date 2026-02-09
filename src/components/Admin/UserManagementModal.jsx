@@ -15,7 +15,7 @@ const UserManagementModal = ({ show, onHide, database, showNotification }) => {
 
     const comprehensiveSanitize = (str) => {
         if (!str) return '';
-        let sanitized = str.trim().replace(/[.#$[\/ \]]+/g, '_');
+        let sanitized = str.trim().replace(/[.#$[/ \]]+/g, '_');
         sanitized = sanitized.replace(/_{2,}/g, '_');
         sanitized = sanitized.replace(/^_+|_+$/g, '');
         return sanitized;
@@ -42,7 +42,7 @@ const UserManagementModal = ({ show, onHide, database, showNotification }) => {
     }, [show, database]);
 
     const sanitizeForFirebasePath = (str) => {
-        return str.replace(/[.#$[\/ \]]/g, '_');
+        return str.replace(/[.#$[/ \]]/g, '_');
     };
 
     const handleSanitizeAllUsernames = async () => {

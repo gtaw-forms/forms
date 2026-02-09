@@ -121,7 +121,7 @@ const RenameRoleKeyModal = ({
                     <p>Current Key: <strong>{currentRoleKey}</strong></p>
                     <p className="text-warning small">
                         Warning: Renaming the key changes its identifier in the database.
-                        This is a technical change and does not affect the "Display Name" shown to users unless you also edit the role.
+                        This is a technical change and does not affect the &quot;Display Name&quot; shown to users unless you also edit the role.
                         Ensure the new key is unique and does not contain spaces or Firebase-invalid characters (e.g., ., $, #, [, ], /).
                     </p>
                     <Form onSubmit={handleSubmit}>

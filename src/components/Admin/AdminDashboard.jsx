@@ -21,7 +21,6 @@ import FirebaseFunctionsTester from './FirebaseFunctionsTester';
 import EmployeeManager from './EmployeeManager';
 import LsccManager from './LsccManager';
 import FormsManager from './FormsManager';
-import LegacyReportMigrator from './LegacyReportMigrator';
 import MetricsDashboard from './MetricsDashboard';
 import AgencyIncidentManager from './AgencyIncidentManager';
 import HallOfFameManager from './HallOfFameManager';
@@ -29,10 +28,7 @@ import HallOfFameManager from './HallOfFameManager';
 const AdminDashboard = ({
 
     currentUser,
-    desktopNotificationPermission,
-    handleEnableDesktopNotifications,
     isUpdatingDb,
-
     selectedAdminBingoType,
     setSelectedAdminBingoType,
     BINGO_TYPES,
@@ -44,40 +40,17 @@ const AdminDashboard = ({
     selectedTypeForEdit,
     setShowReviewPhrasesModal,
     setShowUserManagementModal,
-
     setShowCctvWebhookModal,
-    handleLogout,
     Sentry,
     showInAppNotification,
-    setShowOAuthTokenExchangeModal,
-    setShowUserDataExchangeModal,
-    lockdownConfig,
-    setLockdownConfig,
-    handleUpdateLockdownStatus,
     webhooks,
     newWebhook,
     setNewWebhook,
     handleAddWebhook,
     handleDeleteWebhook,
     isUpdatingWebhooks,
-    customWebhookChannel,
-    setCustomWebhookChannel,
-    customWebhookTitle,
-    setCustomWebhookTitle,
-    customWebhookMessage,
-    setCustomWebhookMessage,
-    customWebhookUrl,
-    setCustomWebhookUrl,
-    customWebhookSending,
-    customWebhookResult,
-    handleSendCustomWebhook,
     logRefreshTrigger,
     setLogRefreshTrigger,
-    handleScanDuplicateReports,
-    handleDeleteDuplicateReports,
-    duplicateReports,
-    isScanningDuplicates,
-    isDeletingDuplicates
 }) => {
 
     const [selectedSection, setSelectedSection] = useState('serviceStatus');
@@ -197,7 +170,6 @@ const AdminDashboard = ({
 
     // Determine access levels for specific sections
     const hasServiceStatusAccess = isGoogleAdminActive || isSuperAdminAccess || isRank14OrHigher;
-    const hasLockdownAccess = isGoogleAdminActive || isSuperAdminAccess || isRank14OrHigher;
     const hasBingoAccess = isGoogleAdminActive || isSuperAdminAccess || isRank14OrHigher;
     const hasUsersAccess = isGoogleAdminActive || isSuperAdminAccess || isRank14OrHigher;
     const hasRankPermissionsAccess = isGoogleAdminActive || isSuperAdminAccess || isRank15OrHigher;
@@ -374,43 +346,6 @@ const AdminDashboard = ({
         }
     };
 
-    const handleMigrateLegacyReports = async () => {
-        if (!window.confirm("Are you sure you want to run the legacy report migration? This will add a 'legacy: true' flag to all reports in /savedReports.")) {
-            return;
-        }
-
-        setIsAppendingLegacyFlag(true);
-        showInAppNotification && showInAppNotification('Starting legacy report migration...', 'info');
-
-        try {
-            const functions = getFunctions();
-            const migrateFunc = httpsCallable(functions, 'migrateLegacyReports');
-            const result = await migrateFunc();
-
-            if (result.data.success) {
-                showInAppNotification && showInAppNotification(
-                    `Legacy migration complete: ${result.data.migratedCount} reports flagged.`,
-                    'success'
-                );
-                console.log('Legacy migration result:', result.data);
-            } else {
-                showInAppNotification && showInAppNotification(
-                    `Legacy migration failed: ${result.data.message || 'Unknown error'}`,
-                    'error'
-                );
-                console.error('Legacy migration failed:', result.data);
-            }
-        } catch (error) {
-            console.error('Error calling migrateLegacyReports:', error);
-            showInAppNotification && showInAppNotification(
-                `Error during legacy migration: ${error.message}`,
-                'error'
-            );
-            Sentry.captureException(error, { extra: { context: 'handleMigrateLegacyReports' } });
-        } finally {
-            setIsAppendingLegacyFlag(false);
-        }
-    };
 
     return (
         <div className="admin-dashboard-container">
@@ -447,10 +382,6 @@ const AdminDashboard = ({
                         )}
                     </div>
                     <div className="nav-pills-flex-column">
-                        {hasLockdownAccess && (
-                            <button className={`nav-link ${selectedSection === 'lockdown' ? 'active' : ''}`} onClick={() => setSelectedSection('lockdown')}><i className="fas fa-lock me-2"></i>Lockdown</button>
-                        )}
-
                         {hasBingoAccess && (
                             <button className={`nav-link ${selectedSection === 'bingo' ? 'active' : ''}`} onClick={() => setSelectedSection('bingo')}><i className="fas fa-dice me-2"></i>Bingo</button>
                         )}
@@ -480,23 +411,6 @@ const AdminDashboard = ({
                         <button className={`nav-link ${selectedSection === 'factions' ? 'active' : ''}`} onClick={() => setSelectedSection('factions')}><i className="fas fa-users me-2"></i>Faction Data</button>
                         <button className={`nav-link ${selectedSection === 'dev' ? 'active' : ''}`} onClick={() => setSelectedSection('dev')}><i className="fas fa-code me-2"></i>Developer</button>
                         <button className={`nav-link ${selectedSection === 'database' ? 'active' : ''}`} onClick={() => setSelectedSection('database')}><i className="fas fa-database me-2"></i>Database</button>
-                    </div>
-                    <div className="sidebar-footer">
-                        {desktopNotificationPermission === 'default' && (
-                            <Button variant="outline-info" size="sm" onClick={handleEnableDesktopNotifications} className="w-100 mb-2" title="Click to allow desktop notifications for status updates">
-                                <i className="fas fa-bell"></i> Enable Notifications
-                            </Button>
-                        )}
-                        <Button variant="warning" onClick={handleLogout} className="w-100">
-                            <i className="fas fa-sign-out-alt me-2"></i>
-                            Sign Out {(() => {
-                                if (gtaWorldUser) return '(GTA World)';
-                                if (isGoogleAdmin) return '(Google Admin)';
-                                return '(Firebase)';
-                            })()}
-                        </Button>
-                                    <Button type="button" variant="secondary" className="changelog-button" onClick={() => navigate('/admin')} title="Go to Admin Home" > <i className="fas fa-tachometer-alt"></i>Admin Home</Button>
-
                     </div>
                 </div>
                 <div className="main-content">
@@ -538,93 +452,6 @@ const AdminDashboard = ({
                                 </div>
                             </div>
                         )}
-                        {/* ... existing conditional sections ... */}
-                    {selectedSection === 'lockdown' && (
-                        <div className="card">
-                            <div className="card-header">Site Lockdown</div>
-                            <div className="card-body">
-                                {hasLockdownAccess ? (
-                                    <>
-                                        <div className="form-check form-switch mb-3">
-                                    <input
-                                        className="form-check-input"
-                                        type="checkbox"
-                                        role="switch"
-                                        id="lockdownSwitch"
-                                        checked={lockdownConfig.enabled}
-                                        onChange={(e) => setLockdownConfig(prev => ({ ...prev, enabled: e.target.checked }))}
-                                    />
-                                    <label className="form-check-label" htmlFor="lockdownSwitch">
-                                        Enable Site Lockdown
-                                    </label>
-                                </div>
-                                <div className="form-group mb-3">
-                                    <label>Notification Message</label>
-                                    <input
-                                        type="text"
-                                        value={lockdownConfig.notification}
-                                        onChange={(e) => setLockdownConfig(prev => ({ ...prev, notification: e.target.value }))}
-                                        placeholder="e.g., The site is currently undergoing maintenance."
-                                        className="form-control"
-                                    />
-                                </div>
-                                <div className="form-group mb-3">
-                                    <label>Popup Dialog Text</label>
-                                    <textarea
-                                        value={lockdownConfig.dialog}
-                                        onChange={(e) => setLockdownConfig(prev => ({ ...prev, dialog: e.target.value }))}
-                                        placeholder="e.g., The BBCode generator is temporarily disabled."
-                                        className="form-control"
-                                        rows="3"
-                                    ></textarea>
-                                </div>
-                                <div className="form-group mb-3">
-                                    <label>Affected Deployments</label>
-                                    <div>
-                                        {['all', 'phmc-tools', 'github-pages', 'local'].map((deployment) => (
-                                            <div className="form-check form-check-inline" key={deployment}>
-                                                <input
-                                                    className="form-check-input"
-                                                    type="checkbox"
-                                                    id={`deployment-${deployment}`}
-                                                    value={deployment}
-                                                    checked={lockdownConfig.affectedDeployments.includes(deployment)}
-                                                    onChange={(e) => {
-                                                        const { value, checked } = e.target;
-                                                        setLockdownConfig((prev) => {
-                                                            let newDeployments;
-                                                            if (checked) {
-                                                                newDeployments = [...prev.affectedDeployments, value];
-                                                            } else {
-                                                                newDeployments = prev.affectedDeployments.filter((d) => d !== value);
-                                                            }
-                                                            return { ...prev, affectedDeployments: newDeployments };
-                                                        });
-                                                    }}
-                                                />
-                                                <label className="form-check-label" htmlFor={`deployment-${deployment}`}>
-                                                    {deployment.charAt(0).toUpperCase() + deployment.slice(1)}
-                                                </label>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                                        <Button variant="primary" onClick={handleUpdateLockdownStatus} disabled={isUpdatingDb}>
-                                            {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : "Update Lockdown Status"}
-                                        </Button>
-                                    </>
-                                ) : (
-                                    <div className="alert alert-danger">
-                                        <i className="fas fa-exclamation-triangle me-2"></i>
-                                        <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to manage site lockdown.
-                                        <br />
-                                        <small>Required: Script Rank 14 or higher, or Google Admin access</small>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
                     {selectedSection === 'bingo' && (
                         <div className="card">
                             <div className="card-header">Bingo Management</div>
@@ -831,7 +658,7 @@ const AdminDashboard = ({
                             <div className="card-header">
                                 <div className="d-flex justify-content-between align-items-center">
                                     <h5 className="mb-0">Webhook Management</h5>
-                                                                        <h5 className="mb-0">This area is VERY Dangerous - Don't use </h5>
+                                                                        <h5 className="mb-0">This area is VERY Dangerous - Don&apos;t use </h5>
 
                                     <div className="badge bg-secondary">
                                         {webhooks.length} webhook{webhooks.length !== 1 ? 's' : ''} configured
@@ -1579,9 +1406,6 @@ const AdminDashboard = ({
                     )}
                 </div>
             </div>
-            {showMigrator && (
-                <LegacyReportMigrator onClose={() => setShowMigrator(false)} showNotification={showInAppNotification} />
-            )}
         </div>
     );
 };

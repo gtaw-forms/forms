@@ -11,6 +11,7 @@ const DecedentItemRenderer = ({
   onItemChange,
   onRemove,
   index, // Index of the current decedent item in the list
+  parentFieldName,
   finalSelectOptions, // Passed from FormHandler
   currentUtcTime,     // Passed from FormHandler
   agencyDataStore,    // Passed from FormHandler
@@ -19,7 +20,6 @@ const DecedentItemRenderer = ({
   setMapTargetField,
   isUploadingMapImage = {},
 }) => {
-    const [isMinimized, setIsMinimized] = useState(false); // New state for minimization
   const handleSubFieldChange = useCallback((subFieldName, value) => {
     onItemChange(subFieldName, value);
   }, [onItemChange]);
@@ -27,11 +27,38 @@ const DecedentItemRenderer = ({
   // Render each sub-field according to its type
   const renderSubField = useCallback((subField, idx) => {
         const fieldName = subField.name;
-        const isMapLocationField = fieldName === 'decedentLocation';
+
+        if (subField.type === 'section') {
+            return (
+                <div key={idx} style={{ 
+                    flexBasis: "100%", 
+                    marginTop: idx === 0 ? "0" : "1.5rem", 
+                    marginBottom: "0.8rem",
+                    borderBottom: "1px solid #334155",
+                    paddingBottom: "0.4rem"
+                }}>
+                    <h6 style={{ 
+                        color: "#3b82f6", 
+                        margin: 0, 
+                        fontSize: "0.9rem", 
+                        textTransform: "uppercase", 
+                        letterSpacing: "0.05rem",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px"
+                    }}>
+                        {subField.label === 'Identification' && <i className="fas fa-id-card"></i>}
+                        {subField.label === 'Medical Findings' && <i className="fas fa-notes-medical"></i>}
+                        {subField.label === 'Scene Evidence' && <i className="fas fa-camera"></i>}
+                        {subField.label === 'Morgue, Damages and CDNA' && <i className="fas fa-file-medical"></i>}
+                        {subField.label}
+                    </h6>
+                </div>
+            );
+        }
+
         const displayValue = itemValues[`${fieldName}_display`] || itemValues[fieldName] || '';
         const isFromMap = itemValues[`${fieldName}_isFromMap`];
-        const targetFieldKey = `decedents.${index}.${fieldName}`; // Corrected targetFieldKey
-        const isCurrentlyUploading = isUploadingMapImage[targetFieldKey];
 
         const commonProps = {
             name: fieldName,
@@ -39,18 +66,27 @@ const DecedentItemRenderer = ({
             onChange: (e) => onItemChange(fieldName, e.target.value),
             placeholder: subField.placeholder || '',
             style: inputStyle,
-            rows: subField.rows, // Add rows here
+            rows: subField.rows,
+            'data-parent-field': parentFieldName,
+            'data-index': index,
         };
 
+        let flexBasisValue = '100%';
+        if (subField.layout === 'compact-50' || subField.layout === 'compact') {
+            flexBasisValue = 'calc(50% - 0.4rem)';
+        } else if (subField.layout === 'compact-33') {
+            flexBasisValue = 'calc(33.333% - 0.533rem)';
+        }
+
         return (
-            <div key={subField.name || idx} style={{ flexBasis: '100%', marginBottom: "0.8rem", boxSizing: "border-box" }}> {/* Use flexBasis here */}
+            <div key={subField.name || idx} style={{ flexBasis: flexBasisValue, marginBottom: "0.8rem", boxSizing: "border-box" }}>
                 <label style={labelStyle}>{subField.label}</label>
                 {isFromMap && (
-                    <div style={{ fontSize: '0.75rem', color: '#34d399', marginBottom: '0.4rem' }}>
-                        USING MAP MARKER
+                    <div style={{ fontSize: '0.75rem', color: '#34d399', marginBottom: '0.4rem', fontWeight: 'bold' }}>
+                        <i className="fas fa-check-circle"></i> LINKED TO MAP
                     </div>
                 )}
-                {(() => { // IIFE to render the actual input field
+                {(() => {
                     switch (subField.type) {
                         case 'text':
                             return <input type="text" {...commonProps} />;
@@ -69,9 +105,10 @@ const DecedentItemRenderer = ({
                                             background: "#162032",
                                             borderRadius: 6,
                                             fontSize: "0.85rem",
-                                            color: "#94a3b8"
+                                            color: "#94a3b8",
+                                            borderLeft: "3px solid #3b82f6"
                                         }}>
-                                            <strong>Pro tip:</strong> You can paste screenshots directly here with <strong>Ctrl+V</strong>
+                                            <strong>Pro tip:</strong> Paste screenshots directly with <strong>Ctrl+V</strong>
                                         </div>
                                     )}
                                 </>
@@ -85,7 +122,7 @@ const DecedentItemRenderer = ({
                                     fieldName={subField.name}
                                 />
                             );
-                        case 'select':
+                        case 'select': {
                             const optionsToRender = finalSelectOptions[subField.optionsKey] || [];
                             return (
                                 <select {...commonProps}>
@@ -93,85 +130,51 @@ const DecedentItemRenderer = ({
                                     {optionsToRender.map((opt, optIndex) => {
                                         const value = typeof opt === 'object' && opt !== null ? opt.value : opt;
                                         const label = typeof opt === 'object' && opt !== null ? opt.label : opt;
-                                        return <option key={`${value}-${optIndex}`} value={value}>{label}</option>;
+                                        return <option key={`${value}-${optIndex}`} value={value}>{label}</option>
                                     })}
                                 </select>
                             );
+                        }
                         default:
                             return <input type="text" {...commonProps} />;
                     }
                 })()}
-                <div style={{ display: 'flex', gap: '5px', marginTop: '5px' }}>
-                  {isMapLocationField && !isFromMap && !isCurrentlyUploading && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && (
-                    <button
-                      onClick={() => {
-                        setMapTargetField(`decedents.${index}.decedentLocation`);
-                        setShowMapModal(true);
-                      }}
-                      className="btn btn-sm btn-info"
-                      style={{ flex: 1 }}
-                    >
-                      <i className="fas fa-map-marked-alt"></i> Map
-                    </button>
-                  )}
-                  {isMapLocationField && isFromMap && (
-                    <button
-                      onClick={() => {
-                        onItemChange(`${fieldName}_isFromMap`, false);
-                        onItemChange(`${fieldName}_display`, '');
-                        onItemChange(fieldName, itemValues[`${fieldName}_display`] || '');
-                      }}
-                      className="btn btn-sm btn-secondary"
-                      style={{ flex: 1 }}
-                    >
-                      Use Manual Text
-                    </button>
-                  )}
-                </div>
             </div>
         );
-    }, [itemValues, onItemChange, finalSelectOptions, setShowMapModal, setMapTargetField, index]);
+    }, [itemValues, onItemChange, finalSelectOptions, index, parentFieldName, handleSubFieldChange]);
 
   const decedentName = itemValues.decedentName || '';
   const decedentOOC = itemValues.decedentOOC || '';
 
-  let dynamicTitle = `Decedent #${index + 1}`;
-  if (decedentName || decedentOOC) {
-      dynamicTitle += `: ${decedentName}`;
-      if (decedentOOC) {
-          dynamicTitle += ` (${decedentOOC})`;
-      }
-  }
+  const dynamicTitle = (decedentName && decedentOOC) 
+    ? `${decedentName} - ${decedentOOC}` 
+    : (decedentName || decedentOOC || 'Decedent Details');
 
   return (
-    <div style={{ border: "1px solid #334155", padding: "1rem", borderRadius: 8, marginBottom: "1rem", background: "#162032" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-        <h5 style={{ color: "#e2e8f0", margin: 0 }}>{dynamicTitle}</h5>
-        <div>
-            <button
-                onClick={() => setIsMinimized(!isMinimized)}
-                style={{ background: "#6c757d", color: "white", border: "none", padding: "0.4rem 0.8rem", borderRadius: 6, cursor: "pointer", marginRight: "0.5rem" }}
-            >
-                {isMinimized ? 'Expand' : 'Minimize'}
-            </button>
-            <button onClick={onRemove} style={{ background: "#ef4444", color: "white", border: "none", padding: "0.4rem 0.8rem", borderRadius: 6, cursor: "pointer" }}>
-                Remove
-            </button>
-        </div>
+    <div style={{ 
+        border: "1px solid #334155", 
+        padding: "1.5rem", 
+        borderRadius: "0 0 8px 8px", 
+        background: "#162032",
+        borderTop: "none"
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+        <h5 style={{ color: "#f8fafc", margin: 0, display: "flex", alignItems: "center", gap: "10px" }}>
+            <i className="fas fa-user-ghost" style={{ color: "#94a3b8" }}></i>
+            {dynamicTitle}
+        </h5>
+        <button 
+            onClick={onRemove} 
+            className="btn btn-sm btn-danger"
+            style={{ borderRadius: 6, padding: "0.4rem 1rem" }}
+        >
+            <i className="fas fa-trash-alt"></i> Remove Decedent
+        </button>
       </div>
 
-      {!isMinimized && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.8rem" }}> {/* New flex container for sub-fields */}
-          {itemSchema.map((subField, idx) => {
-            let flexBasisWidth = '100%';
-            if (subField.layout === 'compact-50' || subField.layout === 'compact') { // Changed 'compact' to also be 50%
-              flexBasisWidth = 'calc(50% - 0.4rem)'; // (100% - 1 * 0.8rem) / 2
-            }
-            // Pass the subField and its index to renderSubField
-            return renderSubField(subField, idx);
-          })}
-        </div>
-      )}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.8rem" }}>
+          {itemSchema.map((subField, idx) => renderSubField(subField, idx))}
+      </div>
     </div>
   );
 };

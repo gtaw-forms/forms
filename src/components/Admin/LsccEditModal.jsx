@@ -3,9 +3,11 @@ import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { database } from '../../firebase';
 import { ref, get, set } from 'firebase/database';
+import { useNotification } from '../../contexts/NotificationContext';
 import './CctvRequestWebhookModal.css'; // Keep your styling
 
 const LsccEditModal = ({ show, onHide, item, onSave, categories, loading: parentLoading, logAdminAction, gtawUser, gtawUsername }) => {
+  const { showNotification } = useNotification();
   const [currentItem, setCurrentItem] = useState(item || {
     name: '',
     content: '',
@@ -20,6 +22,37 @@ const LsccEditModal = ({ show, onHide, item, onSave, categories, loading: parent
     setCurrentItem(item || { name: '', content: '', category: '', images: [], uniqueWords: [] });
     setRawUniqueWordsInput(Array.isArray(item?.uniqueWords) ? item.uniqueWords.join(', ') : '');
   }, [item]);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    if (name === 'images') {
+      setCurrentItem(prev => ({ ...prev, images: value.split('\n') }));
+    } else if (name === 'uniqueWords') {
+      setRawUniqueWordsInput(value);
+    } else {
+      setCurrentItem(prev => ({ ...prev, [name]: value }));
+    }
+  };
+
+  const formatProtocolText = (text, images = []) => {
+    if (!text) return '';
+    let formatted = text
+      .replace(/\*(.*?)\*/g, '<strong>$1</strong>')
+      .replace(/_(.*?)_/g, '<u>$1</u>')
+      .replace(/^>>\s?(.*)$/gm, '<div style="margin-left: 20px;">• $1</div>')
+      .replace(/^>\s?(.*)$/gm, '<div>• $1</div>')
+      .replace(/\n/g, '<br />');
+
+    images.forEach((url, index) => {
+      const placeholder = `{image${index + 1}}`;
+      if (formatted.includes(placeholder)) {
+        formatted = formatted.replace(placeholder, `<img src="${url}" style="max-width: 100%; height: auto; margin: 10px 0; border-radius: 4px;" />`);
+      }
+    });
+
+    return formatted;
+  };
+
 const normalizeProtocols = (data) => {
   if (!Array.isArray(data)) return [];
   return data.map(cat => ({
@@ -29,7 +62,7 @@ const normalizeProtocols = (data) => {
 };
 const handleSave = async () => {
     if (!currentItem.name.trim() || !currentItem.category.trim()) {
-      alert('Name and Category are required!');
+      showNotification('Name and Category are required!', 'warning');
       return;
     }
 
@@ -113,7 +146,7 @@ const handleSave = async () => {
       onHide();
     } catch (err) {
       console.error('Save failed:', err);
-      alert('Failed to save protocol: ' + err.message);
+      showNotification('Failed to save protocol: ' + err.message, 'error');
     } finally {
       setSaving(false);
     }

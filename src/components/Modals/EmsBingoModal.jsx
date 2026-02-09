@@ -716,7 +716,7 @@ setCompletedBingoLines(prevCompletedLines => {
                                                     ) : (
                                                         <span>marked</span>
                                                     )}{' '}
-                                                    "{entry.phrase}"
+                                                    &quot;{entry.phrase}&quot;
                                                 </>
                                             )}
                                             <span className="timestamp">

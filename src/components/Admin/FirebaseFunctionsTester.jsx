@@ -106,7 +106,7 @@ const FirebaseFunctionsTester = ({ showInAppNotification }) => {
                     <Button variant="danger" size="sm" onClick={() => handleTriggerFunction(triggerTestHealthAlert)} disabled={loading}>
                         {loading ? <Spinner as="span" animation="border" size="sm" /> : 'Trigger Test Health Alert'}
                     </Button>
-                    <p className="text-muted small w-100">Dispatches a mock "Critical Outage" alert to verify Discord webhooks and User pings.</p>
+                    <p className="text-muted small w-100">Dispatches a mock &quot;Critical Outage&quot; alert to verify Discord webhooks and User pings.</p>
                 </div>
 
                 <h7 className="mt-3">External Proxy Tester</h7>

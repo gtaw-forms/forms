@@ -2,14 +2,12 @@ import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
-import reportWebVitals from './reportWebVitals';
 import { init, getClient } from "@sentry/react";
 import { AuthProvider } from './contexts/AuthContext.jsx';
 import { NotificationProvider } from './contexts/NotificationContext.jsx';
 import { DataProvider } from './contexts/DataContext.jsx';
 import { ModalProvider } from './contexts/ModalProvider.jsx';
 import { SettingsProvider } from './contexts/SettingsProvider.jsx';
-import { LockdownProvider } from './contexts/LockdownContext';
 import { useNotification } from './contexts/NotificationContext';
 import * as Sentry from "@sentry/react";
 import { analytics } from './firebase';
@@ -309,9 +307,7 @@ root.render(
             <DataProvider>
               <ModalProvider>
                 <SettingsProvider>
-                  <LockdownProvider>
                     <Root />
-                  </LockdownProvider>
                 </SettingsProvider>
               </ModalProvider>
             </DataProvider>
@@ -331,8 +327,3 @@ if ('serviceWorker' in navigator) {
     });
   });
 }
-
-// If you want to start measuring performance in your app, pass a function
-// to log results (for example: reportWebVitals(console.log))
-// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
-reportWebVitals();
