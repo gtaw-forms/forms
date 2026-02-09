@@ -61,35 +61,10 @@ const AgencyIncidentManager = () => {
             if (selectedIncident?.id === id) setShowDetail(false);
         } catch (err) {
             console.error("Error deleting incident:", err);
-            alert("Failed to delete incident.");
+            showNotification("Failed to delete incident.", "error");
         }
     };
 
-    const handleMarkAsHandled = async (id) => {
-        const adminName = currentAdminName || gtawUsername || firebaseUser?.email || 'Unknown Admin';
-        try {
-            const { userAgent, timeZone } = getUserContext();
-            await update(ref(database, `agency_incidents/${id}`), {
-                status: 'Handled',
-                handledBy: adminName,
-                handledAt: Date.now()
-            });
-            logAdminAction(
-                adminName,
-                'Marked Agency Incident as Handled',
-                `Incident ID: ${id} | Handled By: ${adminName}`,
-                'Agency Incident Manager',
-                userAgent,
-                timeZone,
-                gtawUsername,
-                gtawUser
-            );
-            showNotification && showNotification('Incident marked as handled.', 'success');
-        } catch (err) {
-            console.error("Error marking incident as handled:", err);
-            alert("Failed to update status.");
-        }
-    };
 
     const handleView = (incident) => {
         setSelectedIncident(incident);

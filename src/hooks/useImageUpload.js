@@ -47,10 +47,18 @@ export const useImageUpload = (showNotification, setFormData) => {
                     body: formData,
                 });
 
+                if (!response.ok) { // Check for HTTP errors
+                    const errorText = await response.text();
+                    throw new Error(`ImgBB API returned status ${response.status}: ${errorText}`);
+                }
+
                 const data = await response.json();
 
                 if (data.success) {
-                    imageUrls.push(data.data.url);
+                    imageUrls.push({ 
+                        url: data.data.url, 
+                        thumb: data.data.thumb?.url || data.data.url 
+                    });
                 } else {
                     console.error('ImgBB upload failed:', data.error.message);
                     showNotification(`ImgBB upload failed for one of the images: ${data.error.message}`, 'exclamation-circle');
@@ -69,7 +77,7 @@ export const useImageUpload = (showNotification, setFormData) => {
                             const newDecedents = [...prev.decedents];
                             const currentDecedent = newDecedents[index];
                             const currentValue = currentDecedent[key] || '';
-                            const newValue = currentValue ? `${currentValue}, ${imageUrls.join(', ')}` : imageUrls.join(', ');
+                            const newValue = currentValue ? `${currentValue}, ${imageUrls.map(img => img.url).join(', ')}` : imageUrls.map(img => img.url).join(', ');
                             newDecedents[index] = { ...currentDecedent, [key]: newValue };
 
                             return { ...prev, decedents: newDecedents };
@@ -78,7 +86,7 @@ export const useImageUpload = (showNotification, setFormData) => {
                     } else {
                         setFormData(prev => {
                             const currentValue = prev[fieldName] || '';
-                            const newValue = currentValue ? `${currentValue}, ${imageUrls.join(', ')}` : imageUrls.join(', ');
+                            const newValue = currentValue ? `${currentValue}, ${imageUrls.map(img => img.url).join(', ')}` : imageUrls.map(img => img.url).join(', ');
                             return {
                                 ...prev,
                                 [fieldName]: newValue
@@ -94,8 +102,8 @@ export const useImageUpload = (showNotification, setFormData) => {
             showNotification('Upload failed!', 'exclamation-circle');
         } finally {
             setIsUploading(false);
-            return imageUrls;
         }
+        return imageUrls;
     };
 
     return { isUploading, handleImageUpload };

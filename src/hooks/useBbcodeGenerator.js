@@ -86,8 +86,8 @@ const formatToNorthAmericanDate = (isoDateTime) => {
         typeof value === 'object' &&
         value !== null &&
         !Array.isArray(value) && // Do not flatten arrays
-        value.hasOwnProperty('value') &&
-        value.hasOwnProperty('label')
+        Object.prototype.hasOwnProperty.call(value, 'value') &&
+        Object.prototype.hasOwnProperty.call(value, 'label')
       ) {
         acc[key] = value.value;
       } else {

@@ -64,18 +64,7 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     const [showEditBingoPhrasesModal, setShowEditBingoPhrasesModal] = useState(false);
     const [showReviewPhrasesModal, setShowReviewPhrasesModal] = useState(false);
 
-    const [showRoleModal, setShowRoleModal] = useState(false);
-    const [roleToEdit, setRoleToEdit] = useState(null);
 
-    const [showRenameKeyModal, setShowRenameKeyModal] = useState(false);
-    const [roleToRenameKeyDetails, setRoleToRenameKeyDetails] = useState(null);
-
-    // Initialize desktop notification permission with browser support check
-    const [desktopNotificationPermission, setDesktopNotificationPermission] = useState(() => {
-        return (typeof Notification !== 'undefined' && 'permission' in Notification) 
-            ? Notification.permission 
-            : 'unsupported';
-    });
 
 
     const [showCctvWebhookModal, setShowCctvWebhookModal] = useState(false);
@@ -100,14 +89,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     const [localHostStatus, setLocalHostStatus] = useState('');
     const [isLoadingStatus, setIsLoadingStatus] = useState(true);
 
-    const [lockdownConfig, setLockdownConfig] = useState({
-        enabled: false,
-        notification: '',
-        dialog: '',
-        affectedDeployments: [],
-    });
-
-    const prevUserUidRef = useRef(null);
 
     const logWebhookToFirebase = async (type, payload) => {
         const logsRef = ref(database, 'webhook_logs');
@@ -127,56 +108,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
         }
     }, [authUser]);
 
-    useEffect(() => {
-        const lockdownRef = ref(database, 'adminSettings/lockdownConfig');
-        const unsubscribe = onValue(lockdownRef, (snapshot) => {
-            const lockdownData = snapshot.val();
-            if (lockdownData) {
-                setLockdownConfig({
-                    enabled: lockdownData.enabled || false,
-                    notification: lockdownData.notification || '',
-                    dialog: lockdownData.dialog || '',
-                    affectedDeployments: lockdownData.affectedDeployments || [],
-                });
-            }
-        });
-        return () => unsubscribe();
-    }, []);
-
-
-    const handleUpdateLockdownStatus = async () => {
-        setIsUpdatingDb(true);
-        const lockdownRef = ref(database, 'adminSettings/lockdownConfig');
-        const { userAgent, timeZone } = getUserContext();
-        try {
-            await update(lockdownRef, lockdownConfig);
-            showInAppNotification(`Lockdown status updated.`, "check-circle");
-            logAdminAction(
-                unifiedCurrentUser?.email || "Unknown User",
-                "Updated Lockdown Status",
-                `Enabled: ${lockdownConfig.enabled}
-Notification: ${lockdownConfig.notification}
-Dialog: ${lockdownConfig.dialog}
-Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
-                "Lockdown Status",
-                userAgent,
-                timeZone
-            );
-        } catch (error) {
-            console.error("Error updating lockdown status:", error);
-            showInAppNotification("Failed to update lockdown status.", "error");
-            logAdminAction(
-                unifiedCurrentUser?.email || "Unknown User",
-                "Failed to Update Lockdown Status",
-                `Error: ${error.message}`,
-                "Lockdown Status",
-                userAgent,
-                timeZone
-            );
-        } finally {
-            setIsUpdatingDb(false);
-        }
-    };
 
     const handleCctvWebhookSubmit = async (cctvData) => {
         const webhookURL = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK; // Using Admin webhook for developer testing
@@ -234,32 +165,6 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
         }
     };
 
-    useEffect(() => {
-        const updatePermissionStatus = () => {
-            console.log("[Desktop Notify] Permission status changed to:", typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
-            setDesktopNotificationPermission(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
-        };
-        if ("permissions" in navigator && typeof navigator.permissions.query === "function") {
-            navigator.permissions.query({ name: 'notifications' }).then(function (permissionStatus) {
-                console.log("[Desktop Notify] Initial permission status (via query):", permissionStatus.state);
-                setDesktopNotificationPermission(permissionStatus.state);
-                permissionStatus.onchange = updatePermissionStatus;
-            }).catch(err => {
-                console.warn("[Desktop Notify] Error querying notification permissions, falling back to Notification.permission:", err);
-                setDesktopNotificationPermission(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
-            });
-        } else {
-            console.log("[Desktop Notify] navigator.permissions.query not supported, using Notification.permission directly. Initial status:", typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
-            setDesktopNotificationPermission(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
-        }
-        return () => {
-            if ("permissions" in navigator && typeof navigator.permissions.query === "function") {
-                navigator.permissions.query({ name: 'notifications' }).then(function (permissionStatus) {
-                    permissionStatus.onchange = null;
-                }).catch(() => { /*ignore*/ });
-            }
-        };
-    }, []);
 
 
     const [webhookMessage, setWebhookMessage] = useState('');
@@ -564,27 +469,6 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
 
 
 
-    const handleEnableDesktopNotifications = async () => {
-        console.log("[Desktop Notify] 'Enable Desktop Notifications' button clicked.");
-        const granted = await requestNotificationPermission();
-        const currentPermission = typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
-        console.log("[Desktop Notify] Permission after request:", currentPermission, "(Granted flag:", granted, ")");
-        setDesktopNotificationPermission(currentPermission);
-        const { userAgent, timeZone } = getUserContext(); // Capture user context
-        if (currentUser?.email) {
-            logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Desktop Notification Preference Changed", `Permission status: ${currentPermission}${granted ? ' (Granted by user)' : ' (Not granted or dismissed)'}`, null, userAgent, timeZone, gtaAuthUsername);
-        }
-        if (granted) {
-            if (showInAppNotification) showInAppNotification("Desktop notifications enabled for this site! Please ensure your OS settings also allow notifications from your browser.", "check-circle", 7000);
-            showDesktopNotification("PHMC Tools: Notifications Enabled", { body: "You will now receive desktop notifications for important admin actions. Ensure your OS allows browser notifications.", icon: '/phmc512.png' });
-        } else {
-            if (currentPermission === 'denied') {
-                if (showInAppNotification) showInAppNotification("Desktop notifications are blocked. Please enable them in your browser settings.", "warning");
-            } else {
-                if (showInAppNotification) showInAppNotification("Desktop notifications were not enabled.", "warning");
-            }
-        }
-    };
 
     const handleAdminCustomWebhookSubmit = async (payloadFromModal) => {
         const webhookURLIdentifier = "VITE_DISCORD_WEBHOOK_ADMIN or VITE_DEV_WEBHOOK";
@@ -594,7 +478,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
         if (!webhookURL) {
             if (showInAppNotification) showInAppNotification('Admin Webhook URL (PHMC_DISCORD) not configured.', 'error');
             Sentry.captureMessage("Admin Custom Webhook URL (PHMC_DISCORD) not configured for AdminAuthAndActions", "error");
-            logAdminAction(currentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", "Webhook URL not configured.", null, userAgent, timeZone, gtaAuthUsername);
+            logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", "Webhook URL not configured.", null, userAgent, timeZone, gtaAuthUsername);
             return false;
         }
         try {
@@ -611,7 +495,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                     extra: { statusText: response.statusText, responseBody: errorText }
                 });
                 if (showInAppNotification) showInAppNotification(`Failed to send admin webhook. Status: ${response.status}`, 'error');
-                logAdminAction(currentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", `Status: ${response.status}, Error: ${errorText}`, null, userAgent, timeZone, gtaAuthUsername);
+                logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", `Status: ${response.status}, Error: ${errorText}`, null, userAgent, timeZone, gtaAuthUsername);
                 return false;
             } else {
                 if (showInAppNotification) showInAppNotification('Admin webhook message sent successfully!', "check-circle");
@@ -624,7 +508,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
             console.error('Error sending admin custom webhook:', error);
             Sentry.captureException(error, { extra: { context: 'Admin Custom Webhook Submission Fetch (AdminAuthAndActions)' } });
             if (showInAppNotification) showInAppNotification('A network error occurred sending the admin webhook.', "error");
-            logAdminAction(currentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", `Network Error: ${error.message}`, null, userAgent, timeZone, gtaAuthUsername);
+            logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", `Network Error: ${error.message}`, null, userAgent, timeZone, gtaAuthUsername);
             return false;
         }
     };
@@ -1102,7 +986,7 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                 title: customWebhookTitle,
                 message: customWebhookMessage,
                 customUrl: customWebhookUrl,
-                adminUser: currentUser?.email || 'Unknown Admin',
+                adminUser: unifiedCurrentUser?.email || 'Unknown Admin',
                 success: result,
                 responseStatus: responseStatus,
                 timestamp: new Date().toISOString()
@@ -1129,8 +1013,6 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
             <AdminDashboard
                 currentUser={unifiedCurrentUser}
                 gtaWorldUser={gtaAuthUser}
-                desktopNotificationPermission={desktopNotificationPermission}
-                handleEnableDesktopNotifications={handleEnableDesktopNotifications}
                 isLoadingStatus={isLoadingStatus}
                 formGeneratorStatus={formGeneratorStatus}
                 setFormGeneratorStatus={setFormGeneratorStatus}
@@ -1158,9 +1040,6 @@ Affected Deployments: ${lockdownConfig.affectedDeployments.join(', ')}`,
                 Sentry={Sentry}
                 showInAppNotification={showInAppNotification}
                 // handleGtaWorldLogin is now handled by unified auth service
-                lockdownConfig={lockdownConfig}
-                setLockdownConfig={setLockdownConfig}
-                handleUpdateLockdownStatus={handleUpdateLockdownStatus}
                 webhooks={webhooks}
                 newWebhook={newWebhook}
                 setNewWebhook={setNewWebhook}

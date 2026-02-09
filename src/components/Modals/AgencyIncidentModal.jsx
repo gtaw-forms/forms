@@ -53,7 +53,7 @@ const AgencyIncidentModal = ({ show, onHide, showNotification }) => {
     const onFileChange = async (e) => {
         const urls = await handleImageUpload(e);
         if (urls && urls.length > 0) {
-            setFormData({ ...formData, screenshotUrl: urls[0] });
+            setFormData({ ...formData, screenshotUrl: urls[0].url });
         }
     };
 

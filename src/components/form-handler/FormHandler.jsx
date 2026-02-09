@@ -18,14 +18,11 @@ import seasonalEvents from '../UI/SeasonalEvents';
 import FormQuickLinks from './FormQuickLinks';
 import { validateForm } from '../../utils/formValidation';
 import { sendDiscordWebhook } from '../../utils/webhookUtils';
-import { ref, get } from 'firebase/database';
-import { database } from '../../firebase';
 import { useInactivityReload } from '../../hooks/useInactivityReload';
 import { useUserMetrics } from '../../hooks/useUserMetrics';
 import { cleanRankText } from '../../utils/textUtils';
 import phmcLogo from '../../assets/phmc.png';
-
-// Critical CSS imports
+import { decedentItemSchema } from '../../formSchemas/decedentSchema';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import 'react-bootstrap-typeahead/css/Typeahead.css';
@@ -40,7 +37,6 @@ import { Spinner } from 'react-bootstrap';
 const EmsBingoModal = lazy(() => import('../Modals/EmsBingoModal'));
 const EmployeeCredentialsSection = lazy(() => import('../Modals/EmployeeCredentialsSection'));
 const SavedReportsModal = lazy(() => import('../Modals/SavedReportsModal'));
-const OnboardingModal = lazy(() => import('../Modals/OnboardingModal'));
 const BugReportModal = lazy(() => import('../Modals/BugReportModal'));
 const MapModal = lazy(() => import("../Modals/MapModal"));
 const AgencyIncidentModal = lazy(() => import('../Modals/AgencyIncidentModal'));
@@ -77,7 +73,6 @@ export const FormHandler = () => {
       return true;
     }
   });
-  const [showOnboardingModal, setShowOnboardingModal] = useState(false);
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
   const [currentUtcTime, setCurrentUtcTime] = useState(getUtcFormattedDateTime());
   const [isUploading, setIsUploading] = useState(false);
@@ -343,24 +338,6 @@ export const FormHandler = () => {
     setCollapsedCategories((prev) => ({ ...prev, [cat]: !prev[cat] }));
   };
 
-  const handleOnboardingComplete = (preferences) => {
-    localStorage.setItem('onboardingComplete', 'true');
-    setShowOnboardingModal(false);
-    if (preferences.defaultForm) {
-      const defaultFormObj = formsData.find(form => form.firebaseKey === preferences.defaultForm);
-      if (defaultFormObj) {
-        setSelectedForm(defaultFormObj);
-        setFormValues({});
-      }
-    }
-    showNotification('Welcome! Your preferences have been saved.', 'success');
-  };
-
-  const handleOnboardingSkip = () => {
-    localStorage.setItem('onboardingComplete', 'true');
-    setShowOnboardingModal(false);
-    showNotification('Onboarding skipped. You can always set preferences later.', 'info');
-  };
 
   const getCurrentReportAuthor = useCallback(() => {
     return characterName;
@@ -519,8 +496,8 @@ export const FormHandler = () => {
 
   const handleDiagramUpload = useCallback(async (dataUrl) => {
     try {
-        const url = await uploadDataUrlToImgBB(dataUrl);
-        return [url];
+        const result = await uploadDataUrlToImgBB(dataUrl);
+        return [result.url];
     } catch (error) {
         showNotification('Failed to upload diagram image.', 'error');
         console.error("Autopsy Diagram upload failed:", error);
@@ -528,20 +505,6 @@ export const FormHandler = () => {
         return [];
     }
   }, [showNotification]);
-
-  const copyAndSaveReport = useCallback(async () => {
-    if (generatedBBCode) {
-      await saveNewReport(selectedForm, formValues, generatedTitle, generatedBBCode);
-      trackMetric('form_handler', `save_report_${selectedForm.name}`);
-      try {
-        await navigator.clipboard.writeText(generatedBBCode);
-      } catch (err) {
-        console.error('Failed to copy BBCode: ', err);
-        Sentry.captureException(err, { extra: { context: 'FormHandler - copyAndSaveReport clipboard' } });
-        showNotification('Report saved, but failed to copy BBCode to clipboard.', 'warning');
-      }
-    }
-  }, [generatedBBCode, selectedForm, formValues, generatedTitle, saveNewReport, showNotification]);
 
   const handleClearForm = useCallback(() => {
     console.log("[FormHandler] 🗑️ handleClearForm triggered.");
@@ -580,6 +543,35 @@ export const FormHandler = () => {
     showNotification('Form cleared!', 'info');
   }, [formValues, employeeType, setFormValues, selectedForm?.firebaseKey, showNotification, keepCredentials, isAuthenticated, setShowBBCode]);
 
+  const copyAndSaveReport = useCallback(async () => {
+    if (generatedBBCode) {
+      const isCoronerEmail = selectedForm?.id === 'coroner_email' || selectedForm?.name === 'Coroner Email';
+      const saveResult = await saveNewReport(selectedForm, formValues, generatedTitle, generatedBBCode, { silent: isCoronerEmail });
+      trackMetric('form_handler', `save_report_${selectedForm.name}`);
+
+      if (saveResult?.success && isCoronerEmail) {
+        showNotification(`Report "${generatedTitle}" saved!`, 'save', 10000, [
+          {
+            label: 'Clear Form',
+            variant: 'danger',
+            handler: (id) => {
+              handleClearForm();
+              removeNotification(id);
+            }
+          }
+        ]);
+      }
+
+      try {
+        await navigator.clipboard.writeText(generatedBBCode);
+      } catch (err) {
+        console.error('Failed to copy BBCode: ', err);
+        Sentry.captureException(err, { extra: { context: 'FormHandler - copyAndSaveReport clipboard' } });
+        showNotification('Report saved, but failed to copy BBCode to clipboard.', 'warning');
+      }
+    }
+  }, [generatedBBCode, selectedForm, formValues, generatedTitle, saveNewReport, showNotification, handleClearForm, removeNotification, trackMetric]);
+
 
 
 
@@ -605,6 +597,18 @@ export const FormHandler = () => {
       loadReportForUser,
       formValues, setFormValues, selectedForm, showNotification, removeNotification, modalCloseTimer
   );
+
+  const handleLoadReport = useCallback((report, userId) => {
+    return loadReportForUser(
+        report, 
+        userId, 
+        false, 
+        setFormValues, 
+        selectedForm, 
+        setSelectedForm, 
+        () => formsData
+    );
+  }, [loadReportForUser, setFormValues, selectedForm, setSelectedForm, formsData]);
 
   const handleNavToggleSavedReports = () => {
     let type = 'PHMC'; // Default to PHMC
@@ -644,12 +648,6 @@ export const FormHandler = () => {
     }
   }, [selectedForm]);
 
-  useEffect(() => {
-    const onboardingComplete = localStorage.getItem('onboardingComplete') === 'true';
-    if (!onboardingComplete) {
-      setShowOnboardingModal(true);
-    }
-  }, []);
 
   useEffect(() => {
     const handlePaste = async (e) => {
@@ -662,9 +660,17 @@ export const FormHandler = () => {
       if (!activeEl || !['TEXTAREA', 'INPUT'].includes(activeEl.tagName)) return;
 
       const fieldName = activeEl.name || activeEl.dataset.field;
+      const parentFieldName = activeEl.dataset.parentField;
+
       if (!fieldName) return;
 
-      const fieldConfig = selectedForm.fields?.find(f => f.name === fieldName);
+      let fieldConfig;
+      if (parentFieldName && parentFieldName === 'decedents') { // Explicitly check if it's a decedent list
+          fieldConfig = decedentItemSchema.find(f => f.name === fieldName);
+      } else {
+          fieldConfig = selectedForm.fields?.find(f => f.name === fieldName);
+      }
+
       if (!fieldConfig?.allowImagePaste) return;
 
       const items = e.clipboardData?.items;
@@ -681,35 +687,38 @@ export const FormHandler = () => {
       if (!imageFile) return;
 
       e.preventDefault();
-      const targetField = fieldConfig.linkedImageField || fieldName; // This determines which field in formValues gets the image URL.
+      const targetField = fieldConfig.linkedImageField || fieldName;
+      const index = activeEl.dataset.index;
 
-      console.log(`[handlePaste] Processing paste for fieldName: ${fieldName}, linkedImageField: ${fieldConfig.linkedImageField}, targetField: ${targetField}`);
-
+      const pastingNotifId = showNotification("Pasting & uploading image...", "spinner fa-spin", 0);
       try {
         setIsUploading(true);
-        const url = await uploadImageToImgBB(imageFile);
+        const result = await uploadImageToImgBB(imageFile);
+        const { url, thumb } = result;
         
-        console.log(`[handlePaste] Image uploaded. URL: ${url}`);
-        console.log(`[handlePaste] formValues BEFORE image URL update for ${targetField}:`, JSON.parse(JSON.stringify(formValues)));
-
         setFormValues(prev => {
-          const current = prev[targetField] || [];
-          const arr = Array.isArray(current) ? current : (typeof current === 'string' ? current.split(', ').filter(Boolean) : []);
-          const updatedImages = [...arr, url];
-          
-          console.log(`[handlePaste] setFormValues for ${targetField}: new images array:`, updatedImages);
-          
-          return { ...prev, [targetField]: updatedImages };
+          if (parentFieldName && index !== undefined) {
+              const list = [...(prev[parentFieldName] || [])];
+              const itemIndex = parseInt(index, 10);
+              if (list[itemIndex]) {
+                  const current = list[itemIndex][targetField] || [];
+                  const arr = Array.isArray(current) ? current : (typeof current === 'string' ? current.split(', ').filter(Boolean) : []);
+                  list[itemIndex] = { ...list[itemIndex], [targetField]: [...arr, url] };
+                  return { ...prev, [parentFieldName]: list };
+              }
+              return prev;
+          } else {
+              const current = prev[targetField] || [];
+              const arr = Array.isArray(current) ? current : (typeof current === 'string' ? current.split(', ').filter(Boolean) : []);
+              const updatedImages = [...arr, url];
+              return { ...prev, [targetField]: updatedImages };
+          }
         });
         
-        // Log formValues state AFTER setFormValues call
-        // Note: setFormValues is async, so this log will reflect the state from the previous render cycle,
-        // but the internal prev argument in the setter function gives the accurate "before" state.
-        // For current formValues after commit, a subsequent useEffect would be needed.
-        
+        removeNotification(pastingNotifId);
         showNotification("Image pasted & uploaded!", "success");
 
-        const insertText = `[img]${url}[/img]`
+        const insertText = `[url=${url}][img]${thumb}[/img][/url]`
         const newValue = activeEl.value.substring(0, activeEl.selectionStart) + (activeEl.value ? "\n" : "") + insertText + "\n" + activeEl.value.substring(activeEl.selectionEnd);
         
         console.log(`[handlePaste] New textarea value for ${fieldName} (including img tag):`, newValue);
@@ -721,6 +730,7 @@ export const FormHandler = () => {
       } catch (err) {
         console.error("Upload failed:", err);
         Sentry.captureException(err, { extra: { context: 'FormHandler - handlePaste image upload' } });
+        removeNotification(pastingNotifId);
         showNotification("Failed to upload image", "error");
       } finally {
         setIsUploading(false);
@@ -1058,7 +1068,6 @@ export const FormHandler = () => {
     <div className={styles.container}>
       {seasonalEffectsEnabled && effect}
       <Suspense fallback={null}>
-        <OnboardingModal show={showOnboardingModal} onComplete={handleOnboardingComplete} onSkip={handleOnboardingSkip} showNotification={showNotification} />
               <EmsBingoModal
                 show={showEmsBingoModal}
                 onHide={() => setShowEmsBingoModal(false)}
@@ -1080,8 +1089,9 @@ export const FormHandler = () => {
           onEmployeeSelect={loadUserSavedReports}
           employeeOptions={employeeOptions}
           isLoadingReports={isLoadingUserReports}
-          loadReport={loadReportForUser}
+          loadReport={handleLoadReport}
           deleteReportForUser={deleteReportForUser}
+          loadReportForUser={loadReportForUser}
           handleReportSelectedForAttachment={handleReportSelectedForAttachment}
           currentCoronerEmployee={formValues.coronerEmployee}
           currentPhmcEmployee={formValues.phmcEmployee}
@@ -1162,7 +1172,7 @@ export const FormHandler = () => {
                               const baseValues = {};
                               if (keepCredentials) {
                                 credentialFields.forEach(key => {
-                                    if (formValues.hasOwnProperty(key)) { // Carry over from current state if the key exists
+                                    if (Object.prototype.hasOwnProperty.call(formValues, key)) { // Carry over from current state if the key exists
                                         baseValues[key] = formValues[key];
                                     }
                                 });
@@ -1293,7 +1303,7 @@ export const FormHandler = () => {
         </div>
 
         <div className={styles.rightPanel}>
-          <div style={{ background: "linear-gradient(135deg, #2d1b69, #1e1b4b)", padding: "1.5rem", borderRadius: 12, marginBottom: "1.5rem" }}>
+          <div style={{ background: "#1e1b4b", padding: "1.5rem", borderRadius: 12, marginBottom: "1.5rem" }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 style={{ color: "#a78bfa", margin: 0 }}>
                 Signed in as {mainEmployeeName || characterName || 'Guest'}
@@ -1325,7 +1335,7 @@ export const FormHandler = () => {
   </button>
 ) : (
   <div style={{ color: "#94a3b8", fontStyle: "italic", padding: "0.75rem" }}>
-    Click "Generate BBCode" to preview
+    {"Click \"Generate BBCode\" to preview"}
   </div>
 )}
           <button onClick={copyAndSaveReport} disabled={!generatedBBCode} className={`${formStyles.rightPanelButton} ${generatedBBCode ? formStyles.copy : ''}`}>

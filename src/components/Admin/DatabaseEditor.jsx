@@ -5,9 +5,12 @@ import { database } from '../../firebase';
 
 import { logAdminAction, getUserContext } from '../../utils/adminLogger';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
-import { formDefinitions } from '../../formDefinitions';
 
-const versionToNameMap = new Map(formDefinitions.map(def => [def.version, def.name]));
+const versionToNameMap = new Map([
+    [1, 'Coroner Report'],
+    [4, 'Mass Fatality Report'],
+    [11, 'Mass Fatality Report (v11)']
+]);
 
 const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUser: propGtawUser }) => {
     const { user: gtawUser, username: gtawUsername } = useGtaWorldAuth();
@@ -504,7 +507,7 @@ const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUs
                     {currentOptions && (
                         <>
                             <hr />
-                            <h5>Current Options for "{optionCategory}"</h5>
+                            <h5>Current Options for &quot;{optionCategory}&quot;</h5>
                             {currentOptions.length > 0 ? (
                                 <ListGroup style={{ maxHeight: '200px', overflowY: 'auto' }} className="mb-3">
                                     {currentOptions.map((opt, index) => (

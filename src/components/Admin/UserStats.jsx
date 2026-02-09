@@ -3,7 +3,7 @@ import { getDatabase, ref, get } from 'firebase/database';
 
 const comprehensiveSanitize = (str) => {
     if (!str) return '';
-    let sanitized = str.trim().replace(/[.#$[\/ \]]+/g, '_');
+    let sanitized = str.trim().replace(/[.#$[/ \]]+/g, '_');
     sanitized = sanitized.replace(/_{2,}/g, '_');
     sanitized = sanitized.replace(/^_+|_+$/g, '');
     return sanitized;
