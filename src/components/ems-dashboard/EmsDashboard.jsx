@@ -1,8 +1,7 @@
 // EmsDashboard.jsx
 import React, { useState, useEffect, useMemo } from "react";
 import styles from "./EmsDashboard.module.css";
-import { database as db } from "../../firebase";
-import { ref, onValue } from "firebase/database";
+
 import { KeywordHighlighter } from "../UI/KeywordHighlighter";
 import PatientHelper from "../Modals/PatientHelper";
 import { useNavigate } from 'react-router-dom';
@@ -15,7 +14,7 @@ import BusinessCardModal from '../Modals/BusinessCardModal'; // New import
 import MapModal from '../Modals/MapModal'; // New import
 import { useData } from '../../contexts/DataContext.jsx'; // New import
 import { useModal } from '../../contexts/ModalProvider.jsx'; // New import
-import useGtaWorldAuth from '../../hooks/useGtaWorldAuth'; // New import
+
 import { useUserMetrics } from '../../hooks/useUserMetrics'; // NEW IMPORT
 import { sendBingoNotification, sendPhraseRequestNotification } from '../UI/notificationService'; // New import
 import { Button } from 'react-bootstrap';
@@ -26,12 +25,14 @@ const EmsDashboard = () => {
   useInactivityReload(); // NEW HOOK CALL
   const { trackMetric } = useUserMetrics(); // NEW METRICS HOOK
 
+  const { phmcListData, coronerListData: originalCoronerListData, lsccData, loading: dataContextLoading } = useData();
+  const { setShowEmployeeModal } = useModal();
+
   const [protocols, setProtocols] = useState([]);
   const [injuries, setInjuries] = useState({}); // { id: { name, words } }
   const [selectedInjury, setSelectedInjury] = useState(null); // full injury object
   const [showInjuryModal, setShowInjuryModal] = useState(false);
   const [injurySearch, setInjurySearch] = useState("");
-  const [loading, setLoading] = useState(true);
   const [selectedProtocol, setSelectedProtocol] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [collapsedCategories, setCollapsedCategories] = useState({});
@@ -50,61 +51,95 @@ const EmsDashboard = () => {
   const [showBusinessCardModal, setShowBusinessCardModal] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false); // New state for Map Modal
 
-  const { phmcListData, coronerListData: originalCoronerListData } = useData(); // Get raw lists
-  const { setShowEmployeeModal } = useModal();
-  const { user: gtawUser, factionData, swappableCharacters } = useGtaWorldAuth(); // Also need swappableCharacters
-
-  const currentPhmcEmployee = gtawUser?.username || factionData?.characterName || '';
-  const isAdmin = gtawUser?.isAdmin || false;
+  const currentPhmcEmployee = '';
+  const isAdmin = false;
 
   // NEW: Track dashboard visit
   useEffect(() => {
     trackMetric('ems_dashboard', 'main_page');
   }, [trackMetric]);
 
+  useEffect(() => {
+    if (lsccData) {
+      // Define desired protocol order
+      const protocolOrder = [
+        "Introduction",
+        "Legalities",
+        "Emergency Vehicle Protocols",
+        "Radio Procedures + Encodes",
+        "Miscellaneous Information + Tips"
+      ];
+      const protocolOrderMap = new Map(protocolOrder.map((name, index) => [name, index]));
+
+      const normalizedProtocols = Array.isArray(lsccData.protocols)
+        ? lsccData.protocols.map((cat) => {
+            const sortedProtocols = Array.isArray(cat.protocols)
+              ? [...cat.protocols].sort((pA, pB) => {
+                  const nameA = pA.name;
+                  const nameB = pB.name;
+
+                  const indexA = protocolOrderMap.has(nameA) ? protocolOrderMap.get(nameA) : Infinity;
+                  const indexB = protocolOrderMap.has(nameB) ? protocolOrderMap.get(nameB) : Infinity;
+
+                  // Prioritize custom ordered protocols
+                  if (indexA !== Infinity || indexB !== Infinity) {
+                    if (indexA !== indexB) return indexA - indexB;
+                  }
+
+                  // Fallback: alphabetical by name for protocols within same category
+                  return nameA.localeCompare(nameB);
+                })
+              : [];
+            return {
+              ...cat,
+              protocols: sortedProtocols,
+            };
+          })
+        : [];
+
+      // Helper to extract ID from category string
+      const extractId = (categoryString) => {
+        const match = categoryString.match(/^\[(\d+)\]/);
+        return match ? parseInt(match[1], 10) : Infinity;
+      };
+
+      normalizedProtocols.sort((a, b) => {
+        const idA = extractId(a.category);
+        const idB = extractId(b.category);
+
+        const cleanCategoryA = a.category.replace(/^\[\d+\]\s*/, '');
+        const cleanCategoryB = b.category.replace(/^\[\d+\]\s*/, '');
+
+        if (idA !== idB) {
+          return idA - idB;
+        }
+        return cleanCategoryA.localeCompare(cleanCategoryB);
+      });
+
+      setProtocols(normalizedProtocols);
+      setKeywords(lsccData.keywords || {});
+      setInjuries(lsccData.injuries || {});
+    }
+  }, [lsccData]);
+
   const employeeOptions = useMemo(() => {
       const validPhmcData = phmcListData.filter(emp => emp && emp.name && typeof emp.name === 'string');
       const validCoronerData = originalCoronerListData.filter(emp => emp && emp.name && typeof emp.name === 'string');
 
-      // Helper to enrich employee data with firstname and lastname from OAuth if available
-      const enrichEmployeeData = (employeeList) => {
-          return employeeList.map(emp => {
-              const matchingChar = swappableCharacters.find(char => 
-                  char.characterName === emp.name || 
-                  (char.firstname && char.lastname && `${char.firstname} ${char.lastname}`.trim() === emp.name)
-              );
-              if (matchingChar) {
-                  return {
-                      ...emp,
-                      firstname: matchingChar.firstname,
-                      lastname: matchingChar.lastname,
-                  };
-              }
-              return emp; 
-          });
-      };
-
-      const enrichedPhmcData = enrichEmployeeData(validPhmcData);
-      const enrichedCoronerData = enrichEmployeeData(validCoronerData);
-
-      const phmcOptions = enrichedPhmcData.map(emp => ({
+      const phmcOptions = validPhmcData.map(emp => ({
           label: emp.name,
           value: emp.name,
-          firstname: emp.firstname, 
-          lastname: emp.lastname,   
       }));
-      const coronerOptions = enrichedCoronerData.map(emp => ({
+      const coronerOptions = validCoronerData.map(emp => ({
           label: emp.name,
           value: emp.name,
-          firstname: emp.firstname, 
-          lastname: emp.lastname,   
       }));
       
       return [
           { label: 'PHMC Staff', options: phmcOptions },
           { label: 'Coroner Staff', options: coronerOptions }
       ];
-  }, [phmcListData, originalCoronerListData, swappableCharacters]);
+  }, [phmcListData, originalCoronerListData]);
 
   useEffect(() => {
     const savedNotesData = localStorage.getItem('patient notes free text');
@@ -131,179 +166,7 @@ const EmsDashboard = () => {
     setCollapsedCategories((prev) => ({ ...prev, [cat]: !prev[cat] }));
   };
 
-  // Load data
-  useEffect(() => {
-    const CACHE_EXPIRY_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 
-    // --- Protocols Caching ---
-    const protocolsRef = ref(db, "lscc/protocols");
-    let unsub1;
-    try {
-      const cachedProtocols = localStorage.getItem('lscc_protocols_cache');
-      if (cachedProtocols) {
-        const { data, timestamp } = JSON.parse(cachedProtocols);
-        if (Date.now() - timestamp < CACHE_EXPIRY_MS) {
-          setProtocols(data);
-          setLoading(false);
-          console.log("Protocols loaded from cache.");
-          // No need to attach Firebase listener if loaded from cache, unless forced refresh is desired later
-        } else {
-          localStorage.removeItem('lscc_protocols_cache'); // Cache expired
-        }
-      }
-    } catch (e) {
-      console.error("Failed to load protocols from cache:", e);
-      localStorage.removeItem('lscc_protocols_cache');
-    }
-
-    if (loading) { // Only fetch from Firebase if not loaded from cache
-      unsub1 = onValue(protocolsRef, (snap) => {
-        const data = snap.val() || [];
-        // console.log("Raw protocols data from Firebase:", data); // Removed DEBUG LOG
-
-        // Define desired protocol order
-        const protocolOrder = [
-          "Introduction",
-          "Legalities",
-          "Emergency Vehicle Protocols",
-          "Radio Procedures + Encodes",
-          "Miscellaneous Information + Tips"
-        ];
-        const protocolOrderMap = new Map(protocolOrder.map((name, index) => [name, index]));
-
-        const normalized = Array.isArray(data)
-          ? data.map((cat) => {
-              const sortedProtocols = Array.isArray(cat.protocols)
-                ? [...cat.protocols].sort((pA, pB) => {
-                    const nameA = pA.name;
-                    const nameB = pB.name;
-
-                    const indexA = protocolOrderMap.has(nameA) ? protocolOrderMap.get(nameA) : Infinity;
-                    const indexB = protocolOrderMap.has(nameB) ? protocolOrderMap.get(nameB) : Infinity;
-
-                    // Prioritize custom ordered protocols
-                    if (indexA !== Infinity || indexB !== Infinity) {
-                      if (indexA !== indexB) return indexA - indexB;
-                    }
-
-                    // Fallback: alphabetical by name for protocols within same category
-                    return nameA.localeCompare(nameB);
-                  })
-                : [];
-              return {
-                ...cat,
-                protocols: sortedProtocols,
-              };
-            })
-          : [];
-        // console.log("Normalized protocols data after protocol sorting:", normalized); // Removed DEBUG LOG
-
-        // Helper to extract ID from category string
-        const extractId = (categoryString) => {
-          const match = categoryString.match(/^\[(\d+)\]/);
-          return match ? parseInt(match[1], 10) : Infinity;
-        };
-
-        // Sort top-level categories primarily by ID (the [number] pattern)
-        normalized.sort((a, b) => {
-          const idA = extractId(a.category);
-          const idB = extractId(b.category);
-
-          const cleanCategoryA = a.category.replace(/^\[\d+\]\s*/, '');
-          const cleanCategoryB = b.category.replace(/^\[\d+\]\s*/, '');
-
-          // console.log(`--- Comparing category groups ${a.category} and ${b.category} ---`); // Removed DEBUG LOG
-          // console.log(`  CategoryA: ${cleanCategoryA}, ID_A: ${idA}`); // Removed DEBUG LOG
-          // console.log(`  CategoryB: ${cleanCategoryB}, ID_B: ${idB}`); // Removed DEBUG LOG
-
-          // Primary sort: numerical ID ascending
-          if (idA !== idB) {
-            return idA - idB;
-          }
-
-          // Fallback: alphabetical by clean category name if IDs are the same
-          return cleanCategoryA.localeCompare(cleanCategoryB);
-        });
-
-        setProtocols(normalized);
-        setLoading(false);
-        try {
-          localStorage.setItem('lscc_protocols_cache', JSON.stringify({ data: normalized, timestamp: Date.now() }));
-        } catch (e) {
-          console.error("Failed to save protocols to cache:", e);
-        }
-      });
-    }
-
-
-    // --- Keywords Caching ---
-    const kwRef = ref(db, "lscc/keywords");
-    let unsub2;
-    try {
-      const cachedKeywords = localStorage.getItem('lscc_keywords_cache');
-      if (cachedKeywords) {
-        const { data, timestamp } = JSON.parse(cachedKeywords);
-        if (Date.now() - timestamp < CACHE_EXPIRY_MS) {
-          setKeywords(data);
-          console.log("Keywords loaded from cache.");
-        } else {
-          localStorage.removeItem('lscc_keywords_cache');
-        }
-      }
-    } catch (e) {
-      console.error("Failed to load keywords from cache:", e);
-      localStorage.removeItem('lscc_keywords_cache');
-    }
-
-    if (Object.keys(keywords).length === 0) { // Only fetch if not loaded from cache
-      unsub2 = onValue(kwRef, (snap) => {
-        const data = snap.val() || {};
-        setKeywords(data);
-        try {
-          localStorage.setItem('lscc_keywords_cache', JSON.stringify({ data: data, timestamp: Date.now() }));
-        } catch (e) {
-          console.error("Failed to save keywords to cache:", e);
-        }
-      });
-    }
-
-    // --- Injuries Caching ---
-    const injRef = ref(db, "lscc/injuries");
-    let unsub3;
-    try {
-      const cachedInjuries = localStorage.getItem('lscc_injuries_cache');
-      if (cachedInjuries) {
-        const { data, timestamp } = JSON.parse(cachedInjuries);
-        if (Date.now() - timestamp < CACHE_EXPIRY_MS) {
-          setInjuries(data);
-          console.log("Injuries loaded from cache.");
-        } else {
-          localStorage.removeItem('lscc_injuries_cache');
-        }
-      }
-    } catch (e) {
-      console.error("Failed to load injuries from cache:", e);
-      localStorage.removeItem('lscc_injuries_cache');
-    }
-
-    if (Object.keys(injuries).length === 0) { // Only fetch if not loaded from cache
-      unsub3 = onValue(injRef, (snap) => {
-        const data = snap.val() || {};
-        setInjuries(data);
-        try {
-          localStorage.setItem('lscc_injuries_cache', JSON.stringify({ data: data, timestamp: Date.now() }));
-        } catch (e) {
-          console.error("Failed to save injuries to cache:", e);
-        }
-      });
-    }
-
-    return () => {
-      if (unsub1) unsub1();
-      if (unsub2) unsub2();
-      if (unsub3) unsub3();
-    };
-  }, []);
 
   // Filter protocols
   const filteredProtocols = protocols
@@ -453,7 +316,7 @@ return (
             )}
           </div>
 
-          {loading ? (
+          {dataContextLoading ? (
             <div style={{ textAlign: "center", padding: "2rem" }}>Spinning up the hamsters...</div>
           ) : (
             <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
@@ -500,7 +363,8 @@ return (
             </>
           ) : (
             <div style={{ textAlign: "center", marginTop: "4rem", fontSize: "1.5rem", color: "#94a3b8" }}>
-              Welcome to the PHMC EMS Dashboard.<br/> You can select a protocol from the left panel to view its details here. <br/><br/> Use the search bar or injury filter to quickly find relevant protocols. <br></br> You can also use the right panel for EMS tools and patient notes. <br></br> This is still in development, if you have any suggestions please reach out to the Alyson on Discord!
+              
+              Welcome to the PHMC EMS Dashboard.<br/> You can select a protocol from the left panel to view its details here. <br/><br/> Use the search bar or injury filter to quickly find relevant protocols. <br/><br/> You can also use the right panel for EMS tools and patient notes. <br/><br/> If you have any suggestions, please reach out to the Ellie Ohara on Discord!
             </div>
           )}
         </div>

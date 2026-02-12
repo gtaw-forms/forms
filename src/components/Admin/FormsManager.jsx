@@ -233,7 +233,6 @@ const FormManager = ({ currentUser }) => {
                       case "PHMC": return { color: "#f87171" };
                       case "Coroner": return { color: "#f59e0b" };
                       case "Mental Health": return { color: "#FF69B4" }; // NEW: Mental Health color
-                      case "Civilian": return { color: "#60a5fa" };
                       default: return { color: "#34d399" };
                     }
                   })() }}>
@@ -242,7 +241,6 @@ const FormManager = ({ currentUser }) => {
                         case "PHMC": return "PHMC Only";
                         case "Coroner": return "Coroner Only";
                         case "Mental Health": return "Mental Health Only"; // NEW: Mental Health text
-                        case "Civilian": return "Civilian";
                         default: return "Public";
                       }
                     })()}

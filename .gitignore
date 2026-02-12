@@ -37,7 +37,7 @@ build/*
 
 # firebase
 firebase-admin-key.json
-functions/
+
 
 # Sentry Config File
 .env.sentry-build-plugin

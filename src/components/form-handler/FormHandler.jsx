@@ -21,6 +21,7 @@ import { sendDiscordWebhook } from '../../utils/webhookUtils';
 import { useInactivityReload } from '../../hooks/useInactivityReload';
 import { useUserMetrics } from '../../hooks/useUserMetrics';
 import { cleanRankText } from '../../utils/textUtils';
+import { STORAGE_KEYS } from '../../services/gtaWorldAuth';
 import phmcLogo from '../../assets/phmc.png';
 import { decedentItemSchema } from '../../formSchemas/decedentSchema';
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -132,22 +133,29 @@ export const FormHandler = () => {
     const hasSeenPrompt = localStorage.getItem('seenKeepCredentialsPrompt') === 'true';
     if (isPhmcMember && !hasSeenPrompt) {
       showNotification(
-        'Do you want us to remember your employee credentials across different forms?',
+        'Do you want us to keep you logged in and remember your employee credentials across sessions?',
         'info',
         null,
         [
           {
-            label: 'Keep Credentials',
+            label: 'Yes, Persist',
             handler: (id) => {
               localStorage.setItem('phmc_gtaw_oauth_persist_enabled', 'true');
               setKeepCredentials(true);
+              
+              // Move token to localStorage if it exists
+              const token = sessionStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+              if (token) {
+                localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, token);
+              }
+
               localStorage.setItem('seenKeepCredentialsPrompt', 'true');
               removeNotification(id);
-              showNotification('Your credentials will be preserved when switching forms.', 'success');
+              showNotification('You will stay logged in across sessions.', 'success');
             },
           },
           {
-            label: 'Dismiss',
+            label: 'No, Session Only',
             handler: (id) => {
               localStorage.setItem('phmc_gtaw_oauth_persist_enabled', 'false');
               setKeepCredentials(false);
@@ -1079,6 +1087,8 @@ export const FormHandler = () => {
                 isAdmin={isPhmcMember} // Assuming PHMC members are admins for bingo
                 sendBingoWebhook={sendBingoWebhook}
                 sendPhraseRequestWebhook={sendPhraseRequestWebhook}
+                persistEnabled={keepCredentials}
+                setPersistEnabled={setKeepCredentials}
               />
         <SavedReportsModal
           show={showSavedReports}
@@ -1320,6 +1330,8 @@ export const FormHandler = () => {
                   employeeType={employeeType}
                   showNotification={showNotification}
                   context={selectedForm?.name}
+                  persistEnabled={keepCredentials}
+                  setPersistEnabled={setKeepCredentials}
                 />
               </Suspense>
             }

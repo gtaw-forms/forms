@@ -168,47 +168,6 @@ const CharacterSelector = ({ onCharacterSelect, selectedCharacterId, label = "Se
         }
     };
 
-    // For civilian forms, always show dropdown
-    if (forceDropdown) {
-        return (
-            <div className="character-selector">
-                <label htmlFor="character-select" style={{ marginBottom: '0.5rem', display: 'block' }}>{label}</label>
-                {(!characters || characters.length === 0) ? (
-                    <select disabled style={{
-                        width: '100%',
-                        padding: '8px',
-                        border: '1px solid #ccc',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                    }}>
-                        <option>
-                            {isGtawAuthenticated ? 'No characters found' : 'Login with GTAW to see your characters'}
-                        </option>
-                    </select>
-                ) : (
-                    <select 
-                        id="character-select"
-                        value={selectedCharacter?.id || ''} 
-                        onChange={handleCharacterChange}
-                        style={{
-                            width: '100%',
-                            padding: '8px',
-                            border: '1px solid #ccc',
-                            borderRadius: '4px',
-                            fontSize: '14px'
-                        }}
-                    >
-                        <option value="">Select a character...</option>
-                        {characters.map(character => (
-                            <option key={character.id} value={character.id}>
-                                {character.fullName} (ID: {character.id})
-                            </option>
-                        ))}
-                    </select>
-                )}
-            </div>
-        );
-    }
 
     return (
         <div className="character-selector">

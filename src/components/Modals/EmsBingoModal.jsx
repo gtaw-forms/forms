@@ -68,7 +68,19 @@ const BINGO_LINE_NAMES = [
 ];
 
 // MODIFIED: Add isAdmin, sendBingoWebhook, and sendPhraseRequestWebhook props
-const EmsBingoModal = ({ show, onHide, allEmployeeGroupedOptions, currentPhmcEmployee, showNotification, setShowEmployeeModal, isAdmin, sendBingoWebhook, sendPhraseRequestWebhook }) => {
+const EmsBingoModal = ({ 
+    show, 
+    onHide, 
+    allEmployeeGroupedOptions, 
+    currentPhmcEmployee, 
+    showNotification, 
+    setShowEmployeeModal, 
+    isAdmin, 
+    sendBingoWebhook, 
+    sendPhraseRequestWebhook,
+    persistEnabled,
+    setPersistEnabled
+}) => {
     const { user: gtawUser, isAuthenticated: isGtawAuthenticated, factionData } = useGtaWorldAuth();
     const [phrases, setPhrases] = useState([]);
     const [masterPhraseList, setMasterPhraseList] = useState([]);
@@ -694,6 +706,8 @@ setCompletedBingoLines(prevCompletedLines => {
                                     employeeType={employeeType}
                                     showNotification={showNotification}
                                     context="Bingo"
+                                    persistEnabled={persistEnabled}
+                                    setPersistEnabled={setPersistEnabled}
                                 />
                             )}
                             <h5>Recent Activity</h5>

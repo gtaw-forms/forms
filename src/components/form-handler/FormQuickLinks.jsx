@@ -50,21 +50,6 @@ const getQuickLinks = (form, formValues, agencyDataStore) => {
       }
   }
 
-  // Patient/Civilian related
-  if (nameLower.includes('medical record release')) {
-    links.push({ name: 'Post Medical Record Release', href: 'https://phmc.gta.world/posting.php?mode=post&f=109' });
-  }
-  if (nameLower.includes('patient file')) {
-    links.push({ name: 'Post Patient File', href: 'https://phmc.gta.world/posting.php?mode=post&f=332' });
-  }
-  if (nameLower.includes('update medical records')) {
-    links.push({ name: 'Post Updated Medical Records', href: 'https://phmc.gta.world/posting.php?mode=post&f=332' });
-  }
-  if (nameLower.includes('sicknote')) {
-    links.push({ name: 'Request Patient Sicknote via PM', href: 'https://phmc.gta.world/ucp.php?i=pm&mode=compose' });
-  }
-
-  // Default PHMC link
   if (form.accessType === 'PHMC' && links.length === 0) {
       links.push({ name: 'Staff Area - Medical Records', href: 'https://phmc.gta.world/viewforum.php?f=97' });
   }
