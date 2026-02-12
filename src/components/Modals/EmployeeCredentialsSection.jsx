@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Form, Button } from 'react-bootstrap';
 import Select from 'react-select';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
-import { refreshFactionData as refreshFactionDataService } from '../../services/gtaWorldAuth';
+import { refreshFactionData as refreshFactionDataService, STORAGE_KEYS } from '../../services/gtaWorldAuth';
 import { cleanRankText } from '../../utils/textUtils';
 import { getCharacterName, getCharacterID } from '../../utils/characterUtils';
 import { database } from '../../firebase';
@@ -24,6 +24,8 @@ const EmployeeCredentialsSection = ({
   employeeType = 'coroner',
   showNotification,
   context,
+  persistEnabled: propPersistEnabled,
+  setPersistEnabled: propSetPersistEnabled,
 }) => {
   const {
     user: gtaWorldUser,
@@ -39,9 +41,35 @@ const EmployeeCredentialsSection = ({
 
   const [useGtawName, setUseGtawName] = useState(false);
   const [showFloatingText, setShowFloatingText] = useState(false);
+  const [internalPersistEnabled, setInternalPersistEnabled] = useState(() => localStorage.getItem('phmc_gtaw_oauth_persist_enabled') === 'true');
+
+  const persistEnabled = propPersistEnabled !== undefined ? propPersistEnabled : internalPersistEnabled;
+  const setPersistEnabled = propSetPersistEnabled !== undefined ? propSetPersistEnabled : setInternalPersistEnabled;
 
   const hasShownFloatingTextRef = React.useRef(false);
   const lastUserRef = React.useRef(null);
+
+  const togglePersistence = () => {
+    const newValue = !persistEnabled;
+    setPersistEnabled(newValue);
+    localStorage.setItem('phmc_gtaw_oauth_persist_enabled', newValue ? 'true' : 'false');
+    
+    // Update token storage immediately
+    const token = sessionStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN) || localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    if (token) {
+      if (newValue) {
+        localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, token);
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+      }
+    }
+    
+    (showNotification || notifyFromContext) && (showNotification || notifyFromContext)(
+      newValue ? 'Session will persist across visits.' : 'Session will end when you close the browser.', 
+      'info-circle', 
+      3000
+    );
+  };
 
   // Effect 1: Determine if we should show the floating text
   useEffect(() => {
@@ -285,8 +313,29 @@ const EmployeeCredentialsSection = ({
                     </div>
                     <h5 style={{ color: '#f8fafc', margin: 0, fontSize: '1.1rem' }}>{gtawCharacterName}</h5>
                 </div>
-                <div style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '4px 10px', borderRadius: '6px', fontSize: '0.65rem', fontWeight: '700' }}>
-                    OAUTH ACTIVE
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                    <div style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '4px 10px', borderRadius: '6px', fontSize: '0.65rem', fontWeight: '700' }}>
+                        OAUTH ACTIVE
+                    </div>
+                    <div 
+                        onClick={togglePersistence}
+                        style={{ 
+                            fontSize: '0.65rem', 
+                            color: persistEnabled ? '#10b981' : '#64748b', 
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            background: persistEnabled ? 'rgba(16, 185, 129, 0.05)' : 'transparent',
+                            transition: 'all 0.2s'
+                        }}
+                        title={persistEnabled ? "Click to disable persistence" : "Click to stay logged in across sessions"}
+                    >
+                        <i className={`fas ${persistEnabled ? 'fa-toggle-on' : 'fa-toggle-off'}`} style={{ fontSize: '0.9rem' }}></i>
+                        Stay Logged In
+                    </div>
                 </div>
             </div>
 
