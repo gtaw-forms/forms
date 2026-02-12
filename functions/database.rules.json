@@ -1,0 +1,45 @@
+{
+  "rules": {
+    "newSavedReports": {
+      "$user_id": {
+        ".indexOn": "timestamp"
+      }
+    },
+    "savedReports": {
+      "$user_id": {
+        ".indexOn": "timestamp"
+      }
+    },
+    ".read": "true",
+    ".write": "true",
+    "bingo": {
+      "cards": {
+        "$type": {
+          "phrases": {
+            ".read": true,
+            ".write": "auth != null"
+          }
+        }
+      },
+      "logs": {
+        "$type": {
+          "activityLog": {
+            ".read": true,
+            ".write": true
+          }
+        }
+      },
+      "phrases": {
+        ".read": true,
+        ".write": "auth != null"
+      }
+    },
+    "webhooks": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "appMetadata": {
+      ".read": true
+    }
+  }
+}
