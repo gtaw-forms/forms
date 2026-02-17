@@ -115,6 +115,27 @@ export const useReportLoader = () => {
         }
     }, [showNotification, removeNotification]);
 
+    const loadUserRecoveryReports = useCallback(async (userId) => {
+        if (!userId) return [];
+        const sanitizedUserId = comprehensiveSanitize(userId);
+        const recoveryReportsRef = ref(database, `recoveredReports/${sanitizedUserId}`);
+        try {
+            const snapshot = await get(recoveryReportsRef);
+            if (snapshot.exists()) {
+                const data = snapshot.val();
+                return Object.keys(data).map(key => ({
+                    ...data[key],
+                    key: key,
+                    isRecovery: true
+                })).sort((a, b) => b.timestamp - a.timestamp);
+            }
+            return [];
+        } catch (error) {
+            console.error(`Error loading recovery reports:`, error);
+            return [];
+        }
+    }, []);
+
     const loadReportForUser = useCallback(async (report, userId, returnOnly = false, setFormData = null, selectedForm = null, setSelectedForm = null, getForms = null) => {
         const reportFirebaseKey = report?.key;
         if (!userId || !reportFirebaseKey) {
@@ -123,11 +144,18 @@ export const useReportLoader = () => {
         }
 
         const isLegacyReport = report.legacy;
+        const isRecovery = report.isRecovery;
         const sanitizedUserId = comprehensiveSanitize(userId);
 
-        const reportPath = isLegacyReport
-            ? `savedReports/${sanitizedUserId}/${reportFirebaseKey}`
-            : `newSavedReports/${sanitizedUserId}/${reportFirebaseKey}`;
+        let reportPath;
+        if (isRecovery) {
+            reportPath = `recoveredReports/${sanitizedUserId}/${reportFirebaseKey}`;
+        } else {
+            reportPath = isLegacyReport
+                ? `savedReports/${sanitizedUserId}/${reportFirebaseKey}`
+                : `newSavedReports/${sanitizedUserId}/${reportFirebaseKey}`;
+        }
+
         const bbCodePath = isLegacyReport
             ? `savedReportBBCode/${sanitizedUserId}/${reportFirebaseKey}`
             : `newSavedReportBBCode/${sanitizedUserId}/${reportFirebaseKey}`;
@@ -143,26 +171,26 @@ export const useReportLoader = () => {
         try {
             const [reportSnapshot, bbCodeSnapshot] = await Promise.all([
                 get(reportRef),
-                get(bbCodeRef)
+                isRecovery ? Promise.resolve({ exists: () => false, val: () => null }) : get(bbCodeRef)
             ]);
 
             if (reportSnapshot.exists()) {
                 const reportData = reportSnapshot.val();
-                const bbCodeData = bbCodeSnapshot.val();
+                const bbCodeData = bbCodeSnapshot.exists() ? bbCodeSnapshot.val() : null;
                 let loadedVersion = reportData.bbCodeVersion;
 
                 // Fallback: Infer version from title if missing
                 if (!loadedVersion && reportData.originalKey) {
-                    if (reportData.originalKey.includes('[Mass Fatality Report]')) {
+                    if (reportData.originalKey.includes('[Mass Fatality Report]') || reportData.originalKey.includes('[Multi Fatality Report]')) {
                         loadedVersion = 11;
                         reportData.bbCodeVersion = 11; // Update object
-                        console.log('[useReportLoader] Inferred version 11 (Mass Fatality) from title.');
+                        console.log(`[useReportLoader] Inferred version 11 (${reportData.originalKey.includes('[Mass Fatality Report]') ? 'Mass' : 'Multi'} Fatality) from title.`);
                     }
                 }
                 
                 if (sendDataRequestLog) {
                     const reportSize = new TextEncoder().encode(JSON.stringify(reportData)).length;
-                    const bbCodeSize = new TextEncoder().encode(JSON.stringify(bbCodeData)).length;
+                    const bbCodeSize = bbCodeData ? new TextEncoder().encode(JSON.stringify(bbCodeData)).length : 0;
                     const totalSize = reportSize + bbCodeSize;
 
                     sendDataRequestLog(
@@ -172,7 +200,7 @@ export const useReportLoader = () => {
                         totalSize,
                         isGtaAuthenticated,
                         getCharacterName(gtaWorldUser),
-                        `Report: ${reportPath} (${reportSize} bytes), BBCode: ${bbCodePath} (${bbCodeSize} bytes)`
+                        `Report: ${reportPath} (${reportSize} bytes)${bbCodeData ? `, BBCode: ${bbCodePath} (${bbCodeSize} bytes)` : ''}`
                     );
                 }
 
@@ -182,8 +210,9 @@ export const useReportLoader = () => {
                 if (!loadedBbCode && reportData.data && reportData.data.bbCode) loadedBbCode = reportData.data.bbCode;
                 
                 let loadedFormData = reportData.data || {};
-                const isFormHandlerReport = reportData.isFormHandler === true;
+                const isFormHandlerReport = reportData.isFormHandler === true || isRecovery;
 
+                // Standardize bold tags for all reports on load
                 if (!isFormHandlerReport) {
                     if (returnOnly) {
                         const boldMatches = (loadedBbCode.match(/\[bold\]/gi) || []).length;
@@ -406,6 +435,7 @@ export const useReportLoader = () => {
         selectedUserForSavedReports,
         setSelectedUserForSavedReports,
         loadUserSavedReports,
+        loadUserRecoveryReports,
         loadReportForUser,
         countAllUserReports,
         checkIfMigratedReportExists

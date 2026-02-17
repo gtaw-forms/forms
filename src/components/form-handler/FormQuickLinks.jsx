@@ -1,11 +1,31 @@
 import React from 'react';
 
-const getQuickLinks = (form, formValues, agencyDataStore) => {
+const getQuickLinks = (form, formValues, agencyDataStore, generatedBBCode, generatedTitle) => {
   if (!form) return [];
   
   const links = [];
   const nameLower = form.name.toLowerCase();
   const formId = form.id; // Use form.id for more reliable identification
+
+  // Helper to construct PM URL with BBCode data (Proof of Concept from examplescript.js)
+  const constructPmUrl = (baseUrl, recipient, subject, message) => {
+    if (!baseUrl) return null;
+    try {
+      const url = new URL(baseUrl);
+      if (recipient) url.searchParams.set('username_list', recipient);
+      if (subject) url.searchParams.set('subject', subject);
+      if (message) url.searchParams.set('message', message);
+      return url.toString();
+    } catch (e) {
+      // Fallback for non-standard URLs or if URL constructor fails
+      const sep = baseUrl.includes('?') ? '&' : '?';
+      let finalUrl = baseUrl;
+      if (recipient) finalUrl += `${sep}username_list=${encodeURIComponent(recipient)}`;
+      if (subject) finalUrl += `${finalUrl.includes('?') ? '&' : '?'}subject=${encodeURIComponent(subject)}`;
+      if (message) finalUrl += `${finalUrl.includes('?') ? '&' : '?'}message=${encodeURIComponent(message)}`;
+      return finalUrl;
+    }
+  };
 
   // Coroner-related
   if (nameLower.includes('coroner report')) {
@@ -20,19 +40,13 @@ const getQuickLinks = (form, formValues, agencyDataStore) => {
   if (nameLower.includes('death record')) {
       links.push({ name: 'Post Death Record', href: 'https://phmc.gta.world/posting.php?mode=post&f=404' });
   }
-  if (form.category === 'Coroner') {
-      links.push({ name: 'View Coroner Case Files', href: 'https://phmc.gta.world/viewforum.php?f=266' });
-  }
-
   // NEW: Custom handling for Coroner Email form
-  if (formId === 'coroner_email') { // Assuming the ID is 'coroner-email'
+  if (formId === 'coroner_email') { 
       const departmentValue = formValues?.department;
-      // departmentName is now the full name, e.g., "Los Santos Police Department"
       const departmentName = (typeof departmentValue === 'object' && departmentValue !== null && departmentValue.value)
                             ? departmentValue.value
-                            : departmentValue; // Fallback to raw value if not an object
+                            : departmentValue; 
 
-      // NEW: Find agency by fullName instead of key
       let agency = null;
       if (departmentName && agencyDataStore) {
           agency = Object.values(agencyDataStore).find(
@@ -42,10 +56,30 @@ const getQuickLinks = (form, formValues, agencyDataStore) => {
       
       if (agency) {
           if (agency.url) {
-              links.push({ name: `${agency.fullName || departmentName} - Dispatch/Internal`, href: agency.url });
-          }
-          if (agency.website) {
-              links.push({ name: `${agency.fullName || departmentName} Website`, href: `https://${agency.website}` });
+              let finalHref = agency.url;
+              // If we have generated BBCode, try to enrich the PM link
+              if (generatedBBCode && (agency.url.includes('mode=compose') || agency.url.includes('ucp.php'))) {
+                  // Helper to extract string value from potential object-based form values
+                  const getRawValue = (val) => {
+                      if (typeof val === 'object' && val !== null) {
+                          return val.value || val.label || '';
+                      }
+                      return val || '';
+                  };
+
+                  const recipientRaw = formValues?.requestingOfficer || 
+                                       formValues?.requesting_officer || 
+                                       formValues?.officer_name || 
+                                       formValues?.officerName ||
+                                       formValues?.officer || 
+                                       formValues?.recipient || '';
+                                       
+                  const recipient = getRawValue(recipientRaw);
+                  
+                  // Removed generatedBBCode from the URL to avoid length blocks
+                  finalHref = constructPmUrl(agency.url, recipient, generatedTitle);
+              }
+              links.push({ name: `${agency.fullName || departmentName}`, href: finalHref });
           }
       }
   }
@@ -58,8 +92,8 @@ const getQuickLinks = (form, formValues, agencyDataStore) => {
   return [...new Map(links.map(item => [item.name, item])).values()];
 };
 
-const FormQuickLinks = ({ form, formValues, agencyDataStore }) => {
-  const links = getQuickLinks(form, formValues, agencyDataStore);
+const FormQuickLinks = ({ form, formValues, agencyDataStore, generatedBBCode, generatedTitle }) => {
+  const links = getQuickLinks(form, formValues, agencyDataStore, generatedBBCode, generatedTitle);
 
   if (links.length === 0) {
     return null;
@@ -68,6 +102,11 @@ const FormQuickLinks = ({ form, formValues, agencyDataStore }) => {
   return (
     <div style={{ marginTop: '1rem', padding: '1rem', background: '#0f172a', borderRadius: 12, border: '1px solid #1e293b' }}>
       <h4 style={{ color: '#a78bfa', margin: '0 0 1rem', fontSize: '1rem', fontWeight: '600' }}>Quick Links</h4>
+      {generatedBBCode && form?.id === 'coroner_email' && (
+        <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '1rem', fontStyle: 'italic' }}>
+          The Officer and Subject is automatically filled in, please copy the BBCode below and click the link.
+        </p>
+      )}
       <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         {links.map(link => (
           <li key={link.name}>

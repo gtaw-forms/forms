@@ -37,6 +37,25 @@ const inputStyle = {
   fontSize: "1rem"
 };
 
+const frequentlyUsedIcons = [
+  { class: 'fas fa-id-card', label: 'Identification' },
+  { class: 'fas fa-notes-medical', label: 'Medical Findings' },
+  { class: 'fas fa-camera', label: 'Scene Evidence' },
+  { class: 'fas fa-file-medical', label: 'Morgue / CDNA' },
+  { class: 'fas fa-user', label: 'User' },
+  { class: 'fas fa-hospital', label: 'Hospital' },
+  { class: 'fas fa-ambulance', label: 'Ambulance' },
+  { class: 'fas fa-heartbeat', label: 'Heartbeat' },
+  { class: 'fas fa-pills', label: 'Medicine' },
+  { class: 'fas fa-clipboard-list', label: 'Clipboard' },
+  { class: 'fas fa-map-marker-alt', label: 'Location' },
+  { class: 'fas fa-clock', label: 'Clock' },
+  { class: 'fas fa-exclamation-triangle', label: 'Warning' },
+  { class: 'fas fa-info-circle', label: 'Info' },
+  { class: 'fas fa-user-ghost', label: 'Decedent' },
+  { class: 'fas fa-microscope', label: 'Laboratory' },
+];
+
 const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = false }) => {
   const { showNotification } = useNotification();
   const { user: gtawUser, isAuthenticated } = useGtaWorldAuth(); // Get authenticated user for logging
@@ -1001,12 +1020,50 @@ const handleBulkAddFields = (fieldsToAdd) => {
                                                     )}
               
                                                     {(newField.type === "section" || newField.type === "small_header") && (
-                            <input 
-                              placeholder="Icon Class (e.g. fas fa-id-card)" 
-                              value={newField.icon || ""} 
-                              onChange={e => setNewField({ ...newField, icon: e.target.value })} 
-                              style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}} 
-                            />
+                            <div style={{ flex: '1 1 100%', marginBottom: '1rem' }}>
+                              <input 
+                                placeholder="Icon Class (e.g. fas fa-id-card)" 
+                                value={newField.icon || ""} 
+                                onChange={e => setNewField({ ...newField, icon: e.target.value })} 
+                                style={{...inputStyle, marginBottom: '0.5rem'}} 
+                              />
+                              <div style={{ 
+                                display: 'flex', 
+                                flexWrap: 'wrap', 
+                                gap: '8px', 
+                                padding: '10px', 
+                                background: '#0f172a', 
+                                borderRadius: '8px', 
+                                border: '1px solid #334155' 
+                              }}>
+                                {frequentlyUsedIcons.map((icon, idx) => (
+                                  <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => setNewField({ ...newField, icon: icon.class })}
+                                    title={icon.label}
+                                    style={{
+                                      width: '36px',
+                                      height: '36px',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      background: newField.icon === icon.class ? '#3b82f6' : '#1e293b',
+                                      border: '1px solid #334155',
+                                      color: newField.icon === icon.class ? 'white' : '#94a3b8',
+                                      borderRadius: '6px',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.2s'
+                                    }}
+                                    onMouseOver={(e) => { e.currentTarget.style.borderColor = '#3b82f6'; e.currentTarget.style.color = 'white'; }}
+                                    onMouseOut={(e) => { e.currentTarget.style.borderColor = '#334155'; if(newField.icon !== icon.class) e.currentTarget.style.color = '#94a3b8'; }}
+                                  >
+                                    <i className={icon.class}></i>
+                                  </button>
+                                ))}
+                              </div>
+                              <small style={{ color: '#64748b', marginTop: '4px', display: 'block' }}>Frequently used icons. Click to select.</small>
+                            </div>
                           )}
                           {newField.type !== "hr" && newField.type !== "decedent_list" && newField.type !== "information_state" && (
                                                       <input

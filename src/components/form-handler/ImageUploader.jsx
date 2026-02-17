@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import * as Sentry from '@sentry/react';
 import { useNotification } from '../../contexts/NotificationContext';
 import LoadingSpinner from '../UI/LoadingSpinner';
-import { uploadImageToImgBB } from '../../utils/imageUploadUtils';
+import { uploadImageWithFallback } from '../../utils/imageUploadUtils';
 import Tesseract from 'tesseract.js';
 
 const ImageUploader = ({ images: imagesProp, onImagesChange, maxImages = 6, fieldName }) => {
@@ -55,10 +55,11 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, maxImages = 6, fiel
 
     for (const file of files) {
       try {
-        const result = await uploadImageToImgBB(file);
+        const result = await uploadImageWithFallback(file);
         uploaded.push(result.url);
       } catch (err) {
         console.error(`[ImageUploader] Image upload failed:`, err);
+        showNotification(err.message || 'Image upload failed.', 'error');
         Sentry.captureException(err);
       }
     }
@@ -119,7 +120,7 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, maxImages = 6, fiel
 
     setIsUploading(true);
     try {
-        const result = await uploadImageToImgBB(imageFile);
+        const result = await uploadImageWithFallback(imageFile);
         const newImages = [...images, result.url];
         onImagesChange(newImages);
         
@@ -131,6 +132,7 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, maxImages = 6, fiel
         }
     } catch (err) {
         console.error(`[ImageUploader] Pasted image upload failed:`, err);
+        showNotification(err.message || 'Image upload failed.', 'error');
         Sentry.captureException(err);
     } finally {
         setIsUploading(false);

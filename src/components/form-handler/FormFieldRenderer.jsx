@@ -863,6 +863,13 @@ case "textarea":
       const [activeDecedentIndex, setActiveDecedentIndex] = useState(0);
       const decedentList = formValues[field.name] || [];
 
+      // Ensure activeDecedentIndex is within bounds if the list changes from outside
+      useEffect(() => {
+        if (decedentList.length > 0 && activeDecedentIndex >= decedentList.length) {
+          setActiveDecedentIndex(decedentList.length - 1);
+        }
+      }, [decedentList.length, activeDecedentIndex]);
+
       const addDecedent = useCallback(() => {
         const newDecedent = decedentItemSchema.reduce((acc, subField) => {
           if (subField.type === 'image') {
@@ -931,9 +938,9 @@ case "textarea":
                 }}
               >
                 <i className="fas fa-user" style={{ fontSize: '0.8rem', opacity: 0.7 }}></i>
-                {(item.decedentName && item.decedentOOC) 
+                {(item?.decedentName && item?.decedentOOC) 
                   ? `${item.decedentName} - ${item.decedentOOC}` 
-                  : (item.decedentName || item.decedentOOC || `Decedent #${index + 1}`)}
+                  : (item?.decedentName || item?.decedentOOC || `Decedent #${index + 1}`)}
               </button>
             ))}
             <button
@@ -1071,12 +1078,45 @@ case "textarea":
                 <AutopsyDiagramModal
                     show={showModal}
                     onHide={() => setShowModal(false)}
-                    onSaveDiagram={(markers, imageUrl) => {
+                    onSaveDiagram={(markers, imageUrl, summaries) => {
                         handleChange(field.name, imageUrl); // Save the image URL
                         handleChange(`${field.name}_markers`, markers); // Save the markers data
+                        
+                        if (summaries && summaries.length > 0 && selectedForm && selectedForm.fields) {
+                            // Find the anatomic summary field in the form schema
+                            const summaryField = selectedForm.fields.find(f => 
+                                f.name === 'anatomicSummaryListItems' || 
+                                (f.label && f.label.toLowerCase().includes('anatomic summary'))
+                            );
+                            
+                            if (summaryField) {
+                                // If there are existing items, we might want to append, but usually diagram is the source of truth for these.
+                                // Let's check if there are already items.
+                                const existingItems = Array.isArray(formValues[summaryField.name]) ? formValues[summaryField.name] : [];
+                                
+                                // To avoid duplicates and keep manual entries, we could do something more complex, 
+                                // but for now, let's just append the new summaries if they aren't already there.
+                                const newItems = [...existingItems];
+                                summaries.forEach(summary => {
+                                    if (!newItems.includes(summary)) {
+                                        newItems.push(summary);
+                                    }
+                                });
+                                
+                                handleChange(summaryField.name, newItems);
+                            }
+                        }
+                        
                         setShowModal(false);
                     }}
                     initialMarkers={initialMarkers}
+                    initialSummaries={(() => {
+                        const summaryField = selectedForm?.fields?.find(f => 
+                            f.name === 'anatomicSummaryListItems' || 
+                            (f.label && f.label.toLowerCase().includes('anatomic summary'))
+                        );
+                        return Array.isArray(formValues[summaryField?.name]) ? formValues[summaryField.name] : [];
+                    })()}
                     showNotification={showNotification}
                     removeNotification={() => { /* Not used by modal, but good to pass */ }}
                     handleImageUpload={handleDiagramUpload}
