@@ -1,545 +1,76 @@
-{
-  "accessType": "Coroner",
-  "category": "DMEC",
-  "fields": [
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764126289547",
-      "inputType": "",
-      "label": "Death Record Type",
-      "layout": "full",
-      "maxImages": 6,
-      "name": "deathRecordType",
-      "optionsKey": "deathRecordType",
-      "placeholder": "",
-      "rows": 4,
-      "timerType": "",
-      "type": "select"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764169365415",
-      "inputType": "",
-      "label": "Decedent Name",
-      "layout": "compact-50",
-      "maxImages": 6,
-      "name": "decedentName",
-      "optionsKey": "",
-      "placeholder": "John Doe",
-      "rows": 4,
-      "timerType": "",
-      "type": "input"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764386477243",
-      "inputType": "",
-      "label": "Decedent OOC",
-      "layout": "compact-50",
-      "maxImages": 6,
-      "name": "decedentOOC",
-      "optionsKey": "",
-      "placeholder": "This is for the title",
-      "rows": 4,
-      "timerType": "",
-      "type": "input"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764169390797",
-      "inputType": "",
-      "label": "Date of Death",
-      "layout": "compact-50",
-      "maxImages": 6,
-      "name": "formattedDateOfDeath",
-      "optionsKey": "",
-      "placeholder": "",
-      "rows": 4,
-      "timerType": "date",
-      "type": "timer"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764173049199",
-      "inputType": "",
-      "label": "Age ",
-      "layout": "compact-50",
-      "maxImages": 6,
-      "name": "age",
-      "optionsKey": "",
-      "placeholder": "Age or Approximate Age",
-      "rows": 4,
-      "timerType": "",
-      "type": "input"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764169566757",
-      "inputType": "",
-      "label": "Body Information",
-      "layout": "full",
-      "maxImages": 6,
-      "name": "header_5",
-      "optionsKey": "",
-      "placeholder": "",
-      "rows": 4,
-      "timerType": "",
-      "type": "small_header"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764169631165",
-      "inputType": "",
-      "label": "Case Number",
-      "layout": "compact",
-      "maxImages": 6,
-      "name": "caseNumber",
-      "optionsKey": "",
-      "placeholder": "Paste Death Report Link",
-      "rows": 4,
-      "timerType": "",
-      "type": "input"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764169662526",
-      "inputType": "",
-      "label": "Case Status",
-      "layout": "compact",
-      "maxImages": 6,
-      "name": "coldCaseStatus",
-      "optionsKey": "coldCaseStatus",
-      "placeholder": "",
-      "rows": 4,
-      "timerType": "",
-      "type": "select"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764169698605",
-      "inputType": "",
-      "label": "Body Status",
-      "layout": "compact",
-      "maxImages": 6,
-      "name": "bodyStatus",
-      "optionsKey": "bodyStatusOptions",
-      "placeholder": "",
-      "rows": 4,
-      "timerType": "",
-      "type": "select"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764169730365",
-      "inputType": "",
-      "label": "Decedent Sex",
-      "layout": "compact-50",
-      "maxImages": 6,
-      "name": "sex",
-      "optionsKey": "",
-      "placeholder": "Male/Female/Unknown",
-      "rows": 4,
-      "timerType": "",
-      "type": "input"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764169746213",
-      "inputType": "",
-      "label": "Decedent Ethnicity",
-      "layout": "compact-50",
-      "maxImages": 6,
-      "name": "ethnicity",
-      "optionsKey": "",
-      "placeholder": "",
-      "rows": 4,
-      "timerType": "",
-      "type": "input"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764170593086",
-      "inputType": "",
-      "label": "Place of Death",
-      "layout": "compact-50",
-      "maxImages": 6,
-      "name": "placeOfDeath",
-      "optionsKey": "",
-      "placeholder": "Mirror Park",
-      "rows": 4,
-      "timerType": "",
-      "type": "input"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764170633717",
-      "inputType": "",
-      "label": "Manner of Death",
-      "layout": "compact-50",
-      "maxImages": 6,
-      "name": "Manner",
-      "optionsKey": "",
-      "placeholder": "Cardiac Arrest, etc",
-      "rows": 4,
-      "timerType": "",
-      "type": "input"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764171725607",
-      "inputType": "",
-      "label": "Investigator",
-      "layout": "compact-50",
-      "maxImages": 6,
-      "name": "selectEmployee",
-      "optionsKey": "",
-      "placeholder": "",
-      "rows": 4,
-      "timerType": "",
-      "type": "employee_select"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764172872495",
-      "inputType": "",
-      "label": "Identified Decedent Information",
-      "layout": "full",
-      "maxImages": 6,
-      "name": "header_15",
-      "optionsKey": "",
-      "placeholder": "",
-      "rows": 4,
-      "showIf": {
-        "field": "deathRecordType",
-        "value": "Identified"
-      },
-      "timerType": "",
-      "type": "small_header"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764172906520",
-      "inputType": "",
-      "label": "Cause of Death A:",
-      "layout": "compact",
-      "maxImages": 6,
-      "name": "causeA",
-      "optionsKey": "",
-      "placeholder": "",
-      "rows": 4,
-      "showIf": {
-        "field": "deathRecordType",
-        "value": "Identified"
-      },
-      "timerType": "",
-      "type": "input"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764172934024",
-      "inputType": "",
-      "label": "Cause of Death B",
-      "layout": "compact",
-      "maxImages": 6,
-      "name": "causeB",
-      "optionsKey": "",
-      "placeholder": "",
-      "rows": 4,
-      "showIf": {
-        "field": "deathRecordType",
-        "value": "Identified"
-      },
-      "timerType": "",
-      "type": "input"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764172963286",
-      "inputType": "",
-      "label": "Cuase of Death C",
-      "layout": "compact",
-      "maxImages": 6,
-      "name": "causeC",
-      "optionsKey": "",
-      "placeholder": "",
-      "rows": 4,
-      "showIf": {
-        "field": "deathRecordType",
-        "value": "Identified"
-      },
-      "timerType": "",
-      "type": "input"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764172995542",
-      "inputType": "",
-      "label": "Cause of Death D",
-      "layout": "compact",
-      "maxImages": 6,
-      "name": "causeD",
-      "optionsKey": "",
-      "placeholder": "",
-      "rows": 4,
-      "showIf": {
-        "field": "deathRecordType",
-        "value": "Identified"
-      },
-      "timerType": "",
-      "type": "input"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764173026343",
-      "inputType": "",
-      "label": "Other Significant Conditions",
-      "layout": "full",
-      "maxImages": 6,
-      "name": "otherSignificantConditions",
-      "optionsKey": "",
-      "placeholder": "",
-      "rows": 4,
-      "showIf": {
-        "field": "deathRecordType",
-        "value": "Identified"
-      },
-      "timerType": "",
-      "type": "input"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764173379914",
-      "inputType": "",
-      "label": "Unidentified Decedent",
-      "layout": "full",
-      "maxImages": 6,
-      "name": "header_20",
-      "optionsKey": "",
-      "placeholder": "",
-      "rows": 4,
-      "showIf": {
-        "field": "deathRecordType",
-        "value": "Unidentified"
-      },
-      "timerType": "",
-      "type": "small_header"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764175035976",
-      "inputType": "",
-      "label": "Hair Color",
-      "layout": "compact",
-      "maxImages": 6,
-      "name": "hairColor",
-      "optionsKey": "",
-      "placeholder": "Brown, Black, Pink",
-      "rows": 4,
-      "showIf": {
-        "field": "deathRecordType",
-        "value": "Unidentified"
-      },
-      "timerType": "",
-      "type": "input"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764175088846",
-      "inputType": "",
-      "label": "Eye Color",
-      "layout": "compact",
-      "maxImages": 6,
-      "name": "eyeColor",
-      "optionsKey": "",
-      "placeholder": "Blue, White",
-      "rows": 4,
-      "showIf": {
-        "field": "deathRecordType",
-        "value": "Unidentified"
-      },
-      "timerType": "",
-      "type": "input"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764175099223",
-      "inputType": "",
-      "label": "Weight",
-      "layout": "compact",
-      "maxImages": 6,
-      "name": "weight",
-      "optionsKey": "",
-      "placeholder": "",
-      "rows": 4,
-      "showIf": {
-        "field": "deathRecordType",
-        "value": "Unidentified"
-      },
-      "timerType": "",
-      "type": "input"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764175109110",
-      "inputType": "",
-      "label": "Height",
-      "layout": "compact",
-      "maxImages": 6,
-      "name": "height",
-      "optionsKey": "",
-      "placeholder": "",
-      "rows": 4,
-      "showIf": {
-        "field": "deathRecordType",
-        "value": "Unidentified"
-      },
-      "timerType": "",
-      "type": "input"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764175127542",
-      "inputType": "",
-      "label": "Tattoos",
-      "layout": "compact-50",
-      "maxImages": 6,
-      "name": "tattoos",
-      "optionsKey": "",
-      "placeholder": "",
-      "rows": 4,
-      "showIf": {
-        "field": "deathRecordType",
-        "value": "Unidentified"
-      },
-      "timerType": "",
-      "type": "input"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764175139335",
-      "inputType": "",
-      "label": "Jewelry",
-      "layout": "compact-50",
-      "maxImages": 6,
-      "name": "jewelry",
-      "optionsKey": "",
-      "placeholder": "",
-      "rows": 4,
-      "showIf": {
-        "field": "deathRecordType",
-        "value": "Unidentified"
-      },
-      "timerType": "",
-      "type": "input"
-    },
-    {
-      "buttonAction": "",
-      "buttonLabel": "",
-      "decedentItemSchemaJson": "",
-      "displayCurrentTime": false,
-      "id": "field-1764175153280",
-      "inputType": "",
-      "label": "Comments",
-      "layout": "full",
-      "maxImages": 6,
-      "name": "comments",
-      "optionsKey": "",
-      "placeholder": "Extra notes, any other identifying information",
-      "rows": 4,
-      "showIf": {
-        "field": "deathRecordType",
-        "value": "Unidentified"
-      },
-      "timerType": "",
-      "type": "input"
-    }
-  ],
-  "formDescription": "",
-  "id": "death_record",
-  "isHidden": false,
-  "lastUpdated": 1768920617356,
-  "name": "Death Record",
-  "template": "[divbox=#FFFFFF]\n[center][img]https://i.ibb.co/Rk5bRDxX/image.png[/img][/center]\n[/divbox]\n\n[divbox=#4D4D4D][center][bold][size=150]PUBLIC DECEDENT RECORD[/size][/bold][/center][/divbox]\n\n[divbox=#000000][center][size=130]{{decedentName}}[/size][/center]\n[center]Date of Death: {{formattedDateOfDeath}}[/center]\n[center]Age: {{age}} [/center][/divbox]\n\n[table]\n[tr]\n[td bgcolor=#E6E6E6][bold]Case Number[/bold]: {{caseNumber}}[/td]\n[td bgcolor=#E6E6E6][bold]Case Status[/bold]: {{coldCaseStatus}}[/td]\n[td bgcolor=#E6E6E6][bold]Body Status[/bold]: {{bodyStatus}}[/td]\n[/tr]\n[tr]\n[td bgcolor=#E6E6E6][bold]Sex[/bold]: {{sex}}[/td]\n[td bgcolor=#E6E6E6][bold]Ethnicity[/bold]: {{ethnicity}}[/td]\n[/tr]\n[/table]\n\n[table]\n[tr]\n[td bgcolor=#E6E6E6][bold]Place of Death[/bold]: {{placeOfDeath}}[/td]\n[td bgcolor=#E6E6E6][bold]Manner[/bold]: {{Manner}}[/td]\n[/tr]\n[tr]\n[td bgcolor=#E6E6E6][bold]Investigator[/bold]: {{selectEmployee}} [/td]\n[td bgcolor=#E6E6E6][bold]Chief Medical Examiner[/bold]: Anne Carter[/td]\n[/tr]\n[/table]\n\n[conditional field=\"deathRecordType\" value=\"Identified\"] \n[table]\n[tr]\n[td bgcolor=#E6E6E6][bold]Cause A[/bold]: {{causeA}}[/td]\n[td bgcolor=#E6E6E6][bold]Cause B[/bold]: {{causeB}}[/td]\n[/tr]\n[tr]\n[td bgcolor=#E6E6E6][bold]Cause C[/bold]: {{causeC}}[/td]\n[td bgcolor=#E6E6E6][bold]Cause D[/bold]: {{causeD}}[/td]\n[/tr]\n[tr]\n[td bgcolor=#E6E6E6][bold]Other Significant Conditions[/bold]: {{otherSignificantConditions}}[/td]\n[/tr]\n[/table]\n[/conditional]\n[conditional field=\"deathRecordType\" value=\"Unidentified\"][table]\n[tr]\n[td bgcolor=#E6E6E6][bold]Hair Color[/bold]: {{hairColor}}[/td]\n[td bgcolor=#E6E6E6][bold]Eye Color[/bold]: {{eyeColor}}[/td]\n[/tr]\n[tr]\n[td bgcolor=#E6E6E6][bold]Weight[/bold]: {{weight}}[/td]\n[td bgcolor=#E6E6E6][bold]Height[/bold]: {{height}}[/td]\n[/tr]\n[tr]\n[td bgcolor=#E6E6E6][bold]Tattoos[/bold]: {{tattoos}}[/td]\n[td bgcolor=#E6E6E6][bold]Jewelry[/bold]: {{jewelry}}[/td]\n[/tr]\n[tr]\n[td bgcolor=#E6E6E6][bold]Comments[/bold]: {{comments}}[/td]\n[/tr]\n[/table]\n[/conditional]\n[divbox=#4D4D4D][center][bold]These public records are of disclosed cases involving a Medical Examiner from the Department of Pathology & Forensic Medicine only. \nThese are not records of every death that occurs in Los Santos County.\n\nFor further inquiries into any cases or for further documentation:\nThe Chief/Deputy Chief Medical Examiner-Coroner can be emailed through PHMC's online portal [url=https://phmc.gta.world/ucp.php?i=pm&mode=compose]HERE[/url].\nPHMC's landline can be reached through the number 50056 for any physical records or the next-of-kin process.[/bold][/center][/divbox]",
-  "titleGeneratorCode": "[CASE #YEAR-{{caseNumber}}]  {{decedentName}} (({{decedentOOC}})) | {{formattedDateOfDeath}}\n"
-}
+✦ I will update the handleSave function in src/components/Modals/AutopsyDiagramModal.jsx to return the content of the corpseInjuriesText state as the summaries, ensuring that manual edits are preserved.
+
+
+╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ ✓  Edit src\...\AutopsyDiagramModal.jsx:     const handleSave = async (... =>     const handleSave = async (...                                                                                                                                                                                    │
+│                                                                                                                                                                                                                                                                                                    │
+│ 502           }                                                                                                                                                                                                                                                                                    │
+│ 503       }                                                                                                                                                                                                                                                                                        │
+│ 504                                                                                                                                                                                                                                                                                                │
+│ 505 -     const labeledMarkers = getGroupedLabeledMarkers(markers);                                                                                                                                                                                                                                │
+│ 506 -     const summaries = markers.filter(m => m && m.id).map(m => {                                                                                                                                                                                                                              │
+│ 507 -         if (m.isCustomSummary) return m.summary;                                                                                                                                                                                                                                             │
+│ 508 -         const markerWithDisplayLabel = labeledMarkers.find(lm => lm && lm.id === m.id);                                                                                                                                                                                                      │
+│ 509 -         const displayLabel = markerWithDisplayLabel?.displayLabel || m.label || 'None';                                                                                                                                                                                                      │
+│ 510 -                                                                                                                                                                                                                                                                                              │
+│ 511 -         // Determine Marker Type from label                                                                                                                                                                                                                                                  │
+│ 512 -         let markerType = 'Injury';                                                                                                                                                                                                                                                           │
+│ 513 -         const upperLabel = (m.label || '').toUpperCase();                                                                                                                                                                                                                                    │
+│ 514 -         if (upperLabel.startsWith('GSW')) markerType = 'Gunshot Wound';                                                                                                                                                                                                                      │
+│ 515 -         else if (upperLabel.startsWith('STAB')) markerType = 'Stab Wound';                                                                                                                                                                                                                   │
+│ 516 -         else if (upperLabel.startsWith('LAC')) markerType = 'Laceration';                                                                                                                                                                                                                    │
+│ 517 -         else if (upperLabel.startsWith('BLUNT')) markerType = 'Blunt Force Trauma';                                                                                                                                                                                                          │
+│ 518 -         else if (upperLabel.startsWith('BFT')) markerType = 'Blunt Force Trauma';                                                                                                                                                                                                            │
+│ 519 -         else if (m.label) markerType = m.label;                                                                                                                                                                                                                                              │
+│ 505 +     // Return the free text summaries split by newlines                                                                                                                                                                                                                                      │
+│ 506 +     const summaries = corpseInjuriesText.split('\n').filter(line => line.trim() !== '');                                                                                                                                                                                                     │
+│ 507                                                                                                                                                                                                                                                                                                │
+│ ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════ │
+│ 521 -         return m.summary                                                                                                                                                                                                                                                                     │
+│ 522 -             .replace('MARKER_TYPE', markerType)                                                                                                                                                                                                                                              │
+│ 523 -             .replace('{LABEL}', displayLabel);                                                                                                                                                                                                                                               │
+│ 524 -     }).filter(Boolean);                                                                                                                                                                                                                                                                      │
+│ 525 -                                                                                                                                                                                                                                                                                              │
+│ 508       onSaveDiagram(markers, imageUrl, summaries);                                                                                                                                                                                                                                             │
+│ 509       setIsProcessingImage(false);                                                                                                                                                                                                                                                             │
+│ 510   }                                                                                                                                                                                                                                                                                            │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+✦ I will update the handleStageClick function in src/components/Modals/AutopsyDiagramModal.jsx to remove the automatic summary generation for new markers, allowing users to manually enter findings in the sidebar instead.
+
+
+╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ ✓  Edit src\...\AutopsyDiagramModal.jsx:         const newMarker = {... =>         const newMarker = {...                                                                                                                                                                                          │
+│                                                                                                                                                                                                                                                                                                    │
+│ 350       id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),                                                                                                                                                                                                                   │
+│ 351       label: '',                                                                                                                                                                                                                                                                               │
+│ 352       labelSide: pos.x > image.width * 0.8 ? 'left' : 'right',                                                                                                                                                                                                                                 │
+│ 353 -     summary: `MARKER_TYPE to the region of ${regionText} (Marker: {LABEL}) `,                                                                                                                                                                                                                │
+│ 354 -     isCustomSummary: false,                                                                                                                                                                                                                                                                  │
+│ 353   };                                                                                                                                                                                                                                                                                           │
+│ 354   setMarkers(prevMarkers => [...prevMarkers, newMarker]);                                                                                                                                                                                                                                      │
+│ 355   setEditingMarkerId(newMarker.id);                                                                                                                                                                                                                                                            │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+✦ I will simplify src/components/Modals/AutopsyDiagramModal.jsx by removing the summary-related logic from the marker popup and handleDragEnd, as the sidebar has become the primary source for documentation findings.
+
+
+╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ ✓  Edit src\...\AutopsyDiagramModal.jsx:     const handleDragEnd = (e, ... =>     const handleDragEnd = (e, ...                                                                                                                                                                                    │
+│                                                                                                                                                                                                                                                                                                    │
+│ 361       if (marker.id === id) {                                                                                                                                                                                                                                                                  │
+│ 362           const newX = e.target.x();                                                                                                                                                                                                                                                           │
+│ 363           const newY = e.target.y();                                                                                                                                                                                                                                                           │
+│ 364 -         const { region, isBack } = getAnatomicalRegion(newX, newY, image.width, image.height, yBoundaries, overrideZones);                                                                                                                                                                   │
+│ 365 -         const regionText = isBack ? `${region} (Back)` : region;                                                                                                                                                                                                                             │
+│ 366 -                                                                                                                                                                                                                                                                                              │
+│ 367 -         // Update summary if it's not custom                                                                                                                                                                                                                                                 │
+│ 368 -         let newSummary = marker.summary;                                                                                                                                                                                                                                                     │
+│ 369 -         if (!marker.isCustomSummary) {                                                                                                                                                                                                                                                       │
+│ 370 -             newSummary = `MARKER_TYPE to the region of ${regionText} (Marker: {LABEL}) `;                                                                                                                                                                                                    │
+│ 371 -         }                                                                                                                                                                                                                                                                                    │
+│ 372 -                                                                                                                                                                                                                                                                                              │
+│ 373 -         return { ...marker, x: newX, y: newY, summary: newSummary };                                                                                                                                                                                                                         │
+│ 364 +         return { ...marker, x: newX, y: newY };                                                                                                                                                                                                                                              │
+│ 365       }                                                                                                                                                                                                                                                                                        │
+│ 366       return marker;                                                                                                                                                                                                                                                                           │
+│ 367   });                                                                                                                                                                                                                                                                                          │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

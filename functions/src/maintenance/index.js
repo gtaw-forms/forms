@@ -120,6 +120,7 @@ export const dailyMaintenanceTask = onSchedule({
 
     const REPORTS_PATH = '/newSavedReports';
     const BBCODE_PATH = '/newSavedReportBBCode';
+    const RECOVERY_PATH = '/recoveredReports';
     
     // Results Tracker
     let maintenanceResults = {
@@ -128,7 +129,8 @@ export const dailyMaintenanceTask = onSchedule({
         duplicateCleanup: { scanned: 0, duplicatesFound: 0, duplicatesDeleted: 0, errors: [] },
         backupCleanup: { oldBackupsCleaned: 0, errors: [] },
         webhookLogCleanup: { oldLogsCleaned: 0, errors: [] },
-        reportCleanup: { oldReportsCleaned: 0, errors: [] }
+        reportCleanup: { oldReportsCleaned: 0, errors: [] },
+        recoveryCleanup: { deleted: 0, errors: [] }
     };
 
     // --- 1. Bingo Reset Logic ---
@@ -220,6 +222,7 @@ export const dailyMaintenanceTask = onSchedule({
         if (userCountsSnapshot.exists()) {
             const userIds = Object.keys(userCountsSnapshot.val());
             const threeSixtyFiveDaysAgo = Date.now() - (365 * 24 * 60 * 60 * 1000);
+            const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
             const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000);
 
             // Process users in chunks to control concurrency
@@ -248,7 +251,27 @@ export const dailyMaintenanceTask = onSchedule({
                         console.error(`Error cleaning old reports for user ${userId}:`, err);
                     }
 
-                    // B. Duplicate Cleanup (Last 3 Days Only)
+                    // B. Recovery Snapshot Cleanup (> 7 days)
+                    try {
+                        const oldRecoveryQuery = db.ref(`${RECOVERY_PATH}/${userId}`)
+                            .orderByChild('timestamp')
+                            .endAt(sevenDaysAgo);
+                        
+                        const oldRecSnapshot = await oldRecoveryQuery.once('value');
+                        if (oldRecSnapshot.exists()) {
+                            const updates = {};
+                            oldRecSnapshot.forEach((snap) => {
+                                updates[`${RECOVERY_PATH}/${userId}/${snap.key}`] = null;
+                                maintenanceResults.recoveryCleanup.deleted++;
+                            });
+                            await db.ref().update(updates);
+                        }
+                    } catch (err) {
+                        console.error(`Error cleaning old recovery snapshots for user ${userId}:`, err);
+                        maintenanceResults.recoveryCleanup.errors.push(`User ${userId}: ${err.message}`);
+                    }
+
+                    // C. Duplicate Cleanup (Last 3 Days Only)
                     // Logic: Match on Name/OOC/Date. If match found within 10 minutes of a newer save, delete the older one.
                     try {
                         const recentReportsQuery = db.ref(`${REPORTS_PATH}/${userId}`)
@@ -387,7 +410,7 @@ export const dailyMaintenanceTask = onSchedule({
         `Not Enough Phrases: ${maintenanceResults.bingo.notEnoughPhrases.join(', ') || 'None'}`
     ].join('\n');
 
-    const hasCleanedUp = maintenanceResults.reportCleanup.oldReportsCleaned > 0 || maintenanceResults.duplicateCleanup.duplicatesDeleted > 0 || maintenanceResults.backupCleanup.oldBackupsCleaned > 0 || maintenanceResults.webhookLogCleanup.oldLogsCleaned > 0;
+    const hasCleanedUp = maintenanceResults.reportCleanup.oldReportsCleaned > 0 || maintenanceResults.duplicateCleanup.duplicatesDeleted > 0 || maintenanceResults.backupCleanup.oldBackupsCleaned > 0 || maintenanceResults.webhookLogCleanup.oldLogsCleaned > 0 || maintenanceResults.recoveryCleanup.deleted > 0;
     
     const embed = {
         title: "Daily Maintenance Task",
@@ -399,6 +422,7 @@ export const dailyMaintenanceTask = onSchedule({
             { name: "🧹 Recent Duplicates (3 days)", value: `Scanned: ${maintenanceResults.duplicateCleanup.scanned}\nDeleted: ${maintenanceResults.duplicateCleanup.duplicatesDeleted}`, inline: true },
             { name: "💾 Backup Cleanup", value: `Deleted: ${maintenanceResults.backupCleanup.oldBackupsCleaned}`, inline: true },
             { name: "📋 Webhook Log Cleanup", value: `Deleted: ${maintenanceResults.webhookLogCleanup.oldLogsCleaned}`, inline: true },
+            { name: "🔄 Recovery Snapshots (7 days)", value: `Deleted: ${maintenanceResults.recoveryCleanup.deleted}`, inline: true },
         ],
         footer: { text: "PHMC Tools - Automated Daily Maintenance (v2 Optimized)" }
     };
@@ -409,7 +433,8 @@ export const dailyMaintenanceTask = onSchedule({
         ...maintenanceResults.phraseRequests.errors,
         ...maintenanceResults.duplicateCleanup.errors,
         ...maintenanceResults.backupCleanup.errors,
-        ...maintenanceResults.webhookLogCleanup.errors
+        ...maintenanceResults.webhookLogCleanup.errors,
+        ...maintenanceResults.recoveryCleanup.errors
     ];
 
     if (allErrors.length > 0) {

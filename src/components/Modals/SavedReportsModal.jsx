@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { Button, Form } from 'react-bootstrap';
 import Select from 'react-select';
@@ -251,6 +251,7 @@ const SavedReportsModal = ({
     pendingReportAttachmentCallback,
     selectedForm,
     attachmentTargetField, // Add this line
+    loadUserRecoveryReports, // Add this line
     loadButtonText = 'Load',
     disableAutoLoad = false,
 }) => {
@@ -259,6 +260,9 @@ const SavedReportsModal = ({
     const [selectedReportKeys, setSelectedReportKeys] = useState([]);
     const [isLoadingMultiple, setIsLoadingMultiple] = useState(false);
     const [selectedEmployee, setSelectedEmployee] = useState(null);
+    const [viewMode, setViewMode] = useState('saved'); // 'saved' or 'recovered'
+    const [recoveryReports, setRecoveryReports] = useState([]);
+    const [isInternalLoading, setIsInternalLoading] = useState(false);
     
     const lastLoadedEmployeeRef = useRef(null);
     const isManualSelectionRef = useRef(false);
@@ -271,6 +275,20 @@ const SavedReportsModal = ({
         reportSelectionFilter.includes(4);
     const isAttachMode = !!handleReportSelectedForAttachment && (selectedForm?.id === 'coroner_email' || selectedForm?.name === 'Coroner Email');
 
+    const fetchReports = useCallback(async (employeeName, mode = viewMode) => {
+        if (!employeeName) return;
+        setIsInternalLoading(true);
+        try {
+            if (mode === 'recovered') {
+                const reports = await loadUserRecoveryReports(employeeName);
+                setRecoveryReports(reports);
+            } else {
+                await onEmployeeSelect(employeeName);
+            }
+        } finally {
+            setIsInternalLoading(false);
+        }
+    }, [onEmployeeSelect, loadUserRecoveryReports, viewMode]);
 
     useEffect(() => {
         if (!show) { // When modal closes, reset all state
@@ -280,6 +298,8 @@ const SavedReportsModal = ({
             setSelectedReportKeys([]);
             lastLoadedEmployeeRef.current = null;
             isManualSelectionRef.current = false;
+            setViewMode('saved');
+            setRecoveryReports([]);
             return;
         }
         if (show && employeeOptions) { // Only proceed if modal is shown and employeeOptions have potentially loaded
@@ -311,7 +331,7 @@ const SavedReportsModal = ({
             }
             
             if (shouldCallOnEmployeeSelect) {
-                onEmployeeSelect(employeeOption.label);
+                fetchReports(employeeOption.label);
                 lastLoadedEmployeeRef.current = employeeToSelectValue;
             } else if (!employeeOption && selectedEmployee && !isManualSelectionRef.current) { // ADD isManualSelectionRef.current
                 setSelectedEmployee(null);
@@ -320,7 +340,7 @@ const SavedReportsModal = ({
                 }
             }
         }
-    }, [show, currentCoronerEmployee, currentPhmcEmployee, employeeOptions, preselectedEmployeeType, onEmployeeSelect, disableAutoLoad, selectedEmployee]);
+    }, [show, currentCoronerEmployee, currentPhmcEmployee, employeeOptions, preselectedEmployeeType, onEmployeeSelect, disableAutoLoad, selectedEmployee, fetchReports]);
 
     const handleEmployeeSelect = (selectedOption) => {
         isManualSelectionRef.current = true;
@@ -330,13 +350,25 @@ const SavedReportsModal = ({
         setSelectedReportKeys([]);
 
         if (selectedOption) {
-            onEmployeeSelect(selectedOption.label);
+            fetchReports(selectedOption.label);
             lastLoadedEmployeeRef.current = selectedOption.label;
         } else {
             onEmployeeSelect(null);
             lastLoadedEmployeeRef.current = null;
+            setRecoveryReports([]);
         }
     };
+
+    const handleToggleViewMode = () => {
+        const newMode = viewMode === 'saved' ? 'recovered' : 'saved';
+        setViewMode(newMode);
+        setSelectedReportKeys([]);
+        setCurrentPage(1);
+        if (selectedEmployee) {
+            fetchReports(selectedEmployee.label, newMode);
+        }
+    };
+
     const filteredEmployeeOptions = useMemo(() => {
         if (preselectedEmployeeType === 'PHMC') {
             return (employeeOptions || []).filter((group) => group.label === 'PHMC Staff');
@@ -348,8 +380,9 @@ const SavedReportsModal = ({
     }, [employeeOptions, preselectedEmployeeType]);
 
     const sortedReports = useMemo(() => {
-        return [...(reportsForSelectedUser || [])].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-    }, [reportsForSelectedUser]);
+        const baseReports = viewMode === 'recovered' ? recoveryReports : (reportsForSelectedUser || []);
+        return [...baseReports].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    }, [reportsForSelectedUser, recoveryReports, viewMode]);
 
     const searchedAndFilteredReports = useMemo(() => {
         let reports = sortedReports;
@@ -358,11 +391,12 @@ const SavedReportsModal = ({
         if (isAttachMode) {
             reports = reports.filter(report => 
                 report.originalKey.toLowerCase().includes('[death-report]') || report.originalKey.toLowerCase().includes('[pk]') ||
-                report.originalKey.toLowerCase().includes('[mass fatality report]')
+                report.originalKey.toLowerCase().includes('[mass fatality report]') ||
+                report.originalKey.toLowerCase().includes('[multi fatality report]')
             );
         }
 
-        if (filterByBbCodeVersions && filterByBbCodeVersions.length > 0) {
+        if (filterByBbCodeVersions && filterByBbCodeVersions.length > 0 && viewMode === 'saved') {
             reports = reports.filter((report) => filterByBbCodeVersions.includes(report.bbCodeVersion));
         }
         if (searchQuery) {
@@ -371,7 +405,7 @@ const SavedReportsModal = ({
             );
         }
         return reports;
-    }, [sortedReports, filterByBbCodeVersions, searchQuery, isAttachMode]);
+    }, [sortedReports, filterByBbCodeVersions, searchQuery, isAttachMode, viewMode]);
 
     useEffect(() => {
         setCurrentPage(1);
@@ -527,11 +561,29 @@ const SavedReportsModal = ({
 
     if (!show) return null;
 
+    const isLoading = isLoadingReports || isInternalLoading;
+
     return ReactDOM.createPortal(
         <div style={modalStyle} onClick={onHide}>
             <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
                 <div style={modalHeaderStyle}>
-                    <h5 style={{ margin: 0 }}>Saved Reports</h5>
+                    <h5 style={{ margin: 0 }}>{viewMode === 'saved' ? 'Saved Reports' : 'Recovered Snapshots'}</h5>
+                    <div style={{ display: 'flex', gap: '10px', marginRight: '40px' }}>
+                        <Button 
+                            variant={viewMode === 'saved' ? "primary" : "outline-primary"} 
+                            size="sm" 
+                            onClick={() => viewMode !== 'saved' && handleToggleViewMode()}
+                        >
+                            <i className="fas fa-save me-1"></i> Saved
+                        </Button>
+                        <Button 
+                            variant={viewMode === 'recovered' ? "warning" : "outline-warning"} 
+                            size="sm" 
+                            onClick={() => viewMode !== 'recovered' && handleToggleViewMode()}
+                        >
+                            <i className="fas fa-history me-1"></i> Recovered
+                        </Button>
+                    </div>
                     <button onClick={onHide} style={closeButtonStyle} aria-label="Close modal">
                         &times;
                     </button>
@@ -544,7 +596,7 @@ const SavedReportsModal = ({
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         style={searchInputStyle}
-                        disabled={!selectedEmployee || isLoadingReports}
+                        disabled={!selectedEmployee || isLoading}
                     />
                     <Form.Group controlId="employeeSelect" className="mb-3">
                         <Form.Label>Select Employee to View Reports:</Form.Label>
@@ -584,17 +636,17 @@ const SavedReportsModal = ({
 
                 <div style={modalHeaderStyle} key={selectedEmployee ? selectedEmployee.value : 'noEmployee'}>
                     <h5 style={{ margin: 0 }}>
-                        Saved Reports {selectedEmployee ? `for ${selectedEmployee.label}` : '(No Employee Selected)'}
+                        {viewMode === 'saved' ? 'Saved Reports' : 'Recovered Snapshots'} {selectedEmployee ? `for ${selectedEmployee.label}` : '(No Employee Selected)'}
                         {selectedEmployee && ` (${searchedAndFilteredReports.length} total)`}
                     </h5>
                 </div>
 
-                {isLoadingReports && selectedEmployee && (
+                {isLoading && selectedEmployee && (
                     <p style={{ textAlign: 'center', flexShrink: 0 }}>Loading reports for {selectedEmployee.label}...</p>
                 )}
 
                 <div style={tableContainerStyle}>
-                    {!isLoadingReports && selectedEmployee && searchedAndFilteredReports.length > 0 ? (
+                    {!isLoading && selectedEmployee && searchedAndFilteredReports.length > 0 ? (
                         <table style={tableStyle}>
                             <thead>
                                 <tr>
@@ -631,7 +683,7 @@ const SavedReportsModal = ({
                                             <td style={tdStyle}>{new Date(report.timestamp).toLocaleString()}</td>
                                             <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
                                                 <Button
-                                                    variant="primary"
+                                                    variant={viewMode === 'recovered' ? "warning" : "primary"}
                                                     size="sm"
                                                     className="me-2"
                                                     onClick={() => {
@@ -656,29 +708,31 @@ const SavedReportsModal = ({
                                                         }
                                                         onHide(); // Close modal after action
                                                     }}
-                                                    disabled={isLoadingReports || !selectedEmployee}
+                                                    disabled={isLoading || !selectedEmployee}
                                                 >
-                                                    {isAttachMode ? 'Attach' : (loadButtonText || (isParseDecedentMode ? 'Parse' : 'Load'))}
+                                                    {isAttachMode ? 'Attach' : (viewMode === 'recovered' ? 'Restore' : (loadButtonText || (isParseDecedentMode ? 'Parse' : 'Load')))}
                                                 </Button>
                                                 <Button
                                                     variant="danger"
                                                     size="sm"
                                                     onClick={() => {
-                                                        if (window.confirm('Are you sure you want to delete this report?')) {
+                                                        if (window.confirm(`Are you sure you want to delete this ${viewMode === 'recovered' ? 'snapshot' : 'report'}?`)) {
                                                             deleteReportForUser(report, selectedEmployee.value);
                                                         }
                                                     }}
-                                                    disabled={isLoadingReports || !selectedEmployee}
+                                                    disabled={isLoading || !selectedEmployee}
                                                 >
                                                     Delete
                                                 </Button>
-                                                <Button
-                                                    onClick={() => handleCopyBBCode(report)}
-                                                    style={copyButtonStyle}
-                                                    title="Copy BBCode"
-                                                >
-                                                    Copy BBCode
-                                                </Button>
+                                                {viewMode === 'saved' && (
+                                                    <Button
+                                                        onClick={() => handleCopyBBCode(report)}
+                                                        style={copyButtonStyle}
+                                                        title="Copy BBCode"
+                                                    >
+                                                        Copy BBCode
+                                                    </Button>
+                                                )}
                                             </td>
                                         </tr>
                                     );
@@ -686,23 +740,23 @@ const SavedReportsModal = ({
                             </tbody>
                         </table>
                     ) : (
-                        !isLoadingReports &&
+                        !isLoading &&
                         selectedEmployee && (
                             <p style={{ textAlign: 'center', marginTop: '20px' }}>
                                 {searchQuery
                                     ? `No reports match your search for ${selectedEmployee.label}.`
-                                    : `No reports saved for ${selectedEmployee.label}.`}
+                                    : `No ${viewMode === 'recovered' ? 'recovery snapshots' : 'reports'} saved for ${selectedEmployee.label}.`}
                             </p>
                         )
                     )}
-                    {!isLoadingReports && !selectedEmployee && (
+                    {!isLoading && !selectedEmployee && (
                         <p style={{ textAlign: 'center', marginTop: '20px' }}>
                             Please select an employee in the main form to view their saved reports.
                         </p>
                     )}
                 </div>
 
-                {!isLoadingReports && selectedEmployee && searchedAndFilteredReports.length > 0 && (
+                {!isLoading && selectedEmployee && searchedAndFilteredReports.length > 0 && (
                     <div style={bulkActionsContainerStyle}>
                         <Button
                             onClick={handleDeleteSelected}
@@ -711,15 +765,18 @@ const SavedReportsModal = ({
                         >
                             Delete Selected ({selectedReportKeys.length})
                         </Button>
+                        {viewMode === 'saved' && (
+                            <Button
+                                onClick={handleCopySelectedBBCode}
+                                style={copyButtonStyle}
+                                disabled={selectedReportKeys.length === 0}
+                            >
+                                Copy Selected BBCode ({selectedReportKeys.length})
+                            </Button>
+                        )}
                         <Button
-                            onClick={handleCopySelectedBBCode}
-                            style={copyButtonStyle}
-                            disabled={selectedReportKeys.length === 0}
-                        >
-                            Copy Selected BBCode ({selectedReportKeys.length})
-                        </Button>
-                        <Button
-                            style={actionButtonStyle}
+                            variant={viewMode === 'recovered' ? "warning" : "primary"}
+                            style={viewMode === 'recovered' ? {} : actionButtonStyle}
                             disabled={selectedReportKeys.length === 0 || isLoadingMultiple}
                             onClick={handleLoadSelected}
                         >
@@ -729,13 +786,13 @@ const SavedReportsModal = ({
                                     Loading...
                                 </>
                             ) : (
-                                `${isAttachMode ? 'Attach Selected' : (loadButtonText ? loadButtonText + ' Selected' : (isParseDecedentMode ? 'Parse Selected' : 'Load Selected'))} (${selectedReportKeys.length})`
+                                `${isAttachMode ? 'Attach Selected' : (viewMode === 'recovered' ? 'Restore Selected' : (loadButtonText ? loadButtonText + ' Selected' : (isParseDecedentMode ? 'Parse Selected' : 'Load Selected')))} (${selectedReportKeys.length})`
                             )}
                         </Button>
                     </div>
                 )}
 
-                {totalPages > 1 && !isLoadingReports && selectedEmployee && (
+                {totalPages > 1 && !isLoading && selectedEmployee && (
                     <div style={paginationStyle}>
                         <Button onClick={goToPreviousPage} disabled={currentPage === 1} style={actionButtonStyle}>
                             Previous

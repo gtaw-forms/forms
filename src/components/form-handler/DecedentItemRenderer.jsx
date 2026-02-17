@@ -20,6 +20,10 @@ const DecedentItemRenderer = ({
   setMapTargetField,
   isUploadingMapImage = {},
 }) => {
+  if (!itemValues) {
+    return null;
+  }
+
   const handleSubFieldChange = useCallback((subFieldName, value) => {
     onItemChange(subFieldName, value);
   }, [onItemChange]);

@@ -18,6 +18,7 @@ import seasonalEvents from '../UI/SeasonalEvents';
 import FormQuickLinks from './FormQuickLinks';
 import { validateForm } from '../../utils/formValidation';
 import { sendDiscordWebhook } from '../../utils/webhookUtils';
+import { sendBingoNotification, sendPhraseRequestNotification } from '../UI/notificationService';
 import { useInactivityReload } from '../../hooks/useInactivityReload';
 import { useUserMetrics } from '../../hooks/useUserMetrics';
 import { cleanRankText } from '../../utils/textUtils';
@@ -241,8 +242,19 @@ export const FormHandler = () => {
     formsData,
   } = useData();
   const { showEmsBingoModal, setShowEmsBingoModal } = useModal();
-  const { saveReport: saveNewReport } = useFormSaver();
+  const { saveReport: saveNewReport, saveRecoveryReport } = useFormSaver();
   const modalCloseTimer = React.useRef(null);
+
+  // Debounced Recovery Auto-Save
+  useEffect(() => {
+    if (!selectedForm || Object.keys(formValues).length === 0) return;
+
+    const timer = setTimeout(() => {
+      saveRecoveryReport(selectedForm, formValues);
+    }, 15000); // Auto-save recovery draft every 15 seconds of activity
+
+    return () => clearTimeout(timer);
+  }, [formValues, selectedForm, saveRecoveryReport]);
 
   // Memos
   const finalSelectOptions = useMemo(() => {
@@ -271,8 +283,14 @@ export const FormHandler = () => {
   }, [isDevelopment, selectedForm, originalCoronerListData]);
 
   const employeeOptions = useMemo(() => {
-      const validPhmcData = phmcListData.filter(emp => emp && emp.name && typeof emp.name === 'string');
-      const validCoronerData = coronerListData.filter(emp => emp && emp.name && typeof emp.name === 'string');
+      let validPhmcData = phmcListData.filter(emp => emp && emp.name && typeof emp.name === 'string');
+      let validCoronerData = coronerListData.filter(emp => emp && emp.name && typeof emp.name === 'string');
+
+      if (isDevelopment) {
+          const devUser = { name: "GTAW User", rank: "Developer", badge: "DEV-01", discord: "Dev#0000" };
+          validPhmcData = [devUser, ...validPhmcData];
+          validCoronerData = [devUser, ...validCoronerData];
+      }
 
       // Helper to enrich employee data with firstname and lastname from OAuth if available
       const enrichEmployeeData = (employeeList, type) => { // Added type for clearer logs
@@ -333,7 +351,7 @@ export const FormHandler = () => {
     return formValues[employeeNameField];
   }, [formValues, employeeType]);
 
-  const { generatedBBCode, generatedTitle, showBBCode, setShowBBCode, generateBBCode } = useBbcodeGenerator(
+  const { generatedBBCode, generatedTitle, showBBCode, setShowBBCode, generateBBCode /*, limitWarning */ } = useBbcodeGenerator(
     selectedForm,
     formValues,
     finalSelectOptions,
@@ -413,16 +431,12 @@ export const FormHandler = () => {
   }, [autopsyAssistTargetField]);
 
   const sendBingoWebhook = useCallback(async (payload) => {
-    console.log("sendBingoWebhook called with payload:", payload);
-    // TODO: Implement actual webhook sending logic here
-    showNotification('Bingo webhook sent (dev mode)!', 'info');
-  }, [showNotification]);
+    await sendBingoNotification(payload);
+  }, []);
 
   const sendPhraseRequestWebhook = useCallback(async (payload) => {
-    console.log("sendPhraseRequestWebhook called with payload:", payload);
-    // TODO: Implement actual phrase request webhook sending logic here
-    showNotification('Phrase request webhook sent (dev mode)!', 'info');
-  }, [showNotification]);
+    await sendPhraseRequestNotification(payload);
+  }, []);
 
   const updateEmployeeCredentials = useCallback((employeeName, empType) => {
     const updates = {};
@@ -516,6 +530,12 @@ export const FormHandler = () => {
 
   const handleClearForm = useCallback(() => {
     console.log("[FormHandler] 🗑️ handleClearForm triggered.");
+    
+    // Last chance recovery save
+    if (selectedForm && Object.keys(formValues).length > 0) {
+        saveRecoveryReport(selectedForm, formValues);
+    }
+
     console.log("[FormHandler] Current State - Keep credentials:", keepCredentials, "Is Auth:", isAuthenticated, "Employee Type:", employeeType);
     
     const credentialFieldsToPreserve = [
@@ -554,7 +574,11 @@ export const FormHandler = () => {
   const copyAndSaveReport = useCallback(async () => {
     if (generatedBBCode) {
       const isCoronerEmail = selectedForm?.id === 'coroner_email' || selectedForm?.name === 'Coroner Email';
-      const saveResult = await saveNewReport(selectedForm, formValues, generatedTitle, generatedBBCode, { silent: isCoronerEmail });
+      
+      // Join multi-part BBCode with a separator for saving to database (keeping logic but it will be a string now)
+      const bbcodeToSave = Array.isArray(generatedBBCode) ? generatedBBCode.join('\n\n[PART_BREAK]\n\n') : generatedBBCode;
+      
+      const saveResult = await saveNewReport(selectedForm, formValues, generatedTitle, bbcodeToSave, { silent: isCoronerEmail });
       trackMetric('form_handler', `save_report_${selectedForm.name}`);
 
       if (saveResult?.success && isCoronerEmail) {
@@ -571,7 +595,13 @@ export const FormHandler = () => {
       }
 
       try {
-        await navigator.clipboard.writeText(generatedBBCode);
+        const textToCopy = Array.isArray(generatedBBCode) ? generatedBBCode[0] : generatedBBCode;
+        await navigator.clipboard.writeText(textToCopy);
+        if (Array.isArray(generatedBBCode)) {
+           showNotification('Report saved! Part 1 copied. Please copy other parts manually from the preview below.', 'info', 6000);
+        } else {
+           showNotification('Report saved and BBCode copied!', 'success');
+        }
       } catch (err) {
         console.error('Failed to copy BBCode: ', err);
         Sentry.captureException(err, { extra: { context: 'FormHandler - copyAndSaveReport clipboard' } });
@@ -587,6 +617,7 @@ export const FormHandler = () => {
       savedReports,
       isLoadingUserReports,
       loadUserSavedReports,
+      loadUserRecoveryReports,
       loadReportForUser
   } = useReportLoader();
 
@@ -1079,8 +1110,7 @@ export const FormHandler = () => {
               <EmsBingoModal
                 show={showEmsBingoModal}
                 onHide={() => setShowEmsBingoModal(false)}
-                phmcGroupedOptions={employeeOptions.find(group => group.label === 'PHMC Staff')?.options || []}
-                coronerGroupedOptions={employeeOptions.find(group => group.label === 'Coroner Staff')?.options || []}
+                allEmployeeGroupedOptions={employeeOptions}
                 currentPhmcEmployee={mainEmployeeName}
                 showNotification={showNotification}
                 setShowEmployeeModal={setShowEmployeeModal}
@@ -1097,6 +1127,7 @@ export const FormHandler = () => {
           showNotification={showNotification}
           reportsForSelectedUser={savedReports}
           onEmployeeSelect={loadUserSavedReports}
+          loadUserRecoveryReports={loadUserRecoveryReports}
           employeeOptions={employeeOptions}
           isLoadingReports={isLoadingUserReports}
           loadReport={handleLoadReport}
@@ -1351,12 +1382,18 @@ export const FormHandler = () => {
   </div>
 )}
           <button onClick={copyAndSaveReport} disabled={!generatedBBCode} className={`${formStyles.rightPanelButton} ${generatedBBCode ? formStyles.copy : ''}`}>
-            {generatedBBCode ? "Copy BBCode + Save" : "No BBCode Yet"}
+            {Array.isArray(generatedBBCode) ? `Copy Part 1 + Save (${generatedBBCode.length} Parts)` : (generatedBBCode ? "Copy BBCode + Save" : "No BBCode Yet")}
           </button>
 
 {generatedBBCode && (
   <>
-    {generatedTitle && (
+{/*     {limitWarning && (
+      <div className="alert alert-danger" style={{ marginBottom: '1rem', background: '#450a0a', border: '1px solid #991b1b', color: '#fca5a5', padding: '1rem', borderRadius: '8px' }}>
+        <i className="fas fa-exclamation-triangle" style={{ marginRight: '8px' }}></i>
+        <strong>{limitWarning}</strong>
+      </div>
+    )}
+ */}    {generatedTitle && (
       <div
         style={{
           background: "#0f172a",
@@ -1379,27 +1416,71 @@ export const FormHandler = () => {
       </div>
     )}
 
-    <FormQuickLinks form={selectedForm} formValues={formValues} agencyDataStore={agencyDataStore} />
+    <FormQuickLinks 
+      form={selectedForm} 
+      formValues={formValues} 
+      agencyDataStore={agencyDataStore} 
+      generatedBBCode={generatedBBCode}
+      generatedTitle={generatedTitle}
+    />
 
     {showBBCode && (
-      <pre 
-        style={{
-          background: "#0f172a",
-          padding: "1.5rem",
-          borderRadius: 12,
-          color: "#e2e8f0",
-          fontSize: "0.9rem",
-          maxHeight: "60vh",
-          overflow: "auto",
-          marginTop: "1rem",
-          whiteSpace: "pre-wrap",
-          cursor: "pointer"
-        }}
-        onClick={copyAndSaveReport}
-        title="Click to Copy BBCode + Save"
-      >
-        {generatedBBCode}
-      </pre>
+      Array.isArray(generatedBBCode) ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '1rem' }}>
+          {generatedBBCode.map((part, idx) => (
+            <div key={idx} style={{ background: '#0f172a', padding: '1rem', borderRadius: 12, border: '1px solid #1e293b' }}>
+               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <span style={{ color: '#a78bfa', fontWeight: 'bold', fontSize: '0.9rem' }}>PART {idx + 1} of {generatedBBCode.length}</span>
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(part);
+                      showNotification(`Part ${idx + 1} copied!`, 'success');
+                    }}
+                    style={{ padding: '6px 12px', fontSize: '0.8rem', background: '#4f46e5', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', fontWeight: '600' }}
+                  >
+                    <i className="fas fa-copy" style={{ marginRight: '6px' }}></i>
+                    Copy Part {idx + 1}
+                  </button>
+               </div>
+               <pre 
+                  style={{
+                    background: "#020617",
+                    padding: "1rem",
+                    borderRadius: 8,
+                    color: "#cbd5e1",
+                    fontSize: "0.85rem",
+                    maxHeight: "30vh",
+                    overflow: "auto",
+                    whiteSpace: "pre-wrap",
+                    margin: 0,
+                    border: '1px solid #0f172a'
+                  }}
+                >
+                  {part}
+                </pre>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <pre 
+          style={{
+            background: "#0f172a",
+            padding: "1.5rem",
+            borderRadius: 12,
+            color: "#e2e8f0",
+            fontSize: "0.9rem",
+            maxHeight: "60vh",
+            overflow: "auto",
+            marginTop: "1rem",
+            whiteSpace: "pre-wrap",
+            cursor: "pointer"
+          }}
+          onClick={copyAndSaveReport}
+          title="Click to Copy BBCode + Save"
+        >
+          {generatedBBCode}
+        </pre>
+      )
     )}
   </>
 )}        </div>

@@ -149,19 +149,25 @@ const checkForBingo = useCallback((currentMarkedSquares, currentPhrases, previou
         if (!selectedBingoType || !allEmployeeGroupedOptions) return [];
 
         let targetGroup = null;
+        let groupLabel = '';
         if (selectedBingoType.employeeGroup === 'PHMC') {
             targetGroup = allEmployeeGroupedOptions.find(group => group.label === 'PHMC Staff');
+            groupLabel = 'PHMC Staff';
         } else if (selectedBingoType.employeeGroup === 'Coroner') {
             targetGroup = allEmployeeGroupedOptions.find(group => group.label === 'Coroner Staff');
+            groupLabel = 'Coroner Staff';
         }
 
         if (!targetGroup) return []; // No matching group found
 
+        let options = targetGroup.options;
         if (selectedBingoType.employeeFilter.length > 0) {
             // Filter the options within the target group by rank
-            return targetGroup.options.filter(option => selectedBingoType.employeeFilter.includes(option.rank)); 
+            options = options.filter(option => selectedBingoType.employeeFilter.includes(option.rank)); 
         }
-        return targetGroup.options; // Return all options if no filter
+        
+        // Return as a grouped array to match EmployeeCredentialsSection expectations
+        return [{ label: groupLabel, options: options }];
     }, [selectedBingoType, allEmployeeGroupedOptions]);
 
     // MODIFIED: Effect to fetch master list of phrases from Firebase based on selected type
@@ -254,8 +260,8 @@ useEffect(() => {
         if (selectedBingoType && filteredGroupedOptions) {
             const employeeValue = formData[employeeNameField];
             if (employeeValue) {
-                const employeeOption = filteredGroupedOptions.flatMap(group => group.options)
-                    .find(option => option.value === employeeValue);
+                const employeeOption = filteredGroupedOptions.flatMap(group => group?.options || [])
+                    .find(option => option?.value === employeeValue);
                 if (employeeOption) {
                     setSelectedEmployee(employeeOption);
                 } else {
