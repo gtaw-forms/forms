@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Button, OverlayTrigger, Tooltip, Form } from 'react-bootstrap';
-import { Stage, Layer, Image as KonvaImage, Circle, Text, Group, Rect } from 'react-konva';
+import { Stage, Layer, Image as KonvaImage, Circle, Text, Group, Rect, Line, Transformer } from 'react-konva';
 import useImage from 'use-image';
 
 import malebodySilhouette from '../../assets/male-body-silhouette.jpg';
@@ -15,10 +15,9 @@ const modalOverlayStyle = {
 const modalContentStyle = {
     backgroundColor: '#0d1117', color: '#c9d1d9', padding: '20px',
     borderRadius: '8px',
-    width: '90%',
-    maxWidth: '1000px',
-    height: '90vh',
-    maxHeight: '95vh',
+    width: '95%',
+    maxWidth: '1400px',
+    height: '95vh',
     overflow: 'hidden',
     position: 'relative',
     border: '1px solid #30363d', boxShadow: '0 5px 15px rgba(0,0,0,0.3)',
@@ -47,15 +46,24 @@ const modalBodyStyle = {
     overflow: 'hidden',
     paddingTop: '10px',
 };
+const diagramMainLayout = {
+    display: 'flex',
+    flexDirection: 'row',
+    width: '100%',
+    flexGrow: 1,
+    overflow: 'hidden',
+    padding: '0 10px'
+};
 const imageContainerStyle = {
     position: 'relative',
-    width: '100%',
     flexGrow: 1,
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'auto',
-    marginBottom: '10px',
+    background: '#0d1117',
+    borderRadius: '8px',
+    border: '1px solid #334155',
 };
 const markerControlsStyle = {
     marginBottom: '15px',
@@ -74,9 +82,67 @@ const modalFooterStyle = {
 };
 // --- End Styles ---
 
+const DEFAULT_OVERRIDE_ZONES = [
+    { id: "arm-front-l-lower", x: 63.75, y: 328.21, width: 100, height: 150, rotation: 0, label: "ARM", color: "rgba(255, 165, 0, 0.3)" },
+    { id: "arm-front-l-upper", x: 73.41, y: 275.07, width: 100, height: 150, rotation: 0, label: "ARM", color: "rgba(255, 165, 0, 0.3)" },
+    { id: "shoulder-front-l", x: 85.00, y: 215.00, width: 70, height: 70, rotation: 0, label: "SHOULDER", color: "rgba(59, 130, 246, 0.3)" },
+    { id: "shoulder-front-r", x: 345.00, y: 215.00, width: 70, height: 70, rotation: 0, label: "SHOULDER", color: "rgba(59, 130, 246, 0.3)" },
+    { id: "hand-front-l", x: 19.07, y: 479.15, width: 100, height: 150, rotation: 0, label: "HAND", color: "rgba(0, 255, 0, 0.3)" },
+    { id: "hand-front-r", x: 384.96, y: 482.77, width: 100, height: 150, rotation: 0, label: "HAND", color: "rgba(0, 255, 0, 0.3)" },
+    { id: "arm-front-r-lower", x: 353.56, y: 334.24, width: 100, height: 150, rotation: 0, label: "ARM", color: "rgba(255, 165, 0, 0.3)" },
+    { id: "arm-front-r-upper", x: 334.24, y: 279.90, width: 100, height: 150, rotation: 0, label: "ARM", color: "rgba(255, 165, 0, 0.3)" },
+    { id: "hand-back-l", x: 533.49, y: 483.98, width: 100, height: 150, rotation: 0, label: "HAND", color: "rgba(0, 255, 0, 0.3)" },
+    { id: "hand-back-r", x: 896.96, y: 485.19, width: 100, height: 150, rotation: 0, label: "HAND", color: "rgba(0, 255, 0, 0.3)" },
+    { id: "arm-back-l-lower", x: 557.64, y: 336.66, width: 100, height: 150, rotation: 0, label: "ARM", color: "rgba(255, 165, 0, 0.3)" },
+    { id: "arm-back-l-upper", x: 578.17, y: 278.70, width: 100, height: 150, rotation: 0, label: "ARM", color: "rgba(255, 165, 0, 0.3)" },
+    { id: "shoulder-back-l", x: 585.00, y: 215.00, width: 70, height: 70, rotation: 0, label: "SHOULDER", color: "rgba(59, 130, 246, 0.3)" },
+    { id: "shoulder-back-r", x: 845.00, y: 215.00, width: 70, height: 70, rotation: 0, label: "SHOULDER", color: "rgba(59, 130, 246, 0.3)" },
+    { id: "arm-back-r-upper", x: 847.45, y: 272.66, width: 100, height: 150, rotation: 0, label: "ARM", color: "rgba(255, 165, 0, 0.3)" },
+    { id: "arm-back-r-lower", x: 876.43, y: 333.04, width: 100, height: 150, rotation: 0, label: "ARM", color: "rgba(255, 165, 0, 0.3)" }
+];
+
+const getAnatomicalRegion = (x, y, imgWidth, imgHeight, yBoundaries, overrideZones) => {
+    if (!imgWidth || !imgHeight) return "Unknown Region";
+    
+    // 1. Check custom override zones first
+    for (const zone of overrideZones) {
+        // Hit detection for zone coordinates
+        const dx = x - zone.x;
+        const dy = y - zone.y;
+        const rad = (zone.rotation || 0) * Math.PI / 180;
+        const localX = dx * Math.cos(-rad) - dy * Math.sin(-rad);
+        const localY = dx * Math.sin(-rad) + dy * Math.cos(-rad);
+
+        if (localX >= 0 && localX <= zone.width && localY >= 0 && localY <= zone.height) {
+            return { region: zone.label.toUpperCase(), isBack: x > imgWidth / 2 };
+        }
+    }
+
+    const relX = x / imgWidth;
+    const relY = y / imgHeight;
+
+    const isBack = relX > 0.5;
+
+    let region = "";
+    if (relY < yBoundaries.head) region = "HEAD";
+    else if (relY < yBoundaries.neck) region = "NECK";
+    else if (relY < yBoundaries.chest) region = "CHEST";
+    else if (relY < yBoundaries.abdomen) region = "ABDOMEN";
+    else if (relY < yBoundaries.genitalia) region = "GENITALIA";
+    else region = "LEG";
+
+    if (isBack && region !== "HEAD" && region !== "NECK" && region !== "LEG") {
+        region = "BACK";
+    }
+
+    return { region, isBack };
+};
+
 const getGroupedLabeledMarkers = (markers) => {
-    const labeledMarkers = markers.filter(m => m.label && m.label.trim() !== '');
+    if (!markers) return [];
+    const labeledMarkers = markers.filter(m => m && m.label && m.label.trim() !== '');
     const grouped = labeledMarkers.reduce((acc, marker) => {
+        if (!marker) return acc;
         const labelKey = marker.label.trim().toUpperCase();
         const groupKey = `${marker.type}-${labelKey}`;
 
@@ -89,8 +155,9 @@ const getGroupedLabeledMarkers = (markers) => {
 
     const result = [];
     Object.keys(grouped).sort().forEach(groupKey => {
-        grouped[groupKey].sort((a, b) => a.id.localeCompare(b.id));
+        grouped[groupKey].sort((a, b) => (a?.id || '').localeCompare(b?.id || ''));
         grouped[groupKey].forEach((marker, index) => {
+            if (!marker) return;
             const prefix = String.fromCharCode(65 + index);
             result.push({
                 ...marker,
@@ -107,8 +174,8 @@ const AutopsyDiagramModal = ({
     onHide,
     onSaveDiagram,
     initialMarkers = [],
+    initialSummaries = [],
     showNotification,
-    removeNotification,
     handleImageUpload
 }) => {
     const [markers, setMarkers] = useState([]);
@@ -118,44 +185,83 @@ const AutopsyDiagramModal = ({
     const [selectedSilhouetteType, setSelectedSilhouetteType] = useState('male');
     const [isProcessingImage, setIsProcessingImage] = useState(false);
     const [markerSizeMultiplier, setMarkerSizeMultiplier] = useState(1);
+    const [debugMode, setDebugMode] = useState(false);
+    const [selectedBoundaryKey, setSelectedBoundaryKey] = useState(null);
+    const [overrideZones, setOverrideZones] = useState(DEFAULT_OVERRIDE_ZONES);
+    const [selectedZoneId, setSelectedZoneId] = useState(null);
+    const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
+
+    const isLocal = window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1' || 
+                    window.location.hostname.startsWith('192.168.') || 
+                    window.location.hostname.startsWith('10.');
+
+    useEffect(() => {
+        if (!isLocal && debugMode) {
+            setDebugMode(false);
+        }
+    }, [isLocal, debugMode]);
+
+    useEffect(() => {
+        const handleResize = () => setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    const imageToLoad = selectedSilhouetteType === 'female' ? femalebodySilhouette : malebodySilhouette;
+    const [image, imageStatus] = useImage(imageToLoad);
+    
+    // Boundary States for Calibration
+    const [yBoundaries, setYBoundaries] = useState({
+        head: 0.171,
+        neck: 0.203,
+        chest: 0.349,
+        abdomen: 0.461,
+        genitalia: 0.526
+    });
+
+    const resetBoundaries = () => {
+        setYBoundaries({
+            head: 0.171,
+            neck: 0.203,
+            chest: 0.349,
+            abdomen: 0.461,
+            genitalia: 0.526
+        });
+        setSelectedBoundaryKey(null);
+        setOverrideZones(DEFAULT_OVERRIDE_ZONES);
+        setSelectedZoneId(null);
+        console.log("%c[DEBUG] Boundaries and Zones reset to calibrated defaults.", "color: #e74c3c; font-weight: bold;");
+    };
+
+    useEffect(() => {
+        if (!debugMode || !selectedBoundaryKey || !image) return;
+
+        const handleKeyDown = (e) => {
+            if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+            e.preventDefault();
+
+            const h = image.height;
+            const step = 1 / h; // 1 pixel step
+            const direction = e.key === 'ArrowUp' ? -1 : 1;
+
+            setYBoundaries(prev => {
+                const newVal = Math.max(0, Math.min(1, prev[selectedBoundaryKey] + (direction * step)));
+                const updated = { ...prev, [selectedBoundaryKey]: parseFloat(newVal.toFixed(4)) };
+                console.log(`%cDEBUG: REGION - ${selectedBoundaryKey.toUpperCase()} has been moved to ${updated[selectedBoundaryKey]}. These are the final areas:`, "color: #2ecc71; font-weight: bold;", updated);
+                return updated;
+            });
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [debugMode, selectedBoundaryKey, image]);
+
     const notificationIdRef = useRef(null);
 
     const imageContainerRef = useRef(null);
     const stageRef = useRef(null);
     const prevShowRef = useRef(show);
-
-    const imageToLoad = selectedSilhouetteType === 'female' ? femalebodySilhouette : malebodySilhouette;
-    const [image, imageStatus] = useImage(imageToLoad);
-
-    useEffect(() => {
-        if (show && !prevShowRef.current) {
-            if (showNotification) {
-                const message = (
-                    <>
-                        <strong>Warning:</strong> Resolutions above 1440p may cause marker placement issues. Dragging markers should work correctly.
-                        <hr />
-                        Instructions: Click on the diagram to add a marker. Click a marker to remove it. Double-click a marker to edit its label. Use the buttons below to change marker types and add labels.
-                    </>
-                );
-                notificationIdRef.current = showNotification(message, 'info', 0);
-            }
-            setMarkers(initialMarkers.map(marker => ({
-                ...marker,
-                label: marker.label || '',
-                labelSide: marker.labelSide || 'right',
-            })));
-            setEditingMarkerId(null);
-        }
-
-        if (!show && prevShowRef.current) {
-            if (notificationIdRef.current && removeNotification) {
-                removeNotification(notificationIdRef.current);
-                notificationIdRef.current = null;
-            }
-        }
-
-        prevShowRef.current = show;
-    }, [show, initialMarkers, showNotification, removeNotification]);
 
     useEffect(() => {
         if (editingMarkerId && stageRef.current && image) {
@@ -205,8 +311,15 @@ const AutopsyDiagramModal = ({
             return;
         }
 
+        if (debugMode) {
+            setSelectedBoundaryKey(null);
+            return;
+        }
+
         const stage = e.target.getStage();
         const pos = getRelativePointerPosition(stage);
+        const { region, isBack } = getAnatomicalRegion(pos.x, pos.y, image.width, image.height, yBoundaries, overrideZones);
+        const regionText = isBack ? `${region} (Back)` : region;
 
         const newMarker = {
             x: pos.x,
@@ -215,18 +328,32 @@ const AutopsyDiagramModal = ({
             id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
             label: '',
             labelSide: pos.x > image.width * 0.8 ? 'left' : 'right',
+            summary: `MARKER_TYPE to the region of ${regionText} (Marker: {LABEL}) `,
+            isCustomSummary: false,
         };
         setMarkers(prevMarkers => [...prevMarkers, newMarker]);
         setEditingMarkerId(newMarker.id);
     };
 
     const handleDragEnd = (e, id) => {
-        const newMarkers = markers.slice();
-        const marker = newMarkers.find(m => m.id === id);
-        if (marker) {
-            marker.x = e.target.x();
-            marker.y = e.target.y();
-        }
+        const stage = e.target.getStage();
+        const newMarkers = markers.map(marker => {
+            if (marker.id === id) {
+                const newX = e.target.x();
+                const newY = e.target.y();
+                const { region, isBack } = getAnatomicalRegion(newX, newY, image.width, image.height, yBoundaries, overrideZones);
+                const regionText = isBack ? `${region} (Back)` : region;
+
+                // Update summary if it's not custom
+                let newSummary = marker.summary;
+                if (!marker.isCustomSummary) {
+                    newSummary = `MARKER_TYPE to the region of ${regionText} (Marker: {LABEL}) `;
+                }
+
+                return { ...marker, x: newX, y: newY, summary: newSummary };
+            }
+            return marker;
+        });
         setMarkers(newMarkers);
     };
 
@@ -322,6 +449,13 @@ const AutopsyDiagramModal = ({
         setMarkers(newMarkers);
     };
 
+    const handleSummaryChange = (id, newSummary) => {
+        const newMarkers = markers.map(m => 
+            m.id === id ? { ...m, summary: newSummary, isCustomSummary: true } : m
+        );
+        setMarkers(newMarkers);
+    };
+
     const handleRemoveMarker = (markerIdToRemove) => {
         setMarkers(prevMarkers => prevMarkers.filter(marker => marker.id !== markerIdToRemove));
     };
@@ -345,7 +479,29 @@ const AutopsyDiagramModal = ({
                     imageUrl = uploadedUrls[0];
                 }
             }
-            onSaveDiagram(markers, imageUrl);
+            
+            const labeledMarkers = getGroupedLabeledMarkers(markers);
+            const summaries = markers.filter(m => m && m.id).map(m => {
+                if (m.isCustomSummary) return m.summary;
+                const markerWithDisplayLabel = labeledMarkers.find(lm => lm && lm.id === m.id);
+                const displayLabel = markerWithDisplayLabel?.displayLabel || m.label || 'None';
+
+                // Determine Marker Type from label
+                let markerType = 'Injury';
+                const upperLabel = (m.label || '').toUpperCase();
+                if (upperLabel.startsWith('GSW')) markerType = 'Gunshot Wound';
+                else if (upperLabel.startsWith('STAB')) markerType = 'Stab Wound';
+                else if (upperLabel.startsWith('LAC')) markerType = 'Laceration';
+                else if (upperLabel.startsWith('BLUNT')) markerType = 'Blunt Force Trauma';
+                else if (upperLabel.startsWith('BFT')) markerType = 'Blunt Force Trauma';
+                else if (m.label) markerType = m.label;
+
+                return m.summary
+                    .replace('MARKER_TYPE', markerType)
+                    .replace('{LABEL}', displayLabel);
+            }).filter(Boolean);
+
+            onSaveDiagram(markers, imageUrl, summaries);
             setIsProcessingImage(false);
         }
         onHide();
@@ -353,6 +509,176 @@ const AutopsyDiagramModal = ({
 
     const increaseMarkerSize = () => setMarkerSizeMultiplier(prev => prev + 0.25);
     const decreaseMarkerSize = () => setMarkerSizeMultiplier(prev => prev - 0.25);
+
+    const addOverrideZone = (label) => {
+        const newZone = {
+            id: `zone-${Date.now()}`,
+            x: image.width * 0.1,
+            y: image.height * 0.1,
+            width: 100,
+            height: 150,
+            rotation: 0,
+            label: label || 'ARM',
+            color: label === 'ARM' ? 'rgba(255, 165, 0, 0.3)' : 'rgba(0, 255, 0, 0.3)'
+        };
+        setOverrideZones([...overrideZones, newZone]);
+        setSelectedZoneId(newZone.id);
+    };
+
+    const renderDebugLines = () => {
+        if (!debugMode || !image) return null;
+        const w = image.width;
+        const h = image.height;
+        
+        const handleYDragEnd = (key, e) => {
+            // Calculate absolute Y by adding displacement to original position
+            const originalY = yBoundaries[key] * h;
+            const newY = (originalY + e.target.y()) / h;
+            const updated = { ...yBoundaries, [key]: Math.max(0, Math.min(1, parseFloat(newY.toFixed(3)))) };
+            setYBoundaries(updated);
+            console.log(`%cDEBUG: REGION - ${key.toUpperCase()} has been moved to ${updated[key]}. These are the final areas:`, "color: #f1c40f; font-weight: bold;", updated);
+            e.target.y(0); // Reset displacement offset after state update
+        };
+
+        const regions = [
+            { label: 'HEAD', start: 0, end: yBoundaries.head, color: 'rgba(255, 0, 0, 0.15)' },
+            { label: 'NECK', start: yBoundaries.head, end: yBoundaries.neck, color: 'rgba(0, 255, 0, 0.15)' },
+            { label: 'CHEST', start: yBoundaries.neck, end: yBoundaries.chest, color: 'rgba(0, 0, 255, 0.15)' },
+            { label: 'ABDOMEN', start: yBoundaries.chest, end: yBoundaries.abdomen, color: 'rgba(255, 255, 0, 0.15)' },
+            { label: 'GENITALIA', start: yBoundaries.abdomen, end: yBoundaries.genitalia, color: 'rgba(255, 0, 255, 0.15)' },
+            { label: 'LEGS', start: yBoundaries.genitalia, end: 1, color: 'rgba(0, 255, 255, 0.15)' },
+        ];
+
+        return (
+            <Group listening={debugMode}>
+                {/* Zone Visualizers (Shapes) */}
+                {regions.map((reg, idx) => (
+                    <Rect
+                        key={`zone-${idx}`}
+                        x={0}
+                        y={reg.start * h}
+                        width={w}
+                        height={(reg.end - reg.start) * h}
+                        fill={reg.color}
+                        listening={false}
+                    />
+                ))}
+
+                {/* Custom Override Zones */}
+                {overrideZones.map((zone, i) => (
+                    <React.Fragment key={zone.id}>
+                        <Rect
+                            name="override-zone"
+                            x={zone.x}
+                            y={zone.y}
+                            width={zone.width}
+                            height={zone.height}
+                            rotation={zone.rotation}
+                            fill={zone.color}
+                            stroke={selectedZoneId === zone.id ? '#3b82f6' : 'transparent'}
+                            strokeWidth={2}
+                            draggable
+                            onClick={() => setSelectedZoneId(zone.id)}
+                            onDragEnd={(e) => {
+                                const updated = overrideZones.map(z => 
+                                    z.id === zone.id ? { ...z, x: e.target.x(), y: e.target.y() } : z
+                                );
+                                setOverrideZones(updated);
+                                console.log("%c[DEBUG] Custom Zones Updated:", "color: #9b59b6; font-weight: bold;", updated);
+                            }}
+                            onTransformEnd={(e) => {
+                                const node = e.target;
+                                const updated = overrideZones.map(z => 
+                                    z.id === zone.id ? { 
+                                        ...z, 
+                                        x: node.x(), 
+                                        y: node.y(), 
+                                        width: Math.max(5, node.width() * node.scaleX()),
+                                        height: Math.max(5, node.height() * node.scaleY()),
+                                        rotation: node.rotation()
+                                    } : z
+                                );
+                                node.scaleX(1);
+                                node.scaleY(1);
+                                setOverrideZones(updated);
+                                console.log("%c[DEBUG] Custom Zones Transformed:", "color: #9b59b6; font-weight: bold;", updated);
+                            }}
+                        />
+                        <Text 
+                            text={zone.label} 
+                            x={zone.x} 
+                            y={zone.y - 20} 
+                            fill="black" 
+                            shadowColor="white" 
+                            shadowBlur={2} 
+                            fontSize={14} 
+                            fontWeight="bold" 
+                            listening={false}
+                            rotation={zone.rotation}
+                        />
+                        {selectedZoneId === zone.id && (
+                            <Transformer
+                                boundBoxFunc={(oldBox, newBox) => {
+                                    if (newBox.width < 5 || newBox.height < 5) return oldBox;
+                                    return newBox;
+                                }}
+                            />
+                        )}
+                    </React.Fragment>
+                ))}
+
+                {/* Draggable Boundary Handles */}
+                {Object.entries(yBoundaries).map(([key, y]) => {
+                    const isSelected = selectedBoundaryKey === key;
+                    return (
+                        <Group key={key}>
+                            <Line
+                                points={[0, y * h, w, y * h]}
+                                stroke={isSelected ? "#3b82f6" : "white"}
+                                strokeWidth={isSelected ? 14 : 10}
+                                opacity={isSelected ? 0.4 : 0.2}
+                            />
+                            <Line
+                                points={[0, y * h, w, y * h]}
+                                stroke={isSelected ? "#3b82f6" : "black"}
+                                strokeWidth={isSelected ? 4 : 3}
+                                dash={[10, 5]}
+                                opacity={1}
+                                draggable
+                                onClick={() => setSelectedBoundaryKey(key)}
+                                dragBoundFunc={(pos) => {
+                                    const stage = stageRef.current;
+                                    const stageY = stage.getAbsoluteTransform().decompose().y;
+                                    const constrainedY = Math.max(stageY, Math.min(stageY + stageDim.height, pos.y));
+                                    return { x: stage.getAbsoluteTransform().decompose().x, y: constrainedY };
+                                }}
+                                onDragStart={() => setSelectedBoundaryKey(key)}
+                                onDragEnd={(e) => handleYDragEnd(key, e)}
+                            />
+                        </Group>
+                    );
+                })}
+                
+                {/* Labels */}
+                {regions.map((reg, idx) => (
+                    <Text 
+                        key={`label-${idx}`}
+                        text={`${reg.label} (<${reg.end.toFixed(3)})`} 
+                        x={15} 
+                        y={reg.end * h - 25} 
+                        fill="black" 
+                        shadowColor="white" 
+                        shadowBlur={4} 
+                        fontSize={16} 
+                        fontWeight="bold" 
+                        listening={false} 
+                    />
+                ))}
+
+                <Line points={[w / 2, 0, w / 2, h]} stroke="black" strokeWidth={2} opacity={0.3} dash={[2, 2]} listening={false} />
+            </Group>
+        );
+    };
 
     const renderMarkers = () => {
         const labeledMarkers = getGroupedLabeledMarkers(markers);
@@ -363,8 +689,8 @@ const AutopsyDiagramModal = ({
         const baseCrossFontSize = 19;
         const baseLabelFontSize = 11;
 
-        return markers.map(marker => {
-            const markerWithDisplayLabel = labeledMarkers.find(m => m.id === marker.id);
+        return markers.filter(m => m && m.id).map(marker => {
+            const markerWithDisplayLabel = labeledMarkers.find(m => m && m.id === marker.id);
             const displayLabelText = markerWithDisplayLabel?.displayLabel || marker.label;
 
             return (
@@ -374,6 +700,16 @@ const AutopsyDiagramModal = ({
                     x={marker.x}
                     y={marker.y}
                     draggable
+                    dragBoundFunc={(pos) => {
+                        const stage = stageRef.current;
+                        const transform = stage.getAbsoluteTransform().copy().invert();
+                        const p = transform.point(pos);
+                        
+                        const constrainedX = Math.max(0, Math.min(image.width, p.x));
+                        const constrainedY = Math.max(0, Math.min(image.height, p.y));
+                        
+                        return stage.getAbsoluteTransform().point({ x: constrainedX, y: constrainedY });
+                    }}
                     onDragEnd={(e) => handleDragEnd(e, marker.id)}
                     onDblClick={() => setEditingMarkerId(marker.id)}
                     scaleX={1 / scale}
@@ -392,7 +728,7 @@ const AutopsyDiagramModal = ({
                          <Text text="X" fontSize={baseCrossFontSize * markerSizeMultiplier} fill="red" onClick={() => handleRemoveMarker(marker.id)} />
                     )}
 
-                    {displayLabelText && editingMarkerId !== marker.id && (() => {
+                    {displayLabelText && (() => {
                         const labelFontSize = baseLabelFontSize * markerSizeMultiplier;
                         const characterWidth = labelFontSize * 0.7;
                         const textWidth = displayLabelText.length * characterWidth;
@@ -431,18 +767,6 @@ const AutopsyDiagramModal = ({
 
     const lastLabeledMarker = markers.slice().reverse().find(m => m.label && m.label.trim() !== '');
     const isToggleLabelSideDisabled = !lastLabeledMarker;
-
-    const moreLabelButtons = [
-        { short: "BLUNT", full: "Blunt Force Trauma" },
-        { short: "BURN", full: "Burn Injury" },
-        { short: "LAC", full: "Laceration" },
-        { short: "FX", full: "Fracture" },
-        { short: "BITE", full: "Bite Mark" },
-        { short: "TSR", full: "Taser Probe Mark" },
-        { short: "CHEM", full: "Chemical Exposure" },
-        { short: "ENV", full: "Environmental Exposure" },
-        { short: "AMP", full: "Amputation" },
-    ];
 
     const stageDim = { width: 0, height: 0 };
     if (image && imageContainerRef.current && image.width > 0 && image.height > 0) {
@@ -488,83 +812,155 @@ const AutopsyDiagramModal = ({
 
                                 <Button variant={selectedMarkerType === 'circle' ? 'danger' : 'outline-danger'} size="sm" onClick={() => setSelectedMarkerType('circle')}>Circle (O)</Button>
                                 <Button variant={selectedMarkerType === 'cross' ? 'danger' : 'outline-danger'} size="sm" onClick={() => setSelectedMarkerType('cross')}>Cross (X)</Button>
-                                <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('GSW')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>GSW</Button>
-                                <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('STAB')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>STAB</Button>
-                                <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('UNK')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>UNK</Button>
-                                <Button variant="outline-light" size="sm" onClick={() => handleAddLabelToLastMarker('TRAUMA')} disabled={markers.length === 0} style={{fontSize: '0.75rem'}}>TRAUMA</Button>
-                                {moreLabelButtons.map(btn => (
-                                    <OverlayTrigger
-                                        key={btn.short}
-                                        placement="top"
-                                        overlay={<Tooltip id={`tooltip-${btn.short}`}>{btn.full}</Tooltip>}
-                                    >
-                                        <Button
-                                            variant="outline-light"
-                                            size="sm"
-                                            onClick={() => handleAddLabelToLastMarker(btn.short)}
-                                            disabled={markers.length === 0}
-                                            style={{ fontSize: '0.75rem' }}
-                                        >
-                                            {btn.short}
+                                
+                                {debugMode && (
+                                    <>
+                                        <Button variant="outline-info" size="sm" onClick={() => addOverrideZone('ARM')} style={{fontSize: '0.75rem'}}>
+                                            <i className="fas fa-plus"></i> ARM Zone
                                         </Button>
-                                    </OverlayTrigger>
-                                ))}
+                                        <Button variant="outline-success" size="sm" onClick={() => addOverrideZone('HAND')} style={{fontSize: '0.75rem'}}>
+                                            <i className="fas fa-plus"></i> HAND Zone
+                                        </Button>
+                                        <Button variant="outline-primary" size="sm" onClick={() => addOverrideZone('SHOULDER')} style={{fontSize: '0.75rem'}}>
+                                            <i className="fas fa-plus"></i> SHOULDER Zone
+                                        </Button>
+                                    </>
+                                )}
+
                                 <Button variant="outline-secondary" size="sm" onClick={handleToggleLastMarkerLabelSide} disabled={isToggleLabelSideDisabled} title="Toggle Last Label's Side">
                                     <i className={`fas fa-exchange-alt`}></i> Toggle Label Side
                                 </Button>
                                 <Button variant="outline-secondary" size="sm" onClick={handleUndoLastMarker} disabled={markers.length === 0}>Undo</Button>
                                 <Button variant="outline-warning" size="sm" onClick={handleClearAllMarkers} disabled={markers.length === 0}>Clear All</Button>
+                                
+                                {isLocal && (
+                                    <>
+                                        <Button variant={debugMode ? "warning" : "outline-warning"} size="sm" onClick={() => setDebugMode(!debugMode)}>
+                                            <i className="fas fa-bug"></i> {debugMode ? "Debug OFF" : "Debug Mode"}
+                                        </Button>
+                                        {debugMode && (
+                                            <Button variant="outline-danger" size="sm" onClick={resetBoundaries}>
+                                                <i className="fas fa-undo"></i> Reset Debug
+                                            </Button>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+
+                            <div style={{ 
+                                marginTop: '10px', 
+                                padding: '10px', 
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)', 
+                                borderRadius: '6px',
+                                borderLeft: '4px solid #3b82f6',
+                                fontSize: '0.85rem',
+                                textAlign: 'left',
+                                width: '100%',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '4px'
+                            }}>
+                                <div>
+                                    <i className="fas fa-info-circle" style={{ marginRight: '8px', color: '#3b82f6' }}></i>
+                                    <strong>Professional Resources:</strong> Use <a href="https://www.z-anatomy.com/" target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa', textDecoration: 'underline' }}>Z-Anatomy</a> for detailed anatomical references.
+                                </div>
+                                <div style={{ color: '#94a3b8', fontStyle: 'italic' }}>
+                                    <strong>Disclaimer:</strong> This tool is designed for roleplay purposes. We are playing a game, not a medical simulator.
+                                </div>
                             </div>
                         </div>
 
-                        <div ref={imageContainerRef} style={imageContainerStyle}>
-                            {imageStatus === 'loaded' ? (
-                                <Stage
-                                    ref={stageRef}
-                                    width={stageDim.width}
-                                    height={stageDim.height}
-                                    scaleX={stageDim.width / image.width}
-                                    scaleY={stageDim.height / image.height}
-                                    onClick={handleStageClick}
-                                >
-                                    <Layer>
-                                        <KonvaImage image={image} width={image.width} height={image.height} listening={false} />
-                                        {renderMarkers()}
-                                    </Layer>
-                                </Stage>
-                            ) : (
-                                <div>Loading image...</div>
-                            )}
-                            {inputPosition && (() => {
-                                const marker = markers.find(m => m.id === editingMarkerId);
-                                return (
-                                    <Form.Control
-                                        style={{
-                                            position: 'absolute',
-                                            top: `${inputPosition.top}px`,
-                                            left: `${inputPosition.left}px`,
-                                            width: '100px',
-                                            zIndex: 10,
-                                            backgroundColor: '#16202c',
-                                            color: '#eeeeeeb0',
-                                            borderColor: '#30363d',
-                                        }}
-                                        type="text"
-                                        value={marker?.label || ''}
-                                        onChange={(e) => handleLabelChange(editingMarkerId, e.target.value)}
-                                        onBlur={() => setEditingMarkerId(null)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                setEditingMarkerId(null);
-                                            }
-                                        }}
-                                        autoFocus
-                                        size="sm"
-                                    />
-                                )
-                            })()}
+                        <div style={diagramMainLayout}>
+                            <div ref={imageContainerRef} style={imageContainerStyle}>
+                                {imageStatus === 'loaded' ? (
+                                    <Stage
+                                        ref={stageRef}
+                                        width={stageDim.width}
+                                        height={stageDim.height}
+                                        scaleX={stageDim.width / image.width}
+                                        scaleY={stageDim.height / image.height}
+                                        onClick={handleStageClick}
+                                    >
+                                        <Layer>
+                                            <KonvaImage image={image} width={image.width} height={image.height} listening={false} />
+                                            {renderDebugLines()}
+                                            {renderMarkers()}
+                                        </Layer>
+                                    </Stage>
+                                ) : (
+                                    <div>Loading image...</div>
+                                )}
+                                {inputPosition && (() => {
+                                    const marker = markers.find(m => m.id === editingMarkerId);
+                                    if (!marker) return null;
+
+                                    const labeledMarkers = getGroupedLabeledMarkers(markers);
+                                    const markerWithDisplayLabel = labeledMarkers.find(lm => lm && lm.id === marker.id);
+                                    const displayLabel = markerWithDisplayLabel?.displayLabel || marker.label || 'None';
+                                    
+                                    // Determine Marker Type from label
+                                    let markerType = 'Injury';
+                                    const upperLabel = (marker.label || '').toUpperCase();
+                                    if (upperLabel.startsWith('GSW')) markerType = 'Gunshot Wound';
+                                    else if (upperLabel.startsWith('STAB')) markerType = 'Stab Wound';
+                                    else if (upperLabel.startsWith('LAC')) markerType = 'Laceration';
+                                    else if (upperLabel.startsWith('BLUNT')) markerType = 'Blunt Force Trauma';
+                                    else if (upperLabel.startsWith('BFT')) markerType = 'Blunt Force Trauma';
+                                    else if (marker.label) markerType = marker.label;
+
+                                    const displaySummary = marker.isCustomSummary 
+                                        ? marker.summary 
+                                        : marker.summary
+                                            .replace('MARKER_TYPE', markerType)
+                                            .replace('{LABEL}', displayLabel);
+
+                                    return (
+                                        <div 
+                                            style={{
+                                                position: 'absolute',
+                                                top: `${inputPosition.top}px`,
+                                                left: `${inputPosition.left}px`,
+                                                width: '220px',
+                                                zIndex: 10,
+                                                backgroundColor: '#16202c',
+                                                padding: '12px',
+                                                borderRadius: '8px',
+                                                border: '1px solid #3b82f6',
+                                                boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                                                textAlign: 'left'
+                                            }}
+                                            onClick={e => e.stopPropagation()}
+                                        >
+                                            <Form.Group className="mb-2">
+                                                <Form.Label style={{ color: '#94a3b8', fontSize: '0.75rem', marginBottom: '4px' }}>Marker Label</Form.Label>
+                                                <Form.Control
+                                                    size="sm"
+                                                    type="text"
+                                                    value={marker?.label || ''}
+                                                    onChange={(e) => handleLabelChange(editingMarkerId, e.target.value)}
+                                                    placeholder="e.g. GSW"
+                                                    style={{ backgroundColor: '#0d1117', color: '#e2e8f0', borderColor: '#334155' }}
+                                                    autoFocus
+                                                />
+                                            </Form.Group>
+                                            <Form.Group className="mb-3">
+                                                <Form.Label style={{ color: '#94a3b8', fontSize: '0.75rem', marginBottom: '4px' }}>Anatomic Summary</Form.Label>
+                                                <Form.Control
+                                                    size="sm"
+                                                    as="textarea"
+                                                    rows={3}
+                                                    value={displaySummary || ''}
+                                                    onChange={(e) => handleSummaryChange(editingMarkerId, e.target.value)}
+                                                    style={{ backgroundColor: '#0d1117', color: '#e2e8f0', borderColor: '#334155', fontSize: '0.8rem' }}
+                                                />
+                                            </Form.Group>
+                                            <div className="d-flex justify-content-end">
+                                                <Button size="sm" variant="primary" onClick={() => setEditingMarkerId(null)}>OK</Button>
+                                            </div>
+                                        </div>
+                                    )
+                                })()}
+                            </div>
                         </div>
                     </div>
                     <div style={modalFooterStyle}>

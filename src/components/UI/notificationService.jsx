@@ -127,7 +127,7 @@ export const sendBingoNotification = async ({ scorer, bingoType, phrase, lineNam
  * Sends a request for a new Bingo phrase.
  */
 export const sendPhraseRequestNotification = async ({ requester, phrase, bingoType }) => {
-    const webhookUrl = import.meta.env.VITE_BINGO_DISCORD_WEBHOOK_URL || import.meta.env.VITE_DEV_WEBHOOK;
+    const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
     
     const embedData = {
         title: "📈 New Bingo Phrase Request",

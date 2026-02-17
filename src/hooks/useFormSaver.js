@@ -20,6 +20,28 @@ const parseCaseNumber = (url) => {
     return match ? match[0] : '';
 };
 
+// Recursive helper to ensure no 'undefined' values are sent to Firebase
+const sanitizeForFirebase = (obj) => {
+    if (obj === null || typeof obj !== 'object') {
+        return obj === undefined ? null : obj;
+    }
+
+    if (Array.isArray(obj)) {
+        return obj.map(item => sanitizeForFirebase(item));
+    }
+
+    const sanitized = {};
+    Object.keys(obj).forEach(key => {
+        const value = obj[key];
+        if (value !== undefined) {
+            sanitized[key] = sanitizeForFirebase(value);
+        } else {
+            sanitized[key] = null; // Convert undefined to null
+        }
+    });
+    return sanitized;
+};
+
 // Function to format date to MM/DD/YYYY
 const formatToNorthAmericanDate = (isoDateTime) => {
     if (!isoDateTime) return 'NO_DATE';
@@ -218,7 +240,7 @@ export const useFormSaver = () => {
         const reportDataToSave = {
             formId: selectedForm.firebaseKey,
             formName: selectedForm.name,
-            data: formValues,
+            data: sanitizeForFirebase(formValues),
             timestamp: Date.now(),
             originalKey: finalTitle,
             authorName: currentAuthor,
@@ -314,5 +336,44 @@ export const useFormSaver = () => {
         }
     }, [gtaWorldUser, isGtaAuthenticated, showNotification, logWebhook]);
 
-    return { saveReport };
+    const saveRecoveryReport = useCallback(async (selectedForm, formValues) => {
+        if (!selectedForm || !formValues) return { success: false };
+
+        const currentAuthor = getCharacterName(gtaWorldUser);
+        if (!currentAuthor) return { success: false };
+
+        const sanitizedAuthorId = comprehensiveSanitize(currentAuthor);
+        const timestamp = Date.now();
+        const sanitizedKey = `RECOVERY_${selectedForm.firebaseKey || 'unknown'}_${timestamp}`;
+
+        const recoveryData = {
+            formId: selectedForm.firebaseKey || 'unknown',
+            formName: selectedForm.name || 'Unknown Form',
+            data: sanitizeForFirebase(formValues),
+            timestamp: timestamp,
+            originalKey: `[RECOVERY] ${selectedForm.name || 'Unknown'} - ${new Date(timestamp).toLocaleString()}`,
+            authorName: currentAuthor,
+            isRecovery: true
+        };
+
+        if (isGtaAuthenticated && gtaWorldUser) {
+            recoveryData.gtawUsername = gtaWorldUser.username;
+            recoveryData.gtawCharacterId = getCharacterID(gtaWorldUser);
+            recoveryData.gtawCharacterName = getCharacterName(gtaWorldUser);
+        }
+
+        const reportPath = `recoveredReports/${sanitizedAuthorId}/${sanitizedKey}`;
+
+        try {
+            const reportRef = ref(database, reportPath);
+            await set(reportRef, recoveryData);
+            console.log(`[useFormSaver] Recovery snapshot saved for ${currentAuthor} to ${reportPath}`);
+            return { success: true };
+        } catch (error) {
+            console.error("Error saving recovery report:", error);
+            return { success: false, error: error.message };
+        }
+    }, [gtaWorldUser, isGtaAuthenticated]);
+
+    return { saveReport, saveRecoveryReport };
 };

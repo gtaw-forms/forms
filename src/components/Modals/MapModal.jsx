@@ -616,20 +616,10 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
             if (markers.length === 1) {
                 locationName = markers[0].nearest + (markers[0].crossStreet ? ` & ${markers[0].crossStreet}` : "");
             } else {
-                // Group by street name
-                const streetCounts = {};
-                markers.forEach(m => {
-                    const street = formatDisplayName(m.nearest || "Unknown Location");
-                    streetCounts[street] = (streetCounts[street] || 0) + 1;
-                });
-
-                const parts = [];
-                Object.entries(streetCounts).forEach(([street, count]) => {
-                    const label = count === 1 ? "body" : "bodies";
-                    parts.push(`${count} ${label} on ${street}`);
-                });
-
-                locationName = parts.join(', ');
+                const count = markers.length;
+                const label = count === 1 ? "body" : "bodies";
+                const street = formatDisplayName(markers[0].nearest || "Unknown Location");
+                locationName = `${count} ${label} on ${street}`;
             }
 
             const formattedBBCode = `[url=${sU}]${locationName}[/url]`;

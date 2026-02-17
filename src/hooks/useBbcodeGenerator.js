@@ -8,6 +8,7 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
   const [generatedBBCode, setGeneratedBBCode] = useState("");
   const [generatedTitle, setGeneratedTitle] = useState("");
   const [showBBCode, setShowBBCode] = useState(false);
+  // const [limitWarning, setLimitWarning] = useState("");
 
 const formatToNorthAmericanDate = (isoDateTime) => {
     if (!isoDateTime) return 'NO_DATE';
@@ -76,500 +77,307 @@ const formatToNorthAmericanDate = (isoDateTime) => {
   const generateBBCode = useCallback(() => {
     if (!selectedForm?.template) {
       setGeneratedBBCode("");
-      setGeneratedTitle(""); // ← Correct setter
+      setGeneratedTitle(""); 
+      setLimitWarning("");
       return;
     }
 
-    // Process formValues to extract primitive values from select objects
-    const processedFormValues = Object.entries(formValues).reduce((acc, [key, value]) => {
-      if (
-        typeof value === 'object' &&
-        value !== null &&
-        !Array.isArray(value) && // Do not flatten arrays
-        Object.prototype.hasOwnProperty.call(value, 'value') &&
-        Object.prototype.hasOwnProperty.call(value, 'label')
-      ) {
-        acc[key] = value.value;
-      } else {
-        acc[key] = value;
+    const PHPBB_LIMIT = 60000;
+    const isMassFatality = selectedForm.firebaseKey === 'mass-ftality-test' || selectedForm.id === 'mass-fatality' || selectedForm.name?.toLowerCase().includes('mass fatality');
+
+    const performGeneration = (decedentsOverride = null) => {
+      // Process formValues to extract primitive values from select objects
+      const processedFormValues = Object.entries(formValues).reduce((acc, [key, value]) => {
+        if (
+          typeof value === 'object' &&
+          value !== null &&
+          !Array.isArray(value) && 
+          Object.prototype.hasOwnProperty.call(value, 'value') &&
+          Object.prototype.hasOwnProperty.call(value, 'label')
+        ) {
+          acc[key] = value.value;
+        } else {
+          acc[key] = value;
+        }
+        return acc;
+      }, {});
+
+      // Ensure all template variables are initialized
+      const placeholders = new Set(selectedForm.template.match(/\{\{([a-zA-Z0-9_]+)\}\}/g)?.map(p => p.replace(/[{}]/g, '')) || []);
+      placeholders.forEach(key => {
+        if (processedFormValues[key] === undefined) {
+          processedFormValues[key] = '';
+        }
+      });
+
+      // Normalize decedents if it's an object-based array
+      if (processedFormValues.decedents && typeof processedFormValues.decedents === 'object' && !Array.isArray(processedFormValues.decedents)) {
+          processedFormValues.decedents = Object.values(processedFormValues.decedents);
       }
-      return acc;
-    }, {});
-
-    // Ensure all template variables are initialized to prevent ReferenceErrors.
-    // This dynamically finds all `{{variable}}` placeholders in the template.
-    const placeholders = new Set(selectedForm.template.match(/\{\{([a-zA-Z0-9_]+)\}\}/g)?.map(p => p.replace(/[{}]/g, '')) || []);
-    placeholders.forEach(key => {
-      if (processedFormValues[key] === undefined) {
-        processedFormValues[key] = '';
+      
+      // Apply override if provided
+      if (decedentsOverride) {
+          processedFormValues.decedents = decedentsOverride;
       }
-    });
 
-    // Normalize decedents if it's an object-based array (Firebase quirk)
-    if (processedFormValues.decedents && typeof processedFormValues.decedents === 'object' && !Array.isArray(processedFormValues.decedents)) {
-        processedFormValues.decedents = Object.values(processedFormValues.decedents);
-    }
+      // Custom handling for request-medical-files form to inject OAuth names
+      if (selectedForm?.id === 'request-medical-files' && gtaWorldUser) {
+        let oauthFirstName = gtaWorldUser?.faction?.firstname || gtaWorldUser?.activeCharacter?.firstname || null;
+        let oauthLastName = gtaWorldUser?.faction?.lastname || gtaWorldUser?.activeCharacter?.lastname || null;
 
-    // Custom handling for request-medical-files form to inject OAuth names
-    if (selectedForm?.id === 'request-medical-files' && gtaWorldUser) {
-      let oauthFirstName = gtaWorldUser?.faction?.firstname || gtaWorldUser?.activeCharacter?.firstname || null;
-      let oauthLastName = gtaWorldUser?.faction?.lastname || gtaWorldUser?.activeCharacter?.lastname || null;
+        if ((!oauthFirstName || !oauthLastName) && processedFormValues.patientName) {
+          const patientNameParts = String(processedFormValues.patientName).trim().split(' ');
+          if (patientNameParts.length > 0) {
+            oauthFirstName = patientNameParts[0];
+            oauthLastName = patientNameParts.slice(1).join(' '); 
+          }
+        }
 
-      // If OAuth names are null/empty, try to derive from patientName if available in formValues
-      if ((!oauthFirstName || !oauthLastName) && processedFormValues.patientName) {
-        const patientNameParts = String(processedFormValues.patientName).trim().split(' ');
-        if (patientNameParts.length > 0) {
-          oauthFirstName = patientNameParts[0];
-          oauthLastName = patientNameParts.slice(1).join(' '); // Handle multi-word last names
+        if (oauthFirstName && !processedFormValues.patientFirstName) {
+          processedFormValues.patientFirstName = oauthFirstName;
+        }
+        if (oauthLastName && !processedFormValues.patientLastName) {
+          processedFormValues.patientLastName = oauthLastName;
         }
       }
 
-      if (oauthFirstName && !processedFormValues.patientFirstName) {
-        processedFormValues.patientFirstName = oauthFirstName;
+      if ((selectedForm?.name === 'Coroner Report' || selectedForm?.id === 'death-record') && !processedFormValues.placeOfDeath) {
+          if (Array.isArray(processedFormValues.decedents) && processedFormValues.decedents.length > 0) {
+              const firstDecedent = processedFormValues.decedents[0];
+              if (firstDecedent && firstDecedent.decedentLocation) {
+                  processedFormValues.placeOfDeath = firstDecedent.decedentLocation;
+              }
+          }
       }
-      if (oauthLastName && !processedFormValues.patientLastName) {
-        processedFormValues.patientLastName = oauthLastName;
-      }
-    }
 
-    // Custom handling for 'Coroner Report' / 'death-record' to map decedent location to placeOfDeath
-    if ((selectedForm?.name === 'Coroner Report' || selectedForm?.id === 'death-record') && !processedFormValues.placeOfDeath) {
-        if (Array.isArray(processedFormValues.decedents) && processedFormValues.decedents.length > 0) {
-            const firstDecedent = processedFormValues.decedents[0];
-            if (firstDecedent && firstDecedent.decedentLocation) {
-                processedFormValues.placeOfDeath = firstDecedent.decedentLocation;
+      let bbcode = selectedForm.template;
+      let finalTitle = "";
+
+      const ctx = { ...processedFormValues };
+      ctx.formData = ctx;
+      ctx.generateDecedentBBCode = (arr) => generateDecedentBBCode(arr, finalSelectOptions);
+
+      const decedents_bbcode = generateDecedentBBCode(processedFormValues.decedents, finalSelectOptions);
+      bbcode = bbcode.replace('{{decedents_array_bbcode}}', decedents_bbcode);
+
+      const addFallback = (src, target) => {
+        if (processedFormValues[src] !== undefined && ctx[target] === undefined) ctx[target] = processedFormValues[src];
+      };
+      addFallback('patientName', 'PatientName'); addFallback('PatientName', 'patientName');
+      addFallback('employeeName', 'EmployeeName'); addFallback('EmployeeName', 'employeeName');
+      addFallback('phmcEmployee', 'PHMCEmployee'); addFallback('PHMCEmployee', 'phmcEmployee');
+      addFallback('coronerEmployee', 'CoronerEmployee'); addFallback('CoronerEmployee', 'coronerEmployee');
+
+      if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email") {
+        let decedentName = processedFormValues.decedentName || processedFormValues.patientName || "UNKNOWN DECEDENT";
+        const decedentOOC = processedFormValues.decedentOOC || "N/A";
+        const cleanedDecedentNameMatch = String(decedentName).match(/^(.*?)(?:\s*\(.*|\s*\[.*)/);
+        if (cleanedDecedentNameMatch && cleanedDecedentNameMatch[1]) {
+          decedentName = cleanedDecedentNameMatch[1].trim();
+        }
+        finalTitle = `Coroner Report - ${decedentName} ((${decedentOOC}))`;
+      }
+      else if (selectedForm.firebaseKey === 'mass-ftality-test' || selectedForm.id === 'mass-fatality' || selectedForm.name?.toLowerCase().includes('mass fatality')) {
+        const decedentCounts = {};
+        let totalDecedents = 0;
+        if (Array.isArray(processedFormValues.decedents)) {
+          totalDecedents = processedFormValues.decedents.length;
+          processedFormValues.decedents.forEach((d) => {
+            const name = (d.decedentName || '').trim();
+            if (name) {
+              decedentCounts[name] = (decedentCounts[name] || 0) + 1;
             }
+          });
         }
-    }
-
-    let bbcode = selectedForm.template;
-    let finalTitle = "";
-
-    const ctx = { ...processedFormValues };
-    ctx.formData = ctx;
-    ctx.generateDecedentBBCode = (arr) => generateDecedentBBCode(arr, finalSelectOptions);
-
-    // Directly generate and replace the decedents BBCode
-    const decedents_bbcode = generateDecedentBBCode(processedFormValues.decedents, finalSelectOptions);
-    console.log("Generated Decedents BBCode:", decedents_bbcode);
-    bbcode = bbcode.replace('{{decedents_array_bbcode}}', decedents_bbcode);
-
-    // Fallback aliases
-    const addFallback = (src, target) => {
-      if (processedFormValues[src] !== undefined && ctx[target] === undefined) ctx[target] = processedFormValues[src];
-    };
-    addFallback('patientName', 'PatientName'); addFallback('PatientName', 'patientName');
-    addFallback('employeeName', 'EmployeeName'); addFallback('EmployeeName', 'employeeName');
-    addFallback('phmcEmployee', 'PHMCEmployee'); addFallback('PHMCEmployee', 'phmcEmployee');
-    addFallback('coronerEmployee', 'CoronerEmployee'); addFallback('CoronerEmployee', 'coronerEmployee');
-
-    // ===================================================================
-    // TITLE GENERATION
-    // ===================================================================
-    console.log("%cTITLE GENERATION PHASE", "font-weight:bold;color:#d35400;font-size:14px");
-
-if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email") {
-      let decedentName = processedFormValues.decedentName || processedFormValues.patientName || "UNKNOWN DECEDENT";
-      const decedentOOC = processedFormValues.decedentOOC || "N/A";
-
-      // NEW: Clean decedentName if it contains OOC info/dates
-      const cleanedDecedentNameMatch = String(decedentName).match(/^(.*?)(?:\s*\(.*|\s*\[.*)/);
-      if (cleanedDecedentNameMatch && cleanedDecedentNameMatch[1]) {
-        decedentName = cleanedDecedentNameMatch[1].trim();
+        const namesList = Object.entries(decedentCounts)
+          .map(([n, c]) => c > 1 ? `${n} (x${c})` : n)
+          .join(' | ') || 'No Decedents Listed';
+        const dateStr = formatToNorthAmericanDate(processedFormValues.dateTime) || 'NO_DATE';
+        
+        const reportType = totalDecedents >= 4 ? 'Mass Fatality' : 'Multi Fatality';
+        finalTitle = `[${reportType} Report] ${namesList} - ${dateStr}`;
       }
-
-      finalTitle = `Coroner Report - ${decedentName} ((${decedentOOC}))`;
-
-    }
-        else if (selectedForm.firebaseKey === 'mass-ftality-test' || selectedForm.id === 'mass-fatality') {
-      const decedentCounts = {};
-      let validCount = 0;
-
-      if (Array.isArray(processedFormValues.decedents)) {
-        processedFormValues.decedents.forEach((d, i) => {
-          const name = (d.decedentName || '').trim();
-          if (name) {
-            decedentCounts[name] = (decedentCounts[name] || 0) + 1;
-            validCount++;
+      else if (selectedForm.firebaseKey === 'death-record' || selectedForm.id === 'death-record' || selectedForm.name === 'Death Record') {
+        const year = new Date().getFullYear();
+        const caseNum = parseCaseNumber(processedFormValues.deathReportPostId) || parseCaseNumber(processedFormValues.caseNumber) || 'UNKNOWN';
+        const name = processedFormValues.decedentName || 'UNKNOWN_NAME';
+        const ooc = processedFormValues.decedentOOC || 'N/A';
+        const dod = formatToMMM_DD_YYYY(processedFormValues.dateOfDeath || processedFormValues.dateTime || processedFormValues.formattedDateOfDeath);
+        finalTitle = `[CASE #${year}-${caseNum}] ${name} ((${ooc})) | ${dod}`;
+      }
+      else if (selectedForm.titleGeneratorCode) {
+        let workingTitle = selectedForm.titleGeneratorCode;
+        selectedForm.fields?.forEach(field => {
+          const placeholder = `{{${field.name}}}`;
+          if (workingTitle.includes(placeholder)) {
+            let value = processedFormValues[field.name] ?? "";
+            if (field.type === "image_upload" && value) value = `[img]${value}[/img]`;
+            else if (field.type === "checkbox") value = value ? "Yes" : "No";
+            else if (field.type === "multi_select" && Array.isArray(value)) value = value.join(", ");
+            else if (["date", "dateTime", "pronouncedTimeOfDeath"].includes(field.name)) {
+              value = formatToNorthAmericanDate(value) || value || "NO_DATE";
+            }
+            workingTitle = workingTitle.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), String(value || ""));
           }
         });
-      }
-
-      const namesList = Object.entries(decedentCounts)
-        .map(([n, c]) => c > 1 ? `${n} (x${c})` : n)
-        .join(' | ') || 'No Decedents Listed';
-
-      const dateStr = formatToNorthAmericanDate(processedFormValues.dateTime) || 'NO_DATE';
-
-      finalTitle = `[Mass Fatality Report] ${namesList} - ${dateStr}`;
-    }
-    else if (selectedForm.firebaseKey === 'death-record' || selectedForm.id === 'death-record' || selectedForm.name === 'Death Record') {
-      const year = new Date().getFullYear();
-      const caseNum = parseCaseNumber(processedFormValues.deathReportPostId) || parseCaseNumber(processedFormValues.caseNumber) || 'UNKNOWN';
-      const name = processedFormValues.decedentName || 'UNKNOWN_NAME';
-      const ooc = processedFormValues.decedentOOC || 'N/A';
-      const dod = formatToMMM_DD_YYYY(processedFormValues.dateOfDeath || processedFormValues.dateTime || processedFormValues.formattedDateOfDeath);
-
-      finalTitle = `[CASE #${year}-${caseNum}] ${name} ((${ooc})) | ${dod}`;
-    }
-    
-    else if (selectedForm.titleGeneratorCode) {
-      let workingTitle = selectedForm.titleGeneratorCode;
-
-      selectedForm.fields?.forEach(field => {
-        const placeholder = `{{${field.name}}}`;
-        if (workingTitle.includes(placeholder)) {
-          let value = processedFormValues[field.name] ?? "";
-
-          // Handle special types
-          if (field.type === "image_upload" && value) value = `[img]${value}[/img]`;
-          else if (field.type === "checkbox") value = value ? "Yes" : "No";
-          else if (field.type === "multi_select" && Array.isArray(value)) value = value.join(", ");
-          else if (["date", "dateTime", "pronouncedTimeOfDeath"].includes(field.name)) {
-            value = formatToNorthAmericanDate(value) || value || "NO_DATE";
+        const fallbackTitleReplacements = {
+          '{{patientName}}': processedFormValues.patientName || processedFormValues.decedentName || "NO_NAME",
+          '{{PatientName}}': processedFormValues.patientName || processedFormValues.decedentName || "NO_NAME",
+          '{{phmcEmployee}}': processedFormValues.phmcEmployee || "",
+          '{{date}}': formatToNorthAmericanDate(processedFormValues.dateTime || processedFormValues.date) || "NO_DATE",
+          '{{year}}': new Date().getFullYear(),
+        };
+        Object.entries(fallbackTitleReplacements).forEach(([ph, val]) => {
+          if (workingTitle.includes(ph)) {
+            workingTitle = workingTitle.replace(new RegExp(ph.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), String(val));
           }
+        });
+        finalTitle = workingTitle;
+      }
 
-
-          const safeValue = String(value || "");
-          workingTitle = workingTitle.replace(
-            new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
-            safeValue
-          );
+      bbcode = bbcode.replace(/\[cb:([^\]]+)\]([^\r\n]*)(\r?\n)?/g, (match, fieldName, text, newline) => {
+        const field = fieldName.trim();
+        const option = text.trim();
+        const value = processedFormValues[field];
+        let comparisonValue = value;
+        if (typeof value === 'object' && value !== null && Object.prototype.hasOwnProperty.call(value, 'value')) {
+            comparisonValue = value.value;
         }
-      });
-      // Fallback: also replace common known common ones even if not in fields list
-      const fallbackTitleReplacements = {
-        '{{patientName}}': processedFormValues.patientName || processedFormValues.decedentName || "NO_NAME",
-        '{{PatientName}}': processedFormValues.patientName || processedFormValues.decedentName || "NO_NAME",
-        '{{patientID}}': processedFormValues.patientID || "NO_ID",
-        '{{phmcEmployee}}': processedFormValues.phmcEmployee || "",
-        '{{date}}': formatToNorthAmericanDate(processedFormValues.dateTime || processedFormValues.date) || "NO_DATE",
-        '{{agency}}': processedFormValues.agency || "",
-        '{{year}}': new Date().getFullYear(),
-      };
-
-      Object.entries(fallbackTitleReplacements).forEach(([ph, val]) => {
-        if (workingTitle.includes(ph)) {
-          workingTitle = workingTitle.replace(
-            new RegExp(ph.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
-            String(val)
-          );
-        }
-      });
-
-      finalTitle = workingTitle;
-      console.log("%cFINAL TITLE → " + finalTitle, "color:#2ecc71;font-weight:bold;background:#000;padding:2px 6px");
-      
-    }    // ===================================================================    
-    // 1. CHECKBOXES WITH OPTIONS (e.g., [cb:fieldName]Option[/cb], [cb:fieldName])
-    // ===================================================================
-
-    bbcode = bbcode.replace(/\[cb:([^\]]+)\]([^\r\n]*)(\r?\n)?/g, (match, fieldName, text, newline) => {
-      const field = fieldName.trim();
-      const option = text.trim();
-      if (!field || !option) return match;
-
-      const value = processedFormValues[field];
-      let comparisonValue = value;
-
-      if (typeof value === 'object' && value !== null && Object.prototype.hasOwnProperty.call(value, 'value')) {
-          comparisonValue = value.value;
-      }
-
-      let isSelected = false;
-      if (Array.isArray(comparisonValue)) {
-        isSelected = comparisonValue.map(v => String(v).trim()).includes(option);
-      } else {
-        isSelected = String(comparisonValue || '').trim() === option;
-      }
-      
-      const replacementTag = isSelected ? `[cbc]` : `[cb]`;
-      const trailingNewline = newline || '';
-      return `${replacementTag} ${option}${trailingNewline}`;
-    });
-
-    bbcode = bbcode.replace(/\[cb:([^\]]+)\]/gi, (match, fieldName) => {
-      const field = fieldName.trim();
-      const value = processedFormValues[field];
-      const hasValue = value && (!Array.isArray(value) || value.length > 0);
-      return hasValue ? "[cbc]" : "[cb]";
-    });
-
-    // ──────────────────────────────────────────────────────────────
-    // 4. CONDITIONAL BLOCKS - FIELD PRESENCE ONLY (e.g., [conditional field="someField"])
-    // ──────────────────────────────────────────────────────────────
-    bbcode = bbcode.replace(/\[conditional\s+field=["']?([^"'\]\s]+)["']?\](.*?)\[\/conditional\]/gis, (match, fieldName, inner) => {
-      const field = fieldName.trim();
-      const currentValue = processedFormValues[field];
-      
-      let conditionMet = false;
-      if (typeof currentValue === 'object' && currentValue !== null && Object.prototype.hasOwnProperty.call(currentValue, 'confirmedAt')) {
-        // Special handling for payment confirmation objects
-        conditionMet = !!currentValue.confirmedAt;
-      } else {
-        // General truthiness check for other fields
-        conditionMet = !!currentValue;
-      }
-      
-      return conditionMet ? inner.trim() : '';
-    });
-
-    // ──────────────────────────────────────────────────────────────
-    // 5. CONDITIONAL BLOCKS - FIELD AND VALUE MATCHING (e.g., [conditional field="someField" value="expectedValue"])
-    // ──────────────────────────────────────────────────────────────
-    bbcode = bbcode.replace(/\[conditional\s+field=["']?([^"'\]\s]+)["']?\s+value=["']?([^"'\]]+)["']?\](.*?)\[\/conditional\]/gis, (match, fieldName, expectedValue, inner) => {
-      const field = fieldName.trim();
-      const expected = expectedValue.trim();
-      const currentValue = processedFormValues[field];
-
-  // Handle checkbox booleans properly
-  let actualValue = currentValue;
-  if (typeof currentValue === 'string') {
-    actualValue = currentValue.toLowerCase() === 'true' ? true : 
-                   currentValue.toLowerCase() === 'false' ? false : 
-                   currentValue;
-  }
-
-  const expectedNormalized = expected.toLowerCase() === 'true' ? true :
-                             expected.toLowerCase() === 'false' ? false :
-                             expected;
-
-  const conditionMet = Array.isArray(actualValue)
-    ? actualValue.map(v => String(v)).includes(String(expectedNormalized))
-    : actualValue == expectedNormalized; // loose equality to handle string "true" vs boolean true
-
-
-  return conditionMet ? inner.trim() : '';
-});
-    // ──────────────────────────────────────────────────────────────
-    // 4.5. FIELD WITH PLACEHOLDER (e.g., {{fieldName|Placeholder Text}})
-    // ──────────────────────────────────────────────────────────────
-    bbcode = bbcode.replace(/\{\{([a-zA-Z0-9_]+)\|((?:(?!}}).)+)\}\}/g, (match, key, placeholderText) => {
-        const value = processedFormValues[key];
-        let replacement = '';
-        
-        // Determine if we should use the value or the placeholder
-        // Treating null, undefined, empty string, false, and empty arrays as "empty"
-        const isEmpty = value === null || 
-                        value === undefined || 
-                        value === '' || 
-                        value === false || 
-                        (Array.isArray(value) && value.length === 0);
-
-        if (isEmpty) {
-            replacement = placeholderText;
-            console.debug(`[BbcodeGenerator] Field '${key}' is empty/false. Using placeholder: '${placeholderText}'`);
+        let isSelected = false;
+        if (Array.isArray(comparisonValue)) {
+          isSelected = comparisonValue.map(v => String(v).trim()).includes(option);
         } else {
-             // Logic matched from Section 5 for formatting
-            replacement = String(value);
-            const field = selectedForm.fields?.find(f => f.name === key);
-
-            if (field) {
-                if ((field.type === "image" || field.type === "image_upload") && value) {
-                     // Image formatting logic
-                    const isImageUrl = (url) => typeof url === 'string' && /\.(jpg|jpeg|png|gif|webp)$/i.test(url.trim());
-                    const formatItem = (item) => (typeof item === 'string' && isImageUrl(item)) ? `[img]${item}[/img]` : (item || '');
-                    
-                    if (Array.isArray(value)) {
-                        replacement = value.map(formatItem).filter(Boolean).join('\n');
-                    } else if (typeof value === 'string') {
-                        replacement = formatItem(value);
-                    }
-                }
-                else if (field.type === "checkbox" && typeof value === "boolean") {
-                    replacement = value ? "Yes" : "No";
-                } 
-                else if (field.type === "multi_select" && Array.isArray(value)) {
-                    replacement = value.join(", ");
-                }
-                else if (field.type === "dynamic_text_list" && Array.isArray(value)) {
-                    const items = value.filter(val => val && String(val).trim() !== "");
-                    if (items.length > 0) {
-                        if (field.listType === "none") {
-                            replacement = items.join("\n");
-                        } else {
-                            const listOpen = (field.listType && field.listType !== "") ? `[list=${field.listType}]` : "[list]";
-                            replacement = `${listOpen}\n[*]${items.join("\n[*]")}\n[/list]`;
-                        }
-                    } else {
-                        replacement = "";
-                    }
-                }
-                else if (["dateTime", "pronouncedTimeOfDeath"].includes(field.name)) {
-                    replacement = String(value).split("T")[0] || String(value);
-                }
-                else if (field.type === "medicine_block" && value && typeof value === 'object') {
-                    const prescribedText = value.prescribed || "None";
-                    let proofImages = "";
-                    if (Array.isArray(value.proof) && value.proof.length > 0) {
-                        proofImages = "\n" + value.proof.map(url => `[img]${url}[/img]`).join("\n");
-                    }
-                    replacement = `${prescribedText}${proofImages}`;
-                }
-            }
-             // Handle objects (like payment buttons)
-            if (typeof value === 'object' && value !== null && !Array.isArray(value) && Object.prototype.hasOwnProperty.call(value, 'confirmedAt')) {
-                replacement = String(value.confirmedAt);
-            }
+          isSelected = String(comparisonValue || '').trim() === option;
         }
-        return replacement;
-    });
+        return `${isSelected ? `[cbc]` : `[cb]`} ${option}${newline || ''}`;
+      });
 
-    // ──────────────────────────────────────────────────────────────
-    // 5. FIELD REPLACEMENT — NOW BASED ON VALUES, NOT FIELD DEFS
-    // ──────────────────────────────────────────────────────────────
-    Object.keys(processedFormValues).forEach(key => {
-        const placeholder = `{{${key}}}`;
-        if (!bbcode.includes(placeholder)) return;
+      bbcode = bbcode.replace(/\[cb:([^\]]+)\]/gi, (match, fieldName) => {
+        const value = processedFormValues[fieldName.trim()];
+        return (value && (!Array.isArray(value) || value.length > 0)) ? "[cbc]" : "[cb]";
+      });
 
-        const value = processedFormValues[key];
-        const escaped = placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        let replacement = String(value ?? ''); // Default to string representation
+      bbcode = bbcode.replace(/\[conditional\s+field=["']?([^"'\]\s]+)["']?\](.*?)\[\/conditional\]/gis, (match, fieldName, inner) => {
+        const currentValue = processedFormValues[fieldName.trim()];
+        let conditionMet = (typeof currentValue === 'object' && currentValue !== null && Object.prototype.hasOwnProperty.call(currentValue, 'confirmedAt')) ? !!currentValue.confirmedAt : !!currentValue;
+        return conditionMet ? inner.trim() : '';
+      });
 
-        // Find the field definition to apply special formatting if it exists
-        const field = selectedForm.fields?.find(f => f.name === key);
+      bbcode = bbcode.replace(/\[conditional\s+field=["']?([^"'\]\s]+)["']?\s+value=["']?([^"'\]]+)["']?\](.*?)\[\/conditional\]/gis, (match, fieldName, expectedValue, inner) => {
+        const actualValue = processedFormValues[fieldName.trim()];
+        const expected = expectedValue.trim();
+        const conditionMet = Array.isArray(actualValue) ? actualValue.map(v => String(v)).includes(String(expected)) : String(actualValue) == String(expected);
+        return conditionMet ? inner.trim() : '';
+      });
 
-        if (field) {
-            if ((field.type === "image" || field.type === "image_upload") && value) {
-                const isImageUrl = (url) => {
-                    if (typeof url !== 'string') return false;
-                    return /\.(jpg|jpeg|png|gif|webp)$/i.test(url.trim());
-                };
-                const formatItem = (item) => {
-                    if (typeof item === 'string' && isImageUrl(item)) {
-                        return `[img]${item}[/img]`;
-                    }
-                    return item || '';
-                };
-                if (Array.isArray(value)) {
-                    replacement = value.map(formatItem).filter(Boolean).join('\n');
-                } else if (typeof value === 'string') {
-                    replacement = formatItem(value);
-                }
-            }
-            else if (field.type === "checkbox" && typeof value === "boolean") {
-                replacement = value ? "Yes" : "No";
-            } 
-            else if (field.type === "multi_select" && Array.isArray(value)) {
-                replacement = value.join(", ");
-            }
-            else if (field.type === "dynamic_text_list" && Array.isArray(value)) {
-                const items = value.filter(val => val && String(val).trim() !== "");
-                if (items.length > 0) {
-                    if (field.listType === "none") {
-                        replacement = items.join("\n");
-                    } else {
-                        const listOpen = (field.listType && field.listType !== "") ? `[list=${field.listType}]` : "[list]";
-                        replacement = `${listOpen}\n[*]${items.join("\n[*]")}\n[/list]`;
-                    }
-                } else {
-                    replacement = "";
-                }
-            }
-            else if (["dateTime", "pronouncedTimeOfDeath"].includes(field.name)) {
-                replacement = String(value).split("T")[0] || String(value);
-            }
-            else if (field.name === "formattedDateOfDeath") {
-                replacement = formatToMMM_DD_YYYY(value);
-            }
-            else if (field.name === "caseNumber") {
-                const url = String(value).trim();
-                const caseId = parseCaseNumber(url);
-                // If the input looks like a URL (starts with http) and we found a caseId, wrap it
-                if (url.startsWith('http') && caseId) {
-                    replacement = `[url=${url}]${caseId}[/url]`;
-                } else {
-                    replacement = caseId || url; // Fallback to just the ID or original text
-                }
-            }
-            else if (field.type === "medicine_block" && value && typeof value === 'object') {
-                const prescribedText = value.prescribed || "None";
-                let proofImages = "";
-                if (Array.isArray(value.proof) && value.proof.length > 0) {
-                    proofImages = "\n" + value.proof.map(url => `[img]${url}[/img]`).join("\n");
-                }
-                replacement = `${prescribedText}${proofImages}`;
-            }
-        }        
-        // This handles cases where value is an object, like from payment buttons
-        if (typeof value === 'object' && value !== null && !Array.isArray(value) && Object.prototype.hasOwnProperty.call(value, 'confirmedAt')) {
-            replacement = String(value.confirmedAt);
-        }
+      bbcode = bbcode.replace(/\{\{([a-zA-Z0-9_]+)\|((?:(?!}}).)+)\}\}/g, (match, key, placeholderText) => {
+          const value = processedFormValues[key];
+          const isEmpty = value === null || value === undefined || value === '' || value === false || (Array.isArray(value) && value.length === 0);
+          if (isEmpty) return placeholderText;
+          
+          let replacement = String(value);
+          const field = selectedForm.fields?.find(f => f.name === key);
+          if (field) {
+              if ((field.type === "image" || field.type === "image_upload") && value) {
+                  const formatItem = (item) => (typeof item === 'string' && /\.(jpg|jpeg|png|gif|webp)$/i.test(item.trim())) ? `[img]${item}[/img]` : (item || '');
+                  replacement = Array.isArray(value) ? value.map(formatItem).filter(Boolean).join('\n') : formatItem(value);
+              }
+              else if (field.type === "checkbox" && typeof value === "boolean") replacement = value ? "Yes" : "No";
+              else if (field.type === "multi_select" && Array.isArray(value)) replacement = value.join(", ");
+              else if (field.type === "dynamic_text_list" && Array.isArray(value)) {
+                  const items = value.filter(val => val && String(val).trim() !== "");
+                  if (items.length > 0) {
+                      const listOpen = (field.listType && field.listType !== "" && field.listType !== "none") ? `[list=${field.listType}]` : "[list]";
+                      replacement = field.listType === "none" ? items.join("\n") : `${listOpen}\n[*]${items.join("\n[*]")}\n[/list]`;
+                  } else replacement = "";
+              }
+              else if (["dateTime", "pronouncedTimeOfDeath"].includes(field.name)) replacement = String(value).split("T")[0] || String(value);
+          }
+          return replacement;
+      });
 
-        bbcode = bbcode.replace(new RegExp(escaped, "g"), replacement);
-    });
+      Object.keys(processedFormValues).forEach(key => {
+          const placeholder = `{{${key}}}`;
+          if (!bbcode.includes(placeholder)) return;
+          const value = processedFormValues[key];
+          let replacement = String(value ?? '');
+          const field = selectedForm.fields?.find(f => f.name === key);
+          if (field) {
+              if ((field.type === "image" || field.type === "image_upload") && value) {
+                  const formatItem = (item) => (typeof item === 'string' && /\.(jpg|jpeg|png|gif|webp)$/i.test(item.trim())) ? `[img]${item}[/img]` : (item || '');
+                  replacement = Array.isArray(value) ? value.map(formatItem).filter(Boolean).join('\n') : formatItem(value);
+              }
+              else if (field.type === "checkbox" && typeof value === "boolean") replacement = value ? "Yes" : "No";
+              else if (field.type === "multi_select" && Array.isArray(value)) replacement = value.join(", ");
+              else if (field.type === "dynamic_text_list" && Array.isArray(value)) {
+                  const items = value.filter(val => val && String(val).trim() !== "");
+                  if (items.length > 0) {
+                      const listOpen = (field.listType && field.listType !== "" && field.listType !== "none") ? `[list=${field.listType}]` : "[list]";
+                      replacement = field.listType === "none" ? items.join("\n") : `${listOpen}\n[*]${items.join("\n[*]")}\n[/list]`;
+                  } else replacement = "";
+              }
+              else if (["dateTime", "pronouncedTimeOfDeath"].includes(field.name)) replacement = String(value).split("T")[0] || String(value);
+              else if (field.name === "formattedDateOfDeath") replacement = formatToMMM_DD_YYYY(value);
+              else if (field.name === "caseNumber") {
+                  const url = String(value).trim();
+                  const caseId = parseCaseNumber(url);
+                  replacement = (url.startsWith('http') && caseId) ? `[url=${url}]${caseId}[/url]` : (caseId || url);
+              }
+          }        
+          bbcode = bbcode.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"), replacement);
+      });
 
-    // ──────────────────────────────────────────────────────────────
-    // 6. JS EXPRESSIONS — LAST
-    // ──────────────────────────────────────────────────────────────
-    bbcode = bbcode.replace(/{{(.+?)}}/g, (match, expr) => {
-      const trimmed = expr.trim();
-      if (trimmed.includes(":") && !/[+\-*/()=?<>!&|]/g.test(trimmed)) return trimmed;
+      bbcode = bbcode.replace(/{{(.+?)}}/g, (match, expr) => {
+        const trimmed = expr.trim();
+        if (trimmed.includes(":") && !/[+\-*/()=?<>!&|]/g.test(trimmed)) return trimmed;
+        try {
+          const fn = new Function('ctx', 'getDepartmentFullName', 'agencyDataStore', 'generateDecedentBBCode', `with (ctx) { return ${trimmed}; }`);
+          const result = fn(ctx, getDepartmentFullName, agencyDataStore, generateDecedentBBCode);
+          if (typeof result === 'object' && result !== null && Object.prototype.hasOwnProperty.call(result, 'confirmedAt')) return String(result.confirmedAt);
+          return Array.isArray(result) ? result.join(", ") : String(result || "");
+        } catch (e) { return ""; }
+      });
 
-      try {
-        const fn = new Function('ctx', 'getDepartmentFullName', 'agencyDataStore', 'generateDecedentBBCode',
-          `with (ctx) { return ${trimmed}; }`
-        );
-        const result = fn(ctx, getDepartmentFullName, agencyDataStore, generateDecedentBBCode);
-        
-        // Custom handling for payment confirmation objects to prevent "[object Object]"
-        if (typeof result === 'object' && result !== null && Object.prototype.hasOwnProperty.call(result, 'confirmedAt')) {
-          return String(result.confirmedAt);
-        }
-
-        return Array.isArray(result) ? result.join(", ") : String(result || "");
-      } catch (e) {
-        console.warn("Expression failed:", trimmed, e);
-        return "";
+      const isCoronerEmailFinal = selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email";
+      if (isCoronerEmailFinal && (bbcode.includes('[bold]') || bbcode.includes('[/bold]'))) {
+          bbcode = bbcode.replace(/\[bold\]/gi, '[b]').replace(/\[\/bold\]/gi, '[/b]');
       }
-    });
 
-    // --- Consistency Check: Form Values vs. OAuth Data (Employee Credentials) ---
-    if (gtaWorldUser) {
-      const employeeTypeLower = selectedForm?.accessType?.toLowerCase(); // 'coroner' or 'phmc'
+      return { bbcode, finalTitle };
+    };
 
-      if (employeeTypeLower === 'coroner' || employeeTypeLower === 'phmc') {
-        const formEmployeeName = processedFormValues[`${employeeTypeLower}Employee`];
-        const formEmployeeRank = processedFormValues[`${employeeTypeLower}Rank`];
+    const firstPass = performGeneration();
+    let finalBBCode = firstPass.bbcode;
+    const finalTitle = firstPass.finalTitle;
 
-        // OAuth data can come from faction or activeCharacter
-        // Fix: Do not use faction.name as it is the faction name (e.g. PHMC), not the character name.
-        const factionData = gtaWorldUser.faction || {};
-        const activeCharData = gtaWorldUser.activeCharacter || {};
-        
-        const oauthEmployeeName = factionData.characterName || 
-                                   activeCharData.characterName || 
-                                   (factionData.firstname && factionData.lastname ? `${factionData.firstname} ${factionData.lastname}` : null) ||
-                                   (activeCharData.firstname && activeCharData.lastname ? `${activeCharData.firstname} ${activeCharData.lastname}` : null);
+    /* 
+    // PHPBB character limit and splitting logic (Commented out for later refinement)
+    const PHPBB_LIMIT = 60000;
+    const isMassFatality = selectedForm.firebaseKey === 'mass-ftality-test' || selectedForm.id === 'mass-fatality' || selectedForm.name?.toLowerCase().includes('mass fatality');
 
-        const oauthEmployeeRank = factionData.rank || 'N/A'; // Rank might be less directly available for non-faction activeCharacter
-
-        const isDev = import.meta.env.DEV || window.location.hostname === 'localhost';
-        if (!isDev && formEmployeeName && oauthEmployeeName && formEmployeeName !== oauthEmployeeName) {
-            console.warn(`[BbcodeGenerator] Consistency Warning: Form Employee Name (${formEmployeeName}) does not match OAuth Name (${oauthEmployeeName}).`);
+    if (finalBBCode.length > PHPBB_LIMIT) {
+        if (isMassFatality && Array.isArray(formValues.decedents) && formValues.decedents.length > 1) {
+            setLimitWarning("PHPBB Limit Hit: Report is over 60k characters. It has been automatically split into multiple parts.");
+            const chunkSize = 5;
+            const chunks = [];
+            for (let i = 0; i < formValues.decedents.length; i += chunkSize) {
+                chunks.push(formValues.decedents.slice(i, i + chunkSize));
+            }
+            finalBBCode = chunks.map((chunk, idx) => {
+                const res = performGeneration(chunk);
+                return `[CENTER][B]PART ${idx + 1} / ${chunks.length}[/B][/CENTER]\n${res.bbcode}`;
+            });
+        } else {
+            setLimitWarning("PHPBB Limit Hit: This report is over 60k characters and may be truncated by the forum.");
         }
-
-        if (formEmployeeRank && oauthEmployeeRank && formEmployeeRank !== oauthEmployeeRank) {
-             // Rank comparison is tricky due to formatting (spaces vs underscores), so maybe just a debug log
-             // console.debug(`[BbcodeGenerator] Rank mismatch check: Form(${formEmployeeRank}) vs OAuth(${oauthEmployeeRank})`);
-        }
-      }
+    } else {
+        setLimitWarning("");
     }
-    // --- End Consistency Check ---
-
-    // Final Polish: Convert internal [bold] to standard [b]
-    // This is specifically required for Coroner Email only as it consumes standard BBCode.
-    const isCoronerEmail = selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email";
-    if (isCoronerEmail && (bbcode.includes('[bold]') || bbcode.includes('[/bold]'))) {
-        bbcode = bbcode.replace(/\[bold\]/gi, '[b]').replace(/\[\/bold\]/gi, '[/b]');
-    }
+    */
 
     setShowBBCode(true);
-    setGeneratedBBCode(bbcode);
-    setGeneratedTitle(finalTitle); // Set the accumulated finalTitle here
-
-    console.log("%cGENERATION COMPLETE", "font-weight:bold;color:#0066cc");
-    console.log("Title:", finalTitle);
+    setGeneratedBBCode(finalBBCode);
+    setGeneratedTitle(finalTitle);
   }, [selectedForm, formValues, finalSelectOptions, agencyDataStore, gtaWorldUser]);
 
   return {
@@ -578,7 +386,9 @@ if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email"
     showBBCode,
     setShowBBCode,
     generateBBCode,
+    // limitWarning
   };
 };
+
 
 export default useBbcodeGenerator;

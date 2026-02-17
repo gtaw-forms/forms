@@ -106,7 +106,7 @@ const getCurrentFormType = () => {
             8: "Death Certificate",
             9: "Obs Main File",
             10: "Obs Follow Up",
-            11: "Mass Fatality Report",
+            11: "Mass Fatality / Multi Fatality Report",
             12: "Gynecology - Main File",
             13: "Gynecology - Add Reply",
             14: "Mental Health - PHMC",

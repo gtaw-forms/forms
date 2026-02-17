@@ -28,22 +28,32 @@ export const useReportActions = () => {
         }
 
         const isLegacyReport = report.legacy;
+        const isRecovery = report.isRecovery;
         const sanitizedUserId = comprehensiveSanitize(userId);
-        const reportPath = isLegacyReport
-            ? `savedReports/${sanitizedUserId}/${reportFirebaseKey}`
-            : `newSavedReports/${sanitizedUserId}/${reportFirebaseKey}`;
-        const bbCodePath = isLegacyReport
-            ? `savedReportBBCode/${sanitizedUserId}/${reportFirebaseKey}`
-            : `newSavedReportBBCode/${sanitizedUserId}/${reportFirebaseKey}`;
+        
+        let reportPath;
+        let bbCodePath = null;
+
+        if (isRecovery) {
+            reportPath = `recoveredReports/${sanitizedUserId}/${reportFirebaseKey}`;
+        } else {
+            reportPath = isLegacyReport
+                ? `savedReports/${sanitizedUserId}/${reportFirebaseKey}`
+                : `newSavedReports/${sanitizedUserId}/${reportFirebaseKey}`;
+            
+            bbCodePath = isLegacyReport
+                ? `savedReportBBCode/${sanitizedUserId}/${reportFirebaseKey}`
+                : `newSavedReportBBCode/${sanitizedUserId}/${reportFirebaseKey}`;
+        }
 
         const reportRef = ref(database, reportPath);
-        const bbCodeRef = ref(database, bbCodePath);
+        const bbCodeRef = bbCodePath ? ref(database, bbCodePath) : null;
 
         try {
-            await Promise.all([
-                remove(reportRef),
-                remove(bbCodeRef)
-            ]);
+            const promises = [remove(reportRef)];
+            if (bbCodeRef) promises.push(remove(bbCodeRef));
+            
+            await Promise.all(promises);
 
             if (sendDataRequestLog) {
                 sendDataRequestLog(
@@ -53,11 +63,11 @@ export const useReportActions = () => {
                     0,
                     isGtaAuthenticated,
                     getCharacterName(gtaWorldUser),
-                    `Report: ${reportPath}, BBCode: ${bbCodePath}`
+                    `Report: ${reportPath}${bbCodePath ? `, BBCode: ${bbCodePath}` : ''}`
                 );
             }
 
-            showNotification(`Report deleted successfully from Firebase.`, 'trash');
+            showNotification(`${isRecovery ? 'Recovery snapshot' : 'Report'} deleted successfully.`, 'trash');
             if (onSuccess) onSuccess();
         } catch (error) {
             if (sendDataRequestLog) {
