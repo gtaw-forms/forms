@@ -59,6 +59,24 @@
     border-radius: 16px 16px 0 0;
 }
 
+.modal-close-btn {
+    position: absolute;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 1.5rem;
+    cursor: pointer;
+    transition: color 0.2s ease;
+    z-index: 2;
+}
+
+.modal-close-btn:hover {
+    color: #f8fafc;
+}
+
 .bingo-title {
     font-family: 'Segoe UI', 'Arial', sans-serif;
     font-weight: 800;

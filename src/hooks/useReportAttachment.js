@@ -76,7 +76,7 @@ export const useReportAttachment = (
                         let newState = { ...prev };
                         newState.decedentName = icName;
                         newState.decedentOOC = oocName;
-                        newState.paperworkType = 'Mass Fatality';
+                        newState.paperworkType = decedents.length >= 4 ? 'Mass Fatality' : 'Multi Fatality';
 
                         if (currentDeathReportIsEmpty) {
                             newState.deathReport = reportData.bbCode;
