@@ -53,20 +53,13 @@ const UnprocessedCKsViewer = ({ selectedForm }) => {
 
         try {
             // 1. Update the original report to set processed = true
+            // We need to construct the path. ckItem.reportPath should be available.
             if (ckItem.reportPath) {
                 const reportRef = ref(database, ckItem.reportPath);
+                // Check if report exists first to avoid creating a partial node if it was deleted
                 const snapshot = await get(reportRef);
-                
                 if (snapshot.exists()) {
-                    if (ckItem.isMassFatality && ckItem.decedentIndex !== undefined) {
-                        // Update specific decedent in Mass Fatality Report
-                        // RTDB handles numeric keys in arrays as child paths
-                        const decedentProcessedRef = ref(database, `${ckItem.reportPath}/data/decedents/${ckItem.decedentIndex}`);
-                        await update(decedentProcessedRef, { processed: true });
-                    } else {
-                        // Standard Coroner Report
-                        await update(reportRef, { processed: true });
-                    }
+                    await update(reportRef, { processed: true });
                 } else {
                     console.warn("Original report not found, but removing from CK list.");
                 }
@@ -93,13 +86,7 @@ const UnprocessedCKsViewer = ({ selectedForm }) => {
                 const reportRef = ref(database, ckItem.reportPath);
                 const snapshot = await get(reportRef);
                 if (snapshot.exists()) {
-                    const data = snapshot.val();
-                    // Inject context for rendering Mass Fatality decedents
-                    setViewData({
-                        ...data,
-                        isMassFatality: ckItem.isMassFatality,
-                        decedentIndex: ckItem.decedentIndex
-                    });
+                    setViewData(snapshot.val());
                 } else {
                     showNotification('Report data not found.', 'warning');
                     setShowViewModal(false);
@@ -154,16 +141,6 @@ const UnprocessedCKsViewer = ({ selectedForm }) => {
         );
     };
 
-    const formatDateSafe = (dateInput) => {
-        if (!dateInput) return 'N/A';
-        const date = new Date(dateInput);
-        if (isNaN(date.getTime())) {
-            // If parsing fails, return the original string if it's a string, as it might be descriptive text.
-            return typeof dateInput === 'string' ? dateInput : 'Invalid Date';
-        }
-        return date.toLocaleDateString();
-    };
-
     return (
         <div style={{ 
             background: '#1e293b', 
@@ -178,7 +155,7 @@ const UnprocessedCKsViewer = ({ selectedForm }) => {
             </h4>
             
             <p style={{ color: '#cbd5e1', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-                {"The following Coroner Reports & Mass Fatality Reports are marked as Character Kills (CK) and require processing. Click \"Process\" to confirm the Death Record has been filed and remove them from this queue."}
+                {"The following Coroner Reports are marked as Character Kills (CK) and require processing. Click \"Process\" to confirm the Death Record has been filed and remove them from this queue."}
             </p>
 
             {loading ? (
@@ -186,7 +163,7 @@ const UnprocessedCKsViewer = ({ selectedForm }) => {
                     <Spinner animation="border" variant="light" />
                 </div>
             ) : ckList.length === 0 ? (
-                <div className="text-center p-4" style={{ border: '2px dashed #475569', borderRadius: '8px' }}>
+                <div className="text-center p-4 text-muted" style={{ border: '2px dashed #475569', borderRadius: '8px' }}>
                     <i className="fas fa-check-circle fa-2x mb-2 text-success"></i>
                     <p>All CKs have been processed.</p>
                 </div>
@@ -205,7 +182,7 @@ const UnprocessedCKsViewer = ({ selectedForm }) => {
                             {ckList.map((item) => (
                                 <tr key={item.id}>
                                     <td>
-                                        {formatDateSafe(item.dateOfDeath)}
+                                        {new Date(item.dateOfDeath).toLocaleDateString()}
                                     </td>
                                     <td className="fw-bold text-white">{item.decedentName}</td>
                                     <td>{item.decedentOOC}</td>
@@ -300,78 +277,48 @@ const UnprocessedCKsViewer = ({ selectedForm }) => {
                                 </div>
                             ) : viewData ? (
                                 <div>
-                                    {/* Unified display logic for both Standard and Mass Fatality reports */}
-                                    {(() => {
-                                        const isMF = viewData.isMassFatality || (viewData.formId && viewData.formId.includes('mass'));
-                                        const displayData = isMF && viewData.data?.decedents
-                                            ? viewData.data.decedents[viewData.decedentIndex || 0]
-                                            : viewData.data;
-                                        
-                                        if (!displayData) return <Alert variant="warning">Decedent data could not be resolved.</Alert>;
+                                    {/* Key Info Header */}
+                                    <div className="d-flex justify-content-between align-items-center mb-4 p-3 rounded" style={{ background: '#0f172a', border: '1px solid #334155' }}>
+                                        <div>
+                                            <h5 className="mb-1 text-white">{viewData.data?.decedentName}</h5>
+                                            <div className="mb-1 text-white">(( {viewData.data?.decedentOOC} ))</div>
+                                        </div>
+                                        <div className="text-end">
+                                            <Badge bg={viewData.data?.typeOfDeath === 'CK' ? 'danger' : 'secondary'}>
+                                                {viewData.data?.typeOfDeath || 'Unknown Type'}
+                                            </Badge>
+                                            <div className="mb-1 text-white ms-2">
+                                                {viewData.data?.dateTime ? new Date(viewData.data.dateTime).toLocaleString() : 'N/A'}
+                                            </div>
+                                        </div>
+                                    </div>
 
-                                        return (
-                                            <>
-                                                {/* Key Info Header */}
-                                                <div className="d-flex justify-content-between align-items-center mb-4 p-3 rounded" style={{ background: '#0f172a', border: '1px solid #334155' }}>
-                                                    <div>
-                                                        <h5 className="mb-1 text-white">{displayData.decedentName || 'Unknown'}</h5>
-                                                        <div className="mb-1 text-white">(( {displayData.decedentOOC || 'N/A'} ))</div>
-                                                        {isMF && <Badge bg="info" className="mt-1">Part of Mass Fatality Report</Badge>}
-                                                    </div>
-                                                    <div className="text-end">
-                                                        <Badge bg={displayData.typeOfDeath === 'CK' ? 'danger' : 'secondary'}>
-                                                            {displayData.typeOfDeath || 'Unknown Type'}
-                                                        </Badge>
-                                                        <div className="mb-1 text-white ms-2 mt-1">
-                                                            {(() => {
-                                                                const primaryDate = new Date(displayData.pronouncedTimeOfDeath);
-                                                                const fallbackDate = new Date(viewData.data?.dateTime);
+                                    <div className="row g-3 mb-4">
+                                        <div className="col-md-6">
+                                            <div className="p-3 rounded h-100" style={{ background: '#1e293b', border: '1px solid #475569' }}>
+                                                <label className="text-info small fw-bold text-uppercase d-block mb-1">Cause of Death</label>
+                                                <div>{viewData.data?.probableCauseOfDeath || 'Not specified'}</div>
+                                            </div>
+                                        </div>
+                                        <div className="col-md-6">
+                                            <div className="p-3 rounded h-100" style={{ background: '#1e293b', border: '1px solid #475569' }}>
+                                                <label className="text-info small fw-bold text-uppercase d-block mb-1">Manner of Death</label>
+                                                <div>{viewData.data?.mannerOfDeath || 'Not specified'}</div>
+                                            </div>
+                                        </div>
+                                    </div>
 
-                                                                if (!isNaN(primaryDate.getTime())) {
-                                                                    return primaryDate.toLocaleString();
-                                                                }
-                                                                if (!isNaN(fallbackDate.getTime())) {
-                                                                    return fallbackDate.toLocaleString();
-                                                                }
-                                                                // Show the original text if it's a non-parsable string like "Afternoon"
-                                                                if (typeof displayData.pronouncedTimeOfDeath === 'string') {
-                                                                    return displayData.pronouncedTimeOfDeath;
-                                                                }
-                                                                return 'N/A';
-                                                            })()}
-                                                        </div>
-                                                    </div>
-                                                </div>
+                                    <div className="mb-4">
+                                        <h6 style={{color: '#a78bfa', borderBottom: '1px solid #475569', paddingBottom: '0.5rem'}}>Synopsis</h6>
+                                        <div className="p-3 rounded" style={{ background: '#0f172a', border: '1px solid #334155', whiteSpace: 'pre-wrap', color: '#cbd5e1' }}>
+                                            {viewData.data?.synopsis || 'No synopsis provided.'}
+                                        </div>
+                                    </div>
 
-                                                <div className="row g-3 mb-4">
-                                                    <div className="col-md-6">
-                                                        <div className="p-3 rounded h-100" style={{ background: '#1e293b', border: '1px solid #475569' }}>
-                                                            <label className="text-info small fw-bold text-uppercase d-block mb-1">Cause of Death</label>
-                                                            <div>{displayData.probableCauseOfDeath || 'Not specified'}</div>
-                                                        </div>
-                                                    </div>
-                                                    <div className="col-md-6">
-                                                        <div className="p-3 rounded h-100" style={{ background: '#1e293b', border: '1px solid #475569' }}>
-                                                            <label className="text-info small fw-bold text-uppercase d-block mb-1">Manner of Death</label>
-                                                            <div>{displayData.mannerOfDeath || 'Not specified'}</div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="mb-4">
-                                                    <h6 style={{color: '#a78bfa', borderBottom: '1px solid #475569', paddingBottom: '0.5rem'}}>Synopsis / Injuries</h6>
-                                                    <div className="p-3 rounded" style={{ background: '#0f172a', border: '1px solid #334155', whiteSpace: 'pre-wrap', color: '#cbd5e1' }}>
-                                                        {displayData.synopsis || 'No synopsis provided.'}
-                                                    </div>
-                                                </div>
-
-                                                {/* Images Section - Supporting multiple possible field names across versions */}
-                                                {renderImages(displayData.scenePhotos || displayData.scenePhotosBBCode || displayData.scene_photos_bbcode, "Scene Photos")}
-                                                {renderImages(displayData.autopsyDiagram || displayData.autopsy_diagram, "Autopsy Diagram")}
-                                                {renderImages(displayData.additionalImages || displayData.additionalPhotos || displayData.additional_photos, "Additional Photos")}
-                                            </>
-                                        );
-                                    })()}
+                                    {/* Images Section */}
+                                    {renderImages(viewData.data?.scenePhotosBBCode || viewData.data?.scene_photos_bbcode, "Scene Photos")}
+                                    {renderImages(viewData.data?.autopsyDiagram || viewData.data?.autopsy_diagram, "Autopsy Diagram")}
+                                    {renderImages(viewData.data?.additionalPhotos || viewData.data?.additional_photos, "Additional Photos")}
                                 </div>
                             ) : (
                                 <Alert variant="warning">No data available for this report.</Alert>

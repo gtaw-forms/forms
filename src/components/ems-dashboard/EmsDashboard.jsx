@@ -21,14 +21,12 @@ import { Button } from 'react-bootstrap';
 import { useInactivityReload } from '../../hooks/useInactivityReload'; // NEW IMPORT
 
 
-import EmployeeNewDetails from '../Modals/EmployeeNewDetails';
-
 const EmsDashboard = () => {
   useInactivityReload(); // NEW HOOK CALL
   const { trackMetric } = useUserMetrics(); // NEW METRICS HOOK
 
   const { phmcListData, coronerListData: originalCoronerListData, lsccData, loading: dataContextLoading } = useData();
-  const { showEmployeeModal, setShowEmployeeModal } = useModal();
+  const { setShowEmployeeModal } = useModal();
 
   const [protocols, setProtocols] = useState([]);
   const [injuries, setInjuries] = useState({}); // { id: { name, words } }
@@ -495,11 +493,6 @@ return (
   sendPhraseRequestWebhook={({ requester, phrase, bingoType }) => 
     sendPhraseRequestNotification({ requester, phrase, bingoType, commitInfo })
   }
-/>
-<EmployeeNewDetails
-  show={showEmployeeModal}
-  onHide={() => setShowEmployeeModal(false)}
-  showNotification={showNotification}
 />
 <EmsAmaModal
   show={showEmsAmaModal}

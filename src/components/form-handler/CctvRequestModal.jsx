@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import * as Sentry from "@sentry/react";
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
-import './CctvRequestWebhookModal.css';
+import './CctvRequestModal.css';
 import { analytics } from '../../firebase';
 import { logEvent } from "firebase/analytics";
 
-const CctvRequestWebhookModal = ({ show, onHide, showNotification, commitInfo, formData }) => {
+const CctvRequestModal = ({ show, onHide, showNotification }) => {
     const { 
         user: gtawUser, 
         isAuthenticated: isGtawAuthenticated, 
@@ -154,11 +154,10 @@ const CctvRequestWebhookModal = ({ show, onHide, showNotification, commitInfo, f
 
     const handleSubmit = async () => {
         // Validation from original handleSubmit
-        if (!isGtawAuthenticated || !gtawUser) {
+        if (!isGtawAuthenticated && !import.meta.env.DEV) {
             showNotification('GTAW OAuth authentication is required to submit CCTV requests. Please log in with your GTAW account.', 'warning');
             return;
         }
-    
         if (!officer.trim() || !department.trim() || !location.trim() || !description.trim() || !incidentDateTime.trim() || !requestReason.trim()) {
             showNotification('Please fill out all required fields.', 'warning');
             return;
@@ -170,10 +169,14 @@ const CctvRequestWebhookModal = ({ show, onHide, showNotification, commitInfo, f
             rank, officer, officerPH, department, location, description,
             discordUsername, oocNotes, incidentDateTime, requestReason,
             DEBUG: {
-                gtawUser: {
+                gtawUser: gtawUser ? {
                     id: gtawUser.id,
                     username: gtawUser.username,
                     isFactionMember: gtawUser.isFactionMember,
+                } : {
+                    id: 'dev-user',
+                    username: 'Dev User (unauthenticated)',
+                    isFactionMember: false
                 },
                 selectedCharacter: selectedCharacterId ? (() => {
                     const selectedChar = swappableCharacters?.find(char => {
@@ -217,7 +220,7 @@ const CctvRequestWebhookModal = ({ show, onHide, showNotification, commitInfo, f
                 department: cctvData.department,
                 location: cctvData.location,
                 reason: cctvData.requestReason,
-                submitter: gtawUser.username || 'Unknown App User'
+                submitter: gtawUser?.username || 'Unknown App User'
             },
             tags: {
                 webhook_type: 'cctv_request',
@@ -229,11 +232,11 @@ const CctvRequestWebhookModal = ({ show, onHide, showNotification, commitInfo, f
             department: cctvData.department,
             location: cctvData.location,
             reason: cctvData.requestReason,
-            submitter: gtawUser.username || 'Unknown App User',
+            submitter: gtawUser?.username || 'Unknown App User',
             environment: import.meta.env.NODE_ENV
         });
     
-        const devWebhookURL = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
+        const devWebhookURL = import.meta.env.VITE_DEV_WEBHOOK;
         const leoWebhookURL = import.meta.env.VITE_LEO_WEBHOOK_URL; 
     
         if (!devWebhookURL) {
@@ -342,15 +345,15 @@ ${JSON.stringify(cctvData.DEBUG, null, 2)}
                         <strong>⚠️ Important Notice:</strong> This form is sent directly to PHMC supervisors to request CCTV Footage. It will be handled within the next 24 hours and you&apos;ll be contacted via Cell Phone or Departmental. <strong>Abuse of this form will be reported to Legal Faction Management.</strong>
                     </div>
 
-                    <div className={`cctv-form-section ${isGtawAuthenticated ? 'auth-success' : 'auth-required'}`}>
+                    <div className={`cctv-form-section ${(isGtawAuthenticated || import.meta.env.DEV) ? 'auth-success' : 'auth-required'}`}>
                         <h5>
                     
-                            <i className={`fas ${isGtawAuthenticated ? 'fa-shield-alt' : 'fa-exclamation-triangle'}`}></i>
-                            {isGtawAuthenticated ? 'Authenticated' : 'Authentication Required'}
+                            <i className={`fas ${(isGtawAuthenticated || import.meta.env.DEV) ? 'fa-shield-alt' : 'fa-exclamation-triangle'}`}></i>
+                            {(isGtawAuthenticated || import.meta.env.DEV) ? 'Authenticated' : 'Authentication Required'}
                         </h5>
-                        {isGtawAuthenticated ? (
+                        {(isGtawAuthenticated || import.meta.env.DEV) ? (
                             <div className="auth-details">
-                                <div><strong>UCP User:</strong> {gtawUser.username}</div>
+                                <div><strong>UCP User:</strong> {gtawUser?.username || 'Dev User'}</div>
                                 
                                 {/* Character Selector - Always show when authenticated */}
                                 {swappableCharacters && swappableCharacters.length > 0 && (
@@ -555,8 +558,8 @@ ${JSON.stringify(cctvData.DEBUG, null, 2)}
                     <button
                         className="cctv-btn cctv-btn-primary"
                         onClick={handleSubmit}
-                        disabled={isSubmitting || !isGtawAuthenticated}
-                        title={!isGtawAuthenticated ? 'GTAW OAuth authentication required' : ''}
+                        disabled={isSubmitting || !(isGtawAuthenticated || import.meta.env.DEV)}
+                        title={!(isGtawAuthenticated || import.meta.env.DEV) ? 'GTAW OAuth authentication required' : ''}
                     >
                         {isSubmitting ? <div className="cctv-spinner"></div> : null}
                         Send CCTV Request
@@ -570,4 +573,4 @@ ${JSON.stringify(cctvData.DEBUG, null, 2)}
     // --- MODIFICATION END ---
 };
 
-export default CctvRequestWebhookModal;
+export default CctvRequestModal;
