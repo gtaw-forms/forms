@@ -229,16 +229,6 @@ const EmployeeCredentialsSection = ({
                 </div>
                 
             )}
-                            <button
-                  type="button"
-                  onClick={handleNewEmployeeClick}
-                  className="btn btn-outline-warning btn-sm"
-                  style={{ fontSize: '0.75rem', borderRadius: '6px', padding: '5px 10px' }}
-                >
-                  <i className="fas fa-user-plus" style={{ marginRight: '6px' }}></i>
-                  New Employee
-                </button>
-
         </div>
       </div>
 

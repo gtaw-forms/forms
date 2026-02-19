@@ -36,12 +36,45 @@ const EmployeeNewDetails = ({ show, onHide, showNotification }) => {
     }, [show, gtaWorldUser]);
 
     const characters = useMemo(() => {
-        if (!swappableCharacters) return [];
-        return swappableCharacters.map(c => ({
-            id: String(c?.character?.characterId ?? c?.id ?? ''),
-            name: c?.characterName || c?.name || 'Unknown Character'
-        })).filter(c => c.id);
-    }, [swappableCharacters]);
+        const allChars = new Map();
+
+        // Function to add a character to the map
+        const addChar = (char) => {
+            if (!char) return;
+            
+            // The character object can have different structures
+            const id = String(char.character?.characterId ?? char.id ?? char.characterId ?? '');
+            const name = char.characterName || char.name || `${char.firstname} ${char.lastname}`.trim() || 'Unknown Character';
+            
+            if (id && id !== 'undefined' && !allChars.has(id)) {
+                allChars.set(id, { id, name });
+            }
+        };
+
+        // Add swappable characters
+        (swappableCharacters || []).forEach(char => addChar(char, 'swappableCharacters'));
+
+        // Add the main/active character from the user object just in case it's not in swappable
+        if (gtaWorldUser) {
+            // The `gtaWorldUser.character` is an array of characters, iterate over it
+            if (Array.isArray(gtaWorldUser.character)) {
+                gtaWorldUser.character.forEach(char => addChar(char, 'gtaWorldUser.character'));
+            } else {
+                addChar(gtaWorldUser.character, 'gtaWorldUser.character');
+            }
+
+            addChar(gtaWorldUser.activeCharacter, 'gtaWorldUser.activeCharacter');
+            addChar(gtaWorldUser.faction, 'gtaWorldUser.faction'); // Faction object can also contain character details
+        
+            // Also check for nested character arrays
+            const nestedChars = gtaWorldUser.characters || gtaWorldUser.allCharacters;
+            if (Array.isArray(nestedChars)) {
+                nestedChars.forEach(char => addChar(char, 'gtaWorldUser.characters/allCharacters'));
+            }
+        }
+        
+        return Array.from(allChars.values());
+    }, [swappableCharacters, gtaWorldUser]);
 
     const handleSave = async () => {
         if (!selectedCharId) {
