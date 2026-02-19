@@ -91,37 +91,46 @@ export const useGtaWorldAuth = () => {
             return { firstname, lastname };
         };
 
-        if (user?.allFactionCharacters && user.allFactionCharacters.length > 0) {
-            return user.allFactionCharacters.map(fc => {
-                // Robustly handle both nested and flat structures to prevent crashes
-                const characterData = fc.character || fc;
+        // Prioritize the comprehensive 'allCharacters' array if it exists.
+        const sourceChars = user?.allCharacters || user?.allFactionCharacters || user?.characters || [];
 
-                if (!characterData || !characterData.characterId) {
-                    console.warn("Skipping invalid/malformed character data in allFactionCharacters:", fc);
+        if (sourceChars.length > 0) {
+            return sourceChars.map(c => {
+                // The character data can be nested under a 'character' property or be at the top level.
+                const characterData = c.character || c;
+
+                if (!characterData || !characterData.id) {
+                    console.warn("Skipping invalid/malformed character data:", c);
                     return null;
                 }
 
                 const namesFromCharacterName = extractNames(characterData.characterName);
+                const finalCharacterName = characterData.characterName || `${characterData.firstname || ''} ${characterData.lastname || ''}`.trim();
+
                 return {
-                    id: characterData.characterId,
-                    characterName: characterData.characterName,
+                    id: characterData.id,
+                    characterName: finalCharacterName,
                     firstname: characterData.firstname || namesFromCharacterName.firstname,
                     lastname: characterData.lastname || namesFromCharacterName.lastname,
                     scriptRank: characterData.scriptRank,
                 };
             }).filter(Boolean); // Filter out any null entries that were skipped
         }
-        const fallbackChars = user?.character || user?.characters || [];
-        return fallbackChars.map(char => {
-            const namesFromCharacterName = extractNames(char.characterName);
-            return {
+        
+        // Fallback for a single character object if no array is found
+        if (user?.character) {
+             const char = user.character;
+             const names = extractNames(char.characterName);
+             return [{
                 id: char.id,
-                characterName: char.characterName || `${char.firstname || ''} ${char.lastname || ''}`.trim(),
-                firstname: char.firstname || namesFromCharacterName.firstname,
-                lastname: char.lastname || namesFromCharacterName.lastname,
-                scriptRank: char.scriptRank || 0,
-            };
-        });
+                characterName: char.characterName,
+                firstname: char.firstname || names.firstname,
+                lastname: char.lastname || names.lastname,
+                scriptRank: char.scriptRank,
+             }];
+        }
+
+        return [];
     }, [user]);
     // --- END POC ---
 
