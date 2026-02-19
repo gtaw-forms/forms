@@ -38,7 +38,6 @@ import { Spinner } from 'react-bootstrap';
 // Lazy load modals and heavy components
 const EmsBingoModal = lazy(() => import('../Modals/EmsBingoModal'));
 const EmployeeCredentialsSection = lazy(() => import('../Modals/EmployeeCredentialsSection'));
-const EmployeeNewDetails = lazy(() => import('../Modals/EmployeeNewDetails'));
 const SavedReportsModal = lazy(() => import('../Modals/SavedReportsModal'));
 const BugReportModal = lazy(() => import('../Modals/BugReportModal'));
 const MapModal = lazy(() => import("../Modals/MapModal"));
@@ -1121,11 +1120,6 @@ export const FormHandler = () => {
                 persistEnabled={keepCredentials}
                 setPersistEnabled={setKeepCredentials}
               />
-        <EmployeeNewDetails
-          show={showEmployeeModal}
-          onHide={() => setShowEmployeeModal(false)}
-          showNotification={showNotification}
-        />
         <SavedReportsModal
           show={showSavedReports}
           onHide={() => setShowSavedReports(false)}

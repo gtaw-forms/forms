@@ -5,7 +5,7 @@ import { useModal } from '../../contexts/ModalProvider';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { useSeasonalEffects } from '../../contexts/SeasonalEffectsContext';
 import { useNotification } from '../../contexts/NotificationContext';
-import CctvRequestWebhookModal from '../Admin/CctvRequestWebhookModal';
+import CctvRequestModal from './CctvRequestModal';
 import { Dropdown } from 'react-bootstrap';
 import FormRequestModal from '../Modals/FormRequestModal';
 
@@ -36,6 +36,7 @@ const FormHandlerNavButtons = ({ onToggleSavedReports, onToggleAgencyIncident })
   const [showCctvPopup, setShowCctvPopup] = useState(false);
 
 
+  const isLeo = userPrefs?.userType === 'leo';
 
   const handleGtawLogin = useCallback(() => {
     showNotification('Please wait, this may take a moment...', 'info-circle', 10000);
@@ -113,9 +114,11 @@ const FormHandlerNavButtons = ({ onToggleSavedReports, onToggleAgencyIncident })
             </Dropdown.Toggle>
 
             <Dropdown.Menu>
+              {((isAuthenticated && isLeo) || import.meta.env.DEV) && (
                 <Dropdown.Item onClick={() => setShowCctvModal(true)}>
                   <i className="fas fa-video"></i> CCTV Request
                 </Dropdown.Item>
+              )}
               <Dropdown.Item onClick={() => setShowEmsBingoModal(true)}>
                 <i className="fas fa-trophy"></i> Bingo Night!
               </Dropdown.Item>
@@ -192,7 +195,7 @@ const FormHandlerNavButtons = ({ onToggleSavedReports, onToggleAgencyIncident })
       </div>
 
       {showCctvModal && (
-        <CctvRequestWebhookModal
+        <CctvRequestModal
           show={showCctvModal}
           onHide={() => setShowCctvModal(false)}
           showNotification={showNotification}

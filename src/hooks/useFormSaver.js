@@ -109,6 +109,88 @@ export const useFormSaver = () => {
     const { user: gtaWorldUser, isAuthenticated: isGtaAuthenticated } = useGtaWorldAuth();
     const { showNotification } = useNotification();
 
+    const logWebhook = useCallback(async (type, payload) => {
+        // Log to Firebase RTDB
+        const logRef = ref(database, 'webhook_logs/' + Date.now());
+        console.log('Logging webhook to Firebase RTDB...', { type, payload });
+        try {
+            await set(logRef, {
+                type: type,
+                payload: payload,
+                timestamp: Date.now()
+            });
+            console.log('Successfully logged webhook to Firebase RTDB.');
+        } catch (error) {
+            console.error("Error logging webhook to Firebase:", error);
+            Sentry.captureException(error, { extra: { context: 'logWebhook - Firebase' } });
+        }
+
+        // Send to Discord
+        const discordWebhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_FORMS || import.meta.env.VITE_DEV_WEBHOOK;
+        if (discordWebhookUrl) {
+            console.log('Attempting to send report saved webhook to Discord...');
+            try {
+                const discordPayload = {
+                    embeds: [
+                        {
+                            title: 'Report Saved',
+                            description: `A new report has been saved by **${payload.author}**.`,
+                            color: 5814783, // A nice blue color
+                            fields: [
+                                { name: 'Author', value: payload.author, inline: true },
+                                { name: 'Form Name', value: payload.formName, inline: true },
+                                { name: 'Report Title', value: `\`${payload.originalKey}\``, inline: false },
+                            ],
+                            timestamp: new Date().toISOString(),
+                            footer: {
+                                text: `FormID: ${payload.formId} | ReportKey: ${payload.reportKey} | `
+                            }
+                        }
+                    ]
+                };
+
+                if (payload.hasGtawData) {
+                    discordPayload.embeds[0].fields.push(
+                        { name: 'GTAW Username', value: payload.gtawUsername, inline: true },
+                        { name: 'GTAW Character', value: `${payload.gtawCharacterName} (${payload.gtawCharacterId})`, inline: true }
+                    );
+                }
+
+                if (payload.requestingOfficer) {
+                    discordPayload.embeds[0].fields.push(
+                        { name: 'Requesting Officer', value: payload.requestingOfficer, inline: true }
+                    );
+                }
+
+                if (payload.department) {
+                    discordPayload.embeds[0].fields.push(
+                        { name: 'Department', value: payload.department, inline: true }
+                    );
+                }
+
+                const response = await fetch(discordWebhookUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(discordPayload)
+                });
+                
+                if (!response.ok) {
+                    const responseBody = await response.text();
+                    console.error('Discord webhook response not OK:', { status: response.status, body: responseBody });
+                    Sentry.captureMessage(`Discord webhook failed with status ${response.status}: ${responseBody}`);
+                } else {
+                    console.log('Successfully sent report saved webhook to Discord.');
+                }
+
+            } catch (error) {
+                console.error("Error sending webhook to Discord:", error);
+                Sentry.captureException(error, { extra: { context: 'logWebhook - Discord' } });
+            }
+        } else {
+            console.warn('VITE_DEV_WEBHOOK is not set. Skipping Discord webhook.');
+        }
+    }, []);
+
     const saveReport = useCallback(async (selectedForm, formValues, title, bbCode, options = {}) => {
         if (!selectedForm || !formValues || !title || !bbCode) {
             const missingFields = [];
@@ -210,30 +292,6 @@ export const useFormSaver = () => {
                  }));
             }
 
-            // Handle Mass Fatality CKs
-            const isMassFatality = selectedForm.firebaseKey === 'mass-ftality-test' || 
-                                 selectedForm.id === 'mass-fatality' || 
-                                 selectedForm.name?.toLowerCase().includes('mass fatality');
-
-            if (isMassFatality && Array.isArray(formValues.decedents)) {
-                formValues.decedents.forEach((dec, index) => {
-                    if (dec.typeOfDeath === 'CK' && !dec.processed) {
-                        const ckRef = ref(database, `unprocessedCKs/${sanitizedKey}_${index}`);
-                        promises.push(set(ckRef, {
-                            reportPath: reportPath,
-                            authorId: sanitizedAuthorId,
-                            reportKey: sanitizedKey,
-                            decedentIndex: index,
-                            decedentName: dec.decedentName || 'Unknown',
-                            decedentOOC: dec.decedentOOC || 'Unknown',
-                            dateOfDeath: dec.pronouncedTimeOfDeath || formValues.dateTime || new Date().toISOString(),
-                            timestamp: Date.now(),
-                            isMassFatality: true
-                        }));
-                    }
-                });
-            }
-
             await Promise.all(promises);
 
             if (!options.silent) {
@@ -241,80 +299,30 @@ export const useFormSaver = () => {
             }
 
             // Webhook Logging
-            try {
-                const webhookPayload = {
-                    author: currentAuthor,
-                    reportKey: sanitizedKey,
-                    originalKey: finalTitle,
-                    formId: selectedForm.firebaseKey,
-                    formName: selectedForm.name,
-                    hasGtawData: !!(isGtaAuthenticated && gtaWorldUser),
-                };
+            const webhookPayload = {
+                author: currentAuthor,
+                reportKey: sanitizedKey,
+                originalKey: finalTitle,
+                formId: selectedForm.firebaseKey,
+                formName: selectedForm.name,
+                hasGtawData: !!(isGtaAuthenticated && gtaWorldUser),
+            };
 
-                if (isGtaAuthenticated && gtaWorldUser) {
-                    webhookPayload.gtawUsername = gtaWorldUser.username;
-                    webhookPayload.gtawCharacterId = getCharacterID(gtaWorldUser);
-                    webhookPayload.gtawCharacterName = getCharacterName(gtaWorldUser);
-                }
-
-                // Include Requesting Officer if it's a Coroner Report and one was requested
-                if (selectedForm.firebaseKey === 'coroner-report' && (formValues.ReportRequested === true || formValues.ReportRequested === 'true')) {
-                    webhookPayload.requestingOfficer = formValues['Requesting Officer'] || formValues.requestingOfficer || 'N/A';
-                    
-                    const deptVal = formValues.department;
-                    webhookPayload.department = (typeof deptVal === 'object' && deptVal !== null) ? (deptVal.label || deptVal.value) : deptVal;
-                }
-
-                const discordWebhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_FORMS || import.meta.env.VITE_DEV_WEBHOOK;
-                if (discordWebhookUrl) {
-                    const discordPayload = {
-                        embeds: [{
-                            title: 'Report Saved',
-                            description: `A new report has been saved by **${webhookPayload.author}**.`,
-                            color: 5814783,
-                            fields: [
-                                { name: 'Author', value: webhookPayload.author, inline: true },
-                                { name: 'Form Name', value: webhookPayload.formName, inline: true },
-                                { name: 'Report Title', value: `\`${webhookPayload.originalKey}\``, inline: false },
-                            ],
-                            timestamp: new Date().toISOString(),
-                            footer: {
-                                text: `FormID: ${webhookPayload.formId} | ReportKey: ${webhookPayload.reportKey}`
-                            }
-                        }]
-                    };
-
-                    if (webhookPayload.hasGtawData) {
-                        discordPayload.embeds[0].fields.push(
-                            { name: 'GTAW Username', value: webhookPayload.gtawUsername, inline: true },
-                            { name: 'GTAW Character', value: `${webhookPayload.gtawCharacterName} (${webhookPayload.gtawCharacterId})`, inline: true }
-                        );
-                    }
-                    if (webhookPayload.requestingOfficer) {
-                        discordPayload.embeds[0].fields.push({ name: 'Requesting Officer', value: webhookPayload.requestingOfficer, inline: true });
-                    }
-                    if (webhookPayload.department) {
-                        discordPayload.embeds[0].fields.push({ name: 'Department', value: webhookPayload.department, inline: true });
-                    }
-
-                    fetch(discordWebhookUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(discordPayload)
-                    }).then(response => {
-                        if (!response.ok) {
-                            console.error('Discord webhook response not OK:', response.status);
-                            Sentry.captureMessage(`Discord webhook failed with status ${response.status}`);
-                        }
-                    }).catch(error => {
-                        console.error("Error sending webhook to Discord:", error);
-                        Sentry.captureException(error, { extra: { context: 'saveReport - Discord Webhook' } });
-                    });
-                }
-            } catch (err) {
-                console.error("Fatal error constructing or sending Discord webhook.", err);
-                Sentry.captureException(err, { extra: { context: 'saveReport - Webhook' } });
+            if (isGtaAuthenticated && gtaWorldUser) {
+                webhookPayload.gtawUsername = gtaWorldUser.username;
+                webhookPayload.gtawCharacterId = getCharacterID(gtaWorldUser);
+                webhookPayload.gtawCharacterName = getCharacterName(gtaWorldUser);
             }
+
+            // Include Requesting Officer if it's a Coroner Report and one was requested
+            if (selectedForm.firebaseKey === 'coroner-report' && (formValues.ReportRequested === true || formValues.ReportRequested === 'true')) {
+                webhookPayload.requestingOfficer = formValues['Requesting Officer'] || formValues.requestingOfficer || 'N/A';
+                
+                const deptVal = formValues.department;
+                webhookPayload.department = (typeof deptVal === 'object' && deptVal !== null) ? (deptVal.label || deptVal.value) : deptVal;
+            }
+
+            await logWebhook(`report_saved (new) by ${currentAuthor}`, webhookPayload);
 
             return { success: true };
 
@@ -326,7 +334,7 @@ export const useFormSaver = () => {
             }
             return { success: false, error: error.message };
         }
-    }, [gtaWorldUser, isGtaAuthenticated, showNotification]);
+    }, [gtaWorldUser, isGtaAuthenticated, showNotification, logWebhook]);
 
     const saveRecoveryReport = useCallback(async (selectedForm, formValues) => {
         if (!selectedForm || !formValues) return { success: false };

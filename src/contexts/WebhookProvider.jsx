@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback } from 'react';
 import * as Sentry from "@sentry/react";
 import { useWebhooks } from '../hooks/useWebhooks';
 import { useImageUpload } from '../hooks/useImageUpload';
@@ -15,45 +15,14 @@ export const useWebhook = () => {
 };
 
 export const WebhookProvider = ({ children, commitInfo }) => {
-    // Initialize state from localStorage
-    const [webhookTitle, setWebhookTitle] = useState(() => localStorage.getItem('webhookTitle') || '');
-    const [webhookMessage, setWebhookMessage] = useState(() => localStorage.getItem('webhookMessage') || '');
-    const [mediaUrls, setMediaUrls] = useState(() => {
-        try {
-            const savedUrls = localStorage.getItem('mediaUrls');
-            return savedUrls ? JSON.parse(savedUrls) : [];
-        } catch (error) {
-            console.error("Error parsing mediaUrls from localStorage", error);
-            return [];
-        }
-    });
+    const [webhookTitle, setWebhookTitle] = useState('');
+    const [webhookMessage, setWebhookMessage] = useState('');
+    const [mediaUrls, setMediaUrls] = useState([]);
     const [isUploading, setIsUploading] = useState(false);
     const { showNotification } = useNotification();
 
     const { handlePhmcWebhookSubmit, handleWebhookSubmit } = useWebhooks({}, commitInfo, showNotification);
     const { handleImageUpload: uploadImage } = useImageUpload(showNotification);
-
-    // Save state to localStorage whenever it changes
-    useEffect(() => {
-        localStorage.setItem('webhookTitle', webhookTitle);
-    }, [webhookTitle]);
-
-    useEffect(() => {
-        localStorage.setItem('webhookMessage', webhookMessage);
-    }, [webhookMessage]);
-
-    useEffect(() => {
-        localStorage.setItem('mediaUrls', JSON.stringify(mediaUrls));
-    }, [mediaUrls]);
-
-    const clearSavedWebhookState = useCallback(() => {
-        setWebhookTitle('');
-        setWebhookMessage('');
-        setMediaUrls([]);
-        localStorage.removeItem('webhookTitle');
-        localStorage.removeItem('webhookMessage');
-        localStorage.removeItem('mediaUrls');
-    }, []);
 
     const handleLocalImageUpload = async (event) => {
         const files = event.target.files;
