@@ -20,24 +20,13 @@ const WebhookManager = () => {
         sendWebhook,
         isSending,
         sendResult,
-        clearSavedWebhookState, // Added from WebhookProvider
     } = useWebhook();
 
-    // Initialize state from localStorage for local components
-    const [urlInput, setUrlInput] = useState(() => localStorage.getItem('webhookUrlInput') || '');
+    const [urlInput, setUrlInput] = useState('');
     const [availableWebhooks, setAvailableWebhooks] = useState([]);
-    const [selectedWebhookId, setSelectedWebhookId] = useState(() => localStorage.getItem('selectedWebhookId') || '');
+    const [selectedWebhookId, setSelectedWebhookId] = useState('');
     const [customSending, setCustomSending] = useState(false);
     const [customResult, setCustomResult] = useState(null);
-
-    // Save local state to localStorage whenever it changes
-    useEffect(() => {
-        localStorage.setItem('webhookUrlInput', urlInput);
-    }, [urlInput]);
-
-    useEffect(() => {
-        localStorage.setItem('selectedWebhookId', selectedWebhookId);
-    }, [selectedWebhookId]);
 
     // Load available webhooks from Firebase
     useEffect(() => {
@@ -112,7 +101,7 @@ const WebhookManager = () => {
             
             let firstImageUrlForEmbed = null;
             for (const url of mediaUrls) {
-                if (typeof url === 'string' && (/\.(jpg|jpeg|png|gif)$/i.test(url) || url.includes('ibb.co'))) {
+                if (/\.(jpg|jpeg|png|gif)$/i.test(url) || url.includes('ibb.co')) {
                     firstImageUrlForEmbed = url;
                     break;
                 }
@@ -134,7 +123,7 @@ const WebhookManager = () => {
             if (!description && mediaUrls.length > 0) {
                 embed.description = 'Media submitted via PHMC Form Generator\n\n**Media:**\n';
                 mediaUrls.forEach((url, index) => {
-                    const type = typeof url === 'string' && url.includes('streamable.com') ? 'Video' : (typeof url === 'string' && (/\.(jpg|jpeg|png|gif)$/i.test(url) || url.includes('ibb.co'))) ? 'Image' : 'Link';
+                    const type = url.includes('streamable.com') ? 'Video' : (/\.(jpg|jpeg|png|gif)$/i.test(url) || url.includes('ibb.co')) ? 'Image' : 'Link';
                     embed.description += `- ${type} ${index + 1}: ${url}\n`;
                 });
             }
@@ -157,11 +146,6 @@ const WebhookManager = () => {
                 setWebhookTitle('');
                 setWebhookMessage('');
                 clearMedia();
-                setUrlInput(''); // Clear local url input
-                setSelectedWebhookId(''); // Clear local selected webhook
-                clearSavedWebhookState(); // Clear saved state from WebhookProvider
-                localStorage.removeItem('webhookUrlInput'); // Clear local storage for urlInput
-                localStorage.removeItem('selectedWebhookId'); // Clear local storage for selectedWebhookId
             } else {
                 setCustomResult({ success: false, message: `Failed to send webhook: ${response.status}` });
             }
@@ -174,11 +158,11 @@ const WebhookManager = () => {
     };
 
     const isImageUrl = (url) => {
-        return typeof url === 'string' && (/\.(jpg|jpeg|png|gif)$/i.test(url) || url.includes('ibb.co'));
+        return /\.(jpg|jpeg|png|gif)$/i.test(url) || url.includes('ibb.co');
     };
 
     const isStreamableUrl = (url) => {
-        return typeof url === 'string' && url.includes('streamable.com');
+        return url.includes('streamable.com');
     };
 
     const titlePlaceholder = "Major Update / Minor Update / Hotfix";
