@@ -13,58 +13,66 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
 const formatToNorthAmericanDate = (isoDateTime) => {
     if (!isoDateTime) return 'NO_DATE';
     try {
-      const date = new Date(isoDateTime);
-      if (isNaN(date.getTime())) {
-        // Fallback: try parsing YYYY-MM-DD manually
-        const parts = isoDateTime.split('T')[0].split('-');
+        const dateString = isoDateTime.split('T')[0]; // "YYYY-MM-DD"
+        const parts = dateString.split('-'); // ["YYYY", "MM", "DD"]
+        let date;
+
         if (parts.length === 3) {
-          const reconstructed = new Date(parts[0], parts[1] - 1, parts[2]);
-          if (!isNaN(reconstructed.getTime())) {
-            return `${(reconstructed.getMonth() + 1).toString().padStart(2, '0')}/${reconstructed.getDate().toString().padStart(2, '0')}/${reconstructed.getFullYear()}`;
-          }
+            const year = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+            const day = parseInt(parts[2], 10);
+            // Construct date in local timezone to avoid UTC interpretation
+            date = new Date(year, month, day);
+        } else {
+            // If it's not a YYYY-MM-DD string, try parsing the full isoDateTime
+            date = new Date(isoDateTime);
         }
-        return 'INVALID_DATE';
-      }
-      const month = (date.getMonth() + 1).toString().padStart(2, '0');
-      const day = date.getDate().toString().padStart(2, '0');
-      const year = date.getFullYear();
-      return `${month}/${day}/${year}`;
+
+        if (!isNaN(date.getTime())) {
+            const month = (date.getMonth() + 1).toString().padStart(2, '0');
+            const day = date.getDate().toString().padStart(2, '0');
+            const year = date.getFullYear();
+            return `${month}/${day}/${year}`;
+        }
+        
+        return 'INVALID_DATE'; // Fallback
     } catch (e) {
-      console.error("Error in formatToNorthAmericanDate:", e);
-      return 'ERROR_DATE';
+        console.error("Error in formatToNorthAmericanDate:", e);
+        return 'ERROR_DATE';
     }
-  };
+};
   const formatToMMM_DD_YYYY = (isoDateTime) => {
     if (!isoDateTime) return 'NO_DATE';
     try {
-      // Handle date-only strings by splitting at 'T' and taking the date part.
-      const dateString = isoDateTime.split('T')[0];
-      const date = new Date(dateString);
+        const dateString = isoDateTime.split('T')[0]; // "YYYY-MM-DD"
+        const parts = dateString.split('-'); // ["YYYY", "MM", "DD"]
+        let date;
 
-      if (isNaN(date.getTime())) {
-        const parts = dateString.split('-');
         if (parts.length === 3) {
-          const year = parseInt(parts[0], 10);
-          const month = parseInt(parts[1], 10) - 1;
-          const day = parseInt(parts[2], 10);
-          const reconsDate = new Date(year, month, day);
-          if (!isNaN(reconsDate.getTime())) {
-            const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-            return `${monthNames[reconsDate.getMonth()]}-${reconsDate.getDate().toString().padStart(2, '0')}-${reconsDate.getFullYear()}`;
-          }
+            const year = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+            const day = parseInt(parts[2], 10);
+            // Construct date in local timezone to avoid UTC interpretation
+            date = new Date(year, month, day);
+        } else {
+            // If it's not a YYYY-MM-DD string, try parsing the full isoDateTime
+            date = new Date(isoDateTime);
         }
-                                return isoDateTime;
-                          }
-                          const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-                          const month = monthNames[date.getMonth()];
-                          const day = date.getDate().toString().padStart(2, '0');
-                          const year = date.getFullYear();
-                          return `${month}-${day}-${year}`;
-                        } catch (e) {
-                          console.error("Error formatting date for title (MMM-DD-YYYY):", e);
-                          return isoDateTime || 'INVALID_DATE';
-                        }
-                      };  const parseCaseNumber = (url) => {
+
+        if (!isNaN(date.getTime())) {
+            const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            const month = monthNames[date.getMonth()];
+            const day = date.getDate().toString().padStart(2, '0');
+            const year = date.getFullYear();
+            return `${month}-${day}-${year}`;
+        }
+        
+        return isoDateTime; // Fallback to original string if all parsing fails
+    } catch (e) {
+        console.error("Error formatting date for title (MMM-DD-YYYY):", e);
+        return isoDateTime || 'INVALID_DATE';
+    }
+  };  const parseCaseNumber = (url) => {
     if (!url) return '';
     // Try to match phpBB t= parameter first
     const tMatch = url.match(/[?&]t=(\d+)/);

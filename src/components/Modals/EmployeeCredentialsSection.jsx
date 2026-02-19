@@ -102,32 +102,8 @@ const EmployeeCredentialsSection = ({
       }
   }, [showFloatingText]);
 
-  const handleNewEmployeeClick = async () => {
+  const handleNewEmployeeClick = () => {
     setShowFloatingText(false);
-    
-    const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_AUTH || import.meta.env.VITE_DEV_WEBHOOK;
-    if (webhookUrl) {
-        const payload = {
-            embeds: [{
-                title: "🚨 Missing from Database Report",
-                color: 0xFFAA00,
-                fields: [
-                    { name: "Character Name", value: factionData?.characterName || getCharacterName(gtaWorldUser) || "Unknown", inline: true },
-                    { name: "UCP Username", value: gtaWorldUser?.username || "Unknown", inline: true },
-                    { name: "Issue", value: "User is missing from Database", inline: false },
-                    { name: "Source", value: "New Employee Button Click", inline: true }
-                ],
-                timestamp: new Date().toISOString()
-            }]
-        };
-        try {
-            await sendDiscordWebhook(webhookUrl, payload);
-            (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('Please notify Alyson Frost in the PHMC Discord!', 'success');
-        } catch (e) {
-            console.error("Failed to send missing name webhook", e);
-        }
-    }
-    
     setShowEmployeeModal(true);
   };
 
@@ -246,11 +222,23 @@ const EmployeeCredentialsSection = ({
                 </button>
             )}
             {(isDevelopmentEnvironment || isCivilianForm) && !isGtaAuthenticated && (
+              
                 <div style={{ padding: '2px 10px', backgroundColor: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', borderRadius: '20px', fontSize: '0.7rem', fontWeight: 'bold', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
                     <i className="fas fa-tools" style={{ marginRight: '5px' }}></i>
                     Manual Mode
                 </div>
+                
             )}
+                            <button
+                  type="button"
+                  onClick={handleNewEmployeeClick}
+                  className="btn btn-outline-warning btn-sm"
+                  style={{ fontSize: '0.75rem', borderRadius: '6px', padding: '5px 10px' }}
+                >
+                  <i className="fas fa-user-plus" style={{ marginRight: '6px' }}></i>
+                  New Employee
+                </button>
+
         </div>
       </div>
 
