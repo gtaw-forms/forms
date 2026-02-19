@@ -395,7 +395,7 @@ const AdminDashboard = ({
                             <button className={`nav-link ${selectedSection === 'agencyIncidents' ? 'active' : ''}`} onClick={() => setSelectedSection('agencyIncidents')}><i className="fas fa-shield-alt me-2 text-danger"></i>Agency Incidents</button>
                         )}
                         {hasEmployeeManagerAccess && (
-                            <button className={`nav-link ${selectedSection === 'employeeManager' ? 'active' : ''}`} onClick={() => setSelectedSection('employeeManager')}><i className="fas fa-users me-2"></i>Employee Manager</button>
+                            <button className={`nav-link ${selectedSection === 'employeeManager' ? 'active' : ''}`} onClick={() => setSelectedSection('employeeManager')}><i className="fas fa-users me-2"></i>Employee Report Metrics</button>
                         )}
                         {hasHallOfFameAccess && (
                             <button className={`nav-link ${selectedSection === 'hallOfFame' ? 'active' : ''}`} onClick={() => setSelectedSection('hallOfFame')}><i className="fas fa-trophy me-2"></i>Hall of Fame</button>

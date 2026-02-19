@@ -17,65 +17,6 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
         });
     };
 
-    const sendEasterEggNotification = async (type = 'normal') => {
-        const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
-        if (!webhookUrl) {
-            console.error("Discord webhook URL is not configured.");
-            return;
-        }
-
-        const userIdentifier = formData.coronerEmployee || formData.phmcEmployee || formData.patientName || formData.decedentName || 'Someone';
-
-        let embedTitle = "🎉 Easter Egg Found! 🎉";
-        let embedDescription = `Hey! **${userIdentifier}** just found the normal easter egg! 🥚`;
-        let embedColor = 0x7289DA;
-        let triggerSource = "Triggered during report save";
-
-        if (type === 'rare') {
-            embedTitle = "✨ Rare Easter Egg Found! ✨";
-            embedDescription = `Wow! **${userIdentifier}** just triggered the 1% rare easter egg! 🥚🎉`;
-            embedColor = 0xFFD700;
-        }
-
-        const isManualTrigger = window.location.hostname === 'localhost' && type === 'rare';
-        if (isManualTrigger) {
-            embedTitle += " (Manual Trigger)";
-            embedDescription = `Debug: **${userIdentifier}** just triggered the rare easter egg manually! 🥚🎉`;
-            triggerSource = "Triggered via Debug Button";
-        }
-
-        const embed = {
-            title: embedTitle,
-            description: embedDescription,
-            color: embedColor,
-            timestamp: new Date().toISOString(),
-            footer: {
-                text: `PHMC Tools Tool | ${triggerSource} | `
-            }
-        };
-
-        try {
-            const response = await fetch(webhookUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ embeds: [embed] }),
-            });
-
-            if (!response.ok) {
-                console.error(`Error sending ${type} easter egg webhook: ${response.status} ${response.statusText}`);
-            } else {
-                console.log(`${type} easter egg notification sent successfully.`);
-                await logWebhookToFirebase(type, { embeds: [embed] });
-            }
-        } catch (error) {
-            console.error(`Failed to send ${type} easter egg webhook:`, error);
-            Sentry.captureException(error, { extra: { context: `sendEasterEggNotification (${type})` } });
-        }
-    };
-
-
 
     const sendWebhookPayload = async (webhookURL, payload, successMessage, context, notifyFunc) => {
         if (!webhookURL) {
@@ -242,7 +183,6 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
 
     return {
         logWebhookToFirebase,
-        sendEasterEggNotification,
         sendDataRequestLog,
         handlePhmcWebhookSubmit,
         handleWebhookSubmit,
