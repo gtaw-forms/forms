@@ -24,6 +24,7 @@ import FormsManager from './FormsManager';
 import MetricsDashboard from './MetricsDashboard';
 import AgencyIncidentManager from './AgencyIncidentManager';
 import HallOfFameManager from './HallOfFameManager';
+import CctvDashboard from './CctvDashboard'; // Import the new CCTV Dashboard
 
 const AdminDashboard = ({
 
@@ -411,6 +412,7 @@ const AdminDashboard = ({
                         <button className={`nav-link ${selectedSection === 'factions' ? 'active' : ''}`} onClick={() => setSelectedSection('factions')}><i className="fas fa-users me-2"></i>Faction Data</button>
                         <button className={`nav-link ${selectedSection === 'dev' ? 'active' : ''}`} onClick={() => setSelectedSection('dev')}><i className="fas fa-code me-2"></i>Developer</button>
                         <button className={`nav-link ${selectedSection === 'database' ? 'active' : ''}`} onClick={() => setSelectedSection('database')}><i className="fas fa-database me-2"></i>Database</button>
+                        <button className={`nav-link ${selectedSection === 'cctv' ? 'active' : ''}`} onClick={() => setSelectedSection('cctv')}><i className="fas fa-video me-2"></i>CCTV Dashboard</button>
                     </div>
                 </div>
                 <div className="main-content">
@@ -452,6 +454,7 @@ const AdminDashboard = ({
                                 </div>
                             </div>
                         )}
+                    {selectedSection === 'cctv' && <CctvDashboard />}
                     {selectedSection === 'bingo' && (
                         <div className="card">
                             <div className="card-header">Bingo Management</div>

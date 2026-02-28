@@ -9,6 +9,7 @@ import DecedentItemRenderer from './DecedentItemRenderer'; // Import the new com
 import AutopsyDiagramModal from '../Modals/AutopsyDiagramModal'; // Import AutopsyDiagramModal
 import CharacterSelector from '../Modals/CharacterSelector';
 import { decedentItemSchema } from '../../formSchemas/decedentSchema';
+import { formatCharacterNameForDisplay } from '../../utils/characterUtils'; // Import the new utility
 
 const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore, toggleSavedReports, showNotification, handleDiagramUpload, setShowMapModal, setMapTargetField, isUploadingMapImage = {}, setShowAutopsyAssistModal, setAutopsyAssistTargetField }) => {
   const { factionsData } = useData();
@@ -18,7 +19,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
     return Object.values(factionsData['364'].members)
         .map(member => ({
             value: member.characterName, // Use name as value
-            label: member.characterName 
+            label: formatCharacterNameForDisplay(member.characterName) 
         }))
         .sort((a, b) => a.label.localeCompare(b.label)); // Sort alphabetically
   }, [factionsData]);
@@ -101,7 +102,11 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       );
     case "section":
       return (
-        <div style={{ 
+        <div 
+          data-tour-id={field.id}
+          data-tour-name={field.name}
+          data-tour-type={field.type}
+          style={{ 
             margin: "2rem 8px 1rem", 
             width: "calc(100% - 16px)", 
             boxSizing: "border-box",
@@ -241,7 +246,12 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       }
 
       return (
-        <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
+        <div 
+          data-tour-id={field.id} 
+          data-tour-name={field.name}
+          data-tour-type={field.type}
+          style={{ ...fieldWrapperStyle, display: "inline-block" }}
+        >
           <label style={labelStyle}>{field.label}</label>
             <select
               value={formValues[field.name] || ""}
@@ -420,7 +430,12 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
     }
 case "textarea":
   return (
-    <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
+    <div 
+      data-tour-id={field.id} 
+      data-tour-name={field.name}
+      data-tour-type={field.type}
+      style={{ ...fieldWrapperStyle, display: "inline-block" }}
+    >
       <label style={labelStyle}>{field.label}</label>
       <textarea
         name={field.name}
@@ -818,13 +833,19 @@ case "textarea":
       }, [formValues[targetField], handleChange, storageKey]);
 
       return (
-        <div style={fieldWrapperStyle}>
+        <div 
+          data-tour-id={field.id}
+          data-tour-name={field.name}
+          data-tour-type={field.type}
+          style={fieldWrapperStyle}
+        >
           <button
+            data-tour-target="button"
             onClick={() => {
               const callback = (reportData) => {
                 if (reportData && reportData.bbCode) {
                   const currentSummaries = formValues[storageKey] || [];
-                  if(showNotification) showNotification('Report attached!', 'success');
+                  //if(showNotification) showNotification('Report attached!', 'success');
                   
                   // Add the confirmation message to the persistent store
                   handleChange(storageKey, [...currentSummaries, `Report "${reportData.originalKey}" attached to "${targetField}"!`]);
@@ -905,7 +926,12 @@ case "textarea":
       }, [field.name, decedentList, handleChange, activeDecedentIndex]);
 
       return (
-        <div style={{ margin: "0 8px 1.5rem", width: "calc(100% - 16px)", boxSizing: "border-box" }}>
+        <div 
+            data-tour-id={field.id}
+            data-tour-name={field.name}
+            data-tour-type={field.type}
+            style={{ margin: "0 8px 1.5rem", width: "calc(100% - 16px)", boxSizing: "border-box" }}
+        >
           <label style={{ ...labelStyle, marginBottom: '1rem' }}>{field.label || "Decedents"}</label>
           
           <div style={{ 
@@ -1168,7 +1194,12 @@ case "textarea":
     case "input":
     default:
       return (
-        <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
+        <div 
+          data-tour-id={field.id} 
+          data-tour-name={field.name}
+          data-tour-type={field.type}
+          style={{ ...fieldWrapperStyle, display: "inline-block" }}
+        >
           <label style={labelStyle}>{field.label}</label>
           {formValues[`${field.name}_isFromMap`] && (
             <div style={{ fontSize: '0.75rem', color: '#34d399', marginBottom: '0.4rem' }}>

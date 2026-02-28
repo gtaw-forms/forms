@@ -1,12 +1,11 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import formStyles from './FormHandler.module.css';
+import panelStyles from './FormHandlerNavButtons.module.css';
 import { useModal } from '../../contexts/ModalProvider';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { useSeasonalEffects } from '../../contexts/SeasonalEffectsContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import CctvRequestWebhookModal from '../Admin/CctvRequestWebhookModal';
-import { Dropdown } from 'react-bootstrap';
 import FormRequestModal from '../Modals/FormRequestModal';
 
 import seasonalEvents from '../UI/SeasonalEvents';
@@ -15,9 +14,9 @@ import MapModal from '../Modals/MapModal';
 import HallOfFameModal from '../Modals/HallOfFameModal';
 import { uploadDataUrlToImgBB } from '../../utils/imageUploadUtils';
 
-const FormHandlerNavButtons = ({ onToggleSavedReports, onToggleAgencyIncident }) => {
+const FormHandlerNavButtons = ({ onToggleSavedReports, onToggleAgencyIncident, onStartTour }) => {
   const navigate = useNavigate();
-  const { user, isAuthenticated, isPhmcMember, characterName, login, logout } = useGtaWorldAuth();
+  const { isPhmcMember } = useGtaWorldAuth();
   const { setShowEmsBingoModal } = useModal();
   const { seasonalEffectsEnabled, setSeasonalEffectsEnabled } = useSeasonalEffects();
 
@@ -32,148 +31,109 @@ const FormHandlerNavButtons = ({ onToggleSavedReports, onToggleAgencyIncident })
   const [showBusinessCardModal, setShowBusinessCardModal] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false);
   const [showHallOfFameModal, setShowHallOfFameModal] = useState(false);
-  const [userPrefs, setUserPrefs] = useState(null);
-  const [showCctvPopup, setShowCctvPopup] = useState(false);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [showCctvPopup, setShowCctvPopup] = useState(() => {
+    return localStorage.getItem('cctvPopupDismissed') !== 'true';
+  });
 
-
-
-  const handleGtawLogin = useCallback(() => {
-    showNotification('Please wait, this may take a moment...', 'info-circle', 10000);
-    const returnPath = '#/'; 
-    login({ returnPath });
-  }, [showNotification, login]);
-
-
-  const handleDropdownClick = () => {
+  const togglePanel = () => {
+    setIsPanelOpen(!isPanelOpen);
     if (showCctvPopup) {
       setShowCctvPopup(false);
       localStorage.setItem('cctvPopupDismissed', 'true');
     }
   };
 
-  const handleTestNotifications = () => {
-    showNotification('Success: Operation completed successfully.', 'check-circle');
-    showNotification('Info: This is an informational message.', 'info-circle');
-    showNotification('Warning: Please be careful with this action.', 'warning');
-    showNotification('Error: Something went wrong!', 'exclamation-circle');
-    showNotification('Loading...', 'spinner fa-spin', 2000);
+  const handleAction = (action) => {
+    setIsPanelOpen(false);
+    action();
   };
 
   return (
     <React.Fragment>
-      <div style={{
-        position: "fixed",
-        top: 10,
-        left: 10,
-        right: 10,
-        zIndex: 1000,
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "flex-start",
-        width: "calc(100% - 20px)",
-        pointerEvents: "none",
-      }}>
-        {/* Left-aligned buttons */}
-        <div style={{ display: "flex", alignItems: 'center', gap: "10px", pointerEvents: "auto" }}>
-          {(isPhmcMember || import.meta.env.DEV) && (
-            <button
-              className={formStyles.topButton}
-              onClick={() => navigate('/admin')}
-            >
-              Admin
-            </button>
-          )}
-                    <button
-                      className={formStyles.topButton}
-                      onClick={() => navigate('/ems-dashboard')}
-                      style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
-                    >
-                      EMS Dashboard
-                    </button>        </div>
-
-        {/* Right-aligned buttons */}
-        <div style={{ position: 'relative', display: "flex", alignItems: "center", gap: "10px", pointerEvents: "auto" }}>
-          <button
-              className={formStyles.topButton}
-              onClick={onToggleSavedReports}
-              title="Open Saved Reports"
-          >
-              <i className="fas fa-save"></i> Saved Reports
-          </button>
-          <button
-            className={formStyles.topButton}
-            onClick={isAuthenticated ? logout : handleGtawLogin}
-          >
-            {isAuthenticated ? `Sign Out (${characterName || user?.username})` : "Sign in with GTA:W"}
-          </button>
-          
-          <Dropdown onToggle={handleDropdownClick}>
-            <Dropdown.Toggle as="button" className={formStyles.topButton} id="dropdown-more-options">
-              <i className="fas fa-cog"></i> More
-            </Dropdown.Toggle>
-
-            <Dropdown.Menu>
-                <Dropdown.Item onClick={() => setShowCctvModal(true)}>
-                  <i className="fas fa-video"></i> CCTV Request
-                </Dropdown.Item>
-              <Dropdown.Item onClick={() => setShowEmsBingoModal(true)}>
-                <i className="fas fa-trophy"></i> Bingo Night!
-              </Dropdown.Item>
-              <Dropdown.Item onClick={() => setShowFormRequestModal(true)}>
-                <i className="fas fa-file-alt"></i> Request a Form
-              </Dropdown.Item>
-              <Dropdown.Item onClick={() => setShowBusinessCardModal(true)}>
-                <i className="fas fa-id-card"></i> Business Card
-              </Dropdown.Item>
-              <Dropdown.Item onClick={() => setShowMapModal(true)}>
-                <i className="fas fa-map"></i> GTA Map (Experimental)
-              </Dropdown.Item>
-              <Dropdown.Item onClick={() => setShowHallOfFameModal(true)}>
-                <i className="fas fa-trophy"></i> Hall of Fame
-              </Dropdown.Item>
-              <Dropdown.Item onClick={onToggleAgencyIncident}>
-                <i className="fas fa-shield-alt"></i> Agency Incident
-              </Dropdown.Item>
-              <Dropdown.Item onClick={() => setSeasonalEffectsEnabled(!seasonalEffectsEnabled)}>
-                <i className={`fas ${seasonalEffectsEnabled ? "fa-toggle-on" : "fa-toggle-off"}`}></i>
-                {seasonalEffectsEnabled ? "Effects ON" : "Effects OFF"}
-              </Dropdown.Item>
-              <Dropdown.Item onClick={handleTestNotifications}>
-                <i className="fas fa-bell"></i> Test Notifications
-              </Dropdown.Item>
-              <Dropdown.Divider />
-            </Dropdown.Menu>
-          </Dropdown>
-          {showCctvPopup && (
-            <div style={{
-              position: 'absolute',
-              top: '100%',
-              right: 0,
-              marginTop: '5px',
-              background: 'var(--bs-warning)',
-              color: '#000',
-              padding: '5px 10px',
-              borderRadius: '4px',
-              fontSize: '0.9rem',
-              fontWeight: 'bold',
-              boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
-              zIndex: 1001,
-            }}>
-              CCTV in here!
-              <div style={{
-                content: '""',
-                position: 'absolute',
-                bottom: '100%',
-                right: '15px',
-                borderWidth: '5px',
-                borderStyle: 'solid',
-                borderColor: 'transparent transparent var(--bs-warning) transparent'
-              }}/>
-            </div>
-          )}
-        </div>
+      {/* Sidebar Toggle & Container */}
+      <div className={panelStyles.navContainer} data-tour="nav-buttons">
+        <button 
+          className={`${panelStyles.toggleButton} ${isPanelOpen ? panelStyles.active : ''}`}
+          onClick={togglePanel}
+          title={isPanelOpen ? "Close Tools" : "Open Tools & Navigation"}
+        >
+          <i className={`fas ${isPanelOpen ? 'fa-times' : 'fa-tools'}`}></i>
+          {showCctvPopup && !isPanelOpen && <div className={panelStyles.cctvBadge} />}
+        </button>
       </div>
 
+      {/* Overlay */}
+      <div 
+        className={`${panelStyles.panelOverlay} ${isPanelOpen ? panelStyles.show : ''}`} 
+        onClick={() => setIsPanelOpen(false)}
+      />
+
+      {/* Sliding Panel */}
+      <div className={`${panelStyles.slidingPanel} ${isPanelOpen ? panelStyles.open : ''}`}>
+        <div className={panelStyles.panelHeader}>Navigation</div>
+        
+        {(isPhmcMember || import.meta.env.DEV) && (
+          <button className={panelStyles.panelButton} onClick={() => handleAction(() => navigate('/admin'))}>
+            <i className="fas fa-user-shield"></i> Admin Panel
+          </button>
+        )}
+        
+        <button className={panelStyles.panelButton} onClick={() => handleAction(() => navigate('/ems-dashboard'))}>
+          <i className="fas fa-tachometer-alt"></i> EMS Dashboard
+        </button>
+
+        <div className={panelStyles.panelDivider} />
+        <div className={panelStyles.panelHeader}>Tools</div>
+
+        <button className={panelStyles.panelButton} onClick={() => handleAction(onToggleSavedReports)}>
+          <i className="fas fa-save"></i> Saved Reports
+        </button>
+
+        <button className={panelStyles.panelButton} onClick={() => handleAction(() => setShowCctvModal(true))}>
+          <i className="fas fa-video"></i> CCTV Request
+        </button>
+
+        <button className={panelStyles.panelButton} onClick={() => handleAction(() => setShowEmsBingoModal(true))}>
+          <i className="fas fa-trophy"></i> Bingo Night!
+        </button>
+
+        <button className={panelStyles.panelButton} onClick={() => handleAction(() => setShowMapModal(true))}>
+          <i className="fas fa-map-marked-alt"></i> GTA Map (Beta)
+        </button>
+
+        <button className={panelStyles.panelButton} onClick={() => handleAction(() => setShowBusinessCardModal(true))}>
+          <i className="fas fa-id-card"></i> Business Card
+        </button>
+
+        <button className={panelStyles.panelButton} onClick={() => handleAction(() => setShowHallOfFameModal(true))}>
+          <i className="fas fa-medal"></i> Hall of Fame
+        </button>
+
+        <button className={panelStyles.panelButton} onClick={() => handleAction(onToggleAgencyIncident)}>
+          <i className="fas fa-shield-alt"></i> Agency Incident
+        </button>
+
+        <div className={panelStyles.panelDivider} />
+        <div className={panelStyles.panelHeader}>Settings & Help</div>
+
+        <button className={panelStyles.panelButton} onClick={() => handleAction(() => setSeasonalEffectsEnabled(!seasonalEffectsEnabled))}>
+          <i className={`fas ${seasonalEffectsEnabled ? "fa-toggle-on" : "fa-toggle-off"}`}></i>
+          Effects: {seasonalEffectsEnabled ? "ON" : "OFF"}
+        </button>
+
+        <button className={panelStyles.panelButton} onClick={() => handleAction(() => setShowFormRequestModal(true))}>
+          <i className="fas fa-file-signature"></i> Request a Form
+        </button>
+
+        {import.meta.env.DEV && (
+          <button className={panelStyles.panelButton} onClick={() => handleAction(onStartTour)}>
+            <i className="fas fa-route"></i> Run UI Tour
+          </button>
+        )}
+      </div>
+
+      {/* Persistent Logo */}
       <div
         style={{
             position: 'fixed',

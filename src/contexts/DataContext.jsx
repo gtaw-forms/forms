@@ -12,7 +12,8 @@ const CACHE_SEGMENTS = {
     AGENCIES: 'agencies',
     SELECT_OPTIONS: 'selectOptions',
     FORMS: 'forms',
-    LSCC: 'lscc'
+    LSCC: 'lscc',
+    SURVEY: 'survey'
 };
 
 // Define segments that should not be cached in localStorage
@@ -97,8 +98,10 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 break;
             }
             case CACHE_SEGMENTS.LSCC:
-                // Assuming you want to set some state for LSCC data as well
                 setLsccData(data || {});
+                break;
+            case CACHE_SEGMENTS.SURVEY:
+                setSurveyData(data || null);
                 break;
             default:
                 console.warn(`Unknown cache segment: ${segment}`);
@@ -117,7 +120,9 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
 
     const [formsData, setFormsData] = useState([]);
     const [lsccData, setLsccData] = useState({}); // New state for LSCC data
+    const [surveyData, setSurveyData] = useState(null); // State for survey
     const [isDevMode, setIsDevMode] = useState(false); // Add isDevMode state
+    const [hasFirebaseError, setHasFirebaseError] = useState(false);
 
     // Segmented cache for fetched data
     const dataCache = useRef({});
@@ -248,18 +253,16 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 if (snapshot.exists()) {
                     initialServerVersion = String(snapshot.val());
                     console.log(`[DataContext] Initial formsDataVersion fetched from server: v${initialServerVersion}`);
+                    localStorage.setItem('formsDataVersion', initialServerVersion);
                 } else {
-                    console.log('[DataContext] formsDataVersion does not exist on server initially. (This is fine)');
+                    console.log('[DataContext] formsDataVersion does not exist on server initially. Clearing local version.');
+                    localStorage.removeItem('formsDataVersion');
                 }
-                // Crucially, update local storage with this server value after the get()
-                // This ensures the local cache is primed correctly for the onValue listener.
-                // We default to '0' if the node doesn't exist to ensure localVersion is always comparable.
-                localStorage.setItem('formsDataVersion', initialServerVersion || '0'); 
 
             } catch (error) {
                 console.error('[DataContext] Failed to get initial formsDataVersion from server:', error);
                 // In case of error during initial get, ensure local storage has a default to prevent further errors
-                localStorage.setItem('formsDataVersion', '0');
+                localStorage.removeItem('formsDataVersion');
             }
 
             // Now, attach the onValue listener. It should now get an un-poisoned snapshot.
@@ -315,13 +318,14 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 if (snapshot.exists()) {
                     initialServerVersion = String(snapshot.val());
                     console.log(`[DataContext] Initial factionsDataVersion fetched from server: v${initialServerVersion}`);
+                    localStorage.setItem('factionsDataVersion', initialServerVersion);
                 } else {
-                    console.log('[DataContext] factionsDataVersion does not exist on server initially. (This is fine)');
+                    console.log('[DataContext] factionsDataVersion does not exist on server initially. Clearing local version.');
+                    localStorage.removeItem('factionsDataVersion');
                 }
-                localStorage.setItem('factionsDataVersion', initialServerVersion || '0'); 
             } catch (error) {
                 console.error('[DataContext] Failed to get initial factionsDataVersion from server:', error);
-                localStorage.setItem('factionsDataVersion', '0');
+                localStorage.removeItem('factionsDataVersion');
             }
 
             firebaseListeners.current.factionsVersion = onValue(factionsVersionRef, async (snapshot) => {
@@ -368,13 +372,14 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 if (snapshot.exists()) {
                     initialServerVersion = String(snapshot.val());
                     console.log(`[DataContext] Initial selectOptionsDataVersion fetched from server: v${initialServerVersion}`);
+                    localStorage.setItem('selectOptionsDataVersion', initialServerVersion);
                 } else {
-                    console.log('[DataContext] selectOptionsDataVersion does not exist on server initially. (This is fine)');
+                    console.log('[DataContext] selectOptionsDataVersion does not exist on server initially. Clearing local version.');
+                    localStorage.removeItem('selectOptionsDataVersion');
                 }
-                localStorage.setItem('selectOptionsDataVersion', initialServerVersion || '0'); 
             } catch (error) {
                 console.error('[DataContext] Failed to get initial selectOptionsDataVersion from server:', error);
-                localStorage.setItem('selectOptionsDataVersion', '0');
+                localStorage.removeItem('selectOptionsDataVersion');
             }
 
             firebaseListeners.current.optionsVersion = onValue(optionsVersionRef, async (snapshot) => {
@@ -415,6 +420,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
 
 
     const loadData = useCallback(async (forceRefresh = false) => {
+        setHasFirebaseError(false); // Reset error state at the beginning of data load
         // If data is already loaded and we are not forcing a refresh, exit early.
         // This is crucial to prevent re-fetching in StrictMode's double invocation.
         if (dataLoaded && !forceRefresh) {
@@ -631,6 +637,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 {}, // segmentSizes (empty on error)
                 error.message || 'Unknown Fetch Error' // error
             );
+            setHasFirebaseError(true); // Set error state
         } finally {
             setIsLoadingData(false);
             setLoading(false);
@@ -855,6 +862,13 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         return dataSource;
     }, [factionsData]);
 
+    const hardcodedSurvey = {
+        id: 'q1-2026-feedback',
+        title: 'Quick Feedback Survey',
+        question: 'What is one feature you would like to see added or improved in PHMC Forms?',
+        isActive: true, // This will be used to show the survey
+    };
+
     const value = {
         factionsData,
         formsData,
@@ -868,10 +882,12 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         refreshSegments,
         notifyDataUpdate, // Expose the notification function
         sendDataRequestLog: webhooks.sendDataRequestLog, // Expose the logging function
-                isDevMode,
-                setIsDevMode,
-                lsccData, // Add lsccData to the context value
-            };
+        isDevMode,
+        setIsDevMode,
+        lsccData, // Add lsccData to the context value
+        hasFirebaseError, // Expose firebase error status
+        surveyData: hardcodedSurvey, // Expose hardcoded survey data
+    };
             
                 return (
                     <DataContext.Provider value={value}>

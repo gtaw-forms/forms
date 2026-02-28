@@ -3,6 +3,7 @@ import { useState, useCallback } from 'react';
 import { getUtcFormattedDateTime } from '../utils/dateTimeUtils';
 import { getDepartmentFullName } from '../utils/bbcodeHelpers';
 import generateDecedentBBCode from '../phmc-bbcode-generators/generateMassFatality';
+import { formatCharacterNameForDisplay } from '../utils/characterUtils';
 
 const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agencyDataStore, gtaWorldUser) => {
   const [generatedBBCode, setGeneratedBBCode] = useState("");
@@ -94,9 +95,16 @@ const formatToNorthAmericanDate = (isoDateTime) => {
     const isMassFatality = selectedForm.firebaseKey === 'mass-ftality-test' || selectedForm.id === 'mass-fatality' || selectedForm.name?.toLowerCase().includes('mass fatality');
 
     const performGeneration = (decedentsOverride = null) => {
-      // Process formValues to extract primitive values from select objects
+      // Process formValues to extract primitive values from select objects and format employee names
       const processedFormValues = Object.entries(formValues).reduce((acc, [key, value]) => {
-        if (
+        // Find the field definition from selectedForm.fields
+        const fieldDef = selectedForm.fields?.find(f => f.name === key);
+
+        if (fieldDef && fieldDef.type === 'employee_select' && typeof value === 'string') {
+          acc[key] = formatCharacterNameForDisplay(value);
+        } else if (fieldDef && fieldDef.type === 'multi_employee_select' && Array.isArray(value)) {
+          acc[key] = value.map(name => formatCharacterNameForDisplay(name)).join(', ');
+        } else if (
           typeof value === 'object' &&
           value !== null &&
           !Array.isArray(value) && 

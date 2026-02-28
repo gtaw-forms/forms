@@ -222,7 +222,7 @@ export const dailyMaintenanceTask = onSchedule({
         if (userCountsSnapshot.exists()) {
             const userIds = Object.keys(userCountsSnapshot.val());
             const threeSixtyFiveDaysAgo = Date.now() - (365 * 24 * 60 * 60 * 1000);
-            const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+            const twoDaysAgo = Date.now() - (2 * 24 * 60 * 60 * 1000);
             const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000);
 
             // Process users in chunks to control concurrency
@@ -251,11 +251,11 @@ export const dailyMaintenanceTask = onSchedule({
                         console.error(`Error cleaning old reports for user ${userId}:`, err);
                     }
 
-                    // B. Recovery Snapshot Cleanup (> 7 days)
+                    // B. Recovery Snapshot Cleanup (> 2 days)
                     try {
                         const oldRecoveryQuery = db.ref(`${RECOVERY_PATH}/${userId}`)
                             .orderByChild('timestamp')
-                            .endAt(sevenDaysAgo);
+                            .endAt(twoDaysAgo);
                         
                         const oldRecSnapshot = await oldRecoveryQuery.once('value');
                         if (oldRecSnapshot.exists()) {
@@ -422,7 +422,7 @@ export const dailyMaintenanceTask = onSchedule({
             { name: "🧹 Recent Duplicates (3 days)", value: `Scanned: ${maintenanceResults.duplicateCleanup.scanned}\nDeleted: ${maintenanceResults.duplicateCleanup.duplicatesDeleted}`, inline: true },
             { name: "💾 Backup Cleanup", value: `Deleted: ${maintenanceResults.backupCleanup.oldBackupsCleaned}`, inline: true },
             { name: "📋 Webhook Log Cleanup", value: `Deleted: ${maintenanceResults.webhookLogCleanup.oldLogsCleaned}`, inline: true },
-            { name: "🔄 Recovery Snapshots (7 days)", value: `Deleted: ${maintenanceResults.recoveryCleanup.deleted}`, inline: true },
+            { name: "🔄 Recovery Snapshots (2 days)", value: `Deleted: ${maintenanceResults.recoveryCleanup.deleted}`, inline: true },
         ],
         footer: { text: "PHMC Tools - Automated Daily Maintenance (v2 Optimized)" }
     };
@@ -465,7 +465,7 @@ export const dailyMaintenanceTask = onSchedule({
 
     if (isFirstOfYear) {
         console.log('[Maintenance] Triggering yearly summaries (January 1st)...');
-        await Promise.allSettled([
+        await PromiseSettled([
             runYearlyCoronerSummary()
         ]);
     }

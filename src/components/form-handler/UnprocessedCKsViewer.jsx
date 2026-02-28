@@ -4,10 +4,10 @@ import { ref, onValue, remove, update, get } from 'firebase/database';
 import { Spinner, Table, Button, Badge, Modal, Image, Alert } from 'react-bootstrap';
 import { useNotification } from '../../contexts/NotificationContext';
 
-const UnprocessedCKsViewer = ({ selectedForm }) => {
+const UnprocessedCKsViewer = ({ selectedForm, onPreload }) => {
     const [ckList, setCkList] = useState([]);
     const [loading, setLoading] = useState(true);
-    const { showNotification } = useNotification();
+    const { showNotification, removeNotification } = useNotification();
     
     // View Modal State
     const [showViewModal, setShowViewModal] = useState(false);
@@ -116,6 +116,73 @@ const UnprocessedCKsViewer = ({ selectedForm }) => {
             setLoadingView(false);
         }
     };
+    
+    const handlePreload = async (ckItem) => {
+        if (!onPreload) {
+            console.error("onPreload function not provided to UnprocessedCKsViewer");
+            showNotification('Preload function is not available.', 'error');
+            return;
+        }
+    
+        const notificationId = showNotification('Preloading data...', 'spinner fa-spin', 0);
+    
+        try {
+            if (ckItem.reportPath) {
+                const reportRef = ref(database, ckItem.reportPath);
+                const snapshot = await get(reportRef);
+                if (snapshot.exists()) {
+                    const reportData = snapshot.val();
+                    
+                    const isMF = ckItem.isMassFatality || (reportData.formId && reportData.formId.includes('mass'));
+                    const displayData = isMF && reportData.data?.decedents
+                        ? reportData.data.decedents[ckItem.decedentIndex || 0]
+                        : reportData.data;
+    
+                    if (!displayData) {
+                        showNotification('Decedent data could not be resolved for preloading.', 'warning');
+                        removeNotification(notificationId);
+                        return;
+                    }
+    
+                    const date = new Date(displayData.pronouncedTimeOfDeath || reportData.data?.dateTime || ckItem.dateOfDeath);
+                    const formattedDate = !isNaN(date.getTime()) ? date.toLocaleDateString() : '';
+    
+                    const decedentName = displayData.decedentName || '';
+                    const isUnidentified = !decedentName || /unknown|john doe|jane doe/i.test(decedentName);
+
+                    const valuesToPreload = {
+                        deathRecordType: isUnidentified ? 'Unidentified' : 'Identified',
+                        decedentName: decedentName,
+                        decedentOOC: displayData.decedentOOC || '',
+                        formattedDateOfDeath: formattedDate,
+                        age: displayData.approximateAge || displayData.age || '',
+                        sex: displayData.sex || '',
+                        ethnicity: displayData.ethnicity || '',
+                        placeOfDeath: displayData.location || displayData.placeOfDeath || '',
+                        Manner: displayData.mannerOfDeath || '',
+                        causeA: displayData.probableCauseOfDeath || '',
+
+
+                    };
+    
+                    onPreload(valuesToPreload);
+                    removeNotification(notificationId);
+                    showNotification('Form preloaded with CK report data!', 'success');
+    
+                } else {
+                    removeNotification(notificationId);
+                    showNotification('Report data not found for preloading.', 'warning');
+                }
+            } else {
+                removeNotification(notificationId);
+                showNotification('Invalid report path for preloading.', 'error');
+            }
+        } catch (error) {
+             console.error("Error preloading report details:", error);
+             removeNotification(notificationId);
+             showNotification('Failed to preload report details.', 'error');
+        }
+    };
 
     const isDeathRecordForm = selectedForm?.firebaseKey === 'death-record' || 
                               selectedForm?.firebaseKey === 'death_record' || 
@@ -210,6 +277,14 @@ const UnprocessedCKsViewer = ({ selectedForm }) => {
                                     <td className="fw-bold text-white">{item.decedentName}</td>
                                     <td>{item.decedentOOC}</td>
                                     <td className="text-end">
+                                        <Button
+                                            variant="outline-primary"
+                                            size="sm"
+                                            className="me-2"
+                                            onClick={() => handlePreload(item)}
+                                        >
+                                            <i className="fas fa-download me-1"></i> Preload
+                                        </Button>
                                         <Button 
                                             variant="outline-info" 
                                             size="sm"

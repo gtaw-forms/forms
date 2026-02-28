@@ -190,9 +190,9 @@ const AddFormModal = ({ show, onClose, editingForm = null, user, isDuplicate = f
         }
         return [...prevFields, { type: "fake_line", id: fieldToSave.id }];
       });
-    } else if (fieldToSave.type === "small_header") {
+    } else if (fieldToSave.type === "small_header" || fieldToSave.type === "section") {
       if (!fieldToSave.label) {
-        showNotification("Header Text is required for Small Header!", "warning");
+        showNotification(`Header Text is required for ${fieldToSave.type === 'section' ? 'Section Header' : 'Small Header'}!`, "warning");
         return;
       }
       const finalName = fieldToSave.name || `header_${fields.length + 1}`;
@@ -996,6 +996,14 @@ const handleBulkAddFields = (fieldsToAdd) => {
                             <option value="autopsy_diagram_button">Autopsy Diagram Button</option>
                             <option value="information_state">Information State</option>
                             <option value="medicine_block">Medicine Block</option>
+                            <option value="checkbox">Checkbox</option>
+                            <option value="radio">Radio Buttons</option>
+                            <option value="image">Image Gallery</option>
+                            <option value="multi_select">Dropdown (Multiple Selection)</option>
+                            <option value="character_selector">Dropdown - Character Select</option>
+                            <option value="employee_select">Dropdown - Employee Selector</option>
+                            <option value="multi_employee_select">Dropdown - Multiple Employees</option>
+                            <option value="payment_button">Payment Button</option>
                           </select>
               
                                                     {newField.type === "information_state" && (

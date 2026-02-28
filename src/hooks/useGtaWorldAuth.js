@@ -293,7 +293,7 @@ export const useGtaWorldAuth = () => {
 
     // DEBUG: Log permissions and admin status
 
-    return {
+    return useMemo(() => ({
         user,
         isAuthenticated: !!user,
         isLoading: isLoading || authLoading,
@@ -321,7 +321,12 @@ export const useGtaWorldAuth = () => {
         swapCharacter,
         canSwapCharacters: swappableCharacters.length > 0,
         updateFactionData,
-    };
+    }), [
+        user, isLoading, authLoading, error, isValidatingSession, login, handleLogout, processCallback, 
+        refreshUser, apiRequest, clearError, isGoogleAdmin, firebaseUser, firebaseIsPhmcMember, 
+        firebaseAccessLevel, firebasePermissions, activeCharacter, swappableCharacters, swapCharacter, 
+        updateFactionData
+    ]);
 };
 
 export default useGtaWorldAuth;
