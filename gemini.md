@@ -20,3 +20,10 @@
 - Added 'fetchExternalUrl' Firebase Function in 'src/utils/proxy.js' to proxy GET requests, accessible via the FirebaseFunctionsTester UI.
 - Updated 'fetchExternalUrl' and 'FirebaseFunctionsTester' to support custom Cookies, allowing access to protected pages via proxy.
 - **CRITICAL**: Do NOT use React-Bootstrap `Modal` components for modals/dialogs. Always prefer custom `div`-based overlays to prevent UI issues and glitches.
+- Updated multiple PHMC and Mental Health forms (General Consultation, ER Protocol, Psychological Evaluation, Session Notes) to use `section` headers with descriptive FontAwesome icons.
+- Implemented a specialized, step-by-step UI Tour for all primary PHMC forms, allowing users to be guided through section-specific requirements. Added a "Start Tour" button directly on the form header for manual access.
+- Refactored the Form Handler navigation into a modern, sliding sidebar/drawer interface to reduce clutter and group tools (Saved Reports, CCTV, Map, etc.) into categories.
+- Enhanced the project's header aesthetics by shrinking font sizes and margins, and unified the background color across the Form Handler and EMS Dashboard for a consistent dark-theme experience.
+- Improved the Admin "Add Multiple Fields" tool to support the `section` type, including an integrated icon picker and live visual feedback in the field queue.
+- Added a "Sign Out" button to the Employee Credentials section for easier account switching.
+- Silenced tour notification spam by using `localStorage` for dismissal persistence and adding a global "Never Ask Again" option.

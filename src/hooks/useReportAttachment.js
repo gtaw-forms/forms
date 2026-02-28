@@ -42,6 +42,14 @@ export const useReportAttachment = (
             const loadedFormData = reportData.data || {};
             const loadedVersion = reportData.bbCodeVersion;
 
+            const prefillMessages = [];
+            if (loadedFormData.requestingOfficer && (selectedForm?.name === 'Coroner Email' || selectedForm?.id === 'coroner_email')) {
+                prefillMessages.push(`Requesting Officer ('${loadedFormData.requestingOfficer}')`);
+            }
+            if (loadedFormData.department && (selectedForm?.name === 'Coroner Email' || selectedForm?.id === 'coroner_email')) {
+                prefillMessages.push(`Department ('${loadedFormData.department}')`);
+            }
+
             // --- MODIFICATION START: Generalized Field Population ---
             setFormData(prev => {
                 // Logic for Attaching Mass Fatality to Coroner Email
@@ -87,13 +95,11 @@ export const useReportAttachment = (
                         // Hotfix: If attached Mass Fatality report has requestingOfficer, update the Coroner Email form
                         if (loadedFormData.requestingOfficer) {
                             newState.requestingOfficer = loadedFormData.requestingOfficer;
-                            showNotification(`Requesting Officer '${loadedFormData.requestingOfficer}' pre-filled.`, 'info');
                         }
 
                         // Hotfix: If attached Mass Fatality report has department, update the Coroner Email form
                         if (loadedFormData.department) {
                             newState.department = loadedFormData.department;
-                            showNotification(`Requesting Department '${loadedFormData.department}' pre-filled.`, 'info');
                         }
 
                         return newState;
@@ -163,7 +169,6 @@ export const useReportAttachment = (
                     // Hotfix: If attached report has requestingOfficer, update the Coroner Email form
                     if (loadedFormData.requestingOfficer && (selectedForm?.name === 'Coroner Email' || selectedForm?.id === 'coroner_email')) {
                         updates.requestingOfficer = loadedFormData.requestingOfficer;
-                        showNotification(`Requesting Officer '${loadedFormData.requestingOfficer}' pre-filled.`, 'info');
                     }
 
                     return { ...prev, ...updates };
@@ -184,7 +189,12 @@ export const useReportAttachment = (
             // --- MODIFICATION END ---
 
             pendingReportAttachmentCallback.current(reportData);
-            showNotification(`Report "${reportData.originalKey}" attached successfully.`, 'check-circle');
+
+            let successMessage = `Report "${reportData.originalKey}" attached successfully.`;
+            if (prefillMessages.length > 0) {
+                successMessage += ` Pre-filled: ${prefillMessages.join(', ')}.`;
+            }
+            showNotification(successMessage, 'check-circle');
 
         } else {
             if (!result.success) {
