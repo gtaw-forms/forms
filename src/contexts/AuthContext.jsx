@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useMemo } from 'react';
 import { auth } from '../firebase';
 import { getIdTokenResult } from 'firebase/auth';
 
@@ -41,18 +41,20 @@ export const AuthProvider = ({ children }) => {
         setClaims({});
     };
 
+    const value = useMemo(() => ({
+        user,
+        claims,
+        isLoading,
+        logout,
+        isPhmcMember: !!claims.isFactionMember || !!user?.email?.endsWith('@gmail.com'), // Gmail users are treated as members
+        accessLevel: claims.accessLevel || (user?.email?.endsWith('@gmail.com') ? 'superadmin' : 'none'),
+        permissions: claims.permissions || [],
+        displayName: user?.displayName || claims.gtawUsername || user?.email || 'Unknown User',
+        email: user?.email || (claims.gtawUsername ? `${claims.gtawUsername}@gta.world` : null)
+    }), [user, claims, isLoading]);
+
     return (
-        <AuthContext.Provider value={{ 
-            user, 
-            claims, 
-            isLoading, 
-            logout,
-            isPhmcMember: !!claims.isFactionMember || !!user?.email?.endsWith('@gmail.com'), // Gmail users are treated as members
-            accessLevel: claims.accessLevel || (user?.email?.endsWith('@gmail.com') ? 'superadmin' : 'none'),
-            permissions: claims.permissions || [],
-            displayName: user?.displayName || claims.gtawUsername || user?.email || 'Unknown User',
-            email: user?.email || (claims.gtawUsername ? `${claims.gtawUsername}@gta.world` : null)
-        }}>
+        <AuthContext.Provider value={value}>
             {children}
         </AuthContext.Provider>
     );

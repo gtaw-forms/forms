@@ -1,0 +1,57 @@
+{
+  "draw": 1,
+  "recordsTotal": 296,
+  "recordsFiltered": 296,
+  "data": [
+    {
+      "id": 32679912,
+      "message": "Anne Carter chuckles.",
+      "date": "<span class=\"text-uppercase\">25/Feb/2026 17:24</span>"
+    },
+    {
+      "id": 32679609,
+      "message": "Anne Carter chuckles.",
+      "date": "<span class=\"text-uppercase\">25/Feb/2026 17:19</span>"
+    },
+    {
+      "id": 32679565,
+      "message": "Anne Carter nods.",
+      "date": "<span class=\"text-uppercase\">25/Feb/2026 17:18</span>"
+    },
+    {
+      "id": 32679171,
+      "message": "Anne Carter boots up her laptop.",
+      "date": "<span class=\"text-uppercase\">25/Feb/2026 17:16</span>"
+    },
+    {
+      "id": 32678793,
+      "message": "Anne Carter nods.",
+      "date": "<span class=\"text-uppercase\">25/Feb/2026 17:08</span>"
+    },
+    {
+      "id": 32678817,
+      "message": "Raegan Wolfe nods.",
+      "date": "<span class=\"text-uppercase\">25/Feb/2026 17:07</span>"
+    },
+    {
+      "id": 32678896,
+      "message": "Raegan Wolfe wafts a hand.",
+      "date": "<span class=\"text-uppercase\">25/Feb/2026 17:05</span>"
+    },
+    {
+      "id": 32678679,
+      "message": "Anne Carter nods.",
+      "date": "<span class=\"text-uppercase\">25/Feb/2026 17:00</span>"
+    },
+    {
+      "id": 32678325,
+      "message": "Anne Carter nods.",
+      "date": "<span class=\"text-uppercase\">25/Feb/2026 16:56</span>"
+    },
+    {
+      "id": 32678162,
+      "message": "Raegan Wolfe smiles.",
+      "date": "<span class=\"text-uppercase\">25/Feb/2026 16:53</span>"
+    }
+  ]
+}

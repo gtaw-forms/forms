@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNotification } from '../contexts/NotificationContext.jsx';
 
 const INACTIVITY_WARNING_TIMEOUT = 30 * 60 * 1000; // 30 minutes
@@ -92,8 +92,12 @@ export const useInactivityReload = () => {
         };
     }, [resetTimers]);
 
+    const getIsInactivityWarningTriggered = useCallback(() => {
+        return inactivityWarningTriggered.current || wasReloadedDueToInactivity.current;
+    }, []);
+
     // Expose a getter for the inactivity warning state
-    return {
-        getIsInactivityWarningTriggered: () => inactivityWarningTriggered.current || wasReloadedDueToInactivity.current,
-    };
+    return useMemo(() => ({
+        getIsInactivityWarningTriggered,
+    }), [getIsInactivityWarningTriggered]);
 };

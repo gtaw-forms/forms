@@ -91,6 +91,15 @@ export const cleanRank = (rank) => {
     return rank.replace(/-/g, ' ').trim();
 };
 
+export const formatCharacterNameForDisplay = (characterName) => {
+    if (!characterName) return '';
+    return characterName
+        .replace(/_/g, ' ') // Replace underscores with spaces
+        .split(' ')         // Split by spaces
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1)) // Capitalize first letter of each word
+        .join(' ');         // Join back with spaces
+};
+
 export const getDatabaseRank = (gtaWorldUser, factionsData) => {
     if (!gtaWorldUser || !factionsData) return null;
 
