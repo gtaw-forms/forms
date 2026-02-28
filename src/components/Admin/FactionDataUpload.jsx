@@ -472,19 +472,14 @@ const FactionDataUpload = ({ showNotification }) => {
         disabled: uploadStatus === 'uploading'
     });
 
-    // Upload to Firebase
-    const handleUploadToFirebase = async () => {
-        if (!parsedData) return;
-
-        setUploadStatus('uploading');
-        setError(null);
-
+    // Reusable upload logic
+    const performFactionDataUpload = async (dataToUpload, fileName) => {
         try {
             const { userAgent, timeZone } = getUserContext();
             logAdminAction(
                 gtawUsername,
                 'Uploaded Faction Data',
-                `File: ${parsedData.fileName}\nRows: ${parsedData.validRows}/${parsedData.totalRows}`,
+                `File: ${fileName}\nRows: ${dataToUpload.length}`,
                 'Faction Data Management',
                 userAgent,
                 timeZone,
@@ -500,18 +495,17 @@ const FactionDataUpload = ({ showNotification }) => {
                 console.log('[Faction Upload] Cleared existing factions/364/members');
             } catch (clearErr) {
                 console.warn('[Faction Upload] Failed to clear existing members before upload:', clearErr);
-                // Proceed with upload even if clear fails, but inform user
                 showNotification && showNotification('Warning: Could not clear previous records. Proceeding with upload.', 'warning');
             }
             
             const uploadFactionData = httpsCallable(functions, 'uploadFactionData');
             const result = await uploadFactionData({
-                factionData: parsedData.data,
+                factionData: dataToUpload,
                 metadata: {
-                    fileName: parsedData.fileName,
-                    totalRows: parsedData.totalRows,
-                    validRows: parsedData.validRows,
-                    uploadTime: parsedData.uploadTime,
+                    fileName: fileName,
+                    totalRows: dataToUpload.length,
+                    validRows: dataToUpload.length,
+                    uploadTime: new Date().toISOString(),
                     factionId: 364 // PHMC
                 }
             });
@@ -540,25 +534,78 @@ const FactionDataUpload = ({ showNotification }) => {
             }
 
             console.log('[Faction Upload] Upload result:', result.data);
-            setUploadResult(result.data);
-            setUploadStatus('success');
-            
-            showNotification && showNotification(
-                `Successfully uploaded ${parsedData.validRows} faction members to database`,
-                'success'
-            );
-
+            return { success: true, data: result.data };
         } catch (error) {
             console.error('[Faction Upload] Upload error:', error);
             Sentry.captureException(error, {
                 extra: { context: 'Faction Data Upload' }
             });
-            
             setError(error.message);
             setUploadStatus('error');
             showNotification && showNotification(`Upload failed: ${error.message}`, 'error');
+            return { success: false, error: error.message };
         }
     };
+
+    // Upload to Firebase from UI
+    const handleUploadToFirebase = async () => {
+        if (!parsedData) return;
+
+        setUploadStatus('uploading');
+        setError(null);
+
+        const result = await performFactionDataUpload(parsedData.data, parsedData.fileName);
+
+        if (result.success) {
+            setUploadResult(result.data);
+            setUploadStatus('success');
+            showNotification && showNotification(
+                `Successfully uploaded ${parsedData.validRows} faction members to database`,
+                'success'
+            );
+        }
+    };
+
+    // Expose a function for Playwright to call
+    useEffect(() => {
+        window.automateFactionUpload = async (jsonString) => {
+            console.log('[Automation] Received request to upload faction data.');
+            
+            try {
+                // We need a File-like object for parseJSONFile
+                const blob = new Blob([jsonString], { type: 'application/json' });
+                const pseudoFile = new File([blob], "automated_upload.json", { type: "application/json" });
+
+                // 1. Parse and validate the data using existing logic
+                const parsed = await parseJSONFile(pseudoFile);
+                if (parsed.errors && parsed.errors.length > 0) {
+                    console.error('[Automation] Upload failed: Data contains errors.', parsed.errors);
+                    return { success: false, message: 'Data parsing failed.', errors: parsed.errors };
+                }
+                
+                console.log(`[Automation] Successfully parsed ${parsed.validRows} records.`);
+
+                // 2. Perform the upload with the parsed data
+                const result = await performFactionDataUpload(parsed.data, 'automated_upload.json');
+                
+                if (result.success) {
+                    console.log('[Automation] Upload successful.');
+                    return { success: true, message: 'Faction data uploaded successfully.' };
+                } else {
+                    console.error('[Automation] Upload failed:', result.error);
+                    return { success: false, message: `Upload failed: ${result.error}` };
+                }
+            } catch (e) {
+                console.error('[Automation] An unexpected error occurred:', e);
+                return { success: false, message: `An unexpected error occurred: ${e.message}` };
+            }
+        };
+
+        // Cleanup function to remove the backdoor when the component unmounts
+        return () => {
+            delete window.automateFactionUpload;
+        };
+    }, [parseJSONFile, performFactionDataUpload]); // Dependencies
 
     // Reset for new upload
     const handleReset = () => {

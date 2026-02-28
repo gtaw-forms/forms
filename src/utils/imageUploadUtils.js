@@ -98,7 +98,7 @@ export const uploadImageWithFallback = async (file) => {
     console.log('[Upload] Attempting ImgBB upload...');
     const result = await Promise.race([
       uploadImageToImgBB(file),
-      timeout(15000)
+      timeout(10000)
     ]);
     return result;
   } catch (error) {

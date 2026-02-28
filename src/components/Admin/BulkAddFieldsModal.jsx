@@ -12,6 +12,25 @@ const inputStyle = {
     fontSize: "1rem"
 };
 
+const frequentlyUsedIcons = [
+  { class: 'fas fa-id-card', label: 'Identification' },
+  { class: 'fas fa-notes-medical', label: 'Medical Findings' },
+  { class: 'fas fa-camera', label: 'Scene Evidence' },
+  { class: 'fas fa-file-medical', label: 'Morgue / CDNA' },
+  { class: 'fas fa-user', label: 'User' },
+  { class: 'fas fa-hospital', label: 'Hospital' },
+  { class: 'fas fa-ambulance', label: 'Ambulance' },
+  { class: 'fas fa-heartbeat', label: 'Heartbeat' },
+  { class: 'fas fa-pills', label: 'Medicine' },
+  { class: 'fas fa-clipboard-list', label: 'Clipboard' },
+  { class: 'fas fa-map-marker-alt', label: 'Location' },
+  { class: 'fas fa-clock', label: 'Clock' },
+  { class: 'fas fa-exclamation-triangle', label: 'Warning' },
+  { class: 'fas fa-info-circle', label: 'Info' },
+  { class: 'fas fa-user-ghost', label: 'Decedent' },
+  { class: 'fas fa-microscope', label: 'Laboratory' },
+];
+
 const BulkAddFieldsModal = ({ show, onBulkAdd, onClose, existingFields = [], bbcodeTemplate = "" }) => {
     const createDefaultNewField = () => ({
         type: "input",
@@ -126,10 +145,14 @@ const BulkAddFieldsModal = ({ show, onBulkAdd, onClose, existingFields = [], bbc
                 alert("Content is required for Information State!");
                 return;
             }
-        } else if (newField.type === 'small_header') {
+        } else if (newField.type === 'small_header' || newField.type === 'section') {
             if (!newField.label) {
-                alert("Header Text is required for Small Header!");
+                alert(`Header Text is required for ${newField.type === 'section' ? 'Section Header' : 'Small Header'}!`);
                 return;
+            }
+            // Auto-generate name for headers if missing
+            if (!newField.name) {
+                newField.name = `header_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
             }
         } else { // All other field types
             if (!newField.label || !newField.name) {
@@ -197,6 +220,7 @@ const BulkAddFieldsModal = ({ show, onBulkAdd, onClose, existingFields = [], bbc
                               <select value={newField.type} onChange={e => setNewField({ ...createDefaultNewField(), type: e.target.value })} style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}>
                                 <option value="input">Text Input</option>
                                 <option value="textarea">Textarea</option>
+                                <option value="section">Section Header</option>
                                 <option value="select">Dropdown</option>
                                 <option value="character_selector">Dropdown - Character Select</option>
                                 <option value="employee_select">Dropdown - Employee Selector</option>
@@ -238,16 +262,63 @@ const BulkAddFieldsModal = ({ show, onBulkAdd, onClose, existingFields = [], bbc
                                     />
                                 </>
                               )}
+
+                              {(newField.type === "section" || newField.type === "small_header") && (
+                                <div style={{ flex: '1 1 100%', marginBottom: '1rem' }}>
+                                  <input 
+                                    placeholder="Icon Class (e.g. fas fa-id-card)" 
+                                    value={newField.icon || ""} 
+                                    onChange={e => setNewField({ ...newField, icon: e.target.value })} 
+                                    style={{...inputStyle, marginBottom: '0.5rem'}} 
+                                  />
+                                  <div style={{ 
+                                    display: 'flex', 
+                                    flexWrap: 'wrap', 
+                                    gap: '8px', 
+                                    padding: '10px', 
+                                    background: '#0f172a', 
+                                    borderRadius: '8px', 
+                                    border: '1px solid #334155' 
+                                  }}>
+                                    {frequentlyUsedIcons.map((icon, idx) => (
+                                      <button
+                                        key={idx}
+                                        type="button"
+                                        onClick={() => setNewField({ ...newField, icon: icon.class })}
+                                        title={icon.label}
+                                        style={{
+                                          width: '36px',
+                                          height: '36px',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          background: newField.icon === icon.class ? '#3b82f6' : '#1e293b',
+                                          border: '1px solid #334155',
+                                          color: newField.icon === icon.class ? 'white' : '#94a3b8',
+                                          borderRadius: '6px',
+                                          cursor: 'pointer',
+                                          transition: 'all 0.2s'
+                                        }}
+                                        onMouseOver={(e) => { e.currentTarget.style.borderColor = '#3b82f6'; e.currentTarget.style.color = 'white'; }}
+                                        onMouseOut={(e) => { e.currentTarget.style.borderColor = '#334155'; if(newField.icon !== icon.class) e.currentTarget.style.color = '#94a3b8'; }}
+                                      >
+                                        <i className={icon.class}></i>
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <small style={{ color: '#64748b', marginTop: '4px', display: 'block' }}>Frequently used icons. Click to select.</small>
+                                </div>
+                              )}
                   
                               {newField.type !== "hr" && newField.type !== "decedent_list" && newField.type !== "information_state" && (
                                 <input
-                                  placeholder={newField.type === "small_header" ? "Header Text" : "Label"}
+                                  placeholder={(newField.type === "small_header" || newField.type === "section") ? "Header Text" : "Label"}
                                   value={newField.label}
                                   onChange={e => setNewField({ ...newField, label: e.target.value })}
                                   style={{...inputStyle, flex: '1 1 auto', minWidth: '150px'}}
                                 />
                               )}                          
-                              {newField.type !== "hr" && newField.type !== "small_header" && newField.type !== "attach_report_button" && newField.type !== "decedent_list" && newField.type !== "information_state" && (
+                              {newField.type !== "hr" && newField.type !== "small_header" && newField.type !== "section" && newField.type !== "attach_report_button" && newField.type !== "decedent_list" && newField.type !== "information_state" && (
                                 <input 
                                   placeholder="Name {{}}" 
                                   value={newField.name} 
@@ -611,7 +682,9 @@ const BulkAddFieldsModal = ({ show, onBulkAdd, onClose, existingFields = [], bbc
                                     {queuedFields.map((f, i) => (
                                         <div key={f.id} style={{ background: "#1e293b", padding: "1rem", borderRadius: 10, marginBottom: "0.8rem", border: "1px solid #334155", display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <span>
-                                                <strong>{f.label || f.type}</strong> ({f.type}) → <code>{f.name}</code>
+                                                <strong>{f.label || f.type}</strong> ({f.type}) 
+                                                {(f.type === 'section' || f.type === 'small_header') && f.icon && <i className={f.icon} style={{ marginLeft: '8px', color: '#a78bfa' }}></i>}
+                                                → <code>{f.name}</code>
                                                 {f.showIf && <span style={{ marginLeft: '10px', color: '#8b5cf6', fontSize: '0.8rem', fontWeight: 'bold' }}>(Conditional)</span>}
                                             </span>
                                             <button onClick={() => handleRemoveFromQueue(f.id)} style={{ background: "#ef4444", color: "white", border: "none", padding: "0.4rem 0.8rem", borderRadius: 6 }}>Remove</button>

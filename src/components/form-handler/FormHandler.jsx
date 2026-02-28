@@ -32,7 +32,6 @@ import '../../App.css';
 import '../../buttons.css';
 import styles from "../ems-dashboard/EmsDashboard.module.css";
 import formStyles from './FormHandler.module.css';
-
 import { Spinner } from 'react-bootstrap';
 
 // Lazy load modals and heavy components
@@ -44,7 +43,9 @@ const BugReportModal = lazy(() => import('../Modals/BugReportModal'));
 const MapModal = lazy(() => import("../Modals/MapModal"));
 const AgencyIncidentModal = lazy(() => import('../Modals/AgencyIncidentModal'));
 const AutopsyAssist = lazy(() => import('./AutopsyAssist'));
+const SurveyModal = lazy(() => import('../Modals/SurveyModal'));
 import UnprocessedCKsViewer from './UnprocessedCKsViewer';
+import FormTour from '../UI/FormTour';
 
 export const FormHandler = () => {
   const isDevelopment = process.env.NODE_ENV === 'development' || window.location.hostname === 'localhost';
@@ -92,44 +93,128 @@ export const FormHandler = () => {
   const [showAutopsyAssistModal, setShowAutopsyAssistModal] = useState(false);
   const [autopsyAssistTargetField, setAutopsyAssistTargetField] = useState(null);
 
+    // Survey State
+    const [showSurveyModal, setShowSurveyModal] = useState(false);
+  
+      // Tour State
+      const [showTour, setShowTour] = useState(false);
+      const [tourType, setTourType] = useState(null); // 'general' or 'form-specific'
+    
+      // Hooks
+      const { showNotification, removeNotification } = useNotification();
+      const {
+        user: realUser,
+        isAuthenticated: realIsAuthenticated,
+        isPhmcMember: realIsPhmcMember,
+        characterName: realCharacterName,
+        swappableCharacters,
+        selectOptions: authSelectOptions,
+      } = useGtaWorldAuth();
+    
+    
+      let user = realUser;
+      let isAuthenticated = realIsAuthenticated;
+      let isPhmcMember = realIsPhmcMember;
+      let characterName = realCharacterName;
+    
+      // General Tour Prompt on Visit
+      useEffect(() => {
+        // We use localStorage so it only prompts once ever (until cleared)
+        const hasSeenGeneralTour = localStorage.getItem('hasSeenGeneralTourPrompt') === 'true';
+        
+        if (!hasSeenGeneralTour || isDevelopment) {
+          // Add a slight delay so it doesn't pop up instantly with auth notices
+          const timer = setTimeout(() => {
+            showNotification(
+              "Welcome to PHMC Forms! Would you like a quick 1-minute tour of the interface?",
+              "info",
+              0, // Persistent until acted upon
+              [
+                {
+                  label: 'Start Tour',
+                  handler: (id) => {
+                    setTourType('general');
+                    setShowTour(true);
+                    localStorage.setItem('hasSeenGeneralTourPrompt', 'true');
+                    removeNotification(id);
+                  },
+                },
+                {
+                  label: 'Later',
+                  handler: (id) => {
+                    removeNotification(id);
+                  },
+                },
+                {
+                  label: "Don't show again",
+                  handler: (id) => {
+                    localStorage.setItem('hasSeenGeneralTourPrompt', 'true');
+                    removeNotification(id);
+                  },
+                },
+              ]
+            );
+          }, 2000);
+          return () => clearTimeout(timer);
+        }
+      }, [showNotification, removeNotification]);
 
-  // Hooks
-  const { showNotification, removeNotification } = useNotification();
-  const {
-    user: realUser,
-    isAuthenticated: realIsAuthenticated,
-    isPhmcMember: realIsPhmcMember,
-    characterName: realCharacterName,
-    swappableCharacters,
-    selectOptions: authSelectOptions,
-  } = useGtaWorldAuth();
-
-
-  let user = realUser;
-  let isAuthenticated = realIsAuthenticated;
-  let isPhmcMember = realIsPhmcMember;
-  let characterName = realCharacterName;
-
-
-  useEffect(() => {
-    const hasSeenIncidentNotice = localStorage.getItem('seenAgencyIncidentNotice') === 'true';
-    if (isAuthenticated && !hasSeenIncidentNotice) {
-      showNotification(
-        <span>You can report Agency Incidents in the <i className="fas fa-cog"></i> More Panel, this can be pushed up to Faction Leadership.</span>,
-        'info',
-        0,
-        [
-          {
-            label: 'Dismiss',
-            handler: (id) => {
-              localStorage.setItem('seenAgencyIncidentNotice', 'true');
-              removeNotification(id);
-            },
-          },
-        ]
-      );
-    }
-  }, [isAuthenticated, showNotification, removeNotification]);
+      // Form-specific tour trigger
+      useEffect(() => {
+        // Only trigger for forms that have specific guides
+        const isTourableForm = ['coroner-report', 'er-protocol', 'mass-ftality-test', 'coroner_email'].includes(selectedForm?.id);
+    
+        if (isTourableForm) {
+          const hasBeenOfferedTour = sessionStorage.getItem(`hasBeenOfferedTour_${selectedForm.id}`) === 'true';
+    
+          if (!hasBeenOfferedTour || isDevelopment) {
+            sessionStorage.setItem(`hasBeenOfferedTour_${selectedForm.id}`, 'true');
+    
+            showNotification(
+              `Welcome to the ${selectedForm.name}! How would you like to get started?`,
+              "info",
+              0,
+              [
+                {
+                  label: 'Section-by-Section Guide',
+                  handler: (id) => {
+                    setTourType('form-specific');
+                    setShowTour(true);
+                    removeNotification(id);
+                  },
+                },
+                {
+                  label: 'No Thanks',
+                  handler: (id) => {
+                    removeNotification(id);
+                  },
+                },
+              ]
+            );
+          }
+        }
+      }, [selectedForm, showNotification, removeNotification, isDevelopment]);
+    
+    
+      useEffect(() => {
+        const hasSeenIncidentNotice = localStorage.getItem('seenAgencyIncidentNotice') === 'true';
+        if (isAuthenticated && !hasSeenIncidentNotice) {
+          showNotification(
+            <span>You can report Agency Incidents in the <i className="fas fa-cog"></i> More Panel, this can be pushed up to Faction Leadership.</span>,
+            'info',
+            0,
+            [
+              {
+                label: 'Dismiss',
+                handler: (id) => {
+                  localStorage.setItem('seenAgencyIncidentNotice', 'true');
+                  removeNotification(id);
+                },
+              },
+            ]
+          );
+        }
+      }, [isAuthenticated, showNotification, removeNotification]);  
 
   useEffect(() => {
     const hasSeenPrompt = localStorage.getItem('seenKeepCredentialsPrompt') === 'true';
@@ -241,11 +326,48 @@ export const FormHandler = () => {
     coronerListData: originalCoronerListData,
     selectOptions: dataContextSelectOptions,
     formsData,
+    hasFirebaseError,
+    surveyData,
+    submitSurveyResponse,
   } = useData();
   const { showEmsBingoModal, setShowEmsBingoModal } = useModal();
   const { saveReport: saveNewReport, saveRecoveryReport } = useFormSaver();
   const modalCloseTimer = React.useRef(null);
 
+  // Survey trigger effect
+/*   useEffect(() => {
+    const isSurveyActive = surveyData?.isActive || isDevelopment; // Always active in dev
+    const hasDismissedSurvey = sessionStorage.getItem('dismissedSurveyId') === surveyData?.id;
+
+    if (isSurveyActive && !hasDismissedSurvey) {
+      const surveyNotifId = showNotification(
+        "A survey is available! Please take part.",
+        "info",
+        0, // Persistent
+        [
+          {
+            label: 'Take Survey',
+            handler: (id) => {
+              setShowSurveyModal(true);
+              removeNotification(id);
+            },
+          },
+          {
+            label: 'Dismiss',
+            handler: (id) => {
+              if (surveyData?.id) {
+                sessionStorage.setItem('dismissedSurveyId', surveyData.id);
+              }
+              removeNotification(id);
+            },
+          },
+        ]
+      );
+      // Clean up notification if component unmounts
+      return () => removeNotification(surveyNotifId);
+    }
+  }, [surveyData, isDevelopment, showNotification, removeNotification]);
+ */
   // Debounced Recovery Auto-Save
   useEffect(() => {
     if (!selectedForm || Object.keys(formValues).length === 0) return;
@@ -579,35 +701,57 @@ export const FormHandler = () => {
       // Join multi-part BBCode with a separator for saving to database (keeping logic but it will be a string now)
       const bbcodeToSave = Array.isArray(generatedBBCode) ? generatedBBCode.join('\n\n[PART_BREAK]\n\n') : generatedBBCode;
       
-      const saveResult = await saveNewReport(selectedForm, formValues, generatedTitle, bbcodeToSave, { silent: isCoronerEmail });
+      const saveResult = await saveNewReport(selectedForm, formValues, generatedTitle, bbcodeToSave, { silent: true });
       trackMetric('form_handler', `save_report_${selectedForm.name}`);
 
-      if (saveResult?.success && isCoronerEmail) {
-        showNotification(`Report "${generatedTitle}" saved!`, 'save', 10000, [
-          {
-            label: 'Clear Form',
-            variant: 'danger',
-            handler: (id) => {
-              handleClearForm();
-              removeNotification(id);
+      let finalNotificationMessage = '';
+      let finalNotificationOptions = [];
+      let finalNotificationType = 'success'; // Default to success
+      let notificationDuration = undefined;
+
+      if (saveResult?.success) {
+        finalNotificationMessage = `Report "${generatedTitle}" saved!`;
+        if (isCoronerEmail) {
+          finalNotificationOptions = [
+            {
+              label: 'Clear Form',
+              variant: 'danger',
+              handler: (id) => {
+                handleClearForm();
+                removeNotification(id);
+              }
             }
-          }
-        ]);
+          ];
+          notificationDuration = 10000;
+        }
+      } else {
+        finalNotificationMessage = 'Failed to save report.';
+        finalNotificationType = 'error';
       }
 
       try {
         const textToCopy = Array.isArray(generatedBBCode) ? generatedBBCode[0] : generatedBBCode;
         await navigator.clipboard.writeText(textToCopy);
-        if (Array.isArray(generatedBBCode)) {
-           showNotification('Report saved! Part 1 copied. Please copy other parts manually from the preview below.', 'info', 6000);
-        } else {
-           showNotification('Report saved and BBCode copied!', 'success');
+        if (finalNotificationType === 'success') { // Only append if report save was successful
+            if (Array.isArray(generatedBBCode)) {
+                finalNotificationMessage += ' Part 1 copied. Please copy other parts manually from the preview below.';
+                finalNotificationType = 'info'; // Change type if it's info
+            } else {
+                finalNotificationMessage += ' and BBCode copied!';
+            }
         }
       } catch (err) {
         console.error('Failed to copy BBCode: ', err);
         Sentry.captureException(err, { extra: { context: 'FormHandler - copyAndSaveReport clipboard' } });
-        showNotification('Report saved, but failed to copy BBCode to clipboard.', 'warning');
+        // If report save failed, the message already indicates that.
+        // If report save succeeded, append clipboard failure.
+        if (finalNotificationType === 'success') {
+            finalNotificationMessage += ', but failed to copy BBCode to clipboard.';
+            finalNotificationType = 'warning';
+        }
       }
+      
+      showNotification(finalNotificationMessage, finalNotificationType, notificationDuration, finalNotificationOptions);
     }
   }, [generatedBBCode, selectedForm, formValues, generatedTitle, saveNewReport, showNotification, handleClearForm, removeNotification, trackMetric]);
 
@@ -1104,9 +1248,25 @@ export const FormHandler = () => {
     }
   }, [selectedForm, finalSelectOptions, isDevelopment, showNotification]);
 
+
   return (
     <div className={styles.container}>
       {seasonalEffectsEnabled && effect}
+      {showTour && (
+        <FormTour
+          tourType={tourType}
+          selectedForm={selectedForm}
+          showNotification={showNotification}
+          onComplete={() => {
+            setShowTour(false);
+            setTourType(null);
+          }}
+          onSkip={() => {
+            setShowTour(false);
+            setTourType(null);
+          }}
+        />
+      )}
       <Suspense fallback={null}>
               <EmsBingoModal
                 show={showEmsBingoModal}
@@ -1169,10 +1329,39 @@ export const FormHandler = () => {
           onInsert={handleAutopsyAssistInsert}
           formValues={formValues}
         />
+        <SurveyModal
+          show={showSurveyModal}
+          onClose={() => setShowSurveyModal(false)}
+          survey={surveyData}
+          onSubmit={(surveyId, response) => {
+            console.log("--- Survey Response ---");
+            console.log("Survey ID:", surveyId);
+            console.log("Response:", response);
+            console.log("-----------------------");
+            showNotification('Thank you for your feedback!', 'success');
+            // Prevent survey from showing again this session
+            if (surveyData?.id) {
+              sessionStorage.setItem('dismissedSurveyId', surveyData.id);
+            }
+          }}
+        />
       </Suspense>
       <FormHandlerNavButtons 
         onToggleSavedReports={handleNavToggleSavedReports} 
         onToggleAgencyIncident={() => setShowAgencyIncidentModal(true)}
+        onStartTour={() => {
+          // Reset all tour-related flags
+          localStorage.removeItem('hasSeenGeneralTourPrompt');
+          // We also clear any session storage flags that start with our tour prefix
+          Object.keys(sessionStorage).forEach(key => {
+            if (key.startsWith('hasBeenOfferedTour')) {
+              sessionStorage.removeItem(key);
+            }
+          });
+          
+          setTourType('general');
+          setShowTour(true);
+        }}
       />
 
       <div className={styles.header}>
@@ -1180,7 +1369,7 @@ export const FormHandler = () => {
       </div>
 
       <div className={styles.mainLayout}>
-        <div className={styles.leftPanel}>
+        <div className={styles.leftPanel} data-tour="left-panel">
           <input
             type="text"
             placeholder="Search forms..."
@@ -1254,9 +1443,19 @@ export const FormHandler = () => {
           </div>
         </div>
 
-        <div className={styles.mainContent}>
+        <div className={styles.mainContent} data-tour="main-content">
           {!selectedForm ? (
-            !isAuthenticated ? (
+            hasFirebaseError ? ( // NEW: Check for Firebase Error
+                <div style={{ textAlign: "center", marginTop: "8rem", color: "#ffffff" }}>
+                    <img src={phmcLogo} alt="PHMC Logo" style={{ height: '120px', marginBottom: '1.5rem', opacity: 0.8 }} />
+                    <h3 style={{ color: "#ffffff", fontWeight: "bold" }}>Something has gone wrong, unexpected response from Google Firebase</h3>
+                    <p style={{ fontSize: "1.1rem", marginTop: "1rem" }}>
+                        We are unable to connect to the database.
+                        <br /><br />
+                        Please contact a maintainer or try again later.
+                    </p>
+                </div>
+            ) : !isAuthenticated ? (
                 <div style={{ textAlign: "center", marginTop: "8rem", color: "#c9d1d9" }}>
                     <img src={phmcLogo} alt="PHMC Logo" style={{ height: '120px', marginBottom: '1.5rem', opacity: 0.8 }} />
                     <h3 style={{ color: "#880a03ff", fontWeight: "bold" }}>Authentication Required</h3>
@@ -1280,7 +1479,10 @@ export const FormHandler = () => {
                   </div>
               )}
 
-              <UnprocessedCKsViewer selectedForm={selectedForm} />
+              <UnprocessedCKsViewer 
+                selectedForm={selectedForm} 
+                onPreload={(values) => setFormValues(prev => ({ ...prev, ...values }))}
+              />
               
               <div style={{ margin: "0 -8px" }}>
                 {(() => {
@@ -1350,7 +1552,7 @@ export const FormHandler = () => {
         </div>
 
         <div className={styles.rightPanel}>
-          <div style={{ background: "#1e1b4b", padding: "1.5rem", borderRadius: 12, marginBottom: "1.5rem" }}>
+          <div style={{ background: "#1e1b4b", padding: "1.5rem", borderRadius: 12, marginBottom: "1.5rem" }} data-tour="right-panel-top">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 style={{ color: "#a78bfa", margin: 0 }}>
                 Signed in as {mainEmployeeName || characterName || 'Guest'}
@@ -1374,6 +1576,7 @@ export const FormHandler = () => {
             }
           </div>
 
+          <div data-tour="right-panel-bottom">
 {generatedBBCode ? (
   <button
     onClick={() => setShowBBCode(!showBBCode)}
@@ -1390,6 +1593,7 @@ export const FormHandler = () => {
           <button onClick={copyAndSaveReport} disabled={!generatedBBCode} className={`${formStyles.rightPanelButton} ${generatedBBCode ? formStyles.copy : ''}`}>
             {Array.isArray(generatedBBCode) ? `Copy Part 1 + Save (${generatedBBCode.length} Parts)` : (generatedBBCode ? "Copy BBCode + Save" : "No BBCode Yet")}
           </button>
+          </div>
 
 {generatedBBCode && (
   <>
@@ -1499,8 +1703,10 @@ export const FormHandler = () => {
           showNotification={showNotification}
         />
       </Suspense>
+
     </div>
   );
 };
+
 
 

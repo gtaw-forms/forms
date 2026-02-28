@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import * as Sentry from "@sentry/react";
 import { analytics } from '../firebase';
 import { logEvent } from 'firebase/analytics';
@@ -6,7 +6,7 @@ import { database } from '../firebase';
 import { ref, set, push } from 'firebase/database';
 
 export const useWebhooks = (formData, commitInfo, showNotification, getIsInactivityWarningTriggered) => {
-    const logWebhookToFirebase = async (type, payload) => {
+    const logWebhookToFirebase = useCallback(async (type, payload) => {
         const db = database;
         const logsRef = ref(db, 'webhook_logs');
         const newLogRef = push(logsRef);
@@ -15,10 +15,10 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
             payload,
             timestamp: Date.now(),
         });
-    };
+    }, []);
 
 
-    const sendWebhookPayload = async (webhookURL, payload, successMessage, context, notifyFunc) => {
+    const sendWebhookPayload = useCallback(async (webhookURL, payload, successMessage, context, notifyFunc) => {
         if (!webhookURL) {
             console.error(`Discord webhook URL not configured for ${context}.`);
             Sentry.captureMessage(`Discord webhook URL is missing for ${context} submission.`, 'error');
@@ -52,9 +52,9 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
             notifyFunc(`A network error occurred sending to ${context}. Please try again.`, 'exclamation-triangle');
             return false;
         }
-    };
+    }, []);
 
-    const sendDataRequestLog = async (file, cached, source, cachedDataSize, networkTransferSize, loggedIn, user, requestedPortions, missingPortions, segmentSizes = {}, error = null) => {
+    const sendDataRequestLog = useCallback(async (file, cached, source, cachedDataSize, networkTransferSize, loggedIn, user, requestedPortions, missingPortions, segmentSizes = {}, error = null) => {
         const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
         if (!webhookUrl) {
             console.error("Discord webhook URL is not configured.");
@@ -167,24 +167,24 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
             console.error(`Failed to send data request log webhook:`, error);
             Sentry.captureException(error, { extra: { context: `sendDataRequestLog` } });
         }
-    };
+    }, [getIsInactivityWarningTriggered]);
 
-    const handlePhmcWebhookSubmit = async (payload) => {
+    const handlePhmcWebhookSubmit = useCallback(async (payload) => {
         if (!payload) return;
         const webhookURL = import.meta.env.VITE_PHMC_DISCORD;
         await sendWebhookPayload(webhookURL, payload, 'PHMC webhook embed sent successfully!', 'PHMC', showNotification);
-    };
+    }, [sendWebhookPayload, showNotification]);
 
-    const handleWebhookSubmit = async (payload) => {
+    const handleWebhookSubmit = useCallback(async (payload) => {
         if (!payload) return;
         const webhookURL = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
         await sendWebhookPayload(webhookURL, payload, 'Dev webhook embed sent successfully!', 'Dev', showNotification);
-    };
+    }, [sendWebhookPayload, showNotification]);
 
-    return {
+    return useMemo(() => ({
         logWebhookToFirebase,
         sendDataRequestLog,
         handlePhmcWebhookSubmit,
         handleWebhookSubmit,
-    };
+    }), [logWebhookToFirebase, sendDataRequestLog, handlePhmcWebhookSubmit, handleWebhookSubmit]);
 };

@@ -36,6 +36,8 @@ const EmployeeCredentialsSection = ({
     swappableCharacters,
     factionData,
     updateFactionData,
+    login,
+    logout,
   } = useGtaWorldAuth();
   const { showNotification: notifyFromContext } = useNotification?.() || {};
 
@@ -386,6 +388,16 @@ const EmployeeCredentialsSection = ({
                   <i className="fas fa-user-plus" style={{ marginRight: '6px' }}></i>
                   New Employee
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => logout()}
+                  className="btn btn-outline-danger btn-sm"
+                  style={{ fontSize: '0.75rem', borderRadius: '6px', padding: '5px 10px' }}
+                >
+                  <i className="fas fa-sign-out-alt" style={{ marginRight: '6px' }}></i>
+                  Sign Out
+                </button>
               </div>
             </div>
         </div>
@@ -407,6 +419,18 @@ const EmployeeCredentialsSection = ({
           <div>
             <div style={{ color: '#f8fafc', fontWeight: 'bold', fontSize: '1rem', marginBottom: '4px' }}>Identity Required</div>
             <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Please log in via GTA World to populate these fields.</div>
+            <button
+              type="button"
+              onClick={() => {
+                (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('Redirecting to GTA World...', 'info-circle', 5000);
+                login({ returnPath: window.location.hash || '#/' });
+              }}
+              className="btn btn-outline-primary btn-sm"
+              style={{ fontSize: '0.75rem', borderRadius: '6px', padding: '5px 10px', marginTop: '10px' }}
+            >
+              <i className="fas fa-sign-in-alt" style={{ marginRight: '6px' }}></i>
+              Log In
+            </button>
           </div>
         </div>
       )}
