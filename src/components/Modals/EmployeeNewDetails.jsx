@@ -1,18 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import ReactDOM from 'react-dom';
 import { useWebhooks } from '../../hooks/useWebhooks';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import * as Sentry from "@sentry/react";
+import BaseModal from './BaseModal';
 
 /**
  * EmployeeNewDetails Modal
- * Refactored from EmployeeDetailsModal to handle new employee requests
- * Allows picking a character and department for system access
+ * Handle new employee requests via BaseModal
  */
 const EmployeeNewDetails = ({ show, onHide, showNotification }) => {
     const { 
         user: gtaWorldUser, 
-        isAuthenticated, 
         swappableCharacters 
     } = useGtaWorldAuth();
     
@@ -23,56 +21,39 @@ const EmployeeNewDetails = ({ show, onHide, showNotification }) => {
     const [isSaving, setIsSaving] = useState(false);
     const { handleWebhookSubmit } = useWebhooks({}, {}, showNotification);
 
-    // Reset fields when opening
     useEffect(() => {
-        if (show) {
-            if (gtaWorldUser) {
-                setDiscordUsername(gtaWorldUser.username || '');
-                // Try to find current character if any
-                const currentId = gtaWorldUser.faction?.characterId || gtaWorldUser.activeCharacter?.characterId;
-                if (currentId) setSelectedCharId(String(currentId));
-            }
+        if (show && gtaWorldUser) {
+            setDiscordUsername(gtaWorldUser.username || '');
+            const currentId = gtaWorldUser.faction?.characterId || gtaWorldUser.activeCharacter?.characterId;
+            if (currentId) setSelectedCharId(String(currentId));
         }
     }, [show, gtaWorldUser]);
 
     const characters = useMemo(() => {
         const allChars = new Map();
-
-        // Function to add a character to the map
         const addChar = (char) => {
             if (!char) return;
-            
-            // The character object can have different structures
             const id = String(char.character?.characterId ?? char.id ?? char.characterId ?? '');
             const name = char.characterName || char.name || `${char.firstname} ${char.lastname}`.trim() || 'Unknown Character';
-            
             if (id && id !== 'undefined' && !allChars.has(id)) {
                 allChars.set(id, { id, name });
             }
         };
 
-        // Add swappable characters
-        (swappableCharacters || []).forEach(char => addChar(char, 'swappableCharacters'));
-
-        // Add the main/active character from the user object just in case it's not in swappable
+        (swappableCharacters || []).forEach(char => addChar(char));
         if (gtaWorldUser) {
-            // The `gtaWorldUser.character` is an array of characters, iterate over it
             if (Array.isArray(gtaWorldUser.character)) {
-                gtaWorldUser.character.forEach(char => addChar(char, 'gtaWorldUser.character'));
+                gtaWorldUser.character.forEach(char => addChar(char));
             } else {
-                addChar(gtaWorldUser.character, 'gtaWorldUser.character');
+                addChar(gtaWorldUser.character);
             }
-
-            addChar(gtaWorldUser.activeCharacter, 'gtaWorldUser.activeCharacter');
-            addChar(gtaWorldUser.faction, 'gtaWorldUser.faction'); // Faction object can also contain character details
-        
-            // Also check for nested character arrays
+            addChar(gtaWorldUser.activeCharacter);
+            addChar(gtaWorldUser.faction);
             const nestedChars = gtaWorldUser.characters || gtaWorldUser.allCharacters;
             if (Array.isArray(nestedChars)) {
-                nestedChars.forEach(char => addChar(char, 'gtaWorldUser.characters/allCharacters'));
+                nestedChars.forEach(char => addChar(char));
             }
         }
-        
         return Array.from(allChars.values());
     }, [swappableCharacters, gtaWorldUser]);
 
@@ -97,7 +78,7 @@ const EmployeeNewDetails = ({ show, onHide, showNotification }) => {
                 avatar_url: "https://i.ibb.co/0pgw9hHm/phmc.png",
                 embeds: [{
                     title: "🚨 New Employee Access Request",
-                    color: 0xFFAA00, // Amber/Orange
+                    color: 0xFFAA00,
                     description: "A user is requesting to be added to the database.",
                     timestamp: new Date().toISOString(),
                     fields: [
@@ -113,140 +94,100 @@ const EmployeeNewDetails = ({ show, onHide, showNotification }) => {
             };
 
             await handleWebhookSubmit(payload, webhookUrl);
-            
             showNotification('Access request sent! Please notify Alyson Frost in Discord.', 'success');
             onHide();
         } catch (error) {
             console.error("Error submitting onboarding request: ", error);
-            Sentry.captureException(error, { 
-                extra: { 
-                    context: 'EmployeeNewDetails Save',
-                    selectedCharId,
-                    department,
-                    user: gtaWorldUser?.username
-                } 
-            });
+            Sentry.captureException(error, { extra: { context: 'EmployeeNewDetails Save' } });
             showNotification('Failed to send request.', 'error');
         } finally {
             setIsSaving(false);
         }
     };
 
-    if (!show) return null;
-
-    const modalContent = (
-        <div className="modal-overlay" onClick={onHide}>
-            <div className="cctv-modal-dialog" onClick={e => e.stopPropagation()}>
-                <div className="cctv-modal-header">
-                    <h4 className="cctv-title">New Employee Request</h4>
-                    <button 
-                        type="button" 
-                        className="modal-close-btn" 
-                        onClick={onHide} 
-                        aria-label="Close"
-                    >
-                        &times;
-                    </button>
-                </div>
-                <div className="cctv-modal-body">
-                    <div className="cctv-danger-text">
-                        <i className="fas fa-exclamation-triangle me-2"></i>
-                        Please select the PHMC character and fill out the details below, then notify Alyson Frost in the PHMC Discord for review.  You must be invited to the faction before requesting access.
-                    </div>
-
-                    <div className="cctv-form-section">
-                        <h5><i className="fas fa-user-plus me-2"></i>Access Details</h5>
-                        
-                        <div className="cctv-form-row">
-                            <div className="cctv-form-group full-width">
-                                <label className="cctv-form-label required">Select Character</label>
-                                <select 
-                                    className="form-control cctv-select"
-                                    value={selectedCharId}
-                                    onChange={(e) => setSelectedCharId(e.target.value)}
-                                    disabled={isSaving}
-                                >
-                                    <option value="">-- Choose Character --</option>
-                                    {characters.map(char => (
-                                        <option key={char.id} value={char.id}>{char.name} (#{char.id})</option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-
-                        <div className="cctv-form-row">
-                            <div className="cctv-form-group">
-                                <label className="cctv-form-label required">Department</label>
-                                <select 
-                                    className="form-control cctv-select"
-                                    value={department}
-                                    onChange={(e) => setDepartment(e.target.value)}
-                                    disabled={isSaving}
-                                >
-                                    <option value="PHMC">PHMC General Staff</option>
-                                    <option value="Coroner">Coroner</option>
-                                </select>
-                            </div>
-                            <div className="cctv-form-group">
-                                <label className="cctv-form-label">Reported Rank</label>
-                                <input
-                                    type="text"
-                                    className="form-control"
-                                    value={rank}
-                                    onChange={(e) => setRank(e.target.value)}
-                                    placeholder="e.g. Nursing Staff"
-                                    disabled={isSaving}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="cctv-form-row">
-                            <div className="cctv-form-group full-width">
-                                <label className="cctv-form-label">Discord Username</label>
-                                <input
-                                    type="text"
-                                    className="form-control"
-                                    value={discordUsername}
-                                    onChange={(e) => setDiscordUsername(e.target.value)}
-                                    placeholder="e.g. alysonfrost"
-                                    disabled={isSaving}
-                                />
-                            </div>
-                        </div>
-
-                    </div>
-                </div>
-                <div className="cctv-modal-footer">
-                    <button 
-                        className="cctv-btn cctv-btn-secondary" 
-                        onClick={onHide} 
-                        disabled={isSaving}
-                    >
+    return (
+        <BaseModal
+            isOpen={show}
+            onClose={onHide}
+            title="New Employee Request"
+            modalSize="medium"
+            variant="info"
+            footer={
+                <>
+                    <button className="cctv-btn cctv-btn-secondary" onClick={onHide} disabled={isSaving}>
                         Cancel
                     </button>
-                    <button 
-                        className="cctv-btn cctv-btn-primary" 
-                        onClick={handleSave} 
-                        disabled={isSaving}
-                    >
-                        {isSaving ? (
-                            <>
-                                <div className="cctv-spinner"></div>
-                                Sending...
-                            </>
-                        ) : (
-                            <>
-                                <i className="fas fa-paper-plane"></i>
-                                Submit Request
-                            </>
-                        )}
+                    <button className="cctv-btn cctv-btn-primary" onClick={handleSave} disabled={isSaving} style={{ marginLeft: '10px' }}>
+                        {isSaving ? <><div className="cctv-spinner"></div> Sending...</> : <><i className="fas fa-paper-plane"></i> Submit Request</>}
                     </button>
+                </>
+            }
+        >
+            <div className="cctv-warning-text" style={{ marginBottom: '20px', padding: '15px', borderRadius: '8px', backgroundColor: 'rgba(210, 153, 34, 0.1)', color: '#d29922', border: '1px solid rgba(210, 153, 34, 0.2)' }}>
+                <i className="fas fa-exclamation-triangle me-2"></i>
+                Please select the PHMC character and fill out the details below. You must be invited to the faction before requesting access.
+            </div>
+
+            <div className="cctv-form-section" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div className="cctv-form-group">
+                    <label className="cctv-form-label required" style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#8b949e' }}>Select Character</label>
+                    <select 
+                        className="form-control"
+                        value={selectedCharId}
+                        onChange={(e) => setSelectedCharId(e.target.value)}
+                        disabled={isSaving}
+                        style={{ width: '100%', padding: '10px', backgroundColor: '#161b22', color: '#e6edf3', border: '1px solid #30363d', borderRadius: '6px' }}
+                    >
+                        <option value="">-- Choose Character --</option>
+                        {characters.map(char => (
+                            <option key={char.id} value={char.id}>{char.name} (#{char.id})</option>
+                        ))}
+                    </select>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                    <div className="cctv-form-group">
+                        <label className="cctv-form-label required" style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#8b949e' }}>Department</label>
+                        <select 
+                            className="form-control"
+                            value={department}
+                            onChange={(e) => setDepartment(e.target.value)}
+                            disabled={isSaving}
+                            style={{ width: '100%', padding: '10px', backgroundColor: '#161b22', color: '#e6edf3', border: '1px solid #30363d', borderRadius: '6px' }}
+                        >
+                            <option value="PHMC">PHMC General Staff</option>
+                            <option value="Coroner">Coroner</option>
+                        </select>
+                    </div>
+                    <div className="cctv-form-group">
+                        <label className="cctv-form-label" style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#8b949e' }}>Reported Rank</label>
+                        <input
+                            type="text"
+                            className="form-control"
+                            value={rank}
+                            onChange={(e) => setRank(e.target.value)}
+                            placeholder="e.g. Nursing Staff"
+                            disabled={isSaving}
+                            style={{ width: '100%', padding: '10px', backgroundColor: '#161b22', color: '#e6edf3', border: '1px solid #30363d', borderRadius: '6px' }}
+                        />
+                    </div>
+                </div>
+
+                <div className="cctv-form-group">
+                    <label className="cctv-form-label" style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#8b949e' }}>Discord Username</label>
+                    <input
+                        type="text"
+                        className="form-control"
+                        value={discordUsername}
+                        onChange={(e) => setDiscordUsername(e.target.value)}
+                        placeholder="e.g. alysonfrost"
+                        disabled={isSaving}
+                        style={{ width: '100%', padding: '10px', backgroundColor: '#161b22', color: '#e6edf3', border: '1px solid #30363d', borderRadius: '6px' }}
+                    />
                 </div>
             </div>
-        </div>
+        </BaseModal>
     );
-
-    return ReactDOM.createPortal(modalContent, document.getElementById('modal-root'));
 };
 
 export default EmployeeNewDetails;

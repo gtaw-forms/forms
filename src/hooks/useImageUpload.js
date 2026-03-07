@@ -17,9 +17,13 @@ export const useImageUpload = (showNotification, setFormData) => {
             }
 
             let filesToUpload = [];
+            if (!imageSource) {
+                setIsUploading(false);
+                return [];
+            }
             if (typeof imageSource === 'string') {
                 filesToUpload.push(imageSource);
-            } else if (imageSource.target && imageSource.target.files) {
+            } else if (imageSource && typeof imageSource === 'object' && imageSource.target && imageSource.target.files) {
                 filesToUpload = Array.from(imageSource.target.files);
             } else {
                 filesToUpload.push(imageSource);

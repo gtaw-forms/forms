@@ -488,7 +488,38 @@ const FactionDataUpload = ({ showNotification }) => {
             );
 
             console.log('[Faction Upload] Uploading to Firebase...');
-            // Hard-clear previous members to avoid stale entries and unnecessary storage
+            
+            // 1. Fetch current Discord information to preserve manual entries
+            let preservedDiscordInfo = {};
+            try {
+                const snapshot = await get(ref(database, 'factions/364/members'));
+                if (snapshot.exists()) {
+                    const members = snapshot.val();
+                    Object.entries(members).forEach(([id, data]) => {
+                        if (data.discordName || data.discord) {
+                            preservedDiscordInfo[id] = data.discordName || data.discord;
+                        }
+                    });
+                    console.log(`[Faction Upload] Preserving Discord info for ${Object.keys(preservedDiscordInfo).length} members.`);
+                }
+            } catch (err) {
+                console.warn('[Faction Upload] Failed to fetch existing members for merging:', err);
+            }
+
+            // 2. Merge preserved Discord info into new dataToUpload
+            const mergedData = dataToUpload.map(member => {
+                const preservedDiscord = preservedDiscordInfo[member.characterId];
+                if (preservedDiscord) {
+                    return { 
+                        ...member, 
+                        discordName: preservedDiscord, 
+                        discord: preservedDiscord 
+                    };
+                }
+                return member;
+            });
+
+            // 3. Hard-clear previous members to avoid stale entries and unnecessary storage
             try {
                 showNotification && showNotification('Clearing previous faction member records…', 'info');
                 await set(ref(database, 'factions/364/members'), null);
@@ -500,7 +531,7 @@ const FactionDataUpload = ({ showNotification }) => {
             
             const uploadFactionData = httpsCallable(functions, 'uploadFactionData');
             const result = await uploadFactionData({
-                factionData: dataToUpload,
+                factionData: mergedData,
                 metadata: {
                     fileName: fileName,
                     totalRows: dataToUpload.length,

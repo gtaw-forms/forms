@@ -122,6 +122,8 @@ const DecedentItemRenderer = ({
                                 <ImageUploader
                                     images={itemValues[subField.name] || []}
                                     onImagesChange={(newImages) => handleSubFieldChange(subField.name, newImages)}
+                                    notes={itemValues[`${subField.name}_narrative`] || ""}
+                                    onNotesChange={(newNotes) => handleSubFieldChange(`${subField.name}_narrative`, newNotes)}
                                     maxImages={subField.maxImages || 6}
                                     fieldName={subField.name}
                                 />

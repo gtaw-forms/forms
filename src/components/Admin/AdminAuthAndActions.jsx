@@ -1,21 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Form as BootstrapForm, Button, Spinner, ListGroup } from 'react-bootstrap';
+import { Form as BootstrapForm, Button, Spinner } from 'react-bootstrap';
 import { auth, database } from '../../firebase';
-import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
-import { ref, get, update, remove, set, serverTimestamp, onValue, push } from "firebase/database";
-import { collection, addDoc, deleteDoc, doc, getDocs } from 'firebase/firestore'; 
+import { signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { ref, get, update, remove, set, serverTimestamp, push } from "firebase/database";
 
 
-import { captureMessage, captureException } from "@sentry/react";
 import EditBingoPhrasesModal from './EditBingoPhrasesModal';
 import ReviewPhraseRequestsModal from './ReviewPhraseRequestsModal';
 import * as Sentry from "@sentry/react";
-import CctvRequestWebhookModal from './CctvRequestWebhookModal'; // Import the new modal
 import UserManagementModal from './UserManagementModal';
 import AdminDashboard from './AdminDashboard';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { useAuth } from '../../contexts/AuthContext';
-import { getGoogleUser, isGoogleAuthenticated, logout as gtaLogout } from '../../services/gtaWorldAuth';
+import { isGoogleAuthenticated, logout as gtaLogout } from '../../services/gtaWorldAuth';
 import { getUserContext, logAdminAction } from '../../utils/adminLogger';
 
 const BINGO_TYPES = [
@@ -64,17 +61,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     const [showEditBingoPhrasesModal, setShowEditBingoPhrasesModal] = useState(false);
     const [showReviewPhrasesModal, setShowReviewPhrasesModal] = useState(false);
 
-
-
-
-    const [showCctvWebhookModal, setShowCctvWebhookModal] = useState(false);
-
-    useEffect(() => {
-        if (sessionStorage.getItem('showCctvModalAfterLogin') === 'true') {
-            setShowCctvWebhookModal(true);
-            sessionStorage.removeItem('showCctvModalAfterLogin');
-        }
-    }, []);
     
     // Webhook Management States
     const [webhooks, setWebhooks] = useState([]);
@@ -109,69 +95,8 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     }, [authUser]);
 
 
-    const handleCctvWebhookSubmit = async (cctvData) => {
-        const webhookURL = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK; // Using Admin webhook for developer testing
-        const { userAgent, timeZone } = getUserContext();
-
-        if (!webhookURL) {
-            if (showInAppNotification) showInAppNotification('Webhook URL (VITE_LEO_WEBHOOK_URL) not configured.', 'error');
-            Sentry.captureMessage("CCTV Test Webhook URL not configured", "error");
-            return false; // Indicate failure
-        }
-
-        const embed = {
-            title: "(( 📹 Alert from the System Administrator )) ",
-            color: 0x5865F2, // Discord Blurplenull
-            fields: [
-                { name: "Notes:", value: cctvData.rank || "N/A", inline: true },
-                { name: "Requesting Officer", value: cctvData.officer || "N/A", inline: true },
-                { name: "Officer Phone Number", value: cctvData.officerPH || "N/A", inline: true },
-                { name: "Requesting Department", value: cctvData.department || "N/A", inline: true },
-                ...(cctvData.discordUsername ? [{ name: "Discord Username", value: cctvData.discordUsername, inline: true }] : []),
-                { name: "Date/Time of Incident", value: cctvData.incidentDateTime || "N/A", inline: true },
-                { name: "Reason for Request", value: cctvData.requestReason || "N/A", inline: true },
-                { name: "CCTV Location", value: cctvData.location || "N/A", inline: false },
-                { name: "Description of Events", value: ```${cctvData.description || "N/A"}```, inline: false },
-                ...(cctvData.oocNotes ? [{ name: "OOC Notes", value: ```${cctvData.oocNotes}```, inline: false }] : []),
-               ...(cctvData.DEBUG ? [{ name: "DEBUG", value: `\`\`\`json\n${JSON.stringify(cctvData.DEBUG, null, 2)}\n\`\`\``, inline: false }] : []),
-            ],
-            timestamp: new Date().toISOString(),
-            footer: { text: "PHMC Tools - Developer Notification Service" }
-        };
-
-        try {
-            const response = await fetch(webhookURL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ embeds: [embed] })
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`Failed to send CCTV test webhook. Status: ${response.status}`, errorText);
-                Sentry.captureMessage(`CCTV Test Webhook failed: ${response.status}`, { level: 'error', extra: { responseBody: errorText } });
-                if (showInAppNotification) showInAppNotification(`Failed to send test webhook. Status: ${response.status}`, 'error');
-                return false;
-            } else {
-                if (showInAppNotification) showInAppNotification('CCTV Test Webhook sent successfully!', "check-circle");
-                logAdminAction(unifiedCurrentUser?.email, "Sent CCTV Test Webhook", `Sent a test webhook for a CCTV request to the dev channel.`, "Developer Testing", userAgent, timeZone, gtaAuthUsername);
-                return true;
-            }
-        } catch (error) {
-            console.error('Error sending CCTV test webhook:', error);
-            Sentry.captureException(error, { extra: { context: 'CCTV Test Webhook Submission' } });
-            if (showInAppNotification) showInAppNotification('A network error occurred sending the test webhook.', "error");
-            return false;
-        }
-    };
-
-
-
-    const [webhookMessage, setWebhookMessage] = useState('');
-
     useEffect(() => {
         setIsLoadingAuth(authLoading);
-        const { userAgent, timeZone } = getUserContext();
 
         if (authUser) {
             const isGtawFirebaseUser = authUser.uid.startsWith('gtaw:');
@@ -456,22 +381,7 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     };
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     const handleAdminCustomWebhookSubmit = async (payloadFromModal) => {
-        const webhookURLIdentifier = "VITE_DISCORD_WEBHOOK_ADMIN or VITE_DEV_WEBHOOK";
         const webhookURL = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
         const { userAgent, timeZone } = getUserContext(); // Capture user context
 
@@ -499,7 +409,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                 return false;
             } else {
                 if (showInAppNotification) showInAppNotification('Admin webhook message sent successfully!', "check-circle");
-                // setShowAdminCustomWebhookModal(false); // REMOVED - state no longer exists
                 logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Sent Admin Custom Webhook", "Admin successfully sent a custom webhook to the Admin Action channel.", null, userAgent, timeZone, gtaAuthUsername);
                 logWebhookToFirebase('Admin Custom Webhook Sent', { admin: authEmail, title: payloadFromModal.embeds[0].title });
                 return true;
@@ -751,14 +660,10 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
         // --- MODIFICATION FOR MANUAL ACTION ---
         const { userAgent, timeZone } = getUserContext();
         let details = '';
-        if (results.success.length > 0) details += `✅ Regenerated: ${results.success.join(', ')}\
-`;
-        if (results.noCard.length > 0) details += `➖ Skipped (Disabled): ${results.noCard.join(', ')}\
-`;
-        if (results.notEnoughPhrases.length > 0) details += `⚠️ Skipped (Not Enough Phrases): ${results.notEnoughPhrases.join(', ')}\
-`;
-        if (results.errors.length > 0) details += `❌ Errors: ${results.errors.join(', ')}\
-`;
+        if (results.success.length > 0) details += `✅ Regenerated: ${results.success.join(', ')}\n`;
+        if (results.noCard.length > 0) details += `➖ Skipped (Disabled): ${results.noCard.join(', ')}\n`;
+        if (results.notEnoughPhrases.length > 0) details += `⚠️ Skipped (Not Enough Phrases): ${results.notEnoughPhrases.join(', ')}\n`;
+        if (results.errors.length > 0) details += `❌ Errors: ${results.errors.join(', ')}\n`;
     
         logAdminAction(
             unifiedCurrentUser?.email || "Unknown User", // Use the unified user email
@@ -776,7 +681,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     const [showMarkdownModal, setShowMarkdownModal] = useState(false);
 
     const handleCoronerWebhookSubmit = async (payloadFromModal) => {
-        const webhookURLIdentifier = "VITE_CORONER_DISCORD_UPDATES";
          const webhookURL = import.meta.env.VITE_CORONER_DISCORD_UPDATES;
          const { userAgent, timeZone } = getUserContext(); // Capture user context
 
@@ -804,7 +708,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                 return false;
             } else {
                 if (showInAppNotification) showInAppNotification('Coroner webhook message sent successfully!', "check-circle");
-                // setShowCoronerWebhookModal(false); // REMOVED - state no longer exists
                 logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Sent Coroner Custom Webhook", "Admin successfully sent a custom webhook to the Coroner Updates channel.", null, userAgent, timeZone);
                 logWebhookToFirebase('Coroner Custom Webhook Sent', { admin: authEmail, title: payloadFromModal.embeds[0].title });
                 return true;
@@ -1034,7 +937,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                 setShowReviewPhrasesModal={setShowReviewPhrasesModal}
                 setShowUserManagementModal={setShowUserManagementModal}
 
-                setShowCctvWebhookModal={setShowCctvWebhookModal}
                 setShowMarkdownModal={setShowMarkdownModal}
                 handleLogout={handleLogout}
                 Sentry={Sentry}
@@ -1080,12 +982,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                 logAdminAction={logAdminAction}
                 adminUserEmail={authEmail}
             />
-            <CctvRequestWebhookModal
-                show={showCctvWebhookModal}
-                onHide={() => setShowCctvWebhookModal(false)}
-                onSubmit={handleCctvWebhookSubmit}
-                showNotification={showInAppNotification}
-            />
 
             <UserManagementModal
                 show={showUserManagementModal}
@@ -1093,25 +989,7 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                 database={database}
                 showNotification={showInAppNotification}
             />
-{/*             <OAuthTokenExchangeModal
-                show={showOAuthTokenExchangeModal}
-                onHide={() => setShowOAuthTokenExchangeModal(false)}
-                showNotification={showInAppNotification}
-                logAdminAction={logAdminAction}
-                adminUserEmail={currentUser?.email}
-                onUserDataReceived={(userData) => {
-                    // The user data will be automatically updated by the GTA auth hook
-                    console.log('GTA user data received:', userData);
-                }}
-            />
-            <UserDataExchangeModal
-                show={showUserDataExchangeModal}
-                onHide={() => setShowUserDataExchangeModal(false)}
-                showNotification={showInAppNotification}
-                logAdminAction={logAdminAction}
-                adminUserEmail={currentUser?.email}
-            />
- */}        </>
+        </>
     );
 };
 

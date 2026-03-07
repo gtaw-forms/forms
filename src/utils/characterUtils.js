@@ -17,49 +17,53 @@ export const getCharacterData = (gtaWorldUser) => {
     }
 
     // Priority 1: Try faction data with character info (this is the character they're logged in with for the faction)
-    if (gtaWorldUser.faction && gtaWorldUser.factionData) {
-        return {
-            id: gtaWorldUser.factionData.characterId || gtaWorldUser.faction.characterId, // Use character ID from factionData
-            firstname: gtaWorldUser.faction.firstname || '',
-            lastname: gtaWorldUser.faction.lastname || '',
-            fullName: `${gtaWorldUser.faction.firstname || ''} ${gtaWorldUser.faction.lastname || ''}`.trim() || gtaWorldUser.faction.characterName || gtaWorldUser.username,
-            memberid: gtaWorldUser.id
-        };
-    }
-
-    // Priority 2: Fallback to faction data if available (legacy support)
     if (gtaWorldUser.faction) {
+        const factionChar = gtaWorldUser.faction;
         return {
-            id: gtaWorldUser.faction.characterId || gtaWorldUser.id, // Prefer character ID over member ID
-            firstname: gtaWorldUser.faction.firstname || '',
-            lastname: gtaWorldUser.faction.lastname || '',
-            fullName: `${gtaWorldUser.faction.firstname || ''} ${gtaWorldUser.faction.lastname || ''}`.trim() || gtaWorldUser.faction.characterName || gtaWorldUser.username,
+            id: factionChar.characterId || factionChar.id || gtaWorldUser.id,
+            firstname: factionChar.firstname || '',
+            lastname: factionChar.lastname || '',
+            fullName: factionChar.characterName || `${factionChar.firstname || ''} ${factionChar.lastname || ''}`.trim() || gtaWorldUser.username,
             memberid: gtaWorldUser.id
         };
     }
 
-    // Priority 3: Try to get character data from the proper location (characters array)
-    const characterArray = gtaWorldUser?.userData?.character || gtaWorldUser?.userData?.characters || gtaWorldUser?.character || gtaWorldUser?.characters || [];
+    // Priority 2: Try to get character data from the proper location (characters array)
+    const apiChars = gtaWorldUser?.userData?.character || gtaWorldUser?.userData?.characters || gtaWorldUser?.character || gtaWorldUser?.characters || [];
+    const factionChars = gtaWorldUser?.allFactionCharacters || [];
+    
+    // Combine them to ensure we don't miss anything, base on API chars if available
+    const characterArray = apiChars.length > 0 ? apiChars : factionChars;
     
     if (Array.isArray(characterArray) && characterArray.length > 0) {
-        // If we have faction info but no character data, try to find the matching character
-        const factionCharacterId = gtaWorldUser?.faction?.characterId;
-        let character = characterArray[0]; // Default to first character
+        // Find the "best" character to show
+        let character = characterArray[0].character || characterArray[0];
         
-        // If we have a faction character ID, try to find the matching character
-        if (factionCharacterId) {
-            const matchingCharacter = characterArray.find(char => char.id === factionCharacterId);
-            if (matchingCharacter) {
-                character = matchingCharacter;
-            }
+        // If we have a specific active character name in the parent user object, try to match it
+        const activeName = gtaWorldUser.characterName || gtaWorldUser.character_name;
+        if (activeName) {
+            const match = characterArray.find(c => {
+                const cData = c.character || c;
+                const cName = cData.characterName || cData.name || `${cData.firstname || ''} ${cData.lastname || ''}`.trim();
+                return cName.toLowerCase() === activeName.toLowerCase();
+            });
+            if (match) character = match.character || match;
         }
         
+        // Look for faction enrichment for the selected character
+        const charId = character.characterId || character.id;
+        const factionMatch = factionChars.find(fc => {
+            const fcData = fc.character || fc;
+            return (fcData.characterId || fcData.id) == charId;
+        });
+
         return {
-            id: character.id, // This should be the character ID (5573 for Alyson Frost)
+            id: charId,
             firstname: character.firstname || '',
             lastname: character.lastname || '',
-            fullName: `${character.firstname || ''} ${character.lastname || ''}`.trim(),
-            memberid: character.memberid // This is the member ID (43132)
+            fullName: character.characterName || character.name || `${character.firstname || ''} ${character.lastname || ''}`.trim() || factionMatch?.character?.characterName,
+            memberid: gtaWorldUser.id,
+            rank: factionMatch?.character?.rank || character.rank
         };
     }
 

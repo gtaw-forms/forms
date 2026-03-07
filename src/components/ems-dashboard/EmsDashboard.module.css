@@ -70,6 +70,7 @@
   flex: 1;
   gap: 1.5rem;
   flex-wrap: wrap;
+  position: relative; /* Ensure relative positioning for absolute children */
 }
 
 .leftPanel {
@@ -81,6 +82,18 @@
   box-shadow: 0 10px 30px rgba(0,0,0,0.3);
   max-height: 80vh;
   overflow-y: auto;
+  transition: all 0.3s ease; /* Smooth transition for collapse */
+}
+
+/* Collapsed state for left panel */
+.leftPanel.collapsed {
+  flex: 0;
+  min-width: 0;
+  width: 0;
+  padding: 0;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .categoryHeader {
@@ -125,12 +138,19 @@
 }
 
 .mainContent {
-  flex: 2;
+  flex: 4;
   min-width: 300px;
   background: #1e293b;
   border-radius: 16px;
   padding: 2rem;
   box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  transition: all 0.3s ease; /* Smooth transition for expansion */
+}
+
+/* Expanded state for main content when sidebar is collapsed */
+.mainContent.fullWidth {
+  flex: 3; /* Take up more space */
+  min-width: 100%;
 }
 
 .protocolTitle {

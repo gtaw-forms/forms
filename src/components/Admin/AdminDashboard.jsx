@@ -23,8 +23,6 @@ import LsccManager from './LsccManager';
 import FormsManager from './FormsManager';
 import MetricsDashboard from './MetricsDashboard';
 import AgencyIncidentManager from './AgencyIncidentManager';
-import HallOfFameManager from './HallOfFameManager';
-import CctvDashboard from './CctvDashboard'; // Import the new CCTV Dashboard
 
 const AdminDashboard = ({
 
@@ -41,7 +39,6 @@ const AdminDashboard = ({
     selectedTypeForEdit,
     setShowReviewPhrasesModal,
     setShowUserManagementModal,
-    setShowCctvWebhookModal,
     Sentry,
     showInAppNotification,
     webhooks,
@@ -175,7 +172,6 @@ const AdminDashboard = ({
     const hasUsersAccess = isGoogleAdminActive || isSuperAdminAccess || isRank14OrHigher;
     const hasRankPermissionsAccess = isGoogleAdminActive || isSuperAdminAccess || isRank15OrHigher;
     const hasEmployeeManagerAccess = isGoogleAdminActive || isSuperAdminAccess || isRank13OrHigher;
-    const hasHallOfFameAccess = isGoogleAdminActive || isSuperAdminAccess || isRank13OrHigher;
     
     // Agency Incident Access: Rank 14+ OR Special Coroner Ranks
     const currentRankName = factionData?.rank || gtaWorldUser?.faction?.rank || '';
@@ -398,9 +394,6 @@ const AdminDashboard = ({
                         {hasEmployeeManagerAccess && (
                             <button className={`nav-link ${selectedSection === 'employeeManager' ? 'active' : ''}`} onClick={() => setSelectedSection('employeeManager')}><i className="fas fa-users me-2"></i>Employee Report Metrics</button>
                         )}
-                        {hasHallOfFameAccess && (
-                            <button className={`nav-link ${selectedSection === 'hallOfFame' ? 'active' : ''}`} onClick={() => setSelectedSection('hallOfFame')}><i className="fas fa-trophy me-2"></i>Hall of Fame</button>
-                        )}
                         {hasLsccManagerAccess && (
                             <button className={`nav-link ${selectedSection === 'lscc' ? 'active' : ''}`} onClick={() => setSelectedSection('lscc')}><i className="fas fa-building me-2"></i>LSCC Panel</button>
                         )}
@@ -412,7 +405,6 @@ const AdminDashboard = ({
                         <button className={`nav-link ${selectedSection === 'factions' ? 'active' : ''}`} onClick={() => setSelectedSection('factions')}><i className="fas fa-users me-2"></i>Faction Data</button>
                         <button className={`nav-link ${selectedSection === 'dev' ? 'active' : ''}`} onClick={() => setSelectedSection('dev')}><i className="fas fa-code me-2"></i>Developer</button>
                         <button className={`nav-link ${selectedSection === 'database' ? 'active' : ''}`} onClick={() => setSelectedSection('database')}><i className="fas fa-database me-2"></i>Database</button>
-                        <button className={`nav-link ${selectedSection === 'cctv' ? 'active' : ''}`} onClick={() => setSelectedSection('cctv')}><i className="fas fa-video me-2"></i>CCTV Dashboard</button>
                     </div>
                 </div>
                 <div className="main-content">
@@ -454,7 +446,6 @@ const AdminDashboard = ({
                                 </div>
                             </div>
                         )}
-                    {selectedSection === 'cctv' && <CctvDashboard />}
                     {selectedSection === 'bingo' && (
                         <div className="card">
                             <div className="card-header">Bingo Management</div>
@@ -604,22 +595,6 @@ const AdminDashboard = ({
                                     <div className="alert alert-danger">
                                         <i className="fas fa-exclamation-triangle me-2"></i>
                                         <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to manage employees.
-                                        <br />
-                                        <small>Required: Script Rank 13 or higher, or Google Admin access</small>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                    {selectedSection === 'hallOfFame' && (
-                        <div className="card">
-                            <div className="card-body">
-                                {hasHallOfFameAccess ? (
-                                    <HallOfFameManager showNotification={showInAppNotification} />
-                                ) : (
-                                    <div className="alert alert-danger">
-                                        <i className="fas fa-exclamation-triangle me-2"></i>
-                                        <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to manage the Hall of Fame.
                                         <br />
                                         <small>Required: Script Rank 13 or higher, or Google Admin access</small>
                                     </div>
@@ -1265,17 +1240,6 @@ const AdminDashboard = ({
                                             </div>
                                         </div>
                                     )}
-                                </div>
-                                <div className="mb-3">
-                                    <Button 
-                                        variant="secondary" 
-                                        onClick={() => setShowCctvWebhookModal(true)} 
-                                        title={hasWebhookAccess ? "Send a test webhook simulating a CCTV request" : "Requires webhook management permission"}
-                                        disabled={!hasWebhookAccess}
-                                    >
-                                        <i className="fas fa-video me-2"></i>
-                                        CCTV Request Test
-                                    </Button>
                                 </div>
                                 <Button variant="danger" onClick={() => {
                                     try {

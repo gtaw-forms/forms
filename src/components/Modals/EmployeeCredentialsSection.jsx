@@ -1,19 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { Form, Button } from 'react-bootstrap';
-import Select from 'react-select';
+import { Form, Button, Badge } from 'react-bootstrap';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { refreshFactionData as refreshFactionDataService, STORAGE_KEYS } from '../../services/gtaWorldAuth';
 import { cleanRankText } from '../../utils/textUtils';
 import { getCharacterName, getCharacterID } from '../../utils/characterUtils';
-import { database } from '../../firebase';
-import { ref, update } from 'firebase/database';
 import { useNotification } from '../../contexts/NotificationContext.jsx';
-import { sendDiscordWebhook } from '../../utils/webhookUtils';
 
 /**
- * EmployeeCredentialsSection (Universal)
- * - Provides GTAW OAuth autofill, saved profile usage, and manual selection (dev)
- * - Intended to be reused across any form that needs an employee selector
+ * EmployeeCredentialsSection (Refined & Sidebar Optimized)
+ * - Removed Bootstrap Row/Col to prevent negative margin overflow
+ * - Modern flex-based grid for profile details
+ * - Descriptive labels under action buttons
+ * - Fixed innerText crash by using state-based image fallback
  */
 const EmployeeCredentialsSection = ({
   formData,
@@ -26,37 +24,56 @@ const EmployeeCredentialsSection = ({
   context,
   persistEnabled: propPersistEnabled,
   setPersistEnabled: propSetPersistEnabled,
+  // Auth props passed from parent
+  user: propUser,
+  isAuthenticated: propIsAuthenticated,
+  isPhmcMember: propIsPhmcMember,
+  canSwapCharacters: propCanSwapCharacters,
+  swapCharacter: propSwapCharacter,
+  swappableCharacters: propSwappableCharacters,
+  factionData: propFactionData,
+  updateFactionData: propUpdateFactionData,
+  login: propLogin,
+  logout: propLogout
 }) => {
-  const {
-    user: gtaWorldUser,
-    isAuthenticated: isGtaAuthenticated,
-    isPhmcMember,
-    canSwapCharacters,
-    swapCharacter,
-    swappableCharacters,
-    factionData,
-    updateFactionData,
-    login,
-    logout,
-  } = useGtaWorldAuth();
+  const authHook = useGtaWorldAuth();
   const { showNotification: notifyFromContext } = useNotification?.() || {};
 
+  const gtaWorldUser = propUser !== undefined ? propUser : authHook.user;
+  const isGtaAuthenticated = propIsAuthenticated !== undefined ? propIsAuthenticated : authHook.isAuthenticated;
+  const canSwapCharacters = propCanSwapCharacters !== undefined ? propCanSwapCharacters : authHook.canSwapCharacters;
+  const swapCharacter = propSwapCharacter || authHook.swapCharacter;
+  const swappableCharacters = propSwappableCharacters || authHook.swappableCharacters;
+  const factionData = propFactionData !== undefined ? propFactionData : authHook.factionData;
+  const updateFactionData = propUpdateFactionData || authHook.updateFactionData;
+  const login = propLogin || authHook.login;
+  const logout = propLogout || authHook.logout;
+
   const [useGtawName, setUseGtawName] = useState(false);
-  const [showFloatingText, setShowFloatingText] = useState(false);
   const [internalPersistEnabled, setInternalPersistEnabled] = useState(() => localStorage.getItem('phmc_gtaw_oauth_persist_enabled') === 'true');
 
   const persistEnabled = propPersistEnabled !== undefined ? propPersistEnabled : internalPersistEnabled;
-  const setPersistEnabled = propSetPersistEnabled !== undefined ? propSetPersistEnabled : setInternalPersistEnabled;
+  const setSetPersistEnabled = propSetPersistEnabled !== undefined ? propSetPersistEnabled : setInternalPersistEnabled;
 
-  const hasShownFloatingTextRef = React.useRef(false);
-  const lastUserRef = React.useRef(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [imgError, setImgError] = useState(false);
+
+  const isCivilianForm = typeof context === 'string' && context.startsWith('[Civilian]');
+  const isDevelopmentEnvironment = window.location.hostname === 'localhost';
+
+  const gtawCharacterName = factionData?.characterName || getCharacterName(gtaWorldUser);
+
+  // Reset imgError when character name changes
+  useEffect(() => {
+    setImgError(false);
+  }, [gtawCharacterName]);
 
   const togglePersistence = () => {
     const newValue = !persistEnabled;
-    setPersistEnabled(newValue);
+    setSetPersistEnabled(newValue);
     localStorage.setItem('phmc_gtaw_oauth_persist_enabled', newValue ? 'true' : 'false');
+    localStorage.setItem('seenKeepCredentialsPrompt', 'true');
     
-    // Update token storage immediately
     const token = sessionStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN) || localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
     if (token) {
       if (newValue) {
@@ -66,374 +83,190 @@ const EmployeeCredentialsSection = ({
       }
     }
     
-    (showNotification || notifyFromContext) && (showNotification || notifyFromContext)(
-      newValue ? 'Session will persist across visits.' : 'Session will end when you close the browser.', 
-      'info-circle', 
-      3000
-    );
+    const notify = showNotification || notifyFromContext;
+    notify && notify(newValue ? 'Session will persist.' : 'Session will end on close.', 'info-circle', 3000);
   };
 
-  // Effect 1: Determine if we should show the floating text
-  useEffect(() => {
-    if (isGtaAuthenticated && gtaWorldUser) {
-      if (lastUserRef.current !== gtaWorldUser.id) {
-          hasShownFloatingTextRef.current = false;
-          lastUserRef.current = gtaWorldUser.id;
-      }
-
-      if (hasShownFloatingTextRef.current) return;
-
-      const characterName = getCharacterName(gtaWorldUser);
-      const allOptions = groupedOptions?.flatMap(group => group.options || []) || [];
-      if (allOptions.length === 0) return; 
-
-      const isFoundInDb = allOptions.some(opt => opt.value.toLowerCase() === characterName.toLowerCase());
-
-      if (!isPhmcMember || !isFoundInDb) {
-        setShowFloatingText(true);
-        hasShownFloatingTextRef.current = true;
-      }
+  const handleUpdateDiscord = () => {
+    if (!isGtaAuthenticated) return;
+    const charId = factionData?.characterId || getCharacterID(gtaWorldUser);
+    if (charId) {
+        sessionStorage.removeItem(`discord_check_asked_${charId}`);
+        sessionStorage.setItem('force_discord_check', 'true');
+        
+        // Dispatch custom event to trigger the DiscordNameCheck component
+        window.dispatchEvent(new CustomEvent('trigger_discord_check'));
+        
+        // Trigger a re-render of the parent tree to catch the session storage change
+        setUseGtawName(prev => !prev);
+        setTimeout(() => setUseGtawName(prev => !prev), 10);
     }
-  }, [isGtaAuthenticated, gtaWorldUser, isPhmcMember, groupedOptions]);
-
-  // Effect 2: Handle the timer for the floating text
-  useEffect(() => {
-      if (showFloatingText) {
-          const timer = setTimeout(() => setShowFloatingText(false), 10000);
-          return () => clearTimeout(timer);
-      }
-  }, [showFloatingText]);
-
-  const handleNewEmployeeClick = () => {
-    setShowFloatingText(false);
-    setShowEmployeeModal(true);
   };
 
-  const employeeNameField = `${employeeType}Employee`;
-  const employeeBadgeField = `${employeeType}Badge`;
-  const employeeRankField = `${employeeType}Rank`;
-  const employeePHNumberField = `${employeeType}PHNumber`;
-
-  const isCivilianForm = typeof context === 'string' && context.startsWith('[Civilian]');
-
-  const isDevelopmentEnvironment =
-    window.location.hostname === 'localhost' ||
-    window.location.hostname.startsWith('192.168.') ||
-    window.location.hostname.startsWith('10.') ||
-    window.location.hostname.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./);
-
-  useEffect(() => {
-    if (isGtaAuthenticated && gtaWorldUser && !useGtawName && !isCivilianForm) {
-      const gtawCharacterName = getCharacterName(gtaWorldUser);
-      if (gtawCharacterName && gtawCharacterName !== 'GTAW User') {
-        setUseGtawName(true);
-        const cleanRank = gtaWorldUser?.faction?.rank
-          ? cleanRankText(gtaWorldUser.faction.rank)
-          : 'GTAW User';
-        const characterId = getCharacterID(gtaWorldUser);
-        setFormData(prev => ({
-          ...prev,
-          [employeeNameField]: gtawCharacterName,
-          [employeeBadgeField]: characterId,
-          [employeeRankField]: cleanRank,
-          [employeePHNumberField]: '50056',
-        }));
-      }
-    }
-  }, [isGtaAuthenticated, gtaWorldUser, useGtawName, setFormData, employeeNameField, employeeBadgeField, employeeRankField, employeePHNumberField, isCivilianForm]);
-
-  useEffect(() => {
-    if (useGtawName && isGtaAuthenticated && gtaWorldUser && factionData && !isCivilianForm) {
-      if (!factionData.characterName) return;
-
-      const cleanRank = factionData.rank ? cleanRankText(factionData.rank) : 'GTAW User';
-      setFormData(prev => ({
-        ...prev,
-        [employeeNameField]: factionData.characterName,
-        [employeeBadgeField]: factionData.characterId || '',
-        [employeeRankField]: cleanRank,
-        [employeePHNumberField]: '50056',
-      }));
-    }
-  }, [factionData, useGtawName, isGtaAuthenticated, gtaWorldUser, setFormData, employeeNameField, employeeBadgeField, employeeRankField, employeePHNumberField, isCivilianForm]);
-
-  const gtawCharacterName = factionData?.characterName || null;
-
-  const handleSwap = () => {
-    if (!canSwapCharacters || !factionData || !swappableCharacters || swappableCharacters.length < 2) return;
-    const getCharId = (c) => c?.character?.characterId ?? c?.id ?? null;
-    const validCharacters = swappableCharacters.filter(c => getCharId(c) !== null);
-    if (validCharacters.length < 2) return;
-
-    const currentIndex = validCharacters.findIndex(c => getCharId(c) === factionData.characterId);
-    const nextIndex = (currentIndex + 1) % validCharacters.length;
-    const nextCharacter = validCharacters[nextIndex];
-
-    if (nextCharacter) swapCharacter(nextCharacter);
-  };
-
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const handleRefreshFactionInfo = async () => {
-    if (!isGtaAuthenticated) {
-      (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('Please log out and back in to refresh.', 'info-circle', 4000);
-      return;
-    }
+    const notify = showNotification || notifyFromContext;
+    if (!isGtaAuthenticated) return;
     try {
       setIsRefreshing(true);
-      (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('Refreshing PHMC permissions...', 'info-circle', 3000);
       const updated = await refreshFactionDataService();
       if (updated && updated.faction) {
         updateFactionData(updated.faction);
-        if (useGtawName) {
-          const cleanRank = updated.faction.rank ? cleanRankText(updated.faction.rank) : updated.faction.scriptRank || '';
-          setFormData(prev => ({
-            ...prev,
-            [employeeNameField]: updated.faction.characterName || prev[employeeNameField],
-            [employeeBadgeField]: updated.faction.characterId || prev[employeeBadgeField],
-            [employeeRankField]: cleanRank || prev[employeeRankField],
-            [employeePHNumberField]: '50056',
-          }));
-        }
-        (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('Permissions refreshed.', 'check-circle', 3500);
+        notify && notify('Profile refreshed.', 'check-circle', 3000);
       }
     } catch (err) {
-      console.warn('[EmployeeCredentialsSection] Refresh failed:', err);
-      (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('Unable to refresh rank.', 'exclamation-triangle', 5000);
+      notify && notify('Refresh failed.', 'exclamation-triangle', 5000);
     } finally {
       setIsRefreshing(false);
     }
   };
 
-  return (
-    <div style={{ marginBottom: '1.5rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
-        <label style={{ margin: 0, fontWeight: "600", color: "#94a3b8", fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05rem' }}>
-          Employee Information
-        </label>
-        
-        <div style={{ display: 'flex', gap: '8px' }}>
-            {isGtaAuthenticated && gtawCharacterName && !isCivilianForm && (
-                <button
-                    type="button"
-                    onClick={() => setUseGtawName(!useGtawName)}
-                    className={`btn btn-sm ${useGtawName ? 'btn-success' : 'btn-outline-secondary'}`}
-                    style={{ fontSize: '0.75rem', padding: '2px 10px', borderRadius: '20px' }}
-                >
-                    <i className={`fas ${useGtawName ? 'fa-check-circle' : 'fa-user'}`} style={{ marginRight: '5px' }}></i>
-                    {useGtawName ? 'Auto-fill ON' : 'Auto-fill OFF'}
-                </button>
-            )}
-            {(isDevelopmentEnvironment || isCivilianForm) && !isGtaAuthenticated && (
-              
-                <div style={{ padding: '2px 10px', backgroundColor: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', borderRadius: '20px', fontSize: '0.7rem', fontWeight: 'bold', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
-                    <i className="fas fa-tools" style={{ marginRight: '5px' }}></i>
-                    Manual Mode
-                </div>
-                
-            )}
+  const handleSwap = async () => {
+    if (!isGtaAuthenticated || !canSwapCharacters) return;
+    const notify = showNotification || notifyFromContext;
+
+    if (swappableCharacters.length >= 2) {
+        const getCharId = (c) => c?.character?.characterId ?? c?.id ?? null;
+        const currentId = factionData?.characterId || getCharacterID(gtaWorldUser);
+        const currentIndex = swappableCharacters.findIndex(c => getCharId(c) === currentId);
+        const nextIndex = (currentIndex + 1) % swappableCharacters.length;
+        const nextCharacter = swappableCharacters[nextIndex];
+
+        if (nextCharacter) {
+            swapCharacter(nextCharacter);
+            notify && notify(`Swapped character.`, 'success', 3000);
+        }
+    }
+  };
+
+  useEffect(() => {
+    if (isGtaAuthenticated && gtaWorldUser && !useGtawName && !isCivilianForm) {
+      const charName = getCharacterName(gtaWorldUser);
+      if (charName && charName !== 'GTAW User') setUseGtawName(true);
+    }
+  }, [isGtaAuthenticated, gtaWorldUser, useGtawName, isCivilianForm]);
+
+  if (!isGtaAuthenticated && !isDevelopmentEnvironment && !isCivilianForm) {
+      return (
+        <div style={{ padding: '1.5rem', background: '#162032', borderRadius: '12px', textAlign: 'center', border: '1px solid #334155' }}>
+            <i className="fas fa-lock mb-3" style={{ fontSize: '2rem', color: '#60a5fa' }}></i>
+            <h5 style={{ color: '#f8fafc' }}>Auth Required</h5>
+            <button onClick={() => login({ returnPath: window.location.hash || '#/' })} className="btn btn-primary mt-3 w-100">
+                Log In
+            </button>
         </div>
+      );
+  }
+
+  const labelStyle = { 
+    fontSize: '0.6rem', 
+    color: '#94a3b8', 
+    marginTop: '4px', 
+    textTransform: 'uppercase', 
+    fontWeight: '700',
+    textAlign: 'center'
+  };
+
+  return (
+    <div className="employee-credentials-section">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+        <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>Profile</span>
+        {isGtaAuthenticated && (
+            <Badge bg={persistEnabled ? "success" : "secondary"} style={{ cursor: 'pointer' }} onClick={togglePersistence}>
+                {persistEnabled ? "Saved" : "Not Saved"}
+            </Badge>
+        )}
       </div>
 
-      {(isDevelopmentEnvironment || isCivilianForm) ? (
-        <Select
-          name={employeeNameField}
-          value={
-            groupedOptions
-              ? groupedOptions
-                  .flatMap(group => group.options)
-                  .find(option => option && option.value === formData[employeeNameField]) || null
-              : null
-          }
-          onChange={selectedOption => {
-            handleSelectChange(selectedOption, { name: employeeNameField });
-            setFormData(prev => ({
-                ...prev,
-                [employeeBadgeField]: selectedOption?.badge || '',
-                [employeeRankField]: selectedOption?.rank || '',
-                [employeePHNumberField]: selectedOption?.phNumber || '50056',
-            }));
-          }}
-          options={groupedOptions || []}
-          isClearable
-          placeholder={`Search or select ${employeeType}...`}
-          styles={{
-            control: (base, state) => ({
-              ...base,
-              backgroundColor: '#162032',
-              color: '#f8fafc',
-              padding: '4px',
-              borderRadius: '8px',
-              borderColor: !formData[employeeNameField] ? '#ef4444' : state.isFocused ? '#3b82f6' : '#334155',
-              boxShadow: state.isFocused ? '0 0 0 1px #3b82f6' : 'none',
-              '&:hover': { borderColor: '#475569' }
-            }),
-            menu: base => ({ ...base, backgroundColor: '#1e293b', border: '1px solid #334155', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }),
-            option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? '#334155' : 'transparent', color: '#f8fafc', cursor: 'pointer' }),
-            singleValue: base => ({ ...base, color: '#f8fafc' }),
-            input: base => ({ ...base, color: '#f8fafc' }),
-            placeholder: base => ({ ...base, color: '#64748b' }),
-            groupHeading: base => ({ ...base, color: '#94a3b8', fontWeight: 700, fontSize: '0.7rem' }),
-          }}
-        />
-      ) : useGtawName && !isCivilianForm ? (
-        <div style={{ 
-            background: '#1e293b', 
-            border: '1px solid #334155', 
-            borderRadius: '12px', 
-            padding: '1.25rem',
-            position: 'relative',
-            overflow: 'hidden'
-        }}>
-            <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', backgroundColor: '#10b981' }} />
-            
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.2rem' }}>
-                <div>
-                    <div style={{ color: '#10b981', fontSize: '0.7rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05rem', marginBottom: '0.2rem' }}>
-                        <i className="fas fa-shield-alt"></i> Authenticated Profile
-                    </div>
-                    <h5 style={{ color: '#f8fafc', margin: 0, fontSize: '1.1rem' }}>{gtawCharacterName}</h5>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
-                    <div style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '4px 10px', borderRadius: '6px', fontSize: '0.65rem', fontWeight: '700' }}>
-                        OAUTH ACTIVE
-                    </div>
-                    <div 
-                        onClick={togglePersistence}
-                        style={{ 
-                            fontSize: '0.65rem', 
-                            color: persistEnabled ? '#10b981' : '#64748b', 
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '5px',
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            background: persistEnabled ? 'rgba(16, 185, 129, 0.05)' : 'transparent',
-                            transition: 'all 0.2s'
-                        }}
-                        title={persistEnabled ? "Click to disable persistence" : "Click to stay logged in across sessions"}
-                    >
-                        <i className={`fas ${persistEnabled ? 'fa-toggle-on' : 'fa-toggle-off'}`} style={{ fontSize: '0.9rem' }}></i>
-                        Stay Logged In
-                    </div>
-                </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px 10px' }}>
-                <div>
-                    <div style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>UCP Username</div>
-                    <div style={{ color: '#e2e8f0', fontSize: '0.9rem' }}>{gtaWorldUser?.username}</div>
-                </div>
-                <div>
-                    <div style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>Badge / ID</div>
-                    <div style={{ color: '#e2e8f0', fontSize: '0.9rem' }}>#{factionData?.characterId || gtaWorldUser?.id}</div>
-                </div>
-                <div>
-                    <div style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>Current Rank</div>
-                    <div style={{ color: '#e2e8f0', fontSize: '0.9rem' }}>{factionData?.rank ? cleanRankText(factionData.rank) : 'Guest'}</div>
-                </div>
-            </div>
-
-            <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid #334155', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                onClick={handleRefreshFactionInfo}
-                className="btn btn-outline-info btn-sm"
-                disabled={isRefreshing}
-                style={{ fontSize: '0.75rem', borderRadius: '6px', padding: '5px 10px' }}
-              >
-                <i className={`fas ${isRefreshing ? 'fa-spinner fa-spin' : 'fa-sync-alt'}`} style={{ marginRight: '6px' }}></i>
-                {isRefreshing ? 'Refreshing…' : 'Refresh Data'}
-              </button>
-
-              {canSwapCharacters && (
-                <button 
-                    type="button" 
-                    onClick={handleSwap} 
-                    className="btn btn-outline-primary btn-sm"
-                    style={{ fontSize: '0.75rem', borderRadius: '6px', padding: '5px 10px' }}
-                >
-                    <i className="fas fa-exchange-alt" style={{ marginRight: '6px' }}></i>
-                    Switch Character
-                </button>
-              )}
-
-              <div style={{ position: 'relative' }}>
-                {showFloatingText && (
-                  <div style={{
-                    position: 'absolute',
-                    bottom: '100%',
-                    right: '0',
-                    marginBottom: '10px',
-                    backgroundColor: '#f59e0b',
-                    color: '#000',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    fontSize: '0.7rem',
-                    fontWeight: 'bold',
-                    whiteSpace: 'nowrap',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                    zIndex: 100
-                  }}>
-                    Missing Name? Report it!
-                    <div style={{ position: 'absolute', top: '100%', right: '20px', borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '6px solid #f59e0b' }} />
-                  </div>
+      <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: '12px', padding: '1.25rem', overflow: 'hidden' }}>
+        {/* Profile Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.25rem' }}>
+            <div style={{ 
+                width: '56px', height: '56px', borderRadius: '50%', 
+                background: '#1e293b', 
+                color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                fontSize: '1.25rem', fontWeight: 'bold',
+                overflow: 'hidden',
+                border: '2px solid #3b82f6',
+                flexShrink: 0
+            }}>
+                {((gtawCharacterName || isDevelopmentEnvironment) && !imgError) ? (
+                    <img 
+                        src={`https://cad.gta.world/img/persons/${isDevelopmentEnvironment ? 'Alyson_Frost' : gtawCharacterName.replace(/\s+/g, '_')}.png?${Date.now()}`}
+                        alt={gtawCharacterName}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        onError={() => setImgError(true)}
+                    />
+                ) : (
+                    <span>{gtawCharacterName ? gtawCharacterName.charAt(0).toUpperCase() : '?'}</span>
                 )}
-                <button
-                  type="button"
-                  onClick={handleNewEmployeeClick}
-                  className="btn btn-outline-warning btn-sm"
-                  style={{ fontSize: '0.75rem', borderRadius: '6px', padding: '5px 10px' }}
-                >
-                  <i className="fas fa-user-plus" style={{ marginRight: '6px' }}></i>
-                  New Employee
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => logout()}
-                  className="btn btn-outline-danger btn-sm"
-                  style={{ fontSize: '0.75rem', borderRadius: '6px', padding: '5px 10px' }}
-                >
-                  <i className="fas fa-sign-out-alt" style={{ marginRight: '6px' }}></i>
-                  Sign Out
-                </button>
-              </div>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: '#f8fafc', fontWeight: 'bold', fontSize: '1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {gtawCharacterName}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'flex', gap: '8px' }}>
+                    <span>ID: {factionData?.characterId || gtaWorldUser?.id || 'N/A'}</span>
+                </div>
             </div>
         </div>
-      ) : (
-        <div style={{ 
-            padding: '2rem', 
-            backgroundColor: '#162032', 
-            border: '1px solid #334155', 
-            borderRadius: '12px', 
-            textAlign: 'center',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '15px'
-        }}>
-          <div style={{ width: '50px', height: '50px', borderRadius: '50%', backgroundColor: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3b82f6', fontSize: '1.2rem', border: '1px solid #334155' }}>
-            <i className="fas fa-lock"></i>
-          </div>
-          <div>
-            <div style={{ color: '#f8fafc', fontWeight: 'bold', fontSize: '1rem', marginBottom: '4px' }}>Identity Required</div>
-            <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Please log in via GTA World to populate these fields.</div>
-            <button
-              type="button"
-              onClick={() => {
-                (showNotification || notifyFromContext) && (showNotification || notifyFromContext)('Redirecting to GTA World...', 'info-circle', 5000);
-                login({ returnPath: window.location.hash || '#/' });
-              }}
-              className="btn btn-outline-primary btn-sm"
-              style={{ fontSize: '0.75rem', borderRadius: '6px', padding: '5px 10px', marginTop: '10px' }}
-            >
-              <i className="fas fa-sign-in-alt" style={{ marginRight: '6px' }}></i>
-              Log In
-            </button>
-          </div>
+
+        {/* Info Grid */}
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '1.25rem' }}>
+            <div style={{ flex: 1, background: '#1e293b', padding: '8px 12px', borderRadius: '8px', border: '1px solid #334155', minWidth: 0 }}>
+                <div style={{ fontSize: '0.65rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Department</div>
+                <div style={{ color: '#e2e8f0', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <i className="fas fa-building me-1 text-primary"></i>
+                    {(() => {
+                        const rank = factionData?.rank?.toLowerCase() || '';
+                        if (rank.includes('medical examiner') || rank.includes('forensic attendant') || rank.includes('coroner investigator')) {
+                            return 'Forensic Science';
+                        }
+                        return 'PHMC Staff';
+                    })()}
+                </div>
+            </div>
+            <div style={{ flex: 1, background: '#1e293b', padding: '8px 12px', borderRadius: '8px', border: '1px solid #334155' }}>
+                <div style={{ fontSize: '0.65rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Rank</div>
+                <div style={{ color: '#e2e8f0', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <i className="fas fa-id-badge me-1 text-info"></i>
+                    {factionData?.rank ? cleanRankText(factionData.rank) : 'N/A'}
+                </div>
+            </div>
         </div>
-      )}
+
+        {/* Action Buttons with Labels */}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <Button variant="outline-info" size="sm" onClick={handleRefreshFactionInfo} disabled={isRefreshing} style={{ width: '100%' }}>
+                    <i className={`fas ${isRefreshing ? 'fa-spinner fa-spin' : 'fa-sync-alt'}`}></i>
+                </Button>
+                <div style={labelStyle}>Reload</div>
+            </div>
+
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <Button variant="outline-warning" size="sm" onClick={handleUpdateDiscord} style={{ width: '100%' }}>
+                    <i className="fa-bookmark-o"></i>
+                </Button>
+                <div style={labelStyle}>Discord</div>
+            </div>
+            
+            {canSwapCharacters && (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                    <Button variant="outline-primary" size="sm" onClick={handleSwap} style={{ width: '100%' }}>
+                        <i className="fas fa-exchange-alt"></i>
+                    </Button>
+                    <div style={labelStyle}>Swap</div>
+                </div>
+            )}
+            
+            <div style={{ flex: 0, display: 'flex', flexDirection: 'column', minWidth: '40px' }}>
+                <Button variant="outline-danger" size="sm" onClick={() => logout()} style={{ width: '100%' }} title="Sign Out">
+                    <i className="fas fa-sign-out-alt"></i>
+                </Button>
+                <div style={labelStyle}>Exit</div>
+            </div>
+        </div>
+      </div>
     </div>
   );
 };
