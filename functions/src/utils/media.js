@@ -37,6 +37,12 @@ export const uploadImageProxy = onCall({
                 body: formData,
             });
 
+            if (!response.ok) {
+                const text = await response.text();
+                console.error(`ImgBB API returned error ${response.status}:`, text);
+                return { success: false, error: `ImgBB API error (${response.status})` };
+            }
+
             const data = await response.json();
             if (data.success) {
                 return { url: data.data.url, thumb: data.data.thumb?.url || data.data.url, success: true };
@@ -70,6 +76,21 @@ export const uploadImageProxy = onCall({
                 headers: headers,
                 body: formData,
             });
+
+            if (!response.ok) {
+                const text = await response.text();
+                console.error(`Imgur API returned error ${response.status}:`, text);
+                // Catch cases where Imgur returns XML (e.g. rate limits or blocks)
+                if (text.includes("<?xml") || text.includes("<html")) {
+                    return { success: false, error: `Imgur service error (${response.status}). Possibly rate limited or blocked.` };
+                }
+                try {
+                    const errData = JSON.parse(text);
+                    return { success: false, error: errData.data?.error?.message || errData.data?.error || `Imgur error ${response.status}` };
+                } catch (e) {
+                    return { success: false, error: `Imgur API error (${response.status})` };
+                }
+            }
 
             const data = await response.json();
             if (data.success) {

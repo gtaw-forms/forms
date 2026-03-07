@@ -9,7 +9,10 @@ export const updateDiscordName = async (characterId, discordName) => {
     const userRef = ref(database, `factions/364/members/${characterId}`);
     
     try {
-        await update(userRef, { discordName: discordName });
+        await update(userRef, { 
+            discordName: discordName,
+            discord: discordName 
+        });
         console.log(`Successfully updated Discord name for character ${characterId}`);
         return { success: true };
     } catch (error) {

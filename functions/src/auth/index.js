@@ -310,7 +310,7 @@ export const processGtaWorldAuth = onCall({
                     const memberData = allMembers[charId];
                     factionMembers.push({
                         character: { // Nest the character data
-                            characterId: memberData.characterId,
+                            characterId: charId,
                             characterName: memberData.characterName,
                             rank: memberData.rank,
                             scriptRank: memberData.scriptRank

@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { onValue, ref } from 'firebase/database';
 import { database } from '../../firebase';
-import ReactDOM from 'react-dom';
+import BaseModal from '../Modals/BaseModal';
 
 // Helper: escape HTML characters for safe insertion into DOM
 const escapeHtml = (unsafe) => {
@@ -99,35 +99,49 @@ export const KeywordHighlighter = ({ children }) => {
         }}
       />
 
-      {/* Modal */}
-      {showModal && activeKeyword && ReactDOM.createPortal(
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="keyword-modal-dialog">
-            <div className="keyword-modal-header">
-              <h4 className="keyword-modal-title">{activeKeyword.keyword}</h4>
-              <button className="modal-close-btn" onClick={() => setShowModal(false)}>×</button>
+      <BaseModal
+        isOpen={showModal && !!activeKeyword}
+        onClose={() => setShowModal(false)}
+        title={activeKeyword?.keyword}
+        modalSize="small"
+        variant="info"
+        footer={
+          <button 
+            className="keyword-modal-btn keyword-modal-btn-primary" 
+            onClick={() => setShowModal(false)}
+            style={{ 
+              backgroundColor: '#0066cc', 
+              color: 'white', 
+              border: 'none', 
+              padding: '8px 16px', 
+              borderRadius: '6px',
+              fontWeight: 600,
+              cursor: 'pointer' 
+            }}
+          >
+            Close
+          </button>
+        }
+      >
+        {activeKeyword && (
+          <>
+            <div style={{ marginBottom: 16 }}>
+              <strong style={{ color: '#0066cc', fontSize: '1.1em', display: 'block', marginBottom: '4px' }}>CONSIDER</strong>
+              <p style={{ margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                {activeKeyword.definition || 'No definition provided.'}
+              </p>
             </div>
-            <div className="keyword-modal-body">
+            {activeKeyword.tip && (
               <div style={{ marginBottom: 16 }}>
-                <strong>CONSIDER</strong>
-                <p>{activeKeyword.definition || 'No definition provided.'}</p>
+                <strong style={{ color: '#0066cc', fontSize: '1.1em', display: 'block', marginBottom: '4px' }}>TIP</strong>
+                <p style={{ margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                  {activeKeyword.tip}
+                </p>
               </div>
-              {activeKeyword.tip && (
-                <div style={{ marginBottom: 16 }}>
-                  <strong>TIP</strong>
-                  <p>{activeKeyword.tip}</p>
-                </div>
-              )}
-            </div>
-            <div className="keyword-modal-footer">
-              <button className="keyword-modal-btn keyword-modal-btn-primary" onClick={() => setShowModal(false)}>
-                Close
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.getElementById('modal-root')
-      )}
+            )}
+          </>
+        )}
+      </BaseModal>
 
       <style>{`
         .smart-keyword {
@@ -150,8 +164,5 @@ export const KeywordHighlighter = ({ children }) => {
     </>
   );
 };
-
-// CRITICAL: Add this static method so EmsDashboard can use it safely
-// FINAL BULLETPROOF VERSION — WORKS WITH BOLD, UNDERLINE, AND KEYWORDS
 
 export default KeywordHighlighter;

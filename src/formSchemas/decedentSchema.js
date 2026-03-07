@@ -61,9 +61,7 @@ export const decedentItemSchema = [
   
   sectionHeader('Scene Evidence'),
   imageInput('scenePhotos', 'Scene Photos & Evidence', 6),
-  textareaInput('scenePhotos_narrative', 'Scene Notes / Narrative', 'This supports raw text in the event you forget images', 3),
   
   sectionHeader('Morgue, Damages and CDNA'),
   imageInput('additionalImages', 'Post URLs / Images', 6),
-  textareaInput('additionalImages_narrative', 'Morgue / Damages / CDNA Notes', 'This supports raw text in the event you forget images.', 3),
 ];

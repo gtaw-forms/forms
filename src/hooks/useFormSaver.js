@@ -105,8 +105,7 @@ const formatToMMM_DD_YYYY = (isoDateTime) => {
     }
 };
 
-export const useFormSaver = () => {
-    const { user: gtaWorldUser, isAuthenticated: isGtaAuthenticated } = useGtaWorldAuth();
+export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
     const { showNotification } = useNotification();
 
     const saveReport = useCallback(async (selectedForm, formValues, title, bbCode, options = {}) => {
@@ -328,44 +327,5 @@ export const useFormSaver = () => {
         }
     }, [gtaWorldUser, isGtaAuthenticated, showNotification]);
 
-    const saveRecoveryReport = useCallback(async (selectedForm, formValues) => {
-        if (!selectedForm || !formValues) return { success: false };
-
-        const currentAuthor = getCharacterName(gtaWorldUser);
-        if (!currentAuthor) return { success: false };
-
-        const sanitizedAuthorId = comprehensiveSanitize(currentAuthor);
-        const timestamp = Date.now();
-        const sanitizedKey = `RECOVERY_${selectedForm.firebaseKey || 'unknown'}_${timestamp}`;
-
-        const recoveryData = {
-            formId: selectedForm.firebaseKey || 'unknown',
-            formName: selectedForm.name || 'Unknown Form',
-            data: sanitizeForFirebase(formValues),
-            timestamp: timestamp,
-            originalKey: `[RECOVERY] ${selectedForm.name || 'Unknown'} - ${new Date(timestamp).toLocaleString()}`,
-            authorName: currentAuthor,
-            isRecovery: true
-        };
-
-        if (isGtaAuthenticated && gtaWorldUser) {
-            recoveryData.gtawUsername = gtaWorldUser.username;
-            recoveryData.gtawCharacterId = getCharacterID(gtaWorldUser);
-            recoveryData.gtawCharacterName = getCharacterName(gtaWorldUser);
-        }
-
-        const reportPath = `recoveredReports/${sanitizedAuthorId}/${sanitizedKey}`;
-
-        try {
-            const reportRef = ref(database, reportPath);
-            await set(reportRef, recoveryData);
-            console.log(`[useFormSaver] Recovery snapshot saved for ${currentAuthor} to ${reportPath}`);
-            return { success: true };
-        } catch (error) {
-            console.error("Error saving recovery report:", error);
-            return { success: false, error: error.message };
-        }
-    }, [gtaWorldUser, isGtaAuthenticated]);
-
-    return { saveReport, saveRecoveryReport };
+    return { saveReport };
 };

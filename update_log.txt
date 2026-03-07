@@ -43,3 +43,124 @@ Successfully updated metadata and invalidated client cache.
 [32mSUCCESS: All data written to Firebase.[0m
 Firebase connection closed.
 Browser closed.
+
+--- PART 1: Downloading Faction Data from UCP ---
+UCP auth state found, creating context from file.
+Fetching faction data...
+[32mSuccessfully downloaded faction data to: C:\Users\cross\Downloads\faction_data.json[0m
+
+--- PART 2: Uploading data to Firebase Realtime Database ---
+Reading downloaded faction JSON...
+Transforming and validating member data...
+Uploading 101 valid members to /factions/364/members
+Updating metadata and app version...
+Successfully updated metadata and invalidated client cache.
+[32mSUCCESS: All data written to Firebase.[0m
+Firebase connection closed.
+Browser closed.
+
+--- PART 1: Downloading Faction Data from UCP ---
+UCP auth state found, creating context from file.
+Fetching faction data...
+[32mSuccessfully downloaded faction data to: C:\Users\cross\Downloads\faction_data.json[0m
+
+--- PART 2: Uploading data to Firebase Realtime Database ---
+Reading downloaded faction JSON...
+Transforming and validating member data...
+Uploading 102 valid members to /factions/364/members
+Updating metadata and app version...
+Successfully updated metadata and invalidated client cache.
+[32mSUCCESS: All data written to Firebase.[0m
+Firebase connection closed.
+Browser closed.
+
+--- PART 1: Downloading Faction Data from UCP ---
+UCP auth state found, creating context from file.
+Fetching faction data...
+[32mSuccessfully downloaded faction data to: C:\Users\cross\Downloads\faction_data.json[0m
+
+--- PART 2: Uploading data to Firebase Realtime Database ---
+Reading downloaded faction JSON...
+Transforming and validating member data...
+Uploading 102 valid members to /factions/364/members
+Updating metadata and app version...
+Successfully updated metadata and invalidated client cache.
+[32mSUCCESS: All data written to Firebase.[0m
+Firebase connection closed.
+Browser closed.
+
+--- PART 1: Downloading Faction Data from UCP ---
+UCP auth state found, creating context from file.
+Fetching faction data...
+[32mSuccessfully downloaded faction data to: C:\Users\cross\Downloads\faction_data.json[0m
+
+--- PART 2: Uploading data to Firebase Realtime Database ---
+Reading downloaded faction JSON...
+Transforming and validating member data...
+Uploading 102 valid members to /factions/364/members
+Updating metadata and app version...
+Successfully updated metadata and invalidated client cache.
+[32mSUCCESS: All data written to Firebase.[0m
+Firebase connection closed.
+Browser closed.
+
+--- PART 1: Downloading Faction Data from UCP ---
+UCP auth state found, creating context from file.
+Fetching faction data...
+[32mSuccessfully downloaded faction data to: C:\Users\cross\Downloads\faction_data.json[0m
+
+--- PART 2: Uploading data to Firebase Realtime Database ---
+Reading downloaded faction JSON...
+Transforming and validating member data...
+Uploading 103 valid members to /factions/364/members
+Updating metadata and app version...
+Successfully updated metadata and invalidated client cache.
+[32mSUCCESS: All data written to Firebase.[0m
+Firebase connection closed.
+Browser closed.
+
+--- PART 1: Downloading Faction Data from UCP ---
+UCP auth state found, creating context from file.
+Fetching faction data...
+[32mSuccessfully downloaded faction data to: C:\Users\cross\Downloads\faction_data.json[0m
+
+--- PART 2: Uploading data to Firebase Realtime Database ---
+Reading downloaded faction JSON...
+Transforming and validating member data...
+Uploading 104 valid members to /factions/364/members
+Updating metadata and app version...
+Successfully updated metadata and invalidated client cache.
+[32mSUCCESS: All data written to Firebase.[0m
+Firebase connection closed.
+Browser closed.
+
+--- PART 1: Downloading Faction Data from UCP ---
+UCP auth state found, creating context from file.
+Fetching faction data...
+[32mSuccessfully downloaded faction data to: C:\Users\cross\Downloads\faction_data.json[0m
+
+--- PART 2: Uploading data to Firebase Realtime Database ---
+Reading downloaded faction JSON...
+Transforming and validating member data...
+Uploading 104 valid members to /factions/364/members
+Updating metadata and app version...
+Successfully updated metadata and invalidated client cache.
+[32mSUCCESS: All data written to Firebase.[0m
+Firebase connection closed.
+Browser closed.
+
+--- PART 1: Downloading Faction Data from UCP ---
+UCP auth state found, creating context from file.
+Fetching faction data...
+[32mSuccessfully downloaded faction data to: C:\Users\cross\Downloads\faction_data.json[0m
+
+--- PART 2: Uploading data to Firebase Realtime Database ---
+Fetching existing database records to preserve Discord info...
+Reading downloaded faction JSON...
+Transforming and validating member data...
+Uploading 104 valid members to /factions/364/members
+Updating metadata and app version...
+Successfully updated metadata and invalidated client cache.
+[32mSUCCESS: All data written to Firebase.[0m
+Firebase connection closed.
+Browser closed.

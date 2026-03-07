@@ -1,18 +1,12 @@
 // components/KeywordEditModal.jsx
 import React, { useState, useEffect } from 'react';
-import ReactDOM from 'react-dom';
-import { database } from '../../firebase';
-import { ref, get, set } from 'firebase/database';
 import { useNotification } from '../../contexts/NotificationContext';
-import './CctvRequestWebhookModal.css'; // Reuse your existing modal styles
+import BaseModal from '../Modals/BaseModal';
+import { Button, Form } from 'react-bootstrap';
 
 const KeywordEditModal = ({ show, onHide, keyword, onSave, type = 'keyword' }) => {
-    const { showNotification } = useNotification();
-    const [form, setForm] = useState({
-    keyword: '',
-    definition: '',
-    tip: '',
-  });
+  const { showNotification } = useNotification();
+  const [form, setForm] = useState({ keyword: '', definition: '', tip: '' });
 
   useEffect(() => {
     if (keyword) {
@@ -33,97 +27,79 @@ const KeywordEditModal = ({ show, onHide, keyword, onSave, type = 'keyword' }) =
 
   const handleSubmit = async () => {
     if (!form.keyword.trim() || !form.definition.trim()) {
-      showNotification('Keyword and Definition are required!', 'warning');
+      showNotification(`${type === 'injury' ? 'Injury Name' : 'Keyword'} and ${type === 'injury' ? 'Triggers' : 'Definition'} are required!`, 'warning');
       return;
     }
     await onSave(keyword?.id, form);
     onHide();
   };
 
-  if (!show) return null;
+  return (
+    <BaseModal
+      isOpen={show}
+      onClose={onHide}
+      title={keyword?.id 
+        ? (type === 'injury' ? 'Edit Injury Type' : 'Edit Keyword')
+        : (type === 'injury' ? 'Add Injury Type' : 'Add Keyword')
+      }
+      modalSize="medium"
+      variant={type === 'injury' ? 'warning' : 'info'}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onHide}>Cancel</Button>
+          <Button variant="primary" onClick={handleSubmit} style={{ marginLeft: '10px' }}>
+            {keyword?.id ? 'Save Changes' : 'Create'}
+          </Button>
+        </>
+      }
+    >
+      <Form style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+        <Form.Group>
+          <Form.Label style={{ color: '#8b949e' }}>
+            {type === 'injury' ? 'Injury Name *' : 'Keyword *'}
+          </Form.Label>
+          <Form.Control 
+            type="text" 
+            name="keyword" 
+            value={form.keyword} 
+            onChange={handleChange} 
+            placeholder={type === 'injury' ? "e.g. Gunshot Wound" : "e.g. ETCO2"}
+            style={{ backgroundColor: '#161b22', color: '#e6edf3', borderColor: '#30363d' }}
+          />
+        </Form.Group>
 
-return ReactDOM.createPortal(
-    <div className="modal-overlay" onClick={onHide}>
-      <div className="keyword-modal-dialog" onClick={e => e.stopPropagation()}>
-        <div className="keyword-modal-header">
-          <h4 className="keyword-modal-title">
-            {keyword?.id 
-              ? (type === 'injury' ? 'Edit Injury Type' : 'Edit Keyword')
-              : (type === 'injury' ? 'Add Injury Type' : 'Add Keyword')
-            }
-          </h4>
-          <button type="button" className="modal-close-btn" onClick={onHide}>×</button>
-        </div>
+        <Form.Group>
+          <Form.Label style={{ color: '#8b949e' }}>
+            {type === 'injury' ? 'Trigger Words * (comma-separated)' : 'Definition *'}
+          </Form.Label>
+          <Form.Control 
+            as="textarea" 
+            rows={type === 'injury' ? 3 : 5} 
+            name="definition" 
+            value={form.definition} 
+            onChange={handleChange}
+            placeholder={type === 'injury' ? "GSW, gunshot, shooting" : "Definition goes here..."}
+            style={{ backgroundColor: '#161b22', color: '#e6edf3', borderColor: '#30363d' }}
+          />
+        </Form.Group>
 
-        <div className="keyword-modal-body">
-          <div className="keyword-form-section">
-            <div className="keyword-form-row">
-              <div className="keyword-form-group">
-                <label className="keyword-form-label required">
-                  {type === 'injury' ? 'Injury Name' : 'Keyword'}
-                </label>
-                <input
-                  type="text"
-                  className="form-control"
-                  name="keyword"
-                  value={form.keyword}
-                  onChange={handleChange}
-                  placeholder={type === 'injury' ? "e.g. Gunshot Wound" : "e.g. ETCO2"}
-                />
-              </div>
-            </div>
-
-            <div className="keyword-form-row">
-              <div className="keyword-form-group full-width">
-                <label className="keyword-form-label required">
-                  {type === 'injury' ? 'Trigger Words (comma-separated)' : 'Definition'}
-                </label>
-                <textarea
-                  className="form-control keyword-textarea"
-                  rows={type === 'injury' ? "3" : "5"}
-                  name="definition"
-                  value={form.definition}
-                  onChange={handleChange}
-                  placeholder={type === 'injury' 
-                    ? "GSW, gunshot, shooting, bullet, penetrated"
-                    : "End-tidal carbon dioxide — measurement of CO2 at the end of exhalation..."
-                  }
-                />
-              </div>
-            </div>
-
-            {type === 'keyword' && (
-              <div className="keyword-form-row">
-                <div className="keyword-form-group full-width">
-                  <label className="keyword-form-label">Quick Tip (Optional)</label>
-                  <textarea
-                    className="form-control keyword-textarea"
-                    rows="3"
-                    name="tip"
-                    value={form.tip}
-                    onChange={handleChange}
-                    placeholder="Normal range: 35–45 mmHg"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="keyword-modal-footer">
-          <button className="btn btn-secondary" onClick={onHide}>
-            Cancel
-          </button>
-          <button className="btn btn-primary" onClick={handleSubmit}>
-            {keyword?.id 
-              ? (type === 'injury' ? 'Save Injury' : 'Save Changes')
-              : (type === 'injury' ? 'Create Injury Type' : 'Create Keyword')
-            }
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.getElementById('modal-root')
+        {type === 'keyword' && (
+          <Form.Group>
+            <Form.Label style={{ color: '#8b949e' }}>Quick Tip (Optional)</Form.Label>
+            <Form.Control 
+              as="textarea" 
+              rows={2} 
+              name="tip" 
+              value={form.tip} 
+              onChange={handleChange}
+              placeholder="e.g. Normal range: 35–45 mmHg"
+              style={{ backgroundColor: '#161b22', color: '#e6edf3', borderColor: '#30363d' }}
+            />
+          </Form.Group>
+        )}
+      </Form>
+    </BaseModal>
   );
 };
+
 export default KeywordEditModal;
