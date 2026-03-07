@@ -1,4 +1,4 @@
-// LsccManager.jsx — FINAL FIXED & CLEAN VERSION
+// LsccManager.jsx
 import { logAdminAction, getUserContext } from '../../utils/adminLogger';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import React, { useState, useEffect, useCallback } from 'react';
@@ -7,6 +7,7 @@ import { ref, get, set, onValue } from 'firebase/database';
 import { Button, Spinner, Alert } from 'react-bootstrap';
 import KeywordEditModal from './KeywordEditModal';
 import LsccEditModal from './LsccEditModal';
+import BaseModal from '../Modals/BaseModal';
 import {
   DndContext,
   closestCenter,
@@ -23,44 +24,64 @@ import {
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-const normalizeProtocols = (data) => {
-  if (!Array.isArray(data)) return [];
-  return data.map(cat => ({
-    ...cat,
-    protocols: Array.isArray(cat.protocols) ? cat.protocols : []
-  }));
-};
-
 import './LsccManager.css';
 
 const SortableProtocolItem = ({ protocol, category, onEdit, onDelete }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: protocol.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
+  const style = { 
+    transform: CSS.Transform.toString(transform), 
+    transition, 
     opacity: isDragging ? 0.6 : 1,
+    zIndex: isDragging ? 1000 : 1
   };
 
   return (
     <div ref={setNodeRef} style={style} className="protocol-card sortable">
       <div className="card-header">
-        <h5>{protocol.name}</h5>
-        <span className="category-badge">{category}</span>
+        <div className="d-flex justify-content-between align-items-start">
+            <h5 className="mb-0">{protocol.name}</h5>
+            <span className="category-badge">{category}</span>
+        </div>
       </div>
       <div className="card-body">
-        <p className="content-preview">
-          {protocol.content?.substring(0, 120) || 'No content'}...
-        </p>
+        <p className="content-preview">{protocol.content?.substring(0, 120) || 'No content'}...</p>
       </div>
       <div className="card-actions">
-        <Button size="sm" onClick={() => onEdit(protocol)}>Edit</Button>
-        <Button size="sm" variant="outline-danger" onClick={() => onDelete(protocol.id)}>Delete</Button>
-        <div className="drag-handle" {...attributes} {...listeners}>Drag</div>
+        <Button size="sm" variant="primary" onClick={() => onEdit(protocol)}>
+            <i className="fas fa-edit me-1"></i> Edit
+        </Button>
+        <Button size="sm" variant="outline-danger" onClick={() => onDelete(protocol.id)}>
+            <i className="fas fa-trash me-1"></i> Delete
+        </Button>
+        <div className="drag-handle ms-auto" {...attributes} {...listeners}>
+            <i className="fas fa-grip-vertical me-1"></i> Drag
+        </div>
       </div>
     </div>
   );
 };
+
+const ProtocolCard = ({ protocol, category, onEdit, onDelete }) => (
+    <div className="protocol-card">
+      <div className="card-header">
+        <div className="d-flex justify-content-between align-items-start">
+            <h5 className="mb-0">{protocol.name}</h5>
+            <span className="category-badge">{category}</span>
+        </div>
+      </div>
+      <div className="card-body">
+        <p className="content-preview">{protocol.content?.substring(0, 120) || 'No content'}...</p>
+      </div>
+      <div className="card-actions">
+        <Button size="sm" variant="primary" onClick={() => onEdit(protocol)}>
+            <i className="fas fa-edit me-1"></i> Edit
+        </Button>
+        <Button size="sm" variant="outline-danger" onClick={() => onDelete(protocol.id)}>
+            <i className="fas fa-trash me-1"></i> Delete
+        </Button>
+      </div>
+    </div>
+);
 
 const LsccManager = () => {
   const { user: gtawUser, username: gtawUsername } = useGtaWorldAuth();
@@ -68,558 +89,256 @@ const LsccManager = () => {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  // Protocol modal
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
-
-  // Keyword system
   const [keywords, setKeywords] = useState({});
   const [showKeywordManager, setShowKeywordManager] = useState(false);
   const [showKeywordEditModal, setShowKeywordEditModal] = useState(false);
   const [editingKeyword, setEditingKeyword] = useState(null);
   const [isReordering, setIsReordering] = useState(false);
-
-  // injury types
   const [injuries, setInjuries] = useState({});
-const [showInjuryManager, setShowInjuryManager] = useState(false);
-const [showInjuryEditModal, setShowInjuryEditModal] = useState(false);
-const [editingInjury, setEditingInjury] = useState(null);
+  const [showInjuryManager, setShowInjuryManager] = useState(false);
+  const [showInjuryEditModal, setShowInjuryEditModal] = useState(false);
+  const [editingInjury, setEditingInjury] = useState(null);
+
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }), 
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
-useEffect(() => {
-  const injRef = ref(database, 'lscc/injuries');
-  const unsubscribe = onValue(injRef, (snap) => {
-    setInjuries(snap.val() || {});
-  });
-  return () => unsubscribe();
-}, []);
-  // Fetch protocols
+
+  useEffect(() => {
+    const injRef = ref(database, 'lscc/injuries');
+    const unsubscribe = onValue(injRef, snap => setInjuries(snap.val() || {}));
+    return () => unsubscribe();
+  }, []);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const snap = await get(ref(database, 'lscc/protocols'));
       if (snap.exists()) {
-        const rawData = snap.val();
-        const normalized = !rawData ? [] : rawData.map(cat => ({
+        const rawData = snap.val() || [];
+        const normalized = rawData.map(cat => ({
           category: cat.category || 'Uncategorized',
-          protocols: Array.isArray(cat.protocols) ? cat.protocols : []
+          protocols: (Array.isArray(cat.protocols) ? cat.protocols : []).map(p => ({
+              ...p,
+              id: p.id || `p_${Math.random().toString(36).substr(2, 9)}`
+          }))
         })).filter(cat => cat.protocols.length > 0);
         setItems(normalized);
         setCategories(normalized.map(c => c.category));
-      } else {
-        setItems([]);
-        setCategories([]);
       }
-    } catch (err) {
-      setError('Failed to load protocols');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { setError('Failed to load protocols'); }
+    finally { setLoading(false); }
   }, []);
 
-  // Fetch keywords
   useEffect(() => {
     const kwRef = ref(database, 'lscc/keywords');
-    const unsubscribe = onValue(kwRef, (snap) => {
-      setKeywords(snap.val() || {});
-    });
+    const unsubscribe = onValue(kwRef, snap => setKeywords(snap.val() || {}));
     return () => unsubscribe();
   }, []);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
-  const handleEdit = (item) => {
-    setEditingItem(item);
-    setShowModal(true);
-  };
-
-  const handleAddNew = () => {
-    setEditingItem({ name: '', content: '', category: '', images: [] });
-    setShowModal(true);
-  };
+  const handleEdit = (item) => { setEditingItem(item); setShowModal(true); };
+  const handleAddNew = () => { setEditingItem({ name: '', content: '', category: '', images: [] }); setShowModal(true); };
 
   const handleDelete = async (id) => {
     const protocolToDelete = items.flatMap(cat => cat.protocols).find(p => p.id === id);
-    if (!protocolToDelete) {
-      console.warn(`Protocol with ID ${id} not found for deletion.`);
-      return;
-    }
-
-    if (!window.confirm(`Delete protocol "${protocolToDelete.name}"?`)) return;
+    if (!protocolToDelete || !window.confirm(`Delete protocol "${protocolToDelete.name}"?`)) return;
     
     const { userAgent, timeZone } = getUserContext();
-    logAdminAction(
-        gtawUsername,
-        'Deleted LSCC Protocol',
-        `Protocol: ${protocolToDelete.name}\nID: ${id}`,
-        'LSCC Management',
-        userAgent,
-        timeZone,
-        gtawUsername,
-        gtawUser
-    );
-
-    const newData = items
-      .map(cat => ({ ...cat, protocols: cat.protocols.filter(p => p.id !== id) }))
-      .filter(cat => cat.protocols.length > 0);
+    logAdminAction(gtawUsername, 'Deleted LSCC Protocol', `Protocol: ${protocolToDelete.name}`, 'LSCC Management', userAgent, timeZone, gtawUsername, gtawUser);
+    
+    const newData = items.map(cat => ({ 
+        ...cat, 
+        protocols: cat.protocols.filter(p => p.id !== id) 
+    })).filter(cat => cat.protocols.length > 0);
+    
     await set(ref(database, 'lscc/protocols'), newData);
     fetchData();
-  };
-
-  const handleSaveComplete = () => {
-    fetchData();
-    setShowModal(false);
-    setEditingItem(null);
   };
 
   const handleDragEnd = async (event) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-
-    const { userAgent, timeZone } = getUserContext();
-    logAdminAction(
-        gtawUsername,
-        'Reordered LSCC Protocols',
-        `Dragged item ID: ${active.id}\nOver item ID: ${over.id}`,
-        'LSCC Management',
-        userAgent,
-        timeZone,
-        gtawUsername,
-        gtawUser
-    );
-
+    
     const newData = JSON.parse(JSON.stringify(items));
     let draggedItem = null;
+    let sourceCatIdx = -1;
+    let sourceProtoIdx = -1;
 
-    // Remove from source
+    // Find source
     for (let c = 0; c < newData.length; c++) {
       const idx = newData[c].protocols.findIndex(p => p.id === active.id);
       if (idx !== -1) {
-        [draggedItem] = newData[c].protocols.splice(idx, 1);
-        break;
+          sourceCatIdx = c;
+          sourceProtoIdx = idx;
+          [draggedItem] = newData[c].protocols.splice(idx, 1); 
+          break; 
       }
     }
+    
     if (!draggedItem) return;
 
-    // Insert into target
-    let inserted = false;
+    // Find destination
+    let destCatIdx = -1;
+    let destProtoIdx = -1;
     for (let c = 0; c < newData.length; c++) {
       const idx = newData[c].protocols.findIndex(p => p.id === over.id);
       if (idx !== -1) {
-        newData[c].protocols.splice(idx + 1, 0, draggedItem);
-        inserted = true;
-        break;
+          destCatIdx = c;
+          destProtoIdx = idx;
+          newData[c].protocols.splice(idx + 1, 0, draggedItem); 
+          break; 
       }
     }
 
-    if (!inserted && over.id.startsWith('category-')) {
-      const catName = over.id.replace('category-', '');
-      let cat = newData.find(c => c.category === catName);
-      if (!cat) {
-        cat = { category: catName, protocols: [] };
-        newData.push(cat);
-      }
-      cat.protocols.push(draggedItem);
+    if (destCatIdx === -1) {
+        // Re-insert at source if failed
+        newData[sourceCatIdx].protocols.splice(sourceProtoIdx, 0, draggedItem);
+        return;
     }
 
-    const cleaned = newData.filter(c => c.protocols.length > 0);
-    await set(ref(database, 'lscc/protocols'), cleaned);
-    fetchData();
+    await set(ref(database, 'lscc/protocols'), newData.filter(c => c.protocols.length > 0));
+    setItems(newData);
   };
 
-  const flatItems = items.flatMap(cat => cat.protocols.map(p => ({ ...p, category: cat.category })));
+  const allProtocolsFlat = items.flatMap(cat => cat.protocols.map(p => ({ ...p, category: cat.category })));
 
   return (
-    <div className="lscc-manager-container">
-      <div className="d-flex justify-content-between align-items-center mb-4">
+    <div className="lscc-manager-container dark">
+      <div className="lscc-header">
         <h2>LSCC Protocols Manager</h2>
-        <div>
-          <Button
-            variant={isReordering ? "success" : "outline-primary"}
-            onClick={() => setIsReordering(!isReordering)}
-            className="me-2"
-          >
+        <div className="d-flex gap-2 flex-wrap">
+          <Button variant={isReordering ? "success" : "outline-primary"} onClick={() => setIsReordering(!isReordering)}>
+            <i className={`fas ${isReordering ? 'fa-check' : 'fa-sort'} me-2`}></i>
             Reorder Mode {isReordering ? "ON" : "OFF"}
           </Button>
-          <Button variant="primary" onClick={handleAddNew} className="me-2">
-            + Add Protocol
+          <Button variant="primary" onClick={handleAddNew}>
+            <i className="fas fa-plus me-2"></i>Add Protocol
           </Button>
-          <Button
-            variant="info"
-            onClick={() => setShowKeywordManager(true)}
-          >
-            Keywords ({Object.keys(keywords).length})
+          <Button variant="info" onClick={() => setShowKeywordManager(true)}>
+            <i className="fas fa-key me-2"></i>Keywords ({Object.keys(keywords).length})
           </Button>
-          <Button
-          variant="warning"
-          onClick={() => setShowInjuryManager(true)}
-          className="me-2"
-        >
-          Injury Types ({Object.keys(injuries).length})
-        </Button>
+          <Button variant="warning" onClick={() => setShowInjuryManager(true)}>
+            <i className="fas fa-user-injured me-2"></i>Injuries ({Object.keys(injuries).length})
+          </Button>
         </div>
       </div>
 
       {error && <Alert variant="danger">{error}</Alert>}
-
+      
       {loading ? (
-        <div className="text-center py-5"><Spinner animation="border" /></div>
+        <div className="text-center py-5"><Spinner animation="border" variant="primary" /></div>
       ) : isReordering ? (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={flatItems.map(i => i.id)} strategy={verticalListSortingStrategy}>
+          <SortableContext items={allProtocolsFlat.map(p => p.id)} strategy={verticalListSortingStrategy}>
             <div className="lscc-grid">
-              {flatItems.map(item => (
-                <SortableProtocolItem
-                  key={item.id}
-                  protocol={item}
-                  category={item.category}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
+              {allProtocolsFlat.map(proto => (
+                <SortableProtocolItem 
+                  key={proto.id} 
+                  protocol={proto} 
+                  category={proto.category} 
+                  onEdit={handleEdit} 
+                  onDelete={handleDelete} 
                 />
               ))}
             </div>
           </SortableContext>
         </DndContext>
       ) : (
-        items.map(cat => (
-          <div key={cat.category} className="mb-5">
-            <h3 className="mb-4">{cat.category}</h3>
-            <div className="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
-              {cat.protocols.map(proto => (
-                <div key={proto.id} className="col">
-                  <div className="protocol-card">
-                    <div className="card-header">
-                      <h5>{proto.name}</h5>
-                      <span className="category-badge">{cat.category}</span>
-                    </div>
-                    <div className="card-body">
-                      <p className="content-preview">{proto.content || 'No content'}</p>
-                      {proto.images?.length > 0 && (
-                        <div className="image-thumbnails">
-                          {proto.images.slice(0, 3).map((url, i) => (
-                            <img key={i} src={url} alt="" />
-                          ))}
-                          {proto.images.length > 3 && <span>+{proto.images.length - 3}</span>}
-                        </div>
-                      )}
-                    </div>
-                    <div className="card-actions">
-                      <Button size="sm" onClick={() => handleEdit(proto)} className="me-2">Edit</Button>
-                      <Button size="sm" variant="outline-danger" onClick={() => handleDelete(proto.id)}>Delete</Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
+        <div className="lscc-categories-wrapper">
+          {items.map(cat => (
+            <div key={cat.category} className="category-section mb-5">
+              <h3 className="category-title mb-4 border-bottom pb-2">
+                <i className="fas fa-folder-open me-2 text-primary"></i>
+                {cat.category}
+              </h3>
+              <div className="lscc-grid">
+                {cat.protocols.map(proto => (
+                  <ProtocolCard 
+                    key={proto.id} 
+                    protocol={proto} 
+                    category={cat.category} 
+                    onEdit={handleEdit} 
+                    onDelete={handleDelete} 
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-        ))
+          ))}
+        </div>
       )}
 
       {/* Protocol Edit Modal */}
-      <LsccEditModal
-        show={showModal}
-        onHide={() => {
-          setShowModal(false);
-          setEditingItem(null);
-        }}
-        item={editingItem}
-        onSave={handleSaveComplete}
-        categories={categories}
-        logAdminAction={logAdminAction}
-        gtawUser={gtawUser}
-        gtawUsername={gtawUsername}
+      <LsccEditModal 
+        show={showModal} 
+        onHide={() => { setShowModal(false); setEditingItem(null); }} 
+        item={editingItem} 
+        onSave={fetchData} 
+        categories={categories} 
+        logAdminAction={logAdminAction} 
+        gtawUser={gtawUser} 
+        gtawUsername={gtawUsername} 
       />
 
       {/* Keyword Manager Modal */}
-{showKeywordManager && (
-  <div className="modal-overlay" onClick={() => setShowKeywordManager(false)}>
-    <div 
-      className="cctv-modal-dialog" 
-      style={{ maxWidth: 820, borderRadius: 16 }}
-      onClick={e => e.stopPropagation()}
-    >
-      {/* Header */}
-      <div style={{ 
-        background: "#1e293b", 
-        padding: "1.5rem 2rem", 
-        borderTopLeftRadius: 16,
-        borderTopRightRadius: 16,
-        borderBottom: "1px solid #334155",
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center"
-      }}>
-        <h4 style={{ margin: 0, color: "#e2e8f0", fontSize: "1.5rem", fontWeight: 700 }}>
-          Manage Keywords
-        </h4>
-        <button 
-          className="modal-close-btn" 
-          onClick={() => setShowKeywordManager(false)}
-          style={{ fontSize: "1.8rem", color: "#94a3b8" }}
-        >
-          ×
-        </button>
-      </div>
-
-      {/* Body */}
-      <div style={{ background: "#0f172a", padding: "2rem", maxHeight: "80vh", overflowY: "auto" }}>
-        {/* Add Button */}
-        <button
-          className="mb-6 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition shadow-lg"
-          onClick={() => {
-            setEditingKeyword(null);
-            setShowKeywordManager(false);
-            setShowKeywordEditModal(true);
-          }}
-        >
-          + Add New Keyword
-        </button>
-
-        {/* List */}
-        <div style={{ display: "grid", gap: "1rem" }}>
-          {Object.keys(keywords).length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-gray-400 text-lg">No keywords defined yet.</p>
-              <p className="text-gray-500 text-sm mt-2">Click &quot;Add New Keyword&quot; to start teaching the app.</p>
-            </div>
-          ) : (
-            Object.entries(keywords).map(([id, kw]) => (
-              <div
-                key={id}
-                className="bg-slate-800 rounded-xl p-5 border border-slate-700 hover:border-slate-600 transition shadow-sm"
-                style={{ wordWrap: "break-word", overflowWrap: "break-word" }}
-              >
-                <div className="flex justify-between items-start gap-5">
-                  <div className="flex-1 min-w-0">
-                    <h5 className="text-2xl font-bold text-cyan-400 mb-3">
-                      {kw.keyword || "Unnamed"}
-                    </h5>
-
-                    {kw.definition && (
-                      <div className="mb-4">
-                        <span className="text-gray-300 font-medium">Definition:</span>
-                        <p className="mt-2 text-gray-200 leading-relaxed">
-                          {kw.definition}
-                        </p>
-                      </div>
-                    )}
-
-                    {kw.tip && (
-                      <div className="bg-emerald-900/30 border border-emerald-700 rounded-lg px-4 py-3">
-                        <span className="text-emerald-400 font-medium">Quick Tip:</span>
-                        <p className="mt-1 text-emerald-200">
-                          {kw.tip}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex gap-3 ml-4 flex-shrink-0">
-                    <button
-                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition shadow"
-                      onClick={() => {
-                        setEditingKeyword({ id, ...kw });
-                        setShowKeywordManager(false);
-                        setShowKeywordEditModal(true);
-                      }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-lg font-medium transition shadow"
-                      onClick={() => {
-                        if (window.confirm(`Delete keyword "${kw.keyword}" permanently?`)) {
-                          set(ref(database, `lscc/keywords/${id}`), null);
-                        }
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
+      <BaseModal isOpen={showKeywordManager} onClose={() => setShowKeywordManager(false)} title="Manage Keywords" modalSize="large" variant="info"
+        footer={<Button variant="primary" onClick={() => { setEditingKeyword(null); setShowKeywordManager(false); setShowKeywordEditModal(true); }}>+ Add Keyword</Button>}
+      >
+        <div style={{ display: 'grid', gap: '15px' }}>
+          {Object.entries(keywords).map(([id, kw]) => (
+            <div key={id} style={{ backgroundColor: '#161b22', padding: '15px', borderRadius: '8px', border: '1px solid #30363d' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                <div>
+                  <h5 style={{ color: '#58a6ff' }}>{kw.keyword}</h5>
+                  <p style={{ fontSize: '0.9rem', color: '#8b949e' }}>{kw.definition}</p>
+                </div>
+                <div>
+                  <Button size="sm" variant="primary" onClick={() => { setEditingKeyword({ id, ...kw }); setShowKeywordManager(false); setShowKeywordEditModal(true); }} className="me-2">Edit</Button>
+                  <Button size="sm" variant="danger" onClick={() => window.confirm(`Delete ${kw.keyword}?`) && set(ref(database, `lscc/keywords/${id}`), null)}>Delete</Button>
                 </div>
               </div>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
-  </div>
-)}{showInjuryManager && (
-  <div className="modal-overlay" onClick={() => setShowInjuryManager(false)}>
-    <div 
-      className="cctv-modal-dialog" 
-      style={{ maxWidth: 780, borderRadius: 16 }}
-      onClick={e => e.stopPropagation()}
-    >
-      {/* Header */}
-      <div style={{ 
-        background: "#1e293b", 
-        padding: "1.5rem 2rem", 
-        borderTopLeftRadius: 16,
-        borderTopRightRadius: 16,
-        borderBottom: "1px solid #334155",
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center"
-      }}>
-        <h4 style={{ margin: 0, color: "#e2e8f0", fontSize: "1.5rem", fontWeight: 700 }}>
-          Manage Injury Types
-        </h4>
-        <button 
-          className="modal-close-btn" 
-          onClick={() => setShowInjuryManager(false)}
-          style={{ fontSize: "1.8rem", color: "#94a3b8" }}
-        >
-          ×
-        </button>
-      </div>
-
-      {/* Body */}
-      <div style={{ background: "#0f172a", padding: "2rem", maxHeight: "80vh", overflowY: "auto" }}>
-        {/* Add Button */}
-        <button
-          className="mb-6 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition shadow-lg"
-          onClick={() => {
-            setEditingInjury(null);
-            setShowInjuryManager(false);
-            setShowInjuryEditModal(true);
-          }}
-        >
-          + Add New Injury Type
-        </button>
-
-        {/* List */}
-        <div style={{ display: "grid", gap: "1rem" }}>
-          {Object.keys(injuries).length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-gray-500 text-lg">No injury types defined yet.</p>
-              <p className="text-gray-600 text-sm mt-2">Click &quot;Add New Injury Type&quot; to get started.</p>
             </div>
-          ) : (
-            Object.entries(injuries).map(([id, injury]) => (
-              <div
-                key={id}
-                className="bg-slate-800 rounded-xl p-5 border border-slate-700 hover:border-slate-600 transition"
-                style={{ wordWrap: "break-word", overflowWrap: "break-word" }}
-              >
-                <div className="flex justify-between items-start gap-4">
-                  <div className="flex-1 min-w-0">
-                    <h5 className="text-xl font-bold text-indigo-400 mb-2">
-                      {injury.name || "Unnamed Injury"}
-                    </h5>
-                    <div className="bg-slate-900 rounded-lg px-4 py-3 text-sm">
-                      <span className="text-gray-400 font-medium">Trigger words:</span>
-                      <div className="mt-2 text-cyan-300 font-mono break-all">
-                        {injury.words || "(none)"}
-                      </div>
-                    </div>
-                  </div>
+          ))}
+        </div>
+      </BaseModal>
 
-                  <div className="flex gap-3 ml-4">
-                    <button
-                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition shadow"
-                      onClick={() => {
-                        setEditingInjury({ id, ...injury });
-                        setShowInjuryManager(false);
-                        setShowInjuryEditModal(true);
-                      }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-lg font-medium transition shadow"
-                      onClick={() => {
-                        if (window.confirm(`Delete "${injury.name}" permanently?`)) {
-                          set(ref(database, `lscc/injuries/${id}`), null);
-                        }
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
+      {/* Injury Manager Modal */}
+      <BaseModal isOpen={showInjuryManager} onClose={() => setShowInjuryManager(false)} title="Manage Injury Types" modalSize="large" variant="warning"
+        footer={<Button variant="primary" onClick={() => { setEditingInjury(null); setShowInjuryManager(false); setShowInjuryEditModal(true); }}>+ Add Injury Type</Button>}
+      >
+        <div style={{ display: 'grid', gap: '15px' }}>
+          {Object.entries(injuries).map(([id, injury]) => (
+            <div key={id} style={{ backgroundColor: '#161b22', padding: '15px', borderRadius: '8px', border: '1px solid #30363d' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                <div>
+                  <h5 style={{ color: '#d29922' }}>{injury.name}</h5>
+                  <p style={{ fontSize: '0.8rem', color: '#8b949e', fontFamily: 'monospace' }}>Triggers: {injury.words}</p>
+                </div>
+                <div>
+                  <Button size="sm" variant="primary" onClick={() => { setEditingInjury({ id, ...injury }); setShowInjuryManager(false); setShowInjuryEditModal(true); }} className="me-2">Edit</Button>
+                  <Button size="sm" variant="danger" onClick={() => window.confirm(`Delete ${injury.name}?`) && set(ref(database, `lscc/injuries/${id}`), null)}>Delete</Button>
                 </div>
               </div>
-            ))
-          )}
+            </div>
+          ))}
         </div>
-      </div>
-    </div>
-  </div>
-)}
-{/* Injury Edit Modal - Reuses KeywordEditModal with custom fields */}
-{showInjuryEditModal && (
-  <KeywordEditModal
-    show={showInjuryEditModal}
-    onHide={() => {
-      setShowInjuryEditModal(false);
-      setEditingInjury(null);
-      setShowInjuryManager(true);
-    }}
-    type="injury"
-    keyword={{
-      id: editingInjury?.id,
-      keyword: editingInjury?.name || '',
-      definition: editingInjury?.words || '',
-      tip: ''
-    }}
-    onSave={async (id, data) => {
-      const { userAgent, timeZone } = getUserContext();
-      const action = id ? 'Updated Injury Type' : 'Added Injury Type';
-      logAdminAction(
-          gtawUsername,
-          action,
-          `Name: ${data.name}\nWords: ${data.words}`,
-          'LSCC Management',
-          userAgent,
-          timeZone,
-          gtawUsername,
-          gtawUser
-      );
-      const injuryData = {
-        name: data.keyword.trim(),
-        words: data.definition.trim(),
-      };
-      const path = id ? `lscc/injuries/${id}` : `lscc/injuries/${Date.now()}`;
-      await set(ref(database, path), injuryData);
-      setShowInjuryEditModal(false);
-      setEditingInjury(null);
-    }}
-  />
-)}      {/* Actual Keyword Edit Modal */}
-      <KeywordEditModal
-        show={showKeywordEditModal}
-        onHide={() => {
-          setShowKeywordEditModal(false);
-          setEditingKeyword(null);
-          setShowKeywordManager(true); // go back to list
-        }}
-        keyword={editingKeyword}
-        onSave={async (id, data) => {
-            const { userAgent, timeZone } = getUserContext();
-            const action = id ? 'Updated Keyword' : 'Added Keyword';
-            logAdminAction(
-                gtawUsername,
-                action,
-                `Keyword: ${data.keyword}\nDefinition: ${data.definition}\nTip: ${data.tip}`,
-                'LSCC Management',
-                userAgent,
-                timeZone,
-                gtawUsername,
-                gtawUser
-            );
+      </BaseModal>
+
+      <KeywordEditModal show={showKeywordEditModal} onHide={() => { setShowKeywordEditModal(false); setEditingKeyword(null); setShowKeywordManager(true); }} keyword={editingKeyword} onSave={async (id, data) => {
           const refPath = id ? `lscc/keywords/${id}` : `lscc/keywords/${Date.now()}`;
           await set(ref(database, refPath), data);
           setShowKeywordEditModal(false);
-          setEditingKeyword(null);
-        }}
-      />
+      }} />
 
+      <KeywordEditModal show={showInjuryEditModal} onHide={() => { setShowInjuryEditModal(false); setEditingInjury(null); setShowInjuryManager(true); }} type="injury" keyword={{ id: editingInjury?.id, keyword: editingInjury?.name || '', definition: editingInjury?.words || '', tip: '' }} onSave={async (id, data) => {
+          const injuryData = { name: data.keyword.trim(), words: data.definition.trim() };
+          const path = id ? `lscc/injuries/${id}` : `lscc/injuries/${Date.now()}`;
+          await set(ref(database, path), injuryData);
+          setShowInjuryEditModal(false);
+      }} />
     </div>
   );
 };

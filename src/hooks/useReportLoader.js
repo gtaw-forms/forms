@@ -8,7 +8,7 @@ import { getCharacterName } from '../utils/characterUtils';
 import useGtaWorldAuth from './useGtaWorldAuth';
 
 const comprehensiveSanitize = (str) => {
-    if (!str) return '';
+    if (!str || typeof str !== 'string') return '';
     let sanitized = str.trim().replace(/[.#$[/ \]]+/g, '_');
     sanitized = sanitized.replace(/_{2,}/g, '_');
     sanitized = sanitized.replace(/^_+|_+$/g, '');
@@ -115,27 +115,6 @@ export const useReportLoader = () => {
         }
     }, [showNotification, removeNotification]);
 
-    const loadUserRecoveryReports = useCallback(async (userId) => {
-        if (!userId) return [];
-        const sanitizedUserId = comprehensiveSanitize(userId);
-        const recoveryReportsRef = ref(database, `recoveredReports/${sanitizedUserId}`);
-        try {
-            const snapshot = await get(recoveryReportsRef);
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                return Object.keys(data).map(key => ({
-                    ...data[key],
-                    key: key,
-                    isRecovery: true
-                })).sort((a, b) => b.timestamp - a.timestamp);
-            }
-            return [];
-        } catch (error) {
-            console.error(`Error loading recovery reports:`, error);
-            return [];
-        }
-    }, []);
-
     const loadReportForUser = useCallback(async (report, userId, returnOnly = false, setFormData = null, selectedForm = null, setSelectedForm = null, getForms = null) => {
         const reportFirebaseKey = report?.key;
         if (!userId || !reportFirebaseKey) {
@@ -144,17 +123,11 @@ export const useReportLoader = () => {
         }
 
         const isLegacyReport = report.legacy;
-        const isRecovery = report.isRecovery;
         const sanitizedUserId = comprehensiveSanitize(userId);
 
-        let reportPath;
-        if (isRecovery) {
-            reportPath = `recoveredReports/${sanitizedUserId}/${reportFirebaseKey}`;
-        } else {
-            reportPath = isLegacyReport
-                ? `savedReports/${sanitizedUserId}/${reportFirebaseKey}`
-                : `newSavedReports/${sanitizedUserId}/${reportFirebaseKey}`;
-        }
+        let reportPath = isLegacyReport
+            ? `savedReports/${sanitizedUserId}/${reportFirebaseKey}`
+            : `newSavedReports/${sanitizedUserId}/${reportFirebaseKey}`;
 
         const bbCodePath = isLegacyReport
             ? `savedReportBBCode/${sanitizedUserId}/${reportFirebaseKey}`
@@ -171,7 +144,7 @@ export const useReportLoader = () => {
         try {
             const [reportSnapshot, bbCodeSnapshot] = await Promise.all([
                 get(reportRef),
-                isRecovery ? Promise.resolve({ exists: () => false, val: () => null }) : get(bbCodeRef)
+                get(bbCodeRef)
             ]);
 
             if (reportSnapshot.exists()) {
@@ -210,7 +183,7 @@ export const useReportLoader = () => {
                 if (!loadedBbCode && reportData.data && reportData.data.bbCode) loadedBbCode = reportData.data.bbCode;
                 
                 let loadedFormData = reportData.data || {};
-                const isFormHandlerReport = reportData.isFormHandler === true || isRecovery;
+                const isFormHandlerReport = reportData.isFormHandler === true;
 
                 // Standardize bold tags for all reports on load
                 if (!isFormHandlerReport) {
@@ -435,7 +408,6 @@ export const useReportLoader = () => {
         selectedUserForSavedReports,
         setSelectedUserForSavedReports,
         loadUserSavedReports,
-        loadUserRecoveryReports,
         loadReportForUser,
         countAllUserReports,
         checkIfMigratedReportExists

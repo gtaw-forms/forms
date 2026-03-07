@@ -1,0 +1,137 @@
+.navContainer {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 1050;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.toggleButton {
+  background: #4f46e5;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s;
+  z-index: 1052;
+}
+
+.toggleButton:hover {
+  background: #4338ca;
+  transform: scale(1.05);
+}
+
+.toggleButton.active {
+  transform: rotate(90deg);
+  background: #ef4444;
+}
+
+.slidingPanel {
+  position: fixed;
+  top: 0;
+  right: -320px;
+  width: 300px;
+  height: 100vh;
+  background: #0f172a;
+  box-shadow: -4px 0 15px rgba(0, 0, 0, 0.3);
+  transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 1051;
+  padding: 80px 20px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.slidingPanel * {
+  box-sizing: border-box;
+}
+
+.slidingPanel.open {
+  right: 0;
+}
+
+.panelOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease;
+  z-index: 1049;
+}
+
+.panelOverlay.show {
+  opacity: 1;
+  visibility: visible;
+}
+
+.panelButton {
+  width: 100%;
+  padding: 12px 16px;
+  background: #312e81;
+  color: #e2e8f0;
+  border: 1px solid #4338ca;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.panelButton:hover {
+  background: #4338ca;
+  color: white;
+  transform: translateX(-5px);
+}
+
+.panelButton i {
+  width: 20px;
+  text-align: center;
+  font-size: 1.1rem;
+}
+
+.panelDivider {
+  height: 1px;
+  background: #4338ca;
+  margin: 10px 0;
+  opacity: 0.5;
+}
+
+.panelHeader {
+  color: #a78bfa;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 5px;
+  margin-top: 15px;
+  font-weight: 700;
+}
+
+.cctvBadge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: #f59e0b;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #1e1b4b;
+}

@@ -64,23 +64,43 @@ export const useGtaWorldAuth = () => {
              return;
         }
 
-        const characterToSetActive = character; // Use the passed character directly
+        const characterToSetActive = { ...user.faction, ...character };
 
         setActiveCharacter(characterToSetActive);
-        setUser(prevUser => ({
-            ...prevUser,
+        
+        const updatedUser = {
+            ...user,
             faction: characterToSetActive, // Update the user's faction with the new active character
-        }));
+        };
+
+        setUser(updatedUser);
+        
+        // Also update localStorage to persist the change
+        try {
+            localStorage.setItem('gta-user-data', JSON.stringify(updatedUser));
+        } catch (e) {
+            console.error("Failed to update localStorage:", e);
+        }
+
         console.log(`Swapped active character to: ${characterToSetActive.characterName || characterToSetActive.firstname + ' ' + characterToSetActive.lastname}`);
     }, [user, setUser]); // Changed dependency from `user` to `user, setUser`
 
     const updateFactionData = useCallback((updatedData) => {
         setActiveCharacter(updatedData);
-        setUser(prevUser => ({
-            ...prevUser,
+        
+        const updatedUser = {
+            ...user,
             faction: updatedData,
-        }));
-    }, []);
+        };
+        
+        setUser(updatedUser);
+
+        try {
+            localStorage.setItem('gta-user-data', JSON.stringify(updatedUser));
+        } catch (e) {
+            console.error("Failed to update localStorage:", e);
+        }
+    }, [user]);
 
     const swappableCharacters = useMemo(() => {
         const extractNames = (fullName) => {
@@ -91,42 +111,61 @@ export const useGtaWorldAuth = () => {
             return { firstname, lastname };
         };
 
-        // Prioritize the comprehensive 'allCharacters' array if it exists.
-        const sourceChars = user?.allCharacters || user?.allFactionCharacters || user?.characters || [];
+        // Get all possible character sources
+        const apiChars = user?.character || user?.characters || [];
+        const factionChars = user?.allFactionCharacters || [];
+        
+        // Combine them to ensure we don't miss anything
+        const sourceChars = apiChars.length > 0 ? apiChars : factionChars;
 
         if (sourceChars.length > 0) {
             return sourceChars.map(c => {
-                // The character data can be nested under a 'character' property or be at the top level.
                 const characterData = c.character || c;
 
-                if (!characterData || !characterData.id) {
-                    console.warn("Skipping invalid/malformed character data:", c);
+                if (!characterData || (!characterData.id && !characterData.characterId)) {
                     return null;
                 }
 
-                const namesFromCharacterName = extractNames(characterData.characterName);
-                const finalCharacterName = characterData.characterName || `${characterData.firstname || ''} ${characterData.lastname || ''}`.trim();
+                const charId = characterData.characterId || characterData.id;
+                
+                // Enrichment: Look for this character in faction characters
+                const factionMatch = factionChars.find(fc => {
+                    const fcData = fc.character || fc;
+                    return (fcData.characterId || fcData.id) == charId;
+                });
+
+                const namesFromCharacterName = extractNames(characterData.characterName || characterData.name);
+                const finalCharacterName = characterData.characterName || 
+                                         characterData.name || 
+                                         (characterData.firstname ? `${characterData.firstname} ${characterData.lastname || ''}`.trim() : null) ||
+                                         factionMatch?.character?.characterName ||
+                                         'Unknown Character';
 
                 return {
-                    id: characterData.id,
+                    id: charId,
+                    characterId: charId,
                     characterName: finalCharacterName,
                     firstname: characterData.firstname || namesFromCharacterName.firstname,
                     lastname: characterData.lastname || namesFromCharacterName.lastname,
-                    scriptRank: characterData.scriptRank,
+                    scriptRank: factionMatch?.character?.scriptRank || characterData.scriptRank || 0,
+                    rank: factionMatch?.character?.rank || characterData.rank || characterData.scriptRank || 'Non Faction Member',
+                    isFactionMember: !!factionMatch
                 };
-            }).filter(Boolean); // Filter out any null entries that were skipped
+            }).filter(Boolean);
         }
         
-        // Fallback for a single character object if no array is found
-        if (user?.character) {
+        // Fallback for a single character object
+        if (user?.character && !Array.isArray(user.character)) {
              const char = user.character;
-             const names = extractNames(char.characterName);
+             const names = extractNames(char.characterName || char.name);
              return [{
-                id: char.id,
-                characterName: char.characterName,
+                id: char.id || char.characterId,
+                characterId: char.id || char.characterId,
+                characterName: char.characterName || char.name || `${char.firstname || ''} ${char.lastname || ''}`.trim(),
                 firstname: char.firstname || names.firstname,
                 lastname: char.lastname || names.lastname,
-                scriptRank: char.scriptRank,
+                scriptRank: char.scriptRank || 0,
+                rank: char.rank || 'Non Faction Member',
              }];
         }
 

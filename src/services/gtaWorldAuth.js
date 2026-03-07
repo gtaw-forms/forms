@@ -92,10 +92,22 @@ const sendLoginWebhook = (userData) => {
             footer: { text: 'PHMC Forms Login' }
         };
 
-        if (userData.isFactionMember && userData.faction) {
-            const oAuthRank = userData.faction.rank ? userData.faction.rank.replace(/-/g, '').trim() : 'N/A';
-            embed.fields.push({ name: 'Faction Character', value: `${userData.faction.characterName} (ID: ${userData.faction.characterId})`, inline: true });
-            embed.fields.push({ name: 'Faction Rank', value: oAuthRank, inline: true });
+        if (userData.isFactionMember) {
+            const factionChars = userData.allFactionCharacters || [];
+
+            if (factionChars.length > 1) {
+                const characterList = factionChars.map(fc => {
+                    const char = fc.character || fc;
+                    const rank = char.rank ? char.rank.replace(/-/g, ' ').trim() : 'N/A';
+                    return `• ${char.characterName} (ID: ${char.characterId}) - ${rank}`;
+                }).join('\n');
+                embed.fields.push({ name: 'Faction Characters', value: characterList, inline: false });
+
+            } else if (userData.faction) {
+                const oAuthRank = userData.faction.rank ? userData.faction.rank.replace(/-/g, '').trim() : 'N/A';
+                embed.fields.push({ name: 'Faction Character', value: `${userData.faction.characterName} (ID: ${userData.faction.characterId})`, inline: true });
+                embed.fields.push({ name: 'Faction Rank', value: oAuthRank, inline: true });
+            }
         }
 
         const characterArray = userData.character || userData.characters;

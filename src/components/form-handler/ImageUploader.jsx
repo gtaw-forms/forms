@@ -5,7 +5,7 @@ import LoadingSpinner from '../UI/LoadingSpinner';
 import { uploadImageWithFallback } from '../../utils/imageUploadUtils';
 import Tesseract from 'tesseract.js';
 
-const ImageUploader = ({ images: imagesProp, onImagesChange, maxImages = 6, fieldName }) => {
+const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChange, maxImages = 6, fieldName }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [showGalleryModal, setShowGalleryModal] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -13,6 +13,11 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, maxImages = 6, fiel
   const [isDragging, setIsDragging] = useState(false);
   const { showNotification } = useNotification();
   
+  const showNotes = fieldName?.toLowerCase().includes('morgue') || 
+                   fieldName?.toLowerCase().includes('damage') || 
+                   fieldName?.toLowerCase().includes('cdna') ||
+                   fieldName?.toLowerCase().includes('additional');
+
   // OCR State
   const [ocrResults, setOcrResults] = useState({}); // { [url]: text }
   const [isOcrLoading, setIsOcrLoading] = useState({}); // { [url]: boolean }
@@ -43,6 +48,67 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, maxImages = 6, fiel
     }
     return [];
   }, [imagesProp]);
+
+  const handleImageUrlAdd = useCallback((url) => {
+    if (!url) return;
+    if (images.length >= maxImages) {
+        showNotification(`Maximum ${maxImages} images allowed.`, 'error');
+        return;
+    }
+    
+    if (images.includes(url)) {
+        showNotification('Image already added.', 'info');
+        return;
+    }
+
+    const newImages = [...images, url];
+    onImagesChange(newImages);
+    
+    const autoOcrFields = ['additionalImages', 'additionalPhotos', 'morguePhotos', 'cdamages', 'cdna'];
+    const shouldAutoOcr = autoOcrFields.some(f => fieldName?.toLowerCase().includes(f.toLowerCase()));
+    
+    if (shouldAutoOcr) {
+        performOcr(url);
+    }
+  }, [images, maxImages, onImagesChange, fieldName, performOcr, showNotification]);
+
+  const detectAndAddImageUrl = useCallback((data) => {
+    const text = data.getData('text/plain')?.trim();
+    const uriList = data.getData('text/uri-list');
+    const html = data.getData('text/html');
+    
+    let url = uriList?.split('\n')[0].trim() || text;
+    if (url && !/^http/i.test(url)) url = null;
+    
+    if (!url && html) {
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const img = doc.querySelector('img');
+            if (img && img.src && /^http/i.test(img.src)) {
+                url = img.src;
+            }
+        } catch (e) {}
+    }
+    
+    if (!url) return false;
+
+    const isValid = (
+        /\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i.test(url) || 
+        /puu\.sh\//i.test(url) || 
+        /imgur\.com\//i.test(url) ||
+        /postimg\.cc\//i.test(url) ||
+        /prnt\.sc\//i.test(url) ||
+        /discordapp\.com\/attachments\//i.test(url)
+    );
+
+    if (isValid) {
+        handleImageUrlAdd(url);
+        return true;
+    }
+    
+    return false;
+  }, [handleImageUrlAdd]);
 
   const processFiles = async (files) => {
     if (images.length + files.length > maxImages) {
@@ -85,17 +151,13 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, maxImages = 6, fiel
 
   const handleManualUrlAdd = () => {
     if (!manualUrl.trim()) return;
-    if (images.length >= maxImages) {
-        showNotification(`Maximum ${maxImages} images allowed.`, 'error');
-        return;
-    }
     
     if (!manualUrl.startsWith('http')) {
         showNotification('Please enter a valid URL', 'error');
         return;
     }
 
-    onImagesChange([...images, manualUrl.trim()]);
+    handleImageUrlAdd(manualUrl.trim());
     setManualUrl('');
   };
 
@@ -105,6 +167,11 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, maxImages = 6, fiel
   };
 
   const handlePaste = useCallback(async (event) => {
+    if (detectAndAddImageUrl(event.clipboardData)) {
+        event.preventDefault();
+        return;
+    }
+
     const items = event.clipboardData?.items;
     if (!items) return;
 
@@ -112,32 +179,8 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, maxImages = 6, fiel
     if (!imageFile) return;
 
     event.preventDefault();
-
-    if (images.length >= maxImages) {
-        showNotification(`Maximum ${maxImages} images allowed.`, 'error');
-        return;
-    }
-
-    setIsUploading(true);
-    try {
-        const result = await uploadImageWithFallback(imageFile);
-        const newImages = [...images, result.url];
-        onImagesChange(newImages);
-        
-        const autoOcrFields = ['additionalImages', 'additionalPhotos', 'morguePhotos', 'cdamages', 'cdna'];
-        const shouldAutoOcr = autoOcrFields.some(f => fieldName?.toLowerCase().includes(f.toLowerCase()));
-        
-        if (shouldAutoOcr) {
-            performOcr(result.url);
-        }
-    } catch (err) {
-        console.error(`[ImageUploader] Pasted image upload failed:`, err);
-        showNotification(err.message || 'Image upload failed.', 'error');
-        Sentry.captureException(err);
-    } finally {
-        setIsUploading(false);
-    }
-  }, [images, maxImages, onImagesChange, showNotification, fieldName, performOcr]);
+    processFiles([imageFile]);
+  }, [detectAndAddImageUrl, processFiles]);
 
   // Drag and Drop Handlers
   const handleDragEnter = (e) => {
@@ -162,6 +205,10 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, maxImages = 6, fiel
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
+    
+    if (detectAndAddImageUrl(e.dataTransfer)) {
+        return;
+    }
     
     const files = Array.from(e.dataTransfer.files);
     if (files && files.length > 0) {
@@ -194,9 +241,57 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, maxImages = 6, fiel
       }}>
           <i className="fas fa-info-circle" style={{ fontSize: '1.1rem' }}></i>
           <div>
-              <strong>Quick Actions:</strong> Paste raw URLs and press <strong>Enter</strong>, or use <strong>Ctrl+V</strong> to upload screenshots instantly.
+              <strong>Quick Actions:</strong> Paste raw image URLs or images directly (<strong>Ctrl+V</strong>) to add them instantly. We'll avoid re-uploading if a valid URL is detected.
           </div>
       </div>
+
+      {/* Manual URL Input (Priority) */}
+      <div style={{ marginBottom: '1rem' }}>
+          <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center' }}>
+              <input
+                  type="text"
+                  placeholder="Paste raw image URL and press Enter..."
+                  value={manualUrl}
+                  onChange={(e) => setManualUrl(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleManualUrlAdd()}
+                  style={{ 
+                      width: '100%', 
+                      padding: '0.6rem 0.8rem', 
+                      background: '#1e293b', 
+                      border: '1px solid #334155', 
+                      color: '#f8fafc', 
+                      borderRadius: 8, 
+                      fontSize: '0.85rem',
+                      boxSizing: 'border-box'
+                  }}
+              />
+          </div>
+      </div>
+
+      {/* Narrative Section (if applicable) */}
+      {showNotes && (
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', color: '#94a3b8', fontWeight: '600' }}>
+            Text Field for CDAMAGES and CDNA (Optional)
+          </label>
+          <textarea
+            value={notes || ''}
+            onChange={(e) => onNotesChange?.(e.target.value)}
+            placeholder="This section is required if you forgot to take a screenshot of the cdamages and CDNA."
+            style={{
+                width: '100%',
+                padding: '0.6rem 0.8rem',
+                background: '#1e293b',
+                border: '1px solid #334155',
+                color: '#f8fafc',
+                borderRadius: 8,
+                fontSize: '0.85rem',
+                minHeight: '80px',
+                resize: 'vertical'
+            }}
+          />
+        </div>
+      )}
 
       {/* Gallery Section */}
       <div className="image-previews" style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '10px' }}>
@@ -291,31 +386,8 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, maxImages = 6, fiel
         )}
       </div>
 
-      {/* Manual URL & Upload Section */}
+      {/* Upload Zone (Bottom) */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
-            <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center' }}>
-                <input
-                    type="text"
-                    placeholder="Paste raw image URL and press Enter..."
-                    value={manualUrl}
-                    onChange={(e) => setManualUrl(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleManualUrlAdd()}
-                    style={{ 
-                        width: '100%', 
-                        padding: '0.6rem 0.8rem', 
-                        background: '#1e293b', 
-                        border: '1px solid #334155', 
-                        color: '#f8fafc', 
-                        borderRadius: 8, 
-                        fontSize: '0.85rem',
-                        height: '100%',
-                        boxSizing: 'border-box'
-                    }}
-                />
-            </div>
-        </div>
-
         {images.length < maxImages && !isUploading && (
             <label style={{ cursor: 'pointer', display: 'block', margin: 0 }}>
                 <input

@@ -428,81 +428,84 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
             </div>
         );
     }
-case "textarea":
-  return (
-    <div 
-      data-tour-id={field.id} 
-      data-tour-name={field.name}
-      data-tour-type={field.type}
-      style={{ ...fieldWrapperStyle, display: "inline-block" }}
-    >
-      <label style={labelStyle}>{field.label}</label>
-      <textarea
-        name={field.name}
-        rows={field.rows || 4}
-        value={formValues[field.name] || ""}
-        onChange={e => {
-          handleChange(field.name, e.target.value);
-        }}
-        placeholder={field.placeholder || ""}
-        style={inputStyle}
-        data-field={field.name}
-      />
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: "0.5rem" }}>
-          {field.allowImagePaste && (
-            <div style={{
-              padding: "0.6rem",
-              background: "#162032",
-              borderRadius: 6,
-              fontSize: "0.85rem",
-              color: "#94a3b8",
-              flex: 1,
-              marginRight: "10px"
-            }}>
-              <strong>Pro tip:</strong> You can paste screenshots directly here with <strong>Ctrl+V</strong>
-            </div>
-          )}
-          
-          {(selectedForm?.id === 'autopsy' || selectedForm?.name?.toLowerCase().includes('autopsy')) && (
-               <button
-                   onClick={(e) => {
-                       e.preventDefault();
-                       setAutopsyAssistTargetField(field.name);
-                       setShowAutopsyAssistModal(true);
-                   }}
-                   className="btn btn-sm"
-                   style={{
-                       padding: "0.5rem 1rem",
-                       background: "#8b5cf6",
-                       color: "white",
-                       border: "1px solid #7c3aed",
-                       borderRadius: 6,
-                       fontSize: "0.85rem",
-                       cursor: "pointer",
-                       whiteSpace: "nowrap",
-                       display: "flex",
-                       alignItems: "center",
-                       gap: "0.5rem",
-                       alignSelf: field.allowImagePaste ? "stretch" : "flex-start" // Match height if tip exists
-                   }}
-                   title="Open Autopsy Assistant"
-               >
-                   <i className="fas fa-magic"></i> Autopsy Assist
-               </button>
-           )}
-      </div>
-    </div>
-  );    case "image":
+    case "textarea":
+      return (
+        <div 
+          data-tour-id={field.id} 
+          data-tour-name={field.name}
+          data-tour-type={field.type}
+          style={{ ...fieldWrapperStyle, display: "inline-block" }}
+        >
+          <label style={labelStyle}>{field.label}</label>
+          <textarea
+            name={field.name}
+            rows={field.rows || 4}
+            value={formValues[field.name] || ""}
+            onChange={e => {
+              handleChange(field.name, e.target.value);
+            }}
+            placeholder={field.placeholder || ""}
+            style={inputStyle}
+            data-field={field.name}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: "0.5rem" }}>
+              {field.allowImagePaste && (
+                <div style={{
+                  padding: "0.6rem",
+                  background: "#162032",
+                  borderRadius: 6,
+                  fontSize: "0.85rem",
+                  color: "#94a3b8",
+                  flex: 1,
+                  marginRight: "10px"
+                }}>
+                  <strong>Pro tip:</strong> You can paste screenshots directly here with <strong>Ctrl+V</strong>
+                </div>
+              )}
+              
+              {(selectedForm?.id === 'autopsy' || selectedForm?.name?.toLowerCase().includes('autopsy')) && (
+                   <button
+                       onClick={(e) => {
+                           e.preventDefault();
+                           setAutopsyAssistTargetField(field.name);
+                           setShowAutopsyAssistModal(true);
+                       }}
+                       className="btn btn-sm"
+                       style={{
+                           padding: "0.5rem 1rem",
+                           background: "#8b5cf6",
+                           color: "white",
+                           border: "1px solid #7c3aed",
+                           borderRadius: 6,
+                           fontSize: "0.85rem",
+                           cursor: "pointer",
+                           whiteSpace: "nowrap",
+                           display: "flex",
+                           alignItems: "center",
+                           gap: "0.5rem",
+                           alignSelf: field.allowImagePaste ? "stretch" : "flex-start" // Match height if tip exists
+                       }}
+                       title="Open Autopsy Assistant"
+                   >
+                       <i className="fas fa-magic"></i> Autopsy Assist
+                   </button>
+               )}
+          </div>
+        </div>
+      );
+    case "image":
       return (
         <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
           <label style={labelStyle}>{field.label}</label>
-<ImageUploader
-        images={formValues[field.name] || []}           // ← Always array
-        onImagesChange={(newImages) => handleChange(field.name, newImages)} // ← Save array
-        maxImages={field.maxImages || 6}
-        fieldName={field.name}
-      />
-              </div>
+          <ImageUploader
+            images={formValues[field.name] || []}
+            onImagesChange={(newImages) => handleChange(field.name, newImages)}
+            notes={formValues[`${field.name}_narrative`] || ""}
+            onNotesChange={(newNotes) => handleChange(`${field.name}_narrative`, newNotes)}
+            maxImages={field.maxImages || 6}
+            fieldName={field.name}
+          />
+        </div>
       );
     case "checkbox":
       return (

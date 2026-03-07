@@ -5,6 +5,7 @@ import { useModal } from "../../contexts/ModalProvider";
 import { useData } from "../../contexts/DataContext";
 import FormFieldRenderer from './FormFieldRenderer';
 import FormHandlerNavButtons from './FormHandlerNavButtons';
+import LeftSidebarNav from '../UI/LeftSidebarNav';
 import useBbcodeGenerator from '../../hooks/useBbcodeGenerator';
 
 import { uploadImageToImgBB, uploadDataUrlToImgBB } from '../../utils/imageUploadUtils'; 
@@ -45,7 +46,7 @@ const AgencyIncidentModal = lazy(() => import('../Modals/AgencyIncidentModal'));
 const AutopsyAssist = lazy(() => import('./AutopsyAssist'));
 const SurveyModal = lazy(() => import('../Modals/SurveyModal'));
 import UnprocessedCKsViewer from './UnprocessedCKsViewer';
-import FormTour from '../UI/FormTour';
+import FormTour, { sectionExplanations } from '../UI/FormTour';
 
 export const FormHandler = () => {
   const isDevelopment = process.env.NODE_ENV === 'development' || window.location.hostname === 'localhost';
@@ -99,6 +100,9 @@ export const FormHandler = () => {
       // Tour State
       const [showTour, setShowTour] = useState(false);
       const [tourType, setTourType] = useState(null); // 'general' or 'form-specific'
+
+      // Left Sidebar State
+      const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
     
       // Hooks
       const { showNotification, removeNotification } = useNotification();
@@ -109,6 +113,12 @@ export const FormHandler = () => {
         characterName: realCharacterName,
         swappableCharacters,
         selectOptions: authSelectOptions,
+        canSwapCharacters,
+        swapCharacter,
+        factionData,
+        updateFactionData,
+        login,
+        logout
       } = useGtaWorldAuth();
     
     
@@ -129,7 +139,7 @@ export const FormHandler = () => {
               "Welcome to PHMC Forms! Would you like a quick 1-minute tour of the interface?",
               "info",
               0, // Persistent until acted upon
-              [
+              { actions: [
                 {
                   label: 'Start Tour',
                   handler: (id) => {
@@ -152,7 +162,7 @@ export const FormHandler = () => {
                     removeNotification(id);
                   },
                 },
-              ]
+              ]}
             );
           }, 2000);
           return () => clearTimeout(timer);
@@ -161,22 +171,21 @@ export const FormHandler = () => {
 
       // Form-specific tour trigger
       useEffect(() => {
-        // Only trigger for forms that have specific guides
-        const isTourableForm = ['coroner-report', 'er-protocol', 'mass-ftality-test', 'coroner_email'].includes(selectedForm?.id);
+        const isTourableForm = selectedForm?.id && sectionExplanations[selectedForm.id];
     
         if (isTourableForm) {
           const hasBeenOfferedTour = sessionStorage.getItem(`hasBeenOfferedTour_${selectedForm.id}`) === 'true';
     
-          if (!hasBeenOfferedTour || isDevelopment) {
+          if (!hasBeenOfferedTour) {
             sessionStorage.setItem(`hasBeenOfferedTour_${selectedForm.id}`, 'true');
     
             showNotification(
-              `Welcome to the ${selectedForm.name}! How would you like to get started?`,
+              `New to the ${selectedForm.name}? We can guide you through it.`,
               "info",
-              0,
-              [
+              15000,
+              { actions: [
                 {
-                  label: 'Section-by-Section Guide',
+                  label: 'Start Section Guide',
                   handler: (id) => {
                     setTourType('form-specific');
                     setShowTour(true);
@@ -189,11 +198,11 @@ export const FormHandler = () => {
                     removeNotification(id);
                   },
                 },
-              ]
+              ]}
             );
           }
         }
-      }, [selectedForm, showNotification, removeNotification, isDevelopment]);
+      }, [selectedForm, showNotification, removeNotification]);
     
     
       useEffect(() => {
@@ -203,7 +212,7 @@ export const FormHandler = () => {
             <span>You can report Agency Incidents in the <i className="fas fa-cog"></i> More Panel, this can be pushed up to Faction Leadership.</span>,
             'info',
             0,
-            [
+            { actions: [
               {
                 label: 'Dismiss',
                 handler: (id) => {
@@ -211,26 +220,31 @@ export const FormHandler = () => {
                   removeNotification(id);
                 },
               },
-            ]
+            ]}
           );
         }
       }, [isAuthenticated, showNotification, removeNotification]);  
 
   useEffect(() => {
     const hasSeenPrompt = localStorage.getItem('seenKeepCredentialsPrompt') === 'true';
-    if (isPhmcMember && !hasSeenPrompt) {
+    const hasSeenThisSession = sessionStorage.getItem('hasSeenKeepCredentialsPrompt_session') === 'true';
+    
+    // Check if the token is already in localStorage (meaning they are already persisted)
+    const isAlreadyPersisted = !!localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+
+    if (isPhmcMember && !hasSeenPrompt && !hasSeenThisSession && !isAlreadyPersisted) {
+      sessionStorage.setItem('hasSeenKeepCredentialsPrompt_session', 'true');
       showNotification(
         'Do you want us to keep you logged in and remember your employee credentials across sessions?',
         'info',
-        null,
-        [
+        0, // Set to 0 to make it persistent until an action is taken
+        { actions: [
           {
             label: 'Yes, Persist',
             handler: (id) => {
               localStorage.setItem('phmc_gtaw_oauth_persist_enabled', 'true');
               setKeepCredentials(true);
               
-              // Move token to localStorage if it exists
               const token = sessionStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
               if (token) {
                 localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, token);
@@ -250,10 +264,21 @@ export const FormHandler = () => {
               removeNotification(id);
             },
           },
-        ]
+          {
+            label: 'Ask Me Later',
+            handler: (id) => {
+              removeNotification(id);
+            },
+          },
+        ]}
       );
+    } else if (isAlreadyPersisted && !hasSeenPrompt) {
+      // If they are already persisted, don't show the prompt and mark as seen
+      localStorage.setItem('seenKeepCredentialsPrompt', 'true');
+      localStorage.setItem('phmc_gtaw_oauth_persist_enabled', 'true');
+      if (!keepCredentials) setKeepCredentials(true);
     }
-  }, [isPhmcMember, showNotification, removeNotification, setKeepCredentials]);
+  }, [isPhmcMember, showNotification, removeNotification, setKeepCredentials, keepCredentials]);
   const handleRequestAccess = useCallback(async () => {
     const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_AUTH || import.meta.env.VITE_DEV_WEBHOOK;
     if (!webhookUrl) {
@@ -297,7 +322,7 @@ export const FormHandler = () => {
                 "If you are a PHMC Member and cannot see forms, please click here.",
                 "info",
                 15000, // 15 seconds
-                [
+                { actions: [
                     {
                         label: "Request Access",
                         handler: (id) => {
@@ -306,7 +331,7 @@ export const FormHandler = () => {
                         }
                     },
                     { label: "Dismiss", handler: (id) => removeNotification(id) }
-                ]
+                ]}
             );
             sessionStorage.setItem('hasShownAuthPrompt', 'true');
         }
@@ -331,53 +356,8 @@ export const FormHandler = () => {
     submitSurveyResponse,
   } = useData();
   const { showEmsBingoModal, setShowEmsBingoModal } = useModal();
-  const { saveReport: saveNewReport, saveRecoveryReport } = useFormSaver();
+  const { saveReport: saveNewReport } = useFormSaver(user, isAuthenticated);
   const modalCloseTimer = React.useRef(null);
-
-  // Survey trigger effect
-/*   useEffect(() => {
-    const isSurveyActive = surveyData?.isActive || isDevelopment; // Always active in dev
-    const hasDismissedSurvey = sessionStorage.getItem('dismissedSurveyId') === surveyData?.id;
-
-    if (isSurveyActive && !hasDismissedSurvey) {
-      const surveyNotifId = showNotification(
-        "A survey is available! Please take part.",
-        "info",
-        0, // Persistent
-        [
-          {
-            label: 'Take Survey',
-            handler: (id) => {
-              setShowSurveyModal(true);
-              removeNotification(id);
-            },
-          },
-          {
-            label: 'Dismiss',
-            handler: (id) => {
-              if (surveyData?.id) {
-                sessionStorage.setItem('dismissedSurveyId', surveyData.id);
-              }
-              removeNotification(id);
-            },
-          },
-        ]
-      );
-      // Clean up notification if component unmounts
-      return () => removeNotification(surveyNotifId);
-    }
-  }, [surveyData, isDevelopment, showNotification, removeNotification]);
- */
-  // Debounced Recovery Auto-Save
-  useEffect(() => {
-    if (!selectedForm || Object.keys(formValues).length === 0) return;
-
-    const timer = setTimeout(() => {
-      saveRecoveryReport(selectedForm, formValues);
-    }, 15000); // Auto-save recovery draft every 15 seconds of activity
-
-    return () => clearTimeout(timer);
-  }, [formValues, selectedForm, saveRecoveryReport]);
 
   // Memos
   const finalSelectOptions = useMemo(() => {
@@ -561,6 +541,81 @@ export const FormHandler = () => {
     await sendPhraseRequestNotification(payload);
   }, []);
 
+  const validateReportQuality = useCallback(() => {
+    if (!selectedForm) return { success: true };
+    
+    const isCoronerReport = selectedForm.firebaseKey === 'coroner-report';
+    const isMassFatality = selectedForm.firebaseKey === 'mass-ftality-test' || selectedForm.id === 'mass-fatality' || selectedForm.name?.toLowerCase().includes('mass fatality');
+
+    if (!isCoronerReport && !isMassFatality) return { success: true };
+
+    const errors = [];
+    const SYNOPSIS_MIN_LENGTH = 200;
+
+    // Check individual Coroner Report
+    if (isCoronerReport) {
+      const isCK = formValues.typeOfDeath === 'CK' || formValues.typeOfDeath?.value === 'CK';
+      
+      // Mandatory Fields
+      const mandatoryFields = [
+        { key: 'decedentName', label: 'Decedent Name' },
+        { key: 'decedentOOC', label: 'Decedent OOC' },
+        { key: 'probableCauseOfDeath', label: 'Cause of Death' },
+        { key: 'mannerOfDeath', label: 'Manner of Death' },
+        { key: 'synopsis', label: 'Synopsis' }
+      ];
+
+      mandatoryFields.forEach(field => {
+        const val = formValues[field.key];
+        const isEmpty = !val || (typeof val === 'string' && val.trim() === "") || (typeof val === 'object' && val !== null && !val.value && !val.label);
+        
+        if (isEmpty) {
+          errors.push(`Missing mandatory field: ${field.label}`);
+        }
+      });
+
+      // Strict Mode for CK
+      if (isCK) {
+        const synopsis = formValues.synopsis || "";
+        if (synopsis.length < SYNOPSIS_MIN_LENGTH) {
+          errors.push(`Synopsis is too short for a CK report (${synopsis.length}/${SYNOPSIS_MIN_LENGTH} chars).`);
+        }
+        
+        // Check for images (at least scene or additional)
+        const hasImages = (formValues.scenePhotos && formValues.scenePhotos.length > 0) || 
+                          (formValues.additionalImages && formValues.additionalImages.length > 0);
+        if (!hasImages) {
+          errors.push("CK reports require at least one image upload for both scene and morgue photos.");
+        }
+      }
+    }
+
+    // Check Mass Fatality Report
+    if (isMassFatality && Array.isArray(formValues.decedents)) {
+      formValues.decedents.forEach((dec, idx) => {
+        const isCK = dec.typeOfDeath === 'CK' || dec.typeOfDeath?.value === 'CK';
+        const name = dec.decedentName || `Decedent #${idx + 1}`;
+        
+        if (!dec.decedentName || !dec.decedentOOC) {
+          errors.push(`[${name}] Missing Name or OOC.`);
+        }
+
+        if (isCK) {
+          const synopsis = dec.synopsis || "";
+          if (synopsis.length < SYNOPSIS_MIN_LENGTH) {
+            errors.push(`[${name}] Synopsis too short for CK (${synopsis.length}/${SYNOPSIS_MIN_LENGTH} chars).`);
+          }
+        }
+      });
+    }
+
+    if (errors.length > 0) {
+      return { success: false, errors };
+    }
+
+    return { success: true };
+  }, [selectedForm, formValues]);
+
   const updateEmployeeCredentials = useCallback((employeeName, empType) => {
     const updates = {};
     const normalizeName = (name) => String(name || '').trim().toLowerCase();
@@ -576,11 +631,22 @@ export const FormHandler = () => {
           console.log(`%c[DEBUG] Credential Sync Origin: LIVE OAUTH (${employeeName})`, "color: #2ecc71; font-weight: bold;");
           const factionData = user?.faction || user?.activeCharacter || {};
           
+          // Try to find the user in the database list to get their persistent Discord name
+          const dbMatch = [...phmcListData, ...coronerListData].find(e => 
+              normalizeName(e.characterName) === targetNameNormalized || 
+              String(e.characterId) === String(factionData.characterId)
+          );
+
           let rawRank = factionData.rank || factionData.scriptRank || '';
           updates[`${empType}Rank`] = rawRank ? cleanRankText(String(rawRank)) : '';
           updates[`${empType}Badge`] = factionData.characterId || factionData.badge || '';
-          updates[`${empType}Discord`] = user.username || ''; 
-          updates[`${empType}PHNumber`] = '50056';
+          
+          // Prioritize Database Discord Name > User Profile Username
+          const resolvedDiscord = dbMatch?.discordName || dbMatch?.discord || user.username || '';
+          updates[`${empType}Discord`] = resolvedDiscord;
+          updates[`${empType}PHNumber`] = dbMatch?.phNumber || '50056';
+
+          console.log(`[DEBUG] Resolved Discord for ${employeeName}: ${resolvedDiscord} (Source: ${dbMatch?.discordName || dbMatch?.discord ? 'Firebase' : 'UCP Fallback'})`);
 
           if (factionData.firstname && factionData.lastname) {
               updates[`${empType}FirstName`] = factionData.firstname;
@@ -600,10 +666,14 @@ export const FormHandler = () => {
           console.log(`%c[DEBUG] Credential Sync Origin: STATIC LIST (${employeeName})`, "color: #3498db; font-weight: bold;");
           updates[`${empType}Rank`] = fullEmployeeData.rank ? cleanRankText(fullEmployeeData.rank) : '';
           updates[`${empType}Badge`] = fullEmployeeData.badge || '';
-          updates[`${empType}Discord`] = fullEmployeeData.discord || ''; 
+          
+          const staticDiscord = fullEmployeeData.discordName || fullEmployeeData.discord || '';
+          updates[`${empType}Discord`] = staticDiscord;
           updates[`${empType}PHNumber`] = fullEmployeeData.phNumber || '';
           updates[`${empType}FirstName`] = selectedOption.firstname || '';
           updates[`${empType}LastName`] = selectedOption.lastname || '';
+
+          console.log(`[DEBUG] Resolved Discord for ${employeeName}: ${staticDiscord} (Source: STATIC_LIST_FIREBASE)`);
       } else {
           console.warn(`%c[DEBUG] Credential Sync Origin: UNKNOWN/CLEAR (${employeeName})`, "color: #e67e22; font-weight: bold;");
           if (!employeeName) {
@@ -654,21 +724,10 @@ export const FormHandler = () => {
   const handleClearForm = useCallback(() => {
     console.log("[FormHandler] 🗑️ handleClearForm triggered.");
     
-    // Last chance recovery save
-    if (selectedForm && Object.keys(formValues).length > 0) {
-        saveRecoveryReport(selectedForm, formValues);
-    }
-
-    console.log("[FormHandler] Current State - Keep credentials:", keepCredentials, "Is Auth:", isAuthenticated, "Employee Type:", employeeType);
-    
+    // Always preserve all credential fields regardless of the current form type
     const credentialFieldsToPreserve = [
-      `${employeeType}Employee`,
-      `${employeeType}Badge`,
-      `${employeeType}Rank`,
-      `${employeeType}Discord`,
-      `${employeeType}PHNumber`,
-      `${employeeType}FirstName`,
-      `${employeeType}LastName`
+      'phmcEmployee', 'phmcBadge', 'phmcRank', 'phmcDiscord', 'phmcPHNumber', 'phmcFirstName', 'phmcLastName',
+      'coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord', 'coronerPHNumber', 'coronerFirstName', 'coronerLastName'
     ];
 
     const preservedValues = {};
@@ -676,12 +735,20 @@ export const FormHandler = () => {
         credentialFieldsToPreserve.forEach(fieldName => {
             if (formValues[fieldName]) {
                 preservedValues[fieldName] = formValues[fieldName];
-            } else {
-                console.warn(`[FormHandler] Credential field '${fieldName}' was missing or empty in formValues before clear.`);
             }
         });
-    } else {
-        console.log("[FormHandler] Not preserving credentials (KeepCredentials=false AND IsAuth=false)");
+        
+        // Safety: If the form was partially broken/cleared and we are authenticated, 
+        // try to re-derive the current user's credentials to ensure they aren't lost in the clear.
+        if (isAuthenticated && user) {
+            const currentRole = selectedForm?.accessType === 'Coroner' ? 'coroner' : 'phmc';
+            const oauthName = user?.faction?.characterName || user?.activeCharacter?.characterName;
+            
+            if (oauthName) {
+                const liveUpdates = updateEmployeeCredentials(oauthName, currentRole);
+                Object.assign(preservedValues, liveUpdates);
+            }
+        }
     }
     
     console.log("[FormHandler] Final preservedValues object:", preservedValues);
@@ -692,7 +759,7 @@ export const FormHandler = () => {
     }
     setShowBBCode(false);
     showNotification('Form cleared!', 'info');
-  }, [formValues, employeeType, setFormValues, selectedForm?.firebaseKey, showNotification, keepCredentials, isAuthenticated, setShowBBCode]);
+  }, [formValues, setFormValues, selectedForm, showNotification, keepCredentials, isAuthenticated, user, updateEmployeeCredentials]);
 
   const copyAndSaveReport = useCallback(async () => {
     if (generatedBBCode) {
@@ -751,7 +818,7 @@ export const FormHandler = () => {
         }
       }
       
-      showNotification(finalNotificationMessage, finalNotificationType, notificationDuration, finalNotificationOptions);
+      showNotification(finalNotificationMessage, finalNotificationType, notificationDuration, { actions: finalNotificationOptions });
     }
   }, [generatedBBCode, selectedForm, formValues, generatedTitle, saveNewReport, showNotification, handleClearForm, removeNotification, trackMetric]);
 
@@ -992,16 +1059,22 @@ export const FormHandler = () => {
             // forcefully inject the data from the user object to prevent clearing credentials.
             if (!credentialUpdates[`${currentEmployeeType}Rank`] || !credentialUpdates[`${currentEmployeeType}Badge`]) {
                 console.warn(`[FormHandler] ⚠️ Credential Sync returned empty values despite valid OAuth user. Engaging Emergency Fallback.`);
-                console.warn(`[FormHandler] Failed update object:`, credentialUpdates);
                 
                 const fData = user?.faction || user?.activeCharacter || {};
-                console.warn(`[FormHandler] Forcefully using OAuth Data:`, fData);
+                
+                // Also attempt to resolve persistent Discord info in fallback
+                const dbMatch = [...phmcListData, ...coronerListData].find(e => 
+                    normalizeName(e.characterName) === normalizeName(oauthEmployeeName) || 
+                    String(e.characterId) === String(fData.characterId)
+                );
 
                 credentialUpdates[`${currentEmployeeType}Employee`] = oauthEmployeeName;
                 credentialUpdates[`${currentEmployeeType}Rank`] = fData.rank ? cleanRankText(String(fData.rank)) : (fData.scriptRank || '');
                 credentialUpdates[`${currentEmployeeType}Badge`] = fData.characterId || fData.badge || '';
-                credentialUpdates[`${currentEmployeeType}Discord`] = user.username || '';
-                credentialUpdates[`${currentEmployeeType}PHNumber`] = '50056';
+                
+                // Fallback also respects Database Discord Name
+                credentialUpdates[`${currentEmployeeType}Discord`] = dbMatch?.discordName || dbMatch?.discord || user.username || '';
+                credentialUpdates[`${currentEmployeeType}PHNumber`] = dbMatch?.phNumber || '50056';
                 
                 if (fData.firstname && fData.lastname) {
                     credentialUpdates[`${currentEmployeeType}FirstName`] = fData.firstname;
@@ -1305,7 +1378,8 @@ export const FormHandler = () => {
           filterByBbCodeVersions={reportSelectionFilter}
           preselectedEmployeeType={preselectedEmployeeType}
           reportSelectionFilter={reportSelectionFilter}
-          pendingReportAttachmentCallback={pendingReportAttachmentCallback}
+          pendingReportAttachmentCallback={pendingReportAttachmentCallback.current}
+          isAttachMode={!!pendingReportAttachmentCallback.current}
           selectedForm={selectedForm}
           attachmentTargetField={currentAttachmentTargetFieldRef.current} // Add this line
         />
@@ -1364,86 +1438,65 @@ export const FormHandler = () => {
         }}
       />
 
+      <LeftSidebarNav
+        groupedForms={groupedForms}
+        collapsedCategories={collapsedCategories}
+        toggleCategory={toggleCategory}
+        onSelectForm={(form) => {
+            if (selectedForm?.firebaseKey === form.firebaseKey) return;
+            // Preserve essential credential fields across form switches.
+            const credentialFields = [
+            'phmcEmployee', 'phmcBadge', 'phmcRank', 'phmcDiscord', 'phmcPHNumber',
+            'coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord', 'coronerPHNumber'
+            ];
+            const baseValues = {};
+            if (keepCredentials) {
+            credentialFields.forEach(key => {
+                if (Object.prototype.hasOwnProperty.call(formValues, key)) { // Carry over from current state if the key exists
+                    baseValues[key] = formValues[key];
+                }
+            });
+            }
+
+            console.log("Switching form. Preserving base values:", baseValues);
+
+            const savedProgression = localStorage.getItem(`form_progression_${form.firebaseKey}`);
+            const savedValues = savedProgression ? JSON.parse(savedProgression) : {};
+            
+            // --- DEBUG LOG START ---
+            console.log(`[DEBUG] Loaded progression for ${form.name}:`, savedValues);
+            // --- DEBUG LOG END ---
+
+            setSelectedForm(form);
+            setFormValues({ ...baseValues, ...savedValues });
+            setShowBBCode(false);
+            trackMetric('form_handler', `view_form_${form.name}`);
+        }}
+        selectedForm={selectedForm}
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        onPanelToggle={(isOpen) => setIsLeftSidebarOpen(isOpen)}
+      />
+
       <div className={styles.header}>
         <h2>PHMC Tools - Form Generator and more!</h2>
       </div>
 
-      <div className={styles.mainLayout}>
-        <div className={styles.leftPanel} data-tour="left-panel">
-          <input
-            type="text"
-            placeholder="Search forms..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className={styles.searchInput}
-          />
-
-          <div className={styles.formList}>
-            {Object.entries(groupedForms).length === 0 ? (
-              <div style={{ textAlign: "center", color: "#64748b", padding: "2rem" }}>
-                Access Denied
-              </div>
-            ) : (
-              <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                {Object.entries(groupedForms).map(([categoryName, formsInCategory]) => (
-                  <li key={categoryName}>
-                    <div
-                      className={`${styles.categoryHeader} ${collapsedCategories[categoryName] ? styles.collapsed : ""}`}
-                      onClick={() => toggleCategory(categoryName)}
-                    >
-                      {categoryName} ({formsInCategory.length})
-                    </div>
-                    {!collapsedCategories[categoryName] && (
-                      <ul className={styles.protocolList}>
-                        {formsInCategory.map((form) => (
-                          <li
-                            key={form.firebaseKey}
-                            onClick={() => {
-                              if (selectedForm?.firebaseKey === form.firebaseKey) return;
-                              // Preserve essential credential fields across form switches.
-                              const credentialFields = [
-                                'phmcEmployee', 'phmcBadge', 'phmcRank', 'phmcDiscord', 'phmcPHNumber',
-                                'coronerEmployee', 'coronerBadge', 'coronerRank', 'coronerDiscord', 'coronerPHNumber'
-                              ];
-                              const baseValues = {};
-                              if (keepCredentials) {
-                                credentialFields.forEach(key => {
-                                    if (Object.prototype.hasOwnProperty.call(formValues, key)) { // Carry over from current state if the key exists
-                                        baseValues[key] = formValues[key];
-                                    }
-                                });
-                              }
-
-                              console.log("Switching form. Preserving base values:", baseValues);
-
-                              const savedProgression = localStorage.getItem(`form_progression_${form.firebaseKey}`);
-                              const savedValues = savedProgression ? JSON.parse(savedProgression) : {};
-                              
-                              // --- DEBUG LOG START ---
-                              console.log(`[DEBUG] Loaded progression for ${form.name}:`, savedValues);
-                              // --- DEBUG LOG END ---
-
-                              setSelectedForm(form);
-                              setFormValues({ ...baseValues, ...savedValues });
-                              setShowBBCode(false);
-                              trackMetric('form_handler', `view_form_${form.name}`);
-                            }}
-                            className={`${styles.formCard} ${selectedForm?.firebaseKey === form.firebaseKey ? styles.selected : ""}`}
-                          >
-                            <div className={styles.formTitle}>{form.name}</div>
-                            <div className={styles.formCategory}>{form.category}</div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-
-        <div className={styles.mainContent} data-tour="main-content">
+      <div className={styles.mainLayout} style={{ display: 'flex', gap: '1.5rem', width: '100%', overflow: 'hidden' }}>
+        <div 
+            className={styles.mainContent} 
+            data-tour="main-content" 
+            style={{ 
+                flex: 5, 
+                minWidth: 0, 
+                background: '#1e293b', 
+                borderRadius: 16, 
+                padding: '2rem', 
+                boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+                marginLeft: isLeftSidebarOpen && window.innerWidth >= 768 ? '300px' : '0',
+                transition: 'margin-left 0.3s ease' 
+            }}
+        >
           {!selectedForm ? (
             hasFirebaseError ? ( // NEW: Check for Firebase Error
                 <div style={{ textAlign: "center", marginTop: "8rem", color: "#ffffff" }}>
@@ -1467,12 +1520,27 @@ export const FormHandler = () => {
                 </div>
             ) : (
                 <div style={{ textAlign: "center", marginTop: "8rem", color: "#64748b" }}>
-                    <h3>Select a form from the left to begin</h3>
+                    <h3>Select a form from the sidebar to begin</h3>
                 </div>
             )
           ) : (
             <>
-              <h2 style={{ color: "#60a5fa", marginBottom: "2rem" }}>{selectedForm.name}</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: "2rem" }}>
+                <h2 style={{ color: "#60a5fa", margin: 0 }}>{selectedForm.name}</h2>
+                {selectedForm.id && sectionExplanations[selectedForm.id] && (
+                  <button 
+                    onClick={() => {
+                      setTourType('form-specific');
+                      setShowTour(true);
+                    }}
+                    className="btn btn-outline-info btn-sm"
+                    style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                  >
+                    <i className="fas fa-route" style={{ marginRight: '5px' }}></i>
+                    Start Guide
+                  </button>
+                )}
+              </div>
               {selectedForm.formDescription && (
                   <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
                       {selectedForm.formDescription}
@@ -1484,6 +1552,7 @@ export const FormHandler = () => {
                 onPreload={(values) => setFormValues(prev => ({ ...prev, ...values }))}
               />
               
+
               <div style={{ margin: "0 -8px" }}>
                 {(() => {
                   let fieldsToRender = [...(selectedForm.fields || [])];
@@ -1526,24 +1595,28 @@ export const FormHandler = () => {
                         const dBadge = formValues[`${empType}Badge`] || "N/A";
                         const dIsCoroner = empType === 'coroner' ? "TRUE" : "FALSE";
                         
-
-                        
-                    console.log(`[DEBUG] FOUND PHMC EMPLOYEE: ${dName} | ${dRank} | ${dBadge} | (Coroner: ${dIsCoroner}) |`);
-                        
-
-                        
+                        console.log(`[DEBUG] FOUND PHMC EMPLOYEE: ${dName} | ${dRank} | ${dBadge} | (Coroner: ${dIsCoroner}) |`);
                     }
-                        
 
-                        
+                    // --- Quality Check ---
+                    const qualityResult = validateReportQuality();
+                    if (!qualityResult.success) {
+                      showNotification(
+                        <div>
+                          <strong>Quality Check: Failure</strong>
+                          <ul style={{ margin: '5px 0 0 0', paddingLeft: '15px', fontSize: '0.8rem' }}>
+                            {qualityResult.errors.map((err, i) => <li key={i}>{err}</li>)}
+                          </ul>
+                        </div>,
+                        'danger',
+                        10000
+                      );
+                    }
+
                     generateBBCode();
-                        
                     trackMetric('form_handler', `generate_bbcode_${selectedForm.name}`);
-                        
                   }} 
-                        
                   className={formStyles.generateButton}
-                        
                 >                  Generate BBCode
                 </button>
               </div>
@@ -1551,11 +1624,11 @@ export const FormHandler = () => {
           )}
         </div>
 
-        <div className={styles.rightPanel}>
-          <div style={{ background: "#1e1b4b", padding: "1.5rem", borderRadius: 12, marginBottom: "1.5rem" }} data-tour="right-panel-top">
+        <div className={styles.rightPanel} style={{ flex: '0 0 400px', minWidth: '350px', maxWidth: '450px' }}>
+          <div style={{ background: "#1e1b4b", padding: "1.5rem", borderRadius: 12, marginBottom: "1.5rem", border: '1px solid #312e81' }} data-tour="right-panel-top">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ color: "#a78bfa", margin: 0 }}>
-                Signed in as {mainEmployeeName || characterName || 'Guest'}
+              <h3 style={{ color: "#a78bfa", margin: 0, fontSize: '1.25rem', fontWeight: '700' }}>
+                <i className="fas fa-user-circle me-2"></i>User Profile
               </h3>
             </div>
             {
@@ -1571,6 +1644,16 @@ export const FormHandler = () => {
                   context={selectedForm?.name}
                   persistEnabled={keepCredentials}
                   setPersistEnabled={setKeepCredentials}
+                  user={user}
+                  isAuthenticated={isAuthenticated}
+                  isPhmcMember={isPhmcMember}
+                  canSwapCharacters={canSwapCharacters}
+                  swapCharacter={swapCharacter}
+                  swappableCharacters={swappableCharacters}
+                  factionData={factionData}
+                  updateFactionData={updateFactionData}
+                  login={login}
+                  logout={logout}
                 />
               </Suspense>
             }
@@ -1587,7 +1670,7 @@ export const FormHandler = () => {
   </button>
 ) : (
   <div style={{ color: "#94a3b8", fontStyle: "italic", padding: "0.75rem" }}>
-    {"Click \"Generate BBCode\" to preview"}
+    Click &quot;Generate BBCode&quot; to preview
   </div>
 )}
           <button onClick={copyAndSaveReport} disabled={!generatedBBCode} className={`${formStyles.rightPanelButton} ${generatedBBCode ? formStyles.copy : ''}`}>
@@ -1707,6 +1790,3 @@ export const FormHandler = () => {
     </div>
   );
 };
-
-
-

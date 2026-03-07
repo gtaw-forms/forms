@@ -1,21 +1,15 @@
 import { logAdminAction, getUserContext } from '../../utils/adminLogger';
 import React, { useState, useEffect } from 'react';
-import ReactDOM from 'react-dom';
 import { database } from '../../firebase';
 import { ref, get, set } from 'firebase/database';
 import { useNotification } from '../../contexts/NotificationContext';
-import './CctvRequestWebhookModal.css'; // Keep your styling
+import BaseModal from '../Modals/BaseModal';
+import { Button, Form } from 'react-bootstrap';
 
-const LsccEditModal = ({ show, onHide, item, onSave, categories, loading: parentLoading, logAdminAction, gtawUser, gtawUsername }) => {
+const LsccEditModal = ({ show, onHide, item, onSave, categories, logAdminAction, gtawUser, gtawUsername }) => {
   const { showNotification } = useNotification();
-  const [currentItem, setCurrentItem] = useState(item || {
-    name: '',
-    content: '',
-    category: '',
-    images: [],
-    uniqueWords: []
-  });
-  const [rawUniqueWordsInput, setRawUniqueWordsInput] = useState(''); // New state
+  const [currentItem, setCurrentItem] = useState(item || { name: '', content: '', category: '', images: [], uniqueWords: [] });
+  const [rawUniqueWordsInput, setRawUniqueWordsInput] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -25,258 +19,91 @@ const LsccEditModal = ({ show, onHide, item, onSave, categories, loading: parent
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    if (name === 'images') {
-      setCurrentItem(prev => ({ ...prev, images: value.split('\n') }));
-    } else if (name === 'uniqueWords') {
-      setRawUniqueWordsInput(value);
-    } else {
-      setCurrentItem(prev => ({ ...prev, [name]: value }));
-    }
+    if (name === 'images') setCurrentItem(prev => ({ ...prev, images: value.split('\n') }));
+    else if (name === 'uniqueWords') setRawUniqueWordsInput(value);
+    else setCurrentItem(prev => ({ ...prev, [name]: value }));
   };
 
-  const formatProtocolText = (text, images = []) => {
-    if (!text) return '';
-    let formatted = text
-      .replace(/\*(.*?)\*/g, '<strong>$1</strong>')
-      .replace(/_(.*?)_/g, '<u>$1</u>')
-      .replace(/^>>\s?(.*)$/gm, '<div style="margin-left: 20px;">• $1</div>')
-      .replace(/^>\s?(.*)$/gm, '<div>• $1</div>')
-      .replace(/\n/g, '<br />');
-
-    images.forEach((url, index) => {
-      const placeholder = `{image${index + 1}}`;
-      if (formatted.includes(placeholder)) {
-        formatted = formatted.replace(placeholder, `<img src="${url}" style="max-width: 100%; height: auto; margin: 10px 0; border-radius: 4px;" />`);
-      }
-    });
-
-    return formatted;
-  };
-
-const normalizeProtocols = (data) => {
-  if (!Array.isArray(data)) return [];
-  return data.map(cat => ({
-    ...cat,
-    protocols: Array.isArray(cat.protocols) ? cat.protocols : []
-  }));
-};
-const handleSave = async () => {
+  const handleSave = async () => {
     if (!currentItem.name.trim() || !currentItem.category.trim()) {
       showNotification('Name and Category are required!', 'warning');
       return;
     }
-
     setSaving(true);
     try {
       const protocolsRef = ref(database, 'lscc/protocols');
       const snapshot = await get(protocolsRef);
-      let protocols = normalizeProtocols(snapshot.val() || []);
-
+      let protocols = snapshot.val() || [];
       const newCategory = currentItem.category.trim();
       const isEditing = !!currentItem.id;
 
-      let oldCategory = null;
-      if (isEditing) {
-        // Find old category for logging
-        const found = protocols.find(cat =>
-          cat.protocols.some(p => p.id === currentItem.id)
-        );
-        oldCategory = found?.category || 'Unknown';
-      }
+      if (isEditing) protocols = protocols.map(cat => ({ ...cat, protocols: cat.protocols.filter(p => p.id !== currentItem.id) }));
 
-      // === 1. Remove from old category (if editing) ===
-      if (isEditing) {
-        protocols = protocols.map(cat => ({
-          ...cat,
-          protocols: cat.protocols.filter(p => p.id !== currentItem.id)
-        }));
-      }
-
-      // === 2. Find or create target category ===
       let targetCat = protocols.find(c => c.category === newCategory);
-      if (!targetCat) {
-        targetCat = { category: newCategory, protocols: [] };
-        protocols.push(targetCat);
-      }
+      if (!targetCat) { targetCat = { category: newCategory, protocols: [] }; protocols.push(targetCat); }
 
-      // === 3. Create saved item ===
-      let savedItem;
-      if (isEditing) {
-        savedItem = { ...currentItem, category: newCategory };
-      } else {
-        const newId = `proto-${Date.now()}`;
-        savedItem = { ...currentItem, id: newId, category: newCategory };
-      }
-
-      // Clean images on save
-      savedItem.images = (savedItem.images || [])
-        .map(url => url.trim())
-        .filter(url => url.length > 0 && /^https?:\/\//i.test(url));
+      const savedItem = { ...currentItem, id: currentItem.id || `proto-${Date.now()}`, category: newCategory };
+      savedItem.images = (savedItem.images || []).map(u => u.trim()).filter(u => u.length > 0 && /^https?:\/\//i.test(u));
+      savedItem.uniqueWords = [...new Set(rawUniqueWordsInput.split(',').map(w => w.trim().toLowerCase()).filter(w => w.length > 0))];
 
       targetCat.protocols.push(savedItem);
+      await set(protocolsRef, protocols.filter(cat => cat.protocols.length > 0));
 
-      // Clean unique words on save
-      const wordsArray = rawUniqueWordsInput
-        .split(',')
-        .map(word => word.trim().toLowerCase())
-        .filter(word => word.length > 0);
-      savedItem.uniqueWords = [...new Set(wordsArray)]; // Ensure uniqueness
-
-      // === 4. Clean up empty categories ===
-      protocols = protocols.filter(cat => cat.protocols.length > 0);
-
-      await set(protocolsRef, protocols);
-
-      // Logging
-        const { userAgent, timeZone } = getUserContext();
-        const action = isEditing ? 'Edited LSCC Protocol' : 'Added LSCC Protocol';
-        const details = `Protocol: ${savedItem.name}\nCategory: ${newCategory}\nID: ${savedItem.id}`;
-        logAdminAction(
-            gtawUsername,
-            action,
-            details,
-            'LSCC Management',
-            userAgent,
-            timeZone,
-            gtawUsername,
-            gtawUser
-        );
+      const { userAgent, timeZone } = getUserContext();
+      logAdminAction(gtawUsername, isEditing ? 'Edited LSCC Protocol' : 'Added LSCC Protocol', `Protocol: ${savedItem.name}`, 'LSCC Management', userAgent, timeZone, gtawUsername, gtawUser);
 
       onSave?.(savedItem);
       onHide();
     } catch (err) {
-      console.error('Save failed:', err);
       showNotification('Failed to save protocol: ' + err.message, 'error');
-    } finally {
-      setSaving(false);
-    }
-  };  if (!show) return null;
+    } finally { setSaving(false); }
+  };
 
-  return ReactDOM.createPortal(
-    <div className="modal-overlay" onClick={onHide}>
-      <div className="cctv-modal-dialog" onClick={e => e.stopPropagation()}>
-        <div className="cctv-modal-header">
-          <h4 className="cctv-title">{currentItem.id ? 'Edit' : 'Add'} Protocol</h4>
-          <button type="button" className="modal-close-btn" onClick={onHide}>×</button>
-        </div>
-
-        <div className="cctv-modal-body">
-          <div className="cctv-form-section">
-            <div className="cctv-form-row">
-              <div className="cctv-form-group">
-                <label className="cctv-form-label required">Protocol Name</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  name="name"
-                  value={currentItem.name || ''}
-                  onChange={handleChange}
-                  placeholder="e.g. Cardiac Arrest"
-                  disabled={saving}
-                />
-              </div>
-              <div className="cctv-form-group">
-                <label className="cctv-form-label required">Category</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  name="category"
-                  list="category-suggestions"
-                  value={currentItem.category || ''}
-                  onChange={handleChange}
-                  placeholder="e.g. Cardiac"
-                  disabled={saving}
-                />
-                <datalist id="category-suggestions">
-                  {categories.map((cat, i) => <option key={i} value={cat} />)}
-                </datalist>
-              </div>
-            </div>
-
-            <div className="cctv-form-row">
-              <div className="cctv-form-group full-width">
-                <label className="cctv-form-label">
-                  Content (use Enter for new lines — {`{image1}`}, {`{image2}`}, etc. for images) 
-                  <br />
-                  <small>
-                    Use *asterisks* for <strong>bold</strong>, _underscores_ for <u>underline</u>,
-                    and prefix lines with &gt; or &gt;&gt; for bullet points and nested lists.
-                  </small>
-                </label>
-                <textarea
-                  className="form-control cctv-textarea"
-                  rows="10"
-                  name="content"
-                  value={currentItem.content || ''}
-                  onChange={handleChange}
-                  placeholder="1. Assess airway...
-2. Begin CPR...
-{image1}
-3. Attach monitor..."
-                  disabled={saving}
-                />
-              </div>
-            </div>
-
-            <div className="cctv-form-row">
-              <div className="cctv-form-group full-width">
-                <label className="cctv-form-label">Content Preview</label>
-                <div
-                  className="form-control cctv-textarea" // Reusing textarea styling for consistency
-                  style={{ minHeight: '100px', padding: '10px', overflowY: 'auto' }}
-                  dangerouslySetInnerHTML={{ __html: formatProtocolText(currentItem.content, currentItem.images) }}
-                />
-              </div>
-            </div>
-
-            <div className="cctv-form-row">
-              <div className="cctv-form-group full-width">
-                <label className="cctv-form-label">Image URLs (one per line)</label>
-                <textarea
-                  className="form-control cctv-textarea"
-                  rows="6"
-                  name="images"
-                  value={Array.isArray(currentItem.images) ? currentItem.images.join('\n') : ''}
-                  onChange={handleChange}
-                  placeholder="https://i.imgur.com/abc123.png
-https://i.imgur.com/def456.png"
-                  disabled={saving}
-                />
-              </div>
-            </div>
-
-            <div className="cctv-form-row">
-              <div className="cctv-form-group full-width">
-                <label className="cctv-form-label">Unique Words (comma-separated)</label>
-                <textarea
-                  className="form-control cctv-textarea"
-                  rows="3"
-                  name="uniqueWords"
-                  value={rawUniqueWordsInput}
-                  onChange={handleChange}
-                  placeholder="word1, word2, phrase three"
-                  disabled={saving}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="cctv-modal-footer">
-          <button className="cctv-btn cctv-btn-secondary" onClick={onHide} disabled={saving}>
-            Cancel
-          </button>
-          <button
-            className="cctv-btn cctv-btn-primary"
-            onClick={handleSave}
-            disabled={saving}
-          >
+  return (
+    <BaseModal
+      isOpen={show}
+      onClose={onHide}
+      title={`${currentItem.id ? 'Edit' : 'Add'} Protocol`}
+      modalSize="large"
+      variant="info"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onHide} disabled={saving}>Cancel</Button>
+          <Button variant="primary" onClick={handleSave} disabled={saving} style={{ marginLeft: '10px' }}>
             {saving ? 'Saving...' : 'Save Protocol'}
-          </button>
+          </Button>
+        </>
+      }
+    >
+      <Form style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+          <Form.Group>
+            <Form.Label style={{ color: '#8b949e' }}>Protocol Name *</Form.Label>
+            <Form.Control name="name" value={currentItem.name || ''} onChange={handleChange} style={{ backgroundColor: '#161b22', color: '#e6edf3', borderColor: '#30363d' }} />
+          </Form.Group>
+          <Form.Group>
+            <Form.Label style={{ color: '#8b949e' }}>Category *</Form.Label>
+            <Form.Control name="category" value={currentItem.category || ''} onChange={handleChange} list="cat-suggestions" style={{ backgroundColor: '#161b22', color: '#e6edf3', borderColor: '#30363d' }} />
+            <datalist id="cat-suggestions">{categories.map((cat, i) => <option key={i} value={cat} />)}</datalist>
+          </Form.Group>
         </div>
-      </div>
-    </div>,
-    document.getElementById('modal-root')
+
+        <Form.Group>
+          <Form.Label style={{ color: '#8b949e' }}>Content</Form.Label>
+          <Form.Control as="textarea" rows={8} name="content" value={currentItem.content || ''} onChange={handleChange} style={{ backgroundColor: '#161b22', color: '#e6edf3', borderColor: '#30363d' }} />
+        </Form.Group>
+
+        <Form.Group>
+          <Form.Label style={{ color: '#8b949e' }}>Image URLs (one per line)</Form.Label>
+          <Form.Control as="textarea" rows={3} name="images" value={currentItem.images?.join('\n') || ''} onChange={handleChange} style={{ backgroundColor: '#161b22', color: '#e6edf3', borderColor: '#30363d' }} />
+        </Form.Group>
+
+        <Form.Group>
+          <Form.Label style={{ color: '#8b949e' }}>Unique Words (comma-separated)</Form.Label>
+          <Form.Control type="text" name="uniqueWords" value={rawUniqueWordsInput} onChange={handleChange} style={{ backgroundColor: '#161b22', color: '#e6edf3', borderColor: '#30363d' }} />
+        </Form.Group>
+      </Form>
+    </BaseModal>
   );
 };
 

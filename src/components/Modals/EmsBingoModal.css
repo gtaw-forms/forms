@@ -1,117 +1,14 @@
+/* src/components/Modals/EmsBingoModal.css */
+
 :root {
-    --bingo-primary-gradient: linear-gradient(135deg, #ff5757 0%, #ff8c42 100%);
-    --bingo-primary-color: rgba(255, 87, 87, 0.5);
-    --bingo-primary-color-light: rgba(255, 87, 87, 0.3);
-    --bingo-primary-color-strong: rgba(255, 87, 87, 0.6);
-    --bingo-card-bg: linear-gradient(135deg, #1e2530 0%, #16202c 100%);
+    --bingo-primary-color: #ff5757;
+    --bingo-primary-color-light: #ff7b72;
+    --bingo-primary-color-strong: #f85149;
+    --bingo-primary-gradient: linear-gradient(135deg, #ff5757 0%, #f0883e 100%);
     --bingo-border-color: rgba(72, 79, 88, 0.5);
+    --bingo-card-bg: #161b22;
 }
 
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1050;
-  padding: 2rem;
-}
-
-.bingo-modal-dialog {
-    position: relative;
-    width: 100%;
-    max-width: 1200px;
-    max-height: 100vh;
-    background-color: var(--background-color);
-    border-radius: var(--modal-border-radius);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-    display: flex;
-    flex-direction: column;
-    border: 1px solid var(--border-color);
-}
-
-.bingo-modal-dialog .modal-content {
-    background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
-    border: 2px solid transparent;
-    background-clip: padding-box;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
-    border-radius: 16px;
-    width: 90%;
-    max-width: 1200px;
-    pointer-events: auto;
-    display: flex;
-    flex-direction: column;
-    max-height: 95vh;
-}
-
-.bingo-modal-dialog .modal-header {
-    background: linear-gradient(135deg, #1a1f2e 0%, #0d1117 100%);
-    border-bottom: 2px solid var(--bingo-primary-color-light);
-    flex-shrink: 0;
-    justify-content: space-between;
-    align-items: center;
-    position: relative;
-    padding: 20px 60px;
-    border-radius: 16px 16px 0 0;
-}
-
-.modal-close-btn {
-    position: absolute;
-    right: 20px;
-    top: 50%;
-    transform: translateY(-50%);
-    background: none;
-    border: none;
-    color: #94a3b8;
-    font-size: 1.5rem;
-    cursor: pointer;
-    transition: color 0.2s ease;
-    z-index: 2;
-}
-
-.modal-close-btn:hover {
-    color: #f8fafc;
-}
-
-.bingo-title {
-    font-family: 'Segoe UI', 'Arial', sans-serif;
-    font-weight: 800;
-    background: var(--bingo-primary-gradient);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    font-size: 2.5rem;
-    text-shadow: none;
-    letter-spacing: -0.5px;
-}
-
-.bingo-back-button {
-    position: absolute;
-    left: 15px;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 1;
-    background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: #e2e8f0;
-    padding: 8px 16px;
-    border-radius: 8px;
-    transition: all 0.3s ease;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.bingo-back-button:hover {
-    background: linear-gradient(135deg, #3d4758 0%, #2a303c 100%);
-    border-color: rgba(255, 255, 255, 0.2);
-    transform: translateY(-50%) translateX(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-/* --- NEW/MODIFIED: Styles for the Modal.Body --- */
 .bingo-modal-dialog .modal-body {
     flex: 1 1 auto;
     overflow: hidden;
@@ -119,14 +16,17 @@
     flex-direction: column;
     padding: 0;
     background: linear-gradient(180deg, #0d1117 0%, #161b22 100%);
+    height: 100%;
 }
-/* --- END NEW/MODIFIED --- */
 
 .bingo-content-wrapper {
     display: flex;
     gap: 20px;
     overflow: hidden;
     padding: 20px;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
 }
 
 .bingo-main-section {
@@ -134,12 +34,13 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    min-height: 0;
 }
 
 .bingo-grid {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
-    grid-template-rows: repeat(5, auto);
+    grid-template-rows: repeat(5, 1fr);
     gap: 8px;
     background: linear-gradient(135deg, #1a1f2e 0%, #0d1117 100%);
     border: 2px solid var(--bingo-primary-color-light);
@@ -158,10 +59,10 @@
     justify-content: center;
     text-align: center;
     padding: 8px;
-    font-size: 0.75rem;
+    font-size: 0.85rem; /* Increased slightly */
     font-weight: 600;
     color: #e2e8f0;
-    min-height: 100px; /* Adjust as needed */
+    min-height: 0; 
     overflow-wrap: break-word;
     word-break: break-word;
     hyphens: auto;
@@ -183,56 +84,34 @@
     box-shadow: 0 4px 12px rgba(255, 87, 87, 0.2);
 }
 
-/* Accessibility: Respect prefers-reduced-motion */
-@media (prefers-reduced-motion: reduce) {
-    .bingo-square:hover,
-    .btn:hover,
-    .activity-item:hover,
-    .bingo-back-button:hover,
-    .bingo-type-button:hover,
-    .new-messages-indicator:hover {
-        transform: none;
-    }
+.bingo-square.free-space {
+    background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+    display: flex;
+    flex-direction: column;
+    gap: 4px; /* Reduced gap */
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--bingo-primary-color);
+    box-shadow: 0 4px 8px rgba(255, 87, 87, 0.2);
+    cursor: default;
 }
 
-.bingo-square::after {
-    content: '\2713';
-    position: absolute;
-    top: 2px;
-    right: 4px;
-    font-size: 1.2rem;
-    font-weight: bold;
-    color: transparent; /* The checkmark is invisible by default */
-    text-shadow: none;  /* No shadow by default */
-    transition: color 0.2s ease; /* Optional: a nice fade-in effect */
+.bingo-square.free-space img {
+    max-width: 50%; /* Reduced for better text fit */
+    height: auto;
+    max-height: 50%;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
 }
 
-.bingo-square.marked {
-    /* These styles are now handled by individual markers */
-    background-color: transparent; /* Or keep original square background */
-    border-color: transparent;
-    color: inherit;
+.bingo-square.free-space .free-space-text {
+    font-weight: 800;
+    color: #ff7b72; /* Solid color for better visibility */
+    font-size: 1.1rem;
+    text-align: center;
+    letter-spacing: 1px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 }
 
-.bingo-square.marked::after {
-    /* This pseudo-element is no longer used for the checkmark */
-    content: none;
-}
-.bingo-marker {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.2);
-    flex-shrink: 0;
-    transition: all 0.2s ease;
-}
-
-.bingo-marker:hover {
-    transform: scale(1.1);
-}
-
-/* Responsive adjustments for smaller screens */
 .bingo-markers-container {
     position: absolute;
     top: 0;
@@ -245,38 +124,38 @@
     padding: 3px;
     gap: 3px;
     pointer-events: none;
-    background: rgba(255, 255, 255, 0.03);
-    border-radius: 6px;
+}
+
+.bingo-marker {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    flex-shrink: 0;
 }
 
 .bingo-sidebar {
-    flex: 1;
+    flex: 1.2;
     background: linear-gradient(135deg, #1a1f2e 0%, #0d1117 100%);
     border: 2px solid var(--bingo-border-color);
     border-radius: 12px;
     padding: 20px;
     display: flex;
     flex-direction: column;
-    overflow-y: auto;
+    overflow-y: hidden;
     max-height: 100%;
     min-height: 0;
     position: relative;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-.bingo-sidebar h5 {
-    color: #f7fafc;
-    margin-bottom: 16px;
-    border-bottom: 2px solid var(--bingo-primary-color-light);
-    padding-bottom: 12px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-}
-
 .activity-log {
     flex-grow: 1;
     overflow-y: auto;
     padding-right: 8px;
+    min-height: 0;
+    margin-top: 10px;
 }
 
 .activity-item {
@@ -284,408 +163,96 @@
     border: 1px solid var(--bingo-border-color);
     border-left: 3px solid #58a6ff;
     border-radius: 8px;
-    padding: 12px 14px;
-    margin-bottom: 10px;
-    font-size: 0.9em;
+    padding: 10px;
+    margin-bottom: 8px;
+    font-size: 0.85em;
     color: #cbd5e0;
-    word-wrap: break-word;
-    transition: all 0.3s ease;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-.activity-item:hover {
-    background: linear-gradient(135deg, #2a3542 0%, #1e2835 100%);
-    border-left-color: #ff8c42;
-    transform: translateX(4px);
 }
 
 .activity-item strong {
     color: #79c0ff;
-    font-weight: 600;
 }
 
 .activity-item .timestamp {
     display: block;
-    font-size: 0.75em;
+    font-size: 0.7em;
     color: #a0aec0;
-    margin-top: 6px;
-    font-weight: 500;
+    margin-top: 4px;
 }
 
-.bingo-modal-dialog .modal-footer {
-    background: linear-gradient(135deg, #1a1f2e 0%, #0d1117 100%);
-    border-top: 2px solid var(--bingo-primary-color-light);
-    flex-shrink: 0;
-    padding: 20px;
-    border-radius: 0 0 16px 16px;
-    gap: 12px;
-}
-
-.bingo-modal-dialog .modal-footer .btn {
-    border-radius: 8px;
-    padding: 10px 24px;
-    font-weight: 600;
-    transition: all 0.3s ease;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.bingo-modal-dialog .modal-footer .btn-primary {
-    background: var(--bingo-primary-gradient);
-    border: none;
-}
-
-.bingo-modal-dialog .modal-footer .btn-primary:hover {
-    background: linear-gradient(135deg, #ff6767 0%, #ff9c52 100%);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(255, 87, 87, 0.4);
-}
-
-.bingo-modal-dialog .modal-footer .btn-secondary {
-    background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.bingo-modal-dialog .modal-footer .btn-secondary:hover {
-    background: linear-gradient(135deg, #3d4758 0%, #2a303c 100%);
-    border-color: rgba(255, 255, 255, 0.2);
-    transform: translateY(-2px);
-}
-
-.bingo-modal-dialog .modal-footer .btn-info {
-    background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
-    border: none;
-}
-
-.bingo-modal-dialog .modal-footer .btn-info:hover {
-    background: linear-gradient(135deg, #52a9f1 0%, #4192de 100%);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(66, 153, 225, 0.4);
-}
-
-.bingo-modal-dialog .modal-footer .btn-danger {
-    background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
-    border: none;
-}
-
-.bingo-modal-dialog .modal-footer .btn-danger:hover {
-    background: linear-gradient(135deg, #f54e4e 0%, #d54040 100%);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(229, 62, 62, 0.4);
-}
-
-/* Custom styles for react-select */
-.react-select-container .react-select__control {
-    background: var(--bingo-card-bg) !important;
-    border: 2px solid var(--bingo-border-color) !important;
-    color: #e2e8f0 !important;
-    border-radius: 8px !important;
-    transition: all 0.3s ease !important;
-}
-.react-select-container .react-select__control:hover {
-    border-color: var(--bingo-primary-color-strong) !important;
-    box-shadow: 0 2px 8px rgba(255, 87, 87, 0.2) !important;
-}
-.react-select-container .react-select__single-value {
-    color: #e2e8f0 !important;
-}
-.react-select-container .react-select__placeholder {
-    color: #a0aec0 !important;
-}
-.react-select-container .react-select__indicator-separator {
-    background-color: rgba(72, 79, 88, 0.5) !important;
-}
-.react-select-container .react-select__dropdown-indicator {
-    color: #cbd5e0 !important;
-}
-.react-select-container .react-select__menu {
-    background: var(--bingo-card-bg) !important;
-    border: 2px solid var(--bingo-border-color) !important;
-    border-radius: 8px !important;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
-}
-.react-select-container .react-select__option {
-    background-color: transparent !important;
-    color: #e2e8f0 !important;
-    transition: all 0.2s ease !important;
-}
-.react-select-container .react-select__option--is-focused {
-    background: linear-gradient(135deg, #2a3542 0%, #1e2835 100%) !important;
-}
-.react-select-container .react-select__option--is-selected {
-    background: var(--bingo-primary-gradient) !important;
-    color: white !important;
-}
-
-/* Responsive adjustments for smaller screens */
-@media (max-width: 768px) {
-    .bingo-content-wrapper {
-        flex-direction: column;
-        padding: 10px;
-    }
-
-    .bingo-main-section, .bingo-sidebar {
-        flex: none;
-        width: 100%;
-        max-height: unset;
-    }
-
-    .bingo-sidebar {
-        margin-top: 20px;
-    }
-
-    .bingo-title {
-        font-size: 1.8rem;
-    }
-
-    .bingo-square {
-        font-size: 0.65rem;
-        padding: 4px;
-    }
-    .bingo-square.free-space span {
-        font-size: 0.8rem;
-    }
-
-    /* Added responsive rule for the checkmark */
-    .bingo-square.marked::after {
-        font-size: 1rem; /* Further reduce checkmark size on mobile */
-        top: 1px;
-        right: 3px;
-    }
-}
-.activity-log::-webkit-scrollbar,
-.bingo-sidebar::-webkit-scrollbar {
-    width: 12px;
-    height: 12px;
-}
-
-.activity-log::-webkit-scrollbar-track,
-.bingo-sidebar::-webkit-scrollbar-track {
-    background: rgba(13, 17, 23, 0.5);
-    border-radius: 6px;
-}
-
-.activity-log::-webkit-scrollbar-thumb,
-.bingo-sidebar::-webkit-scrollbar-thumb {
-    background: linear-gradient(135deg, #484f58 0%, #30363d 100%);
-    border-radius: 6px;
-    border: 2px solid rgba(13, 17, 23, 0.5);
-}
-
-.activity-log::-webkit-scrollbar-thumb:hover,
-.bingo-sidebar::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(135deg, #586069 0%, #484f58 100%);
-}
-
-/* Basic Firefox scrollbar styling */
-.activity-log,
-.bingo-sidebar {
-    scrollbar-width: thin;
-    scrollbar-color: #484f58 rgba(13, 17, 23, 0.5);
-}
-
-.activity-item.highlight-new {
-    animation: highlight-fade 3s ease-out forwards;
-}
-
-@keyframes highlight-fade {
-    0% { 
-        background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
-        border-left-color: #4299e1;
-        transform: translateX(8px);
-    }
-    100% { 
-        background: linear-gradient(135deg, #1e2530 0%, #16202c 100%);
-        border-left-color: #58a6ff;
-        transform: translateX(0);
-    }
-}
-
-/* New messages indicator bar */
-.new-messages-indicator {
-    position: absolute;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
-    color: white;
-    padding: 10px 20px;
-    border-radius: 20px;
-    font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    box-shadow: 0 4px 12px rgba(66, 153, 225, 0.4);
-    transition: all 0.3s ease;
-    opacity: 0;
-    pointer-events: none;
-    z-index: 10;
-}
-
-.new-messages-indicator.show {
-    opacity: 1;
-    pointer-events: auto;
-}
-
-.new-messages-indicator:hover {
-    background: linear-gradient(135deg, #52a9f1 0%, #4192de 100%);
-    transform: translateX(-50%) translateY(-2px);
-    box-shadow: 0 6px 16px rgba(66, 153, 225, 0.5);
-}
-
-/* Ensure the sidebar is positioned relative for the indicator to work */
-.bingo-sidebar {
-    flex: 1;
-    background: linear-gradient(135deg, #1a1f2e 0%, #0d1117 100%);
-    border: 2px solid rgba(72, 79, 88, 0.5);
-    border-radius: 12px;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto;
-    max-height: 100%;
-    min-height: 0;
-    position: relative;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.activity-item .unmarked-text {
-    color: #fc8181;
-    font-weight: 700;
-}
-.bingo-square.free-space {
-    background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    align-items: center;
-    justify-content: center;
-    border: 2px solid var(--bingo-primary-color);
-    box-shadow: 0 4px 8px rgba(255, 87, 87, 0.2);
-}
-
-.bingo-square.free-space img {
-    max-width: 65%;
-    height: auto;
-    max-height: 65%;
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
-}
-.bingo-square.free-space .free-space-text {
-    font-weight: 800;
-    background: var(--bingo-primary-gradient);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    font-size: 1.05rem;
-    text-align: center;
-    letter-spacing: 0.5px;
-}
-
-.activity-item.bingo-message {
-    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
-    border: 2px solid #68d391;
-    border-left: 4px solid #9ae6b4;
-    color: #f0fff4;
-    font-weight: 700;
-    text-align: center;
-    padding: 14px;
-    animation: bingo-flash 2s infinite alternate;
-    box-shadow: 0 4px 12px rgba(72, 187, 120, 0.4);
-}
-
-.activity-item .bingo-text {
-    font-size: 1.15em;
-    color: #f0fff4;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-    font-weight: 800;
-}
-
-@keyframes bingo-flash {
-    from { 
-        background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
-        box-shadow: 0 4px 12px rgba(72, 187, 120, 0.4);
-    }
-    to { 
-        background: linear-gradient(135deg, #68d391 0%, #48bb78 100%);
-        box-shadow: 0 6px 16px rgba(72, 187, 120, 0.6);
-    }
-}
-
-.bingo-phrases-textarea {
-    background: var(--bingo-card-bg) !important;
-    color: #e2e8f0 !important;
-    border: 2px solid var(--bingo-border-color) !important;
-    border-radius: 8px !important;
-    transition: all 0.3s ease !important;
-}
-
-.bingo-phrases-textarea:focus {
-    background: linear-gradient(135deg, #252d3d 0%, #1c222e 100%) !important;
-    color: #e2e8f0 !important;
-    border-color: var(--bingo-primary-color-strong) !important;
-    box-shadow: 0 0 0 0.25rem rgba(255, 87, 87, 0.25) !important;
-}
-
-/* Type selection buttons styling */
 .bingo-type-selection {
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
     height: 100%;
-    padding: 20px;
     text-align: center;
-}
-
-.bingo-type-selection p {
-    color: #cbd5e0;
-    font-size: 1.2rem;
-    margin-bottom: 30px;
-    font-weight: 600;
 }
 
 .bingo-type-buttons {
     display: flex;
-    gap: 20px;
+    gap: 15px;
     justify-content: center;
     flex-wrap: wrap;
+    margin-top: 20px;
 }
 
 .bingo-type-button {
     background: var(--bingo-primary-gradient) !important;
     border: none !important;
-    border-radius: 12px !important;
-    padding: 16px 32px !important;
-    font-size: 1.1rem !important;
+    border-radius: 8px !important;
+    padding: 12px 24px !important;
     font-weight: 700 !important;
     color: white !important;
-    transition: all 0.3s ease !important;
-    box-shadow: 0 4px 12px rgba(255, 87, 87, 0.3) !important;
+    box-shadow: 0 4px 8px rgba(255, 87, 87, 0.3) !important;
 }
 
-.bingo-type-button:hover {
-    background: linear-gradient(135deg, #ff6767 0%, #ff9c52 100%) !important;
-    transform: translateY(-4px) !important;
-    box-shadow: 0 6px 20px rgba(255, 87, 87, 0.5) !important;
-}
-
-.welcome-message {
-    color: #f7fafc;
-    font-weight: 700;
-    margin-bottom: 20px;
-    padding: 12px;
-    background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
-    border-radius: 8px;
-    border-left: 4px solid #68d391;
-    text-align: center;
-}
-
-/* Loading spinner styles */
 .bingo-loading {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 40px;
+    height: 100%;
     color: #cbd5e0;
-    font-size: 1.1rem;
-    gap: 16px;
+    gap: 12px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 992px) {
+    .bingo-content-wrapper {
+        flex-direction: column;
+        overflow-y: auto;
+    }
+    .bingo-sidebar {
+        flex: none;
+        height: 400px;
+    }
+}
+
+@media (max-width: 576px) {
+    .bingo-grid {
+        gap: 4px;
+        padding: 6px;
+    }
+    .bingo-square {
+        font-size: 0.6rem;
+        padding: 4px;
+    }
+    .bingo-square.free-space .free-space-text {
+        font-size: 0.8rem;
+    }
+}
+
+/* Scrollbar styling */
+.activity-log::-webkit-scrollbar {
+    width: 6px;
+}
+
+.activity-log::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.activity-log::-webkit-scrollbar-thumb {
+    background: #484f58;
+    border-radius: 3px;
 }

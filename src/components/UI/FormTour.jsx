@@ -15,7 +15,7 @@ const generalTourSteps = [
   { title: "Finish & Save", content: "Generate, preview, and copy your BBCode here. We automatically save a backup if you accidentially 'clear-form'.", selector: '[data-tour="right-panel-bottom"]' }
 ];
 
-const sectionExplanations = {
+export const sectionExplanations = {
   'coroner-report': [
     {
       title: "Scene Information",

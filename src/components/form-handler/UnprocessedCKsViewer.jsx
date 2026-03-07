@@ -245,7 +245,7 @@ const UnprocessedCKsViewer = ({ selectedForm, onPreload }) => {
             </h4>
             
             <p style={{ color: '#cbd5e1', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-                {"The following Coroner Reports & Mass Fatality Reports are marked as Character Kills (CK) and require processing. Click \"Process\" to confirm the Death Record has been filed and remove them from this queue."}
+                The following Coroner Reports &amp; Mass Fatality Reports are marked as Character Kills (CK) and require processing. Click &quot;Process&quot; to confirm the Death Record has been filed and remove them from this queue.
             </p>
 
             {loading ? (

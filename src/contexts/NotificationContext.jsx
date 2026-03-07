@@ -77,10 +77,9 @@ export const NotificationProvider = ({ children }) => {
         }
     }, []);
 
-    const showNotification = useCallback((message, icon = 'check-circle', duration = DEFAULT_NOTIFICATION_DURATION, actions = []) => {
-        const newNotificationId = Date.now() + Math.random();
-        const isInteractive = actions && actions.length > 0;
-        const isPersistentLoading = duration === 0 && !isInteractive;
+    const showNotification = useCallback((message, icon = 'check-circle', duration = DEFAULT_NOTIFICATION_DURATION, options = {}) => {
+        const { key, actions = [] } = options;
+        const newNotificationId = key || Date.now() + Math.random();
 
         const newNotification = {
             id: newNotificationId,
@@ -91,26 +90,41 @@ export const NotificationProvider = ({ children }) => {
         };
 
         setNotifications(prevNotifications => {
-            let updatedNotifications = [...prevNotifications];
-
-            if (isPersistentLoading) {
-                if (loadingNotificationIdRef.current) {
-                    updatedNotifications = updatedNotifications.filter(n => n.id !== loadingNotificationIdRef.current);
-                }
-                loadingNotificationIdRef.current = newNotificationId;
-            } 
-            // Removed aggressive filtering of 'result' notifications to allow stacking
+            const existingNotificationIndex = key ? prevNotifications.findIndex(n => n.id === key) : -1;
             
-            updatedNotifications.push(newNotification);
+            let updatedNotifications;
 
-            if (!isInteractive && !isPersistentLoading && duration > 0) {
-                setTimeout(() => {
+            if (existingNotificationIndex !== -1) {
+                // Update existing notification
+                updatedNotifications = [...prevNotifications];
+                const existingNotification = updatedNotifications[existingNotificationIndex];
+                
+                // Clear the old dismiss timer
+                if (existingNotification.dismissTimer) {
+                    clearTimeout(existingNotification.dismissTimer);
+                }
+                
+                updatedNotifications[existingNotificationIndex] = {
+                    ...existingNotification,
+                    ...newNotification,
+                };
+            } else {
+                updatedNotifications = [...prevNotifications, newNotification];
+            }
+
+            const currentNotification = key ? updatedNotifications.find(n => n.id === key) : newNotification;
+
+            if (currentNotification && duration > 0) {
+                const timerId = setTimeout(() => {
                     removeNotification(newNotificationId);
                 }, duration);
+                // Store timer to clear it if updated
+                currentNotification.dismissTimer = timerId;
             }
 
             return updatedNotifications;
         });
+
         return newNotificationId;
     }, [removeNotification]);
 

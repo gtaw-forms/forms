@@ -10,6 +10,7 @@ import { Spinner } from 'react-bootstrap';
 import { FormHandler } from './components/form-handler/FormHandler.jsx';
 import ProtectedRoute from './components/Auth/ProtectedRoute.jsx';
 import Admin from './components/Admin/Admin.jsx';
+import DiscordNameCheck from './components/Auth/DiscordNameCheck.jsx';
 
 // Lazy load non-critical components
 const GtaLogin = lazy(() => import('./components/Auth/GtaLogin.jsx'));
@@ -91,23 +92,25 @@ function App() {
         >
             <FormProvider formData={formData} setFormData={setFormData} setLastWebhookIdentifier={setLastWebhookIdentifier} showNotification={showNotification}>
                 <NotificationProvider>
-                        <Router>
-                                <SeasonalEffectsProvider> {/* Wrap Routes with SeasonalEffectsProvider */}
-                                    <Suspense fallback={<LoadingFallback />}>
-                                        <Routes>
-                                            <Route path="/" element={<FormHandler formData={formData} setFormData={setFormData} lastWebhookIdentifier={lastWebhookIdentifier} setLastWebhookIdentifier={setLastWebhookIdentifier} showNotification={showNotification} removeNotification={removeNotification} setShowAdblockNotification={setShowAdblockNotification} />} />
-                                            <Route path="/login" element={<GtaLogin />} />
-                                            <Route path="/auth/gta/callback" element={<UnifiedGtaCallback />} />
-                                            <Route path="/auth/gta/diagnostic" element={<OAuthUrlDiagnostic />} />
-                                            <Route path="/auth/gtapayment/callback/:token" element={<PaymentCallback />} />
-                                            <Route path="/admin" element={<ProtectedRoute><Admin formData={formData} setFormData={setFormData} showNotification={showNotification} /></ProtectedRoute>} />
-                                            <Route path="/ems-dashboard" element={<ProtectedRoute><EmsDashboard /></ProtectedRoute>} />
-                                            <Route path="/form-handler" element={<ProtectedRoute><FormHandler /></ProtectedRoute>} />
-                                            <Route path="*" element={<Navigate to="/" replace />} />
-                                        </Routes>
-                                    </Suspense>
-                                </SeasonalEffectsProvider>
-                        </Router>
+                    <Router>
+                        <DiscordNameCheck>
+                            <SeasonalEffectsProvider> {/* Wrap Routes with SeasonalEffectsProvider */}
+                                <Suspense fallback={<LoadingFallback />}>
+                                    <Routes>
+                                        <Route path="/" element={<FormHandler formData={formData} setFormData={setFormData} lastWebhookIdentifier={lastWebhookIdentifier} setLastWebhookIdentifier={setLastWebhookIdentifier} showNotification={showNotification} removeNotification={removeNotification} setShowAdblockNotification={setShowAdblockNotification} />} />
+                                        <Route path="/login" element={<GtaLogin />} />
+                                        <Route path="/auth/gta/callback" element={<UnifiedGtaCallback />} />
+                                        <Route path="/auth/gta/diagnostic" element={<OAuthUrlDiagnostic />} />
+                                        <Route path="/auth/gtapayment/callback/:token" element={<PaymentCallback />} />
+                                        <Route path="/admin" element={<ProtectedRoute><Admin formData={formData} setFormData={setFormData} showNotification={showNotification} /></ProtectedRoute>} />
+                                        <Route path="/ems-dashboard" element={<ProtectedRoute><EmsDashboard /></ProtectedRoute>} />
+                                        <Route path="/form-handler" element={<ProtectedRoute><FormHandler /></ProtectedRoute>} />
+                                        <Route path="*" element={<Navigate to="/" replace />} />
+                                    </Routes>
+                                </Suspense>
+                            </SeasonalEffectsProvider>
+                        </DiscordNameCheck>
+                    </Router>
                 </NotificationProvider>
             </FormProvider>
         </Sentry.ErrorBoundary>
