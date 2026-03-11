@@ -2,11 +2,11 @@
 import { logAdminAction, getUserContext } from '../../utils/adminLogger';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import React, { useState, useEffect } from "react";
-import { database, deleteForm } from "../../firebase"; // Import deleteForm
+import { database, deleteForm } from "../../firebase"; 
 import { ref, onValue, update } from "firebase/database";
 import AddFormModal from "./AddFormModal";
-import styles from "../ems-dashboard/EmsDashboard.module.css";
-import { useNotification } from '../../contexts/NotificationContext'; // Import useNotification
+import styles from "./FormManager.module.css";
+import { useNotification } from '../../contexts/NotificationContext'; 
 
 const FormManager = ({ currentUser }) => {
   const { user: gtawUser, username: gtawUsername } = useGtaWorldAuth();
@@ -18,7 +18,7 @@ const FormManager = ({ currentUser }) => {
   const [previewingForm, setPreviewingForm] = useState(null);
   const [isDuplicate, setIsDuplicate] = useState(false);
 
-  const { showNotification } = useNotification(); // Initialize notification hook
+  const { showNotification } = useNotification(); 
 
   useEffect(() => {
     const formsRef = ref(database, "forms");
@@ -83,7 +83,6 @@ const FormManager = ({ currentUser }) => {
         await update(ref(database), updates);
         showNotification(`Successfully updated BBCode in ${updatedCount} forms!`, 'success');
         
-        // Log the action
         const { userAgent, timeZone } = getUserContext();
         logAdminAction(
             currentUser?.email || gtawUsername,
@@ -106,7 +105,7 @@ const FormManager = ({ currentUser }) => {
   };
 
   const handleDeleteForm = async (formId, formName, e) => {
-    e.stopPropagation(); // Prevent the form card's onClick from firing
+    e.stopPropagation(); 
     if (window.confirm(`Are you sure you want to delete the form "${formName}"? This action cannot be undone.`)) {
       try {
         const { userAgent, timeZone } = getUserContext();
@@ -122,7 +121,7 @@ const FormManager = ({ currentUser }) => {
         );
         await deleteForm(formId);
         showNotification(`Form "${formName}" deleted successfully!`, 'success');
-        setPreviewingForm(null); // Clear preview if deleted form was previewed
+        if (previewingForm?.firebaseKey === formId) setPreviewingForm(null);
       } catch (error) {
         showNotification(`Failed to delete form "${formName}". Error: ${error.message}`, 'error');
       }
@@ -133,170 +132,94 @@ const FormManager = ({ currentUser }) => {
     <div className={styles.container}>
       <div className={styles.header}>
         <h1>
-          <span style={{ color: "#8b5cf6" }}>Form Manager</span> — Admin Panel
+          <i className="fas fa-file-invoice" style={{ color: "#8b5cf6" }}></i>
+          <span className={styles.headerTitle}>Form Manager</span>
         </h1>
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <button
-            onClick={handleFixBBCode}
-            style={{
-              padding: "0.8rem 2rem",
-              background: "#f59e0b",
-              color: "white",
-              border: "none",
-              borderRadius: 12,
-              fontWeight: "700",
-              fontSize: "1.1rem",
-              cursor: "pointer"
-            }}
-          >
+        <div className={styles.headerActions}>
+          <button onClick={handleFixBBCode} className={`${styles.btn} ${styles.btnWarning}`}>
+            <i className="fas fa-magic"></i>
             Fix BBCode [b] → [bold]
           </button>
-          <button
-            onClick={() => setShowAddModal(true)}
-            style={{
-              padding: "0.8rem 2rem",
-              background: "#10b981",
-              color: "white",
-              border: "none",
-              borderRadius: 12,
-              fontWeight: "700",
-              fontSize: "1.1rem",
-              cursor: "pointer"
-            }}
-          >
-            + Add New Form
+          <button onClick={() => setShowAddModal(true)} className={`${styles.btn} ${styles.btnPrimary}`}>
+            <i className="fas fa-plus"></i>
+            Add New Form
           </button>
         </div>
       </div>
 
       <div className={styles.mainLayout}>
-        {/* LEFT PANEL — Form List */}
         <div className={styles.leftPanel}>
-          <input
-            type="text"
-            placeholder="Search forms..."
-            className={styles.searchInput}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-
-          <div style={{ margin: "1rem 0" }}>
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "0.75rem",
-                background: "#1e293b",
-                border: "1px solid #334155",
-                color: "#e2e8f0",
-                borderRadius: 8
-              }}
-            >
-              {categories.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
+          <div className={styles.searchWrapper}>
+            <i className="fas fa-search"></i>
+            <input
+              type="text"
+              placeholder="Search forms..."
+              className={styles.searchInput}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
           </div>
 
-          <div style={{ marginTop: "0.5rem" }}>
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className={styles.categorySelect}
+          >
+            {categories.map(cat => (
+              <option key={cat} value={cat}>{cat === "All" ? "📂 All Categories" : cat}</option>
+            ))}
+          </select>
+
+          <div className={styles.formList}>
             {filteredForms.length === 0 ? (
               <div style={{ textAlign: "center", color: "#64748b", padding: "2rem" }}>
-                Loading....
+                {forms.length === 0 ? "Loading forms..." : "No matches found."}
               </div>
             ) : (
               filteredForms.map((form) => (
                 <div
                   key={form.firebaseKey}
                   onClick={() => setPreviewingForm(form)}
-                  style={{
-                    background: "#1e293b",
-                    border: "1px solid #334155",
-                    borderRadius: 12,
-                    padding: "1rem",
-                    margin: "0.8rem 0",
-                    cursor: "pointer",
-                    transition: "all 0.2s",
-                    position: "relative"
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = "#334155"}
-                  onMouseLeave={(e) => e.currentTarget.style.background = "#1e293b"}
+                  className={`${styles.formCard} ${previewingForm?.firebaseKey === form.firebaseKey ? styles.active : ''}`}
                 >
-                  <div style={{ fontWeight: "700", fontSize: "1.1rem", color: "#e2e8f0", paddingRight: "180px" }}>
-                    {form.name}
+                  <div className={styles.formCardHeader}>
+                    <div className={styles.formName}>{form.name}</div>
                   </div>
-                  <div style={{ fontSize: "0.9rem", color: "#94a3b8", margin: "0.4rem 0" }}>
-                    {form.category || "Uncategorized"}
-                  </div>
-                  <div style={{ fontSize: "0.8rem", fontWeight: "bold", ...(() => {
-                    switch (form.accessType) {
-                      case "PHMC": return { color: "#f87171" };
-                      case "Coroner": return { color: "#f59e0b" };
-                      case "Mental Health": return { color: "#FF69B4" }; // NEW: Mental Health color
-                      default: return { color: "#34d399" };
-                    }
-                  })() }}>
-                    {(() => {
-                      switch (form.accessType) {
-                        case "PHMC": return "PHMC Only";
-                        case "Coroner": return "Coroner Only";
-                        case "Mental Health": return "Mental Health Only"; // NEW: Mental Health text
-                        default: return "Public";
-                      }
-                    })()}
+                  
+                  <div className={styles.formMeta}>
+                    <span className={styles.categoryBadge}>
+                      <i className="fas fa-folder-open"></i> {form.category || "Uncategorized"}
+                    </span>
+                    <span className={styles.accessBadge} style={{ 
+                      color: form.accessType === "PHMC" ? "#f87171" : 
+                             form.accessType === "Coroner" ? "#f59e0b" : 
+                             form.accessType === "Mental Health" ? "#FF69B4" : "#34d399" 
+                    }}>
+                      <i className="fas fa-shield-alt"></i> {form.accessType || "Public"}
+                    </span>
                   </div>
 
-                  <div style={{ position: "absolute", top: 12, right: 12, display: "flex", gap: "6px" }}>
+                  <div className={styles.cardActions}>
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openEditModal(form);
-                      }}
-                      style={{
-                        padding: "0.25rem 0.6rem",
-                        background: "#6366f1",
-                        color: "white",
-                        border: "none",
-                        borderRadius: 6,
-                        fontSize: "0.7rem",
-                        fontWeight: "600",
-                        cursor: "pointer"
-                      }}
+                      onClick={(e) => { e.stopPropagation(); openEditModal(form); }}
+                      className={styles.actionBtn}
+                      style={{ background: "#6366f1" }}
                     >
-                      Edit
+                      <i className="fas fa-edit"></i> Edit
                     </button>
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openDuplicateModal(form);
-                      }}
-                      style={{
-                        padding: "0.25rem 0.6rem",
-                        background: "#f59e0b",
-                        color: "white",
-                        border: "none",
-                        borderRadius: 6,
-                        fontSize: "0.7rem",
-                        fontWeight: "600",
-                        cursor: "pointer"
-                      }}
+                      onClick={(e) => { e.stopPropagation(); openDuplicateModal(form); }}
+                      className={styles.actionBtn}
+                      style={{ background: "#f59e0b" }}
                     >
-                      Dup
+                      <i className="fas fa-copy"></i> Duplicate
                     </button>
                     <button
                       onClick={(e) => handleDeleteForm(form.firebaseKey, form.name, e)}
-                      style={{
-                        padding: "0.25rem 0.6rem",
-                        background: "#ef4444",
-                        color: "white",
-                        border: "none",
-                        borderRadius: 6,
-                        fontSize: "0.7rem",
-                        fontWeight: "600",
-                        cursor: "pointer"
-                      }}
+                      className={styles.actionBtn}
+                      style={{ background: "#ef4444" }}
                     >
-                      Del
+                      <i className="fas fa-trash"></i> Delete
                     </button>
                   </div>
                 </div>
@@ -305,161 +228,150 @@ const FormManager = ({ currentUser }) => {
           </div>
         </div>
 
-        {/* CENTER — Preview */}
         <div className={styles.mainContent}>
           {previewingForm ? (
             <div>
-              <h2 style={{ color: '#60a5fa', marginBottom: '2rem' }}>{previewingForm.name}</h2>
-              <div style={{ background: '#0f172a', padding: '2rem', borderRadius: 12 }}>
+              <div className={styles.previewHeader}>
+                <h2>{previewingForm.name}</h2>
+                <span className={styles.accessBadge} style={{ 
+                  color: previewingForm.accessType === "PHMC" ? "#f87171" : 
+                         previewingForm.accessType === "Coroner" ? "#f59e0b" : 
+                         previewingForm.accessType === "Mental Health" ? "#FF69B4" : "#34d399",
+                  fontSize: '1rem'
+                }}>
+                  {previewingForm.accessType || "Public Access"}
+                </span>
+              </div>
+
+              <div className={styles.previewContainer}>
                 {previewingForm.fields?.map((field, index) => (
-                  <div key={index} style={{ marginBottom: '1.5rem' }}>
+                  <div key={index} className={styles.fieldGroup}>
                     {field.type === 'hr' ? (
-                      <hr style={{ borderTop: "1px solid #334155", margin: "1rem 0" }} />
+                      <hr style={{ borderTop: "2px solid #334155", margin: "2rem 0" }} />
                     ) : field.type === 'fake_line' ? (
-                      <hr style={{ borderTop: "1px dashed #334155", margin: "1rem 0" }} />
+                      <hr style={{ borderTop: "2px dashed #334155", margin: "2rem 0" }} />
                     ) : field.type === 'small_header' ? (
-                      <h4 style={{ color: "#a78bfa", marginBottom: "1rem" }}>{field.label}</h4>
+                      <h4 style={{ color: "#a78bfa", fontSize: '1.2rem', marginBottom: "1.5rem", display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <i className="fas fa-heading"></i> {field.label}
+                      </h4>
+                    ) : field.type === 'section' ? (
+                      <h3 className={styles.sectionTitle}>
+                        {field.icon && <i className={`fas ${field.icon}`}></i>}
+                        {field.label}
+                      </h3>
                     ) : (
                       <>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', color: '#94a3b8' }}>
+                        <label className={styles.fieldLabel}>
                           {field.label}
                           {field.displayCurrentTime && field.type === "timer" && (
-                            <span style={{ fontSize: '0.7em', marginLeft: '5px', color: '#6c757d' }}> (Server Time)</span>
+                            <span style={{ fontSize: '0.7em', marginLeft: '8px', color: '#64748b' }}> (Server Time)</span>
                           )}
                         </label>
                         {field.type === 'textarea' ? (
-                          <textarea
-                            rows={field.rows || 3}
-                            placeholder={field.placeholder || 'Textarea Input'}
-                            style={{ width: '100%', padding: '0.8rem', background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8 }}
-                            readOnly
-                          />
+                          <div className={styles.inputMock} style={{ minHeight: '80px', color: '#64748b' }}>
+                            {field.placeholder || 'Textarea Input Preview'}
+                          </div>
                         ) : field.type === 'select' ? (
-                          <select
-                            style={{ width: '100%', padding: '0.8rem', background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8 }}
-                            disabled
-                          >
-                            <option>{`Dropdown: ${field.optionsKey || 'No Options Key'}`}</option>
-                          </select>
+                          <div className={styles.inputMock} style={{ color: '#64748b', display: 'flex', justifyContent: 'space-between' }}>
+                            <span>Dropdown: {field.optionsKey || 'No Options Key'}</span>
+                            <i className="fas fa-chevron-down"></i>
+                          </div>
                         ) : field.type === 'checkbox' ? (
-                          <div style={{ display: 'flex', alignItems: 'center', color: '#e2e8f0' }}>
-                            <input type="checkbox" readOnly style={{ marginRight: '0.5rem' }} />
-                            <span>Checkbox</span>
-                            {field.associatedInputField && (
-                              <span style={{ marginLeft: '10px', fontSize: '0.9em', color: '#94a3b8' }}>
-                                (Associated: {field.associatedInputField.type})
-                              </span>
-                            )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <i className="far fa-square" style={{ fontSize: '1.2rem' }}></i>
+                            <span>Checkbox Label</span>
                           </div>
                         ) : field.type === 'radio' ? (
-                          <div style={{ display: 'flex', gap: '10px', color: '#e2e8f0' }}>
+                          <div style={{ display: 'flex', gap: '15px' }}>
                             {field.options?.map((option, optIndex) => (
-                              <label key={optIndex} style={{ display: 'flex', alignItems: 'center' }}>
-                                <input type="radio" name={field.name} readOnly style={{ marginRight: '0.5rem' }} />
+                              <div key={optIndex} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <i className="far fa-circle"></i>
                                 {option}
-                              </label>
+                              </div>
                             ))}
-                            {!field.options?.length && <span style={{ color: '#94a3b8' }}>(No options defined)</span>}
-                          </div>
-                        ) : field.type === 'image' ? (
-                          <div style={{ padding: '0.8rem', background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8 }}>
-                            Image Upload (Max {field.maxImages || 6})
-                          </div>
-                        ) : field.type === 'timer' ? (
-                          <input
-                            type={field.timerType || 'text'}
-                            placeholder={`Timer: ${field.timerType || 'Text'}${field.buttonLabel ? ` (Button: ${field.buttonLabel})` : ''}`}
-                            style={{ width: '100%', padding: '0.8rem', background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8 }}
-                            readOnly
-                          />
-                        ) : field.type === 'input_button_combo' ? (
-                          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                            <input
-                              type={field.inputType || 'text'}
-                              placeholder={`Input (${field.inputType || 'text'})`}
-                              style={{ width: '100%', padding: '0.8rem', background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8 }}
-                              readOnly
-                            />
-                            <button style={{ padding: "0.5rem 1rem", background: "#6366f1", color: "white", border: "none", borderRadius: 8 }} disabled>
-                              {field.buttonLabel || 'Button'}
-                            </button>
+                            {!field.options?.length && <span style={{ color: '#64748b' }}>(No options defined)</span>}
                           </div>
                         ) : (
-                          <input
-                            type={field.type || 'text'} // Fallback for 'input' or unknown types
-                            placeholder={field.placeholder || 'Text Input'}
-                            style={{ width: '100%', padding: '0.8rem', background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8 }}
-                            readOnly
-                          />
+                          <div className={styles.inputMock} style={{ color: '#64748b' }}>
+                            {field.placeholder || `${field.type?.charAt(0).toUpperCase() + field.type?.slice(1)} Input`}
+                          </div>
                         )}
                       </>
                     )}
                   </div>
                 ))}
                 {!previewingForm.fields || previewingForm.fields.length === 0 ? (
-                  <p style={{ color: '#64748b' }}>This form has no fields defined.</p>
+                  <div className={styles.emptyState}>
+                    <i className="fas fa-layer-group"></i>
+                    <p>This form has no fields defined yet.</p>
+                  </div>
                 ) : null}
               </div>
-              <div style={{ marginTop: '2rem', borderTop: '1px solid #334155', paddingTop: '2rem' }}>
-                <h3 style={{ color: '#94a3b8' }}>BBCode Template</h3>
-                <pre style={{ background: '#0f172a', padding: '1.5rem', borderRadius: 12, color: '#e2e8f0', fontSize: '0.9rem', whiteSpace: 'pre-wrap', maxHeight: '400px', overflow: 'auto' }}>
-                  {previewingForm.template || 'No template provided.'}
-                </pre>
+
+              <h3 className={styles.sectionTitle}><i className="fas fa-code"></i> BBCode Template</h3>
+              <div className={styles.codeBlock}>
+                {previewingForm.template || 'No template provided.'}
               </div>
-              <div style={{ marginTop: '2rem', borderTop: '1px solid #334155', paddingTop: '2rem' }}>
-                <h3 style={{ color: '#94a3b8' }}>Title Generator Code</h3>
-                <pre style={{ background: '#0f172a', padding: '1.5rem', borderRadius: 12, color: '#e2e8f0', fontSize: '0.9rem', whiteSpace: 'pre-wrap', maxHeight: '400px', overflow: 'auto' }}>
-                  {previewingForm.titleGeneratorCode || 'No title generator code provided.'}
-                </pre>
+
+              <h3 className={styles.sectionTitle}><i className="fas fa-terminal"></i> Title Generator Code</h3>
+              <div className={styles.codeBlock}>
+                {previewingForm.titleGeneratorCode || 'No title generator code provided.'}
               </div>
             </div>
           ) : (
-            <div style={{ textAlign: 'center', marginTop: '4rem', color: '#64748b' }}>
-              <h2>Select a form to preview or edit</h2>
-              <p style={{ fontSize: '1.2rem', marginTop: '1rem' }}>
-                Total Forms: <strong>{forms.length}</strong>
-              </p>
+            <div className={styles.emptyState}>
+              <i className="fas fa-file-signature"></i>
+              <h2>Form Preview</h2>
+              <p>Select a form from the left panel to preview its layout and code.</p>
+              <div style={{ marginTop: '1rem', background: '#0f172a', padding: '1rem 2rem', borderRadius: '12px' }}>
+                Total Managed Forms: <strong style={{ color: '#8b5cf6' }}>{forms.length}</strong>
+              </div>
             </div>
           )}
         </div>
-        {/* RIGHT PANEL — Stats */}
+
         <div className={styles.rightPanel}>
-          <h2 style={{ color: "#8b5cf6" }}>Form Access Rules</h2>
-          <div style={{ background: "#1e293b", padding: "1.5rem", borderRadius: 12, marginBottom: "1rem" }}>
-            <div style={{ color: "#34d399", fontWeight: "700" }}>Public</div>
-            <div style={{ color: "#94a3b8", fontSize: "0.9rem" }}>
-              Available to anyone who is authenticated.
+          <h2 style={{ color: "#8b5cf6", fontSize: '1.2rem', marginBottom: '1rem' }}>
+            <i className="fas fa-info-circle"></i> Access Control Rules
+          </h2>
+          
+          <div className={styles.ruleCard} style={{ borderLeftColor: "#34d399" }}>
+            <div className={styles.ruleTitle} style={{ color: "#34d399" }}>
+              <i className="fas fa-globe"></i> Public
             </div>
-          </div>
-          <div style={{ background: "#1e293b", padding: "1.5rem", borderRadius: 12, marginBottom: "1rem" }}>
-            <div style={{ color: "#f87171", fontWeight: "700" }}>PHMC Only</div>
-            <div style={{ color: "#94a3b8", fontSize: "0.9rem" }}>
-              Requires PHMC faction membership.
-            </div>
-          </div>
-          <div style={{ background: "#1e293b", padding: "1.5rem", borderRadius: 12, marginBottom: "1rem" }}>
-            <div style={{ color: "#f59e0b", fontWeight: "700" }}>Coroner Only</div>
-            <div style={{ color: "#94a3b8", fontSize: "0.9rem" }}>
-              Requires Coroner role.
-            </div>
-          </div>
-          <div style={{ background: "#1e293b", padding: "1.5rem", borderRadius: 12 }}>
-            <div style={{ color: "#FF69B4", fontWeight: "700" }}>Mental Health Only</div>
-            <div style={{ color: "#94a3b8", fontSize: "0.9rem" }}>
-              Requires PHMC faction membership.
-            </div>
-          </div>
-                    <div style={{ background: "#1e293b", padding: "1.5rem", borderRadius: 12 }}>
-            <div style={{ color: "#60a5fa", fontWeight: "700" }}>Civilian</div>
-            <div style={{ color: "#94a3b8", fontSize: "0.9rem" }}>
-              Available to any authenticated user.
-            </div>
+            <div className={styles.ruleDesc}>Available to any authenticated user on the platform.</div>
           </div>
 
+          <div className={styles.ruleCard} style={{ borderLeftColor: "#f87171" }}>
+            <div className={styles.ruleTitle} style={{ color: "#f87171" }}>
+              <i className="fas fa-hospital-user"></i> PHMC Only
+            </div>
+            <div className={styles.ruleDesc}>Restricted to verified members of the PHMC faction.</div>
+          </div>
+
+          <div className={styles.ruleCard} style={{ borderLeftColor: "#f59e0b" }}>
+            <div className={styles.ruleTitle} style={{ color: "#f59e0b" }}>
+              <i className="fas fa-skull-crossbones"></i> Coroner Only
+            </div>
+            <div className={styles.ruleDesc}>Exclusive access for Department of Medical Examiner staff.</div>
+          </div>
+
+          <div className={styles.ruleCard} style={{ borderLeftColor: "#FF69B4" }}>
+            <div className={styles.ruleTitle} style={{ color: "#FF69B4" }}>
+              <i className="fas fa-brain"></i> Mental Health
+            </div>
+            <div className={styles.ruleDesc}>Specialized access for Mental Health department personnel.</div>
+          </div>
+          
+          <div className={styles.ruleCard} style={{ borderLeftColor: "#60a5fa" }}>
+            <div className={styles.ruleTitle} style={{ color: "#60a5fa" }}>
+              <i className="fas fa-user-friends"></i> Civilian
+            </div>
+            <div className={styles.ruleDesc}>Forms designed for general public submissions.</div>
+          </div>
         </div>
       </div>
 
-      {/* MODAL */}
       <AddFormModal
         show={showAddModal}
         onClose={closeModal}

@@ -2,7 +2,6 @@ import React, { useState, lazy, Suspense } from 'react';
 import { HashRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import { NotificationProvider, useNotification } from './contexts/NotificationContext.jsx';
 import { FormProvider } from './contexts/FormContext.jsx';
-import { SeasonalEffectsProvider } from './contexts/SeasonalEffectsContext';
 import * as Sentry from "@sentry/react";
 import { sendDiscordErrorWebhook } from './utils/errorUtils';
 import { Spinner } from 'react-bootstrap';
@@ -16,7 +15,6 @@ import DiscordNameCheck from './components/Auth/DiscordNameCheck.jsx';
 const GtaLogin = lazy(() => import('./components/Auth/GtaLogin.jsx'));
 const UnifiedGtaCallback = lazy(() => import('./components/Auth/UnifiedGtaCallback.jsx'));
 const OAuthUrlDiagnostic = lazy(() => import('./components/Auth/OAuthUrlDiagnostic.jsx'));
-const PaymentCallback = lazy(() => import('./components/Common/PaymentCallback.jsx'));
 const EmsDashboard = lazy(() => import('./components/ems-dashboard/EmsDashboard.jsx'));
 
 function App() {
@@ -94,21 +92,18 @@ function App() {
                 <NotificationProvider>
                     <Router>
                         <DiscordNameCheck>
-                            <SeasonalEffectsProvider> {/* Wrap Routes with SeasonalEffectsProvider */}
                                 <Suspense fallback={<LoadingFallback />}>
                                     <Routes>
                                         <Route path="/" element={<FormHandler formData={formData} setFormData={setFormData} lastWebhookIdentifier={lastWebhookIdentifier} setLastWebhookIdentifier={setLastWebhookIdentifier} showNotification={showNotification} removeNotification={removeNotification} setShowAdblockNotification={setShowAdblockNotification} />} />
                                         <Route path="/login" element={<GtaLogin />} />
                                         <Route path="/auth/gta/callback" element={<UnifiedGtaCallback />} />
                                         <Route path="/auth/gta/diagnostic" element={<OAuthUrlDiagnostic />} />
-                                        <Route path="/auth/gtapayment/callback/:token" element={<PaymentCallback />} />
                                         <Route path="/admin" element={<ProtectedRoute><Admin formData={formData} setFormData={setFormData} showNotification={showNotification} /></ProtectedRoute>} />
                                         <Route path="/ems-dashboard" element={<ProtectedRoute><EmsDashboard /></ProtectedRoute>} />
                                         <Route path="/form-handler" element={<ProtectedRoute><FormHandler /></ProtectedRoute>} />
                                         <Route path="*" element={<Navigate to="/" replace />} />
                                     </Routes>
                                 </Suspense>
-                            </SeasonalEffectsProvider>
                         </DiscordNameCheck>
                     </Router>
                 </NotificationProvider>

@@ -7,7 +7,6 @@ import { AuthProvider } from './contexts/AuthContext.jsx';
 import { NotificationProvider } from './contexts/NotificationContext.jsx';
 import { DataProvider } from './contexts/DataContext.jsx';
 import { ModalProvider } from './contexts/ModalProvider.jsx';
-import { SettingsProvider } from './contexts/SettingsProvider.jsx';
 import { useNotification } from './contexts/NotificationContext';
 import * as Sentry from "@sentry/react";
 import { analytics } from './firebase';
@@ -306,9 +305,7 @@ root.render(
           <NotificationProvider>
             <DataProvider>
               <ModalProvider>
-                <SettingsProvider>
                     <Root />
-                </SettingsProvider>
               </ModalProvider>
             </DataProvider>
           </NotificationProvider>

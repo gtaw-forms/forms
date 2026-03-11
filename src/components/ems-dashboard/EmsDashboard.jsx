@@ -6,13 +6,11 @@ import PatientHelper from "../Modals/PatientHelper";
 import { useNotification } from '../../contexts/NotificationContext.jsx';
 import { useImageUpload } from '../../hooks/useImageUpload';
 import EmsAmaModal from '../Modals/EmsAmaModal';
-import BusinessCardModal from '../Modals/BusinessCardModal';
 import { useData } from '../../contexts/DataContext.jsx';
 import { useModal } from '../../contexts/ModalProvider.jsx';
 import { useUserMetrics } from '../../hooks/useUserMetrics';
 import { Button, Spinner } from 'react-bootstrap';
 import { useInactivityReload } from '../../hooks/useInactivityReload';
-import EmployeeNewDetails from '../Modals/EmployeeNewDetails';
 import BaseModal from '../Modals/BaseModal';
 import SidebarNav from '../UI/SidebarNav';
 
@@ -207,7 +205,6 @@ const EmsDashboard = () => {
         </div>
       </BaseModal>
 
-      <EmployeeNewDetails show={showEmployeeModal} onHide={() => setShowEmployeeModal(false)} showNotification={showNotification} />
       <EmsAmaModal show={showEmsAmaModal} onHide={() => setShowEmsAmaModal(false)} showNotification={showNotification} handleImageUpload={handleImageUpload} />
     </div>
   );

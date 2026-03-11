@@ -1,4 +1,3 @@
-// src/components/Admin/AddFormModal.jsx
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { database } from "../../firebase";
 import { ref, set, get, update, runTransaction } from "firebase/database";
@@ -93,12 +92,16 @@ const AddFormModal = ({ show, onClose: onHide, editingForm = null, isDuplicate =
   const [isHidden, setIsHidden] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // State for field deletion confirmation
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [fieldToDelete, setFieldToDelete] = useState(null);
+
   const createDefaultNewField = () => ({
     type: "input", label: "", name: "", placeholder: "", layout: "full", rows: 4, maxImages: 6,
     optionsKey: "", timerType: "", buttonLabel: "", buttonAction: "", displayCurrentTime: false,
     id: null, associatedInputField: null, options: [], inputType: "", showIf: null,
     infoType: 'Information', content: '', decedentItemSchemaJson: "", allowImagePaste: false,
-    linkedImageField: "", icon: "",
+    linkedImageField: "", icon: "", listType: ""
   });
 
   const [newField, setNewField] = useState(createDefaultNewField());
@@ -207,6 +210,20 @@ const AddFormModal = ({ show, onClose: onHide, editingForm = null, isDuplicate =
     setNewField({ ...newField, showIf });
     setTempConditions([]); setShowConditionalBuilder(false);
   };
+
+  const confirmDeleteField = useCallback((field) => {
+    setFieldToDelete(field);
+    setShowDeleteConfirmModal(true);
+  }, []);
+
+  const handleDeleteField = useCallback(() => {
+    if (fieldToDelete) {
+      setFields(fields.filter(field => field.id !== fieldToDelete.id));
+      showNotification(`Field "${fieldToDelete.label || fieldToDelete.type}" deleted.`, "info");
+      setFieldToDelete(null);
+      setShowDeleteConfirmModal(false);
+    }
+  }, [fieldToDelete, fields, showNotification]);
 
   const saveForm = async () => {
     if (!formId || !formName) return showNotification("ID and Name required!", "warning");
@@ -317,27 +334,90 @@ const AddFormModal = ({ show, onClose: onHide, editingForm = null, isDuplicate =
             </div>
 
             <div className="d-flex flex-column gap-3">
-                {/* Core Config */}
+                {/* Quick Add Helper */}
                 <Form.Group>
-                    <Form.Label className="small text-light mb-1">Field Type</Form.Label>
-                    <Form.Select value={newField.type} onChange={e => setNewField({ ...createDefaultNewField(), type: e.target.value })} style={inputStyle}>
-                        <option value="input">Text Input</option>
-                        <option value="textarea">Textarea</option>
-                        <option value="section">Section Header</option>
-                        <option value="select">Dropdown</option>
-                        <option value="checkbox">Checkbox</option>
-                        <option value="radio">Radio Buttons</option>
-                        <option value="image">Image Gallery</option>
-                        <option value="timer">Timer/DateTime</option>
-                        <option value="decedent_list">Decedent List</option>
-                        <option value="hr">Separator Line</option>
-                    </Form.Select>
+                    <Form.Label className="small text-info mb-1"><i className="fas fa-bolt me-1"></i>Quick-Add (Shorthand)</Form.Label>
+                    <Form.Control 
+                        placeholder="Label type{{name}}layout (e.g. Probable Cause input{{pc}}compact-50)" 
+                        onChange={e => {
+                            const val = e.target.value;
+                            if (val.includes('{{') && val.includes('}}')) {
+                                const match = val.match(/^(.*?)\s*([a-z_]+)?\s*\{\{([a-zA-Z0-9_]+)\}\}\s*([a-z0-9-]+)?$/);
+                                if (match) {
+                                    const [, label, type, name, layout] = match;
+                                    setNewField(prev => ({
+                                        ...prev,
+                                        label: label.trim(),
+                                        type: type || prev.type,
+                                        name: name,
+                                        layout: layout || prev.layout
+                                    }));
+                                }
+                            }
+                        }} 
+                        style={{ ...inputStyle, border: '1px dashed #60a5fa88' }} 
+                    />
                 </Form.Group>
 
-                <Form.Group>
-                    <Form.Label className="small text-light mb-1">Label / Name</Form.Label>
-                    <Form.Control placeholder="Field Label" value={newField.label} onChange={e => setNewField({ ...newField, label: e.target.value, name: e.target.value.toLowerCase().replace(/\s/g, "_").replace(/[^a-z0-9_]/g, '') })} style={inputStyle} />
-                </Form.Group>
+                <div className="d-flex gap-3">
+                    <Form.Group className="flex-grow-1">
+                        <Form.Label className="small text-light mb-1">Field Type</Form.Label>
+                        <Form.Select value={newField.type} onChange={e => setNewField({ ...createDefaultNewField(), type: e.target.value })} style={inputStyle}>
+                            <option value="input">Text Input</option>
+                            <option value="textarea">Textarea</option>
+                            <option value="section">Section Header</option>
+                            <option value="small_header">Small Header</option>
+                            <option value="select">Dropdown</option>
+                            <option value="multi_select">Multi-Select Dropdown</option>
+                            <option value="checkbox">Checkbox</option>
+                            <option value="radio">Radio Buttons</option>
+                            <option value="employee_select">Employee Select</option>
+                            <option value="multi_employee_select">Multi Employee Select</option>
+                            <option value="image">Image Gallery</option>
+                            <option value="timer">Timer/DateTime</option>
+                            <option value="dynamic_text_list">Dynamic Text List</option>
+                            <option value="information_state">Information State</option>
+                            <option value="decedent_list">Decedent List</option>
+                            <option value="autopsy_diagram_button">Autopsy Diagram</option>
+                            <option value="payment_button">Payment Button</option>
+                            <option value="character_selector">Character Selector</option>
+                            <option value="medicine_block">Medicine Block</option>
+                            <option value="hr">Separator Line</option>
+                            <option value="fake_line">Dashed Line</option>
+                        </Form.Select>
+                    </Form.Group>
+
+                    <Form.Group style={{ width: '180px' }}>
+                        <Form.Label className="small text-light mb-1">Width Layout</Form.Label>
+                        <Form.Select value={newField.layout} onChange={e => setNewField({...newField, layout: e.target.value})} style={inputStyle}>
+                            <option value="full">100% (Full)</option>
+                            <option value="compact-50">50% (Half)</option>
+                            <option value="compact-33">33% (Third)</option>
+                        </Form.Select>
+                    </Form.Group>
+                </div>
+
+                <div className="d-flex gap-3">
+                    <Form.Group className="flex-grow-1">
+                        <Form.Label className="small text-light mb-1">Field Label</Form.Label>
+                        <Form.Control 
+                            placeholder="Display Label" 
+                            value={newField.label} 
+                            onChange={e => setNewField({ ...newField, label: e.target.value })} 
+                            style={inputStyle} 
+                        />
+                    </Form.Group>
+
+                    <Form.Group className="flex-grow-1">
+                        <Form.Label className="small text-light mb-1">Internal Name (slug)</Form.Label>
+                        <Form.Control 
+                            placeholder="template_variable" 
+                            value={newField.name} 
+                            onChange={e => setNewField({ ...newField, name: e.target.value })} 
+                            style={inputStyle} 
+                        />
+                    </Form.Group>
+                </div>
 
                 <Form.Group>
                     <Form.Label className="small text-light mb-1">Placeholder / Content</Form.Label>
@@ -345,38 +425,140 @@ const AddFormModal = ({ show, onClose: onHide, editingForm = null, isDuplicate =
                 </Form.Group>
 
                 {/* Specific Config */}
-                <Form.Group>
-                    <Form.Label className="small text-light mb-1">Width Layout</Form.Label>
-                    <Form.Select value={newField.layout} onChange={e => setNewField({...newField, layout: e.target.value})} style={inputStyle}>
-                        <option value="full">100% (Full)</option>
-                        <option value="compact-50">50% (Half)</option>
-                        <option value="compact-33">33% (Third)</option>
-                    </Form.Select>
-                </Form.Group>
-                
-                {newField.type === 'select' && (
-                    <Form.Group>
-                        <Form.Label className="small text-light mb-1">Options Key</Form.Label>
-                        <Form.Control placeholder="e.g. hospitals" value={newField.optionsKey} onChange={e => setNewField({...newField, optionsKey: e.target.value})} style={inputStyle} />
-                    </Form.Group>
-                )}
-                
-                {newField.type === 'textarea' && (
-                    <Form.Group>
-                        <Form.Label className="small text-light mb-1">Rows</Form.Label>
-                        <Form.Control type="number" value={newField.rows} onChange={e => setNewField({...newField, rows: parseInt(e.target.value)})} style={inputStyle} />
-                    </Form.Group>
-                )}
+                <div className="d-flex gap-3">
+                    {newField.type === 'select' && (
+                        <Form.Group className="flex-grow-1">
+                            <Form.Label className="small text-light mb-1">Options Key</Form.Label>
+                            <Form.Control placeholder="e.g. hospitals" value={newField.optionsKey} onChange={e => setNewField({...newField, optionsKey: e.target.value})} style={inputStyle} />
+                        </Form.Group>
+                    )}
+                    
+                    {newField.type === 'textarea' && (
+                        <Form.Group className="flex-grow-1">
+                            <Form.Label className="small text-light mb-1">Rows</Form.Label>
+                            <Form.Control type="number" value={newField.rows} onChange={e => setNewField({...newField, rows: parseInt(e.target.value)})} style={inputStyle} />
+                        </Form.Group>
+                    )}
 
-                {newField.type === 'section' && (
-                    <Form.Group>
-                        <Form.Label className="small text-light mb-1">Icon</Form.Label>
-                        <Form.Select value={newField.icon} onChange={e => setNewField({...newField, icon: e.target.value})} style={inputStyle}>
-                            <option value="">No Icon</option>
-                            {frequentlyUsedIcons.map(icon => <option key={icon.class} value={icon.class}>{icon.label}</option>)}
-                        </Form.Select>
-                    </Form.Group>
-                )}
+                    {newField.type === 'dynamic_text_list' && (
+                        <Form.Group className="flex-grow-1">
+                            <Form.Label className="small text-light mb-1">List Type</Form.Label>
+                            <Form.Select value={newField.listType || ""} onChange={e => setNewField({...newField, listType: e.target.value})} style={inputStyle}>
+                                <option value="">Standard List</option>
+                                <option value="1">Numbered (1, 2, 3...)</option>
+                                <option value="a">Lettered (a, b, c...)</option>
+                                <option value="A">Lettered (A, B, C...)</option>
+                                <option value="i">Roman (i, ii, iii...)</option>
+                                <option value="I">Roman (I, II, III...)</option>
+                                <option value="none">Plain Text (No List Tags)</option>
+                            </Form.Select>
+                        </Form.Group>
+                    )}
+
+                    {newField.type === 'timer' && (
+                        <>
+                            <Form.Group className="flex-grow-1">
+                                <Form.Label className="small text-light mb-1">Timer Type</Form.Label>
+                                <Form.Select value={newField.timerType || ""} onChange={e => setNewField({...newField, timerType: e.target.value})} style={inputStyle}>
+                                    <option value="">Select Timer Type</option>
+                                    <option value="datetime-local">DateTime (Date + Time)</option>
+                                    <option value="date">Date Only</option>
+                                    <option value="time">Time Only</option>
+                                </Form.Select>
+                            </Form.Group>
+
+                            <Form.Group className="flex-grow-1">
+                                <Form.Label className="small text-light mb-1">Button Label</Form.Label>
+                                <Form.Control placeholder="e.g. Capture Time" value={newField.buttonLabel || ""} onChange={e => setNewField({...newField, buttonLabel: e.target.value})} style={inputStyle} />
+                            </Form.Group>
+
+                            <Form.Group className="flex-grow-1">
+                                <Form.Label className="small text-light mb-1">Button Action</Form.Label>
+                                <Form.Select value={newField.buttonAction || ""} onChange={e => setNewField({...newField, buttonAction: e.target.value})} style={inputStyle}>
+                                    <option value="">Select Action</option>
+                                    <option value="capture">Capture Time</option>
+                                </Form.Select>
+                            </Form.Group>
+
+                            <Form.Group>
+                                <Form.Check type="checkbox" label="Display Current Time" checked={newField.displayCurrentTime || false} onChange={e => setNewField({...newField, displayCurrentTime: e.target.checked})} className="text-light small" />
+                            </Form.Group>
+                        </>
+                    )}
+
+                    {newField.type === 'section' && (
+                        <Form.Group className="flex-grow-1">
+                            <Form.Label className="small text-light mb-1">Icon</Form.Label>
+                            <Form.Select value={newField.icon} onChange={e => setNewField({...newField, icon: e.target.value})} style={inputStyle}>
+                                <option value="">No Icon</option>
+                                {frequentlyUsedIcons.map(icon => <option key={icon.class} value={icon.class}>{icon.label}</option>)}
+                            </Form.Select>
+                        </Form.Group>
+                    )}
+
+                    {newField.type === 'small_header' && (
+                        <Form.Group className="flex-grow-1">
+                            <Form.Label className="small text-light mb-1">Icon</Form.Label>
+                            <Form.Select value={newField.icon} onChange={e => setNewField({...newField, icon: e.target.value})} style={inputStyle}>
+                                <option value="">No Icon</option>
+                                {frequentlyUsedIcons.map(icon => <option key={icon.class} value={icon.class}>{icon.label}</option>)}
+                            </Form.Select>
+                        </Form.Group>
+                    )}
+
+                    {newField.type === 'information_state' && (
+                        <>
+                            <Form.Group className="flex-grow-1">
+                                <Form.Label className="small text-light mb-1">Info Type</Form.Label>
+                                <Form.Select value={newField.infoType || "Information"} onChange={e => setNewField({...newField, infoType: e.target.value})} style={inputStyle}>
+                                    <option value="Information">Information (Blue)</option>
+                                    <option value="Warning">Warning (Orange)</option>
+                                    <option value="Danger">Danger (Red)</option>
+                                </Form.Select>
+                            </Form.Group>
+
+                            <Form.Group className="flex-grow-1">
+                                <Form.Label className="small text-light mb-1">Content / Message</Form.Label>
+                                <Form.Control 
+                                    as="textarea" 
+                                    rows={3}
+                                    placeholder="Enter the information message..." 
+                                    value={newField.content || ""} 
+                                    onChange={e => setNewField({...newField, content: e.target.value})} 
+                                    style={inputStyle} 
+                                />
+                            </Form.Group>
+                        </>
+                    )}
+
+                    {newField.type === 'multi_select' && (
+                        <Form.Group className="flex-grow-1">
+                            <Form.Label className="small text-light mb-1">Options Key</Form.Label>
+                            <Form.Control placeholder="e.g. hospitals, agencies" value={newField.optionsKey} onChange={e => setNewField({...newField, optionsKey: e.target.value})} style={inputStyle} />
+                        </Form.Group>
+                    )}
+
+                    {newField.type === 'select' && (
+                        <Form.Group className="flex-grow-1">
+                            <Form.Label className="small text-light mb-1">Options Key</Form.Label>
+                            <Form.Control placeholder="e.g. hospitals" value={newField.optionsKey} onChange={e => setNewField({...newField, optionsKey: e.target.value})} style={inputStyle} />
+                        </Form.Group>
+                    )}
+
+                    {newField.type === 'image' && (
+                        <Form.Group className="flex-grow-1">
+                            <Form.Label className="small text-light mb-1">Max Images</Form.Label>
+                            <Form.Control type="number" min="1" value={newField.maxImages || 6} onChange={e => setNewField({...newField, maxImages: parseInt(e.target.value)})} style={inputStyle} />
+                        </Form.Group>
+                    )}
+
+                    {newField.type === 'radio' && (
+                        <Form.Group className="flex-grow-1">
+                            <Form.Label className="small text-light mb-1">Options (comma-separated)</Form.Label>
+                            <Form.Control placeholder="Option 1, Option 2, Option 3" value={(newField.options || []).join(', ')} onChange={e => setNewField({...newField, options: e.target.value.split(',').map(o => o.trim()).filter(Boolean)})} style={inputStyle} />
+                        </Form.Group>
+                    )}
+                </div>
             </div>
 
             {/* Advanced Logic Toggle */}
@@ -485,11 +667,7 @@ const AddFormModal = ({ show, onClose: onHide, editingForm = null, isDuplicate =
                                     <Button variant="link" size="sm" className="p-1 text-info opacity-75 hover-opacity-100" onClick={() => { setEditingFieldIndex(i); setNewField(f); }}>
                                         <i className="fas fa-edit"></i>
                                     </Button>
-                                    <Button variant="link" size="sm" className="p-1 text-danger opacity-75 hover-opacity-100" onClick={() => {
-                                        if (window.confirm(`Remove field "${f.label || f.type}"?`)) {
-                                            setFields(fields.filter(field => field.id !== f.id));
-                                        }
-                                    }}>
+                                    <Button variant="link" size="sm" className="p-1 text-danger opacity-75 hover-opacity-100" onClick={() => confirmDeleteField(f)}>
                                         <i className="fas fa-trash"></i>
                                     </Button>
                                 </div>
@@ -509,6 +687,23 @@ const AddFormModal = ({ show, onClose: onHide, editingForm = null, isDuplicate =
         onBulkAdd={(newFields) => setFields([...fields, ...newFields])} 
         bbcodeTemplate={bbcodeTemplate} 
       />
+
+      {/* Delete Confirmation Modal */}
+      <BaseModal
+        isOpen={showDeleteConfirmModal}
+        onClose={() => setShowDeleteConfirmModal(false)}
+        title="Confirm Field Deletion"
+        variant="danger"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowDeleteConfirmModal(false)}>Cancel</Button>
+            <Button variant="danger" onClick={handleDeleteField} style={{ marginLeft: '10px' }}>Delete</Button>
+          </>
+        }
+      >
+        <p className="text-light">Are you sure you want to delete the field: <strong>{fieldToDelete?.label || fieldToDelete?.type}</strong>?</p>
+        <p className="text-danger small">This action cannot be undone.</p>
+      </BaseModal>
 
       <style>{`
         .uppercase { text-transform: uppercase; }

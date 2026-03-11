@@ -5,7 +5,7 @@ import { getDepartmentFullName } from '../utils/bbcodeHelpers';
 import generateDecedentBBCode from '../phmc-bbcode-generators/generateMassFatality';
 import { formatCharacterNameForDisplay } from '../utils/characterUtils';
 
-const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agencyDataStore, gtaWorldUser) => {
+const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agencyDataStore, gtaWorldUser, factionsData) => {
   const [generatedBBCode, setGeneratedBBCode] = useState("");
   const [generatedTitle, setGeneratedTitle] = useState("");
   const [showBBCode, setShowBBCode] = useState(false);
@@ -87,36 +87,96 @@ const formatToNorthAmericanDate = (isoDateTime) => {
     if (!selectedForm?.template) {
       setGeneratedBBCode("");
       setGeneratedTitle(""); 
-      setLimitWarning("");
+      // setLimitWarning("");
       return;
     }
 
-    const PHPBB_LIMIT = 60000;
-    const isMassFatality = selectedForm.firebaseKey === 'mass-ftality-test' || selectedForm.id === 'mass-fatality' || selectedForm.name?.toLowerCase().includes('mass fatality');
-
     const performGeneration = (decedentsOverride = null) => {
+      // Helper to find a member in factionsData across all factions
+      const findMemberAcrossFactions = (name) => {
+        if (!factionsData) return null;
+        for (const faction of Object.values(factionsData)) {
+          if (faction.members) {
+            const entry = Object.entries(faction.members).find(([, m]) => m.characterName === name || m.name === name);
+            if (entry) {
+                const [sn, member] = entry;
+                return {
+                    sn: sn !== 'undefined' ? sn : (member.badge || member.characterId || member.ucpId || 'N/A'),
+                    rank: member.rank || 'Staff',
+                    member
+                };
+            }
+          }
+        }
+        return null;
+      };
+
+      // Check if we're in a local environment
+      const isLocalInstance = !gtaWorldUser || !gtaWorldUser.faction?.firstname;
+
       // Process formValues to extract primitive values from select objects and format employee names
       const processedFormValues = Object.entries(formValues).reduce((acc, [key, value]) => {
         // Find the field definition from selectedForm.fields
         const fieldDef = selectedForm.fields?.find(f => f.name === key);
+        
+        // Define common employee-related field names that should always be formatted if they are strings
+        const commonEmployeeFields = ['coronerEmployee', 'phmcEmployee', 'employeeName', 'selectEmployee', 'investigator', 'requestingOfficer'];
+        
+        // For local instances, use default template data for coroner-related fields
+        let processedValue = value;
+        if (isLocalInstance) {
+          if (key === 'coronerRank' && (!value || value === '')) {
+            processedValue = 'LocalRank';
+          } else if (key === 'coronerEmployee' && (!value || value === '')) {
+            processedValue = 'LocalEmployee';
+          } else if (key === 'coronerBadge' && (!value || value === '')) {
+            processedValue = 'LocalBadge';
+          } else if (key === 'phmcRank' && (!value || value === '')) {
+            processedValue = 'LocalRank';
+          } else if (key === 'phmcEmployee' && (!value || value === '')) {
+            processedValue = 'LocalEmployee';
+          }
+        }
 
-        if (fieldDef && fieldDef.type === 'employee_select' && typeof value === 'string') {
-          acc[key] = formatCharacterNameForDisplay(value);
-        } else if (fieldDef && fieldDef.type === 'multi_employee_select' && Array.isArray(value)) {
-          acc[key] = value.map(name => formatCharacterNameForDisplay(name)).join(', ');
+        if ((fieldDef?.type === 'employee_select' || commonEmployeeFields.includes(key)) && typeof processedValue === 'string') {
+          const match = findMemberAcrossFactions(processedValue);
+          if (match) {
+            acc[key] = `${match.rank} ${formatCharacterNameForDisplay(processedValue)} (SN: ${match.sn})`;
+          } else {
+            acc[key] = formatCharacterNameForDisplay(processedValue);
+          }
+        } else if (fieldDef && fieldDef.type === 'multi_employee_select' && Array.isArray(processedValue)) {
+          acc[key] = processedValue.map(name => {
+            const match = findMemberAcrossFactions(name);
+            if (match) {
+              return `${match.rank} ${formatCharacterNameForDisplay(name)} (SN: ${match.sn})`;
+            }
+            return formatCharacterNameForDisplay(name);
+          }).join(', ');
         } else if (
-          typeof value === 'object' &&
-          value !== null &&
-          !Array.isArray(value) && 
-          Object.prototype.hasOwnProperty.call(value, 'value') &&
-          Object.prototype.hasOwnProperty.call(value, 'label')
+          typeof processedValue === 'object' &&
+          processedValue !== null &&
+          !Array.isArray(processedValue) && 
+          Object.prototype.hasOwnProperty.call(processedValue, 'value') &&
+          Object.prototype.hasOwnProperty.call(processedValue, 'label')
         ) {
-          acc[key] = value.value;
+          acc[key] = processedValue.value;
         } else {
-          acc[key] = value;
+          acc[key] = processedValue;
         }
         return acc;
       }, {});
+
+      // DEBUG: Log local instance detection and processed values
+      console.log('[useBbcodeGenerator] isLocalInstance:', isLocalInstance);
+      console.log('[useBbcodeGenerator] formValues input:', formValues);
+      console.log('[useBbcodeGenerator] processedFormValues:', processedFormValues);
+      console.log('[useBbcodeGenerator] coronerRank:', processedFormValues.coronerRank);
+      console.log('[useBbcodeGenerator] coronerEmployee:', processedFormValues.coronerEmployee);
+      console.log('[useBbcodeGenerator] coronerBadge:', processedFormValues.coronerBadge);
+
+      // Add currentYear to processedFormValues for easy templating
+      processedFormValues.currentYear = new Date().getFullYear();
 
       // Ensure all template variables are initialized
       const placeholders = new Set(selectedForm.template.match(/\{\{([a-zA-Z0-9_]+)\}\}/g)?.map(p => p.replace(/[{}]/g, '')) || []);
@@ -125,6 +185,24 @@ const formatToNorthAmericanDate = (isoDateTime) => {
           processedFormValues[key] = '';
         }
       });
+
+      // For local instances, fill in coroner defaults if they're not provided
+      if (isLocalInstance) {
+        if (!processedFormValues.coronerRank || processedFormValues.coronerRank === '') {
+          processedFormValues.coronerRank = 'LocalRank';
+        }
+        if (!processedFormValues.coronerEmployee || processedFormValues.coronerEmployee === '') {
+          processedFormValues.coronerEmployee = 'LocalEmployee';
+        }
+        if (!processedFormValues.coronerBadge || processedFormValues.coronerBadge === '') {
+          processedFormValues.coronerBadge = 'LocalBadge';
+        }
+        console.log('[useBbcodeGenerator] Applied local instance defaults:', {
+          coronerRank: processedFormValues.coronerRank,
+          coronerEmployee: processedFormValues.coronerEmployee,
+          coronerBadge: processedFormValues.coronerBadge
+        });
+      }
 
       // Normalize decedents if it's an object-based array
       if (processedFormValues.decedents && typeof processedFormValues.decedents === 'object' && !Array.isArray(processedFormValues.decedents)) {
@@ -171,13 +249,34 @@ const formatToNorthAmericanDate = (isoDateTime) => {
 
       const ctx = { ...processedFormValues };
       ctx.formData = ctx;
-      ctx.generateDecedentBBCode = (arr) => generateDecedentBBCode(arr, finalSelectOptions);
+      
+      // DEBUG: Check template for coroner placeholders
+      const hasCoronerRank = bbcode.includes('{{coronerRank}}');
+      const hasCoronerEmployee = bbcode.includes('{{coronerEmployee}}');
+      const hasCoronerBadge = bbcode.includes('{{coronerBadge}}');
+      console.log('[useBbcodeGenerator] Template has coroner placeholders:', { hasCoronerRank, hasCoronerEmployee, hasCoronerBadge });
+      
+      // Prepare coroner info for decedents generator
+      // For local instances, use default template data if not provided
+      const coronerInfo = {
+        coronerRank: isLocalInstance 
+          ? (processedFormValues.coronerRank || processedFormValues.phmcRank || 'LocalRank')
+          : (processedFormValues.coronerRank || processedFormValues.phmcRank || 'Coroner'),
+        coronerEmployee: isLocalInstance
+          ? (processedFormValues.coronerEmployee || processedFormValues.phmcEmployee || processedFormValues.employeeName || 'LocalEmployee')
+          : (processedFormValues.coronerEmployee || processedFormValues.phmcEmployee || processedFormValues.employeeName || 'Unknown Coroner')
+      };
 
-      const decedents_bbcode = generateDecedentBBCode(processedFormValues.decedents, finalSelectOptions);
+      ctx.generateDecedentBBCode = (arr) => generateDecedentBBCode(arr, coronerInfo);
+
+      const decedents_bbcode = generateDecedentBBCode(processedFormValues.decedents, coronerInfo);
       bbcode = bbcode.replace('{{decedents_array_bbcode}}', decedents_bbcode);
 
       const addFallback = (src, target) => {
-        if (processedFormValues[src] !== undefined && ctx[target] === undefined) ctx[target] = processedFormValues[src];
+        // Only apply fallback if target is missing OR is an empty string (likely from placeholder initialization)
+        if (processedFormValues[src] !== undefined && (ctx[target] === undefined || ctx[target] === '')) {
+           ctx[target] = processedFormValues[src];
+        }
       };
       addFallback('patientName', 'PatientName'); addFallback('PatientName', 'patientName');
       addFallback('employeeName', 'EmployeeName'); addFallback('EmployeeName', 'employeeName');
@@ -191,7 +290,7 @@ const formatToNorthAmericanDate = (isoDateTime) => {
         if (cleanedDecedentNameMatch && cleanedDecedentNameMatch[1]) {
           decedentName = cleanedDecedentNameMatch[1].trim();
         }
-        finalTitle = `Coroner Report - ${decedentName} ((${decedentOOC}))`;
+        finalTitle = `[Death-Report] - ${decedentName} ((${decedentOOC}))`;
       }
       else if (selectedForm.firebaseKey === 'mass-ftality-test' || selectedForm.id === 'mass-fatality' || selectedForm.name?.toLowerCase().includes('mass fatality')) {
         const decedentCounts = {};
@@ -285,6 +384,57 @@ const formatToNorthAmericanDate = (isoDateTime) => {
         const conditionMet = Array.isArray(actualValue) ? actualValue.map(v => String(v)).includes(String(expected)) : String(actualValue) == String(expected);
         return conditionMet ? inner.trim() : '';
       });
+      
+      // Handle additional reports by combining them into the deathReport placeholder
+      console.log('[BBCodeDebug] Checking for additional reports. Found:', processedFormValues.additionalReports);
+      let deathReportContent = processedFormValues.deathReport || '';
+      if (Array.isArray(processedFormValues.additionalReports) && processedFormValues.additionalReports.length > 0) {
+        const additionalReportsBBCodes = processedFormValues.additionalReports.map(report => {
+            let bbCodeContent = typeof report === 'string' ? report : report.bbCode;
+            const originalKey = typeof report === 'string' ? 'Additional Report' : (report.originalKey || 'Additional Report');
+
+            // If the attached report is itself a Coroner Email, extract the core report content
+            // Assuming `coroner_email` is the formId for Coroner Email forms.
+            if (report.formId === 'coroner_email' || report.formId === 'coroner-email') { // Handle both potential 'id' and 'firebaseKey'
+                // Regex to find the content within specific altspoilers that typically contain the actual report
+                const reportSpoilerMatch = bbCodeContent.match(/\[altspoiler=(?:Coroner Report|DEATH INVESTIGATION REPORT|MASS FATALITY REPORT|Death Record|Mass Fatality)\]([\s\S]*?)\[\/altspoiler\]/i);
+                if (reportSpoilerMatch && reportSpoilerMatch[1]) {
+                    bbCodeContent = reportSpoilerMatch[1].trim();
+                } else {
+                    // Fallback for cases where a specific report spoiler isn't found within the email.
+                    // Try to strip known email header/footer elements.
+                    // Identify the start of the report content: after the contact list.
+                    const headerEndMarker = /(\[list\].*?\[\/list\])/is;
+                    const headerEndMatch = bbCodeContent.match(headerEndMarker);
+                    if (headerEndMatch) {
+                        bbCodeContent = bbCodeContent.substring(bbCodeContent.indexOf(headerEndMatch[1]) + headerEndMatch[1].length).trim();
+                    }
+
+                    // Identify the end of the report content: before "Kind regards"
+                    const footerStartMarker = /(Kind regards)/is;
+                    const footerStartMatch = bbCodeContent.match(footerStartMarker);
+                    if (footerStartMatch) {
+                        bbCodeContent = bbCodeContent.substring(0, bbCodeContent.indexOf(footerStartMatch[0])).trim();
+                    }
+
+                    // Remove any residual {{placeholders}} that might be from a partially filled template
+                    bbCodeContent = bbCodeContent.replace(/\{\{.*?\}\}/g, '').trim();
+                    // Remove any residual ADDITONAL REPORTS section title
+                    bbCodeContent = bbCodeContent.replace(/\[size=85\]\[b\]ADDITIONAL REPORTS\[\/b\]\[\/size\][\s\S]*?\[size=75\]\[i\].*?\[\/i\]\[\/size\]/gi, '').trim();
+                    // Remove any hr tags which often delineate sections
+                    bbCodeContent = bbCodeContent.replace(/\[hr\][\s\S]*?\[\/hr\]/gi, '').trim();
+                }
+            }
+
+            const spoiler = `[altspoiler=${originalKey}]\n${bbCodeContent}\n[/altspoiler]`;
+            console.log(`[BBCodeDebug] Generated spoiler for key "${originalKey}"`);
+            return spoiler;
+        }).join('\n\n');
+        console.log('[BBCodeDebug] All additional reports processed into BBCode:', additionalReportsBBCodes);
+        deathReportContent = [deathReportContent, additionalReportsBBCodes].filter(Boolean).join('\n\n');
+      }
+      processedFormValues.deathReport = deathReportContent;
+      console.log('[BBCodeDebug] Final deathReport content:', deathReportContent);
 
       bbcode = bbcode.replace(/\{\{([a-zA-Z0-9_]+)\|((?:(?!}}).)+)\}\}/g, (match, key, placeholderText) => {
           const value = processedFormValues[key];
@@ -318,6 +468,12 @@ const formatToNorthAmericanDate = (isoDateTime) => {
           const value = processedFormValues[key];
           let replacement = String(value ?? '');
           const field = selectedForm.fields?.find(f => f.name === key);
+          
+          // DEBUG: Log coroner field replacements
+          if (['coronerRank', 'coronerEmployee', 'coronerBadge'].includes(key)) {
+            console.log(`[useBbcodeGenerator] Replacing ${placeholder}: value="${value}", replacement="${replacement}", fieldFound=${!!field}`);
+          }
+          
           if (field) {
               if ((field.type === "image" || field.type === "image_upload") && value) {
                   const formatItem = (item) => (typeof item === 'string' && /\.(jpg|jpeg|png|gif|webp)$/i.test(item.trim())) ? `[img]${item}[/img]` : (item || '');
@@ -343,6 +499,15 @@ const formatToNorthAmericanDate = (isoDateTime) => {
           bbcode = bbcode.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"), replacement);
       });
 
+      // Directly replace {{originalKey}} with the computed finalTitle before other substitutions
+      // This ensures the report spoiler has the correct title
+      if (finalTitle) {
+        bbcode = bbcode.replace(/\{\{originalKey\}\}/g, finalTitle);
+      }
+
+      // Add the generated title to context as well for any other uses
+      ctx.originalKey = finalTitle;
+
       bbcode = bbcode.replace(/{{(.+?)}}/g, (match, expr) => {
         const trimmed = expr.trim();
         if (trimmed.includes(":") && !/[+\-*/()=?<>!&|]/g.test(trimmed)) return trimmed;
@@ -359,42 +524,21 @@ const formatToNorthAmericanDate = (isoDateTime) => {
           bbcode = bbcode.replace(/\[bold\]/gi, '[b]').replace(/\[\/bold\]/gi, '[/b]');
       }
 
+      // DEBUG: Check if coronerRank/coronerEmployee/coronerBadge placeholders still exist
+      const unreplacedPlaceholders = bbcode.match(/\{\{(coroner[A-Za-z]+)\}\}/g) || [];
+      if (unreplacedPlaceholders.length > 0) {
+        console.warn('[useBbcodeGenerator] Unreplaced coronerRank/coronerEmployee/coronerBadge placeholders:', unreplacedPlaceholders);
+      }
+
       return { bbcode, finalTitle };
     };
 
-    const firstPass = performGeneration();
-    let finalBBCode = firstPass.bbcode;
-    const finalTitle = firstPass.finalTitle;
-
-    /* 
-    // PHPBB character limit and splitting logic (Commented out for later refinement)
-    const PHPBB_LIMIT = 60000;
-    const isMassFatality = selectedForm.firebaseKey === 'mass-ftality-test' || selectedForm.id === 'mass-fatality' || selectedForm.name?.toLowerCase().includes('mass fatality');
-
-    if (finalBBCode.length > PHPBB_LIMIT) {
-        if (isMassFatality && Array.isArray(formValues.decedents) && formValues.decedents.length > 1) {
-            setLimitWarning("PHPBB Limit Hit: Report is over 60k characters. It has been automatically split into multiple parts.");
-            const chunkSize = 5;
-            const chunks = [];
-            for (let i = 0; i < formValues.decedents.length; i += chunkSize) {
-                chunks.push(formValues.decedents.slice(i, i + chunkSize));
-            }
-            finalBBCode = chunks.map((chunk, idx) => {
-                const res = performGeneration(chunk);
-                return `[CENTER][B]PART ${idx + 1} / ${chunks.length}[/B][/CENTER]\n${res.bbcode}`;
-            });
-        } else {
-            setLimitWarning("PHPBB Limit Hit: This report is over 60k characters and may be truncated by the forum.");
-        }
-    } else {
-        setLimitWarning("");
-    }
-    */
+    const { bbcode, finalTitle } = performGeneration();
 
     setShowBBCode(true);
-    setGeneratedBBCode(finalBBCode);
+    setGeneratedBBCode(bbcode);
     setGeneratedTitle(finalTitle);
-  }, [selectedForm, formValues, finalSelectOptions, agencyDataStore, gtaWorldUser]);
+  }, [selectedForm, formValues, finalSelectOptions, agencyDataStore, gtaWorldUser, factionsData]);
 
   return {
     generatedBBCode,

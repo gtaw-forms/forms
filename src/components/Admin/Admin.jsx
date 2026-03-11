@@ -16,7 +16,9 @@ const Admin = ({ formData, setFormData, showNotification }) => {
         user: gtaWorldUser, 
         isAuthenticated: isGtaAuthenticated,
         isLoading: gtaAuthLoading,
-        username: gtaAuthUsername
+        username: gtaAuthUsername,
+        isPhmcMember,
+        accessLevel
     } = useGtaWorldAuth();
 
     // Track if we've already shown the welcome notification to avoid showing it multiple times
@@ -24,65 +26,28 @@ const Admin = ({ formData, setFormData, showNotification }) => {
 
     // Show welcome notification for GTA World OAuth users when they reach admin page
     useEffect(() => {
-        if (isGtaAuthenticated && gtaWorldUser && gtaWorldUser.username && !hasShownGtaWelcome) {
-            let welcomeMessage = `Welcome back, ${gtaWorldUser.username}! 🎮`;
+        if (isGtaAuthenticated && gtaWorldUser && !hasShownGtaWelcome) {
+            const displayName = gtaWorldUser.username || gtaAuthUsername || 'Admin';
+            let welcomeMessage = `Welcome back, ${displayName}! 🎮`;
             
-            // Check if user is a PHMC faction member and display their character name and rank
-            if (gtaWorldUser.isFactionMember && gtaWorldUser.faction) {
-                // Character name from faction data (firstname + lastname)
-                const characterName = (gtaWorldUser.faction.firstname && gtaWorldUser.faction.lastname) ? 
+            // Check if user is a PHMC faction member or has elevated access
+            if (isPhmcMember) {
+                // If they are staff/admin but not in faction, gtaWorldUser.faction might be missing
+                const characterName = (gtaWorldUser.faction?.firstname && gtaWorldUser.faction?.lastname) ? 
                     `${gtaWorldUser.faction.firstname} ${gtaWorldUser.faction.lastname}` : 
-                    (gtaWorldUser.faction.name || gtaWorldUser.faction.characterName || gtaWorldUser.username);
+                    (gtaWorldUser.faction?.name || gtaWorldUser.faction?.characterName || displayName);
                 
-                const scriptRank = gtaWorldUser.faction.scriptRank;
-                const rankName = gtaWorldUser.faction.rankName;
+                const scriptRank = gtaWorldUser.faction?.scriptRank;
+                const rankName = gtaWorldUser.faction?.rankName || (accessLevel === 'staff' ? 'GTA World Staff' : accessLevel === 'president' ? 'System Administrator' : 'Authorized User');
                 
                 // Create detailed welcome message with character info
                 if (characterName && scriptRank !== undefined && rankName) {
                     welcomeMessage = `Welcome back, ${characterName}! (${rankName} - Script Rank: ${scriptRank}) 🏥`;
-                } else if (characterName && scriptRank !== undefined) {
-                    welcomeMessage = `Welcome back, ${characterName}! (Script Rank: ${scriptRank}) 🏥`;
-                } else if (characterName) {
+                } else if (characterName && rankName) {
+                    welcomeMessage = `Welcome back, ${characterName}! (${rankName}) 🏥`;
+                } else {
                     welcomeMessage = `Welcome back, ${characterName}! 🏥`;
                 }
-                
-                console.log(`[Admin Welcome] PHMC member detected:`, {
-                    username: gtaWorldUser.username,
-                    characterName,
-                    scriptRank,
-                    rankName,
-                    factionData: gtaWorldUser.faction
-                });
-            } else {
-                console.log(`[Admin Welcome] Non-PHMC user:`, {
-                    username: gtaWorldUser.username,
-                    isFactionMember: gtaWorldUser.isFactionMember,
-                    hasFactionData: !!gtaWorldUser.faction,
-                    fullUserObject: gtaWorldUser,
-                    // Check for character array (API uses 'character', not 'characters')
-                    hasCharacters: !!(gtaWorldUser.character || gtaWorldUser.characters),
-                    charactersCount: (gtaWorldUser.character || gtaWorldUser.characters)?.length || 0,
-                    characterNames: (gtaWorldUser.character || gtaWorldUser.characters)?.map(char => ({
-                        id: char.id,
-                        name: char.name,
-                        firstname: char.firstname,
-                        lastname: char.lastname,
-                        fullName: `${char.firstname || ''} ${char.lastname || ''}`.trim(),
-                        memberid: char.memberid
-                    })) || 'no characters data',
-                    // Check for other possible character fields
-                    hasName: !!gtaWorldUser.name,
-                    hasFirstname: !!gtaWorldUser.firstname,
-                    hasLastname: !!gtaWorldUser.lastname,
-                    // Raw API response structure
-                    apiDataKeys: Object.keys(gtaWorldUser),
-                    // Check if character data is nested elsewhere
-                    nestedCharacterData: {
-                        user: gtaWorldUser.user,
-                        character: gtaWorldUser.character,
-                        profile: gtaWorldUser.profile
-                    }
-                });
             }
             
             showNotification(welcomeMessage, 'check-circle', 5000);
@@ -93,7 +58,7 @@ const Admin = ({ formData, setFormData, showNotification }) => {
         if (!isGtaAuthenticated && hasShownGtaWelcome) {
             setHasShownGtaWelcome(false);
         }
-    }, [isGtaAuthenticated, gtaWorldUser, hasShownGtaWelcome, showNotification]);
+    }, [isGtaAuthenticated, gtaWorldUser, hasShownGtaWelcome, showNotification, isPhmcMember, accessLevel, gtaAuthUsername]);
 
     useEffect(() => {
         const GITHUB_COMMIT_CACHE_KEY = 'githubCommitInfo';
@@ -158,21 +123,21 @@ const Admin = ({ formData, setFormData, showNotification }) => {
         fetchCommit();
     }, []); // This effect runs once on mount
 
-    // Check if user has PHMC access (unless they have Gmail override)
+    // Check if user has PHMC access (unless they have Gmail override or staff role)
     const isGmailUser = currentUser?.email?.endsWith('@gmail.com');
+    const hasElevatedAccess = ['president', 'staff', 'superadmin'].includes(accessLevel);
     
-    // Check PHMC membership using the faction data structure
-    const isPhmcMember = gtaWorldUser?.isFactionMember && gtaWorldUser?.faction;
-    const hasPhmcAccess = isPhmcMember || isGmailUser;
+    // hasAdminAccess is true if they are in the faction, a staff member, or a whitelisted Gmail user
+    const hasAdminAccess = isPhmcMember || isGmailUser || hasElevatedAccess;
     
-    if (!hasPhmcAccess && isGtaAuthenticated && !gtaAuthLoading) {
+    if (!hasAdminAccess && isGtaAuthenticated && !gtaAuthLoading) {
         // Log unauthorized access attempt (only once per session)
         const logUnauthorizedAccess = async () => {
             // Prevent multiple webhook calls for the same session
             if (hasLoggedUnauthorizedAccess) return;
             
             try {
-                const webhookURL = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
+                const webhookURL = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VHOOK;
                 if (webhookURL) {
                     const embed = {
                         title: "⚠️ Unauthorized Admin Access Attempt",
@@ -203,8 +168,8 @@ const Admin = ({ formData, setFormData, showNotification }) => {
         return (
             <div style={{ textAlign: 'center', padding: '2rem' }}>
                 <h2>Access Denied</h2>
-                <p>This admin panel is restricted to PHMC members only.</p>
-                <p>Please contact a PHMC administrator if you believe this is an error.</p>
+                <p>This admin panel is restricted to PHMC members and GTA World Staff.</p>
+                <p>Please contact Fr0styDev if you believe this is an error.</p>
                 <div style={{ marginTop: '2rem', display: 'flex', gap: '1rem', justifyContent: 'center' }}>
                     <button 
                         className="btn btn-primary"

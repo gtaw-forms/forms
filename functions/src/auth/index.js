@@ -86,10 +86,19 @@ export const syncAdminClaims = onCall({
 });
 
 /**
+ * Helper function to check if a GTA World role is considered staff
+ */
+function isStaffRole(roleId) {
+    if (!roleId) return false;
+    const staffKeywords = ['Admin', 'Management', 'Support', 'Owner', 'Tester', 'Moderator', 'Staff', 'Developer', 'Lead', 'Head', 'Director'];
+    return staffKeywords.some(keyword => roleId.includes(keyword));
+}
+
+/**
  * Helper function to get permissions based on script rank or superadmin status
  */
-function getPermissionsForRank(scriptRank, isSuperAdmin = false) {
-    if (isSuperAdmin) {
+function getPermissionsForRank(scriptRank, isElevated = false) {
+    if (isElevated) {
         return [
             'admin_full_access', 
             'upload_faction_data', 
@@ -289,11 +298,31 @@ export const processGtaWorldAuth = onCall({
             (adminConfig.ucp_names && adminConfig.ucp_names[finalUser.username]) ||
             (adminConfig.uids && adminConfig.uids[firebaseUid]);
 
+        const isGtawStaff = isStaffRole(finalUser.role?.role_id);
+        const isElevated = isSuperAdmin || isGtawStaff;
+
+        // Persist admin status in a special database node for the frontend to recognize
+        if (isElevated) {
+            try {
+                const adminRef = db.ref(`verified_admins/${finalUser.id}`);
+                await adminRef.set({
+                    id: finalUser.id,
+                    username: finalUser.username,
+                    role: finalUser.role?.role_id || 'Admin',
+                    lastLogin: new Date().toISOString(),
+                    isElevated: true
+                });
+                console.log(`[UnifiedAuth] Persisted elevated status for ${finalUser.username} (${finalUser.id})`);
+            } catch (dbError) {
+                console.error(`[UnifiedAuth] Failed to persist elevated status:`, dbError);
+            }
+        }
+
         let factionResult = {
-            isMember: isSuperAdmin, // Super admins are members by definition
+            isMember: isElevated, // Super admins and staff are members by definition
             character: null,
-            permissions: getPermissionsForRank(0, isSuperAdmin),
-            accessLevel: getAccessLevel(0, finalUser.username, isSuperAdmin),
+            permissions: getPermissionsForRank(0, isElevated),
+            accessLevel: getAccessLevel(0, finalUser.username, isElevated),
             allFactionCharacters: []
         };
 
@@ -315,8 +344,8 @@ export const processGtaWorldAuth = onCall({
                             rank: memberData.rank,
                             scriptRank: memberData.scriptRank
                         },
-                        permissions: getPermissionsForRank(memberData.scriptRank, isSuperAdmin),
-                        accessLevel: getAccessLevel(memberData.scriptRank, finalUser.username, isSuperAdmin)
+                        permissions: getPermissionsForRank(memberData.scriptRank, isElevated),
+                        accessLevel: getAccessLevel(memberData.scriptRank, finalUser.username, isElevated)
                     });
                 }
             }
@@ -351,7 +380,7 @@ export const processGtaWorldAuth = onCall({
                 gtawUsername: finalUser.username,
                 isFactionMember: factionResult.isMember,
                 accessLevel: factionResult.accessLevel,
-                isSuperAdmin: isSuperAdmin,
+                isSuperAdmin: isElevated,
                 // We keep permissions as an array, but note Firebase has a 1000 byte limit for claims
                 // If it grows too large, we might need to compress or store in DB instead
                 permissions: factionResult.permissions
@@ -1016,11 +1045,14 @@ export const refreshGtawUser = onCall({
             (adminConfig.ucp_names && adminConfig.ucp_names[finalUser.username]) ||
             (adminConfig.uids && adminConfig.uids[firebaseUid]);
 
+        const isGtawStaff = isStaffRole(finalUser.role?.role_id);
+        const isElevated = isSuperAdmin || isGtawStaff;
+
         let factionResult = {
-            isMember: isSuperAdmin,
+            isMember: isElevated,
             character: null,
-            permissions: getPermissionsForRank(0, isSuperAdmin),
-            accessLevel: getAccessLevel(0, finalUser.username, isSuperAdmin),
+            permissions: getPermissionsForRank(0, isElevated),
+            accessLevel: getAccessLevel(0, finalUser.username, isElevated),
             allFactionCharacters: []
         };
 
@@ -1041,8 +1073,8 @@ export const refreshGtawUser = onCall({
                             rank: memberData.rank,
                             scriptRank: memberData.scriptRank
                         },
-                        permissions: getPermissionsForRank(memberData.scriptRank, isSuperAdmin),
-                        accessLevel: getAccessLevel(memberData.scriptRank, finalUser.username, isSuperAdmin)
+                        permissions: getPermissionsForRank(memberData.scriptRank, isElevated),
+                        accessLevel: getAccessLevel(memberData.scriptRank, finalUser.username, isElevated)
                     });
                 }
             }
@@ -1071,7 +1103,7 @@ export const refreshGtawUser = onCall({
                 gtawUsername: finalUser.username,
                 isFactionMember: factionResult.isMember,
                 accessLevel: factionResult.accessLevel,
-                isSuperAdmin: isSuperAdmin,
+                isSuperAdmin: isElevated,
                 permissions: factionResult.permissions
             };
             firebaseCustomToken = await admin.auth().createCustomToken(firebaseUid, additionalClaims);

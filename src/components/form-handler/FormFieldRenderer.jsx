@@ -11,7 +11,7 @@ import CharacterSelector from '../Modals/CharacterSelector';
 import { decedentItemSchema } from '../../formSchemas/decedentSchema';
 import { formatCharacterNameForDisplay } from '../../utils/characterUtils'; // Import the new utility
 
-const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore, toggleSavedReports, showNotification, handleDiagramUpload, setShowMapModal, setMapTargetField, isUploadingMapImage = {}, setShowAutopsyAssistModal, setAutopsyAssistTargetField }) => {
+const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore, toggleSavedReports, showNotification, isUploading, handleDiagramUpload, setShowMapModal, setMapTargetField, isUploadingMapImage = {}, setShowAutopsyAssistModal, setAutopsyAssistTargetField, setIsAttachModeForModal }) => {
   const { factionsData } = useData();
 
   const employeeOptions = useMemo(() => {
@@ -195,9 +195,26 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
             {field.buttonLabel && (
               <button
                 onClick={() => {
-                  if (field.buttonAction === "set_current_time") {
-                    const timeValue = field.timerType === 'datetime-local' ? getUtcFormattedDateTime() : getUtcFormattedTime();
-                    handleChange(field.name, timeValue);
+                  if (field.buttonAction === "capture") {
+                    let capturedValue = "";
+                    
+                    if (field.timerType === "datetime-local" || field.timerType === "dateTime") {
+                      // Capture both date and time (YYYY-MM-DDTHH:MM)
+                      capturedValue = getUtcFormattedDateTime();
+                    } else if (field.timerType === "date") {
+                      // Capture date only (YYYY-MM-DD)
+                      const now = new Date();
+                      const pad = (n) => n.toString().padStart(2, '0');
+                      capturedValue = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}`;
+                    } else if (field.timerType === "time") {
+                      // Capture time only (HH:MM)
+                      capturedValue = getUtcFormattedTime();
+                    } else {
+                      // Default fallback to datetime
+                      capturedValue = getUtcFormattedDateTime();
+                    }
+                    
+                    handleChange(field.name, capturedValue);
                   }
                 }}
                 style={{
@@ -824,16 +841,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       );
     }
     case "attach_report_button": {
-      const storageKey = field.name || field.id || 'attach_report_summary';
-      const attachedReportSummaries = formValues[storageKey] || [];
-      const targetField = field.targetField;
-
-      useEffect(() => {
-        // If the target field is cleared from outside, clear the summaries.
-        if (!formValues[targetField]) {
-          handleChange(storageKey, []);
-        }
-      }, [formValues[targetField], handleChange, storageKey]);
+      const attachedReports = formValues.additionalReports || [];
 
       return (
         <div 
@@ -845,16 +853,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
           <button
             data-tour-target="button"
             onClick={() => {
-              const callback = (reportData) => {
-                if (reportData && reportData.bbCode) {
-                  const currentSummaries = formValues[storageKey] || [];
-                  //if(showNotification) showNotification('Report attached!', 'success');
-                  
-                  // Add the confirmation message to the persistent store
-                  handleChange(storageKey, [...currentSummaries, `Report "${reportData.originalKey}" attached to "${targetField}"!`]);
-                }
-              };
-              toggleSavedReports(null, field.employeeType, callback, field.targetField);
+              toggleSavedReports(null, field.employeeType, null, field.targetField, true);
             }}
             style={{
               padding: "0.8rem 1.5rem",
@@ -869,11 +868,14 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
           >
             {field.label}
           </button>
-          {attachedReportSummaries.length > 0 && (
-            <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#34d399' }}>
-              {attachedReportSummaries.map((summary, index) => (
-                <div key={index}>{summary}</div>
-              ))}
+          {attachedReports.length > 0 && (
+            <div style={{ marginTop: '1rem', borderLeft: '3px solid #22c55e', paddingLeft: '1rem' }}>
+              <h4 style={{ margin: '0 0 0.5rem 0', color: '#a78bfa', fontSize: '0.9rem', fontWeight: '600' }}>Attached Reports:</h4>
+              <ul style={{ margin: 0, paddingLeft: '20px', color: '#34d399', fontSize: '0.9rem' }}>
+                {attachedReports.map((report, index) => (
+                  <li key={index}>{report.originalKey || `Attached Report ${index + 1}`}</li>
+                ))}
+              </ul>
             </div>
           )}
         </div>

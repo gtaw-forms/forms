@@ -1,0 +1,50 @@
+[center][img]https://i.ibb.co/GfSHbMMj/ItaoQkO.webp[/img][/center]
+[hr][/hr]
+
+TO: {{requestingOfficer}} - {{getDepartmentFullName(department)}}
+FROM: {{coronerEmployee}} @ phmc.health
+SUBJECT: Coroner Report Paperwork
+
+For the attention of: [bold]{{getDepartmentFullName(formData.department, agencyDataStore)}}[/bold] - [bold]{{requestingOfficer}}[/bold]
+
+This Coroner Report has been written by {{coronerRank}} {{coronerEmployee}} you can find the enclosed documents attached to this email. 
+
+[bold]IMPORTANT INFORMATION REGARDING AUTOPSIES IN SPOILER[/bold]
+
+[altspoiler=Request a Autopsy FAQ]
+1) How do I request an autopsy report and/or a death certificate?
+Autopsies and death certificates can aid in various situations, especially whenever the cause of death plays a vital role in. Our professionals attempt to handle each and every request in a timely manner. However, given the fact that the effort of documentation is immense, a request fee is associated along with it. Upon its payment, the report or certificate will be sent to you directly.
+
+
+2) Is there a fee associated with the request process?
+Yes, there is a $2,000 fee associated with the request. This fee covers administrative costs related to processing and maintaining your requested report/certificate securely within our systems. It ensures the continued improvement of our services, maintaining the highest standards in healthcare data management.
+
+
+3) How do I pay the $2,000 request fee?
+To pay your $2,000 request fee, please log into the banking website and navigate to the "Payment" section. Select your preferred payment method (e.g., credit card, debit card), insert our routing number (020000062), enter the required payment details, review the transaction, and confirm your payment. (( Type /transfer 2000 020000062 ))
+
+(( Autopsies for Player Kills (PK) and Character Kills (CK) will only be accepted if they are deemed strictly necessary and relevant to an important case or investigation. It is mandatory to provide information about /cdamages and /cexamine. In the event that this information is not available, please do not hesitate to contact an administrator in-game, who can provide it. If these steps are not followed, an automatic denial will cause your request to be archived.
+
+Also if it is a PK, please be sure to use John/Jane Doe with their character name in OOC brackets . Ex: John Doe (( James Smith ))
+
+[url=https://phmc.gta.world/ucp.php?i=pm&mode=compose&g=50]You can make a private Autopsy Request to the Medical Examiner's via this link. [/url] Please follow the [url=https://phmc.gta.world/viewtopic.php?t=3023]instructions and format[/url] before sending. ))
+
+(( Important Note:  The Medical Examiner team behind handling autopsies is a small team, at <=5 Medical Examiners also juggling IRL, in-game field work, and administrative duties; we try to handle autopsies in a timely manner but delays can happen due to IC or OOC factors. )) 
+[/altspoiler]
+If you have further enquiries, feel free to reach out to the following individual:
+[list] {{coronerEmployee}}
+[*] Phone Number: {{coronerPHNumber}}
+[*] (( Discord: {{coronerDiscord}} ))[/list]
+
+{{deathReport}}
+
+Kind regards
+{{coronerRank}} {{coronerEmployee}}
+Pillbox Hill Medical Center - Forensic Medicine and Pathology
+
+[size=75]The content of this email is intended for the person or entity to which it is addressed only. This email may contain confidential information. If you are not the person to whom this message is addressed, be aware that any use, reproduction, or distribution of this message is strictly prohibited. If you received this in error, please contact the sender and immediately delete this email and any attachments.[/size]
+
+[hr][/hr]
+
+[size=85][b]ADDITIONAL REPORTS[/b][/size]
+[size=75][i]Note: Any additional reports attached to this form will automatically be added below, each in their own spoiler with their original title[/i][/size]

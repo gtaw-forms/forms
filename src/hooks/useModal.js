@@ -17,7 +17,6 @@ export function useModal() {
     const [showFeatureRequestModal, setShowFeatureRequestModal] = useState(false);
 
     const [showPrivacyPolicyModal, setShowPrivacyPolicyModal] = useState(false);
-    const [showLockdownDialog, setShowLockdownDialog] = useState(false);
 
     return {
         showEmsBingoModal, setShowEmsBingoModal,
@@ -36,6 +35,5 @@ export function useModal() {
         showFeatureRequestModal, setShowFeatureRequestModal,
 
         showPrivacyPolicyModal, setShowPrivacyPolicyModal,
-        showLockdownDialog, setShowLockdownDialog
     };
 }
