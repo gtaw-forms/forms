@@ -44,6 +44,7 @@ const AgencyIncidentModal = lazy(() => import('../Modals/AgencyIncidentModal'));
 const SurveyModal = lazy(() => import('../Modals/SurveyModal'));
 import UnprocessedCKsViewer from './UnprocessedCKsViewer';
 import FormTour, { sectionExplanations } from '../UI/FormTour';
+import ImagePreviewModal from '../Modals/ImagePreviewModal';
 
 export const FormHandler = () => {
   const isDevelopment = process.env.NODE_ENV === 'development' || window.location.hostname === 'localhost';
@@ -95,6 +96,10 @@ export const FormHandler = () => {
 
       // Hooks
       const { showNotification, removeNotification } = useNotification();
+      const { 
+        showEmsBingoModal, setShowEmsBingoModal,
+        imagePreviewUrl, imagesPreviewList, currentPreviewIndex, setCurrentPreviewIndex, closeImagePreview 
+      } = useModal();
 
       const {
         user: realUser,
@@ -1777,6 +1782,16 @@ export const FormHandler = () => {
           showNotification={showNotification}
         />
       </Suspense>
+
+      {/* Global Image Previewer */}
+      <ImagePreviewModal 
+        isOpen={!!imagePreviewUrl}
+        onClose={closeImagePreview}
+        imageUrl={imagePreviewUrl}
+        images={imagesPreviewList}
+        currentIndex={currentPreviewIndex}
+        onIndexChange={setCurrentPreviewIndex}
+      />
 
     </div>
   );

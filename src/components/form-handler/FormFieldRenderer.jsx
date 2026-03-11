@@ -10,9 +10,11 @@ import AutopsyDiagramModal from '../Modals/AutopsyDiagramModal'; // Import Autop
 import CharacterSelector from '../Modals/CharacterSelector';
 import { decedentItemSchema } from '../../formSchemas/decedentSchema';
 import { formatCharacterNameForDisplay } from '../../utils/characterUtils'; // Import the new utility
+import { useModal } from '../../contexts/ModalProvider';
 
 const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore, toggleSavedReports, showNotification, isUploading, handleDiagramUpload, setShowMapModal, setMapTargetField, isUploadingMapImage = {}, setShowAutopsyAssistModal, setAutopsyAssistTargetField, setIsAttachModeForModal }) => {
   const { factionsData } = useData();
+  const { openImagePreview } = useModal();
 
   const employeeOptions = useMemo(() => {
     if (!factionsData || !factionsData['364'] || !factionsData['364'].members) return [];
@@ -1143,9 +1145,13 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
                 </button>
                 {formValues[field.name] && (
                     <div style={{ marginTop: '10px', fontSize: '0.9rem', color: '#34d399' }}>
-                        Diagram URL: <a href={formValues[field.name]} target="_blank" rel="noopener noreferrer" style={{ color: '#34d399', textDecoration: 'underline' }}>View Diagram</a>
+                        Diagram URL: <span 
+                            onClick={() => openImagePreview(formValues[field.name])}
+                            style={{ color: '#34d399', textDecoration: 'underline', cursor: 'pointer' }}
+                        >View Diagram</span>
                     </div>
                 )}
+
 
                 <AutopsyDiagramModal
                     show={showModal}
