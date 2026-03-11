@@ -62,6 +62,6 @@ export const decedentItemSchema = [
   sectionHeader('Scene Evidence'),
   imageInput('scenePhotos', 'Scene Photos & Evidence', 6),
   
-  sectionHeader('Morgue, Damages and CDNA'),
+  sectionHeader('Morgue and Damages'),
   imageInput('additionalImages', 'Post URLs / Images', 6),
 ];

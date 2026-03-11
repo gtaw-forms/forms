@@ -97,7 +97,6 @@ export const FormHandler = () => {
       // Hooks
       const { showNotification, removeNotification } = useNotification();
       const { 
-        showEmsBingoModal, setShowEmsBingoModal,
         imagePreviewUrl, imagesPreviewList, currentPreviewIndex, setCurrentPreviewIndex, closeImagePreview 
       } = useModal();
 
