@@ -43,3 +43,4 @@ firebase-admin-key.json
 .env.sentry-build-plugin
 
 # tools
+tools/service-account.json
