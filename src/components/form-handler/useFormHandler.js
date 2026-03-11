@@ -2,14 +2,7 @@ import { useCallback } from 'react';
 import { database } from '../../firebase';
 import { ref, set, runTransaction } from 'firebase/database';
 import * as Sentry from "@sentry/react";
-
-const comprehensiveSanitize = (str) => {
-    if (!str) return '';
-    let sanitized = str.trim().replace(/[.#$[/ \]]+/g, '_');
-    sanitized = sanitized.replace(/_{2,}/g, '_');
-    sanitized = sanitized.replace(/^_+|_+$/g, '');
-    return sanitized;
-};
+import { comprehensiveSanitize } from '../../utils/textUtils';
 
 export const useFormHandler = (showNotification) => {
     const saveReport = useCallback(async (reportName, bbCodeContent, author, formData, filterFormData) => {

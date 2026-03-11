@@ -5,15 +5,8 @@ import * as Sentry from "@sentry/react";
 import { useNotification } from '../contexts/NotificationContext';
 import { useData } from '../contexts/DataContext';
 import { getCharacterName } from '../utils/characterUtils';
+import { comprehensiveSanitize } from '../utils/textUtils';
 import useGtaWorldAuth from './useGtaWorldAuth';
-
-const comprehensiveSanitize = (str) => {
-    if (!str) return '';
-    let sanitized = str.trim().replace(/[.#$[/ \]]+/g, '_');
-    sanitized = sanitized.replace(/_{2,}/g, '_');
-    sanitized = sanitized.replace(/^_+|_+$/g, '');
-    return sanitized;
-};
 
 export const useReportActions = () => {
     const { showNotification } = useNotification();
