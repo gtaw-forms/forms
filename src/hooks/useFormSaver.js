@@ -4,17 +4,11 @@ import { ref, set, runTransaction } from 'firebase/database';
 import * as Sentry from "@sentry/react";
 import useGtaWorldAuth from './useGtaWorldAuth';
 import { getCharacterName, getCharacterID } from '../utils/characterUtils';
+import { comprehensiveSanitize } from '../utils/textUtils';
 import { useNotification } from '../contexts/NotificationContext';
 
-const comprehensiveSanitize = (str) => {
-    if (!str) return '';
-    let sanitized = str.trim().replace(/[.#$[/ \]]+/g, '_');
-    sanitized = sanitized.replace(/_{2,}/g, '_');
-    sanitized = sanitized.replace(/^_+|_+$/g, '');
-    return sanitized;
-};
+export const useFormSaver = () => {
 
-const parseCaseNumber = (url) => {
     if (!url) return '';
     const match = url.match(/\d+$/);
     return match ? match[0] : '';
