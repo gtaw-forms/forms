@@ -1,6 +1,44 @@
 import { useState, useRef, useCallback } from 'react';
 import * as Sentry from "@sentry/react";
-import { useData } from '../contexts/DataContext';
+
+// Helper to transform the report title on attachment
+const transformReportTitle = (originalKey) => {
+    if (typeof originalKey !== 'string') {
+        return 'Attached Report';
+    }
+
+    let finalKey = originalKey;
+
+    if (finalKey.startsWith('[DEATH-REPORT]')) {
+        finalKey = finalKey.replace('[DEATH-REPORT]', 'Coroner Report -').trim();
+        // Remove date like MM/DD/YYYY from the end
+        finalKey = finalKey.replace(/\s+\d{2}\/\d{2}\/\d{4}$/, '').trim();
+    } else if (finalKey.startsWith('[Mass Fatality Report]') || finalKey.startsWith('[Multi Fatality Report]')) {
+        // Handle Mass Fatality Report titles
+        // Example: "[Mass Fatality Report] John Doe (x4) - 03/01/2026"
+        // Desired: "Mass Fatality Report - John Doe x4" (removing date, brackets, and adjusting OOC format if present)
+
+        // Remove the leading "[Mass Fatality Report]" or "[Multi Fatality Report]"
+        finalKey = finalKey.replace(/\[(Mass|Multi) Fatality Report\]\s*/i, '').trim();
+
+        // Remove the date from the end (e.g., "- 03/01/2026")
+        finalKey = finalKey.replace(/\s*-\s*\d{2}\/\d{2}\/\d{4}$/, '').trim();
+        
+        // Prepend the standardized report type
+        finalKey = `Mass Fatality Report - ${finalKey}`;
+
+        // Ensure "x{times}" is correctly formatted without parentheses if it was " (x{times})"
+        finalKey = finalKey.replace(/\s*\(x(\d+)\)/g, ' x$1');
+    }
+    
+    // Replace text within double parentheses ((...)) with "OOC - <content>"
+    finalKey = finalKey.replace(/\(\((.*?)\)\)/g, 'OOC - $1').trim();
+
+    // Finally, remove any remaining square brackets to prevent breaking altspoilers
+    finalKey = finalKey.replace(/\[|\]/g, '').trim();
+
+    return finalKey;
+};
 
 export const useReportAttachment = (
     loadReportForUser,
@@ -11,240 +49,117 @@ export const useReportAttachment = (
     removeNotification,
     modalCloseTimer
 ) => {
-        useData(); // Call hook without empty destructuring
-    // Actually, useData doesn't export these versions directly usually, they were passed as args.
-    // We'll stick to the args pattern or constants if they are static.
-    // For now, let's keep the internal state for the modal logic.
-
     const [reportSelectionFilter, setReportSelectionFilter] = useState(null);
     const [preselectedEmployeeType, setPreselectedEmployeeType] = useState(null);
     const [showSavedReports, setShowSavedReports] = useState(false);
+    const [isAttachMode, setIsAttachMode] = useState(false);
     const pendingReportAttachmentCallback = useRef(null);
     const currentAttachmentTargetFieldRef = useRef(null);
 
     const getCurrentReportAuthor = useCallback(() => {
-        // This helper was passed in before. We might need to assume it's available or pass it.
-        // For attachment logic, it's used to check if an employee is selected.
         return formData.phmcEmployee || formData.coronerEmployee || null;
     }, [formData]);
 
-    const handleReportSelectedForAttachment = useCallback(async (report, userId, targetFieldName) => {
-        if (modalCloseTimer.current) {
-            clearTimeout(modalCloseTimer.current);
-        }
+    const handleReportSelectedForAttachment = useCallback(async (reportData, loadedFormData, loadedVersion, loadedBbCode) => {
+        const targetFieldName = currentAttachmentTargetFieldRef.current;
+        
+        setFormData(prev => {
+            const transformedKey = transformReportTitle(reportData.originalKey);
 
-        const loadingNotifId = showNotification(`Attaching report...`, 'info-circle', 0);
-        const result = await loadReportForUser(report, userId, true);
-        removeNotification(loadingNotifId);
-
-        if (result.success && pendingReportAttachmentCallback.current) {
-            const reportData = result.reportData;
-            const loadedFormData = reportData.data || {};
-            const loadedVersion = reportData.bbCodeVersion;
-
-            const prefillMessages = [];
-            if (loadedFormData.requestingOfficer && (selectedForm?.name === 'Coroner Email' || selectedForm?.id === 'coroner_email')) {
-                prefillMessages.push(`Requesting Officer ('${loadedFormData.requestingOfficer}')`);
-            }
-            if (loadedFormData.department && (selectedForm?.name === 'Coroner Email' || selectedForm?.id === 'coroner_email')) {
-                prefillMessages.push(`Department ('${loadedFormData.department}')`);
-            }
-
-            // --- MODIFICATION START: Generalized Field Population ---
-            setFormData(prev => {
-                // Logic for Attaching Mass Fatality to Coroner Email
-                if ((selectedForm?.name === 'Coroner Email' || selectedForm?.id === 'coroner_email')) { // Simplified condition for logging
-                    console.log(`[useReportAttachment] Current Form: ${selectedForm?.name} (ID: ${selectedForm?.id}), Loaded Version: ${loadedVersion}`);
-                    console.log(`[useReportAttachment] Loaded FormData for debugging:`, loadedFormData);
-
-                    if (loadedVersion === 11) { // Original Mass Fatality block
-                    let decedents = loadedFormData.decedents;
-                    
-                    // Handle Firebase array-as-object conversion
-                    if (decedents && typeof decedents === 'object' && !Array.isArray(decedents)) {
-                        decedents = Object.values(decedents);
-                    }
-                    
-                    if (decedents && decedents.length > 0) {
-                        const firstDecedent = decedents[0];
-                        let icName = firstDecedent.decedentName || firstDecedent.DecedentName || '';
-                        
-                        // Extract and join all OOC names for the title list
-                        const oocNamesList = decedents
-                            .map(d => d.decedentOOC || d.DecedentOOC)
-                            .filter(n => n && String(n).trim() !== '');
-                        
-                        let oocName = oocNamesList.length > 0 ? oocNamesList.join(', ') : 'N/A';
-
-                        if (decedents.length > 1) {
-                            icName += ` (x${decedents.length})`;
-                        }
-                        
-                        const currentDeathReportIsEmpty = !prev.deathReport || prev.deathReport.trim() === '';
-                        let newState = { ...prev };
-                        newState.decedentName = icName;
-                        newState.decedentOOC = oocName;
-                        newState.paperworkType = decedents.length >= 4 ? 'Mass Fatality' : 'Multi Fatality';
-
-                        if (currentDeathReportIsEmpty) {
-                            newState.deathReport = reportData.bbCode;
-                        } else {
-                            newState.additionalReports = [...(prev.additionalReports || []), reportData.bbCode];
-                        }
-                        
-                        // Hotfix: If attached Mass Fatality report has requestingOfficer, update the Coroner Email form
-                        if (loadedFormData.requestingOfficer) {
-                            newState.requestingOfficer = loadedFormData.requestingOfficer;
-                        }
-
-                        // Hotfix: If attached Mass Fatality report has department, update the Coroner Email form
-                        if (loadedFormData.department) {
-                            newState.department = loadedFormData.department;
-                        }
-
-                        return newState;
-                    }
-                }
-            }
-
-                // Mass Fatality Report (bbCodeVersion 11): attach BBCode to deathReport and merge decedents
-                if (loadedVersion === 11) {
-                    const currentDeathReportIsEmpty = !prev.deathReport || prev.deathReport.trim() === '';
-                    let newState = { ...prev };
-                    if (currentDeathReportIsEmpty) {
-                        newState.deathReport = reportData.bbCode;
-                    } else {
-                        newState.additionalReports = [...(prev.additionalReports || []), reportData.bbCode];
-                    }
-                    if (Array.isArray(loadedFormData.decedents)) {
-                        newState.decedents = [...(prev.decedents || []), ...loadedFormData.decedents];
-                    }
-                    return newState;
+            if (loadedVersion === 11) {
+                console.log(`[useReportAttachment] Attaching Version 11 Report. Current form: ${selectedForm?.name}`);
+                let decedents = loadedFormData.decedents;
+                if (decedents && typeof decedents === 'object' && !Array.isArray(decedents)) {
+                    decedents = Object.values(decedents);
                 }
 
-                // Standard Attachment Logic
-                const fieldsToUpdate = {
-                    decedentName: loadedFormData.decedentName,
-                    decedentOOC: loadedFormData.decedentOOC,
-                    requestingOfficer: loadedFormData.requestingOfficer,
-                    department: loadedFormData.department,
-                };
+                if (!Array.isArray(decedents) || decedents.length === 0) {
+                    const reportContent = loadedFormData.deathReport || reportData.bbCode || '';
+                    return { ...prev, additionalReports: [...(prev.additionalReports || []), { bbCode: reportContent, originalKey: transformedKey, formId: reportData.formId }] };
+                }
+                
+                const firstDecedent = decedents[0];
+                let icName = firstDecedent.decedentName || firstDecedent.DecedentName || '';
+                if (decedents.length > 1) {
+                    icName += ` (x${decedents.length})`;
+                }
 
+                let newState = { ...prev };
                 if (selectedForm?.name === 'Coroner Email' || selectedForm?.id === 'coroner_email') {
-                    const existingNames = new Set((prev.decedentName || '').split(', ').filter(Boolean));
-                    let decedentNameToAdd = null;
-                    if (reportData.originalKey && reportData.originalKey.startsWith('[DEATH-REPORT]')) {
-                        const nameMatch = reportData.originalKey.match(/\[DEATH-REPORT[^\]]*\][\s]*([^-]+)/);
-                        if (nameMatch && nameMatch[1]) {
-                            decedentNameToAdd = nameMatch[1].trim();
-                        }
-                    }
-                    if (!decedentNameToAdd && loadedFormData.decedentName) {
-                        decedentNameToAdd = loadedFormData.decedentName;
-                    }
-                    if (decedentNameToAdd) {
-                        existingNames.add(decedentNameToAdd);
-                    }
-                    const newDecedentName = Array.from(existingNames).join(', ');
-
-                    const existingOocNames = new Set((prev.decedentOOC || '').split(', ').filter(Boolean));
-                    if (loadedFormData.decedentOOC) {
-                        existingOocNames.add(loadedFormData.decedentOOC);
-                    }
-                    const newDecedentOOC = Array.from(existingOocNames).join(', ');
-
-                    const newDeathReport = [prev.deathReport, reportData.bbCode].filter(Boolean).join('\n\n[hr]\n\n');
-                    const newAttachedReportKeys = [...(prev.attachedReportKeys || []), reportData.originalKey];
-                    
-                    const updates = {
-                        decedentName: newDecedentName,
-                        decedentOOC: newDecedentOOC,
-                        requestingOfficer: loadedFormData.requestingOfficer || prev.requestingOfficer,
-                        department: loadedFormData.department || prev.department,
-                        deathReport: newDeathReport,
-                        attachedReportKeys: newAttachedReportKeys,
-                        additionalReports: [], 
-                    };
-
-                    // Hotfix: If attached report has requestingOfficer, update the Coroner Email form
-                    if (loadedFormData.requestingOfficer && (selectedForm?.name === 'Coroner Email' || selectedForm?.id === 'coroner_email')) {
-                        updates.requestingOfficer = loadedFormData.requestingOfficer;
-                    }
-
-                    return { ...prev, ...updates };
-                } else {
-                    let newState = { ...prev };
-                    newState.decedentName = fieldsToUpdate.decedentName || prev.decedentName;
-                    newState.decedentOOC = fieldsToUpdate.decedentOOC || prev.decedentOOC;
-                    newState.requestingOfficer = fieldsToUpdate.requestingOfficer || prev.requestingOfficer;
-                    newState.department = fieldsToUpdate.department || prev.department;
-
-                    if (targetFieldName && reportData.bbCode) {
-                        const currentContent = newState[targetFieldName] || '';
-                        newState[targetFieldName] = currentContent ? `${currentContent}\n\n${reportData.bbCode}` : reportData.bbCode;
-                    }
-                    return newState;
+                    const oocNamesList = decedents.map(d => d.decedentOOC || d.DecedentOOC).filter(Boolean);
+                    newState.decedentName = icName;
+                    newState.decedentOOC = oocNamesList.length > 0 ? oocNamesList.join(', ') : 'N/A';
+                    newState.paperworkType = decedents.length >= 4 ? 'Mass Fatality' : 'Multi Fatality';
                 }
-            });
-            // --- MODIFICATION END ---
 
-            pendingReportAttachmentCallback.current(reportData);
+                const reportContent = loadedFormData.deathReport || reportData.bbCode || '';
+                newState.additionalReports = [...(prev.additionalReports || []), { bbCode: reportContent, originalKey: transformedKey, formId: reportData.formId }];
 
-            let successMessage = `Report "${reportData.originalKey}" attached successfully.`;
-            if (prefillMessages.length > 0) {
-                successMessage += ` Pre-filled: ${prefillMessages.join(', ')}.`;
+                if (Array.isArray(loadedFormData.decedents)) {
+                    newState.decedents = [...(prev.decedents || []), ...loadedFormData.decedents];
+                }
+                
+                if (loadedFormData.requestingOfficer) newState.requestingOfficer = loadedFormData.requestingOfficer;
+                if (loadedFormData.department) newState.department = loadedFormData.department;
+
+                return newState;
             }
-            showNotification(successMessage, 'check-circle');
 
-        } else {
-            if (!result.success) {
-                showNotification('Failed to load the selected report.', 'error');
-            } else if (!pendingReportAttachmentCallback.current) {
-                showNotification('Attachment process could not be completed (no callback).', 'error');
-                Sentry.captureMessage('handleReportSelectedForAttachment was called but pendingReportAttachmentCallback.current was null.');
+            // Standard Attachment Logic
+            if (selectedForm?.name === 'Coroner Email' || selectedForm?.id === 'coroner_email') {
+                console.log(`[useReportAttachment] Attaching standard report to Coroner Email.`);
+                const reportContent = reportData.bbCode || '';
+                
+                let newState = { ...prev };
+                newState.additionalReports = [...(prev.additionalReports || []), { bbCode: reportContent, originalKey: transformedKey, formId: reportData.formId }];
+
+                if (loadedFormData.requestingOfficer) newState.requestingOfficer = loadedFormData.requestingOfficer;
+                if (loadedFormData.department) newState.department = loadedFormData.department;
+                
+                return newState;
+            } else {
+                let newState = { ...prev };
+                if (targetFieldName && reportData.bbCode) {
+                    const currentContent = newState[targetFieldName] || '';
+                    newState[targetFieldName] = currentContent ? `${currentContent}\n\n${reportData.bbCode}` : reportData.bbCode;
+                }
+                return newState;
             }
-        }
+        });
+        
+        showNotification(`Report "${transformReportTitle(reportData.originalKey)}" attached successfully.`, 'check-circle');
 
-        modalCloseTimer.current = setTimeout(() => {
-            setReportSelectionFilter(null);
-            setPreselectedEmployeeType(null);
-            setShowSavedReports(false);
-        }, 1000);
+    }, [selectedForm, setFormData, showNotification]);
 
-    }, [loadReportForUser, modalCloseTimer, showNotification, removeNotification, selectedForm, setFormData]);
+    const toggleSavedReports = useCallback((
+        event, 
+        employeeType = null, 
+        callback = null,
+        targetField = null,
+        isAttaching = false // Explicit flag from FormFieldRenderer
+    ) => {
+        if (event) event.preventDefault();
 
-    const toggleSavedReports = useCallback((filterVersions = null, employeeType = null, callback = null, targetFieldName = null) => {
         if (showSavedReports) {
             setShowSavedReports(false);
-            setPreselectedEmployeeType(null);
-            setReportSelectionFilter(null);
-            pendingReportAttachmentCallback.current = null;
-            currentAttachmentTargetFieldRef.current = null;
             return;
         }
 
-        let author = null;
-        if (employeeType === 'PHMC' && formData.phmcEmployee) {
-            author = formData.phmcEmployee;
-        } else if (employeeType === 'Coroner' && formData.coronerEmployee) {
-            author = formData.coronerEmployee;
-        }
-
-        if (!author) {
-            author = getCurrentReportAuthor();
-        }
+        let author = formData.phmcEmployee || formData.coronerEmployee;
+        if (employeeType === 'PHMC' && formData.phmcEmployee) author = formData.phmcEmployee;
+        if (employeeType === 'Coroner' && formData.coronerEmployee) author = formData.coronerEmployee;
+        
+        if (!author) author = getCurrentReportAuthor();
 
         if (author) {
-            setShowSavedReports(true);
+            // Determine attach mode: true if called from the attach button, false otherwise.
+            setIsAttachMode(isAttaching);
             setPreselectedEmployeeType(employeeType);
-            setReportSelectionFilter(filterVersions);
-            pendingReportAttachmentCallback.current = callback;
-            currentAttachmentTargetFieldRef.current = targetFieldName;
+            currentAttachmentTargetFieldRef.current = targetField;
+            pendingReportAttachmentCallback.current = callback; // Keep for now, though it's null for our use case
+            setShowSavedReports(true);
         } else {
-            const message = employeeType
-                ? `Please select a ${employeeType} employee in the form to view their reports.`
-                : 'Please select an employee in the form before viewing saved reports.';
-            showNotification(message, 'warning');
+            showNotification('Please select an employee in the form to view their reports.', 'warning');
         }
     }, [showSavedReports, formData, getCurrentReportAuthor, showNotification]);
 
@@ -253,6 +168,7 @@ export const useReportAttachment = (
         toggleSavedReports,
         showSavedReports,
         setShowSavedReports,
+        isAttachMode,
         preselectedEmployeeType,
         reportSelectionFilter,
         pendingReportAttachmentCallback,

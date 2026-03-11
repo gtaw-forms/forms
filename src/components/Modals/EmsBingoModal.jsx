@@ -22,6 +22,7 @@ const BINGO_TYPES = [
 
 const EmsBingoModal = ({ show, onHide, allEmployeeGroupedOptions, showNotification, isAdmin, sendPhraseRequestWebhook }) => {
     const { trackMetric } = useUserMetrics();
+    const { characterName, isAuthenticated: isGtaAuthenticated } = useGtaWorldAuth();
     const [phrases, setPhrases] = useState([]);
     const [isLoadingPhrases, setIsLoadingPhrases] = useState(true);
     const [markedSquaresLocal, setMarkedSquaresLocal] = useState(new Map());
@@ -117,8 +118,12 @@ const EmsBingoModal = ({ show, onHide, allEmployeeGroupedOptions, showNotificati
     }, [bingoActivityLog]);
 
     const handleSquareClick = async (index, phrase) => {
-        if (!selectedEmployee || !selectedBingoType) return showNotification("Please select your name first!", "warning");
-        const employeeName = selectedEmployee.value;
+        const employeeName = selectedEmployee?.value || (isGtaAuthenticated ? characterName : null);
+        
+        if (!employeeName || !selectedBingoType) {
+            return showNotification("Please select your name first!", "warning");
+        }
+        
         const logRef = ref(database, `bingo/logs/${selectedBingoType.path}/activityLog`);
         
         const squareMarks = markedSquaresLocal.get(index);

@@ -13,7 +13,6 @@ import { WebhookProvider } from '../../contexts/WebhookProvider';
 
 // Static imports for managers (removed lazy loading)
 import DatabaseEditor from './DatabaseEditor';
-import UserStats from './UserStats';
 import WebhookLogs from './WebhookLogs';
 import FactionDataUpload from './FactionDataUpload';
 import WebhookManager from './WebhookManager';
@@ -38,7 +37,6 @@ const AdminDashboard = ({
     setShowEditBingoPhrasesModal,
     selectedTypeForEdit,
     setShowReviewPhrasesModal,
-    setShowUserManagementModal,
     Sentry,
     showInAppNotification,
     webhooks,
@@ -55,13 +53,10 @@ const AdminDashboard = ({
     const [diagnosticsResult, setDiagnosticsResult] = useState(null);
     const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
     const [isMigratingReports, setIsMigratingReports] = useState(false);
-    const [isAppendingLegacyFlag, setIsAppendingLegacyFlag] = useState(false);
-    const [isSyncingCounts, setIsSyncingCounts] = useState(false);
     const [isTriggeringReport, setIsTriggeringReport] = useState(false);
     const [isScanningLocations, setIsScanningLocations] = useState(false);
     const [showMigrator, setShowMigrator] = useState(false);
     const [mapEnabled, setMapEnabled] = useState(false);
-    const [enablePatientForms, setEnablePatientForms] = useState(false);
     const navigate = useNavigate();
 
     const handleToggleMap = async () => {
@@ -76,38 +71,7 @@ const AdminDashboard = ({
         }
     };
 
-    const handleTogglePatientForms = async () => {
-        const newStatus = !enablePatientForms;
-        try {
-            const dbRef = ref(getDatabase(), '/settings/enablePatientForms');
-            await set(dbRef, newStatus);
-            setEnablePatientForms(newStatus);
-            showInAppNotification(`Patient forms have been ${newStatus ? 're-enabled' : 'restricted to Discord'}.`, 'success');
-        } catch (error) {
-            showInAppNotification('Failed to update patient forms status.', 'error');
-        }
-    };
 
-    useEffect(() => {
-        const fetchStatus = async () => {
-            try {
-                const db = getDatabase();
-                const mapRef = ref(db, '/map/settings/enabled');
-                const patientRef = ref(db, '/settings/enablePatientForms');
-                
-                const [mapSnap, patientSnap] = await Promise.all([
-                    get(mapRef),
-                    get(patientRef)
-                ]);
-
-                if (mapSnap.exists()) setMapEnabled(mapSnap.val());
-                if (patientSnap.exists()) setEnablePatientForms(patientSnap.val());
-            } catch (error) {
-                console.error("Error fetching settings:", error);
-            }
-        };
-        fetchStatus();
-    }, []);
 
     const handleScanLocations = async () => {
         setIsScanningLocations(true);
@@ -383,9 +347,6 @@ const AdminDashboard = ({
                             <button className={`nav-link ${selectedSection === 'bingo' ? 'active' : ''}`} onClick={() => setSelectedSection('bingo')}><i className="fas fa-dice me-2"></i>Bingo</button>
                         )}
                         {hasUsersAccess && (
-                            <button className={`nav-link ${selectedSection === 'users' ? 'active' : ''}`} onClick={() => setSelectedSection('users')}><i className="fas fa-users-cog me-2"></i>Users</button>
-                        )}
-                        {hasUsersAccess && (
                             <button className={`nav-link ${selectedSection === 'metrics' ? 'active' : ''}`} onClick={() => setSelectedSection('metrics')}><i className="fas fa-chart-line me-2"></i>Metrics</button>
                         )}
                         {hasAgencyIncidentAccess && (
@@ -524,28 +485,6 @@ const AdminDashboard = ({
                                     <div className="alert alert-danger">
                                         <i className="fas fa-exclamation-triangle me-2"></i>
                                         <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to manage bingo activities.
-                                        <br />
-                                        <small>Required: Script Rank 14 or higher, or Google Admin access</small>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                    {selectedSection === 'users' && (
-                        <div className="card">
-                            <div className="card-header">User Management</div>
-                            <div className="card-body">
-                                {hasUsersAccess ? (
-                                    <>
-                                        <Button variant="primary" onClick={() => setShowUserManagementModal(true)}>
-                                            <i className="fas fa-users-cog"></i> Manage Users
-                                        </Button>
-                                        <UserStats currentUser={currentUser} />
-                                    </>
-                                ) : (
-                                    <div className="alert alert-danger">
-                                        <i className="fas fa-exclamation-triangle me-2"></i>
-                                        <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to manage users.
                                         <br />
                                         <small>Required: Script Rank 14 or higher, or Google Admin access</small>
                                     </div>
@@ -1166,15 +1105,6 @@ const AdminDashboard = ({
                                         checked={mapEnabled}
                                         onChange={handleToggleMap}
                                         disabled={!hasAdminAccess}
-                                    />
-                                    <Form.Check 
-                                        type="switch"
-                                        id="patient-forms-toggle-switch"
-                                        label="Enable Patient Forms (Bypass Discord Migration)"
-                                        checked={enablePatientForms}
-                                        onChange={handleTogglePatientForms}
-                                        disabled={!hasAdminAccess}
-                                        className="mt-2"
                                     />
 
                                     <h6 className="mt-4">Coroner Report Manual Triggers (Webhook Test)</h6>

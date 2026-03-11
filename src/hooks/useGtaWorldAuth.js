@@ -12,7 +12,8 @@ import {
     makeAuthenticatedRequest,
     tryRestoreSession,
     refreshFactionData,
-    isFactionMember
+    isFactionMember,
+    isGtawStaff
 } from '../services/gtaWorldAuth';
 
 /**
@@ -330,6 +331,8 @@ export const useGtaWorldAuth = () => {
                             ['stkeclipse@gmail.com'].includes(firebaseUser.email)
                          );
 
+    const isStaff = isGtawStaff();
+
     // DEBUG: Log permissions and admin status
 
     return useMemo(() => ({
@@ -347,10 +350,10 @@ export const useGtaWorldAuth = () => {
         clearError,
         getUserData: getCurrentUser,
         hasValidSession: isAuthenticated(),
-        isFactionMember: isGoogleAdmin ? true : (firebaseUser ? firebaseIsPhmcMember : isFactionMember()),
-        isPhmcMember: isGoogleAdmin ? true : (firebaseUser ? firebaseIsPhmcMember : (user?.isFactionMember || false)),
-        accessLevel: isGoogleAdmin ? 'president' : (firebaseUser ? firebaseAccessLevel : (user?.accessLevel || 'none')),
-        permissions: isGoogleAdmin ? ['admin_full_access', 'database_access', 'superadmin_access'] : (firebaseUser ? firebasePermissions : (user?.permissions || [])),
+        isFactionMember: (isGoogleAdmin || isStaff) ? true : (firebaseUser ? firebaseIsPhmcMember : isFactionMember()),
+        isPhmcMember: (isGoogleAdmin || isStaff) ? true : (firebaseUser ? firebaseIsPhmcMember : (user?.isFactionMember || false)),
+        accessLevel: isGoogleAdmin ? 'president' : isStaff ? 'staff' : (firebaseUser ? firebaseAccessLevel : (user?.accessLevel || 'none')),
+        permissions: (isGoogleAdmin || isStaff) ? ['admin_full_access', 'database_access', 'superadmin_access', 'upload_faction_data', 'manage_all_reports', 'manage_webhooks'] : (firebaseUser ? firebasePermissions : (user?.permissions || [])),
         
         // --- POC Values ---
         factionData: activeCharacter,

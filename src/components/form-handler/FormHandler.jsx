@@ -15,7 +15,6 @@ import { useReportLoader } from '../../hooks/useReportLoader';
 import { useReportActions } from '../../hooks/useReportActions';
 import { useReportAttachment } from '../../hooks/useReportAttachment';
 import { useFormSaver } from '../../hooks/useFormSaver';
-import seasonalEvents from '../UI/SeasonalEvents';
 import FormQuickLinks from './FormQuickLinks';
 import { validateForm } from '../../utils/formValidation';
 import { sendDiscordWebhook } from '../../utils/webhookUtils';
@@ -38,12 +37,10 @@ import { Spinner } from 'react-bootstrap';
 // Lazy load modals and heavy components
 const EmsBingoModal = lazy(() => import('../Modals/EmsBingoModal'));
 const EmployeeCredentialsSection = lazy(() => import('../Modals/EmployeeCredentialsSection'));
-const EmployeeNewDetails = lazy(() => import('../Modals/EmployeeNewDetails'));
 const SavedReportsModal = lazy(() => import('../Modals/SavedReportsModal'));
 const BugReportModal = lazy(() => import('../Modals/BugReportModal'));
 const MapModal = lazy(() => import("../Modals/MapModal"));
 const AgencyIncidentModal = lazy(() => import('../Modals/AgencyIncidentModal'));
-const AutopsyAssist = lazy(() => import('./AutopsyAssist'));
 const SurveyModal = lazy(() => import('../Modals/SurveyModal'));
 import UnprocessedCKsViewer from './UnprocessedCKsViewer';
 import FormTour, { sectionExplanations } from '../UI/FormTour';
@@ -69,15 +66,6 @@ export const FormHandler = () => {
       return {};
     }
   });
-  const [seasonalEffectsEnabled, setSeasonalEffectsEnabled] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('seasonalEffectsEnabled')) ?? true;
-    } catch (e) {
-      console.error("Failed to parse seasonalEffectsEnabled from localStorage", e);
-      Sentry.captureException(e, { extra: { context: 'FormHandler - parsing seasonalEffectsEnabled' } });
-      return true;
-    }
-  });
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
   const [currentUtcTime, setCurrentUtcTime] = useState(getUtcFormattedDateTime());
   const [isUploading, setIsUploading] = useState(false);
@@ -90,9 +78,7 @@ export const FormHandler = () => {
   const [mapTargetField, setMapTargetField] = useState(null);
   const [isUploadingMapImage, setIsUploadingMapImage] = useState({});
   
-  // Autopsy Assist State
-  const [showAutopsyAssistModal, setShowAutopsyAssistModal] = useState(false);
-  const [autopsyAssistTargetField, setAutopsyAssistTargetField] = useState(null);
+
 
     // Survey State
     const [showSurveyModal, setShowSurveyModal] = useState(false);
@@ -103,9 +89,13 @@ export const FormHandler = () => {
 
       // Left Sidebar State
       const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
-    
+
+      // Helper for consistent name comparison
+      const normalizeName = useCallback((name) => String(name || '').trim().toLowerCase(), []);
+
       // Hooks
       const { showNotification, removeNotification } = useNotification();
+
       const {
         user: realUser,
         isAuthenticated: realIsAuthenticated,
@@ -118,7 +108,8 @@ export const FormHandler = () => {
         factionData,
         updateFactionData,
         login,
-        logout
+        logout,
+        accessLevel
       } = useGtaWorldAuth();
     
     
@@ -126,6 +117,23 @@ export const FormHandler = () => {
       let isAuthenticated = realIsAuthenticated;
       let isPhmcMember = realIsPhmcMember;
       let characterName = realCharacterName;
+
+      // Admin Welcome Notification
+      useEffect(() => {
+        if (isAuthenticated && (accessLevel === 'president' || accessLevel === 'staff' || accessLevel === 'superadmin')) {
+          const hasShownAdminWelcome = sessionStorage.getItem('hasShownAdminWelcome_session') === 'true';
+          
+          if (!hasShownAdminWelcome) {
+            const adminName = user?.username || characterName || 'Admin';
+            showNotification(
+              `Welcome Admin ${adminName}! You have full access to this website. You can use the right side panel to view the Admin Dashboard.`,
+              'check-circle',
+              10000
+            );
+            sessionStorage.setItem('hasShownAdminWelcome_session', 'true');
+          }
+        }
+      }, [isAuthenticated, accessLevel, user, characterName, showNotification]);
     
       // General Tour Prompt on Visit
       useEffect(() => {
@@ -354,6 +362,7 @@ export const FormHandler = () => {
     hasFirebaseError,
     surveyData,
     submitSurveyResponse,
+    factionsData,
   } = useData();
   const { showEmsBingoModal, setShowEmsBingoModal } = useModal();
   const { saveReport: saveNewReport } = useFormSaver(user, isAuthenticated);
@@ -459,7 +468,8 @@ export const FormHandler = () => {
     formValues,
     finalSelectOptions,
     agencyDataStore,
-    user // Pass the user object here
+    user, // Pass the user object here
+    factionsData
   );
 
   // Callbacks
@@ -521,17 +531,6 @@ export const FormHandler = () => {
     setShowMapModal(false);
   }, [mapTargetField, handleChange, setFormValues]);
 
-  const handleAutopsyAssistInsert = useCallback((text) => {
-      if (!autopsyAssistTargetField) return;
-      
-      setFormValues(prev => {
-          const currentVal = prev[autopsyAssistTargetField] || "";
-          const newVal = currentVal ? `${currentVal}\n${text}` : text;
-          return { ...prev, [autopsyAssistTargetField]: newVal };
-      });
-      // Do not close modal automatically? Or maybe close it? User might want to add more.
-      // For now, let's keep it open? The modal has "Insert & Close".
-  }, [autopsyAssistTargetField]);
 
   const sendBingoWebhook = useCallback(async (payload) => {
     await sendBingoNotification(payload);
@@ -580,12 +579,13 @@ export const FormHandler = () => {
         if (synopsis.length < SYNOPSIS_MIN_LENGTH) {
           errors.push(`Synopsis is too short for a CK report (${synopsis.length}/${SYNOPSIS_MIN_LENGTH} chars).`);
         }
-        
-        // Check for images (at least scene or additional)
-        const hasImages = (formValues.scenePhotos && formValues.scenePhotos.length > 0) || 
-                          (formValues.additionalImages && formValues.additionalImages.length > 0);
-        if (!hasImages) {
-          errors.push("CK reports require at least one image upload for both scene and morgue photos.");
+
+        // Check for images (both scene and morgue/additional are required for CK)
+        const hasSceneImages = (formValues.scenePhotosBBCode && formValues.scenePhotosBBCode.length > 0);
+        const hasMorgueImages = (formValues.additionalPhotos && formValues.additionalPhotos.length > 0);
+
+        if (!hasSceneImages || !hasMorgueImages) {
+          errors.push("CK reports require at least one image upload for BOTH scene and morgue photos.");
         }
       }
     }
@@ -595,16 +595,24 @@ export const FormHandler = () => {
       formValues.decedents.forEach((dec, idx) => {
         const isCK = dec.typeOfDeath === 'CK' || dec.typeOfDeath?.value === 'CK';
         const name = dec.decedentName || `Decedent #${idx + 1}`;
-        
+
         if (!dec.decedentName || !dec.decedentOOC) {
           errors.push(`[${name}] Missing Name or OOC.`);
         }
 
         if (isCK) {
-          const synopsis = dec.synopsis || "";
-          if (synopsis.length < SYNOPSIS_MIN_LENGTH) {
-            errors.push(`[${name}] Synopsis too short for CK (${synopsis.length}/${SYNOPSIS_MIN_LENGTH} chars).`);
-          }
+            // Check for images (both scene and morgue/additional are required for CK)
+            const hasSceneImages = (dec.scenePhotos && dec.scenePhotos.length > 0);
+            const hasMorgueImages = (dec.additionalPhotos && dec.additionalPhotos.length > 0);
+
+            if (!hasSceneImages || !hasMorgueImages) {
+                errors.push(`[${name}] CK reports require at least one image upload for BOTH scene and morgue photos.`);
+            }
+
+            const synopsis = dec.synopsis || "";
+            if (synopsis.length < SYNOPSIS_MIN_LENGTH) {
+                errors.push(`[${name}] Synopsis is too short for a CK report (${synopsis.length}/${SYNOPSIS_MIN_LENGTH} chars).`);
+            }
         }
       });
     }
@@ -618,7 +626,6 @@ export const FormHandler = () => {
 
   const updateEmployeeCredentials = useCallback((employeeName, empType) => {
     const updates = {};
-    const normalizeName = (name) => String(name || '').trim().toLowerCase();
     const targetNameNormalized = normalizeName(employeeName);
     
     updates[`${empType}Employee`] = employeeName || ''; 
@@ -843,7 +850,8 @@ export const FormHandler = () => {
       preselectedEmployeeType,
       reportSelectionFilter,
       pendingReportAttachmentCallback,
-      currentAttachmentTargetFieldRef
+      currentAttachmentTargetFieldRef,
+      isAttachMode
   } = useReportAttachment(
       loadReportForUser,
       formValues, setFormValues, selectedForm, showNotification, removeNotification, modalCloseTimer
@@ -871,10 +879,6 @@ export const FormHandler = () => {
     toggleSavedReports(null, type, null);
   };
 
-  // Effects
-  useEffect(() => {
-    localStorage.setItem('seasonalEffectsEnabled', JSON.stringify(seasonalEffectsEnabled));
-  }, [seasonalEffectsEnabled]);
 
   useEffect(() => {
     localStorage.setItem("formCollapsedCategories", JSON.stringify(collapsedCategories));
@@ -1198,12 +1202,12 @@ export const FormHandler = () => {
       let shouldDisplay = false;
       let reason = "";
 
-      if (form.isHidden) {
+      if (isDevelopment) {
+          shouldDisplay = true;
+          reason = "Development Mode Access (all forms visible for testing)";
+      } else if (form.isHidden) {
           shouldDisplay = false;
           reason = "Hidden form";
-      } else if (isDevelopment) {
-          shouldDisplay = true;
-          reason = "Development Mode Access";
       } else {
           const isRestricted = form.accessType === "PHMC" || form.accessType === "Coroner" || form.accessType === "Mental Health";
           const hasRequiredAccess = isAuthenticated && (isPhmcMember || (user && user.faction));
@@ -1273,7 +1277,6 @@ export const FormHandler = () => {
     return () => clearInterval(intervalId);
   }, []);
   
-  const { effect } = seasonalEvents({});
 
   useEffect(() => {
     if (selectedForm && finalSelectOptions && isDevelopment) { // Only run in dev for now to be safe
@@ -1324,7 +1327,6 @@ export const FormHandler = () => {
 
   return (
     <div className={styles.container}>
-      {seasonalEffectsEnabled && effect}
       {showTour && (
         <FormTour
           tourType={tourType}
@@ -1354,11 +1356,6 @@ export const FormHandler = () => {
                 persistEnabled={keepCredentials}
                 setPersistEnabled={setKeepCredentials}
               />
-        <EmployeeNewDetails
-          show={showEmployeeModal}
-          onHide={() => setShowEmployeeModal(false)}
-          showNotification={showNotification}
-        />
         <SavedReportsModal
           show={showSavedReports}
           onHide={() => setShowSavedReports(false)}
@@ -1379,7 +1376,7 @@ export const FormHandler = () => {
           preselectedEmployeeType={preselectedEmployeeType}
           reportSelectionFilter={reportSelectionFilter}
           pendingReportAttachmentCallback={pendingReportAttachmentCallback.current}
-          isAttachMode={!!pendingReportAttachmentCallback.current}
+          isAttachMode={isAttachMode}
           selectedForm={selectedForm}
           attachmentTargetField={currentAttachmentTargetFieldRef.current} // Add this line
         />
@@ -1396,12 +1393,6 @@ export const FormHandler = () => {
           show={showAgencyIncidentModal}
           onHide={() => setShowAgencyIncidentModal(false)}
           showNotification={showNotification}
-        />
-        <AutopsyAssist
-          show={showAutopsyAssistModal}
-          onHide={() => setShowAutopsyAssistModal(false)}
-          onInsert={handleAutopsyAssistInsert}
-          formValues={formValues}
         />
         <SurveyModal
           show={showSurveyModal}
@@ -1436,6 +1427,7 @@ export const FormHandler = () => {
           setTourType('general');
           setShowTour(true);
         }}
+        phmcLogoSrc={phmcLogo}
       />
 
       <LeftSidebarNav
@@ -1513,7 +1505,7 @@ export const FormHandler = () => {
                     <img src={phmcLogo} alt="PHMC Logo" style={{ height: '120px', marginBottom: '1.5rem', opacity: 0.8 }} />
                     <h3 style={{ color: "#880a03ff", fontWeight: "bold" }}>Authentication Required</h3>
                     <p style={{ fontSize: "1.1rem", marginTop: "1rem" }}>
-                        These forms are restricted to PHMC Employees.
+                        These forms are restricted to PHMC Employees or GTA World Staff.
                         <br /><br />
                         Please sign in with your GTA World account to continue.
                     </p>
@@ -1574,8 +1566,7 @@ export const FormHandler = () => {
                       setShowMapModal={setShowMapModal}
                       setMapTargetField={setMapTargetField}
                       isUploadingMapImage={isUploadingMapImage}
-                      setShowAutopsyAssistModal={setShowAutopsyAssistModal}
-                      setAutopsyAssistTargetField={setAutopsyAssistTargetField}
+
                     />
                   ));
                 })()}

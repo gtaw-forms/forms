@@ -3,10 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import panelStyles from './SidebarNav.module.css';
 import { useModal } from '../../contexts/ModalProvider';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
-import { useSeasonalEffects } from '../../contexts/SeasonalEffectsContext';
 import { useNotification } from '../../contexts/NotificationContext';
-
-import seasonalEvents from '../UI/SeasonalEvents';
+import phmcLogoSrc from '../../assets/phmc.png';
 import BusinessCardModal from '../Modals/BusinessCardModal';
 import MapModal from '../Modals/MapModal';
 import { uploadDataUrlToImgBB } from '../../utils/imageUploadUtils';
@@ -32,12 +30,7 @@ const SidebarNav = ({
   const navigate = useNavigate();
   const { isPhmcMember } = useGtaWorldAuth();
   const { setShowEmsBingoModal } = useModal();
-  const { seasonalEffectsEnabled, setSeasonalEffectsEnabled } = useSeasonalEffects();
 
-  const { imageSource: phmcLogoSrc, className: phmcLogoClassName } = seasonalEvents({
-    imageType: 'phmcLogo',
-    season: seasonalEffectsEnabled ? undefined : 'Default'
-  });
 
   const { showNotification } = useNotification();
   const [showBusinessCardModal, setShowBusinessCardModal] = useState(false);
@@ -181,11 +174,6 @@ const SidebarNav = ({
         <div className={panelStyles.panelDivider} />
         <div className={panelStyles.panelHeader}>Settings & Help</div>
 
-        <button className={panelStyles.panelButton} onClick={() => handleAction(() => setSeasonalEffectsEnabled(!seasonalEffectsEnabled))}>
-          <i className={`fas ${seasonalEffectsEnabled ? "fa-toggle-on" : "fa-toggle-off"}`}></i>
-          Effects: {seasonalEffectsEnabled ? "ON" : "OFF"}
-        </button>
-
         {onStartTour && (
             <button className={panelStyles.panelButton} onClick={() => handleAction(onStartTour)}>
                 <i className="fas fa-route"></i> Run UI Tour
@@ -208,7 +196,7 @@ const SidebarNav = ({
         onClick={() => window.open('https://phmc.gta.world/', '_blank')}
         title="Go to PHMC Website"
       >
-        <img src={phmcLogoSrc} alt="PHMC Logo" className={phmcLogoClassName} style={{ height: '65px' }} />
+        <img src={phmcLogoSrc} alt="PHMC Logo" style={{ height: '65px' }} />
       </div>
 
       {showBusinessCardModal && (

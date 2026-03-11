@@ -80,7 +80,15 @@ const SavedReportsModal = ({
                 }
             });
         } else if (isAttachMode) {
-            handleReportSelectedForAttachment(report, selectedEmployee.value, attachmentTargetField);
+            // First, load the full report data including BBCode
+            loadReportForUser(report, selectedEmployee.value, true).then((result) => {
+                if (result.success) {
+                    // Then, call the attachment handler with the full data
+                    handleReportSelectedForAttachment(result.reportData, result.reportData.data, result.reportData.bbCodeVersion, result.reportData.bbCode);
+                } else {
+                    showNotification('Failed to load report for attachment.', 'error');
+                }
+            });
         } else {
             loadReport(report, selectedEmployee.value);
         }
