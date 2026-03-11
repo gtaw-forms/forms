@@ -3,7 +3,6 @@ import * as Sentry from '@sentry/react';
 import { useNotification } from '../../contexts/NotificationContext';
 import LoadingSpinner from '../UI/LoadingSpinner';
 import { uploadImageWithFallback } from '../../utils/imageUploadUtils';
-import Tesseract from 'tesseract.js';
 import ImagePreviewModal from '../Modals/ImagePreviewModal';
 
 const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChange, maxImages = 6, fieldName }) => {
@@ -43,29 +42,6 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
                    fieldName?.toLowerCase().includes('cdna') ||
                    fieldName?.toLowerCase().includes('additional');
 
-  // OCR State
-  const [ocrResults, setOcrResults] = useState({}); // { [url]: text }
-  const [isOcrLoading, setIsOcrLoading] = useState({}); // { [url]: boolean }
-
-  const performOcr = useCallback(async (url) => {
-    if (!url) return;
-    
-    setIsOcrLoading(prev => ({ ...prev, [url]: true }));
-    try {
-      const { data: { text } } = await Tesseract.recognize(
-        url,
-        'eng',
-        { logger: m => console.debug(`[OCR:${url}]`, m) }
-      );
-      const cleanedText = text.trim();
-      setOcrResults(prev => ({ ...prev, [url]: cleanedText }));
-    } catch (err) {
-      console.error(`[OCR] Failed to scan image:`, err);
-    } finally {
-      setIsOcrLoading(prev => ({ ...prev, [url]: false }));
-    }
-  }, []);
-
   const handleImageUrlAdd = useCallback((url) => {
     if (!url) return;
     if (images.length >= maxImages) {
@@ -80,14 +56,7 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
 
     const newImages = [...images, url];
     onImagesChange(newImages);
-    
-    const autoOcrFields = ['additionalImages', 'additionalPhotos', 'morguePhotos', 'cdamages', 'cdna'];
-    const shouldAutoOcr = autoOcrFields.some(f => fieldName?.toLowerCase().includes(f.toLowerCase()));
-    
-    if (shouldAutoOcr) {
-        performOcr(url);
-    }
-  }, [images, maxImages, onImagesChange, fieldName, performOcr, showNotification]);
+  }, [images, maxImages, onImagesChange, showNotification]);
 
   const detectAndAddImageUrl = useCallback((data) => {
     const text = data.getData('text/plain')?.trim();
@@ -150,13 +119,6 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
     if (uploaded.length > 0) {
       const newImages = [...images, ...uploaded];
       onImagesChange(newImages);
-      
-      const autoOcrFields = ['additionalImages', 'additionalPhotos', 'morguePhotos', 'cdamages', 'cdna'];
-      const shouldAutoOcr = autoOcrFields.some(f => fieldName?.toLowerCase().includes(f.toLowerCase()));
-      
-      if (shouldAutoOcr) {
-        uploaded.forEach(url => performOcr(url));
-      }
     }
     setIsUploading(false);
   };
@@ -372,25 +334,12 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
                             navigator.clipboard.writeText(url);
                             showNotification('URL copied!', 'success');
                         }}
-                        style={{ flex: 1, background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', padding: '2px', fontSize: '0.6rem', cursor: 'pointer' }}
+                        style={{ flex: 1, background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', padding: '4px', fontSize: '0.7rem', cursor: 'pointer' }}
                     >
-                        <i className="fas fa-link"></i>
-                    </button>
-                    <button 
-                        type="button" 
-                        onClick={(e) => { e.stopPropagation(); performOcr(url); }}
-                        style={{ flex: 1, background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '4px', padding: '2px', fontSize: '0.6rem', cursor: 'pointer' }}
-                        disabled={isOcrLoading[url]}
-                    >
-                        <i className={`fas ${isOcrLoading[url] ? 'fa-spinner fa-spin' : 'fa-font'}`}></i>
+                        <i className="fas fa-link"></i> Copy URL
                     </button>
                 </div>
             </div>
-            {ocrResults[url] && (
-                <div style={{ position: 'absolute', bottom: '25px', left: 0, right: 0, background: 'rgba(16, 185, 129, 0.9)', color: 'white', fontSize: '0.6rem', padding: '2px 5px', textAlign: 'center' }}>
-                    <i className="fas fa-check-circle"></i> Text Scanned
-                </div>
-            )}
           </div>
         ))}
         
