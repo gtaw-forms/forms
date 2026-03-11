@@ -395,7 +395,7 @@ export const hasPermission = (perm) => isGoogleAuthenticated() || (getStoredUser
  * Check if user is a faction member
  */
 export const isFactionMember = () => {
-    if (isGoogleAuthenticated()) return true;
+    if (isGoogleAuthenticated() || isGtawStaff()) return true;
     return getStoredUserData()?.isFactionMember || false;
 };
 
@@ -403,12 +403,14 @@ export const isFactionMember = () => {
  * Get current user's faction information
  */
 export const getFactionInfo = () => {
-    if (isGoogleAuthenticated()) {
+    if (isGoogleAuthenticated() || isGtawStaff()) {
         const googleUser = getGoogleUser();
+        const userData = getStoredUserData();
         return {
-            characterName: googleUser?.email?.split('@')[0] || 'Admin',
+            characterName: googleUser?.email?.split('@')[0] || userData?.username || 'Admin',
             scriptRank: 15,
-            isGoogleAdmin: true
+            isGoogleAdmin: !!googleUser,
+            isGtawStaff: isGtawStaff()
         };
     }
     return getStoredUserData()?.faction || null;
@@ -419,21 +421,32 @@ export const getFactionInfo = () => {
  */
 export const getAccessLevel = () => {
     if (isGoogleAuthenticated()) return 'president';
+    if (isGtawStaff()) return 'staff';
     return getStoredUserData()?.accessLevel || 'none';
+};
+
+/**
+ * Check if the user is a GTA World staff member
+ */
+export const isGtawStaff = () => {
+    const user = getStoredUserData();
+    if (!user || !user.role || !user.role.role_id) return false;
+    const staffKeywords = ['Admin', 'Management', 'Support', 'Owner', 'Tester', 'Developer'];
+    return staffKeywords.some(keyword => user.role.role_id.includes(keyword));
 };
 
 /**
  * Get current user's permissions
  */
 export const getUserPermissions = () => {
-    if (isGoogleAuthenticated()) {
+    if (isGoogleAuthenticated() || isGtawStaff()) {
         return ['admin_full_access', 'upload_faction_data', 'manage_all_reports', 'database_access', 'manage_webhooks'];
     }
     return getStoredUserData()?.permissions || [];
 };
 
 export const canAccessFeature = (feat) => {
-    if (isGoogleAuthenticated()) return true;
+    if (isGoogleAuthenticated() || isGtawStaff()) return true;
     const perms = getStoredUserData()?.permissions || [];
     const map = {
         admin_panel: ['admin_full_access', 'admin_limited_access'],

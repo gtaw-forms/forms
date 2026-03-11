@@ -13,7 +13,7 @@ const CACHE_SEGMENTS = {
     SELECT_OPTIONS: 'selectOptions',
     FORMS: 'forms',
     LSCC: 'lscc',
-    SURVEY: 'survey'
+    VERIFIED_ADMINS: 'verified_admins',
 };
 
 // Define segments that should not be cached in localStorage
@@ -100,8 +100,8 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             case CACHE_SEGMENTS.LSCC:
                 setLsccData(data || {});
                 break;
-            case CACHE_SEGMENTS.SURVEY:
-                setSurveyData(data || null);
+            case CACHE_SEGMENTS.VERIFIED_ADMINS:
+                setVerifiedAdmins(data || {});
                 break;
             default:
                 console.warn(`Unknown cache segment: ${segment}`);
@@ -120,7 +120,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
 
     const [formsData, setFormsData] = useState([]);
     const [lsccData, setLsccData] = useState({}); // New state for LSCC data
-    const [surveyData, setSurveyData] = useState(null); // State for survey
+    const [verifiedAdmins, setVerifiedAdmins] = useState({}); // New state for verified admins
     const [isDevMode, setIsDevMode] = useState(false); // Add isDevMode state
     const [hasFirebaseError, setHasFirebaseError] = useState(false);
 
@@ -142,6 +142,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         [CACHE_SEGMENTS.AGENCIES]: '1.1',
         [CACHE_SEGMENTS.FORMS]: '1.2.3', 
         [CACHE_SEGMENTS.LSCC]: '1.0',
+        [CACHE_SEGMENTS.VERIFIED_ADMINS]: '1.0',
     };
 
     const getSegmentVersion = (segment) => {
@@ -238,6 +239,16 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 if (JSON.stringify(optionsData) !== JSON.stringify(dataCache.current[CACHE_SEGMENTS.SELECT_OPTIONS])) {
                     updateCacheSegment(CACHE_SEGMENTS.SELECT_OPTIONS, optionsData);
                 }
+            }
+        });
+
+        // --- Listener for verified admins changes ---
+        const adminsRef = ref(database, CACHE_SEGMENTS.VERIFIED_ADMINS);
+        firebaseListeners.current.admins = onValue(adminsRef, (snapshot) => {
+            if (!dataInitializedRef.current) return;
+            if (snapshot.exists()) {
+                const adminsData = snapshot.val();
+                updateCacheSegment(CACHE_SEGMENTS.VERIFIED_ADMINS, adminsData);
             }
         });
 
@@ -817,7 +828,19 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
     
             const allMembers = Object.values(factionsData['364'].members);
             
-            const normalizedMembers = allMembers.map(member => ({
+            // Add verified admins to the list
+            const adminMembers = Object.values(verifiedAdmins).map(admin => ({
+                characterName: admin.username,
+                name: admin.username,
+                rank: admin.role || 'Senior Management',
+                isElevated: true,
+                badge: `ADM-${admin.id}`,
+                characterId: admin.id
+            }));
+
+            const combinedMembers = [...allMembers, ...adminMembers];
+
+            const normalizedMembers = combinedMembers.map(member => ({
                 ...member,
                 name: member.characterName || member.name || member.displayName || member.username || 'Unknown',
                 rank: member.rank || '',
@@ -828,7 +851,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             ).map(member => ({ ...member, category: member.rank }));
             
             return dataSource;
-        }, [factionsData]);
+        }, [factionsData, verifiedAdmins]);
             
         // DEPRICATED - USE IN VERY LIMITED APPLICATIONS
         const coronerListData = useMemo(() => {
@@ -843,7 +866,19 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         if (factionsData['364'] && factionsData['364'].members) {
             const allMembers = Object.values(factionsData['364'].members);
             
-            const normalizedMembers = allMembers.map(member => ({
+            // Add verified admins to coroner list too
+            const adminMembers = Object.values(verifiedAdmins).map(admin => ({
+                characterName: admin.username,
+                name: admin.username,
+                rank: 'GTAW STAFF',
+                isElevated: true,
+                badge: `ADM-${admin.id}`,
+                characterId: admin.id
+            }));
+
+            const combinedMembers = [...allMembers, ...adminMembers];
+
+            const normalizedMembers = combinedMembers.map(member => ({
                 ...member,
                 name: member.characterName || member.name || member.displayName || member.username || 'Unknown',
                 rank: member.rank || '',
@@ -860,14 +895,8 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             console.log('[DataContext] coronerListData using FACTION data:', dataSource.length, 'members');
         }
         return dataSource;
-    }, [factionsData]);
+    }, [factionsData, verifiedAdmins]);
 
-    const hardcodedSurvey = {
-        id: 'q1-2026-feedback',
-        title: 'Quick Feedback Survey',
-        question: 'What is one feature you would like to see added or improved in PHMC Forms?',
-        isActive: true, // This will be used to show the survey
-    };
 
     const value = {
         factionsData,
@@ -886,7 +915,6 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         setIsDevMode,
         lsccData, // Add lsccData to the context value
         hasFirebaseError, // Expose firebase error status
-        surveyData: hardcodedSurvey, // Expose hardcoded survey data
     };
             
                 return (

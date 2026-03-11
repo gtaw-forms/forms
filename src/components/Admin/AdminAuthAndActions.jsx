@@ -8,7 +8,6 @@ import { ref, get, update, remove, set, serverTimestamp, push } from "firebase/d
 import EditBingoPhrasesModal from './EditBingoPhrasesModal';
 import ReviewPhraseRequestsModal from './ReviewPhraseRequestsModal';
 import * as Sentry from "@sentry/react";
-import UserManagementModal from './UserManagementModal';
 import AdminDashboard from './AdminDashboard';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { useAuth } from '../../contexts/AuthContext';
@@ -68,7 +67,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     const [isUpdatingWebhooks, setIsUpdatingWebhooks] = useState(false);
     const [logRefreshTrigger, setLogRefreshTrigger] = useState(0);
     
-    const [showUserManagementModal, setShowUserManagementModal] = useState(false);
 
     const [formGeneratorStatus, setFormGeneratorStatus] = useState('');
     const [alternativeFormGeneratorStatus, setAlternativeFormGeneratorStatus] = useState('');
@@ -935,7 +933,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                 setShowEditBingoPhrasesModal={setShowEditBingoPhrasesModal}
                 selectedTypeForEdit={selectedTypeForEdit}
                 setShowReviewPhrasesModal={setShowReviewPhrasesModal}
-                setShowUserManagementModal={setShowUserManagementModal}
 
                 setShowMarkdownModal={setShowMarkdownModal}
                 handleLogout={handleLogout}
@@ -983,12 +980,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                 adminUserEmail={authEmail}
             />
 
-            <UserManagementModal
-                show={showUserManagementModal}
-                onHide={() => setShowUserManagementModal(false)}
-                database={database}
-                showNotification={showInAppNotification}
-            />
         </>
     );
 };

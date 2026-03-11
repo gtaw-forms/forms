@@ -313,7 +313,7 @@ export const useReportLoader = () => {
                                 updatedDeathReport = loadedBbCode;
                                 notificationMessage = `Loaded report for ${loadedFormData.decedentName || reportData.originalKey} into main Death Report field.`;
                             } else {
-                                updatedAdditionalReports = [...updatedAdditionalReports, loadedBbCode];
+                                updatedAdditionalReports = [...updatedAdditionalReports, { bbCode: loadedBbCode, originalKey: reportData.originalKey }];
                                 notificationMessage = `Added report for ${loadedFormData.decedentName || reportData.originalKey} as an additional report.`;
                             }
                             showNotification(notificationMessage, 'plus-circle');

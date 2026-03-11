@@ -14,7 +14,8 @@ const FormHandlerNavButtons = ({
     onSelectForm,
     selectedForm,
     searchTerm,
-    setSearchTerm
+    setSearchTerm,
+    phmcLogoSrc
 }) => {
   return (
     <SidebarNav 
@@ -28,6 +29,7 @@ const FormHandlerNavButtons = ({
       selectedForm={selectedForm}
       searchTerm={searchTerm}
       setSearchTerm={setSearchTerm}
+      phmcLogoSrc={phmcLogoSrc}
     />
   );
 };

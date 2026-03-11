@@ -20,34 +20,6 @@ body {
     font-weight: bold;
 }
 
-/* Seasonal Animations ' Day Animation */
-.image-container a.april-fools img {
-    animation: spin 10s linear infinite;
-}
-
-@keyframes spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
-}
-.easter-bounce {
-    animation: bounce 2s infinite; /* Adjust timing and iterations as needed */
-}
-
-@keyframes bounce {
-    0%, 20%, 50%, 80%, 100% {
-        transform: translateY(0);
-    }
-    40% {
-        transform: translateY(-36px); /* Adjust bounce height as needed */
-    }
-    60% {
-        transform: translateY(-36px); /* Adjust bounce height as needed */
-    }
-}
 .header-info-wrapper {
     display: flex;
     flex-direction: row;
