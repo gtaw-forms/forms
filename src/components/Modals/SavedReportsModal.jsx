@@ -22,7 +22,8 @@ const SavedReportsModal = ({
     pendingReportAttachmentCallback, 
     loadReportForUser, 
     onEmployeeSelect,
-    preselectedEmployeeType 
+    preselectedEmployeeType,
+    reportSelectionFilter
 }) => {
     const [selectedEmployee, setSelectedEmployee] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -64,10 +65,19 @@ const SavedReportsModal = ({
 
     const filteredReports = useMemo(() => {
         if (!reportsForSelectedUser) return [];
-        return reportsForSelectedUser.filter(r => 
+        let filtered = reportsForSelectedUser.filter(r => 
             r.originalKey?.toLowerCase().includes(searchQuery.toLowerCase())
         );
-    }, [reportsForSelectedUser, searchQuery]);
+        
+        // Apply form type filter if specified (for attachment mode)
+        if (reportSelectionFilter && reportSelectionFilter.allowedFormIds) {
+            filtered = filtered.filter(r => 
+                reportSelectionFilter.allowedFormIds.includes(r.formId)
+            );
+        }
+        
+        return filtered;
+    }, [reportsForSelectedUser, searchQuery, reportSelectionFilter]);
 
     const totalPages = Math.ceil(filteredReports.length / reportsPerPage);
     const currentReports = filteredReports.slice((currentPage - 1) * reportsPerPage, currentPage * reportsPerPage);
