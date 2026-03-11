@@ -23,6 +23,23 @@ export const ModalProvider = ({ children }) => {
 
     const [showPrivacyPolicyModal, setShowPrivacyPolicyModal] = useState(false);
 
+    // Global Image Previewer State
+    const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
+    const [imagesPreviewList, setImagesPreviewList] = useState([]);
+    const [currentPreviewIndex, setCurrentPreviewIndex] = useState(0);
+
+    const openImagePreview = (url, list = [], index = 0) => {
+        setImagePreviewUrl(url);
+        setImagesPreviewList(list);
+        setCurrentPreviewIndex(index);
+    };
+
+    const closeImagePreview = () => {
+        setImagePreviewUrl(null);
+        setImagesPreviewList([]);
+        setCurrentPreviewIndex(0);
+    };
+
     const value = {
         showEmsBingoModal, setShowEmsBingoModal,
         showEasterEggModal, setShowEasterEggModal,
@@ -41,6 +58,12 @@ export const ModalProvider = ({ children }) => {
         showSavedReports, setShowSavedReports,
 
         showPrivacyPolicyModal, setShowPrivacyPolicyModal,
+
+        // Global Image Previewer
+        imagePreviewUrl, setImagePreviewUrl,
+        imagesPreviewList, setImagesPreviewList,
+        currentPreviewIndex, setCurrentPreviewIndex,
+        openImagePreview, closeImagePreview,
     };
 
     return (

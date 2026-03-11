@@ -3,11 +3,13 @@ import { database } from '../../firebase';
 import { ref, onValue, remove, update, get } from 'firebase/database';
 import { Spinner, Table, Button, Badge, Modal, Image, Alert } from 'react-bootstrap';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useModal } from '../../contexts/ModalProvider';
 
 const UnprocessedCKsViewer = ({ selectedForm, onPreload }) => {
     const [ckList, setCkList] = useState([]);
     const [loading, setLoading] = useState(true);
     const { showNotification, removeNotification } = useNotification();
+    const { openImagePreview } = useModal();
     
     // View Modal State
     const [showViewModal, setShowViewModal] = useState(false);
@@ -207,13 +209,12 @@ const UnprocessedCKsViewer = ({ selectedForm, onPreload }) => {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
                     {imgArray.map((url, idx) => (
                         <div key={idx} style={{ position: 'relative' }}>
-                             <a href={url} target="_blank" rel="noopener noreferrer">
-                                <Image 
-                                    src={url} 
-                                    thumbnail 
-                                    style={{ maxWidth: '150px', maxHeight: '150px', objectFit: 'cover', background: '#0f172a' }} 
-                                />
-                             </a>
+                            <Image 
+                                src={url} 
+                                thumbnail 
+                                style={{ maxWidth: '150px', maxHeight: '150px', objectFit: 'cover', background: '#0f172a', cursor: 'pointer' }} 
+                                onClick={() => openImagePreview(url, imgArray, idx)}
+                            />
                         </div>
                     ))}
                 </div>

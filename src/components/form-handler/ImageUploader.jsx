@@ -1,9 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import * as Sentry from '@sentry/react';
 import { useNotification } from '../../contexts/NotificationContext';
 import LoadingSpinner from '../UI/LoadingSpinner';
 import { uploadImageWithFallback } from '../../utils/imageUploadUtils';
 import Tesseract from 'tesseract.js';
+import ImagePreviewModal from '../Modals/ImagePreviewModal';
 
 const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChange, maxImages = 6, fieldName }) => {
   const [isUploading, setIsUploading] = useState(false);
@@ -12,6 +13,22 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
   const [manualUrl, setManualUrl] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const { showNotification } = useNotification();
+
+  // Keyboard Navigation for Gallery
+  useEffect(() => {
+    if (!showGalleryModal) return;
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'ArrowLeft') {
+            setCurrentImageIndex(prev => prev === 0 ? images.length - 1 : prev - 1);
+        } else if (e.key === 'ArrowRight') {
+            setCurrentImageIndex(prev => prev === images.length - 1 ? 0 : prev + 1);
+        }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showGalleryModal, imagesProp]);
   
   const showNotes = fieldName?.toLowerCase().includes('morgue') || 
                    fieldName?.toLowerCase().includes('damage') || 
@@ -415,32 +432,14 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
         )}
       </div>
 
-      {showGalleryModal && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            backgroundColor: 'rgba(0, 0, 0, 0.9)',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            alignItems: 'center',
-            zIndex: 9999
-          }}
-          onClick={() => setShowGalleryModal(false)}
-        >
-          <button onClick={() => setShowGalleryModal(false)} style={{ position: 'absolute', top: '20px', right: '20px', background: 'transparent', border: 'none', color: 'white', fontSize: '2rem', cursor: 'pointer' }}>&times;</button>
-          <div style={{ position: 'relative', maxWidth: '90%', maxHeight: '90%', display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
-            <button onClick={(e) => { e.stopPropagation(); setCurrentImageIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1)); }} style={{ background: 'rgba(255, 255, 255, 0.1)', border: 'none', color: 'white', fontSize: '2rem', padding: '10px 20px', cursor: 'pointer', borderRadius: '8px', marginRight: '20px' }}>&#8249;</button>
-            <img src={images[currentImageIndex]} alt="Gallery" style={{ maxWidth: '100%', maxHeight: '80vh', objectFit: 'contain', borderRadius: '8px' }} onClick={() => window.open(images[currentImageIndex], '_blank')} />
-            <button onClick={(e) => { e.stopPropagation(); setCurrentImageIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1)); }} style={{ background: 'rgba(255, 255, 255, 0.1)', border: 'none', color: 'white', fontSize: '2rem', padding: '10px 20px', cursor: 'pointer', borderRadius: '8px', marginLeft: '20px' }}>&#8250;</button>
-          </div>
-          <div style={{ color: 'white', marginTop: '15px' }}>{currentImageIndex + 1} / {images.length}</div>
-        </div>
-      )}
+      {/* Shared Image Preview Modal */}
+      <ImagePreviewModal
+        isOpen={showGalleryModal}
+        onClose={() => setShowGalleryModal(false)}
+        images={images}
+        currentIndex={currentImageIndex}
+        onIndexChange={setCurrentImageIndex}
+      />
     </div>
   );
 };
