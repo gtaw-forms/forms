@@ -9,24 +9,23 @@ const transformReportTitle = (originalKey) => {
 
     let finalKey = originalKey;
 
+    // 1. Handle Death Report prefix and date stripping
     if (finalKey.startsWith('[DEATH-REPORT]')) {
         finalKey = finalKey.replace('[DEATH-REPORT]', 'Coroner Report -').trim();
         // Remove date like MM/DD/YYYY from the end
         finalKey = finalKey.replace(/\s+\d{2}\/\d{2}\/\d{4}$/, '').trim();
-    } else if (finalKey.startsWith('[Mass Fatality Report]') || finalKey.startsWith('[Multi Fatality Report]')) {
-        // Handle Mass Fatality Report titles
-        // Example: "[Mass Fatality Report] John Doe (x4) - 03/01/2026"
-        // Desired: "Mass Fatality Report - John Doe x4" (removing date, brackets, and adjusting OOC format if present)
-
+    } 
+    // 2. Handle Mass Fatality Report titles (prefix and x{times})
+    else if (finalKey.startsWith('[Mass Fatality Report]') || finalKey.startsWith('[Multi Fatality Report]')) {
         // Remove the leading "[Mass Fatality Report]" or "[Multi Fatality Report]"
         finalKey = finalKey.replace(/\[(Mass|Multi) Fatality Report\]\s*/i, '').trim();
-
         // Remove the date from the end (e.g., "- 03/01/2026")
         finalKey = finalKey.replace(/\s*-\s*\d{2}\/\d{2}\/\d{4}$/, '').trim();
-        
+        // Remove any pipe separators from concatenated names
+        finalKey = finalKey.replace(/\s*\|\s*/g, ', ').trim(); // Replace '|' with ', ' for better display
+
         // Prepend the standardized report type
         finalKey = `Mass Fatality Report - ${finalKey}`;
-
         // Ensure "x{times}" is correctly formatted without parentheses if it was " (x{times})"
         finalKey = finalKey.replace(/\s*\(x(\d+)\)/g, ' x$1');
     }
@@ -64,8 +63,6 @@ export const useReportAttachment = (
         const targetFieldName = currentAttachmentTargetFieldRef.current;
         
         setFormData(prev => {
-            const transformedKey = transformReportTitle(reportData.originalKey);
-
             if (loadedVersion === 11) {
                 console.log(`[useReportAttachment] Attaching Version 11 Report. Current form: ${selectedForm?.name}`);
                 let decedents = loadedFormData.decedents;
@@ -75,7 +72,7 @@ export const useReportAttachment = (
 
                 if (!Array.isArray(decedents) || decedents.length === 0) {
                     const reportContent = loadedFormData.deathReport || reportData.bbCode || '';
-                    return { ...prev, additionalReports: [...(prev.additionalReports || []), { bbCode: reportContent, originalKey: transformedKey, formId: reportData.formId }] };
+                    return { ...prev, additionalReports: [...(prev.additionalReports || []), { bbCode: reportContent, originalKey: reportData.originalKey, formId: reportData.formId }] };
                 }
                 
                 const firstDecedent = decedents[0];
@@ -93,7 +90,7 @@ export const useReportAttachment = (
                 }
 
                 const reportContent = loadedFormData.deathReport || reportData.bbCode || '';
-                newState.additionalReports = [...(prev.additionalReports || []), { bbCode: reportContent, originalKey: transformedKey, formId: reportData.formId }];
+                newState.additionalReports = [...(prev.additionalReports || []), { bbCode: reportContent, originalKey: reportData.originalKey, formId: reportData.formId }];
 
                 if (Array.isArray(loadedFormData.decedents)) {
                     newState.decedents = [...(prev.decedents || []), ...loadedFormData.decedents];
@@ -103,31 +100,31 @@ export const useReportAttachment = (
                 if (loadedFormData.department) newState.department = loadedFormData.department;
 
                 return newState;
-            }
-
-            // Standard Attachment Logic
-            if (selectedForm?.name === 'Coroner Email' || selectedForm?.id === 'coroner_email') {
-                console.log(`[useReportAttachment] Attaching standard report to Coroner Email.`);
-                const reportContent = reportData.bbCode || '';
-                
-                let newState = { ...prev };
-                newState.additionalReports = [...(prev.additionalReports || []), { bbCode: reportContent, originalKey: transformedKey, formId: reportData.formId }];
-
-                if (loadedFormData.requestingOfficer) newState.requestingOfficer = loadedFormData.requestingOfficer;
-                if (loadedFormData.department) newState.department = loadedFormData.department;
-                
-                return newState;
             } else {
-                let newState = { ...prev };
-                if (targetFieldName && reportData.bbCode) {
-                    const currentContent = newState[targetFieldName] || '';
-                    newState[targetFieldName] = currentContent ? `${currentContent}\n\n${reportData.bbCode}` : reportData.bbCode;
+                // Standard Attachment Logic
+                if (selectedForm?.name === 'Coroner Email' || selectedForm?.id === 'coroner_email') {
+                    console.log(`[useReportAttachment] Attaching standard report to Coroner Email.`);
+                    const reportContent = reportData.bbCode || '';
+                    
+                    let newState = { ...prev };
+                    newState.additionalReports = [...(prev.additionalReports || []), { bbCode: reportContent, originalKey: reportData.originalKey, formId: reportData.formId }];
+
+                    if (loadedFormData.requestingOfficer) newState.requestingOfficer = loadedFormData.requestingOfficer;
+                    if (loadedFormData.department) newState.department = loadedFormData.department;
+                    
+                    return newState;
+                } else {
+                    let newState = { ...prev };
+                    if (targetFieldName && reportData.bbCode) {
+                        const currentContent = newState[targetFieldName] || '';
+                        newState[targetFieldName] = currentContent ? `${currentContent}\n\n${reportData.bbCode}` : reportData.bbCode;
+                    }
+                    return newState;
                 }
-                return newState;
             }
         });
         
-        showNotification(`Report "${transformReportTitle(reportData.originalKey)}" attached successfully.`, 'check-circle');
+        showNotification(`Report "${reportData.originalKey}" attached successfully.`, 'check-circle');
 
     }, [selectedForm, setFormData, showNotification]);
 
@@ -142,6 +139,7 @@ export const useReportAttachment = (
 
         if (showSavedReports) {
             setShowSavedReports(false);
+            setReportSelectionFilter(null); // Clear filter when closing
             return;
         }
 
@@ -157,6 +155,16 @@ export const useReportAttachment = (
             setPreselectedEmployeeType(employeeType);
             currentAttachmentTargetFieldRef.current = targetField;
             pendingReportAttachmentCallback.current = callback; // Keep for now, though it's null for our use case
+            
+            // When in attachment mode, filter to only show specific form types
+            if (isAttaching) {
+                setReportSelectionFilter({
+                    allowedFormIds: ['mass-ftality-test', 'coroner-report']
+                });
+            } else {
+                setReportSelectionFilter(null);
+            }
+            
             setShowSavedReports(true);
         } else {
             showNotification('Please select an employee in the form to view their reports.', 'warning');

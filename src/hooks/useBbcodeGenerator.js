@@ -284,13 +284,60 @@ const formatToNorthAmericanDate = (isoDateTime) => {
       addFallback('coronerEmployee', 'CoronerEmployee'); addFallback('CoronerEmployee', 'coronerEmployee');
 
       if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email") {
-        let decedentName = processedFormValues.decedentName || processedFormValues.patientName || "UNKNOWN DECEDENT";
-        const decedentOOC = processedFormValues.decedentOOC || "N/A";
-        const cleanedDecedentNameMatch = String(decedentName).match(/^(.*?)(?:\s*\(.*|\s*\[.*)/);
-        if (cleanedDecedentNameMatch && cleanedDecedentNameMatch[1]) {
-          decedentName = cleanedDecedentNameMatch[1].trim();
+        let titleParts = ["Coroner Report"];
+        
+        let allOocNames = [];
+
+        // Collect OOC from the main form's decedentOOC field
+        if (processedFormValues.decedentOOC && processedFormValues.decedentOOC !== "N/A") {
+          allOocNames.push(...processedFormValues.decedentOOC.split(',').map(s => s.trim()).filter(Boolean));
         }
-        finalTitle = `[Death-Report] - ${decedentName} ((${decedentOOC}))`;
+
+        // Collect OOC from attached reports (if any)
+        if (Array.isArray(processedFormValues.additionalReports) && processedFormValues.additionalReports.length > 0) {
+          processedFormValues.additionalReports.forEach(report => {
+            // Assuming originalKey might contain OOC like "John Doe OOC - Name"
+            const oocMatch = report.originalKey.match(/OOC - (.*?)$/);
+            if (oocMatch && oocMatch[1]) {
+              allOocNames.push(oocMatch[1].trim());
+            } else {
+                // If originalKey doesn't contain OOC, check the report BBCode for `((...))`
+                const bbCodeOocMatch = report.bbCode.match(/\(\((.*?)\)\)/);
+                if (bbCodeOocMatch && bbCodeOocMatch[1]) {
+                    allOocNames.push(bbCodeOocMatch[1].trim());
+                }
+            }
+          });
+        }
+        
+        // Deduplicate OOC names
+        allOocNames = [...new Set(allOocNames)];
+
+        if (processedFormValues.decedentName && processedFormValues.decedentName !== "UNKNOWN DECEDENT") {
+          let decedentName = processedFormValues.decedentName;
+          const cleanedDecedentNameMatch = String(decedentName).match(/^(.*?)(?:\s*\(.*|\s*\[.*)/);
+          if (cleanedDecedentNameMatch && cleanedDecedentNameMatch[1]) {
+            decedentName = cleanedDecedentNameMatch[1].trim();
+          }
+          titleParts.push(`- ${decedentName}`);
+        } else if (allOocNames.length > 0) {
+            // If no decedentName, but we have OOC names, use "Multiple Decedents"
+            titleParts.push(`- Multiple Decedents`);
+        } else {
+            titleParts.push(`- UNKNOWN DECEDENT`);
+        }
+
+        if (allOocNames.length > 0) {
+          titleParts.push(`(( ${allOocNames.join(', ')} ))`);
+        } else if (processedFormValues.decedentOOC && processedFormValues.decedentOOC !== "N/A") {
+            // Fallback to main form decedentOOC if no individual ones were collected
+            titleParts.push(`(( ${processedFormValues.decedentOOC} ))`);
+        }
+
+        finalTitle = titleParts.join(' ');
+
+        // Clean up any double spaces and remove [Death-Report] if it was from old logic
+        finalTitle = finalTitle.replace(/\s{2,}/g, ' ').trim().replace(/\[Death-Report\] - /, '').trim();
       }
       else if (selectedForm.firebaseKey === 'mass-ftality-test' || selectedForm.id === 'mass-fatality' || selectedForm.name?.toLowerCase().includes('mass fatality')) {
         const decedentCounts = {};

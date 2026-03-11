@@ -841,6 +841,29 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       );
     }
     case "attach_report_button": {
+      // Helper to extract OOC names from Mass Fatality BBCode
+      const extractMassFatalityOoc = (bbCode) => {
+        if (!bbCode || typeof bbCode !== 'string') return [];
+        
+        // Look for OOC names in patterns like "(( Name ))" in the BBCode
+        const oocMatches = bbCode.match(/\(\(\s*([^)]+)\s*\)\)/g);
+        if (!oocMatches) return [];
+        
+        return oocMatches
+          .map(match => match.replace(/\(\(\s*|\s*\)\)/g, '').trim())
+          .filter((name) => {
+            // Filter out non-name entries
+            // 1. Skip all-caps entries (section headers, commands)
+            if (name === name.toUpperCase() && name.length > 1) return false;
+            // 2. Skip very short entries (likely not names)
+            if (name.length < 2) return false;
+            // 3. Skip known non-name keywords
+            if (['FOR INTERNAL RECORDS', 'DO NOT USE THESE', 'THESE IMAGES ARE'].some(keyword => name.includes(keyword))) return false;
+            return true;
+          })
+          .filter((name, idx, arr) => arr.indexOf(name) === idx); // Remove duplicates
+      };
+
       const attachedReports = formValues.additionalReports || [];
 
       return (
@@ -872,9 +895,27 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
             <div style={{ marginTop: '1rem', borderLeft: '3px solid #22c55e', paddingLeft: '1rem' }}>
               <h4 style={{ margin: '0 0 0.5rem 0', color: '#a78bfa', fontSize: '0.9rem', fontWeight: '600' }}>Attached Reports:</h4>
               <ul style={{ margin: 0, paddingLeft: '20px', color: '#34d399', fontSize: '0.9rem' }}>
-                {attachedReports.map((report, index) => (
-                  <li key={index}>{report.originalKey || `Attached Report ${index + 1}`}</li>
-                ))}
+                {attachedReports.map((report, index) => {
+                  let displayTitle = report.originalKey || `Attached Report ${index + 1}`;
+                  
+                  // Check if this is a Mass Fatality type report
+                  const isMassFatality = report.formId && (
+                    report.formId === 'mass-fatality' ||
+                    report.formId === 'mass-ftality-test' ||
+                    (typeof report.formId === 'string' && report.formId.toLowerCase().includes('mass'))
+                  );
+                  
+                  if (isMassFatality && report.bbCode) {
+                    const oocNames = extractMassFatalityOoc(report.bbCode);
+                    if (oocNames.length > 0) {
+                      displayTitle = `${report.originalKey} [${oocNames.join(', ')}]`;
+                    }
+                  }
+                  
+                  return (
+                    <li key={index}>{displayTitle}</li>
+                  );
+                })}
               </ul>
             </div>
           )}
