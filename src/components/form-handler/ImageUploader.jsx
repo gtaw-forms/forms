@@ -14,6 +14,14 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
   const [isDragging, setIsDragging] = useState(false);
   const { showNotification } = useNotification();
 
+  const images = React.useMemo(() => {
+    if (Array.isArray(imagesProp)) return imagesProp;
+    if (typeof imagesProp === 'string' && imagesProp.trim()) {
+      return imagesProp.split(', ').filter(Boolean);
+    }
+    return [];
+  }, [imagesProp]);
+
   // Keyboard Navigation for Gallery
   useEffect(() => {
     if (!showGalleryModal) return;
@@ -28,7 +36,7 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showGalleryModal, imagesProp]);
+  }, [showGalleryModal, images]);
   
   const showNotes = fieldName?.toLowerCase().includes('morgue') || 
                    fieldName?.toLowerCase().includes('damage') || 
@@ -57,14 +65,6 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
       setIsOcrLoading(prev => ({ ...prev, [url]: false }));
     }
   }, []);
-
-  const images = React.useMemo(() => {
-    if (Array.isArray(imagesProp)) return imagesProp;
-    if (typeof imagesProp === 'string' && imagesProp.trim()) {
-      return imagesProp.split(', ').filter(Boolean);
-    }
-    return [];
-  }, [imagesProp]);
 
   const handleImageUrlAdd = useCallback((url) => {
     if (!url) return;
@@ -313,42 +313,52 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
       {/* Gallery Section */}
       <div className="image-previews" style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '10px' }}>
         {images.map((url, i) => (
-          <div key={i} className="image-preview" style={{ 
-              flexBasis: 'calc(33.333% - 7px)', 
-              aspectRatio: '1/1', 
-              position: 'relative', 
-              borderRadius: '8px', 
-              overflow: 'hidden',
-              border: '1px solid #334155',
-              background: '#0f172a'
-          }}>
+          <div key={i} className="image-preview" 
+              style={{ 
+                  flexBasis: 'calc(33.333% - 7px)', 
+                  aspectRatio: '1/1', 
+                  position: 'relative', 
+                  borderRadius: '8px', 
+                  overflow: 'hidden',
+                  border: '1px solid #334155',
+                  background: '#0f172a',
+                  cursor: 'pointer'
+              }}
+              onClick={(e) => {
+                  // If clicking the container or anything inside it (except a button), open preview
+                  if (!e.target.closest('button')) {
+                      setCurrentImageIndex(i);
+                      setShowGalleryModal(true);
+                  }
+              }}
+          >
             <img 
                 src={url} 
                 alt={`Preview ${i}`} 
-                style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }}
-                onClick={() => {
-                    setCurrentImageIndex(i);
-                    setShowGalleryModal(true);
-                }}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
-            <div style={{
-                position: 'absolute',
-                top: 0,
-                right: 0,
-                left: 0,
-                bottom: 0,
-                background: 'linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, transparent 40%, transparent 60%, rgba(0,0,0,0.5) 100%)',
-                opacity: 0,
-                transition: 'opacity 0.2s',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                padding: '5px'
-            }} onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0}>
+            <div 
+                style={{
+                    position: 'absolute',
+                    top: 0,
+                    right: 0,
+                    left: 0,
+                    bottom: 0,
+                    background: 'linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, transparent 40%, transparent 60%, rgba(0,0,0,0.5) 100%)',
+                    opacity: 0,
+                    transition: 'opacity 0.2s',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    padding: '5px'
+                }} 
+                onMouseEnter={e => e.currentTarget.style.opacity = 1} 
+                onMouseLeave={e => e.currentTarget.style.opacity = 0}
+            >
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                     <button 
                         type="button" 
-                        onClick={() => handleRemove(i)}
+                        onClick={(e) => { e.stopPropagation(); handleRemove(i); }}
                         style={{ background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', padding: '2px 6px', fontSize: '0.7rem', cursor: 'pointer' }}
                     >
                         <i className="fas fa-times"></i>
@@ -357,7 +367,8 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
                 <div style={{ display: 'flex', gap: '4px' }}>
                     <button 
                         type="button" 
-                        onClick={() => {
+                        onClick={(e) => {
+                            e.stopPropagation();
                             navigator.clipboard.writeText(url);
                             showNotification('URL copied!', 'success');
                         }}
@@ -367,7 +378,7 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
                     </button>
                     <button 
                         type="button" 
-                        onClick={() => performOcr(url)}
+                        onClick={(e) => { e.stopPropagation(); performOcr(url); }}
                         style={{ flex: 1, background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '4px', padding: '2px', fontSize: '0.6rem', cursor: 'pointer' }}
                         disabled={isOcrLoading[url]}
                     >

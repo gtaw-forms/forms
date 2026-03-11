@@ -39,6 +39,7 @@ const ImagePreviewModal = ({
             modalSize="xl"
             noPadding
             variant="default"
+            zIndex={2000}
         >
             <div 
                 style={{ 
