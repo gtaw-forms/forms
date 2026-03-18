@@ -109,7 +109,7 @@ export const dailyMaintenanceTask = onSchedule({
     timeZone: "UTC",
     secrets: ["PHMC_CONFIG"],
     memory: "512MiB", // Explicitly increase memory for safety, though optimization reduces need
-    timeoutSeconds: 540, // 9 minutes
+    timeoutSeconds: 1200, // 20 minutes
 }, async (event) => {
     console.log(`Running daily maintenance task. Event ID: ${event.id}`);
 
@@ -221,9 +221,8 @@ export const dailyMaintenanceTask = onSchedule({
         
         if (userCountsSnapshot.exists()) {
             const userIds = Object.keys(userCountsSnapshot.val());
-            const threeSixtyFiveDaysAgo = Date.now() - (365 * 24 * 60 * 60 * 1000);
-            const twoDaysAgo = Date.now() - (2 * 24 * 60 * 60 * 1000);
             const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000);
+            const fourteenDaysAgo = Date.now() - (14 * 24 * 60 * 60 * 1000);
 
             // Process users in chunks to control concurrency
             const CHUNK_SIZE = 10;
@@ -271,12 +270,12 @@ export const dailyMaintenanceTask = onSchedule({
                         maintenanceResults.recoveryCleanup.errors.push(`User ${userId}: ${err.message}`);
                     }
 
-                    // C. Duplicate Cleanup (Last 3 Days Only)
+                    // C. Duplicate Cleanup (Last 14 Days Only)
                     // Logic: Match on Name/OOC/Date. If match found within 10 minutes of a newer save, delete the older one.
                     try {
                         const recentReportsQuery = db.ref(`${REPORTS_PATH}/${userId}`)
                             .orderByChild('timestamp')
-                            .startAt(threeDaysAgo);
+                            .startAt(fourteenDaysAgo);
                         
                         const recentSnapshot = await recentReportsQuery.once('value');
                         if (recentSnapshot.exists()) {
@@ -419,7 +418,7 @@ export const dailyMaintenanceTask = onSchedule({
             { name: "🎯 Bingo Reset Status", value: bingoDetails.trim() || "No bingo actions taken.", inline: false },
             { name: "📝 Phrase Request Deletion", value: `Deleted: ${maintenanceResults.phraseRequests.deleted}`, inline: false },
             { name: "📜 Old Reports (365+ days)", value: `Deleted: ${maintenanceResults.reportCleanup.oldReportsCleaned}`, inline: true },
-            { name: "🧹 Recent Duplicates (3 days)", value: `Scanned: ${maintenanceResults.duplicateCleanup.scanned}\nDeleted: ${maintenanceResults.duplicateCleanup.duplicatesDeleted}`, inline: true },
+            { name: "🧹 Recent Duplicates (14 days)", value: `Scanned: ${maintenanceResults.duplicateCleanup.scanned}\nDeleted: ${maintenanceResults.duplicateCleanup.duplicatesDeleted}`, inline: true },
             { name: "💾 Backup Cleanup", value: `Deleted: ${maintenanceResults.backupCleanup.oldBackupsCleaned}`, inline: true },
             { name: "📋 Webhook Log Cleanup", value: `Deleted: ${maintenanceResults.webhookLogCleanup.oldLogsCleaned}`, inline: true },
             { name: "🔄 Recovery Snapshots (2 days)", value: `Deleted: ${maintenanceResults.recoveryCleanup.deleted}`, inline: true },

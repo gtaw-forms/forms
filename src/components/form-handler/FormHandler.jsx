@@ -1280,7 +1280,6 @@ export const FormHandler = () => {
 
     return () => clearInterval(intervalId);
   }, []);
-  
 
   useEffect(() => {
     if (selectedForm && finalSelectOptions && isDevelopment) { // Only run in dev for now to be safe
@@ -1454,14 +1453,9 @@ export const FormHandler = () => {
             });
             }
 
-            console.log("Switching form. Preserving base values:", baseValues);
-
             const savedProgression = localStorage.getItem(`form_progression_${form.firebaseKey}`);
             const savedValues = savedProgression ? JSON.parse(savedProgression) : {};
             
-            // --- DEBUG LOG START ---
-            console.log(`[DEBUG] Loaded progression for ${form.name}:`, savedValues);
-            // --- DEBUG LOG END ---
 
             setSelectedForm(form);
             setFormValues({ ...baseValues, ...savedValues });
@@ -1553,7 +1547,9 @@ export const FormHandler = () => {
                 {(() => {
                   let fieldsToRender = [...(selectedForm.fields || [])];
 
-                  return fieldsToRender.map((field) => (
+                  return fieldsToRender.map((field) => {
+                    
+                    return (
                     <FormFieldRenderer
                       key={field.id || field.name} // Use field.id for stability if available, fallback to name
                       field={field}
@@ -1572,7 +1568,8 @@ export const FormHandler = () => {
                       isUploadingMapImage={isUploadingMapImage}
 
                     />
-                  ));
+                    );
+                  });
                 })()}
               </div>
               

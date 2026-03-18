@@ -431,224 +431,112 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
 
 
     const loadData = useCallback(async (forceRefresh = false) => {
-        setHasFirebaseError(false); // Reset error state at the beginning of data load
-        // If data is already loaded and we are not forcing a refresh, exit early.
-        // This is crucial to prevent re-fetching in StrictMode's double invocation.
+        setHasFirebaseError(false);
         if (dataLoaded && !forceRefresh) {
-            console.log('[DataContext] Data already loaded and no force refresh. Skipping redundant loadData call.');
+            console.log('[DataContext] Data already loaded, skipping redundant load.');
             return;
         }
-
-        // Check memory cache first for each segment
-        if (dataLoaded && !forceRefresh && Object.values(CACHE_SEGMENTS).every(segment => 
-            dataCache.current[segment] && isCacheValid(segment))) {
-                            if (!hasLoggedInitialLoad.current) {
-                                console.log('📦 Using memory-cached Firebase data');
-                                // Calculate total size and individual segment sizes
-                                const portions = Object.keys(dataCache.current);
-                                const memorySegmentSizes = {};
-                                let totalMemorySize = 0;
-                                portions.forEach(segment => {
-                                    const segmentSize = (JSON.stringify(dataCache.current[segment])?.length || 0) / 1024;
-                                    memorySegmentSizes[segment] = segmentSize;
-                                    totalMemorySize += segmentSize;
-                                });
-                                webhooks.sendDataRequestLog(
-                                    'DataContext.jsx',
-                                    true, // cached
-                                    'Memory Cache', // source
-                                    totalMemorySize, // cachedDataSize (total)
-                                    0, // networkTransferSize (none for memory cache)
-                                    isAuthenticated,
-                                    user?.faction?.characterName || user?.username,
-                                    portions, // requestedPortions (array of segment names)
-                                    null, // missingPortions
-                                    memorySegmentSizes, // segmentSizes object
-                                    null // error
-                                );
-                                hasLoggedInitialLoad.current = true;
-                            }            setIsLoadingData(false);
+    
+        const segmentsToFetch = [];
+        const cachedSegments = {};
+        const segmentSizes = {};
+        let totalCachedSize = 0;
+    
+        if (forceRefresh) {
+            segmentsToFetch.push(...Object.values(CACHE_SEGMENTS));
+            didLoadFromCache.current = false;
+        } else {
+            Object.values(CACHE_SEGMENTS).forEach(segment => {
+                if (EXCLUDED_FROM_CACHE.includes(segment)) return;
+                
+                const cacheKey = getCacheKey(segment);
+                const cachedData = localStorage.getItem(cacheKey);
+    
+                if (cachedData && isCacheValid(segment)) {
+                    try {
+                        cachedSegments[segment] = JSON.parse(cachedData);
+                        const segmentSize = (cachedData.length || 0) / 1024;
+                        segmentSizes[segment] = segmentSize;
+                        totalCachedSize += segmentSize;
+                    } catch (error) {
+                        console.error(`Error parsing cached data for ${segment}, refetching.`, error);
+                        segmentsToFetch.push(segment);
+                    }
+                } else {
+                    segmentsToFetch.push(segment);
+                }
+            });
+    
+            if (Object.keys(cachedSegments).length > 0) {
+                console.log('📦 Using partially or fully cached data from localStorage for segments:', Object.keys(cachedSegments));
+                updateStateWithData(cachedSegments);
+                dataCache.current = { ...dataCache.current, ...cachedSegments };
+                didLoadFromCache.current = true;
+            } else {
+                didLoadFromCache.current = false;
+            }
+        }
+    
+        if (segmentsToFetch.length === 0) {
+            if (!hasLoggedInitialLoad.current) {
+                webhooks.sendDataRequestLog('DataContext.jsx', true, 'Local Storage', totalCachedSize, 0, isAuthenticated, user?.faction?.characterName || user?.username, Object.keys(cachedSegments), [], segmentSizes, null);
+                hasLoggedInitialLoad.current = true;
+            }
+            setDataLoaded(true);
+            setIsLoadingData(false);
             setLoading(false);
             return;
         }
-
-        // Check localStorage cache for each segment
-        if (!forceRefresh) {
-            const allSegmentsLoaded = Object.values(CACHE_SEGMENTS).every(segment => {
-                const cachedData = localStorage.getItem(getCacheKey(segment));
-                if (cachedData && isCacheValid(segment)) {
-                    try {
-                        const parsedData = JSON.parse(cachedData);
-                        dataCache.current[segment] = parsedData;
-                        return true;
-                    } catch (error) {
-                        console.error(`Error parsing cached data for ${segment}:`, error);
-                        return false;
-                    }
-                }
-                return false;
-            });
-
-            if (allSegmentsLoaded) {
-                if (!hasLoggedInitialLoad.current) {
-                    console.log('📦 Using localStorage-cached Firebase data');
-                    if (dataCache.current[CACHE_SEGMENTS.FORMS]) {
-                        const formsList = Array.isArray(dataCache.current[CACHE_SEGMENTS.FORMS]) ? dataCache.current[CACHE_SEGMENTS.FORMS] : [];
-                        console.log(`📦 -> Forms loaded from cache: ${formsList.length} forms.`);
-                    }
-                    // Calculate total size and individual segment sizes from localStorage
-                    const portions = Object.keys(dataCache.current);
-                    const localStorageSegmentSizes = {};
-                    let totalLocalStorageSize = 0;
-                    portions.forEach(segment => {
-                        const segmentData = localStorage.getItem(getCacheKey(segment));
-                        const segmentSize = (segmentData?.length || 0) / 1024;
-                        localStorageSegmentSizes[segment] = segmentSize;
-                        totalLocalStorageSize += segmentSize;
-                    });
-                    webhooks.sendDataRequestLog(
-                        'DataContext.jsx',
-                        true, // cached
-                        'Local Storage', // source
-                        totalLocalStorageSize, // cachedDataSize (total)
-                        0, // networkTransferSize (none for local storage)
-                        isAuthenticated,
-                        user?.faction?.characterName || user?.username,
-                        portions, // requestedPortions (array of segment names)
-                        null, // missingPortions
-                        localStorageSegmentSizes, // segmentSizes object
-                        null // error
-                    );
-                    hasLoggedInitialLoad.current = true;
-                }
-                updateStateWithData(dataCache.current);
-                setDataLoaded(true);
-                setIsLoadingData(false);
-                setLoading(false);
-                didLoadFromCache.current = true; // Set the flag
-                return;
-            }
-        }
-
+    
         let loadingNotificationId;
         try {
-            loadingNotificationId = showNotification(`Data Loading from ${window.location.hostname}...`, 'spinner fa-spin', 0);
-            console.log('🔄 Fetching fresh data from Firebase...');
+            loadingNotificationId = showNotification(`Fetching ${segmentsToFetch.join(', ')} from server...`, 'spinner fa-spin', 0);
             
-            const segmentsToFetch = Object.values(CACHE_SEGMENTS);
-            console.log('🔄 Fetching fresh data from Firebase for segments:', segmentsToFetch);
-
-            const promises = segmentsToFetch.map(segment => {
-                const segmentRef = ref(database, segment);
-                return get(segmentRef).then(snapshot => ({ segment, snapshot }));
-            });
-
+            const promises = segmentsToFetch.map(segment => get(ref(database, segment)).then(snapshot => ({ segment, snapshot })));
             const results = await Promise.all(promises);
-
-            const allData = {};
-            let hasData = false;
-
+    
+            const fetchedData = {};
+            let totalNetworkTransferSize = 0;
+    
             results.forEach(({ segment, snapshot }) => {
                 if (snapshot.exists()) {
-                    // Special handling for FORMS: convert object to list and add firebaseKey
+                    let data = snapshot.val();
                     if (segment === CACHE_SEGMENTS.FORMS) {
-                        const formsObject = snapshot.val();
-                        allData[segment] = Object.keys(formsObject).map(key => ({ ...formsObject[key], firebaseKey: key }));
-                    } else {
-                        allData[segment] = snapshot.val();
+                        data = Object.keys(data).map(key => ({ ...data[key], firebaseKey: key }));
                     }
-                    hasData = true;
+                    fetchedData[segment] = data;
+                    const segmentSize = (JSON.stringify(data).length || 0) / 1024;
+                    segmentSizes[segment] = segmentSize;
+                    totalNetworkTransferSize += segmentSize;
                 } else {
                     console.warn(`Segment "${segment}" does not exist in Firebase.`);
                 }
             });
-
-            if (hasData) {
+    
+            if (Object.keys(fetchedData).length > 0) {
                 if (!hasLoggedInitialLoad.current) {
-                    const receivedSegments = Object.keys(allData);
-                    const missingPortions = segmentsToFetch.filter(segment => !receivedSegments.includes(segment));
-                    
-                    // Calculate total network transfer size and individual segment sizes
-                    let totalNetworkTransferSize = 0;
-                    const firebaseFetchSegmentSizes = {};
-                    receivedSegments.forEach(segment => {
-                        const segmentSize = (JSON.stringify(allData[segment])?.length || 0) / 1024;
-                        firebaseFetchSegmentSizes[segment] = segmentSize;
-                        totalNetworkTransferSize += segmentSize;
-                    });
-
-                    webhooks.sendDataRequestLog(
-                        'DataContext.jsx',
-                        false, // not cached
-                        'Firebase', // source
-                        totalNetworkTransferSize, // cachedDataSize (total size of what was fetched)
-                        totalNetworkTransferSize, // networkTransferSize (same as cachedDataSize for fresh fetch)
-                        isAuthenticated,
-                        user?.faction?.characterName || user?.username,
-                        segmentsToFetch, // requestedPortions (send the array of all segments that were requested)
-                        missingPortions, // missingPortions
-                        firebaseFetchSegmentSizes, // segmentSizes object
-                        null // error
-                    );
+                    webhooks.sendDataRequestLog('DataContext.jsx', didLoadFromCache.current, didLoadFromCache.current ? 'Partial Cache' : 'Firebase', totalCachedSize + totalNetworkTransferSize, totalNetworkTransferSize, isAuthenticated, user?.faction?.characterName || user?.username, Object.keys(cachedSegments).concat(segmentsToFetch), segmentsToFetch.filter(s => !fetchedData[s]), segmentSizes, null);
                     hasLoggedInitialLoad.current = true;
                 }
-                console.log('[DataContext] Raw data from Firebase:', allData);
-
-                // Update each cache segment independently
-                Object.entries(allData).forEach(([path, data]) => {
-                    dataCache.current[path] = data;
-                    if (!EXCLUDED_FROM_CACHE.includes(path)) {
-                        try {
-                            localStorage.setItem(getCacheKey(path), JSON.stringify(data));
-                            localStorage.setItem(getTimestampKey(path), Date.now().toString());
-                            localStorage.setItem(getVersionKey(path), getSegmentVersion(path)); // Ensure version is stored
-                        } catch (error) {
-                            console.warn(`Failed to cache ${path} to localStorage:`, error);
-                            try {
-                                localStorage.removeItem(getCacheKey(path));
-                                localStorage.removeItem(getTimestampKey(path));
-                                localStorage.removeItem(getVersionKey(path));
-                            } catch (clearError) {
-                                console.error(`Failed to clear cache for ${path}:`, clearError);
-                            }
-                        }
-                    } else {
-                        console.log(`⏩ Skipping localStorage cache for ${path} (excluded segment)`);
-                    }
+    
+                Object.entries(fetchedData).forEach(([segment, data]) => {
+                    updateCacheSegment(segment, data);
                 });
-
-                console.log('💾 Firebase data cached to localStorage by segments');
-                
-                if (allData[CACHE_SEGMENTS.FORMS]) {
-                    const formsList = Array.isArray(allData[CACHE_SEGMENTS.FORMS]) ? allData[CACHE_SEGMENTS.FORMS] : [];
-                    console.log(` fetched from Firebase: ${formsList.length} forms.`);
-                }
-
-                // Update all state values
-                updateStateWithData(allData);
-                showNotification("Data Loaded!", 'check-circle', 2000);
-                setDataLoaded(true);
-            } else {
-                showNotification('Initial application data not found on server.', 'error');
+    
+                updateStateWithData(fetchedData);
+                showNotification("Data updated!", 'check-circle', 2000);
             }
+    
+            setDataLoaded(true);
+    
         } catch (error) {
-            showNotification("An error has happened, contact the maintainer", 'error');
+            showNotification("An error occurred while fetching data.", 'error');
             console.error("Error fetching data from Realtime Database:", error);
-            const segmentsToFetch = Object.values(CACHE_SEGMENTS);
-            webhooks.sendDataRequestLog(
-                'DataContext.jsx',
-                false, // not cached
-                'Firebase Error', // source
-                0, // cachedDataSize
-                0, // networkTransferSize
-                isAuthenticated,
-                user?.faction?.characterName || user?.username,
-                segmentsToFetch, // requestedPortions (send the array of all segments that were requested)
-                segmentsToFetch, // missingPortions (assume all missing on error)
-                {}, // segmentSizes (empty on error)
-                error.message || 'Unknown Fetch Error' // error
-            );
-            setHasFirebaseError(true); // Set error state
+            if (!hasLoggedInitialLoad.current) {
+                webhooks.sendDataRequestLog('DataContext.jsx', didLoadFromCache.current, 'Firebase Error', totalCachedSize, 0, isAuthenticated, user?.faction?.characterName || user?.username, Object.keys(cachedSegments), segmentsToFetch, segmentSizes, error.message || 'Unknown Fetch Error');
+                hasLoggedInitialLoad.current = true;
+            }
+            setHasFirebaseError(true);
         } finally {
             setIsLoadingData(false);
             setLoading(false);

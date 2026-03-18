@@ -1193,9 +1193,9 @@ const AdminDashboard = ({
                                         <p className="small text-muted">Directly manage the dynamic SuperAdmin whitelist in Realtime Database. Only visible on localhost.</p>
                                         
                                         <div className="row g-2">
-                                            <div className="col-md-4">
+                                            <div className="col-md-6">
                                                 <div className="input-group input-group-sm">
-                                                    <input type="text" id="dev-ucp-name" className="form-control" placeholder="UCP Name" />
+                                                    <input type="text" id="dev-ucp-name" className="form-control" placeholder="UCP Name (SuperAdmin)" />
                                                     <Button variant="outline-danger" onClick={async () => {
                                                         const val = document.getElementById('dev-ucp-name').value;
                                                         if (!val) return;
@@ -1204,12 +1204,12 @@ const AdminDashboard = ({
                                                             showInAppNotification(`Added UCP ${val} to whitelist`, 'success');
                                                             document.getElementById('dev-ucp-name').value = '';
                                                         } catch (e) { showInAppNotification(e.message, 'error'); }
-                                                    }}>Add UCP</Button>
+                                                    }}>Add SuperAdmin (UCP)</Button>
                                                 </div>
                                             </div>
-                                            <div className="col-md-4">
+                                            <div className="col-md-6">
                                                 <div className="input-group input-group-sm">
-                                                    <input type="text" id="dev-uid" className="form-control" placeholder="gtaw:ID" />
+                                                    <input type="text" id="dev-uid" className="form-control" placeholder="gtaw:ID (SuperAdmin)" />
                                                     <Button variant="outline-danger" onClick={async () => {
                                                         const val = document.getElementById('dev-uid').value;
                                                         if (!val) return;
@@ -1218,12 +1218,12 @@ const AdminDashboard = ({
                                                             showInAppNotification(`Added UID ${val} to whitelist`, 'success');
                                                             document.getElementById('dev-uid').value = '';
                                                         } catch (e) { showInAppNotification(e.message, 'error'); }
-                                                    }}>Add UID</Button>
+                                                    }}>Add SuperAdmin (UID)</Button>
                                                 </div>
                                             </div>
-                                            <div className="col-md-4">
+                                            <div className="col-md-6">
                                                 <div className="input-group input-group-sm">
-                                                    <input type="text" id="dev-email" className="form-control" placeholder="Email" />
+                                                    <input type="text" id="dev-email" className="form-control" placeholder="Email (SuperAdmin)" />
                                                     <Button variant="outline-danger" onClick={async () => {
                                                         const val = document.getElementById('dev-email').value;
                                                         if (!val) return;
@@ -1233,7 +1233,21 @@ const AdminDashboard = ({
                                                             showInAppNotification(`Added Email ${val} to whitelist`, 'success');
                                                             document.getElementById('dev-email').value = '';
                                                         } catch (e) { showInAppNotification(e.message, 'error'); }
-                                                    }}>Add Email</Button>
+                                                    }}>Add SuperAdmin (Email)</Button>
+                                                </div>
+                                            </div>
+                                            <div className="col-md-6">
+                                                <div className="input-group input-group-sm">
+                                                    <input type="text" id="dev-gtaw-staff-name" className="form-control" placeholder="UCP Name (for Staff Access)" />
+                                                    <Button variant="outline-success" onClick={async () => {
+                                                        const val = document.getElementById('dev-gtaw-staff-name').value;
+                                                        if (!val) return;
+                                                        try {
+                                                            await set(ref(getDatabase(), `verified_admins/${val}`), { isGtawStaff: true });
+                                                            showInAppNotification(`Added ${val} to GTAW Staff whitelist`, 'success');
+                                                            document.getElementById('dev-gtaw-staff-name').value = '';
+                                                        } catch (e) { showInAppNotification(e.message, 'error'); }
+                                                    }}>Add Staff</Button>
                                                 </div>
                                             </div>
                                         </div>
