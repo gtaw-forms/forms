@@ -1,6 +1,5 @@
 // src/hooks/useBbcodeGenerator.js
 import { useState, useCallback } from 'react';
-import { getUtcFormattedDateTime } from '../utils/dateTimeUtils';
 import { getDepartmentFullName } from '../utils/bbcodeHelpers';
 import generateDecedentBBCode from '../phmc-bbcode-generators/generateMassFatality';
 import { formatCharacterNameForDisplay } from '../utils/characterUtils';
@@ -92,6 +91,45 @@ const formatToNorthAmericanDate = (isoDateTime) => {
     }
 
     const performGeneration = (decedentsOverride = null) => {
+      const cleanOocString = (str) => {
+          if (!str) return null;
+          let cleaned = str.trim();
+          
+          // 1. Truncate at common delimiters if they appear in the middle of a fragment
+          const stopKeywords = ['|', 'this is a revised report', 'http://', 'https://', ' - '];
+          let stopIndex = -1;
+
+          for (const keyword of stopKeywords) {
+              const index = cleaned.toLowerCase().indexOf(keyword);
+              if (index !== -1 && (stopIndex === -1 || index < stopIndex)) {
+                  stopIndex = index;
+              }
+          }
+
+          if (stopIndex !== -1) {
+              cleaned = cleaned.substring(0, stopIndex).trim();
+          }
+
+          // 2. Discard if it contains "note-like" words (unlikely to be in a UCP/Forum name)
+          const discardKeywords = ['but ', 'our ', 'this ', 'revised', 'evidence', 'detective', 'refined', 'specificity', 'report', 'determination'];
+          const lowerCleaned = cleaned.toLowerCase();
+          if (discardKeywords.some(k => lowerCleaned.includes(k))) {
+              return null;
+          }
+
+          // 3. Discard if too many words (likely a sentence, not a name/UCP)
+          if (cleaned.split(/\s+/).length > 4) {
+              return null;
+          }
+
+          cleaned = cleaned.replace(/,$/, '').trim();
+          
+          if (cleaned && cleaned.toLowerCase() !== 'out of character images') {
+              return cleaned;
+          }
+          return null;
+      };
+
       // Helper to find a member in factionsData across all factions
       const findMemberAcrossFactions = (name) => {
         if (!factionsData) return null;
@@ -285,59 +323,110 @@ const formatToNorthAmericanDate = (isoDateTime) => {
 
       if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email") {
         let titleParts = ["Coroner Report"];
-        
-        let allOocNames = [];
+        const allOocNames = [];
+        const nameCounts = {}; // IC Name -> Count
+        const uniquePeople = new Set(); // Track "IC|OOC" to prevent double-counting same person across reports
 
-        // Collect OOC from the main form's decedentOOC field
-        if (processedFormValues.decedentOOC && processedFormValues.decedentOOC !== "N/A") {
-          allOocNames.push(...processedFormValues.decedentOOC.split(',').map(s => s.trim()).filter(Boolean));
-        }
-
-        // Collect OOC from attached reports (if any)
-        if (Array.isArray(processedFormValues.additionalReports) && processedFormValues.additionalReports.length > 0) {
-          processedFormValues.additionalReports.forEach(report => {
-            // Assuming originalKey might contain OOC like "John Doe OOC - Name"
-            const oocMatch = report.originalKey.match(/OOC - (.*?)$/);
-            if (oocMatch && oocMatch[1]) {
-              allOocNames.push(oocMatch[1].trim());
-            } else {
-                // If originalKey doesn't contain OOC, check the report BBCode for `((...))`
-                const bbCodeOocMatch = report.bbCode.match(/\(\((.*?)\)\)/);
-                if (bbCodeOocMatch && bbCodeOocMatch[1]) {
-                    allOocNames.push(bbCodeOocMatch[1].trim());
-                }
+        const addDecedent = (ic, ooc) => {
+            if (!ic || ic === "N/A" || ic === "NO_NAME") return;
+            
+            // 1. Clean IC name: strip ((...)), [ ... ], (xN), and dates
+            let cleanedIc = ic.replace(/\(\(.*\)\)/g, '')
+                             .replace(/\[.*\]/g, '')
+                             .replace(/\(x\d+\)/g, '')
+                             .replace(/(?:\s*-\s*|\s+)\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/g, '')
+                             .replace(/(?:\s*-\s*|\s+)\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}/g, '')
+                             .replace(/\s*-\s*$/g, '')
+                             .trim();
+                             
+            if (cleanedIc.toLowerCase() === "unknown decedent") cleanedIc = "UNKNOWN DECEDENT";
+            
+            // 2. Extract and sanitize OOC names (handle both (( )) and [ ])
+            let oocList = [];
+            if (ooc && ooc !== "N/A") {
+                const rawOoc = String(ooc).replace(/[\[\]\(\)]/g, ''); // Strip all surrounding brackets
+                oocList = rawOoc.split(',').map(s => cleanOocString(s)).filter(Boolean);
             }
-          });
+            
+            if (cleanedIc) {
+                if (oocList.length > 0) {
+                    // Global deduplication of (IC Name, OOC Name) pairs
+                    // ONLY OOC names contribute to the count for named ICs
+                    oocList.forEach(name => {
+                        const personKey = `${cleanedIc.toLowerCase()}|${name.toLowerCase()}`;
+                        if (!uniquePeople.has(personKey)) {
+                            uniquePeople.add(personKey);
+                            nameCounts[cleanedIc] = (nameCounts[cleanedIc] || 0) + 1;
+                            if (!allOocNames.includes(name)) allOocNames.push(name);
+                        }
+                    });
+                } else if (cleanedIc === "UNKNOWN DECEDENT") {
+                    // UNKNOWN DECEDENTS are summed by their multiplier if provided in the string, else default to 1
+                    const multiplierMatch = ic.match(/\(x(\d+)\)/);
+                    const multiplier = multiplierMatch ? parseInt(multiplierMatch[1], 10) : 1;
+                    nameCounts["UNKNOWN DECEDENT"] = (nameCounts["UNKNOWN DECEDENT"] || 0) + multiplier;
+                }
+                // NOTE: Named ICs without OOC names are ignored for the count to prevent title inflation
+            }
+        };
+
+        // --- Data Gathering ---
+
+        // 1. From main form (only if not redundant with decedents array)
+        const hasDecedentsArray = Array.isArray(processedFormValues.decedents) && processedFormValues.decedents.length > 0;
+        if (!hasDecedentsArray) {
+            addDecedent(processedFormValues.decedentName, processedFormValues.decedentOOC);
+        }
+
+        // 2. From decedents array
+        if (hasDecedentsArray) {
+            processedFormValues.decedents.forEach(d => {
+                addDecedent(d.decedentName, d.decedentOOC);
+            });
         }
         
-        // Deduplicate OOC names
-        allOocNames = [...new Set(allOocNames)];
+        // 3. From attached reports
+        if (Array.isArray(processedFormValues.additionalReports) && processedFormValues.additionalReports.length > 0) {
+            processedFormValues.additionalReports.forEach(report => {
+                const key = report.originalKey || "";
+                let icName = key;
+                let oocString = null;
 
-        if (processedFormValues.decedentName && processedFormValues.decedentName !== "UNKNOWN DECEDENT") {
-          let decedentName = processedFormValues.decedentName;
-          const cleanedDecedentNameMatch = String(decedentName).match(/^(.*?)(?:\s*\(.*|\s*\[.*)/);
-          if (cleanedDecedentNameMatch && cleanedDecedentNameMatch[1]) {
-            decedentName = cleanedDecedentNameMatch[1].trim();
-          }
-          titleParts.push(`- ${decedentName}`);
-        } else if (allOocNames.length > 0) {
-            // If no decedentName, but we have OOC names, use "Multiple Decedents"
-            titleParts.push(`- Multiple Decedents`);
-        } else {
-            titleParts.push(`- UNKNOWN DECEDENT`);
+                // Strip standard prefixes first to avoid confusion with [OOC]
+                icName = icName.replace(/^\[.*?\]\s*/, '').replace(/^Coroner Report -\s*/, '').trim();
+
+                // Extract OOC: look for (( )) or [ ] anywhere in the cleaned string
+                const oocMatch = icName.match(/\(\((.*?)\)\)/) || icName.match(/\[([^\]]*?)\]/);
+                if (oocMatch) {
+                    oocString = oocMatch[1];
+                } else {
+                    // Fallback to BBCode
+                    const bbCodeOocMatch = report.bbCode?.match(/\(\((.*?)\)\)/);
+                    if (bbCodeOocMatch) oocString = bbCodeOocMatch[1];
+                }
+
+                if (icName) {
+                    addDecedent(icName, oocString);
+                }
+            });
         }
 
+        // --- Title Construction ---
+        const namesList = Object.entries(nameCounts)
+            .map(([name, count]) => count > 1 ? `${name} (x${count})` : name)
+            .join(', ');
+        
+        if (namesList) {
+            titleParts.push(`- ${namesList}`);
+        } else {
+            titleParts.push('- UNKNOWN DECEDENT');
+        }
+        
         if (allOocNames.length > 0) {
           titleParts.push(`(( ${allOocNames.join(', ')} ))`);
-        } else if (processedFormValues.decedentOOC && processedFormValues.decedentOOC !== "N/A") {
-            // Fallback to main form decedentOOC if no individual ones were collected
-            titleParts.push(`(( ${processedFormValues.decedentOOC} ))`);
         }
-
-        finalTitle = titleParts.join(' ');
-
-        // Clean up any double spaces and remove [Death-Report] if it was from old logic
-        finalTitle = finalTitle.replace(/\s{2,}/g, ' ').trim().replace(/\[Death-Report\] - /, '').trim();
+        
+        finalTitle = titleParts.join(' ').replace(/\s{2,}/g, ' ').trim();
       }
       else if (selectedForm.firebaseKey === 'mass-ftality-test' || selectedForm.id === 'mass-fatality' || selectedForm.name?.toLowerCase().includes('mass fatality')) {
         const decedentCounts = {};
@@ -401,15 +490,16 @@ const formatToNorthAmericanDate = (isoDateTime) => {
         const field = fieldName.trim();
         const option = text.trim();
         const value = processedFormValues[field];
+        
         let comparisonValue = value;
         if (typeof value === 'object' && value !== null && Object.prototype.hasOwnProperty.call(value, 'value')) {
             comparisonValue = value.value;
         }
         let isSelected = false;
         if (Array.isArray(comparisonValue)) {
-          isSelected = comparisonValue.map(v => String(v).trim()).includes(option);
+          isSelected = comparisonValue.map(v => String(v).trim().toLowerCase()).includes(option.toLowerCase());
         } else {
-          isSelected = String(comparisonValue || '').trim() === option;
+          isSelected = String(comparisonValue || '').trim().toLowerCase() === option.toLowerCase();
         }
         return `${isSelected ? `[cbc]` : `[cb]`} ${option}${newline || ''}`;
       });
@@ -428,7 +518,7 @@ const formatToNorthAmericanDate = (isoDateTime) => {
       bbcode = bbcode.replace(/\[conditional\s+field=["']?([^"'\]\s]+)["']?\s+value=["']?([^"'\]]+)["']?\](.*?)\[\/conditional\]/gis, (match, fieldName, expectedValue, inner) => {
         const actualValue = processedFormValues[fieldName.trim()];
         const expected = expectedValue.trim();
-        const conditionMet = Array.isArray(actualValue) ? actualValue.map(v => String(v)).includes(String(expected)) : String(actualValue) == String(expected);
+        const conditionMet = Array.isArray(actualValue) ? actualValue.map(v => String(v).toLowerCase()).includes(String(expected).toLowerCase()) : String(actualValue).toLowerCase() == String(expected).toLowerCase();
         return conditionMet ? inner.trim() : '';
       });
       
@@ -437,14 +527,20 @@ const formatToNorthAmericanDate = (isoDateTime) => {
       let deathReportContent = processedFormValues.deathReport || '';
       if (Array.isArray(processedFormValues.additionalReports) && processedFormValues.additionalReports.length > 0) {
         const additionalReportsBBCodes = processedFormValues.additionalReports.map(report => {
-            let bbCodeContent = typeof report === 'string' ? report : report.bbCode;
+            const sanitizeSpoilerTitle = (title) => {
+              if (!title) return 'Spoiler';
+              return title.replace(/[\[\]()/]/g, '').trim();
+            };
+
             const originalKey = typeof report === 'string' ? 'Additional Report' : (report.originalKey || 'Additional Report');
+            const sanitizedTitle = sanitizeSpoilerTitle(originalKey);
+			let bbCodeContent = typeof report === 'string' ? report : report.bbCode;
 
             // If the attached report is itself a Coroner Email, extract the core report content
             // Assuming `coroner_email` is the formId for Coroner Email forms.
             if (report.formId === 'coroner_email' || report.formId === 'coroner-email') { // Handle both potential 'id' and 'firebaseKey'
-                // Regex to find the content within specific altspoilers that typically contain the actual report
-                const reportSpoilerMatch = bbCodeContent.match(/\[altspoiler=(?:Coroner Report|DEATH INVESTIGATION REPORT|MASS FATALITY REPORT|Death Record|Mass Fatality)\]([\s\S]*?)\[\/altspoiler\]/i);
+                // Regex to find the content within specific spoilers that typically contain the actual report
+                const reportSpoilerMatch = bbCodeContent.match(/\[altspoiler=(?:Coroner Report|DEATH INVESTIGATION REPORT|MASS FATALITY REPORT|Death Record|Mass Fatality)\]([\s\S]*?)\[\/spoiler\]/i);
                 if (reportSpoilerMatch && reportSpoilerMatch[1]) {
                     bbCodeContent = reportSpoilerMatch[1].trim();
                 } else {
@@ -473,7 +569,7 @@ const formatToNorthAmericanDate = (isoDateTime) => {
                 }
             }
 
-            const spoiler = `[altspoiler=${originalKey}]\n${bbCodeContent}\n[/altspoiler]`;
+            const spoiler = `[altspoiler=${sanitizedTitle}]\n${bbCodeContent}\n[/altspoiler]`;
             console.log(`[BBCodeDebug] Generated spoiler for key "${originalKey}"`);
             return spoiler;
         }).join('\n\n');
@@ -522,7 +618,15 @@ const formatToNorthAmericanDate = (isoDateTime) => {
           }
           
           if (field) {
-              if ((field.type === "image" || field.type === "image_upload") && value) {
+              if (field.type === "medicine_block" && typeof value === 'object' && value !== null) {
+                  const prescribedText = value.prescribed || '';
+                  const proofImages = Array.isArray(value.proof) ? value.proof.map(url => `[img]${url}[/img]`).join('\n') : '';
+                  replacement = prescribedText;
+                  if (proofImages) {
+                      replacement += `\n\n[b]Proof of Prescription:[/b]\n${proofImages}`;
+                  }
+              }
+              else if ((field.type === "image" || field.type === "image_upload") && value) {
                   const formatItem = (item) => (typeof item === 'string' && /\.(jpg|jpeg|png|gif|webp)$/i.test(item.trim())) ? `[img]${item}[/img]` : (item || '');
                   replacement = Array.isArray(value) ? value.map(formatItem).filter(Boolean).join('\n') : formatItem(value);
               }
@@ -567,8 +671,11 @@ const formatToNorthAmericanDate = (isoDateTime) => {
       });
 
       const isCoronerEmailFinal = selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email";
-      if (isCoronerEmailFinal && (bbcode.includes('[bold]') || bbcode.includes('[/bold]'))) {
-          bbcode = bbcode.replace(/\[bold\]/gi, '[b]').replace(/\[\/bold\]/gi, '[/b]');
+      if (isCoronerEmailFinal) {
+          console.log('[CoronerEmailTitleDebug] Original finalTitle:', finalTitle);
+          if (bbcode.includes('[bold]') || bbcode.includes('[/bold]')) {
+              bbcode = bbcode.replace(/\[bold\]/gi, '[b]').replace(/\[\/bold\]/gi, '[/b]');
+          }
       }
 
       // DEBUG: Check if coronerRank/coronerEmployee/coronerBadge placeholders still exist

@@ -197,7 +197,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
             {field.buttonLabel && (
               <button
                 onClick={() => {
-                  if (field.buttonAction === "capture") {
+                  if (field.buttonAction === "set_current_time" || field.buttonAction === "capture") {
                     let capturedValue = "";
                     
                     if (field.timerType === "datetime-local" || field.timerType === "dateTime") {
@@ -467,49 +467,6 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
             style={inputStyle}
             data-field={field.name}
           />
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: "0.5rem" }}>
-              {field.allowImagePaste && (
-                <div style={{
-                  padding: "0.6rem",
-                  background: "#162032",
-                  borderRadius: 6,
-                  fontSize: "0.85rem",
-                  color: "#94a3b8",
-                  flex: 1,
-                  marginRight: "10px"
-                }}>
-                  <strong>Pro tip:</strong> You can paste screenshots directly here with <strong>Ctrl+V</strong>
-                </div>
-              )}
-              
-              {(selectedForm?.id === 'autopsy' || selectedForm?.name?.toLowerCase().includes('autopsy')) && (
-                   <button
-                       onClick={(e) => {
-                           e.preventDefault();
-                           setAutopsyAssistTargetField(field.name);
-                           setShowAutopsyAssistModal(true);
-                       }}
-                       className="btn btn-sm"
-                       style={{
-                           padding: "0.5rem 1rem",
-                           background: "#8b5cf6",
-                           color: "white",
-                           border: "1px solid #7c3aed",
-                           borderRadius: 6,
-                           fontSize: "0.85rem",
-                           cursor: "pointer",
-                           whiteSpace: "nowrap",
-                           display: "flex",
-                           alignItems: "center",
-                           gap: "0.5rem",
-                           alignSelf: field.allowImagePaste ? "stretch" : "flex-start" // Match height if tip exists
-                       }}
-                       title="Open Autopsy Assistant"
-                   >
-                       <i className="fas fa-magic"></i> Autopsy Assist
-                   </button>
-               )}
-          </div>
         </div>
       );
     case "image":
@@ -861,6 +818,8 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
             if (name.length < 2) return false;
             // 3. Skip known non-name keywords
             if (['FOR INTERNAL RECORDS', 'DO NOT USE THESE', 'THESE IMAGES ARE'].some(keyword => name.includes(keyword))) return false;
+            // 4. Skip long sentences
+            if (name.split(' ').length > 4) return false;
             return true;
           })
           .filter((name, idx, arr) => arr.indexOf(name) === idx); // Remove duplicates
@@ -1222,10 +1181,12 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
           <textarea
             name={`${field.name}_prescribed`}
             rows={field.rows || 4}
-            value={formValues[field.name] ? formValues[field.name].prescribed : ""}
+            value={(formValues[field.name] && formValues[field.name].prescribed) || ''}
             onChange={e => {
-              const currentVal = formValues[field.name] || { prescribed: "", proof: [] };
-              handleChange(field.name, { ...currentVal, prescribed: e.target.value });
+              const currentVal = formValues[field.name];
+              const prescribed = e.target.value;
+              const proof = (currentVal && typeof currentVal === 'object' && currentVal.proof) || [];
+              handleChange(field.name, { prescribed, proof });
             }}
             placeholder="List the medicines prescribed..."
             style={{ ...inputStyle, marginBottom: '1rem' }}
@@ -1233,10 +1194,11 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
 
           <label style={{ ...labelStyle, fontSize: '0.9rem' }}>Proof of Prescription (Images)</label>
           <ImageUploader
-            images={formValues[field.name] ? (formValues[field.name].proof || []) : []}
+            images={(formValues[field.name] && formValues[field.name].proof) || []}
             onImagesChange={(newImages) => {
-              const currentVal = formValues[field.name] || { prescribed: "", proof: [] };
-              handleChange(field.name, { ...currentVal, proof: newImages });
+              const currentVal = formValues[field.name];
+              const prescribed = (currentVal && typeof currentVal === 'object' && currentVal.prescribed) || '';
+              handleChange(field.name, { prescribed, proof: newImages });
             }}
             maxImages={field.maxImages || 6}
             fieldName={`${field.name}_proof`}

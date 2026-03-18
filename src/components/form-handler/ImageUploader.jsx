@@ -13,13 +13,20 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
   const [isDragging, setIsDragging] = useState(false);
   const { showNotification } = useNotification();
 
+  // Cleanup effect: Close gallery modal when component unmounts to prevent state leakage
+  useEffect(() => {
+    return () => {
+      // Reset to ensure clean state for next component instance
+      setShowGalleryModal(false);
+      setCurrentImageIndex(0);
+    };
+  }, [fieldName]);
+
   const images = React.useMemo(() => {
-    if (Array.isArray(imagesProp)) return imagesProp;
-    if (typeof imagesProp === 'string' && imagesProp.trim()) {
-      return imagesProp.split(', ').filter(Boolean);
-    }
-    return [];
-  }, [imagesProp]);
+    const result = Array.isArray(imagesProp) ? imagesProp : (typeof imagesProp === 'string' && imagesProp.trim() ? imagesProp.split(', ').filter(Boolean) : []);
+        
+    return result;
+  }, [imagesProp, fieldName]);
 
   // Keyboard Navigation for Gallery
   useEffect(() => {
@@ -44,6 +51,7 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
 
   const handleImageUrlAdd = useCallback((url) => {
     if (!url) return;
+    
     if (images.length >= maxImages) {
         showNotification(`Maximum ${maxImages} images allowed.`, 'error');
         return;
@@ -56,7 +64,7 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
 
     const newImages = [...images, url];
     onImagesChange(newImages);
-  }, [images, maxImages, onImagesChange, showNotification]);
+  }, [images, maxImages, onImagesChange, showNotification, fieldName]);
 
   const detectAndAddImageUrl = useCallback((data) => {
     const text = data.getData('text/plain')?.trim();
@@ -141,6 +149,14 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
   };
 
   const handleRemove = (index) => {
+    console.log(`[ImageUploader] Removing image at index ${index} for field "${fieldName}"`, {
+      fieldName,
+      removingIndex: index,
+      currentCount: images.length,
+      imageBeingRemoved: images[index]?.substring(0, 50) + '...',
+      timestamp: new Date().toLocaleTimeString()
+    });
+    
     const newImages = images.filter((_, i) => i !== index);
     onImagesChange(newImages.length > 0 ? newImages : []);
   };
@@ -194,6 +210,9 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
         processFiles(files);
     }
   };
+
+  // VALIDATION: Ensure currentImageIndex is never out of bounds
+  const safeImageIndex = images.length > 0 ? Math.min(currentImageIndex, images.length - 1) : 0;
 
   return (
     <div 
@@ -251,12 +270,15 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
       {showNotes && (
         <div style={{ marginBottom: '1rem' }}>
           <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', color: '#94a3b8', fontWeight: '600' }}>
-            Text Field for CDAMAGES and CDNA (Optional)
+            Text Field for CDAMAGES
           </label>
           <textarea
             value={notes || ''}
-            onChange={(e) => onNotesChange?.(e.target.value)}
-            placeholder="This section is required if you forgot to take a screenshot of the cdamages and CDNA."
+            onPaste={e => e.stopPropagation()}
+            onChange={(e) => {
+              onNotesChange?.(e.target.value);
+            }}
+            placeholder="This section is required if you forgot to take a screenshot of the cdamages."
             style={{
                 width: '100%',
                 padding: '0.6rem 0.8rem',
@@ -274,6 +296,12 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
 
       {/* Gallery Section */}
       <div className="image-previews" style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '10px' }}>
+        {images && images.length > 0 && console.log(`[ImageUploader] Rendering ${images.length} image(s) for field "${fieldName}"`, {
+          fieldName,
+          imageCount: images.length,
+          images: images.slice(0, 2).map(img => img.substring(0, 40) + '...'),
+          timestamp: new Date().toLocaleTimeString()
+        })}
         {images.map((url, i) => (
           <div key={i} className="image-preview" 
               style={{ 
@@ -289,6 +317,12 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
               onClick={(e) => {
                   // If clicking the container or anything inside it (except a button), open preview
                   if (!e.target.closest('button')) {
+                      console.log(`[ImageUploader] Gallery modal OPENING for field "${fieldName}"`, {
+                        fieldName,
+                        clickedImageIndex: i,
+                        totalImages: images.length,
+                        timestamp: new Date().toLocaleTimeString()
+                      });
                       setCurrentImageIndex(i);
                       setShowGalleryModal(true);
                   }
@@ -395,10 +429,28 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
       {/* Shared Image Preview Modal */}
       <ImagePreviewModal
         isOpen={showGalleryModal}
-        onClose={() => setShowGalleryModal(false)}
+        onClose={() => {
+          console.log(`[ImageUploader] Gallery modal CLOSING for field "${fieldName}"`, {
+            fieldName,
+            wasShowingImageIndex: safeImageIndex,
+            totalImages: images.length,
+            imagesBeingClosed: images.slice(0, 2).map(img => img?.substring(0, 40) + '...'),
+            timestamp: new Date().toLocaleTimeString()
+          });
+          setShowGalleryModal(false);
+        }}
         images={images}
-        currentIndex={currentImageIndex}
-        onIndexChange={setCurrentImageIndex}
+        currentIndex={safeImageIndex}
+        onIndexChange={(newIndex) => {
+          console.log(`[ImageUploader] Image index changed in gallery for field "${fieldName}"`, {
+            fieldName,
+            previousIndex: safeImageIndex,
+            newIndex,
+            totalImages: images.length,
+            timestamp: new Date().toLocaleTimeString()
+          });
+          setCurrentImageIndex(newIndex);
+        }}
       />
     </div>
   );

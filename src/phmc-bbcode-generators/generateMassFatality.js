@@ -72,7 +72,7 @@ ${scenePhotosBBCode}
 
 This section clarifies whether or not if the player was character killed or player killed.
 In this case the player was; ${dec.typeOfDeath || 'Unknown'}
-Morgue screen, cinjuries, cdna links: ${morgueStatusMessage || ''}
+Morgue screen, cinjuries links: ${morgueStatusMessage || ''}
 [size=85][u] THESE IMAGES ARE [bold]OUT OF CHARACTER[/bold] FOR INTERNAL RECORDS, DO NOT USE THESE AS EVIDENCE. [/u][/size]
 ${additionalImagesBBCode}
 

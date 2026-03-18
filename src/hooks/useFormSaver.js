@@ -2,13 +2,11 @@ import { useCallback } from 'react';
 import { database } from '../firebase';
 import { ref, set, runTransaction } from 'firebase/database';
 import * as Sentry from "@sentry/react";
-import useGtaWorldAuth from './useGtaWorldAuth';
 import { getCharacterName, getCharacterID } from '../utils/characterUtils';
 import { comprehensiveSanitize } from '../utils/textUtils';
 import { useNotification } from '../contexts/NotificationContext';
 
-export const useFormSaver = () => {
-
+const parseCaseNumber = (url) => {
     if (!url) return '';
     const match = url.match(/\d+$/);
     return match ? match[0] : '';

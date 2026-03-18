@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import ImageUploader from './ImageUploader'; // Assuming ImageUploader is in the same directory
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTimeUtils';
 
@@ -54,7 +54,6 @@ const DecedentItemRenderer = ({
                         {subField.label === 'Identification' && <i className="fas fa-id-card"></i>}
                         {subField.label === 'Medical Findings' && <i className="fas fa-notes-medical"></i>}
                         {subField.label === 'Scene Evidence' && <i className="fas fa-camera"></i>}
-                        {subField.label === 'Morgue, Damages and CDNA' && <i className="fas fa-file-medical"></i>}
                         {subField.label}
                     </h6>
                 </div>
