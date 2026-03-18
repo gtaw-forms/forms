@@ -1,5 +1,6 @@
 // src/utils/adminLogger.js
 import { captureMessage, captureException } from "@sentry/react";
+import { triggerFetchExternalUrl } from '../services/firebaseFunctions';
 
 // Helper to get user agent and timezone
 export const getUserContext = () => {
@@ -82,19 +83,30 @@ export const logAdminAction = async (adminEmail, action, details, context = null
     };
 
     try {
-        const response = await fetch(webhookURL, {
+        const payload = {
+            url: webhookURL,
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ embeds: [embed] })
-        });
-        if (!response.ok) {
-            console.error(`Failed to send admin action webhook. Status: ${response.status}`);
-            captureMessage(`Admin Action Discord webhook failed: ${response.status}`, "error");
-        } else {
+            customHeaders: { 'Content-Type': 'application/json' },
+            body: { embeds: [embed] }
+        };
+
+        const result = await triggerFetchExternalUrl(payload);
+        
+        if (result && result.status >= 200 && result.status < 300) {
             console.log(`Admin action logged to Discord: ${action}`);
+        } else {
+            // The proxy function now throws on non-ok responses, so this part might only catch network-level issues reported by the function.
+            const errorMessage = result?.data?.message || result?.statusText || 'An unknown error occurred';
+            console.error(`Failed to send admin action webhook via proxy. Status: ${result?.status}`, errorMessage);
+            captureMessage(`Admin Action Discord webhook failed via proxy: ${errorMessage}`, "error");
         }
     } catch (error) {
-        console.error('Error sending admin action webhook:', error);
-        captureException(error, { extra: { context: 'Admin Action Webhook Submission' } });
+        console.error('Error sending admin action webhook via proxy:', error);
+        captureException(error, { 
+            extra: { 
+                context: 'Admin Action Webhook Submission via Proxy',
+                webhookURL,
+            } 
+        });
     }
 };

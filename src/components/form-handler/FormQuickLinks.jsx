@@ -8,7 +8,12 @@ const AGENCY_CREDENTIALS = {
   'lssd.gta.world': {
     username: 'PHMC Forensic Pathology',
     password: 'Coroner1951!'
+  },
+    'sfm-forum.gta.world': {
+    username: 'PHMC Forensic Path ',
+    password: 'Coroner1951!'
   }
+
 };
 
 const getQuickLinks = (form, formValues, agencyDataStore, generatedBBCode, generatedTitle) => {

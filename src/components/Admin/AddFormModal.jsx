@@ -100,8 +100,7 @@ const AddFormModal = ({ show, onClose: onHide, editingForm = null, isDuplicate =
     type: "input", label: "", name: "", placeholder: "", layout: "full", rows: 4, maxImages: 6,
     optionsKey: "", timerType: "", buttonLabel: "", buttonAction: "", displayCurrentTime: false,
     id: null, associatedInputField: null, options: [], inputType: "", showIf: null,
-    infoType: 'Information', content: '', decedentItemSchemaJson: "", allowImagePaste: false,
-    linkedImageField: "", icon: "", listType: ""
+    infoType: 'Information', content: '', decedentItemSchemaJson: "", icon: "", listType: ""
   });
 
   const [newField, setNewField] = useState(createDefaultNewField());
@@ -156,20 +155,7 @@ const AddFormModal = ({ show, onClose: onHide, editingForm = null, isDuplicate =
         ];
         fieldToSave.decedentItemSchemaJson = JSON.stringify(defaultDecedentSchema, null, 2);
     } else if (fieldToSave.type === "image") {
-        const narrativeField = {
-            type: "textarea",
-            label: `${fieldToSave.label} - Notes`,
-            name: `${fieldToSave.name}_narrative`,
-            placeholder: "Paste screenshots here (Ctrl+V)",
-            rows: 6,
-            allowImagePaste: true,
-            linkedImageField: fieldToSave.name,
-            layout: "full",
-            id: `nar-${Date.now()}`
-        };
-        setFields(prev => [...prev, fieldToSave, narrativeField]);
-        setNewField(createDefaultNewField());
-        return;
+        // No narrative field is created automatically for image fields
     }
 
     if (editingFieldIndex !== null) {

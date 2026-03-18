@@ -1,7 +1,18 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button, Form, Spinner } from 'react-bootstrap';
 import Select from 'react-select';
 import BaseModal from './BaseModal';
+
+// Common form types used in the application
+const AVAILABLE_FORMS = [
+    { value: 'coroner-report', label: 'Coroner Report' },
+    { value: 'mass-ftality-test', label: 'Mass Fatality Report' },
+    { value: 'coroner_email', label: 'Coroner Email' },
+    { value: 'death-record', label: 'Death Record' },
+    { value: 'autopsy-report', label: 'Autopsy Report' },
+];
+
+const STORAGE_KEY = 'savedReportsFormFilter';
 
 const SavedReportsModal = ({ 
     show, 
@@ -30,10 +41,49 @@ const SavedReportsModal = ({
     const [currentPage, setCurrentPage] = useState(1);
     const reportsPerPage = 10;
     const [selectedReportKeys, setSelectedReportKeys] = useState([]);
+    const [selectedForms, setSelectedForms] = useState([]);
+    const [isFilterActive, setIsFilterActive] = useState(false);
+
+    // Check if we're in a localhost environment
+    const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+    // Build employee options, with fallback for localhost
+    const effectiveEmployeeOptions = useMemo(() => {
+        if (employeeOptions && employeeOptions.length > 0) {
+            return employeeOptions;
+        }
+        
+        // Fallback for localhost/development: provide a "Localhost" option
+        if (isLocalhost) {
+            return [
+                {
+                    label: 'Local Development',
+                    options: [
+                        { value: 'localhost', label: '🔧 Localhost / Local Testing' }
+                    ]
+                }
+            ];
+        }
+        
+        return employeeOptions || [];
+    }, [employeeOptions, isLocalhost]);
 
     // Initialize selected employee when modal opens
     useEffect(() => {
         if (show) {
+            // Load saved form filter from localStorage
+            try {
+                const savedFilter = localStorage.getItem(STORAGE_KEY);
+                if (savedFilter) {
+                    const savedFormIds = JSON.parse(savedFilter);
+                    const selectedFormObjects = AVAILABLE_FORMS.filter(f => savedFormIds.includes(f.value));
+                    setSelectedForms(selectedFormObjects);
+                    setIsFilterActive(selectedFormObjects.length > 0);
+                }
+            } catch (e) {
+                console.error('Error loading form filter from localStorage:', e);
+            }
+
             let initialEmployeeValue = null;
             if (preselectedEmployeeType === 'PHMC' && currentPhmcEmployee) {
                 initialEmployeeValue = currentPhmcEmployee;
@@ -43,10 +93,13 @@ const SavedReportsModal = ({
                 initialEmployeeValue = currentPhmcEmployee;
             } else if (currentCoronerEmployee) {
                 initialEmployeeValue = currentCoronerEmployee;
+            } else if (isLocalhost) {
+                // Auto-select localhost option
+                initialEmployeeValue = 'localhost';
             }
 
             if (initialEmployeeValue) {
-                const option = employeeOptions?.flatMap(g => g.options).find(o => o.value === initialEmployeeValue);
+                const option = effectiveEmployeeOptions?.flatMap(g => g.options).find(o => o.value === initialEmployeeValue);
                 if (option) {
                     setSelectedEmployee(option);
                     if (onEmployeeSelect) onEmployeeSelect(option.value);
@@ -55,13 +108,38 @@ const SavedReportsModal = ({
             setSelectedReportKeys([]);
             setCurrentPage(1);
         }
-    }, [show, currentPhmcEmployee, currentCoronerEmployee, employeeOptions, preselectedEmployeeType, onEmployeeSelect]);
+    }, [show, currentPhmcEmployee, currentCoronerEmployee, effectiveEmployeeOptions, preselectedEmployeeType, onEmployeeSelect, isLocalhost]);
 
     const handleEmployeeChange = (option) => {
         setSelectedEmployee(option);
         if (onEmployeeSelect) onEmployeeSelect(option?.value);
         setCurrentPage(1);
     };
+
+    const handleSaveFormFilter = useCallback(() => {
+        try {
+            const selectedFormIds = selectedForms.map(f => f.value);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(selectedFormIds));
+            setIsFilterActive(selectedForms.length > 0);
+            setCurrentPage(1);
+            showNotification(`Form filter saved! Showing ${selectedForms.length > 0 ? selectedForms.length + ' selected form(s)' : 'all reports'}.`, 'check-circle');
+        } catch (e) {
+            console.error('Error saving form filter:', e);
+            showNotification('Failed to save form filter.', 'error');
+        }
+    }, [selectedForms, showNotification]);
+
+    const handleClearFilter = useCallback(() => {
+        try {
+            localStorage.removeItem(STORAGE_KEY);
+            setSelectedForms([]);
+            setIsFilterActive(false);
+            setCurrentPage(1);
+            showNotification('Form filter cleared. Showing all reports.', 'check-circle');
+        } catch (e) {
+            console.error('Error clearing form filter:', e);
+        }
+    }, [showNotification]);
 
     const filteredReports = useMemo(() => {
         if (!reportsForSelectedUser) return [];
@@ -75,9 +153,15 @@ const SavedReportsModal = ({
                 reportSelectionFilter.allowedFormIds.includes(r.formId)
             );
         }
+
+        // Apply user-selected form filter if active
+        if (isFilterActive && selectedForms.length > 0) {
+            const selectedFormIds = selectedForms.map(f => f.value);
+            filtered = filtered.filter(r => selectedFormIds.includes(r.formId));
+        }
         
         return filtered;
-    }, [reportsForSelectedUser, searchQuery, reportSelectionFilter]);
+    }, [reportsForSelectedUser, searchQuery, reportSelectionFilter, isFilterActive, selectedForms]);
 
     const totalPages = Math.ceil(filteredReports.length / reportsPerPage);
     const currentReports = filteredReports.slice((currentPage - 1) * reportsPerPage, currentPage * reportsPerPage);
@@ -125,6 +209,30 @@ const SavedReportsModal = ({
         return loadButtonText || 'Load';
     };
 
+    const extractOocNames = (report) => {
+        if (!report || !report.data) return null;
+        
+        const oocNames = [];
+        
+        // Check for multi-decedent (Mass Fatality / Multi Fatality)
+        if (Array.isArray(report.data.decedents)) {
+            const oocSet = new Set();
+            report.data.decedents.forEach(dec => {
+                if (dec.decedentOOC) {
+                    oocSet.add(dec.decedentOOC);
+                }
+            });
+            oocNames.push(...Array.from(oocSet));
+        }
+        // Fallback to single decedent OOC
+        else if (report.data.decedentOOC && report.data.decedentOOC !== 'N/A') {
+            oocNames.push(...report.data.decedentOOC.split(',').map(s => s.trim()).filter(Boolean));
+        }
+        
+        return oocNames.length > 0 ? oocNames : null;
+    };
+
+
     return (
         <BaseModal
             isOpen={show}
@@ -152,13 +260,56 @@ const SavedReportsModal = ({
                     <Form.Group>
                         <Form.Label style={{ color: '#8b949e', fontWeight: '600' }}>Select Employee</Form.Label>
                         <Select 
-                            options={employeeOptions} 
+                            options={effectiveEmployeeOptions} 
                             value={selectedEmployee} 
                             onChange={handleEmployeeChange}
                             placeholder="Search or select employee..."
                             styles={reactSelectStyles}
                         />
                     </Form.Group>
+                </div>
+
+                <div style={{ backgroundColor: '#161b22', padding: '15px', borderRadius: '8px', border: '1px solid #30363d' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '15px' }}>
+                        <div style={{ flex: 1 }}>
+                            <Form.Label style={{ color: '#8b949e', fontWeight: '600', marginBottom: '10px', display: 'block' }}>
+                                📋 Filter by Form Type
+                            </Form.Label>
+                            <Select 
+                                isMulti
+                                options={AVAILABLE_FORMS}
+                                value={selectedForms}
+                                onChange={(selected) => setSelectedForms(selected || [])}
+                                placeholder="Select form types to display..."
+                                styles={reactSelectStyles}
+                            />
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', paddingTop: '24px' }}>
+                            <Button 
+                                variant="primary" 
+                                size="sm"
+                                onClick={handleSaveFormFilter}
+                                style={{ fontWeight: '600' }}
+                            >
+                                💾 Save Options
+                            </Button>
+                            {isFilterActive && (
+                                <Button 
+                                    variant="outline-secondary" 
+                                    size="sm"
+                                    onClick={handleClearFilter}
+                                    style={{ fontWeight: '600' }}
+                                >
+                                    ✕ Clear
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+                    {isFilterActive && selectedForms.length > 0 && (
+                        <div style={{ marginTop: '10px', fontSize: '0.85em', color: '#7d8590' }}>
+                            <i className="fas fa-filter"></i> Filtering to: {selectedForms.map(f => f.label).join(', ')}
+                        </div>
+                    )}
                 </div>
 
                 <div style={{ border: '1px solid #30363d', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#0d1117' }}>
@@ -170,7 +321,7 @@ const SavedReportsModal = ({
                     ) : !selectedEmployee ? (
                         <div style={{ padding: '40px', textAlign: 'center', color: '#8b949e' }}>
                             <i className="fas fa-user-circle fa-3x mb-3" style={{ opacity: 0.5 }}></i>
-                            <p>Please select an employee to view their saved reports.</p>
+                            <p>{isLocalhost ? 'Select "Localhost / Local Testing" to browse available reports.' : 'Please select an employee to view their saved reports.'}</p>
                         </div>
                     ) : filteredReports.length === 0 ? (
                         <div style={{ padding: '40px', textAlign: 'center', color: '#8b949e' }}>
@@ -183,40 +334,47 @@ const SavedReportsModal = ({
                                 <thead>
                                     <tr style={{ backgroundColor: '#161b22', borderBottom: '1px solid #30363d' }}>
                                         <th style={{ padding: '15px', textAlign: 'left', color: '#8b949e', fontWeight: '600' }}>Name / Identifier</th>
+                                        <th style={{ padding: '15px', textAlign: 'left', color: '#8b949e', fontWeight: '600' }}>OOC Names</th>
                                         <th style={{ padding: '15px', textAlign: 'left', color: '#8b949e', fontWeight: '600' }}>Date Saved</th>
                                         <th style={{ padding: '15px', textAlign: 'right', color: '#8b949e', fontWeight: '600' }}>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {currentReports.map(report => (
-                                        <tr key={report.key} style={{ borderBottom: '1px solid #30363d', transition: 'background-color 0.2s' }} className="report-row">
-                                            <td style={{ padding: '15px', color: '#e6edf3' }}>{report.originalKey}</td>
-                                            <td style={{ padding: '15px', color: '#8b949e' }}>{new Date(report.timestamp).toLocaleString()}</td>
-                                            <td style={{ padding: '15px', textAlign: 'right' }}>
-                                                <Button 
-                                                    variant="primary" 
-                                                    size="sm" 
-                                                    onClick={() => handleLoadAction(report)} 
-                                                    className="me-2"
-                                                    style={{ fontWeight: '600' }}
-                                                >
-                                                    {getButtonLabel()}
-                                                </Button>
-                                                <Button 
-                                                    variant="outline-danger" 
-                                                    size="sm" 
-                                                    onClick={() => {
-                                                        if (window.confirm(`Are you sure you want to delete "${report.originalKey}"?`)) {
-                                                            deleteReportForUser(report, selectedEmployee.value);
-                                                        }
-                                                    }}
-                                                    style={{ fontWeight: '600' }}
-                                                >
-                                                    Delete
-                                                </Button>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                    {currentReports.map(report => {
+                                        const oocNames = extractOocNames(report);
+                                        return (
+                                            <tr key={report.key} style={{ borderBottom: '1px solid #30363d', transition: 'background-color 0.2s' }} className="report-row">
+                                                <td style={{ padding: '15px', color: '#e6edf3' }}>{report.originalKey}</td>
+                                                <td style={{ padding: '15px', color: '#8b949e', fontSize: '0.9em' }}>
+                                                    {oocNames ? oocNames.join(', ') : <span style={{ fontStyle: 'italic' }}>No OOC</span>}
+                                                </td>
+                                                <td style={{ padding: '15px', color: '#8b949e' }}>{new Date(report.timestamp).toLocaleString()}</td>
+                                                <td style={{ padding: '15px', textAlign: 'right' }}>
+                                                    <Button 
+                                                        variant="primary" 
+                                                        size="sm" 
+                                                        onClick={() => handleLoadAction(report)} 
+                                                        className="me-2"
+                                                        style={{ fontWeight: '600' }}
+                                                    >
+                                                        {getButtonLabel()}
+                                                    </Button>
+                                                    <Button 
+                                                        variant="outline-danger" 
+                                                        size="sm" 
+                                                        onClick={() => {
+                                                            if (window.confirm(`Are you sure you want to delete "${report.originalKey}"?`)) {
+                                                                deleteReportForUser(report, selectedEmployee.value);
+                                                            }
+                                                        }}
+                                                        style={{ fontWeight: '600' }}
+                                                    >
+                                                        Delete
+                                                    </Button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>

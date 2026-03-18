@@ -76,7 +76,7 @@ export const KeywordHighlighter = ({ children }) => {
 
   const handleClick = (e) => {
     const target = e.target;
-    if (target.classList.contains('smart-keyword')) {
+    if (target && target.classList && target.classList.contains('smart-keyword')) {
       const kwKey = target.getAttribute('data-kw');
       const kw = keywordList.find(k => k.keyword.toLowerCase() === kwKey);
       if (kw) {

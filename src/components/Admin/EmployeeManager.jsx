@@ -76,6 +76,7 @@ const EmployeeManager = () => {
               'Roger Rose': 'Roger McFarlane*',
               'Brock Renfroe': 'Roger McFarlane*',
               'Roger McFarlane': 'Roger McFarlane*',
+              'Lierin Sherwood': 'Roger McFarlane*',
             };
 
             for (const authorId in reportsByAuthor) {
