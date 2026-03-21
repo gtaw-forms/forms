@@ -25,3 +25,4 @@ export const triggerBatchCheckFactionMembership = (data) => triggerFunction('bat
 export const triggerCheckFactionMembership = (data) => triggerFunction('checkFactionMembership', data);
 export const triggerTestHealthAlert = (data) => triggerFunction('triggerTestHealthAlert', data);
 export const triggerFetchExternalUrl = (data) => triggerFunction('fetchExternalUrl', data);
+export const triggerManualMaintenance = () => triggerFunction('triggerManualMaintenance');

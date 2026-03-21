@@ -1,15 +1,15 @@
 [center][img]https://i.ibb.co/GfSHbMMj/ItaoQkO.webp[/img][/center]
 [hr][/hr]
 
-TO: {{requestingOfficer}} - {{getDepartmentFullName(department)}}
-FROM: {{coronerEmployee}} @ phmc.health
+TO: Deputy Leah Johnson  - Los Santos County Sheriffs Department
+FROM: Supervising Medical Examiner - Alyson Frost (SN: 5573) @ phmc.health
 SUBJECT: Coroner Report Paperwork
 
-For the attention of: [bold]{{getDepartmentFullName(formData.department, agencyDataStore)}}[/bold] - [bold]{{requestingOfficer}}[/bold]
+For the attention of: [b]Los Santos County Sheriffs Department[/b] - [b]Deputy Leah Johnson [/b]
 
-This Coroner Report has been written by {{coronerRank}} {{coronerEmployee}} you can find the enclosed documents attached to this email. 
+This Coroner Report has been written by Supervising Medical Examiner - Alyson Frost (SN: 5573) you can find the enclosed documents attached to this email. 
 
-[bold]IMPORTANT INFORMATION REGARDING AUTOPSIES IN SPOILER[/bold]
+[b]IMPORTANT INFORMATION REGARDING AUTOPSIES IN SPOILER[/b]
 
 [altspoiler=Request a Autopsy FAQ]
 1) How do I request an autopsy report and/or a death certificate?
@@ -32,19 +32,135 @@ Also if it is a PK, please be sure to use John/Jane Doe with their character nam
 (( Important Note:  The Medical Examiner team behind handling autopsies is a small team, at <=5 Medical Examiners also juggling IRL, in-game field work, and administrative duties; we try to handle autopsies in a timely manner but delays can happen due to IC or OOC factors. )) 
 [/altspoiler]
 If you have further enquiries, feel free to reach out to the following individual:
-[list] {{coronerEmployee}}
-[*] Phone Number: {{coronerPHNumber}}
-[*] (( Discord: {{coronerDiscord}} ))[/list]
+[list] Supervising Medical Examiner - Alyson Frost (SN: 5573)
+[*] Phone Number: 50056
+[*] (( Discord: Fr0styDev ))[/list]
 
-{{deathReport}}
+[b]Enclosed Report(s)[/b]
+[altspoiler=Multi Fatality Report Jane Doe | John Doe - 03202026]
+[divbox=transparent][center][img]https://i.ibb.co/0pgw9hHm/phmc.png[/img][/center][/divbox]
+
+[divbox=transparent][br][/br][center]MASS FATALITY REPORT[/center]
+[hr][/hr]
+
+[center][b]A. WRITTEN REPORT[/b][/center]
+
+The PHMC Department of Forensic Medicine and Pathology has been called regarding a Mass Fatality Incident that occurred at the location of [b]Strawberry Ave and McDonald St.[/b]. Upon receiving the call from [b]Los Santos County Sheriffs Department[/b], Coroner's Office dispatched a Coroner Investigator to the crime scene to conduct an investigation on the [b]2026-03-20[/b].
+
+The [b]Coroner Investigator - Nicholas Belmont (SN: 206206)[/b], arrived at the scene and located some Decedents. Following an initial investigation, The Coroner Investigator came up with the following scene overview: Greeted on scene by Deputy Leah Johnson and informed of two decedents. I was informed by Deputy Johnson both decedents had been searched prior to my arrival. 
+
+Took photos of the scene looking for any relevant evidence and proceeded to examine the decedents.
+
+An initial examination of the bodies was performed searching for any forensic evidence as well as cataloguing injuries. Findings disclosed in each individuals report.
+
+Decedents were secured and transported without further issue. Decedents are now stored in the morgue should any further testing be required and processing may be completed.
+
+Evidence and personal items were returned to my person upon request and is now stored in the evidence locker under #EV - 20260320-649
+
+[/divbox]
+
+[divbox=transparent][altspoiler=1 - Jane Doe - OOC Brielle Hariris]
+[divbox=transparent][center][b]DECEDENT INFORMATION[/b][/center]
+[b] DECEDENT NAME: [/b] Jane Doe
+[b] DECEDENT OOC NAME: [/b] (( Brielle Hariris ))
+[b] PRONOUNCED TIME OF DEATH: [/b] 03/20/2026 0200
+[b] PROBABLE CAUSE OF DEATH: [/b] GSW/Blood Loss
+[b] MANNER OF DEATH: [/b] Homicide
+[b] TYPE OF DEATH: [/b] PK
+[b] Decedent Injuries / Things of Note: [/b] Decedent appeared to be aged 16-18, with a darker complexion, as well as a faded tattoo on her right hand. Traces of marijuana found in their system.
+
+Injuries include two perforating GSWs with one caliber recovered, suggesting but not guaranteeing a single assailants. Injuries were sustained from an indeterminant range.
+
+GSWs were mainly located along decedents chest. Caliber recovered was .45 ACP.
+
+Decedent was found with a screwdriver in hand on time of death, as well as approximately 28 grams of miscellaneous strained marijuana, all of which are now secured in the evidence locker.
+
+[hr][/hr]
+[/divbox]
+[divbox=transparent][center][b]DECEDENT DOCUMENTARY RECORD[/center]
+[hr][/hr]
+[center][size=85][b][u]SCENE PHOTOGRAPHY[/u][/b][/size][/center]
+[img]https://i.imgur.com/qTswb6J.jpeg[/img]
+[img]https://i.imgur.com/WNj84pl.jpeg[/img]
+[img]https://i.imgur.com/oDnUp8S.jpeg[/img]
+[/divbox]
+[divbox=transparent][center][b][u](( OUT OF CHARACTER IMAGES ))[/u][/b][/center][hr][/hr]
+
+This section clarifies whether or not if the player was character killed or player killed.
+In this case the player was; PK
+Morgue screen, cinjuries links: 
+[size=85][u] THESE IMAGES ARE [b]OUT OF CHARACTER[/b] FOR INTERNAL RECORDS, DO NOT USE THESE AS EVIDENCE. [/u][/size]
+[img]https://i.imgur.com/DpzOqpS.png[/img]
+[img]https://i.imgur.com/GQ1J3oZ.png[/img]
+[img]https://i.imgur.com/5rbU15u.png[/img]
+
+Coroner Investigator Coroner Investigator - Nicholas Belmont (SN: 206206) has added something to the evidence locker: No
+
+
+[/divbox][/divbox]
+
+[divbox=transparent][altspoiler=2 - John Doe - OOC Craig Dingle]
+[divbox=transparent][center][b]DECEDENT INFORMATION[/b][/center]
+[b] DECEDENT NAME: [/b] John Doe
+[b] DECEDENT OOC NAME: [/b] (( Craig Dingle ))
+[b] PRONOUNCED TIME OF DEATH: [/b] 03/20/2026 0420
+[b] PROBABLE CAUSE OF DEATH: [/b] Multiple GSWs/Blood Loss
+[b] MANNER OF DEATH: [/b] Homicide
+[b] TYPE OF DEATH: [/b] PK
+[b] Decedent Injuries / Things of Note: [/b] Decedent appeared to be aged 14-16, no traces of alcohol or drugs were detected in the decedent's system
+
+Injuries include one penetrating and three perforating GSWs with one caliber recovered, suggesting but not guaranteeing a single assailants. Injuries were sustained from an indeterminant range. Bullets recovered included three .50 AE rounds. 
+
+GSWs were mainly located along decedents torso, including one to the Chest, one to the right shoulder, one to the left shoulder, as well as one to the Cranium.
+
+Decedent was found with no personal possessions at time of death.
+
+[hr][/hr]
+[/divbox]
+[divbox=transparent][center][b]DECEDENT DOCUMENTARY RECORD[/center]
+[hr][/hr]
+[center][size=85][b][u]SCENE PHOTOGRAPHY[/u][/b][/size][/center]
+[img]https://i.imgur.com/ib0k7tH.jpeg[/img]
+[img]https://i.imgur.com/6LWKk8j.jpeg[/img]
+[img]https://i.imgur.com/zTArLC9.jpeg[/img]
+[/divbox]
+[divbox=transparent][center][b][u](( OUT OF CHARACTER IMAGES ))[/u][/b][/center][hr][/hr]
+
+This section clarifies whether or not if the player was character killed or player killed.
+In this case the player was; PK
+Morgue screen, cinjuries links: 
+[size=85][u] THESE IMAGES ARE [b]OUT OF CHARACTER[/b] FOR INTERNAL RECORDS, DO NOT USE THESE AS EVIDENCE. [/u][/size]
+[img]https://i.imgur.com/sYsA9j5.png[/img]
+[img]https://i.imgur.com/pmX9FHD.png[/img]
+[img]https://i.imgur.com/EWoHxn3.png[/img]
+
+Coroner Investigator Coroner Investigator - Nicholas Belmont (SN: 206206) has added something to the evidence locker: No
+
+
+[/divbox][/divbox]
+
+[divbox=transparent]
+[center][b]C. STATEMENT[/b][/center]
+[hr][/hr]
+[size=85]As a Coroner Investigator, I have made detailed notes of my findings and conclusions, and these notes are available for review if necessary. However, I must note that these notes do not contain any personal opinions and are solely based on the evidence and facts available to me.
+
+In conclusion, I hope that this report provides the necessary information required for the agency to move forward with any necessary actions. Please let me know if you require any additional information or if I can be of further assistance.
+
+I certify that the information contained in this report is true and accurate to the best of my knowledge and belief. I have reviewed the report and ensured that all information included is complete and accurate. [/size][/divbox]
+
+[divbox=transparent][center][b]D. PRIVACY AND CONFIDENTIALITY[/b][/center]
+[hr][/hr]
+[center][size=85]This document from the Forensic Medicine and Pathology Department of Pillbox Hill Medical Center certifies the authenticity of the information contained within. Any unauthorized distribution or use of this information is in violation of the Health Insurance Portability and Accountability Act (HIPAA), as well as state and federal privacy laws, including but not limited to the San Andreas Confidentiality of Medical Information Act (CMIA) and the San Andreas Information Practices Act (IPA).
+
+It is imperative that all parties handling this document respect the privacy and confidentiality of the decedent and their family. Any violation of these laws may result in legal action being taken against the responsible parties.
+
+This document is provided for official purposes only and is not to be construed as legal advice or medical diagnosis. If additional information or clarification is needed, please contact the Forensic Medicine and Pathology Department of Pillbox Hill Medical Center.[/size][/divbox]
+[/altspoiler]
+
 
 Kind regards
-{{coronerRank}} {{coronerEmployee}}
+Supervising Medical Examiner - Alyson Frost (SN: 5573)
 Pillbox Hill Medical Center - Forensic Medicine and Pathology
 
 [size=75]The content of this email is intended for the person or entity to which it is addressed only. This email may contain confidential information. If you are not the person to whom this message is addressed, be aware that any use, reproduction, or distribution of this message is strictly prohibited. If you received this in error, please contact the sender and immediately delete this email and any attachments.[/size]
 
-[hr][/hr]
-
-[size=85][b]ADDITIONAL REPORTS[/b][/size]
-[size=75][i]Note: Any additional reports attached to this form will automatically be added below, each in their own spoiler with their original title[/i][/size]

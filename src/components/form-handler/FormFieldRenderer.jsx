@@ -811,6 +811,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         return oocMatches
           .map(match => match.replace(/\(\(\s*|\s*\)\)/g, '').trim())
           .filter((name) => {
+            if (name.toLowerCase().startsWith('unknown')) return false;
             // Filter out non-name entries
             // 1. Skip all-caps entries (section headers, commands)
             if (name === name.toUpperCase() && name.length > 1) return false;

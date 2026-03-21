@@ -12,7 +12,8 @@ import {
     triggerBatchCheckFactionMembership,
     triggerCheckFactionMembership,
     triggerTestHealthAlert,
-    triggerFetchExternalUrl
+    triggerFetchExternalUrl,
+    triggerManualMaintenance
 } from '../../services/firebaseFunctions';
 
 const FirebaseFunctionsTester = ({ showInAppNotification }) => {
@@ -107,6 +108,14 @@ const FirebaseFunctionsTester = ({ showInAppNotification }) => {
                         {loading ? <Spinner as="span" animation="border" size="sm" /> : 'Trigger Test Health Alert'}
                     </Button>
                     <p className="text-muted small w-100">Dispatches a mock &quot;Critical Outage&quot; alert to verify Discord webhooks and User pings.</p>
+                </div>
+
+                <h7 className="mt-3">Maintenance Tasks</h7>
+                <div className="d-flex flex-wrap gap-2 mb-3">
+                    <Button variant="warning" size="sm" onClick={() => handleTriggerFunction(triggerManualMaintenance)} disabled={loading}>
+                        {loading ? <Spinner as="span" animation="border" size="sm" /> : 'Trigger Manual Maintenance'}
+                    </Button>
+                    <p className="text-muted small w-100">Manually runs the daily maintenance task, which includes bingo board resets, report cleanup, and other routine jobs.</p>
                 </div>
 
                 <h7 className="mt-3">External Proxy Tester</h7>

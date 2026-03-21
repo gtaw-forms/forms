@@ -330,7 +330,9 @@ const formatToNorthAmericanDate = (isoDateTime) => {
         const addDecedent = (ic, ooc) => {
             if (!ic || ic === "N/A" || ic === "NO_NAME") return;
             
-            // 1. Clean IC name: strip ((...)), [ ... ], (xN), and dates
+            // 1. Extract multiplier and clean IC name
+            const multiplierMatch = ic.match(/\(x(\d+)\)/);
+            const multiplier = multiplierMatch ? parseInt(multiplierMatch[1], 10) : 1;
             let cleanedIc = ic.replace(/\(\(.*\)\)/g, '')
                              .replace(/\[.*\]/g, '')
                              .replace(/\(x\d+\)/g, '')
@@ -361,12 +363,12 @@ const formatToNorthAmericanDate = (isoDateTime) => {
                         }
                     });
                 } else if (cleanedIc === "UNKNOWN DECEDENT") {
-                    // UNKNOWN DECEDENTS are summed by their multiplier if provided in the string, else default to 1
-                    const multiplierMatch = ic.match(/\(x(\d+)\)/);
-                    const multiplier = multiplierMatch ? parseInt(multiplierMatch[1], 10) : 1;
                     nameCounts["UNKNOWN DECEDENT"] = (nameCounts["UNKNOWN DECEDENT"] || 0) + multiplier;
+                } else if (multiplier > 1) {
+                    // Handle named ICs with a multiplier but no OOC names listed
+                    nameCounts[cleanedIc] = (nameCounts[cleanedIc] || 0) + multiplier;
                 }
-                // NOTE: Named ICs without OOC names are ignored for the count to prevent title inflation
+                // NOTE: Named ICs without OOC names AND without a multiplier are ignored for the count
             }
         };
 
@@ -389,24 +391,45 @@ const formatToNorthAmericanDate = (isoDateTime) => {
         if (Array.isArray(processedFormValues.additionalReports) && processedFormValues.additionalReports.length > 0) {
             processedFormValues.additionalReports.forEach(report => {
                 const key = report.originalKey || "";
-                let icName = key;
+                let icNameString = key;
                 let oocString = null;
 
-                // Strip standard prefixes first to avoid confusion with [OOC]
-                icName = icName.replace(/^\[.*?\]\s*/, '').replace(/^Coroner Report -\s*/, '').trim();
+                // Strip standard prefixes first
+                icNameString = icNameString.replace(/^\[.*?\]\s*/, '').replace(/^Coroner Report -\s*/, '').trim();
 
-                // Extract OOC: look for (( )) or [ ] anywhere in the cleaned string
-                const oocMatch = icName.match(/\(\((.*?)\)\)/) || icName.match(/\[([^\]]*?)\]/);
-                if (oocMatch) {
-                    oocString = oocMatch[1];
-                } else {
-                    // Fallback to BBCode
-                    const bbCodeOocMatch = report.bbCode?.match(/\(\((.*?)\)\)/);
-                    if (bbCodeOocMatch) oocString = bbCodeOocMatch[1];
+                // Clean date/junk off the end of the IC name string FIRST
+                icNameString = icNameString
+                    .replace(/(?:\s*-\s*|\s+)\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/g, '')
+                    .replace(/(?:\s*-\s*|\s+)\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}/g, '')
+                    .replace(/\s*-\s*$/g, '')
+                    .trim();
+
+                // Now, extract OOC from title if present (handles both ((...)) and [...])
+                const oocMatchInTitle = icNameString.match(/\s*(?:\(\((.*?)\)\)|\[(.*?)\])\s*$/);
+                if (oocMatchInTitle) {
+                    oocString = oocMatchInTitle[1] || oocMatchInTitle[2];
+                    icNameString = icNameString.substring(0, oocMatchInTitle.index).trim();
                 }
 
-                if (icName) {
-                    addDecedent(icName, oocString);
+                // Fallback to grabbing all OOC names from the body if not found in title
+                if (!oocString) {
+                    const oocMatches = report.bbCode?.match(/\(\((.*?)\)\)/g);
+                    if (oocMatches) {
+                        oocString = oocMatches.map(m => m.slice(2, -2).trim()).join(', ');
+                    }
+                }
+
+                const icNames = icNameString.split(/\s*\|\s*|\s*,\s*/).map(n => n.trim()).filter(Boolean);
+                const oocNames = oocString ? oocString.split(',').map(s => s.trim()).filter(Boolean) : [];
+                
+                if (icNames.length === 1 && oocNames.length > 1) {
+                    // Handle Multi-Fatality case: one IC name string (possibly with xN), multiple OOC names
+                    addDecedent(icNames[0], oocNames.join(', '));
+                } else {
+                    // Handle standard case: pair IC and OOC names
+                    icNames.forEach((name, index) => {
+                        addDecedent(name, oocNames[index] || null);
+                    });
                 }
             });
         }
@@ -509,16 +532,41 @@ const formatToNorthAmericanDate = (isoDateTime) => {
         return (value && (!Array.isArray(value) || value.length > 0)) ? "[cbc]" : "[cb]";
       });
 
-      bbcode = bbcode.replace(/\[conditional\s+field=["']?([^"'\]\s]+)["']?\](.*?)\[\/conditional\]/gis, (match, fieldName, inner) => {
-        const currentValue = processedFormValues[fieldName.trim()];
-        let conditionMet = (typeof currentValue === 'object' && currentValue !== null && Object.prototype.hasOwnProperty.call(currentValue, 'confirmedAt')) ? !!currentValue.confirmedAt : !!currentValue;
-        return conditionMet ? inner.trim() : '';
-      });
-
-      bbcode = bbcode.replace(/\[conditional\s+field=["']?([^"'\]\s]+)["']?\s+value=["']?([^"'\]]+)["']?\](.*?)\[\/conditional\]/gis, (match, fieldName, expectedValue, inner) => {
+      bbcode = bbcode.replace(/\[conditional\s+field=["']?([^"'\]\s]+)["']?(?:\s+value=["']?([^"'\]]+)["']?)?\](.*?)\[\/conditional\]/gis, (match, fieldName, expectedValue, inner) => {
         const actualValue = processedFormValues[fieldName.trim()];
-        const expected = expectedValue.trim();
-        const conditionMet = Array.isArray(actualValue) ? actualValue.map(v => String(v).toLowerCase()).includes(String(expected).toLowerCase()) : String(actualValue).toLowerCase() == String(expected).toLowerCase();
+        let conditionMet = false;
+
+        if (expectedValue !== undefined) { // value="..." is present
+            const expected = expectedValue.trim();
+            if (expected.toLowerCase() === 'true') {
+                if (Array.isArray(actualValue)) {
+                    conditionMet = actualValue.length > 0;
+                } else {
+                    conditionMet = !!actualValue && actualValue !== '';
+                }
+            } else if (expected.toLowerCase() === 'false') {
+                if (Array.isArray(actualValue)) {
+                    conditionMet = actualValue.length === 0;
+                } else {
+                    conditionMet = !actualValue || actualValue === '';
+                }
+            } else {
+                if (Array.isArray(actualValue)) {
+                    conditionMet = actualValue.map(v => String(v).toLowerCase()).includes(String(expected).toLowerCase());
+                } else {
+                    conditionMet = String(actualValue).toLowerCase() == String(expected).toLowerCase();
+                }
+            }
+        } else { // no value="...", just [conditional field="..."]
+            if (Array.isArray(actualValue)) {
+                conditionMet = actualValue.length > 0;
+            } else if (typeof actualValue === 'object' && actualValue !== null && Object.prototype.hasOwnProperty.call(actualValue, 'confirmedAt')) {
+                conditionMet = !!actualValue.confirmedAt;
+            } else {
+                conditionMet = !!actualValue && actualValue !== "";
+            }
+        }
+
         return conditionMet ? inner.trim() : '';
       });
       
