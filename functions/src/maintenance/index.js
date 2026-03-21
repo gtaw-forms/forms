@@ -1,4 +1,5 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { onCall } from 'firebase-functions/v2/https';
 import { createHash } from 'crypto';
 import { db, admin } from '../utils/firebase.js';
 import { sendWebhook, getShuffledPhrases, scheduleDeletion } from '../utils/helpers.js';
@@ -68,7 +69,7 @@ export const runWeeklyMetricsSummary = async () => {
 
     let topUsersDescription = top5Users.map((user, index) => {
         return `${index + 1}. **${user.ucpName}**: ${user.totalActions} actions`;
-    }).join('\n');
+    }).join('');
     
     if (top5Users.length === 0) {
         topUsersDescription = "No users with recorded actions this week."
@@ -102,16 +103,8 @@ export const runWeeklyMetricsSummary = async () => {
 };
 
 
-// --- Scheduled Cloud Function (v2) ---
-
-export const dailyMaintenanceTask = onSchedule({
-    schedule: "every day 09:00",
-    timeZone: "UTC",
-    secrets: ["PHMC_CONFIG"],
-    memory: "512MiB", // Explicitly increase memory for safety, though optimization reduces need
-    timeoutSeconds: 1200, // 20 minutes
-}, async (event) => {
-    console.log(`Running daily maintenance task. Event ID: ${event.id}`);
+const _runMaintenance = async (triggerContext) => {
+    console.log("Running maintenance task.", triggerContext);
 
     const now = new Date();
     const isMonday = now.getUTCDay() === 1;
@@ -134,7 +127,6 @@ export const dailyMaintenanceTask = onSchedule({
     };
 
     // --- 1. Bingo Reset Logic ---
-    // ... logic remains same ...
     const BINGO_TYPES = [
         { id: 'er', name: 'Emergency Room', path: 'ER' },
         { id: 'ems', name: 'EMS', path: 'EMS' },
@@ -213,7 +205,6 @@ export const dailyMaintenanceTask = onSchedule({
     }
 
     // --- 3. Optimized User Report Maintenance (Duplicates & Old Reports) ---
-    // Instead of fetching all reports (OOM risk), we fetch user IDs and process per-user.
     try {
         console.log('[Maintenance] Starting User Report Maintenance...');
         const userCountsRef = db.ref('userReportCounts');
@@ -221,7 +212,7 @@ export const dailyMaintenanceTask = onSchedule({
         
         if (userCountsSnapshot.exists()) {
             const userIds = Object.keys(userCountsSnapshot.val());
-            const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000);
+            const threeSixtyFiveDaysAgo = Date.now() - (365 * 24 * 60 * 60 * 1000);
             const fourteenDaysAgo = Date.now() - (14 * 24 * 60 * 60 * 1000);
 
             // Process users in chunks to control concurrency
@@ -250,28 +241,7 @@ export const dailyMaintenanceTask = onSchedule({
                         console.error(`Error cleaning old reports for user ${userId}:`, err);
                     }
 
-                    // B. Recovery Snapshot Cleanup (> 2 days)
-                    try {
-                        const oldRecoveryQuery = db.ref(`${RECOVERY_PATH}/${userId}`)
-                            .orderByChild('timestamp')
-                            .endAt(twoDaysAgo);
-                        
-                        const oldRecSnapshot = await oldRecoveryQuery.once('value');
-                        if (oldRecSnapshot.exists()) {
-                            const updates = {};
-                            oldRecSnapshot.forEach((snap) => {
-                                updates[`${RECOVERY_PATH}/${userId}/${snap.key}`] = null;
-                                maintenanceResults.recoveryCleanup.deleted++;
-                            });
-                            await db.ref().update(updates);
-                        }
-                    } catch (err) {
-                        console.error(`Error cleaning old recovery snapshots for user ${userId}:`, err);
-                        maintenanceResults.recoveryCleanup.errors.push(`User ${userId}: ${err.message}`);
-                    }
-
                     // C. Duplicate Cleanup (Last 14 Days Only)
-                    // Logic: Match on Name/OOC/Date. If match found within 10 minutes of a newer save, delete the older one.
                     try {
                         const recentReportsQuery = db.ref(`${REPORTS_PATH}/${userId}`)
                             .orderByChild('timestamp')
@@ -284,21 +254,16 @@ export const dailyMaintenanceTask = onSchedule({
                                 recentReports.push({ key: snap.key, val: snap.val() });
                             });
 
-                            // Sort descending by timestamp (Newest FIRST)
                             recentReports.sort((a, b) => (b.val.timestamp || 0) - (a.val.timestamp || 0));
 
                             const updates = {};
-                            const keptReports = []; // Stores the 'surviving' reports to compare against
+                            const keptReports = []; 
 
-                            // Helper to generate a unique key for the entity (Person + Time)
                             const getEntityKey = (reportVal) => {
                                 const d = reportVal.data || {};
-                                // If it looks like a death/coroner report
                                 if (d.decedentName || d.decedentOOC) {
-                                    // Use specific fields requested
                                     return `DECEDENT:${d.decedentName || ''}|${d.decedentOOC || ''}|${d.dateTime || ''}`;
                                 }
-                                // Fallback for other forms: use the Report Title
                                 return `TITLE:${reportVal.originalKey || ''}`;
                             };
 
@@ -309,30 +274,25 @@ export const dailyMaintenanceTask = onSchedule({
                                 
                                 let isDuplicate = false;
 
-                                // Check against reports we've already decided to keep (which are newer than this one)
                                 for (const keptReport of keptReports) {
                                     const keptEntityKey = getEntityKey(keptReport.val);
                                     const keptTimestamp = keptReport.val.timestamp || 0;
 
-                                    // If it's the same "Event/Person"
                                     if (currentEntityKey === keptEntityKey) {
                                         const timeDiff = Math.abs(keptTimestamp - currentTimestamp);
-                                        // AND it was saved within 10 minutes of the newer version
-                                        if (timeDiff <= 10 * 60 * 1000) {
+                                        if (timeDiff <= 6 * 60 * 60 * 1000) {
                                             isDuplicate = true;
-                                            break; // Stop checking, we found a newer version that supersedes this one
+                                            break; 
                                         }
                                     }
                                 }
 
                                 if (isDuplicate) {
-                                    // Delete this older duplicate
                                     updates[`${REPORTS_PATH}/${userId}/${report.key}`] = null;
                                     updates[`${BBCODE_PATH}/${userId}/${report.key}`] = null;
                                     maintenanceResults.duplicateCleanup.duplicatesFound++;
                                     maintenanceResults.duplicateCleanup.duplicatesDeleted++;
                                 } else {
-                                    // Keep this report (it's either unique, or the newest version of a set)
                                     keptReports.push(report);
                                 }
                             }
@@ -385,8 +345,6 @@ export const dailyMaintenanceTask = onSchedule({
         console.log('[Maintenance] Starting webhook log cleanup...');
         const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000);
         
-        // Use server-side query instead of downloading all logs
-        // Assuming keys are timestamps or chronological
         const oldLogsQuery = db.ref('webhook_logs').orderByKey().endAt(String(threeDaysAgo));
         const oldLogsSnapshot = await oldLogsQuery.once('value');
 
@@ -407,18 +365,19 @@ export const dailyMaintenanceTask = onSchedule({
         `Success: ${maintenanceResults.bingo.success.join(', ') || 'None'}`,
         `No Card: ${maintenanceResults.bingo.noCard.join(', ') || 'None'}`,
         `Not Enough Phrases: ${maintenanceResults.bingo.notEnoughPhrases.join(', ') || 'None'}`
-    ].join('\n');
+    ].join('');
 
     const hasCleanedUp = maintenanceResults.reportCleanup.oldReportsCleaned > 0 || maintenanceResults.duplicateCleanup.duplicatesDeleted > 0 || maintenanceResults.backupCleanup.oldBackupsCleaned > 0 || maintenanceResults.webhookLogCleanup.oldLogsCleaned > 0 || maintenanceResults.recoveryCleanup.deleted > 0;
     
     const embed = {
-        title: "Daily Maintenance Task",
+        title: `Daily Maintenance Task (${triggerContext.trigger})`,
         color: hasCleanedUp ? 0xFF6B35 : 0x1E90FF,
         fields: [
             { name: "🎯 Bingo Reset Status", value: bingoDetails.trim() || "No bingo actions taken.", inline: false },
             { name: "📝 Phrase Request Deletion", value: `Deleted: ${maintenanceResults.phraseRequests.deleted}`, inline: false },
             { name: "📜 Old Reports (365+ days)", value: `Deleted: ${maintenanceResults.reportCleanup.oldReportsCleaned}`, inline: true },
-            { name: "🧹 Recent Duplicates (14 days)", value: `Scanned: ${maintenanceResults.duplicateCleanup.scanned}\nDeleted: ${maintenanceResults.duplicateCleanup.duplicatesDeleted}`, inline: true },
+            { name: "🧹 Recent Duplicates (14 days)", value: `Scanned: ${maintenanceResults.duplicateCleanup.scanned}
+Deleted: ${maintenanceResults.duplicateCleanup.duplicatesDeleted}`, inline: true },
             { name: "💾 Backup Cleanup", value: `Deleted: ${maintenanceResults.backupCleanup.oldBackupsCleaned}`, inline: true },
             { name: "📋 Webhook Log Cleanup", value: `Deleted: ${maintenanceResults.webhookLogCleanup.oldLogsCleaned}`, inline: true },
             { name: "🔄 Recovery Snapshots (2 days)", value: `Deleted: ${maintenanceResults.recoveryCleanup.deleted}`, inline: true },
@@ -439,7 +398,7 @@ export const dailyMaintenanceTask = onSchedule({
     if (allErrors.length > 0) {
         embed.fields.push({
             name: "⚠️ Errors",
-            value: allErrors.slice(0, 5).join('\n') + (allErrors.length > 5 ? `\n...and ${allErrors.length - 5} more.` : ''),
+            value: allErrors.slice(0, 5).join('') + (allErrors.length > 5 ? `...and ${allErrors.length - 5} more.` : ''),
             inline: false
         });
     }
@@ -464,11 +423,51 @@ export const dailyMaintenanceTask = onSchedule({
 
     if (isFirstOfYear) {
         console.log('[Maintenance] Triggering yearly summaries (January 1st)...');
-        await PromiseSettled([
+        await Promise.allSettled([
             runYearlyCoronerSummary()
         ]);
     }
 
+    return {
+        success: allErrors.length === 0,
+        results: maintenanceResults
+    };
+}
+
+
+// --- Scheduled Cloud Function (v2) ---
+export const dailyMaintenanceTask = onSchedule({
+    schedule: "every day 09:00",
+    timeZone: "UTC",
+    secrets: ["PHMC_CONFIG"],
+    memory: "512MiB",
+    timeoutSeconds: 1200, 
+}, async (event) => {
+    console.log(`Running daily maintenance task. Event ID: ${event.id}`);
+    const result = await _runMaintenance({ trigger: 'schedule', id: event.id });
+    if (!result.success) {
+        console.error("Scheduled maintenance finished with errors.", result.results);
+    } else {
+        console.log("Scheduled maintenance finished successfully.");
+    }
     return null;
 });
 
+// --- Manual Trigger ---
+export const triggerManualMaintenance = onCall({
+    secrets: ["PHMC_CONFIG"],
+    memory: "512MiB",
+    timeoutSeconds: 1200,
+}, async (request) => {
+    const triggerUser = request.auth?.token?.email || 'Unknown user';
+    console.log(`Manually triggering maintenance. Requested by: ${triggerUser}`);
+
+    try {
+        const result = await _runMaintenance({ trigger: 'manual', user: triggerUser });
+        console.log("Manual maintenance finished.", result);
+        return result;
+    } catch (error) {
+        console.error("Critical error during manual maintenance trigger: ", error);
+        return { success: false, error: error.message };
+    }
+});
