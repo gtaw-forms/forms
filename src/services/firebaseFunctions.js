@@ -26,3 +26,4 @@ export const triggerCheckFactionMembership = (data) => triggerFunction('checkFac
 export const triggerTestHealthAlert = (data) => triggerFunction('triggerTestHealthAlert', data);
 export const triggerFetchExternalUrl = (data) => triggerFunction('fetchExternalUrl', data);
 export const triggerManualMaintenance = () => triggerFunction('triggerManualMaintenance');
+export const triggerRefreshGtawUser = (data) => triggerFunction('refreshGtawUser', data);

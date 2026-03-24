@@ -2,6 +2,7 @@ import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { Button, Spinner, Alert, Form } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import './AdminDashboard.css';
+import { formatAccessLevel } from '../../utils/textUtils';
 import GtaWorldLoginButton from '../Auth/GtaWorldLoginButton';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import useFactionPermissions from '../../hooks/useFactionPermissions';
@@ -390,7 +391,7 @@ const AdminDashboard = ({
                                             <h6 className="text-primary">PHMC Status</h6>
                                             <p className="mb-1"><strong>Rank:</strong> {factionData.rank}</p>
                                             <p className="mb-1"><strong>Script Rank:</strong> {factionData.scriptRank}</p>
-                                            <p className="mb-1"><strong>Access Level:</strong> <span className="badge bg-success">{accessLevel}</span></p>
+                                            <p className="mb-1"><strong>Access Level:</strong> <span className="badge bg-success">{formatAccessLevel(accessLevel)}</span></p>
                                             {factionData.activity && (
                                                 <p className="mb-1"><strong>Activity:</strong> {factionData.activity}</p>
                                             )}
@@ -861,7 +862,7 @@ const AdminDashboard = ({
                                                                             <div className="col-md-6">
                                                                                 <p><strong>Character:</strong> {factionData.characterName}</p>
                                                                                 <p><strong>Script Rank:</strong> {factionData.scriptRank}</p>
-                                                                                <p><strong>Access Level:</strong> {accessLevel}</p>
+                                                                                <p><strong>Access Level:</strong> {formatAccessLevel(accessLevel)}</p>
                                                                             </div>
                                                                             <div className="col-md-6">
                                                                                 <p><strong>Permissions:</strong></p>

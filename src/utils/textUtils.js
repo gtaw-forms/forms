@@ -23,3 +23,18 @@ export const comprehensiveSanitize = (str) => {
     sanitized = sanitized.replace(/^_+|_+$/g, '');
     return sanitized;
 };
+
+/**
+ * Formats the access level string for display in the UI.
+ * Transforms internal role names into more descriptive, user-friendly text.
+ * @param {string} level - The access level string (e.g., 'superadmin', 'admin').
+ * @returns {string} The formatted access level string.
+ */
+export const formatAccessLevel = (level) => {
+    if (!level) return 'N/A';
+    if (level === 'superadmin' || level === 'president') {
+      return 'GTAW-STAFF/DEVELOPER/FORM-DEV';
+    }
+    // Capitalize other levels for consistency, e.g., 'admin' -> 'Admin'
+    return level.charAt(0).toUpperCase() + level.slice(1);
+  };

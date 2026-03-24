@@ -327,8 +327,7 @@ export const useGtaWorldAuth = () => {
     const isGoogleAdmin = firebaseUser && 
                          !firebaseUser.uid.startsWith('gtaw:') && 
                          (
-                            firebaseAccessLevel === 'superadmin' || 
-                            ['stkeclipse@gmail.com'].includes(firebaseUser.email)
+                            firebaseAccessLevel === 'superadmin'
                          );
 
     const isStaff = isGtawStaff();
