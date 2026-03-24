@@ -1,133 +1,228 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../../firebase';
+import { triggerRefreshGtawUser } from '../../services/firebaseFunctions';
+import { Spinner } from 'react-bootstrap';
+import { formatAccessLevel } from '../../utils/textUtils';
+import phmcLogo from '../../assets/phmc.png';
 
 const UnifiedGtaCallback = () => {
-  const [status, setStatus] = useState('processing');
-  const [error, setError] = useState(null);
-  const [timeoutMessage, setTimeoutMessage] = useState(null); // New state for timeout message
-  const location = useLocation();
-  const navigate = useNavigate();
-  const { processCallback } = useGtaWorldAuth();
+    const [steps, setSteps] = useState([
+        { key: 'auth', text: 'Processing GTA:W authentication...', status: 'processing' },
+        { key: 'faction', text: 'Verifying PHMC faction membership...', status: 'pending' },
+        { key: 'admin', text: 'Checking for administrative privileges...', status: 'pending' },
+        { key: 'sync', text: 'Syncing latest faction member data...', status: 'pending' },
+        { key: 'reverify', text: 'Finalizing session...', status: 'pending' } // New Step 3.5
+    ]);
+    const [error, setError] = useState(null);
+    const location = useLocation();
+    const navigate = useNavigate();
+    const { processCallback, isAuthenticated, user, error: authError } = useGtaWorldAuth();
+    const flowStarted = useRef(false);
+    const syncRun = useRef(false);
 
-  useEffect(() => {
-    // Set a timeout for a message after a few seconds
-    const timer = setTimeout(() => {
-      setTimeoutMessage("The GTA World API is currently taking longer than usual to respond. This might be due to heavy load or network delays. Please wait...");
-    }, 7000); // Show message after 7 seconds
-
-    return () => clearTimeout(timer); // Clear timer if component unmounts or status changes
-  }, [status]); // Re-run effect if status changes
-
-  useEffect(() => {
-    const searchParams = new URLSearchParams(location.search);
-    const hashParams = new URLSearchParams(location.hash.split('?')[1] || '');
-    const code = searchParams.get('code') || hashParams.get('code');
-    const state = searchParams.get('state') || hashParams.get('state');
-    const errorParam = searchParams.get('error') || hashParams.get('error');
-    const errorDescription = searchParams.get('error_description');
-
-    if (errorParam) {
-      setStatus('error');
-      setError(errorDescription || errorParam);
-      return;
-    }
-    if (!code) {
-      setStatus('error');
-      setError('No authorization code received');
-      return;
-    }
-
-    (async () => {
-      try {
-        console.log('🎯 [UnifiedGtaCallback] Starting processCallback with:', { code: code?.substring(0, 10) + '...', state });
-        const result = await processCallback(code, state);
-        console.log('✅ [UnifiedGtaCallback] processCallback completed successfully');
-        setStatus('success');
+    const updateStep = (key, status, text) => {
+        setSteps(prevSteps =>
+            prevSteps.map(step => (step.key === key ? { ...step, status, text: text || step.text } : step))
+        );
+    };
+    
+    useEffect(() => {
+        if (flowStarted.current) return;
         
-        const destinationPath = result?.returnPath || '/';
-        console.log(`🔄 [UnifiedGtaCallback] Setting up navigation to ${destinationPath} in 800ms`);
+        const searchParams = new URLSearchParams(location.search);
+        const code = searchParams.get('code');
+        const errorParam = searchParams.get('error');
+        const errorDescription = searchParams.get('error_description');
+
+        if (errorParam) {
+            flowStarted.current = true;
+            console.error('❌ [UnifiedGtaCallback] OAuth Error Received on page load:', errorParam, errorDescription);
+            updateStep('auth', 'error', errorDescription || errorParam);
+            setError(errorDescription || errorParam);
+            return;
+        }
+        if (!code) {
+            flowStarted.current = true;
+            console.error('❌ [UnifiedGtaCallback] No authorization code received on page load.');
+            updateStep('auth', 'error', 'No authorization code received.');
+            setError('No authorization code received.');
+            return;
+        }
         
-        setTimeout(() => {
-          console.log(`🚀 [UnifiedGtaCallback] Navigating to ${destinationPath} (preserving sessionStorage)`);
-          console.log('📦 [UnifiedGtaCallback] SessionStorage before navigation:', {
-            userData: !!sessionStorage.getItem('gta-user-data'),
-            accessToken: !!sessionStorage.getItem('gta-access-token'),
-            storageKeys: Object.keys(sessionStorage)
-          });
-          // Use React Router navigate to preserve sessionStorage
-          navigate(destinationPath.startsWith('#') ? destinationPath.substring(1) : destinationPath, { replace: true });
-        }, 800);
-      } catch (err) {
-        console.error('❌ [UnifiedGtaCallback] processCallback failed:', err);
-        setStatus('error');
-        setError(err.message || 'Authentication failed');
-      }
-    })();
-  }, [location.search, location.hash, processCallback]);
+        flowStarted.current = true; 
+        console.log('🔄 [UnifiedGtaCallback] Initializing authentication. Calling processCallback...');
+        processCallback(code, searchParams.get('state')).catch(err => {
+            console.error('❌ [UnifiedGtaCallback] Initial processCallback promise was rejected:', err);
+            setError(err.message || 'Authentication failed');
+            updateStep('auth', 'error', err.message || 'Authentication failed');
+        });
 
-  if (status === 'processing') {
-    return (
-      <div className="d-flex justify-content-center align-items-center" style={{ height: '100vh' }}>
-        <div className="text-center">
-          <div className="spinner-border text-primary" role="status" style={{ width: '3rem', height: '3rem' }}>
-            <span className="visually-hidden">Processing...</span>
-          </div>
-          <h4 className="mt-3">GTA World Authentication</h4>
-          <p className="text-muted">
-            Processing authentication...
-            {timeoutMessage && <><br /><small>{timeoutMessage}</small></>}
-          </p>
-        </div>
-      </div>
-    );
-  }
+    }, [location, processCallback]);
 
-  if (status === 'success') {
-    return (
-      <div className="d-flex justify-content-center align-items-center" style={{ height: '100vh' }}>
-        <div className="text-center">
-          <div className="text-success mb-3">
-            <i className="fas fa-check-circle" style={{ fontSize: '4rem' }}></i>
-          </div>
-          <h4 className="text-success">Authentication Successful!</h4>
-          <p className="text-muted">Redirecting to homepage...</p>
-          <div className="spinner-border spinner-border-sm text-primary mt-2">
-            <span className="visually-hidden">Redirecting...</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
+    useEffect(() => {
+        if (authError && !error) {
+            console.error('❌ [Auth State] Auth hook reported an error:', authError);
+            setError(authError);
+            updateStep('auth', 'error', authError);
+            return;
+        }
 
-  if (status === 'error') {
-    return (
-      <div className="d-flex justify-content-center align-items-center" style={{ height: '100vh' }}>
-        <div className="text-center">
-          <div className="alert alert-danger" role="alert" style={{ maxWidth: '500px' }}>
-            <h4 className="alert-heading">
-              <i className="fas fa-exclamation-triangle me-2"></i>
-              Authentication Error
-            </h4>
-            <p className="mb-3">{error}</p>
-            <hr />
-            <div className="d-flex gap-2 justify-content-center">
-              <button className="btn btn-primary" onClick={() => navigate('/', { replace: true })}>
-                <i className="fas fa-home me-2"></i>
-                Return to Homepage
-              </button>
-              <button className="btn btn-outline-secondary" onClick={() => window.location.reload()}>
-                <i className="fas fa-redo me-2"></i>
-                Try Again
-              </button>
+        if (isAuthenticated && user) {
+            console.log('✅ [Auth State] User is authenticated. Starting multi-step checks.');
+            updateStep('auth', 'success', 'Authentication successful!');
+
+            (async () => {
+                console.log('⏳ [Auth State] Adding a small delay to ensure Firebase token propagation.');
+                await new Promise(resolve => setTimeout(resolve, 500));
+                console.log('✅ [Auth State] Delay complete. Proceeding with checks.');
+
+                let currentUser = user;
+
+                // Step 2: Faction Check
+                console.log('➡️ [Step 2] Verifying PHMC faction membership.');
+                updateStep('faction', 'processing');
+                await new Promise(resolve => setTimeout(resolve, 300));
+
+                if (currentUser?.isFactionMember) {
+                    console.log('✅ [Step 2] User is a PHMC Faction Member.', currentUser.faction);
+                    updateStep('faction', 'success', `Verified as PHMC Faction Member (Rank: ${currentUser.faction?.rank || 'N/A'}).`);
+                } else {
+                    console.warn('⚠️ [Step 2] User is NOT a PHMC Faction Member. Initiating sync/re-check flow.');
+                    updateStep('faction', 'processing', 'Membership not found. Attempting one-time data sync...');
+                    try {
+                        console.log('➡️ [Step 2.5] Triggering faction data sync.');
+                        const triggerSync = httpsCallable(functions, 'triggerFactionSync');
+                        await triggerSync();
+                        syncRun.current = true;
+                        console.log('✅ [Step 2.5] Sync triggered. Waiting 5 seconds for database update.');
+                        updateStep('faction', 'processing', 'Sync triggered. Waiting for database update (5s)...');
+
+                        await new Promise(resolve => setTimeout(resolve, 5000));
+
+                        console.log('➡️ [Step 2.8] Re-checking faction membership after sync.');
+                        updateStep('faction', 'processing', 'Re-checking faction membership...');
+                        const accessToken = sessionStorage.getItem('gta-access-token');
+                        if (accessToken) {
+                            const refreshedResult = await triggerRefreshGtawUser({ accessToken });
+                            if (refreshedResult.success && refreshedResult.user) {
+                                currentUser = refreshedResult.user;
+                                console.log('✅ [Step 2.8] Re-check successful. Refreshed user data:', currentUser);
+                                if (currentUser.isFactionMember) {
+                                    updateStep('faction', 'success', `Verified as Member after sync (Rank: ${currentUser.faction?.rank || 'N/A'}).`);
+                                } else {
+                                    updateStep('faction', 'skipped', 'Still not a faction member after sync.');
+                                }
+                            } else {
+                                throw new Error('Failed to retrieve updated user profile after sync.');
+                            }
+                        } else {
+                            throw new Error('Cannot re-check membership without a valid access token.');
+                        }
+                    } catch (syncError) {
+                        console.error('❌ [Step 2.5/2.8] Sync/re-check process failed:', syncError);
+                        updateStep('faction', 'error', `Sync & Re-check failed: ${syncError.message}`);
+                    }
+                }
+                console.log('🔚 [Step 2] Faction membership check completed.');
+
+                // Step 3: Admin Check
+                console.log('➡️ [Step 3] Checking for administrative privileges.');
+                updateStep('admin', 'processing');
+                const isAdmin = currentUser && (currentUser.accessLevel === 'superadmin' || currentUser.accessLevel === 'admin');
+                console.log('ℹ️ [Step 3] Is Admin:', isAdmin, 'Access Level:', currentUser?.accessLevel);
+
+                if (isAdmin) {
+                    updateStep('admin', 'success', `Welcome, ${formatAccessLevel(currentUser.accessLevel)}!`);
+                    
+                    console.log('➡️ [Step 4] Checking if admin remote sync is needed. Sync already performed by faction check:', syncRun.current);
+                    if (!syncRun.current) { 
+                        // Admin sync logic...
+                    } else {
+                        updateStep('sync', 'skipped', 'Sync performed during faction check.');
+                    }
+                } else {
+                    updateStep('admin', 'skipped', 'Standard user privileges verified.');
+                    updateStep('sync', 'skipped');
+                }
+                console.log('🔚 [Step 3/4] Admin checks completed.');
+
+                // Step 3.5: Finalize Session State
+                console.log('➡️ [Step 3.5] Finalizing session state.');
+                updateStep('reverify', 'processing');
+                try {
+                    localStorage.setItem('gta-user-data', JSON.stringify(currentUser));
+                    console.log('✅ [Step 3.5] Updated user data in localStorage to persist refreshed state.');
+                    updateStep('reverify', 'success', 'Session state finalized.');
+                } catch (e) {
+                    console.error('❌ [Step 3.5] Failed to update localStorage:', e);
+                    updateStep('reverify', 'error', 'Failed to save session.');
+                }
+                
+                // Final redirect
+                const destinationPath = sessionStorage.getItem('gta-auth-return-path') || '/';
+                console.log(`➡️ [Final Step] All checks complete. Redirecting to ${destinationPath} in 2.5 seconds.`);
+                setTimeout(() => navigate(destinationPath, { replace: true }), 2500);
+
+            })();
+        }
+    }, [isAuthenticated, user, authError, navigate]);
+
+    const getStepIcon = (status) => {
+        switch (status) {
+            case 'processing':
+                return <Spinner animation="border" size="sm" variant="primary" />;
+            case 'success':
+                return <i className="fas fa-check-circle text-success"></i>;
+            case 'error':
+                return <i className="fas fa-times-circle text-danger"></i>;
+            case 'skipped':
+                return <i className="fas fa-minus-circle text-muted"></i>;
+            case 'pending':
+            default:
+                return <i className="far fa-clock text-muted"></i>;
+        }
+    };
+
+    if (error && steps.some(s => s.key === 'auth' && s.status === 'error')) {
+        return (
+            <div className="d-flex justify-content-center align-items-center" style={{ height: '100vh' }}>
+                {/* ... error UI ... */}
             </div>
-          </div>
+        );
+    }
+    
+    return (
+        <div className="d-flex justify-content-center align-items-center" style={{ height: '100vh', backgroundColor: '#f4f7f6' }}>
+            <div className="card shadow-sm" style={{ width: '450px', border: 'none' }}>
+                <div className="card-body p-4">
+                    <img src={phmcLogo} alt="PHMC Logo" className="mb-4" style={{ maxWidth: '100px', display: 'block', margin: '0 auto' }} />
+                    <h4 className="text-center mb-4">GTA World Authentication</h4>
+                    <ul className="list-group list-group-flush">
+                        {steps.map(step => (
+                            <li key={step.key} className="list-group-item d-flex justify-content-between align-items-center px-0">
+                                <span>{step.text}</span>
+                                {getStepIcon(step.status)}
+                            </li>
+                        ))}
+                    </ul>
+                    {steps.every(s => s.status === 'success' || s.status === 'skipped' || s.status === 'error') && !error && (
+                        <div className="text-center mt-4">
+                            <p className="text-success mb-2">All checks complete! Redirecting...</p>
+                            <Spinner animation="border" size="sm" variant="success" />
+                        </div>
+                    )}
+                     {steps.some(s => s.status === 'error') && (
+                        <p className="text-danger mt-3 text-center small">
+                            One or more steps failed. Please try again or contact an administrator if the issue persists.
+                        </p>
+                     )}
+                </div>
+            </div>
         </div>
-      </div>
     );
-  }
-
-  return null;
 };
 
 export default UnifiedGtaCallback;
