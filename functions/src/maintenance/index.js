@@ -1,9 +1,10 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import { onCall } from 'firebase-functions/v2/https';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { createHash } from 'crypto';
 import { db, admin } from '../utils/firebase.js';
 import { sendWebhook, getShuffledPhrases, scheduleDeletion } from '../utils/helpers.js';
 import { runWeeklyCoronerSummary, runMonthlyCoronerSummary, runYearlyCoronerSummary } from '../reports/coroner.js';
+import { syncFactionMembers } from './factionSync.js';
 
 // --- Helper for Metrics Summary ---
 export const runWeeklyMetricsSummary = async () => {
@@ -123,8 +124,18 @@ const _runMaintenance = async (triggerContext) => {
         backupCleanup: { oldBackupsCleaned: 0, errors: [] },
         webhookLogCleanup: { oldLogsCleaned: 0, errors: [] },
         reportCleanup: { oldReportsCleaned: 0, errors: [] },
-        recoveryCleanup: { deleted: 0, errors: [] }
+        recoveryCleanup: { deleted: 0, errors: [] },
+        factionSync: { success: false, count: 0, error: null }
     };
+
+    // --- 0. Faction Member Sync ---
+    try {
+        const syncResult = await syncFactionMembers(triggerContext.trigger);
+        maintenanceResults.factionSync = syncResult;
+    } catch (e) {
+        console.error("Error during faction sync in maintenance:", e);
+        maintenanceResults.factionSync = { success: false, error: e.message };
+    }
 
     // --- 1. Bingo Reset Logic ---
     const BINGO_TYPES = [
@@ -373,6 +384,9 @@ const _runMaintenance = async (triggerContext) => {
         title: `Daily Maintenance Task (${triggerContext.trigger})`,
         color: hasCleanedUp ? 0xFF6B35 : 0x1E90FF,
         fields: [
+            { name: "👥 Faction Member Sync", value: maintenanceResults.factionSync?.success 
+                ? `✅ Synced **${maintenanceResults.factionSync.count}** members.` 
+                : `❌ Failed: ${maintenanceResults.factionSync?.error || 'Unknown error'}`, inline: false },
             { name: "🎯 Bingo Reset Status", value: bingoDetails.trim() || "No bingo actions taken.", inline: false },
             { name: "📝 Phrase Request Deletion", value: `Deleted: ${maintenanceResults.phraseRequests.deleted}`, inline: false },
             { name: "📜 Old Reports (365+ days)", value: `Deleted: ${maintenanceResults.reportCleanup.oldReportsCleaned}`, inline: true },
@@ -469,5 +483,80 @@ export const triggerManualMaintenance = onCall({
     } catch (error) {
         console.error("Critical error during manual maintenance trigger: ", error);
         return { success: false, error: error.message };
+    }
+});
+
+/**
+ * Allows an admin to update the UCP Session Cookies.
+ * Expects a Playwright storageState JSON object.
+ */
+export const updateUcpAuthState = onCall({
+    secrets: ["PHMC_CONFIG"],
+    memory: "256MiB",
+}, async (request) => {
+    if (!request.auth) {
+        throw new HttpsError('unauthenticated', 'You must be logged in.');
+    }
+
+    // Check for superadmin status via custom claims
+    const isSuperAdmin = request.auth.token.isSuperAdmin === true || request.auth.token.accessLevel === 'superadmin';
+    if (!isSuperAdmin) {
+        throw new HttpsError('permission-denied', 'Only Super Admins can update authentication state.');
+    }
+
+    const { storageState } = request.data || {};
+    if (!storageState || !storageState.cookies) {
+        throw new HttpsError('invalid-argument', 'Invalid storageState provided. Must be a Playwright JSON object.');
+    }
+
+    try {
+        await db.ref('factions/364/ucp_auth_state').set(storageState);
+        
+        // Notify of the update
+        await sendWebhook({
+            embeds: [{
+                title: "UCP Auth State Updated",
+                description: `Admin **${request.auth.token.email}** updated the UCP session cookies.`,
+                color: 0x007bff,
+                footer: { text: "PHMC Tools - Admin Action" }
+            }]
+        });
+
+        // Trigger an immediate sync to verify it works
+        const syncResult = await syncFactionMembers('auth_update');
+
+        return { 
+            success: true, 
+            message: 'Auth state updated and sync triggered.',
+            syncResult 
+        };
+    } catch (error) {
+        console.error("Error updating UCP auth state:", error);
+        throw new HttpsError('internal', error.message);
+    }
+});
+
+/**
+ * Manually triggers a faction member sync.
+ */
+export const triggerFactionSync = onCall({
+    secrets: ["PHMC_CONFIG"],
+    memory: "512MiB",
+    timeoutSeconds: 300,
+}, async (request) => {
+    if (!request.auth) {
+        throw new HttpsError('unauthenticated', 'You must be logged in.');
+    }
+
+    const isSuperAdmin = request.auth.token.isSuperAdmin === true || request.auth.token.accessLevel === 'superadmin';
+    if (!isSuperAdmin) {
+        throw new HttpsError('permission-denied', 'Only Super Admins can manually trigger a sync.');
+    }
+
+    try {
+        const result = await syncFactionMembers('manual_trigger');
+        return result;
+    } catch (error) {
+        throw new HttpsError('internal', error.message);
     }
 });

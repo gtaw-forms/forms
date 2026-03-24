@@ -85,13 +85,42 @@ export const syncAdminClaims = onCall({
     }
 });
 
+// A list of exact role names that are considered staff.
+const STAFF_ROLES = [
+    'Developer',
+    'Admin',
+    'Administrator',
+    'Head Admin',
+    'Senior Admin',
+    'Trial Admin',
+    'Moderator',
+    'Head Moderator',
+    'Senior Moderator',
+    'Trial Moderator',
+    'Game Tester',
+    'Support Staff',
+    'Community Manager',
+    'Project Manager',
+    'Owner'
+];
+
 /**
  * Helper function to check if a GTA World role is considered staff
  */
 function isStaffRole(roleId) {
     if (!roleId) return false;
-    const staffKeywords = ['Admin', 'Management', 'Support', 'Owner', 'Tester', 'Moderator', 'Staff', 'Developer', 'Lead', 'Head', 'Director'];
-    return staffKeywords.some(keyword => roleId.includes(keyword));
+    
+    // Check for an exact match in the predefined list
+    if (STAFF_ROLES.includes(roleId)) {
+        return true;
+    }
+
+    // Also, check for the "Admin Level X" pattern
+    if (roleId.startsWith('Admin Level ')) {
+        return true;
+    }
+
+    return false;
 }
 
 /**
@@ -359,8 +388,9 @@ export const processGtaWorldAuth = onCall({
                 factionResult = {
                     isMember: true,
                     character: highestRankMember.character, // The full character object for the highest rank
-                    permissions: highestRankMember.permissions,
-                    accessLevel: highestRankMember.accessLevel,
+                    // If user is elevated, ensure they get full permissions regardless of character's rank
+                    permissions: isElevated ? getPermissionsForRank(0, true) : highestRankMember.permissions,
+                    accessLevel: isElevated ? getAccessLevel(0, finalUser.username, isSuperAdmin) : highestRankMember.accessLevel,
                     allFactionCharacters: factionMembers // Array of all characters found in the faction
                 };
             }
