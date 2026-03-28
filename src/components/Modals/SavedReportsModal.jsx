@@ -9,7 +9,7 @@ const AVAILABLE_FORMS = [
     { value: 'mass-ftality-test', label: 'Mass Fatality Report' },
     { value: 'coroner_email', label: 'Coroner Email' },
     { value: 'death-record', label: 'Death Record' },
-    { value: 'autopsy-report', label: 'Autopsy Report' },
+    { value: 'autopsy', label: 'Autopsy Report' },
 ];
 
 const STORAGE_KEY = 'savedReportsFormFilter';
@@ -27,7 +27,6 @@ const SavedReportsModal = ({
     isLoadingReports, 
     isAttachMode, 
     handleReportSelectedForAttachment, 
-    attachmentTargetField, 
     loadButtonText, 
     isParseDecedentMode, 
     pendingReportAttachmentCallback, 

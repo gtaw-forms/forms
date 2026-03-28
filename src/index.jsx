@@ -12,7 +12,44 @@ import * as Sentry from "@sentry/react";
 import { analytics } from './firebase';
 import { logEvent } from "firebase/analytics";
 import ErrorBoundary from './components/UI/ErrorBoundary';
-import { sendDiscordErrorWebhook } from './utils/errorUtils';
+import { sendDiscordErrorWebhook, getLastInputInteraction, getCurrentFormType } from './utils/errorUtils';
+
+// --- Navigation Tracking ---
+const navigationHistory = [];
+const recordNavigation = (url, type = 'push') => {
+    try {
+        const path = url || window.location.pathname + window.location.search;
+        // Don't record duplicate paths if they are the last entry
+        if (navigationHistory.length > 0 && navigationHistory[0].path === path) return;
+        
+        const entry = {
+            path: path,
+            type,
+            timestamp: new Date().toLocaleTimeString(),
+        };
+        navigationHistory.unshift(entry);
+        if (navigationHistory.length > 15) navigationHistory.pop();
+    } catch (e) {
+        // Silent fail for navigation tracking
+    }
+};
+
+// Monkey-patch history methods to track navigation
+const originalPushState = window.history.pushState;
+const originalReplaceState = window.history.replaceState;
+
+window.history.pushState = function (...args) {
+    originalPushState.apply(this, args);
+    recordNavigation(args[2], 'push');
+};
+
+window.history.replaceState = function (...args) {
+    originalReplaceState.apply(this, args);
+    recordNavigation(args[2], 'replace');
+};
+
+window.addEventListener('popstate', () => recordNavigation(window.location.pathname + window.location.search, 'pop'));
+recordNavigation(window.location.pathname + window.location.search, 'initial');
 
 // --- START: Chunk Loading Error Handler ---
 /**
@@ -77,28 +114,8 @@ window.addEventListener('unhandledrejection', (event) => {
 });
 
 // --- Global Context Tracking for Error Reporting ---
-let lastInputInteraction = null; // Tracks recent input field interactions
 let isSentryBlocked = false; // Flag to track if Sentry connectivity failed
-
-/**
- * Automatically determines the current form type from lastSelectedFormName stored in localStorage
- * @returns {string} The form name or 'Unknown' if not found
- */
-const getCurrentFormType = () => {
-    try {
-        const lastSelectedFormName = localStorage.getItem('lastSelectedFormName');
-        if (lastSelectedFormName) {
-            return lastSelectedFormName;
-        }
-        return 'Unknown';
-    } catch (error) {
-        console.warn('Error determining form type:', error);
-        return 'Unknown';
-    }
-};
-
-
-
+const appStartTime = Date.now();
 
 
 init({
@@ -127,12 +144,19 @@ init({
       };
 
       // Add extra context data for deeper debugging
+      const lastInputInteraction = getLastInputInteraction();
       if (lastInputInteraction) {
         event.extra = {
           ...event.extra,
           last_input_interaction: lastInputInteraction,
         };
       }
+      
+      event.extra = {
+          ...event.extra,
+          navigation_history: navigationHistory,
+          time_since_start: `${Math.round((Date.now() - appStartTime) / 1000)}s`
+      };
     }
     return event;
   },
@@ -190,14 +214,24 @@ window.onerror = (message, source, lineno, colno, errorObject) => {
     // Helper to safely get user info from storage
     const getUserInfoFromStorage = () => {
         try {
-            const userKey = Object.keys(localStorage).find(k => k.includes('user'));
+            const userKey = Object.keys(localStorage).find(k => k.includes('firebase:authUser') || k.toLowerCase().includes('user'));
             if (userKey) {
                 const user = JSON.parse(localStorage.getItem(userKey));
                 return {
-                    id: user?.uid || user?.id,
-                    username: user?.displayName || user?.username,
+                    id: user?.uid || user?.id || user?.cid,
+                    username: user?.displayName || user?.username || user?.characterName,
+                    email: user?.email,
+                    faction: user?.faction || user?.factionName,
+                    role: user?.role
                 };
             }
+            
+            // Fallback for character info
+            const characterName = localStorage.getItem('characterName');
+            if (characterName) {
+                return { username: characterName };
+            }
+            
             return null;
         } catch {
             return { error: 'Failed to parse user info from localStorage' };
@@ -221,6 +255,7 @@ window.onerror = (message, source, lineno, colno, errorObject) => {
     });
 
     // Queue the error for reporting to Discord.
+    const lastInputInteraction = getLastInputInteraction();
     const errorDetails = {
         message,
         source,
@@ -237,10 +272,24 @@ window.onerror = (message, source, lineno, colno, errorObject) => {
         url: window.location.href,
         clientInfo: {
             viewport: `${window.innerWidth}x${window.innerHeight}`,
+            screen: `${window.screen.width}x${window.screen.height}`,
             platform: navigator.platform,
             language: navigator.language,
+            online: navigator.onLine,
+            devicePixelRatio: window.devicePixelRatio,
+            memory: performance && performance.memory ? {
+                used: Math.round(performance.memory.usedJSHeapSize / 1024 / 1024) + 'MB',
+                total: Math.round(performance.memory.totalJSHeapSize / 1024 / 1024) + 'MB'
+            } : 'N/A',
+            connection: (navigator.connection || navigator.mozConnection || navigator.webkitConnection) ? {
+                type: (navigator.connection || navigator.mozConnection || navigator.webkitConnection).effectiveType,
+                downlink: (navigator.connection || navigator.mozConnection || navigator.webkitConnection).downlink
+            } : 'N/A'
         },
         userInfo: getUserInfoFromStorage(),
+        navigationHistory,
+        timeSinceStart: `${Math.round((Date.now() - appStartTime) / 1000)}s`,
+        referrer: document.referrer || 'None'
     };
     sendDiscordErrorWebhook(errorDetails, isSentryBlocked);
 

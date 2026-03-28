@@ -60,6 +60,21 @@ const AdminDashboard = ({
     const [mapEnabled, setMapEnabled] = useState(false);
     const navigate = useNavigate();
 
+    // State for PHMC Auth State upload
+    const [phmcAuthStateInput, setPhmcAuthStateInput] = useState('');
+    const [isUploadingPhmcAuthState, setIsUploadingPhmcAuthState] = useState(false);
+
+    useEffect(() => {
+        const fetchMapStatus = async () => {
+            const dbRef = ref(getDatabase(), '/map/settings/enabled');
+            const snapshot = await get(dbRef);
+            if (snapshot.exists()) {
+                setMapEnabled(snapshot.val());
+            }
+        };
+        fetchMapStatus();
+    }, []);
+
     const handleToggleMap = async () => {
         const newStatus = !mapEnabled;
         try {
@@ -71,8 +86,6 @@ const AdminDashboard = ({
             showInAppNotification('Failed to update map status.', 'error');
         }
     };
-
-
 
     const handleScanLocations = async () => {
         setIsScanningLocations(true);
@@ -305,6 +318,41 @@ const AdminDashboard = ({
             );
         } finally {
             setIsTriggeringReport(false);
+        }
+    };
+
+    const handleUploadPhmcAuthState = async () => {
+        if (!phmcAuthStateInput) {
+            showInAppNotification('Please paste the PHMC Auth State JSON.', 'warning');
+            return;
+        }
+
+        setIsUploadingPhmcAuthState(true);
+        try {
+            const storageState = JSON.parse(phmcAuthStateInput);
+            if (!storageState || !storageState.cookies) {
+                throw new Error('Invalid Playwright storageState JSON. Missing "cookies" array.');
+            }
+
+            const functions = getFunctions();
+            const uploadAuthState = httpsCallable(functions, 'updateAuthState'); // Use the generic updateAuthState
+            
+            const result = await uploadAuthState({ 
+                path: '/phmc/auth_state', // The target path for PHMC forum auth state
+                storageState: storageState 
+            });
+
+            if (result.data.success) {
+                showInAppNotification('PHMC Auth State uploaded successfully!', 'success');
+                setPhmcAuthStateInput(''); // Clear input on success
+            } else {
+                showInAppNotification(`Failed to upload PHMC Auth State: ${result.data.message || 'Unknown error'}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error uploading PHMC Auth State:', error);
+            showInAppNotification(`Error uploading PHMC Auth State: ${error.message}`, 'error');
+        } finally {
+            setIsUploadingPhmcAuthState(false);
         }
     };
 
@@ -805,6 +853,36 @@ const AdminDashboard = ({
                         <div className="card">
                             <div className="card-header">Developer Tools</div>
                             <div className="card-body">
+                                {/* PHMC Auth State Upload */}
+                                <div className="mb-4">
+                                    <h6>PHMC Forum Auth State Upload</h6>
+                                    <p className="text-muted small">
+                                        This area is used by the Form Developer to test features on a production server. 
+                                    </p>
+                                    <Form.Group className="mb-2">
+                                        <Form.Control
+                                            as="textarea"
+                                            rows={5}
+                                            placeholder="Provide the raw JSON outputted in tools/dev/output.json..."
+                                            value={phmcAuthStateInput}
+                                            onChange={(e) => setPhmcAuthStateInput(e.target.value)}
+                                            disabled={isUploadingPhmcAuthState || !hasAdminAccess}
+                                        />
+                                    </Form.Group>
+                                    <Button
+                                        variant="primary"
+                                        onClick={handleUploadPhmcAuthState}
+                                        disabled={isUploadingPhmcAuthState || !phmcAuthStateInput || !hasAdminAccess}
+                                    >
+                                        {isUploadingPhmcAuthState ? (
+                                            <Spinner as="span" animation="border" size="sm" />
+                                        ) : (
+                                            <i className="fas fa-upload me-2"></i>
+                                        )}
+                                        Upload PHMC Auth State
+                                    </Button>
+                                </div>
+
                                 <div className="mb-3">
                                     <div className="card">
                                         <div className="card-header">

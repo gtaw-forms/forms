@@ -1,0 +1,11 @@
+{
+  "tools": {
+    "useRipgrep": true
+  },
+  "general": {
+    "maxAttempts": 10
+  },
+  "ui": {
+    "inlineThinkingMode": "full"
+  }
+}

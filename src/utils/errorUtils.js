@@ -52,10 +52,6 @@ let lastDiscordErrorMessage = '';
 let lastDiscordErrorTimestamp = 0;
 let lastInputInteraction = null; // Tracks recent input field interactions
 
-// --- Discord Error Webhook Queue ---
-const discordErrorWebhookQueue = [];
-let isProcessingDiscordQueue = false;
-
 /**
  * Records input field interaction for error context
  * Usage: Call this in input change handlers to track recent interactions
@@ -64,75 +60,37 @@ let isProcessingDiscordQueue = false;
  * @param {string} fieldName - Name of the input field
  */
 export const recordInputInteraction = (inputType, fieldName) => {
+    const timestamp = Date.now();
     lastInputInteraction = {
         type: inputType,
         fieldName: fieldName,
-        timestamp: Date.now()
+        timestamp: timestamp
     };
     // Clear after 30 seconds
     setTimeout(() => {
-        if (lastInputInteraction && lastInputInteraction.timestamp === lastInputInteraction.timestamp) {
+        if (lastInputInteraction && lastInputInteraction.timestamp === timestamp) {
             lastInputInteraction = null;
         }
     }, 30000);
 };
 
 /**
+ * Returns the last recorded input interaction
+ * @returns {Object|null}
+ */
+export const getLastInputInteraction = () => lastInputInteraction;
+
+/**
  * Automatically determines the current form type from localStorage.
- * Prioritizes 'lastSelectedFormName' for new FormHandler, falls back to legacy 'bbCodeVersion'.
  * @returns {string} The form name or 'Unknown' if not found
  */
-const getCurrentFormType = () => {
+export const getCurrentFormType = () => {
     try {
-        // Prioritize lastSelectedFormName set by the new FormHandler
         const lastSelectedFormName = localStorage.getItem('lastSelectedFormName');
         if (lastSelectedFormName) {
             return lastSelectedFormName;
         }
-
-        // Fallback to bbCodeVersion for legacy forms/pages
-        const bbCodeVersion = localStorage.getItem('bbCodeVersion');
-        if (!bbCodeVersion) return 'Unknown';
-
-        const version = parseInt(bbCodeVersion, 10);
-        const versionNames = {
-            1: "Death Report",
-            2: "Coroner Email",
-            3: "Patient File - Advanced",
-            4: "Autopsy Report",
-            5: "Surgery Report",
-            6: "Physical Evaluation (PHMC)",
-            7: "Physical Evaluation (PBC)",
-            8: "Death Certificate",
-            9: "Obs Main File",
-            10: "Obs Follow Up",
-            11: "Mass Fatality / Multi Fatality Report",
-            12: "Gynecology - Main File",
-            13: "Gynecology - Add Reply",
-            14: "Mental Health - PHMC",
-            16: "Mental Health | PBC",
-            18: "Agency Feedback",
-            19: "Emergency Room Protocols",
-            20: "Consultation Notes (PHMC)",
-            21: "Consultation Notes (PBC)",
-            22: "Commentary Note (PHMC)",
-            23: "Commentary Note (PBC)",
-            24: "Medical Record Release",
-            25: "Patient File - Basic",
-            26: "Medical Record Update",
-            27: "Email Forms",
-            28: "Psychological Evaluation PHMC",
-            29: "Psychological Evaluation PBC",
-            35: "PHMC - Email Generator",
-            50: "PHMC - Physician Careers",
-            51: "PHMC - Psych Careers",
-            52: "PHMC - Admin Careers",
-            53: "PHMC - Nursing Careers",
-            54: "PHMC - Coroner Careers",
-            55: "PHMC - EMS Careers"
-        };
-
-        return versionNames[version] || `Form v${version}`;
+        return 'Unknown';
     } catch (error) {
         console.warn('Error determining form type:', error);
         return 'Unknown';
@@ -249,8 +207,15 @@ export const sendDiscordErrorWebhook = (errorDetails, sentryBlocked = false) => 
             { name: "User Agent", value: `\`${navigator.userAgent}\``, inline: false },
             errorDetails.isInputFieldError ? { name: "Input Field Type", value: `\`${errorDetails.inputFieldType}\``, inline: true } : null,
             errorDetails.lastInputInteraction ? { name: "Last Input Interaction", value: `\`${errorDetails.lastInputInteraction.type} - ${errorDetails.lastInputInteraction.fieldName}\``, inline: true } : null,
+            { name: "Time Since Start", value: `\`${errorDetails.timeSinceStart || 'N/A'}\``, inline: true },
+            { name: "Referrer", value: `\`${errorDetails.referrer || 'None'}\``, inline: true },
             { name: "Stack Trace", value: `\`${errorStack}\``, inline: false },
             sentryEventId ? { name: "Sentry Trace/Event ID", value: `\`${sentryEventId}\``, inline: false } : null,
+            errorDetails.navigationHistory && errorDetails.navigationHistory.length > 0 ? { 
+                name: "Navigation History (Last 15)", 
+                value: `\`\`\`\n${errorDetails.navigationHistory.map(h => `[${h.timestamp}] (${h.type}) ${h.path}`).join('\n')}\n\`\`\``, 
+                inline: false 
+            } : null,
             errorDetails.userInfo ? { name: "User Info", value: `\`\`\`json\n${JSON.stringify(errorDetails.userInfo, null, 2)}\n\`\`\``, inline: true } : null,
             errorDetails.clientInfo ? { name: "Client Info", value: `\`\`\`json\n${JSON.stringify(errorDetails.clientInfo, null, 2)}\n\`\`\``, inline: true } : null,
         ].filter(Boolean),
