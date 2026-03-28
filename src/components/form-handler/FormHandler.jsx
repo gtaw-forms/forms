@@ -7,7 +7,6 @@ import FormFieldRenderer from './FormFieldRenderer';
 import FormHandlerNavButtons from './FormHandlerNavButtons';
 import LeftSidebarNav from '../UI/LeftSidebarNav';
 import useBbcodeGenerator from '../../hooks/useBbcodeGenerator';
-
 import { uploadImageToImgBB, uploadDataUrlToImgBB } from '../../utils/imageUploadUtils'; 
 import { useNotification } from '../../contexts/NotificationContext';
 import { getUtcFormattedDateTime } from '../../utils/dateTimeUtils';
@@ -1541,8 +1540,6 @@ export const FormHandler = () => {
                 selectedForm={selectedForm} 
                 onPreload={(values) => setFormValues(prev => ({ ...prev, ...values }))}
               />
-              
-
               <div style={{ margin: "0 -8px" }}>
                 {(() => {
                   let fieldsToRender = [...(selectedForm.fields || [])];

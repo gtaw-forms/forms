@@ -1,4 +1,4 @@
-import React from 'react';
+import { useNotification } from '../../contexts/NotificationContext';
 
 const AGENCY_CREDENTIALS = {
   'lspd.gta.world': {
@@ -116,6 +116,8 @@ const getQuickLinks = (form, formValues, agencyDataStore, generatedBBCode, gener
 };
 
 const FormQuickLinks = ({ form, formValues, agencyDataStore, generatedBBCode, generatedTitle }) => {
+  const { showNotification } = useNotification();
+  
   const links = getQuickLinks(form, formValues, agencyDataStore, generatedBBCode, generatedTitle);
 
   // Find agency for credentials section
@@ -144,13 +146,13 @@ const FormQuickLinks = ({ form, formValues, agencyDataStore, generatedBBCode, ge
     }
   }
 
-  if (links.length === 0 && !credentials) {
+
+  if (links.length === 0 && !credentials && form?.id !== 'coroner_email') {
     return null;
   }
 
   return (
     <div style={{ marginTop: '1rem', padding: '1rem', background: '#0f172a', borderRadius: 12, border: '1px solid #1e293b' }}>
-      <h4 style={{ color: '#a78bfa', margin: '0 0 1rem', fontSize: '1rem', fontWeight: '600' }}>Quick Links</h4>
       
       {generatedBBCode && form?.id === 'coroner_email' && (
         <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '1rem', fontStyle: 'italic' }}>

@@ -1,0 +1,237 @@
+:root {
+  /* Main Theme Colors - Shared with BaseModal where possible */
+  --cctv-modal-bg: #0d1117;
+  --cctv-modal-card-bg: #161b22;
+  --cctv-modal-border: #30363d;
+  --cctv-text-primary: #e6edf3;
+  --cctv-text-secondary: #7d8590;
+
+  /* Accent Colors */
+  --cctv-accent-primary: #2f81f7;
+  --cctv-accent-secondary: #3fb950;
+  --cctv-accent-danger: #f85149;
+  --cctv-accent-warning: #d29922;
+
+  /* Sizing & Shadows */
+  --cctv-border-radius-lg: 16px;
+  --cctv-border-radius-md: 12px; /* Increased for "bubble" look */
+  --cctv-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+/* BaseModal content overrides for CCTV variant */
+.modal-variant-cctv .modal-content {
+  padding: 0 !important;
+}
+
+.cctv-modal-body {
+  padding: 2.5rem 3rem; /* Matched BaseModal standard padding */
+  overflow-y: auto;
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem; /* Consistent spacing between blocks */
+}
+
+.cctv-form-section {
+  background-color: var(--cctv-modal-card-bg);
+  border-radius: var(--cctv-border-radius-md);
+  padding: 2rem; /* Increased padding */
+  border: 1px solid var(--cctv-modal-border);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); /* Subtle shadow for "bubble" feel */
+}
+
+.cctv-form-section h5 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--cctv-text-primary);
+  margin: 0 0 1.25rem 0;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--cctv-modal-border);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.cctv-form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+}
+
+.cctv-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.cctv-form-group.full-width {
+  grid-column: 1 / -1;
+}
+
+.cctv-form-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--cctv-text-secondary);
+}
+
+.cctv-form-label.required::after {
+  content: ' *';
+  color: var(--cctv-accent-danger);
+}
+
+/* Specific styling for forms inside CCTV modal */
+.cctv-modal-body .form-control {
+  background-color: var(--cctv-modal-bg);
+  color: var(--cctv-text-primary);
+  border: 1px solid var(--cctv-modal-border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+}
+
+.cctv-modal-body .form-control:focus {
+  outline: none;
+  border-color: var(--cctv-accent-primary);
+  box-shadow: 0 0 0 3px rgba(47, 129, 247, 0.15);
+  background-color: rgba(47, 129, 247, 0.02);
+}
+
+.cctv-modal-body .form-control:disabled {
+  background-color: rgba(48, 54, 61, 0.2);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.cctv-textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+
+.cctv-select, .character-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%237d8590' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 1rem center;
+  background-repeat: no-repeat;
+  background-size: 1rem;
+  padding-right: 3rem !important;
+  color-scheme: dark;
+}
+
+/* Auth & Info Boxes */
+.auth-success {
+  background-color: rgba(63, 185,  green, 0.05) !important;
+  color: var(--cctv-accent-secondary) !important;
+  border: 1px solid rgba(63, 185, 80, 0.15) !important;
+}
+
+.auth-required {
+  background-color: rgba(210, 153, 34, 0.05) !important;
+  color: var(--cctv-accent-warning) !important;
+  border: 1px solid rgba(210, 153, 34, 0.15) !important;
+}
+
+.auth-details {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.character-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cctv-danger-text {
+  padding: 1.5rem 2rem;
+  border-radius: var(--cctv-border-radius-md);
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-start;
+  background-color: rgba(248, 81, 73, 0.08);
+  color: var(--cctv-accent-danger);
+  border: 1px solid rgba(248, 81, 73, 0.15);
+  line-height: 1.5;
+}
+
+.cctv-danger-text i {
+  font-size: 1.25rem;
+  margin-top: 0.25rem;
+}
+
+/* Footer & Buttons */
+.cctv-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  width: 100%;
+}
+
+.cctv-btn {
+  border-radius: 8px;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.cctv-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cctv-btn-secondary {
+  background-color: #21262d;
+  border-color: var(--cctv-modal-border);
+  color: var(--cctv-text-primary);
+}
+
+.cctv-btn-secondary:hover:not(:disabled) {
+  background-color: #30363d;
+  border-color: #8b949e;
+}
+
+.cctv-btn-primary {
+  background-color: var(--cctv-accent-primary);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(47, 129, 247, 0.2);
+}
+
+.cctv-btn-primary:hover:not(:disabled) {
+  background-color: #458dff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(47, 129, 247, 0.3);
+}
+
+.cctv-btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.cctv-spinner {
+  width: 1.1rem;
+  height: 1.1rem;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .cctv-modal-body {
+    padding: 1.5rem;
+  }
+  .cctv-form-section {
+    padding: 1.5rem;
+  }
+}
