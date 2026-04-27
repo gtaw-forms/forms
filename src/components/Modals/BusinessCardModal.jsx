@@ -77,9 +77,9 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo, handleI
 
     const overlayStyles = {
         PHMC: {
-            name: { position: 'absolute', top: '23.44%', left: '2.75%', color: 'black', fontSize: '24px', fontWeight: 'bold' },
-            rank: { position: 'absolute', top: '31.92%', left: '3.31%', color: '#cb1212', fontSize: '12px' },
-            phoneNumber: { position: 'absolute', top: '53.03%', left: '12.06%', color: 'black', fontSize: '12px' }
+            name: { position: 'absolute', top: '23.44%', left: '2.75%', color: 'black', fontSize: '24px', fontWeight: 'bold', fontFamily: "'LufgaMedium', sans-serif" },
+            rank: { position: 'absolute', top: '31.92%', left: '3.31%', color: '#cb1212', fontSize: '12px', fontFamily: "'LufgaMedium', sans-serif" },
+            phoneNumber: { position: 'absolute', top: '53.03%', left: '12.06%', color: 'black', fontSize: '12px', fontFamily: "'LufgaMedium', sans-serif" }
         },
     };
 
@@ -90,11 +90,26 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo, handleI
         setIsSaving(true);
         showNotification('Generating Business Card...', 'upload');
 
+        // Persist to localStorage
+        localStorage.setItem('name', name);
+        localStorage.setItem('rank', rank);
+        localStorage.setItem('phoneNumber', phoneNumber);
+        localStorage.setItem('stationAssigned', stationAssigned);
+        localStorage.setItem('businessCardType', businessCardType);
+
         const canvas = document.createElement('canvas');
         canvas.width = 750; canvas.height = 440;
         const ctx = canvas.getContext('2d');
 
         try {
+            // Ensure font is loaded before drawing to canvas
+            try {
+                await document.fonts.load('15px LufgaMedium');
+                await document.fonts.load('bold 35px LufgaMedium');
+            } catch (e) {
+                console.warn('Font loading failed, falling back to sans-serif', e);
+            }
+
             const baseImage = await new Promise((res, rej) => {
                 const img = new Image(); img.crossOrigin = "anonymous";
                 img.onload = () => res(img); img.onerror = rej;
@@ -104,12 +119,16 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo, handleI
             ctx.drawImage(baseImage, 0, 0, 750, 440);
             ctx.textBaseline = 'top';
             ctx.fillStyle = currentOverlayStyles.name.color;
-            ctx.font = `bold 35px sans-serif`;
+            ctx.font = `bold 35px LufgaMedium, sans-serif`;
             ctx.fillText(name, 750 * (parseFloat(currentOverlayStyles.name.left)/100), 440 * (parseFloat(currentOverlayStyles.name.top)/100));
             
             ctx.fillStyle = currentOverlayStyles.rank.color;
-            ctx.font = `15px sans-serif`;
+            ctx.font = `15px LufgaMedium, sans-serif`;
             ctx.fillText(rank, 750 * (parseFloat(currentOverlayStyles.rank.left)/100), 440 * (parseFloat(currentOverlayStyles.rank.top)/100));
+
+            ctx.fillStyle = currentOverlayStyles.phoneNumber.color;
+            ctx.font = `15px LufgaMedium, sans-serif`;
+            ctx.fillText(phoneNumber, 750 * (parseFloat(currentOverlayStyles.phoneNumber.left)/100), 440 * (parseFloat(currentOverlayStyles.phoneNumber.top)/100));
 
             const dataUrl = canvas.toDataURL('image/png');
             const result = await handleImageUpload(dataUrl);

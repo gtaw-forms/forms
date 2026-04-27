@@ -11,6 +11,9 @@ import CharacterSelector from '../Modals/CharacterSelector';
 import { decedentItemSchema } from '../../formSchemas/decedentSchema';
 import { formatCharacterNameForDisplay } from '../../utils/characterUtils'; // Import the new utility
 import { useModal } from '../../contexts/ModalProvider';
+import { evaluateFieldVisibility } from '../../utils/formValidation';
+
+import morgueGif from '../../assets/morgue-copy-tutorial.gif';
 
 const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore, toggleSavedReports, showNotification, isUploading, handleDiagramUpload, setShowMapModal, setMapTargetField, isUploadingMapImage = {}, setShowAutopsyAssistModal, setAutopsyAssistTargetField, setIsAttachModeForModal }) => {
   const { factionsData } = useData();
@@ -27,54 +30,8 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
   }, [factionsData]);
 
   // Conditional visibility logic
-  if (field.showIf) {
-    let shouldShow = false;
-    const fieldName = field.label || field.name;
-    //console.log(`[Conditional Check] Field: '${fieldName}'. Evaluating visibility...`);
-
-    const evaluateCondition = (cond) => {
-        const current = formValues[cond.field];
-        const expectedValue = (cond.value === "true") ? true : (cond.value === "false") ? false : cond.value;
-        const currentValue = (typeof current === 'string' && (current === "true" || current === "false")) ? (current === "true") : current;
-
-        let conditionMet = false;
-        if (expectedValue === true) { // Has ANY value
-            if (Array.isArray(currentValue)) conditionMet = currentValue.length > 0;
-            else conditionMet = !!currentValue && currentValue !== "";
-        } else if (expectedValue === false) { // Is empty
-            if (Array.isArray(currentValue)) conditionMet = currentValue.length === 0;
-            else conditionMet = !currentValue || currentValue === "";
-        } else { // Exact value
-            if (Array.isArray(currentValue)) {
-                conditionMet = currentValue.includes(expectedValue);
-            } else if (currentValue === true && ['yes', 'true', 'on'].includes(String(expectedValue).toLowerCase())) {
-                conditionMet = true; // Fix for 'Yes'/'True' string matching boolean true
-            } else if (currentValue === false && ['no', 'false', 'off'].includes(String(expectedValue).toLowerCase())) {
-                conditionMet = true; // Fix for 'No'/'False' string matching boolean false
-            } else {
-                conditionMet = currentValue === expectedValue;
-            }
-        }
-        
-        const status = conditionMet ? 'PASSED' : 'INVALID';
-        //console.log(`[Conditional Check]  - Condition for '${cond.field}': ${status}. Expected: '${expectedValue}', Found: '${currentValue}'`);
-        return conditionMet;
-    };
-
-    if (field.showIf.mode === "and" || field.showIf.mode === "or") {
-        const conditions = field.showIf.conditions || [];
-        //console.log(`[Conditional Check]  - Mode: ${field.showIf.mode.toUpperCase()}, Conditions: ${conditions.length}`);
-        const results = conditions.map(evaluateCondition);
-        shouldShow = field.showIf.mode === "and" ? results.every(r => r) : results.some(r => r);
-    } else {
-        shouldShow = evaluateCondition(field.showIf);
-    }
-
-    if (!shouldShow) {
-        //console.log(`[Conditional Check] Result for '${fieldName}': HIDDEN`);
-        return null;
-    }
-    //console.log(`[Conditional Check] Result for '${fieldName}': VISIBLE`);
+  if (!evaluateFieldVisibility(field, formValues)) {
+    return null;
   }
 
   // Common styling wrapper for most fields
@@ -793,6 +750,312 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
                 >
                   Reset Payment
                 </button>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+    case "autopsy_import_button": {
+      const [step, setStep] = useState(0);
+      const [inputText, setInputText] = useState("");
+      const [parsedData, setParsedData] = useState(null);
+      const [selectedSuggestions, setSelectedSuggestions] = useState([]);
+
+      // Effect to initialize selectedSuggestions when parsedData changes
+      useEffect(() => {
+        if (parsedData && parsedData.suggestedCausesOfDeath) {
+          setSelectedSuggestions(parsedData.suggestedCausesOfDeath); // Select all by default
+        } else {
+          setSelectedSuggestions([]);
+        }
+      }, [parsedData]);
+
+      const handleToggleSuggestion = useCallback((cause) => {
+        setSelectedSuggestions(prev => 
+          prev.includes(cause) ? prev.filter(c => c !== cause) : [...prev, cause]
+        );
+      }, []);
+
+      const handleApplySelectedSuggestions = useCallback(() => {
+        handleChange('deathCausesListItems', selectedSuggestions);
+        showNotification("Selected causes successfully applied!", "success");
+      }, [handleChange, selectedSuggestions, showNotification]);
+
+      // Mapping for suggested causes of death based on wound types
+      const causeOfDeathSuggestionsMap = {
+        'gunshot wound': ["Massive blood loss due to gunshot wounds", "Damage to vital organs by gunshot", "Internal hemorrhage from gunshot wounds", "Acute blood loss from gunshot wounds"],
+        'stab wound': ["Exsanguination due to stab wounds", "Damage to vital organs by stab wound", "Internal hemorrhage from stab wounds"],
+        'blunt force trauma': ["Massive internal bleeding from blunt force trauma", "Traumatic brain injury", "Damage to vital organs from blunt force trauma"],
+        // Add more as needed
+      };
+
+      const parseMorgueData = (text) => {
+        const data = {};
+        
+        // Case Number
+        const caseMatch = text.match(/CASE #(\d+)/);
+        if (caseMatch) data.caseNumber = caseMatch[1];
+        
+        // Name and OOC
+        const nameMatch = text.match(/NAME:\s*\n(.*?)\s*\(\(\s*(.*?)\s*\)\)/);
+        if (nameMatch) {
+          let name = nameMatch[1].trim();
+          if (name.toLowerCase() === 'unknown') name = "John Doe";
+          data.decedentName = name;
+          data.decedentOOC = nameMatch[2].trim();
+        }
+
+        // DNA Profile
+        const dnaMatch = text.match(/DNA PROFILE\s*\n([A-F0-9]+)/);
+        if (dnaMatch) data.dnaProfile = dnaMatch[1].trim();
+
+        // Sex
+        const sexMatch = text.match(/SEX:\s*\n(Male|Female)/i);
+        if (sexMatch) {
+          const sex = sexMatch[1].toLowerCase();
+          data.sex = sex.charAt(0).toUpperCase() + sex.slice(1);
+        }
+
+        // Place of Death
+        const locMatch = text.match(/LOCATION:\s*\n(.+)/);
+        if (locMatch) data.placeOfDeath = locMatch[1].trim();
+        
+        // Physical Description -> External Examination
+        const physicalDescMatch = text.match(/PHYSICAL DESCRIPTION\s*\n([\s\S]*?)(?=FORENSIC DETAILS|AUTOPSY FINDINGS|$)/);
+        if (physicalDescMatch) {
+          const prefix = data.decedentOOC ? `(( ${data.decedentOOC}'s /examine\n\n` : "Autopsy Tech Examination of Decedent:\n\n";
+          data.externalExamination = prefix + physicalDescMatch[1].trim() + (data.decedentOOC ? ' ))' : '');
+        }
+
+        // Forensic Details (BAC/Narcotics)
+        const bacMatch = text.match(/Blood alcohol concentration \(BAC\)\s*\n([\d.]+%)/);
+        if (bacMatch) data.bacLevel = bacMatch[1].trim();
+
+        const narcoticsMatch = text.match(/Traces of narcotics\s*\n(.+)/);
+        if (narcoticsMatch) data.narcoticTraces = narcoticsMatch[1].trim();
+
+        // Casings (Multiple)
+        const casingRegex = /Bullet recovered with striation marks - (.*?)\s*\n#(.*)/g;
+        let casingMatch;
+        const casings = [];
+        while ((casingMatch = casingRegex.exec(text)) !== null) {
+          casings.push(`Bullet found with striation marks (${casingMatch[1].trim()}) #${casingMatch[2].trim()}`);
+        }
+        const hasCasings = casings.length > 0; // Evaluate once
+        if (hasCasings) {
+          data.casings = casings;
+          data.RadiologyResult = `${casings.length} projectiles/slugs were identified via fluoroscopy and recovered during the autopsy.`;
+        }
+
+        // Autopsy Findings
+        const findingsSection = text.split('AUTOPSY FINDINGS')[1];
+        if (findingsSection) {
+          const lines = findingsSection.trim().split('\n').slice(1);
+          const findings = lines.map(line => {
+            const parts = line.split('\t');
+            if (parts.length >= 4) {
+              const type = parts[1].trim();
+              const part = parts[2].trim();
+              const dist = parts[3].trim().replace(/[^\d.]/g, ''); // Extract number
+              const distParsed = parseFloat(dist);
+              const distRounded = !isNaN(distParsed) ? Math.floor(distParsed) : null;
+              const typeLower = type.toLowerCase();
+
+              // Only skip blood loss or missing body parts
+              if (typeLower === 'blood loss' || part === '—') {
+                return null;
+              }
+              
+              if (typeLower === 'gunshot wound') {
+                const rangeText = distRounded !== null ? `, estimated range ${distRounded}m` : '';
+                return `Gunshot Wound to ${part}${rangeText}`;
+              } else if (typeLower === 'blunt force trauma' || typeLower === 'stab wound') {
+                const formattedType = typeLower.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+                return `${formattedType} to ${part}`;
+              }
+              
+              const rangeSuffix = distRounded !== null ? ` (${distRounded}m)` : '';
+              return `${type} to ${part}${rangeSuffix}`;
+            }
+            return line.trim();
+          }).filter(l => l && l.length > 0);
+          if (findings.length > 0) {
+            data.anatomicSummaryListItems = findings;
+          }
+        }
+        
+        // Generate suggested causes of death
+        if (data.anatomicSummaryListItems && data.anatomicSummaryListItems.length > 0) {
+          const uniqueWoundTypes = new Set();
+          let hasGunshotToHead = false;
+
+          data.anatomicSummaryListItems.forEach(item => {
+            const match = item.match(/^(Gunshot Wound|Blunt Force Trauma|Stab Wound)\s+to\s+(.*?)(?:,|$)/i); // Extract body part
+            if (match) {
+              const woundType = match[1].toLowerCase();
+              const bodyPart = match[2].trim().toLowerCase();
+              uniqueWoundTypes.add(woundType);
+
+              if (woundType === 'gunshot wound' && bodyPart === 'head') {
+                hasGunshotToHead = true;
+              }
+            }
+          });
+
+          const suggestedCauses = [];
+          uniqueWoundTypes.forEach(woundType => {
+            if (causeOfDeathSuggestionsMap[woundType]) {
+              suggestedCauses.push(...causeOfDeathSuggestionsMap[woundType]);
+            }
+          });
+
+          // Add specific suggestion for gunshot to head
+          if (hasGunshotToHead && uniqueWoundTypes.has('gunshot wound')) { // Ensure it's a gunshot wound and to the head
+            suggestedCauses.push("Multiple gunshot wounds, with a fatal penetrating trauma to the head");
+          }
+          
+          data.suggestedCausesOfDeath = [...new Set(suggestedCauses)]; // Remove duplicates
+        }
+
+        return data;
+      };
+
+      const handleProcess = () => {
+        const data = parseMorgueData(inputText);
+        setParsedData(data);
+        setStep(2);
+      };
+
+      const handleApply = () => {
+        if (parsedData) {
+          Object.keys(parsedData).forEach(key => {
+            handleChange(key, parsedData[key]);
+          });
+          setStep(3);
+          showNotification("Morgue data successfully imported!", "success");
+        }
+      };
+
+      return (
+        <div style={fieldWrapperStyle}>
+          <label style={labelStyle}>{field.label}</label>
+          <div style={{ padding: '1rem', background: '#162032', borderRadius: 8 }}>
+            {step === 0 && (
+              <div>
+                <p style={{ color: "#cbd5e1", margin: "0 0 1rem" }}>Use this tool to automatically fill the form by pasting the morgue data output.</p>
+                <button onClick={() => setStep(1)} style={{ background: "#6366f1", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, width: '100%' }}>
+                    <i className="fas fa-file-import" style={{ marginRight: '8px' }}></i> Start Import
+                </button>
+              </div>
+            )}
+            {step === 1 && (
+              <div>
+                <p style={{ color: "#cbd5e1", margin: "0 0 0.5rem" }}>Upload Morgue Data here</p>
+                <button
+                  onClick={() => openImagePreview(morgueGif)}
+                  style={{ background: "#6366f1", color: "white", border: "none", padding: "0.5rem 1rem", borderRadius: 8, marginBottom: '1rem' }}
+                >
+                  Gif Tutorial
+                </button>
+                <textarea
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  placeholder="Paste the morgue output here..."
+                  style={{ ...inputStyle, minHeight: '150px', marginBottom: '1rem', fontSize: '0.8rem', fontFamily: 'monospace' }}
+                />
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                    <button onClick={handleProcess} style={{ background: "#10b981", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, flex: 1 }}>Process Data</button>
+                    <button onClick={() => setStep(0)} style={{ background: "#475569", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, flex: 1 }}>Cancel</button>
+                </div>
+              </div>
+            )}
+            {step === 2 && (
+              <div>
+                <p style={{ color: "#cbd5e1", margin: "0 0 1rem" }}>Review the data identified:</p>
+                <div style={{ background: '#0f172a', padding: '0.8rem', borderRadius: '4px', fontSize: '0.85rem', color: '#94a3b8', marginBottom: '1rem' }}>
+                    {parsedData && Object.keys(parsedData).length > 0 ? (
+                        <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                            {parsedData.decedentName && <li><strong>Name:</strong> {parsedData.decedentName} (({parsedData.decedentOOC}))</li>}
+                            {parsedData.sex && <li><strong>Sex:</strong> {parsedData.sex}</li>}
+                            {parsedData.dnaProfile && <li><strong>DNA:</strong> {parsedData.dnaProfile}</li>}
+                            {parsedData.caseNumber && <li><strong>Case #:</strong> {parsedData.caseNumber}</li>}
+                            {parsedData.placeOfDeath && <li><strong>Location:</strong> {parsedData.placeOfDeath}</li>}
+                            {parsedData.dateTime && <li><strong>Time:</strong> {parsedData.dateTime}</li>}
+                            {parsedData.bacLevel && <li><strong>BAC:</strong> {parsedData.bacLevel}</li>}
+                            {parsedData.narcoticTraces && <li><strong>Narcotics:</strong> {parsedData.narcoticTraces}</li>}
+                            {parsedData.externalExamination && <li><strong>External Exam:</strong> Extracted</li>}
+                            {parsedData.casings && <li><strong>Casings:</strong> {parsedData.casings.length} found</li>}
+                            {parsedData.anatomicSummaryListItems && <li><strong>Findings:</strong> {parsedData.anatomicSummaryListItems.length} items found</li>}
+                        </ul>
+                    ) : (
+                        <p style={{ color: '#ef4444', margin: 0 }}>No valid data could be identified. Please check your input or contact Alyson Frost for assistance.</p>
+                    )}
+
+                    {parsedData && parsedData.suggestedCausesOfDeath && parsedData.suggestedCausesOfDeath.length > 0 && (
+                        <div style={{ marginTop: '1rem', borderTop: '1px solid #334155', paddingTop: '1rem' }}>
+                            <p style={{ margin: '0 0 0.5rem', color: '#fcd34d' }}><strong>Suggested Causes of Death:</strong></p>
+                            <div style={{ maxHeight: '150px', overflowY: 'auto', paddingRight: '10px' }}> {/* Scrollable area */}
+                            {parsedData.suggestedCausesOfDeath.map((cause, index) => (
+                                <div key={index} style={{ marginBottom: '5px', display: 'flex', alignItems: 'center' }}>
+                                    <input
+                                        type="checkbox"
+                                        id={`suggested-cause-${index}`}
+                                        checked={selectedSuggestions.includes(cause)}
+                                        onChange={() => handleToggleSuggestion(cause)}
+                                        style={{ marginRight: '8px' }}
+                                    />
+                                    <label htmlFor={`suggested-cause-${index}`} style={{ margin: 0, color: '#e2e8f0' }}>{cause}</label>
+                                </div>
+                            ))}
+                            </div>
+                            <button
+                                onClick={handleApplySelectedSuggestions}
+                                style={{
+                                    background: "#3b82f6",
+                                    color: "white",
+                                    border: "none",
+                                    padding: "0.5rem 1rem",
+                                    borderRadius: 8,
+                                    fontSize: "0.9rem",
+                                    fontWeight: "600",
+                                    marginTop: "1rem",
+                                    width: "100%"
+                                }}
+                            >
+                                Apply Selected Suggestions
+                            </button>
+                        </div>
+                    )}
+                </div>
+                
+                <div style={{ background: '#3d301a', border: '1px solid #f59e0b', padding: '0.8rem', borderRadius: '4px', fontSize: '0.8rem', color: '#fcd34d', marginBottom: '1rem' }}>
+                    <i className="fas fa-exclamation-triangle" style={{ marginRight: '6px' }}></i>
+                    <strong>Manual Action Required:</strong>
+                    <ul style={{ margin: '4px 0 0', paddingLeft: '20px' }}>
+                        <li>Review the parsed data for accuracy</li>
+                        <li>Add the Autopsy Start Time</li>
+                        <li>Add Injury Mechanism, Manner of Death and Cause of Death</li>
+                        <li> Review the Autopsy Request and add in the External Examination (if scene photos are provoided) </li>
+                        <li>Summerize with the ME Opinion</li>
+                    </ul>
+                </div>
+
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                    <button 
+                        onClick={handleApply} 
+                        disabled={!parsedData || Object.keys(parsedData).length === 0}
+                        style={{ background: "#10b981", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, flex: 2, opacity: (!parsedData || Object.keys(parsedData).length === 0) ? 0.5 : 1 }}
+                    >Apply to Form</button>
+                    <button onClick={() => setStep(1)} style={{ background: "#475569", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, flex: 1 }}>Back</button>
+                </div>
+              </div>
+            )}
+            {step === 3 && (
+              <div style={{ textAlign: 'center' }}>
+                <i className="fas fa-check-circle" style={{ fontSize: '2rem', color: '#10b981', marginBottom: '0.5rem' }}></i>
+                <p style={{ color: "#34d399", fontWeight: 'bold' }}>Data Successfully Applied!</p>
+                <button onClick={() => { setStep(0); setInputText(""); setParsedData(null); }} style={{ background: "#6366f1", color: "white", border: "none", padding: "0.5rem 1rem", borderRadius: 8, marginTop: '0.5rem' }}>Import Another</button>
               </div>
             )}
           </div>

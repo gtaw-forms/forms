@@ -60,10 +60,12 @@ export const WebhookProvider = ({ children, commitInfo }) => {
         if (!files || files.length === 0) return;
         setIsUploading(true);
         try {
-            const uploadedUrls = await uploadImage(event);
-            if (uploadedUrls && uploadedUrls.length > 0) {
-                setMediaUrls(prevUrls => [...prevUrls, ...uploadedUrls]);
-                showNotification(`${uploadedUrls.length} image(s) uploaded successfully!`, 'check-circle');
+            const uploadedResults = await uploadImage(event);
+            if (uploadedResults && uploadedResults.length > 0) {
+                // Extract only the string URLs from the results (which are {url, thumb} objects)
+                const newUrls = uploadedResults.map(res => typeof res === 'string' ? res : res.url);
+                setMediaUrls(prevUrls => [...prevUrls, ...newUrls]);
+                showNotification(`${newUrls.length} image(s) uploaded successfully!`, 'check-circle');
             } else {
                 showNotification('Image upload returned no URLs.', 'warning');
             }
@@ -112,19 +114,33 @@ export const WebhookProvider = ({ children, commitInfo }) => {
             showNotification('Embed title cannot exceed 256 characters.', 'warning');
             return null;
         }
-        let description = message || '';
+
         let firstImageUrlForEmbed = null;
-        for (const url of mediaUrls) {
-            if (/".(jpg|jpeg|png|gif)$/i.test(url) || url.includes('ibb.co')) {
-                firstImageUrlForEmbed = url;
-                break;
-            }
+        let mediaDescription = '';
+        
+        if (mediaUrls.length > 0) {
+            mediaDescription = '\n\n**Media:**\n';
+            mediaUrls.forEach((url, index) => {
+                const isImage = /\.(jpg|jpeg|png|gif)$/i.test(url) || url.includes('ibb.co');
+                const isVideo = url.includes('streamable.com');
+                const type = isVideo ? 'Video' : isImage ? 'Image' : 'Link';
+                
+                if (isImage && !firstImageUrlForEmbed) {
+                    firstImageUrlForEmbed = url;
+                }
+                
+                mediaDescription += `- ${type} ${index + 1}: ${url}\n`;
+            });
         }
+
         const footerText = `PHMC Form Generator - v${commitInfo?.sha || 'N/A'}`;
+        const description = (message + mediaDescription).trim();
+
         if (description.length > 4096) {
-            showNotification('Embed body (message content) cannot exceed 4096 characters.', 'warning');
+            showNotification('Embed body (including media links) cannot exceed 4096 characters.', 'warning');
             return null;
         }
+
         const embedFields = [
             { name: "[Delayed Updates] Form Generator Link", value: "https://phmc-tools.gta.world/", inline: false },
             { name: "Alternative Form Generator Link", value: "https://gtaw-forms.github.io/forms/", inline: false }
@@ -133,7 +149,7 @@ export const WebhookProvider = ({ children, commitInfo }) => {
         const embed = {
             title: title || "PHMC Form Generator Notification",
             url: "https://phmc-tools.gta.world/",
-            description: description.trim() || undefined,
+            description: description || undefined,
             color: 0x7289DA,
             timestamp: new Date().toISOString(),
             image: firstImageUrlForEmbed ? { url: firstImageUrlForEmbed } : undefined,
@@ -142,19 +158,6 @@ export const WebhookProvider = ({ children, commitInfo }) => {
                 text: footerText
             }
         };
-
-        if (!message && !title && mediaUrls.length > 0) {
-            embed.description = `Media submitted via PHMC Form Generator - v${commitInfo?.sha || 'N/A'}`;
-            embed.description += '\n\n**Media:**\n';
-            mediaUrls.forEach((url, index) => {
-                const type = url.includes('streamable.com') ? 'Video' : (/".(jpg|jpeg|png|gif)$/i.test(url) || url.includes('ibb.co')) ? 'Image' : 'Link';
-                embed.description += `- ${type} ${index + 1}: ${url}\n`;
-            });
-            if (embed.description.length > 4096) {
-                showNotification('Embed body (including media links) cannot exceed 4096 characters.', 'warning');
-                return null;
-            }
-        }
 
         return {
             username: "PHMC",

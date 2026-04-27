@@ -205,13 +205,6 @@ const formatToNorthAmericanDate = (isoDateTime) => {
         return acc;
       }, {});
 
-      // DEBUG: Log local instance detection and processed values
-      console.log('[useBbcodeGenerator] isLocalInstance:', isLocalInstance);
-      console.log('[useBbcodeGenerator] formValues input:', formValues);
-      console.log('[useBbcodeGenerator] processedFormValues:', processedFormValues);
-      console.log('[useBbcodeGenerator] coronerRank:', processedFormValues.coronerRank);
-      console.log('[useBbcodeGenerator] coronerEmployee:', processedFormValues.coronerEmployee);
-      console.log('[useBbcodeGenerator] coronerBadge:', processedFormValues.coronerBadge);
 
       // Add currentYear to processedFormValues for easy templating
       processedFormValues.currentYear = new Date().getFullYear();
@@ -322,127 +315,112 @@ const formatToNorthAmericanDate = (isoDateTime) => {
       addFallback('coronerEmployee', 'CoronerEmployee'); addFallback('CoronerEmployee', 'coronerEmployee');
 
       if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email") {
-        let titleParts = ["Coroner Report"];
-        const allOocNames = [];
-        const nameCounts = {}; // IC Name -> Count
-        const uniquePeople = new Set(); // Track "IC|OOC" to prevent double-counting same person across reports
-
-        const addDecedent = (ic, ooc) => {
-            if (!ic || ic === "N/A" || ic === "NO_NAME") return;
-            
-            // 1. Extract multiplier and clean IC name
-            const multiplierMatch = ic.match(/\(x(\d+)\)/);
-            const multiplier = multiplierMatch ? parseInt(multiplierMatch[1], 10) : 1;
-            let cleanedIc = ic.replace(/\(\(.*\)\)/g, '')
-                             .replace(/\[.*\]/g, '')
-                             .replace(/\(x\d+\)/g, '')
-                             .replace(/(?:\s*-\s*|\s+)\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/g, '')
-                             .replace(/(?:\s*-\s*|\s+)\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}/g, '')
-                             .replace(/\s*-\s*$/g, '')
-                             .trim();
-                             
-            if (cleanedIc.toLowerCase() === "unknown decedent") cleanedIc = "UNKNOWN DECEDENT";
-            
-            // 2. Extract and sanitize OOC names (handle both (( )) and [ ])
-            let oocList = [];
-            if (ooc && ooc !== "N/A") {
-                const rawOoc = String(ooc).replace(/[\[\]\(\)]/g, ''); // Strip all surrounding brackets
-                oocList = rawOoc.split(',').map(s => cleanOocString(s)).filter(Boolean);
-            }
-            
-            if (cleanedIc) {
-                if (oocList.length > 0) {
-                    // Global deduplication of (IC Name, OOC Name) pairs
-                    // ONLY OOC names contribute to the count for named ICs
-                    oocList.forEach(name => {
-                        const personKey = `${cleanedIc.toLowerCase()}|${name.toLowerCase()}`;
-                        if (!uniquePeople.has(personKey)) {
-                            uniquePeople.add(personKey);
-                            nameCounts[cleanedIc] = (nameCounts[cleanedIc] || 0) + 1;
-                            if (!allOocNames.includes(name)) allOocNames.push(name);
-                        }
-                    });
-                } else if (cleanedIc === "UNKNOWN DECEDENT") {
-                    nameCounts["UNKNOWN DECEDENT"] = (nameCounts["UNKNOWN DECEDENT"] || 0) + multiplier;
-                } else if (multiplier > 1) {
-                    // Handle named ICs with a multiplier but no OOC names listed
-                    nameCounts[cleanedIc] = (nameCounts[cleanedIc] || 0) + multiplier;
-                }
-                // NOTE: Named ICs without OOC names AND without a multiplier are ignored for the count
-            }
-        };
-
-        // --- Data Gathering ---
-
-        // 1. From main form (only if not redundant with decedents array)
-        const hasDecedentsArray = Array.isArray(processedFormValues.decedents) && processedFormValues.decedents.length > 0;
-        if (!hasDecedentsArray) {
-            addDecedent(processedFormValues.decedentName, processedFormValues.decedentOOC);
-        }
-
-        // 2. From decedents array
-        if (hasDecedentsArray) {
-            processedFormValues.decedents.forEach(d => {
-                addDecedent(d.decedentName, d.decedentOOC);
-            });
-        }
+        // SIMPLIFIED APPROACH: For Coroner Email, ONLY use attached reports
+        // Each report title contains the complete list of decedents and OOC names
         
-        // 3. From attached reports
+        const collectedDecedents = []; // [{ic, oocList}, ...]
+        const allOocNames = [];
+        let totalDecedentCount = 0;
+
         if (Array.isArray(processedFormValues.additionalReports) && processedFormValues.additionalReports.length > 0) {
-            processedFormValues.additionalReports.forEach(report => {
-                const key = report.originalKey || "";
-                let icNameString = key;
-                let oocString = null;
+          processedFormValues.additionalReports.forEach(report => {
+            const reportTitle = typeof report === 'string' ? 'Report' : (report.originalKey || 'Report');
+            const reportBBCode = typeof report === 'string' ? '' : (report.bbCode || '');
+            console.log('[CoronerEmail Debug] Processing report title:', reportTitle);
 
-                // Strip standard prefixes first
-                icNameString = icNameString.replace(/^\[.*?\]\s*/, '').replace(/^Coroner Report -\s*/, '').trim();
+            let icSection = reportTitle;
+            let oocNames = [];
 
-                // Clean date/junk off the end of the IC name string FIRST
-                icNameString = icNameString
-                    .replace(/(?:\s*-\s*|\s+)\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/g, '')
-                    .replace(/(?:\s*-\s*|\s+)\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}/g, '')
-                    .replace(/\s*-\s*$/g, '')
-                    .trim();
+            // Step 1: Strip report type prefix (e.g., "[Multi Fatality Report]" or "[DEATH-REPORT]")
+            icSection = icSection.replace(/^\[.*?\]\s*/, '').replace(/^Coroner Report -\s*/, '').trim();
 
-                // Now, extract OOC from title if present (handles both ((...)) and [...])
-                const oocMatchInTitle = icNameString.match(/\s*(?:\(\((.*?)\)\)|\[(.*?)\])\s*$/);
-                if (oocMatchInTitle) {
-                    oocString = oocMatchInTitle[1] || oocMatchInTitle[2];
-                    icNameString = icNameString.substring(0, oocMatchInTitle.index).trim();
+            // Step 2: Extract OOC names from ANYWHERE in the title (both (( )) and [ ] formats)
+            // This handles both end-of-title OOC (Multi Fatality) and middle-of-title OOC (DEATH-REPORT)
+            const oocMatches = icSection.match(/(?:\(\((.*?)\)\)|\[(.*?)\])/g);
+            if (oocMatches) {
+              oocMatches.forEach(match => {
+                const oocContent = match.replace(/[\[\]()]/g, ''); // Remove brackets
+                const names = oocContent.split(',').map(n => cleanOocString(n.trim())).filter(Boolean);
+                oocNames.push(...names);
+              });
+              // Remove all OOC sections from icSection so dates and IC names are clean
+              icSection = icSection.replace(/(?:\(\((.*?)\)\)|\[(.*?)\])/g, '').trim();
+            }
+
+            // Step 2b: If no OOC names found in title, try to extract from bbCode body
+            if (oocNames.length === 0 && reportBBCode) {
+              const bbcodeOocMatches = reportBBCode.match(/\(\((.*?)\)\)/g);
+              if (bbcodeOocMatches) {
+                oocNames = bbcodeOocMatches.map(m => cleanOocString(m.slice(2, -2).trim())).filter(Boolean);
+                console.log('[CoronerEmail Debug] Found OOC names in bbCode body (before dedup):', oocNames);
+              }
+            }
+
+            // Step 2c: Deduplicate OOC names (preserve order, remove all duplicates)
+            if (oocNames.length > 0) {
+              const uniqueOocNames = [];
+              for (const name of oocNames) {
+                if (!uniqueOocNames.includes(name)) {
+                  uniqueOocNames.push(name);
                 }
+              }
+              oocNames = uniqueOocNames;
+              console.log('[CoronerEmail Debug] OOC names after deduplication:', oocNames);
+            }
 
-                // Fallback to grabbing all OOC names from the body if not found in title
-                if (!oocString) {
-                    const oocMatches = report.bbCode?.match(/\(\((.*?)\)\)/g);
-                    if (oocMatches) {
-                        oocString = oocMatches.map(m => m.slice(2, -2).trim()).join(', ');
-                    }
-                }
+            // Step 3: Remove dates from IC section (now that OOC is removed, dates should be isolated)
+            icSection = icSection
+              .replace(/\s*-\s*\d{1,2}\/\d{1,2}\/\d{4}\s*$/, '') // MM/DD/YYYY
+              .replace(/\s*-\s*\d{4}\/\d{1,2}\/\d{1,2}\s*$/, '') // YYYY/MM/DD
+              .replace(/\s+\d{1,2}\/\d{1,2}\/\d{4}\s*$/, '') // MM/DD/YYYY without dash
+              .replace(/\s+\d{4}\/\d{1,2}\/\d{1,2}\s*$/, '') // YYYY/MM/DD without dash
+              .trim();
 
-                const icNames = icNameString.split(/\s*\|\s*|\s*,\s*/).map(n => n.trim()).filter(Boolean);
-                const oocNames = oocString ? oocString.split(',').map(s => s.trim()).filter(Boolean) : [];
-                
-                if (icNames.length === 1 && oocNames.length > 1) {
-                    // Handle Multi-Fatality case: one IC name string (possibly with xN), multiple OOC names
-                    addDecedent(icNames[0], oocNames.join(', '));
-                } else {
-                    // Handle standard case: pair IC and OOC names
-                    icNames.forEach((name, index) => {
-                        addDecedent(name, oocNames[index] || null);
-                    });
+            // Step 4: Extract individual IC names (split by | or ,)
+            const icNames = icSection.split(/\s*\|\s*|\s*,\s*/).map(n => n.trim()).filter(Boolean);
+
+            // Step 5: For each IC name, expand multipliers and pair with OOC names
+            let icIndex = 0;
+            for (const icName of icNames) {
+              const multiplierMatch = icName.match(/^(.*?)\s*\(x(\d+)\)$/);
+              const baseName = multiplierMatch ? multiplierMatch[1].trim() : icName;
+              const multiplier = multiplierMatch ? parseInt(multiplierMatch[2], 10) : 1;
+
+              // Add each expanded instance
+              for (let m = 0; m < multiplier; m++) {
+                const ooc = oocNames[icIndex] || null;
+                if (ooc && !allOocNames.includes(ooc)) {
+                  allOocNames.push(ooc);
                 }
-            });
+                collectedDecedents.push({ ic: baseName, ooc });
+                icIndex++;
+              }
+            }
+
+            console.log('[CoronerEmail Debug] Extracted from report - IC names:', icNames, 'OOC names:', oocNames, 'Collected:', collectedDecedents.length);
+          });
         }
 
-        // --- Title Construction ---
+        // Step 6: Count unique IC names and their frequencies
+        const nameCounts = {};
+        collectedDecedents.forEach(({ ic, ooc }) => {
+          if (ic && ic !== 'N/A' && ic !== 'NO_NAME') {
+            nameCounts[ic] = (nameCounts[ic] || 0) + 1;
+          }
+        });
+
+        console.log('[CoronerEmail Debug] Final name counts:', nameCounts, 'OOC names:', allOocNames);
+
+        // Step 7: Build title
+        let titleParts = ["Coroner Report"];
         const namesList = Object.entries(nameCounts)
-            .map(([name, count]) => count > 1 ? `${name} (x${count})` : name)
-            .join(', ');
+          .map(([name, count]) => count > 1 ? `${name} (x${count})` : name)
+          .join(', ');
         
         if (namesList) {
-            titleParts.push(`- ${namesList}`);
+          titleParts.push(`- ${namesList}`);
         } else {
-            titleParts.push('- UNKNOWN DECEDENT');
+          titleParts.push('- UNKNOWN DECEDENT');
         }
         
         if (allOocNames.length > 0) {
@@ -450,6 +428,7 @@ const formatToNorthAmericanDate = (isoDateTime) => {
         }
         
         finalTitle = titleParts.join(' ').replace(/\s{2,}/g, ' ').trim();
+        console.log('[CoronerEmail Debug] Final title:', finalTitle);
       }
       else if (selectedForm.firebaseKey === 'mass-ftality-test' || selectedForm.id === 'mass-fatality' || selectedForm.name?.toLowerCase().includes('mass fatality')) {
         const decedentCounts = {};
@@ -621,11 +600,9 @@ const formatToNorthAmericanDate = (isoDateTime) => {
             console.log(`[BBCodeDebug] Generated spoiler for key "${originalKey}"`);
             return spoiler;
         }).join('\n\n');
-        console.log('[BBCodeDebug] All additional reports processed into BBCode:', additionalReportsBBCodes);
         deathReportContent = [deathReportContent, additionalReportsBBCodes].filter(Boolean).join('\n\n');
       }
       processedFormValues.deathReport = deathReportContent;
-      console.log('[BBCodeDebug] Final deathReport content:', deathReportContent);
 
       bbcode = bbcode.replace(/\{\{([a-zA-Z0-9_]+)\|((?:(?!}}).)+)\}\}/g, (match, key, placeholderText) => {
           const value = processedFormValues[key];

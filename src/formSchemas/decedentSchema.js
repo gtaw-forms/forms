@@ -39,6 +39,7 @@ export const decedentItemSchema = [
   sectionHeader('Identification'),
   textInput('decedentName', 'Decedent Name', 'Full Name', compact50),
   textInput('decedentOOC', 'Decedent OOC', 'Out-of-Character Name', compact50),
+  textInput('evidenceLockerID', 'Evidence Locker ID', 'Unique Locker ID', compact50),
   
   sectionHeader('Medical Findings'),
   textareaInput('synopsis', 'Injuries / Things of Note', 'Brief synopsis of the decedent, injuries, etc.', 3),

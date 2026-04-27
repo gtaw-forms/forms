@@ -15,7 +15,7 @@ import { useReportActions } from '../../hooks/useReportActions';
 import { useReportAttachment } from '../../hooks/useReportAttachment';
 import { useFormSaver } from '../../hooks/useFormSaver';
 import FormQuickLinks from './FormQuickLinks';
-import { validateForm } from '../../utils/formValidation';
+import { validateForm, evaluateFieldVisibility } from '../../utils/formValidation';
 import { sendDiscordWebhook } from '../../utils/webhookUtils';
 import { sendBingoNotification, sendPhraseRequestNotification } from '../UI/notificationService';
 import { useInactivityReload } from '../../hooks/useInactivityReload';
@@ -88,7 +88,7 @@ export const FormHandler = () => {
       const [tourType, setTourType] = useState(null); // 'general' or 'form-specific'
 
       // Left Sidebar State
-      const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
+      const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(() => !localStorage.getItem('lastSelectedFormName'));
 
       // Helper for consistent name comparison
       const normalizeName = useCallback((name) => String(name || '').trim().toLowerCase(), []);
@@ -110,6 +110,7 @@ export const FormHandler = () => {
         swapCharacter,
         factionData,
         updateFactionData,
+        triggerFactionSync,
         login,
         logout,
         accessLevel
@@ -139,7 +140,7 @@ export const FormHandler = () => {
       }, [isAuthenticated, accessLevel, user, characterName, showNotification]);
     
       // General Tour Prompt on Visit
-      useEffect(() => {
+/*       useEffect(() => {
         // We use localStorage so it only prompts once ever (until cleared)
         const hasSeenGeneralTour = localStorage.getItem('hasSeenGeneralTourPrompt') === 'true';
         
@@ -214,7 +215,7 @@ export const FormHandler = () => {
           }
         }
       }, [selectedForm, showNotification, removeNotification]);
-    
+ */    
     
       useEffect(() => {
         const hasSeenIncidentNotice = localStorage.getItem('seenAgencyIncidentNotice') === 'true';
@@ -290,72 +291,12 @@ export const FormHandler = () => {
       if (!keepCredentials) setKeepCredentials(true);
     }
   }, [isPhmcMember, showNotification, removeNotification, setKeepCredentials, keepCredentials]);
-  const handleRequestAccess = useCallback(async () => {
-    const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_AUTH || import.meta.env.VITE_DEV_WEBHOOK;
-    if (!webhookUrl) {
-      showNotification('Auth webhook not configured.', 'error');
-      return;
-    }
-    showNotification('Sending access request...', 'spinner fa-spin');
-    const payload = {
-        content: "<@310464654922645505>", // Ping specific user
-        embeds: [{
-            title: "🔐 PHMC Access Request",
-            color: 16776960, // Yellow
-            description: "A user has requested access to PHMC forms.",
-            fields: [
-                { name: "UCP Username", value: user?.username || "Unknown", inline: true },
-                { name: "Character Name", value: user?.faction?.characterName || user?.activeCharacter?.characterName || characterName || "Unknown", inline: true },
-                { name: "Faction Status", value: isPhmcMember ? "Member (System Error?)" : "Not Detected", inline: true },
-                { name: "User ID", value: String(user?.id || "N/A"), inline: true }
-            ],
-            footer: { text: "Please verify this user in the faction roster." },
-            timestamp: new Date().toISOString()
-        }]
-    };
-    try {
-        await sendDiscordWebhook(webhookUrl, payload);
-        showNotification('Access request sent! An admin has been notified.', 'success');
-    } catch (e) {
-        showNotification('Failed to send request.', 'error');
-        console.error(e);
-    }
-  }, [user, characterName, isPhmcMember, showNotification]);
-
-  useEffect(() => {
-    // Check if authenticated but not a PHMC member (according to our data)
-    if (isAuthenticated && !isPhmcMember && !isDevelopment) {
-        // Use sessionStorage to ensure it only shows once per session to avoid spamming
-        const hasShownAuthPrompt = sessionStorage.getItem('hasShownAuthPrompt');
-        
-        if (!hasShownAuthPrompt) {
-             showNotification(
-                "If you are a PHMC Member and cannot see forms, please click here.",
-                "info",
-                15000, // 15 seconds
-                { actions: [
-                    {
-                        label: "Request Access",
-                        handler: (id) => {
-                             handleRequestAccess();
-                             removeNotification(id);
-                        }
-                    },
-                    { label: "Dismiss", handler: (id) => removeNotification(id) }
-                ]}
-            );
-            sessionStorage.setItem('hasShownAuthPrompt', 'true');
-        }
-    }
-  }, [isAuthenticated, isPhmcMember, isDevelopment, handleRequestAccess, showNotification, removeNotification]);
 
   // NEW: Track form handler visit
   useEffect(() => {
     trackMetric('form_handler', 'main_page');
   }, [trackMetric]);
 
-  const oauthFirstName = user?.faction?.firstname || user?.activeCharacter?.firstname || null;
-  const oauthLastName = user?.faction?.lastname || user?.activeCharacter?.lastname || null;
   const { 
     agencyDataStore, 
     phmcListData, 
@@ -367,6 +308,26 @@ export const FormHandler = () => {
     submitSurveyResponse,
     factionsData,
   } = useData();
+
+  useEffect(() => {
+    if (!selectedForm && formsData && formsData.length > 0) {
+      const lastFormName = localStorage.getItem('lastSelectedFormName');
+      if (lastFormName) {
+        const restoredForm = formsData.find(f => f.name === lastFormName);
+        if (restoredForm) {
+          console.log(`[FormHandler] Restoring last selected form: ${lastFormName}`);
+          setSelectedForm(restoredForm);
+          
+          // Load progression data for this form
+          const savedProgression = localStorage.getItem(`form_progression_${restoredForm.firebaseKey}`);
+          if (savedProgression) {
+            setFormValues(JSON.parse(savedProgression));
+          }
+        }
+      }
+    }
+  }, [formsData]); // Run once when formsData is available
+
   const { showEmsBingoModal, setShowEmsBingoModal } = useModal();
   const { saveReport: saveNewReport } = useFormSaver(user, isAuthenticated);
   const modalCloseTimer = React.useRef(null);
@@ -554,11 +515,27 @@ export const FormHandler = () => {
     const errors = [];
     const SYNOPSIS_MIN_LENGTH = 200;
 
+    // Helper for checking if a value is empty
+    const isValueEmpty = (val) => {
+      if (val === null || val === undefined) return true;
+      if (typeof val === 'string' && val.trim() === "") return true;
+      if (Array.isArray(val) && val.length === 0) return true;
+      if (typeof val === 'object') {
+        if (val.value !== undefined || val.label !== undefined) {
+          return !val.value && !val.label;
+        }
+        return Object.keys(val).length === 0;
+      }
+      return false;
+    };
+
     // Check individual Coroner Report
     if (isCoronerReport) {
-      const isCK = formValues.typeOfDeath === 'CK' || formValues.typeOfDeath?.value === 'CK';
+      const typeOfDeath = formValues.typeOfDeath?.value || formValues.typeOfDeath;
+      const isCK = typeOfDeath === 'CK';
+      const isPK = typeOfDeath === 'PK';
       
-      // Mandatory Fields
+      // Mandatory Fields (Always checked for Coroner)
       const mandatoryFields = [
         { key: 'decedentName', label: 'Decedent Name' },
         { key: 'decedentOOC', label: 'Decedent OOC' },
@@ -568,57 +545,103 @@ export const FormHandler = () => {
       ];
 
       mandatoryFields.forEach(field => {
-        const val = formValues[field.key];
-        const isEmpty = !val || (typeof val === 'string' && val.trim() === "") || (typeof val === 'object' && val !== null && !val.value && !val.label);
-        
-        if (isEmpty) {
+        if (isValueEmpty(formValues[field.key])) {
           errors.push(`Missing mandatory field: ${field.label}`);
         }
       });
 
-      // Strict Mode for CK
-      if (isCK) {
-        const synopsis = formValues.synopsis || "";
-        if (synopsis.length < SYNOPSIS_MIN_LENGTH) {
-          errors.push(`Synopsis is too short for a CK report (${synopsis.length}/${SYNOPSIS_MIN_LENGTH} chars).`);
+      // Strict Mode for CK/PK
+      if (isCK || isPK) {
+        const typeLabel = isCK ? "CK" : "PK";
+        
+        // Check ALL displayed fields for CK/PK
+        if (selectedForm.fields) {
+            selectedForm.fields.forEach(field => {
+                // Skip decoration fields and special action fields
+                if (['hr', 'fake_line', 'section', 'information_state', 'autopsy_import_button', 'autopsy_diagram_button', 'payment_button', 'attach_report_button'].includes(field.type)) return;
+                
+                // Skip optional fields even for CK/PK
+                if (['additionalstaff', 'ReportRequested', 'evidenceLocker'].includes(field.name)) return;
+
+                if (evaluateFieldVisibility(field, formValues)) {
+                    if (isValueEmpty(formValues[field.name])) {
+                        errors.push(`[${typeLabel} Requirement] Missing field: ${field.label || field.name}`);
+                    }
+                }
+            });
         }
 
-        // Check for images (both scene and morgue/additional are required for CK)
-        const hasSceneImages = (formValues.scenePhotosBBCode && formValues.scenePhotosBBCode.length > 0);
-        const hasMorgueImages = (formValues.additionalPhotos && formValues.additionalPhotos.length > 0);
+        // Synopsis length check ONLY for CK
+        if (isCK) {
+          const synopsis = formValues.synopsis || "";
+          if (synopsis.length < SYNOPSIS_MIN_LENGTH) {
+            errors.push(`Synopsis is too short for a CK report (${synopsis.length}/${SYNOPSIS_MIN_LENGTH} chars).`);
+          }
+        }
+
+        // Check for images (both scene and morgue/additional are required for CK/PK)
+        const hasSceneImages = (formValues.scenePhotosBBCode && formValues.scenePhotosBBCode.length > 0) || (formValues.scenePhotos && formValues.scenePhotos.length > 0);
+        const hasMorgueImages = (formValues.additionalPhotos && formValues.additionalPhotos.length > 0) || (formValues.additionalImages && formValues.additionalImages.length > 0);
 
         if (!hasSceneImages || !hasMorgueImages) {
-          errors.push("CK reports require at least one image upload for BOTH scene and morgue photos.");
+          errors.push(`${typeLabel} reports require at least one image upload for BOTH scene and morgue photos.`);
         }
       }
     }
 
     // Check Mass Fatality Report
     if (isMassFatality && Array.isArray(formValues.decedents)) {
+      const lockerIds = new Set();
       formValues.decedents.forEach((dec, idx) => {
-        const isCK = dec.typeOfDeath === 'CK' || dec.typeOfDeath?.value === 'CK';
+        const typeOfDeath = dec.typeOfDeath?.value || dec.typeOfDeath;
+        const isCK = typeOfDeath === 'CK';
+        const isPK = typeOfDeath === 'PK';
         const name = dec.decedentName || `Decedent #${idx + 1}`;
+
+        // Uniqueness check for evidenceLockerID
+        if (dec.evidenceLockerID && dec.evidenceLockerID.trim() !== '') {
+          const lid = dec.evidenceLockerID.trim().toLowerCase();
+          if (lockerIds.has(lid)) {
+            errors.push(`[${name}] Duplicate Evidence Locker ID found: ${dec.evidenceLockerID}. Each ID must be unique.`);
+          }
+          lockerIds.add(lid);
+        }
 
         if (!dec.decedentName || !dec.decedentOOC) {
           errors.push(`[${name}] Missing Name or OOC.`);
         }
 
-        if (isCK) {
-            // Check for images (both scene and morgue/additional are required for CK)
+        if (isCK || isPK) {
+            const typeLabel = isCK ? "CK" : "PK";
+            
+            // For mass fatality decedents, check all fields in the schema
+            decedentItemSchema.forEach(field => {
+                if (field.type === 'section') return;
+                // decedentItemSchema doesn't have additionalstaff, but if it did we would skip it here too
+                if (isValueEmpty(dec[field.name])) {
+                    errors.push(`[${name}] ${typeLabel} Requirement: Missing field: ${field.label}`);
+                }
+            });
+
+            // Check for images (both scene and morgue/additional are required for CK/PK)
             const hasSceneImages = (dec.scenePhotos && dec.scenePhotos.length > 0);
-            const hasMorgueImages = (dec.additionalPhotos && dec.additionalPhotos.length > 0);
+            const hasMorgueImages = (dec.additionalPhotos && dec.additionalPhotos.length > 0) || (dec.additionalImages && dec.additionalImages.length > 0);
 
             if (!hasSceneImages || !hasMorgueImages) {
-                errors.push(`[${name}] CK reports require at least one image upload for BOTH scene and morgue photos.`);
+                errors.push(`[${name}] ${typeLabel} reports require at least one image upload for BOTH scene and morgue photos.`);
             }
 
-            const synopsis = dec.synopsis || "";
-            if (synopsis.length < SYNOPSIS_MIN_LENGTH) {
-                errors.push(`[${name}] Synopsis is too short for a CK report (${synopsis.length}/${SYNOPSIS_MIN_LENGTH} chars).`);
+            // Synopsis length check ONLY for CK
+            if (isCK) {
+                const synopsis = dec.synopsis || "";
+                if (synopsis.length < SYNOPSIS_MIN_LENGTH) {
+                    errors.push(`[${name}] Synopsis is too short for a CK report (${synopsis.length}/${SYNOPSIS_MIN_LENGTH} chars).`);
+                }
             }
         }
       });
     }
+
 
     if (errors.length > 0) {
       return { success: false, errors };
@@ -626,6 +649,7 @@ export const FormHandler = () => {
 
     return { success: true };
   }, [selectedForm, formValues]);
+
 
   const updateEmployeeCredentials = useCallback((employeeName, empType) => {
     const updates = {};
@@ -1465,6 +1489,7 @@ export const FormHandler = () => {
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
         onPanelToggle={(isOpen) => setIsLeftSidebarOpen(isOpen)}
+        initialOpen={isLeftSidebarOpen}
       />
 
       <div className={styles.header}>
@@ -1600,6 +1625,7 @@ export const FormHandler = () => {
                         'danger',
                         10000
                       );
+                      return; // STOP execution here - do not generate BBCode if check fails
                     }
 
                     generateBBCode();
@@ -1641,6 +1667,7 @@ export const FormHandler = () => {
                   swappableCharacters={swappableCharacters}
                   factionData={factionData}
                   updateFactionData={updateFactionData}
+                  triggerFactionSync={triggerFactionSync}
                   login={login}
                   logout={logout}
                 />
@@ -1669,32 +1696,32 @@ export const FormHandler = () => {
 
 {generatedBBCode && (
   <>
-{/*     {limitWarning && (
-      <div className="alert alert-danger" style={{ marginBottom: '1rem', background: '#450a0a', border: '1px solid #991b1b', color: '#fca5a5', padding: '1rem', borderRadius: '8px' }}>
-        <i className="fas fa-exclamation-triangle" style={{ marginRight: '8px' }}></i>
-        <strong>{limitWarning}</strong>
-      </div>
-    )}
- */}    {generatedTitle && (
+    {generatedBBCode && (
       <div
         style={{
           background: "#0f172a",
           padding: "1.5rem",
           borderRadius: 12,
-          color: "#e2e8f0",
+          color: selectedForm?.category === 'DMEC' ? "#e2e8f0" : "#fbbf24",
           fontSize: "1.1rem",
           fontWeight: "700",
           marginBottom: "1rem",
           whiteSpace: "pre-wrap",
-          cursor: "pointer"
+          cursor: selectedForm?.category === 'DMEC' ? "pointer" : "default",
+          borderLeft: selectedForm?.category === 'DMEC' ? 'none' : '4px solid #f59e0b',
+          background: selectedForm?.category === 'DMEC' ? "#0f172a" : "rgba(245, 158, 11, 0.05)"
         }}
         onClick={() => {
-          navigator.clipboard.writeText(generatedTitle);
-          showNotification('Title copied to clipboard!', 'success');
+          if (selectedForm?.category === 'DMEC' && generatedTitle) {
+            navigator.clipboard.writeText(generatedTitle);
+            showNotification('Title copied to clipboard!', 'success');
+          }
         }}
-        title="Click to copy title"
+        title={selectedForm?.category === 'DMEC' ? "Click to copy title" : ""}
       >
-        {generatedTitle}
+        {selectedForm?.category === 'DMEC' 
+          ? (generatedTitle || "No Title Generated") 
+          : "Please add this to the patient's thread, if one is missing, kindly make one"}
       </div>
     )}
 

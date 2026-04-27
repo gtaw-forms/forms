@@ -51,10 +51,12 @@ export const getCharacterData = (gtaWorldUser) => {
         }
         
         // Look for faction enrichment for the selected character
-        const charId = character.characterId || character.id;
+        // Normalize character ID to string for strict comparison
+        const charId = String(character.characterId || character.id);
         const factionMatch = factionChars.find(fc => {
             const fcData = fc.character || fc;
-            return (fcData.characterId || fcData.id) == charId;
+            const fcId = String(fcData.characterId || fcData.id);
+            return fcId === charId;
         });
 
         return {
