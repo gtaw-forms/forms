@@ -108,20 +108,30 @@ const WebhookManager = () => {
 
             // Prepare webhook payload similar to WebhookProvider logic
             const title = webhookTitle.trim() || 'PHMC Form Generator Notification';
-            const description = webhookMessage.trim() || undefined;
+            const message = webhookMessage.trim();
             
             let firstImageUrlForEmbed = null;
-            for (const url of mediaUrls) {
-                if (typeof url === 'string' && (/\.(jpg|jpeg|png|gif)$/i.test(url) || url.includes('ibb.co'))) {
-                    firstImageUrlForEmbed = url;
-                    break;
-                }
+            let mediaDescription = '';
+            
+            if (mediaUrls.length > 0) {
+                mediaDescription = '\n\n**Media:**\n';
+                mediaUrls.forEach((url, index) => {
+                    const isImage = typeof url === 'string' && (/\.(jpg|jpeg|png|gif)$/i.test(url) || url.includes('ibb.co'));
+                    const isVideo = typeof url === 'string' && url.includes('streamable.com');
+                    const type = isVideo ? 'Video' : isImage ? 'Image' : 'Link';
+                    
+                    if (isImage && !firstImageUrlForEmbed) {
+                        firstImageUrlForEmbed = url;
+                    }
+                    
+                    mediaDescription += `- ${type} ${index + 1}: ${url}\n`;
+                });
             }
 
             const embed = {
                 title: title,
                 url: "https://gtaw-forms.github.io/forms/#/form-handler",
-                description: description,
+                description: (message + mediaDescription).trim() || undefined,
                 color: 0x7289DA,
                 timestamp: new Date().toISOString(),
                 image: firstImageUrlForEmbed ? { url: firstImageUrlForEmbed } : undefined,
@@ -129,15 +139,6 @@ const WebhookManager = () => {
                     text: 'PHMC Form Generator - Admin Panel'
                 }
             };
-
-            // Add media links if no description
-            if (!description && mediaUrls.length > 0) {
-                embed.description = 'Media submitted via PHMC Form Generator\n\n**Media:**\n';
-                mediaUrls.forEach((url, index) => {
-                    const type = typeof url === 'string' && url.includes('streamable.com') ? 'Video' : (typeof url === 'string' && (/\.(jpg|jpeg|png|gif)$/i.test(url) || url.includes('ibb.co'))) ? 'Image' : 'Link';
-                    embed.description += `- ${type} ${index + 1}: ${url}\n`;
-                });
-            }
 
             const payload = {
                 username: "PHMC",

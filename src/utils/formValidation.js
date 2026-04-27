@@ -42,3 +42,55 @@ export const validateForm = (form, selectOptions) => {
 
   return errors;
 };
+
+/**
+ * Evaluates whether a field should be visible based on form values and its showIf conditions.
+ * @param {object} field - The field definition.
+ * @param {object} formValues - Current values of the form.
+ * @returns {boolean}
+ */
+export const evaluateFieldVisibility = (field, formValues) => {
+  if (!field.showIf) return true;
+
+  const evaluateCondition = (cond) => {
+    const current = formValues[cond.field];
+    
+    // Normalize expected value
+    const expectedValue = (cond.value === "true") ? true : (cond.value === "false") ? false : cond.value;
+    
+    // Normalize current value
+    let currentValue = current;
+    if (typeof current === 'string') {
+      if (current === "true") currentValue = true;
+      else if (current === "false") currentValue = false;
+    }
+
+    let conditionMet = false;
+    if (expectedValue === true) { // Has ANY value
+      if (Array.isArray(currentValue)) conditionMet = currentValue.length > 0;
+      else conditionMet = !!currentValue && currentValue !== "";
+    } else if (expectedValue === false) { // Is empty
+      if (Array.isArray(currentValue)) conditionMet = currentValue.length === 0;
+      else conditionMet = !currentValue || currentValue === "";
+    } else { // Exact value
+      if (Array.isArray(currentValue)) {
+        conditionMet = currentValue.includes(expectedValue);
+      } else if (currentValue === true && ['yes', 'true', 'on'].includes(String(expectedValue).toLowerCase())) {
+        conditionMet = true; 
+      } else if (currentValue === false && ['no', 'false', 'off'].includes(String(expectedValue).toLowerCase())) {
+        conditionMet = true; 
+      } else {
+        conditionMet = currentValue === expectedValue;
+      }
+    }
+    return conditionMet;
+  };
+
+  if (field.showIf.mode === "and" || field.showIf.mode === "or") {
+    const conditions = field.showIf.conditions || [];
+    const results = conditions.map(evaluateCondition);
+    return field.showIf.mode === "and" ? results.every(r => r) : results.some(r => r);
+  } else {
+    return evaluateCondition(field.showIf);
+  }
+};

@@ -148,15 +148,7 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
     setManualUrl('');
   };
 
-  const handleRemove = (index) => {
-    console.log(`[ImageUploader] Removing image at index ${index} for field "${fieldName}"`, {
-      fieldName,
-      removingIndex: index,
-      currentCount: images.length,
-      imageBeingRemoved: images[index]?.substring(0, 50) + '...',
-      timestamp: new Date().toLocaleTimeString()
-    });
-    
+  const handleRemove = (index) => {    
     const newImages = images.filter((_, i) => i !== index);
     onImagesChange(newImages.length > 0 ? newImages : []);
   };
@@ -296,12 +288,6 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
 
       {/* Gallery Section */}
       <div className="image-previews" style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '10px' }}>
-        {images && images.length > 0 && console.log(`[ImageUploader] Rendering ${images.length} image(s) for field "${fieldName}"`, {
-          fieldName,
-          imageCount: images.length,
-          images: images.slice(0, 2).map(img => img.substring(0, 40) + '...'),
-          timestamp: new Date().toLocaleTimeString()
-        })}
         {images.map((url, i) => (
           <div key={i} className="image-preview" 
               style={{ 
@@ -317,12 +303,6 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
               onClick={(e) => {
                   // If clicking the container or anything inside it (except a button), open preview
                   if (!e.target.closest('button')) {
-                      console.log(`[ImageUploader] Gallery modal OPENING for field "${fieldName}"`, {
-                        fieldName,
-                        clickedImageIndex: i,
-                        totalImages: images.length,
-                        timestamp: new Date().toLocaleTimeString()
-                      });
                       setCurrentImageIndex(i);
                       setShowGalleryModal(true);
                   }
@@ -430,25 +410,11 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
       <ImagePreviewModal
         isOpen={showGalleryModal}
         onClose={() => {
-          console.log(`[ImageUploader] Gallery modal CLOSING for field "${fieldName}"`, {
-            fieldName,
-            wasShowingImageIndex: safeImageIndex,
-            totalImages: images.length,
-            imagesBeingClosed: images.slice(0, 2).map(img => img?.substring(0, 40) + '...'),
-            timestamp: new Date().toLocaleTimeString()
-          });
           setShowGalleryModal(false);
         }}
         images={images}
         currentIndex={safeImageIndex}
         onIndexChange={(newIndex) => {
-          console.log(`[ImageUploader] Image index changed in gallery for field "${fieldName}"`, {
-            fieldName,
-            previousIndex: safeImageIndex,
-            newIndex,
-            totalImages: images.length,
-            timestamp: new Date().toLocaleTimeString()
-          });
           setCurrentImageIndex(newIndex);
         }}
       />

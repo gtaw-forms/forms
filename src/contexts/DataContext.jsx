@@ -135,6 +135,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
     // Cache configuration
     const CACHE_PREFIX = 'firebaseCache';
     const CACHE_EXPIRY = 1000 * 60 * 60 * 24 * 30; // 30 days in milliseconds
+    const LOCAL_STORAGE_SAFETY_VERSION = '1.0'; // Manually bump this to clear all localStorage if needed
 
     // Version configuration for each segment, some versions are dynamic updated in Firebase but manually bump if required
     const SEGMENT_VERSIONS = {
@@ -677,6 +678,19 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 }
         
                 const fetchData = async () => {
+                    // Safety check for localStorage corruption/breaking changes
+                    const storedSafetyVersion = localStorage.getItem('ls_safety_version');
+                    
+                    if (!storedSafetyVersion) {
+                        // First time seeing this versioning system - just mark it as current
+                        localStorage.setItem('ls_safety_version', LOCAL_STORAGE_SAFETY_VERSION);
+                    } else if (storedSafetyVersion !== LOCAL_STORAGE_SAFETY_VERSION) {
+                        // Version mismatch detected - perform a safe wipe
+                        console.warn(`🚨 LocalStorage Safety Version mismatch: ${storedSafetyVersion} vs ${LOCAL_STORAGE_SAFETY_VERSION}. Clearing localStorage.`);
+                        localStorage.clear();
+                        localStorage.setItem('ls_safety_version', LOCAL_STORAGE_SAFETY_VERSION);
+                    }
+
                     // Set ref to true immediately to prevent re-entry from StrictMode's double invocation
                     dataInitializedRef.current = true; 
                     console.log('[DataContext] Starting DataContext initialization (first useEffect invocation)...');

@@ -42,9 +42,11 @@ const generateDecedentBBCode = (decedents, coronerInfo = {}) => {
         // Evidence Locker Logic
         let evidenceLockerText = 'No';
         let evidenceLockerListItems = '';
+        const coronerDisplayName = (coronerRank ? `${coronerRank} ` : '') + (coronerEmployee || 'Unknown Coroner');
+
         if (dec.evidenceLockerID && dec.evidenceLockerID.trim() !== '') {
             evidenceLockerText = 'Yes';
-            evidenceLockerListItems = `[list][*] ${dec.evidenceLockerID.trim()} - ${dec.decedentName} (( ${dec.decedentOOC} ))[/list]`;
+            evidenceLockerListItems = `[list][*] ${dec.evidenceLockerID.trim()} - ${dec.decedentName || 'Unidentified'} (( ${dec.decedentOOC || 'Unknown'} ))[/list]`;
         }
         const morgueStatusMessage = dec.morgueStatus === 'true' || dec.morgueStatus === true
             ? '[bold][color=red]The Morgue Screen Photo is currently unavailable. [/color][/bold]\n'
@@ -76,7 +78,7 @@ Morgue screen, cinjuries links: ${morgueStatusMessage || ''}
 [size=85][u] THESE IMAGES ARE [bold]OUT OF CHARACTER[/bold] FOR INTERNAL RECORDS, DO NOT USE THESE AS EVIDENCE. [/u][/size]
 ${additionalImagesBBCode}
 
-${coronerRank || 'Coroner'} ${coronerEmployee || 'Unknown Coroner'} has added something to the evidence locker: ${evidenceLockerText}
+${coronerDisplayName} has added something to the evidence locker: ${evidenceLockerText}
 ${evidenceLockerListItems}
 
 [/divbox][/divbox]

@@ -9,9 +9,10 @@ const LeftSidebarNav = ({
   selectedForm,
   searchTerm,
   setSearchTerm,
-  onPanelToggle // New prop to notify parent of state change
+  onPanelToggle, // New prop to notify parent of state change
+  initialOpen = true
 }) => {
-  const [isPanelOpen, setIsPanelOpen] = useState(true); // Default open for visibility
+  const [isPanelOpen, setIsPanelOpen] = useState(initialOpen); // Initialize from prop
 
   const togglePanel = () => {
     const newState = !isPanelOpen;

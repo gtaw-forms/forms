@@ -5,6 +5,7 @@ import { refreshFactionData as refreshFactionDataService, STORAGE_KEYS } from '.
 import { cleanRankText } from '../../utils/textUtils';
 import { getCharacterName, getCharacterID } from '../../utils/characterUtils';
 import { useNotification } from '../../contexts/NotificationContext.jsx';
+import { GtaAuthLoading } from '../Auth/GtaCallback';
 
 /**
  * EmployeeCredentialsSection (Refined & Sidebar Optimized)
@@ -35,6 +36,7 @@ const EmployeeCredentialsSection = ({
   swappableCharacters: propSwappableCharacters,
   factionData: propFactionData,
   updateFactionData: propUpdateFactionData,
+  triggerFactionSync: propTriggerFactionSync,
   login: propLogin,
   logout: propLogout
 }) => {
@@ -48,8 +50,10 @@ const EmployeeCredentialsSection = ({
   const swappableCharacters = propSwappableCharacters || authHook.swappableCharacters;
   const factionData = propFactionData !== undefined ? propFactionData : authHook.factionData;
   const updateFactionData = propUpdateFactionData || authHook.updateFactionData;
+  const triggerFactionSync = propTriggerFactionSync || authHook.triggerFactionSync;
   const login = propLogin || authHook.login;
   const logout = propLogout || authHook.logout;
+  const isLoading = authHook.isLoading;
 
   const [useGtawName, setUseGtawName] = useState(false);
   const [internalPersistEnabled, setInternalPersistEnabled] = useState(() => localStorage.getItem('phmc_gtaw_oauth_persist_enabled') === 'true');
@@ -122,12 +126,26 @@ const EmployeeCredentialsSection = ({
     if (!isGtaAuthenticated) return;
     try {
       setIsRefreshing(true);
+      
+      // Step 1: Trigger Faction Sync (RTDB -> GtaWorld API)
+      if (typeof triggerFactionSync === 'function') {
+        try {
+          await triggerFactionSync();
+        } catch (syncErr) {
+          // If it's a permission error (e.g., Only Super Admins can manually trigger a sync), 
+          // we just log it and proceed to Step 2 to at least refresh local data.
+          console.warn('[EmployeeCredentialsSection] Background sync skipped or failed:', syncErr.message);
+        }
+      }
+
+      // Step 2: Refresh Faction Data (Local State -> RTDB)
       const updated = await refreshFactionDataService();
       if (updated && updated.faction) {
         updateFactionData(updated.faction);
         notify && notify('Profile refreshed.', 'check-circle', 3000);
       }
     } catch (err) {
+      console.error('Refresh failed:', err);
       notify && notify('Refresh failed.', 'exclamation-triangle', 5000);
     } finally {
       setIsRefreshing(false);
@@ -159,6 +177,10 @@ const EmployeeCredentialsSection = ({
     }
   }, [isGtaAuthenticated, gtaWorldUser, useGtawName, isCivilianForm]);
 
+  if (isLoading && !isGtaAuthenticated && !isDevelopmentEnvironment) {
+    return <GtaAuthLoading isMini={true} />;
+  }
+
   if (!isGtaAuthenticated && !isDevelopmentEnvironment && !isCivilianForm) {
       return (
         <div style={{ padding: '1.5rem', background: '#162032', borderRadius: '12px', textAlign: 'center', border: '1px solid #334155' }}>
@@ -183,7 +205,6 @@ const EmployeeCredentialsSection = ({
   return (
     <div className="employee-credentials-section">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-        <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>Profile</span>
         {isGtaAuthenticated && (
             <Badge bg={persistEnabled ? "success" : "secondary"} style={{ cursor: 'pointer' }} onClick={togglePersistence}>
                 {persistEnabled ? "Saved" : "Not Saved"}

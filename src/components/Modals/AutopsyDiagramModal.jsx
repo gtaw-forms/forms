@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Button, OverlayTrigger, Tooltip, Form } from 'react-bootstrap';
 import { Stage, Layer, Image as KonvaImage, Circle, Text, Group, Rect, Line, Transformer } from 'react-konva';
 import useImage from 'use-image';
@@ -169,6 +169,36 @@ const getGroupedLabeledMarkers = (markers) => {
     return result;
 };
 
+const BODY_PART_MAPPING = {
+    'head': { x: 215, y: 100 },
+    'skull': { x: 215, y: 80 },
+    'face': { x: 215, y: 120 },
+    'neck': { x: 215, y: 220 },
+    'chest': { x: 215, y: 340 },
+    'thorax': { x: 215, y: 340 },
+    'torso': { x: 215, y: 340 },
+    'abdomen': { x: 215, y: 500 },
+    'pelvis': { x: 215, y: 600 },
+    'hip': { x: 215, y: 600 },
+    'groin': { x: 215, y: 620 },
+    'genitalia': { x: 215, y: 620 },
+    'left arm': { x: 100, y: 400 },
+    'right arm': { x: 330, y: 400 },
+    'left hand': { x: 50, y: 580 },
+    'right hand': { x: 380, y: 580 },
+    'left leg': { x: 150, y: 900 },
+    'right leg': { x: 280, y: 900 },
+    'left thigh': { x: 160, y: 750 },
+    'right thigh': { x: 270, y: 750 },
+    'left calf': { x: 150, y: 1000 },
+    'right calf': { x: 280, y: 1000 },
+    'left foot': { x: 150, y: 1150 },
+    'right foot': { x: 280, y: 1150 },
+    'left shoulder': { x: 120, y: 270 },
+    'right shoulder': { x: 310, y: 270 },
+    'back': { x: 715, y: 340 },
+};
+
 const AutopsyDiagramModal = ({
     show,
     onHide,
@@ -179,6 +209,104 @@ const AutopsyDiagramModal = ({
     handleImageUpload
 }) => {
     const [markers, setMarkers] = useState([]);
+
+    const hasInitializedRef = useRef(false);
+
+    useEffect(() => {
+        if (show && !hasInitializedRef.current) {
+            setMarkers(initialMarkers || []);
+            hasInitializedRef.current = true;
+        } else if (!show) {
+            hasInitializedRef.current = false;
+        }
+    }, [show, initialMarkers]);
+
+    const handleSyncFromSummaries = () => {
+        if (!initialSummaries || initialSummaries.length === 0) {
+            if (showNotification) showNotification("No anatomic summaries found to sync from.", "info");
+            return;
+        }
+
+        const newMarkersFromSummary = [];
+        const imgWidth = image?.width || 900;
+
+        // Count how many of each summary already exist as markers
+        const existingMarkerCounts = markers.reduce((acc, m) => {
+            const key = m.summary.trim().toLowerCase();
+            acc[key] = (acc[key] || 0) + 1;
+            return acc;
+        }, {});
+
+        // Count how many of each summary are requested in the initialSummaries
+        const requestedCounts = initialSummaries.reduce((acc, s) => {
+            if (!s) return acc;
+            const key = s.trim().toLowerCase();
+            acc[key] = (acc[key] || 0) + 1;
+            return acc;
+        }, {});
+
+        // Iterate over requested summaries and add only the missing ones
+        Object.keys(requestedCounts).forEach(summaryStrKey => {
+            const totalNeeded = requestedCounts[summaryStrKey];
+            const alreadyHave = existingMarkerCounts[summaryStrKey] || 0;
+            const toAdd = totalNeeded - alreadyHave;
+
+            if (toAdd <= 0) return;
+
+            // Find the original casing from the summary list
+            const originalSummary = initialSummaries.find(s => s && s.trim().toLowerCase() === summaryStrKey);
+
+            // Detection Logic
+            const woundRegex = /^(Gunshot Wound|Gunshot Wounds|Blunt Force Trauma|Stab Wound|Stab Wounds|Laceration|Lacerations|Abrasion|Abrasions|Contusion|Contusions|Bruise|Bruises|Incision|Incisions|Fracture|Fractures|Burn|Burns)\s+to\s+(.*?)(?:,|$|\s+\()/i;
+            const match = originalSummary.match(woundRegex);
+
+            if (match) {
+                const woundTypeStr = match[1].toLowerCase();
+                const bodyPartStr = match[2].toLowerCase().trim();
+
+                let markerType = 'circle';
+                let label = 'INJ';
+                if (woundTypeStr.includes('gunshot')) { markerType = 'cross'; label = 'GSW'; }
+                else if (woundTypeStr.includes('stab')) { markerType = 'cross'; label = 'STAB'; }
+                else if (woundTypeStr.includes('blunt')) { markerType = 'circle'; label = 'BFT'; }
+                else if (woundTypeStr.includes('lace')) { markerType = 'circle'; label = 'LAC'; }
+                else if (woundTypeStr.includes('abra')) { markerType = 'circle'; label = 'ABR'; }
+
+                let coords = BODY_PART_MAPPING[bodyPartStr];
+                if (!coords) {
+                    const keys = Object.keys(BODY_PART_MAPPING).sort((a, b) => b.length - a.length);
+                    const key = keys.find(k => bodyPartStr.includes(k));
+                    if (key) coords = BODY_PART_MAPPING[key];
+                }
+
+                if (coords) {
+                    for (let i = 0; i < toAdd; i++) {
+                        const jitterX = (Math.random() - 0.5) * 60; // Increased jitter for visibility
+                        const jitterY = (Math.random() - 0.5) * 60;
+                        const finalX = coords.x + jitterX;
+
+                        newMarkersFromSummary.push({
+                            x: finalX,
+                            y: coords.y + jitterY,
+                            type: markerType,
+                            id: `sync-${Date.now()}-${Math.random().toString(36).substr(2, 5)}-${i}`,
+                            label: label,
+                            labelSide: finalX > imgWidth * 0.8 ? 'left' : 'right',
+                            summary: originalSummary,
+                            isCustomSummary: true,
+                        });
+                    }
+                }
+            }
+        });
+
+        if (newMarkersFromSummary.length > 0) {
+            setMarkers(prev => [...prev, ...newMarkersFromSummary]);
+            if (showNotification) showNotification(`Added ${newMarkersFromSummary.length} markers from summaries.`, "success");
+        } else {
+            if (showNotification) showNotification("No new markers could be generated from the summaries.", "info");
+        }
+    };
     const [selectedMarkerType, setSelectedMarkerType] = useState('circle');
     const [editingMarkerId, setEditingMarkerId] = useState(null);
     const [inputPosition, setInputPosition] = useState(null);
@@ -186,6 +314,7 @@ const AutopsyDiagramModal = ({
     const [isProcessingImage, setIsProcessingImage] = useState(false);
     const [markerSizeMultiplier, setMarkerSizeMultiplier] = useState(1);
     const [debugMode, setDebugMode] = useState(false);
+    const [showMappingDebug, setShowMappingDebug] = useState(false);
     const [selectedBoundaryKey, setSelectedBoundaryKey] = useState(null);
     const [overrideZones, setOverrideZones] = useState(DEFAULT_OVERRIDE_ZONES);
     const [selectedZoneId, setSelectedZoneId] = useState(null);
@@ -525,8 +654,33 @@ const AutopsyDiagramModal = ({
         setSelectedZoneId(newZone.id);
     };
 
+    const renderMappingDebug = () => {
+        if (!showMappingDebug) return null;
+        return (
+            <Group listening={false}>
+                {Object.entries(BODY_PART_MAPPING).map(([name, coords]) => (
+                    <Group key={name} x={coords.x} y={coords.y}>
+                        <Circle radius={5} fill="#f59e0b" stroke="white" strokeWidth={1} />
+                        <Text 
+                            text={name.toUpperCase()} 
+                            y={10} 
+                            x={-25}
+                            width={50}
+                            align="center"
+                            fill="#f59e0b" 
+                            fontSize={10} 
+                            fontWeight="bold" 
+                            shadowColor="black" 
+                            shadowBlur={2} 
+                        />
+                    </Group>
+                ))}
+            </Group>
+        );
+    };
+
     const renderDebugLines = () => {
-        if (!debugMode || !image) return null;
+        if (!debugMode || !image || showMappingDebug) return null;
         const w = image.width;
         const h = image.height;
         
@@ -680,10 +834,11 @@ const AutopsyDiagramModal = ({
         );
     };
 
+    const labeledMarkers = useMemo(() => getGroupedLabeledMarkers(markers), [markers]);
+
     const renderMarkers = () => {
-        const labeledMarkers = getGroupedLabeledMarkers(markers);
         const stage = stageRef.current;
-        const scale = stage ? stage.scaleX() : 1;
+        const scale = (stage && stage.scaleX() > 0) ? stage.scaleX() : 1;
 
         const baseRadius = 9;
         const baseCrossFontSize = 19;
@@ -808,6 +963,14 @@ const AutopsyDiagramModal = ({
                                 >
                                     Female Body
                                 </Button>
+                                <Button 
+                                    variant="outline-success" 
+                                    size="sm" 
+                                    onClick={handleSyncFromSummaries} 
+                                    title="Sync markers from anatomic summaries"
+                                >
+                                    <i className="fas fa-sync"></i> Sync from Summaries
+                                </Button>
                                 <span style={{ borderLeft: '1px solid #30363d', height: '20px', margin: '0 5px' }}></span>
 
                                 <Button variant={selectedMarkerType === 'circle' ? 'danger' : 'outline-danger'} size="sm" onClick={() => setSelectedMarkerType('circle')}>Circle (O)</Button>
@@ -839,9 +1002,19 @@ const AutopsyDiagramModal = ({
                                             <i className="fas fa-bug"></i> {debugMode ? "Debug OFF" : "Debug Mode"}
                                         </Button>
                                         {debugMode && (
-                                            <Button variant="outline-danger" size="sm" onClick={resetBoundaries}>
-                                                <i className="fas fa-undo"></i> Reset Debug
-                                            </Button>
+                                            <>
+                                                <Button variant="outline-danger" size="sm" onClick={resetBoundaries}>
+                                                    <i className="fas fa-undo"></i> Reset Debug
+                                                </Button>
+                                                <Button 
+                                                    variant={showMappingDebug ? "warning" : "outline-warning"} 
+                                                    size="sm" 
+                                                    onClick={() => setShowMappingDebug(!showMappingDebug)}
+                                                    title="Toggle Mapping Debug"
+                                                >
+                                                    <i className="fas fa-map-marker-alt"></i> Mapping Debug
+                                                </Button>
+                                            </>
                                         )}
                                     </>
                                 )}
@@ -883,8 +1056,9 @@ const AutopsyDiagramModal = ({
                                     >
                                         <Layer>
                                             <KonvaImage image={image} width={image.width} height={image.height} listening={false} />
+                                            {renderMappingDebug()}
                                             {renderDebugLines()}
-                                            {renderMarkers()}
+                                            {!showMappingDebug && renderMarkers()}
                                         </Layer>
                                     </Stage>
                                 ) : (
