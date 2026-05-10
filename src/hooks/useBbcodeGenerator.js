@@ -606,15 +606,21 @@ const formatToNorthAmericanDate = (isoDateTime) => {
 
       bbcode = bbcode.replace(/\{\{([a-zA-Z0-9_]+)\|((?:(?!}}).)+)\}\}/g, (match, key, placeholderText) => {
           const value = processedFormValues[key];
+          const isScenePhotosBug = key === 'scenePhotosBBCode' && processedFormValues.scenePhotosBBCode_missing_bug;
           const isEmpty = value === null || value === undefined || value === '' || value === false || (Array.isArray(value) && value.length === 0);
-          if (isEmpty) return placeholderText;
+          
+          if (isEmpty && !isScenePhotosBug) return placeholderText;
           
           let replacement = String(value);
           const field = selectedForm.fields?.find(f => f.name === key);
           if (field) {
-              if ((field.type === "image" || field.type === "image_upload") && value) {
+              if ((field.type === "image" || field.type === "image_upload")) {
                   const formatItem = (item) => (typeof item === 'string' && /\.(jpg|jpeg|png|gif|webp)$/i.test(item.trim())) ? `[img]${item}[/img]` : (item || '');
                   replacement = Array.isArray(value) ? value.map(formatItem).filter(Boolean).join('\n') : formatItem(value);
+                  
+                  if (isScenePhotosBug) {
+                    replacement = replacement ? `${replacement}\n\n(( Scene Photos are unavailable due to a bug with screenshot capture software ))` : `(( Scene Photos are unavailable due to a bug with screenshot capture software ))`;
+                  }
               }
               else if (field.type === "checkbox" && typeof value === "boolean") replacement = value ? "Yes" : "No";
               else if (field.type === "multi_select" && Array.isArray(value)) replacement = value.join(", ");
@@ -651,9 +657,13 @@ const formatToNorthAmericanDate = (isoDateTime) => {
                       replacement += `\n\n[b]Proof of Prescription:[/b]\n${proofImages}`;
                   }
               }
-              else if ((field.type === "image" || field.type === "image_upload") && value) {
+              else if ((field.type === "image" || field.type === "image_upload")) {
                   const formatItem = (item) => (typeof item === 'string' && /\.(jpg|jpeg|png|gif|webp)$/i.test(item.trim())) ? `[img]${item}[/img]` : (item || '');
                   replacement = Array.isArray(value) ? value.map(formatItem).filter(Boolean).join('\n') : formatItem(value);
+                  
+                  if (key === 'scenePhotosBBCode' && processedFormValues.scenePhotosBBCode_missing_bug) {
+                      replacement = replacement ? `${replacement}\n\n(( Scene Photos are unavailable due to a bug with screenshot capture software ))` : `(( Scene Photos are unavailable due to a bug with screenshot capture software ))`;
+                  }
               }
               else if (field.type === "checkbox" && typeof value === "boolean") replacement = value ? "Yes" : "No";
               else if (field.type === "multi_select" && Array.isArray(value)) replacement = value.join(", ");

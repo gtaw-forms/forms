@@ -12,6 +12,106 @@ export const cleanRankText = (text) => {
 };
 
 /**
+ * Helper: escape HTML characters for safe insertion into DOM.
+ */
+export const escapeHtml = (unsafe) => {
+  if (!unsafe || typeof unsafe !== 'string') return '';
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+};
+
+/**
+ * Renders basic Markdown (Bold, Italic, Underline) to HTML.
+ * Supports combinations like **__text__** or ***__text__***.
+ */
+export const renderInlineMarkdown = (text) => {
+  if (!text) return '';
+
+  // 1. Escape HTML first
+  let html = escapeHtml(text);
+
+  // 2. Combinations (Triple)
+  html = html.replace(/\*\*\*__(.*?)__\*\*\*/g, '<strong><em><u>$1</u></em></strong>');
+  html = html.replace(/__\*\*\*(.*?)\*\*\*__/g, '<u><strong><em>$1</em></strong></u>');
+
+  // 3. Combinations (Double)
+  html = html.replace(/\*\*__(.*?)__\*\*/g, '<strong><u>$1</u></strong>');
+  html = html.replace(/__\*\*(.*?)\*\*__/g, '<u><strong>$1</strong></u>');
+  html = html.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>');
+
+  // 4. Combinations (Single + Underline)
+  html = html.replace(/\*__(.*?)__\*/g, '<em><u>$1</u></em>');
+  html = html.replace(/__\*(.*?)\*__/g, '<u><em>$1</em></u>');
+
+  // 5. Basic
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/__(.*?)__/g, '<u>$1</u>');
+  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+
+  return html;
+};
+
+/**
+ * Renders full Markdown including block elements (lists, paragraphs).
+ */
+export const renderMarkdown = (text) => {
+  if (!text) return '';
+
+  const lines = text.split('\n');
+  let htmlResult = [];
+  let openLists = [];
+
+  lines.forEach(line => {
+    const trimmed = line.trim();
+
+    // Handle horizontal lines (--- or [hr])
+    if (trimmed === '---' || trimmed.toLowerCase() === '[hr]') {
+      while (openLists.length > 0) { 
+        htmlResult.push('</ul>'); 
+        openLists.pop(); 
+      }
+      htmlResult.push('<hr style="border: 0; border-top: 1px solid #30363d; margin: 15px 0;" />');
+      return;
+    }
+
+    // Handle custom list levels from EMS Dashboard (> and >>)
+    let level = trimmed.startsWith('>>') ? 2 : trimmed.startsWith('>') ? 1 : 0;
+    
+    if (level > 0) {
+      const lineContent = trimmed.substring(level).trim();
+      while (openLists.length > level) { 
+        htmlResult.push('</ul>'); 
+        openLists.pop(); 
+      }
+      while (openLists.length < level) { 
+        htmlResult.push('<ul style="margin-bottom: 5px;">'); 
+        openLists.push('ul'); 
+      }
+      htmlResult.push(`<li>${renderInlineMarkdown(lineContent)}</li>`);
+    } else {
+      while (openLists.length > 0) { 
+        htmlResult.push('</ul>'); 
+        openLists.pop(); 
+      }
+      if (trimmed) {
+        htmlResult.push(`<p style="margin-bottom: 8px;">${renderInlineMarkdown(trimmed)}</p>`);
+      }
+    }
+  });
+
+  while (openLists.length > 0) { 
+    htmlResult.push('</ul>'); 
+    openLists.pop(); 
+  }
+
+  return htmlResult.join('');
+};
+
+/**
  * Sanitize strings for use as Firebase paths/keys.
  * - Replaces ., #, $, [, ], /, and whitespace with a single underscore.
  * - Collapses multiple underscores and trims them from start/end.

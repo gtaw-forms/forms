@@ -14,6 +14,8 @@ const CACHE_SEGMENTS = {
     FORMS: 'forms',
     LSCC: 'lscc',
     VERIFIED_ADMINS: 'verified_admins',
+    MORGUE_RECORDS: 'morgue-records',
+    MORGUE_WHITELIST: 'morgue-whitelisted-users',
 };
 
 // Define segments that should not be cached in localStorage
@@ -32,6 +34,8 @@ export const DataProvider = ({ children }) => {
         const [factionsData, setFactionsData] = useState({});
     const [agencyDataStore, setAgencyDataStore] = useState({});
     const [selectOptions, setSelectOptions] = useState({});
+    const [morgueRecords, setMorgueRecords] = useState([]);
+    const [morgueWhitelist, setMorgueWhitelist] = useState({});
     const [isLoadingData, setIsLoadingData] = useState(true);
     const [loading, setLoading] = useState(true);
 
@@ -103,6 +107,14 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             case CACHE_SEGMENTS.VERIFIED_ADMINS:
                 setVerifiedAdmins(data || {});
                 break;
+            case CACHE_SEGMENTS.MORGUE_RECORDS: {
+                const morgueAsList = data ? Object.keys(data).map(key => ({ ...data[key], firebaseKey: key })) : [];
+                setMorgueRecords(morgueAsList);
+                break;
+            }
+            case CACHE_SEGMENTS.MORGUE_WHITELIST:
+                setMorgueWhitelist(data || {});
+                break;
             default:
                 console.warn(`Unknown cache segment: ${segment}`);
         }
@@ -144,12 +156,14 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         [CACHE_SEGMENTS.FORMS]: '1.2.3', 
         [CACHE_SEGMENTS.LSCC]: '1.0',
         [CACHE_SEGMENTS.VERIFIED_ADMINS]: '1.0',
+        [CACHE_SEGMENTS.MORGUE_RECORDS]: '1.0',
     };
 
     const getSegmentVersion = (segment) => {
         if (segment === CACHE_SEGMENTS.FORMS) return localStorage.getItem('formsDataVersion') || '0';
         if (segment === CACHE_SEGMENTS.FACTIONS) return localStorage.getItem('factionsDataVersion') || '0';
         if (segment === CACHE_SEGMENTS.SELECT_OPTIONS) return localStorage.getItem('selectOptionsDataVersion') || '0';
+        if (segment === CACHE_SEGMENTS.LSCC) return localStorage.getItem('lsccDataVersion') || '0';
         return SEGMENT_VERSIONS[segment] || '1.0';
     };
 
@@ -250,6 +264,32 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             if (snapshot.exists()) {
                 const adminsData = snapshot.val();
                 updateCacheSegment(CACHE_SEGMENTS.VERIFIED_ADMINS, adminsData);
+            }
+        });
+
+        // --- Listener for morgue records changes ---
+        const morgueRef = ref(database, CACHE_SEGMENTS.MORGUE_RECORDS);
+        firebaseListeners.current.morgue = onValue(morgueRef, (snapshot) => {
+            if (!dataInitializedRef.current) return;
+            if (snapshot.exists()) {
+                const morgueData = snapshot.val();
+                if (JSON.stringify(morgueData) !== JSON.stringify(dataCache.current[CACHE_SEGMENTS.MORGUE_RECORDS])) {
+                    updateCacheSegment(CACHE_SEGMENTS.MORGUE_RECORDS, morgueData);
+                }
+            }
+        });
+
+        // --- Listener for morgue whitelist changes ---
+        const whitelistRef = ref(database, CACHE_SEGMENTS.MORGUE_WHITELIST);
+        firebaseListeners.current.whitelist = onValue(whitelistRef, (snapshot) => {
+            if (!dataInitializedRef.current) return;
+            if (snapshot.exists()) {
+                const whitelistData = snapshot.val();
+                if (JSON.stringify(whitelistData) !== JSON.stringify(dataCache.current[CACHE_SEGMENTS.MORGUE_WHITELIST])) {
+                    updateCacheSegment(CACHE_SEGMENTS.MORGUE_WHITELIST, whitelistData);
+                }
+            } else {
+                updateCacheSegment(CACHE_SEGMENTS.MORGUE_WHITELIST, {});
             }
         });
 
@@ -427,6 +467,60 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 }
             });
         })();
+
+        // --- Listener for Global LSCC Version ---
+        (async () => {
+            const lsccVersionRef = ref(database, 'appMetadata/lsccDataVersion');
+            let initialServerVersion = null;
+
+            try {
+                const snapshot = await get(lsccVersionRef);
+                if (snapshot.exists()) {
+                    initialServerVersion = String(snapshot.val());
+                    console.log(`[DataContext] Initial lsccDataVersion fetched from server: v${initialServerVersion}`);
+                    localStorage.setItem('lsccDataVersion', initialServerVersion);
+                } else {
+                    console.log('[DataContext] lsccDataVersion does not exist on server initially. Clearing local version.');
+                    localStorage.removeItem('lsccDataVersion');
+                }
+            } catch (error) {
+                console.error('[DataContext] Failed to get initial lsccDataVersion from server:', error);
+                localStorage.removeItem('lsccDataVersion');
+            }
+
+            firebaseListeners.current.lsccVersion = onValue(lsccVersionRef, async (snapshot) => {
+                if (!dataInitializedRef.current) {
+                    console.log('[DataContext] Global LSCC version listener triggered, but DataContext not initialized. Skipping.');
+                    return;
+                }
+                const serverVersion = snapshot.exists() ? String(snapshot.val()) : null;
+                const localVersion = localStorage.getItem('lsccDataVersion');
+
+                console.log(`Global LSCC Version - Local: ${localVersion || 'N/A'}, Server: ${serverVersion || 'N/A'}`);
+
+                if (serverVersion !== null && localVersion !== serverVersion) { 
+                    console.log(`🔄 Global LSCC version mismatch (v${localVersion} → v${serverVersion}). Clearing and refreshing LSCC cache...`);
+
+                    localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.LSCC));
+                    localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.LSCC));
+                    localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.LSCC));
+
+                    localStorage.setItem('lsccDataVersion', serverVersion);
+
+                    showNotification("LSCC protocols/keywords have been updated.", "success", 4000);
+
+                    await refreshSegments([CACHE_SEGMENTS.LSCC]);
+                } else if (serverVersion === null && localVersion !== null) {
+                    console.log(`🗑️ Global LSCC version deleted from server. Clearing local cache.`);
+                    localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.LSCC));
+                    localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.LSCC));
+                    localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.LSCC));
+                    localStorage.removeItem('lsccDataVersion');
+                    showNotification("LSCC data cleared due to server-side deletion.", "info", 4000);
+                    await refreshSegments([CACHE_SEGMENTS.LSCC]);
+                }
+            });
+        })();
     }, [updateCacheSegment, showNotification, refreshSegments]);
 
 
@@ -592,6 +686,9 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
     const cleanupCache = useCallback(() => {
         // Remove remnants of both versioning systems to be safe
         localStorage.removeItem('formsDataVersion');
+        localStorage.removeItem('factionsDataVersion');
+        localStorage.removeItem('selectOptionsDataVersion');
+        localStorage.removeItem('lsccDataVersion');
         localStorage.removeItem('formVersions');
 
         // Explicitly remove old forms cache versions
@@ -816,6 +913,8 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         isDevMode,
         setIsDevMode,
         lsccData, // Add lsccData to the context value
+        morgueRecords, // Add morgueRecords to the context value
+        morgueWhitelist, // Add morgueWhitelist to the context value
         hasFirebaseError, // Expose firebase error status
     };
             

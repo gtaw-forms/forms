@@ -63,6 +63,7 @@ const EmployeeCredentialsSection = ({
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [imgError, setImgError] = useState(false);
+  const [imageCacheBuster] = useState(Date.now());
 
   const isCivilianForm = typeof context === 'string' && context.startsWith('[Civilian]');
   const isDevelopmentEnvironment = window.location.hostname === 'localhost';
@@ -226,7 +227,7 @@ const EmployeeCredentialsSection = ({
             }}>
                 {((gtawCharacterName || isDevelopmentEnvironment) && !imgError) ? (
                     <img 
-                        src={`https://cad.gta.world/img/persons/${isDevelopmentEnvironment ? 'Alyson_Frost' : gtawCharacterName.replace(/\s+/g, '_')}.png?${Date.now()}`}
+                        src={`https://cad.gta.world/img/persons/${isDevelopmentEnvironment ? 'Alyson_Frost' : gtawCharacterName.replace(/\s+/g, '_')}.png?${imageCacheBuster}`}
                         alt={gtawCharacterName}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                         onError={() => setImgError(true)}

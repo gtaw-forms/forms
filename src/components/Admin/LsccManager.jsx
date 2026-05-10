@@ -3,7 +3,7 @@ import { logAdminAction, getUserContext } from '../../utils/adminLogger';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import React, { useState, useEffect, useCallback } from 'react';
 import { database } from '../../firebase';
-import { ref, get, set, onValue } from 'firebase/database';
+import { ref, get, set, onValue, runTransaction } from 'firebase/database';
 import { Button, Spinner, Alert } from 'react-bootstrap';
 import KeywordEditModal from './KeywordEditModal';
 import LsccEditModal from './LsccEditModal';
@@ -106,6 +106,16 @@ const LsccManager = () => {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  const bumpLsccVersion = useCallback(async () => {
+    try {
+      const metadataRef = ref(database, 'appMetadata/lsccDataVersion');
+      await runTransaction(metadataRef, (v) => (v || 0) + 1);
+      console.log('Bumped LSCC data version');
+    } catch (err) {
+      console.error('Failed to bump LSCC version:', err);
+    }
+  }, []);
+
   useEffect(() => {
     const injRef = ref(database, 'lscc/injuries');
     const unsubscribe = onValue(injRef, snap => setInjuries(snap.val() || {}));
@@ -156,6 +166,7 @@ const LsccManager = () => {
     })).filter(cat => cat.protocols.length > 0);
     
     await set(ref(database, 'lscc/protocols'), newData);
+    await bumpLsccVersion();
     fetchData();
   };
 
@@ -201,6 +212,7 @@ const LsccManager = () => {
     }
 
     await set(ref(database, 'lscc/protocols'), newData.filter(c => c.protocols.length > 0));
+    await bumpLsccVersion();
     setItems(newData);
   };
 
@@ -297,7 +309,12 @@ const LsccManager = () => {
                 </div>
                 <div>
                   <Button size="sm" variant="primary" onClick={() => { setEditingKeyword({ id, ...kw }); setShowKeywordManager(false); setShowKeywordEditModal(true); }} className="me-2">Edit</Button>
-                  <Button size="sm" variant="danger" onClick={() => window.confirm(`Delete ${kw.keyword}?`) && set(ref(database, `lscc/keywords/${id}`), null)}>Delete</Button>
+                  <Button size="sm" variant="danger" onClick={async () => {
+                      if (window.confirm(`Delete ${kw.keyword}?`)) {
+                          await set(ref(database, `lscc/keywords/${id}`), null);
+                          await bumpLsccVersion();
+                      }
+                  }}>Delete</Button>
                 </div>
               </div>
             </div>
@@ -319,7 +336,12 @@ const LsccManager = () => {
                 </div>
                 <div>
                   <Button size="sm" variant="primary" onClick={() => { setEditingInjury({ id, ...injury }); setShowInjuryManager(false); setShowInjuryEditModal(true); }} className="me-2">Edit</Button>
-                  <Button size="sm" variant="danger" onClick={() => window.confirm(`Delete ${injury.name}?`) && set(ref(database, `lscc/injuries/${id}`), null)}>Delete</Button>
+                  <Button size="sm" variant="danger" onClick={async () => {
+                      if (window.confirm(`Delete ${injury.name}?`)) {
+                          await set(ref(database, `lscc/injuries/${id}`), null);
+                          await bumpLsccVersion();
+                      }
+                  }}>Delete</Button>
                 </div>
               </div>
             </div>
@@ -330,6 +352,7 @@ const LsccManager = () => {
       <KeywordEditModal show={showKeywordEditModal} onHide={() => { setShowKeywordEditModal(false); setEditingKeyword(null); setShowKeywordManager(true); }} keyword={editingKeyword} onSave={async (id, data) => {
           const refPath = id ? `lscc/keywords/${id}` : `lscc/keywords/${Date.now()}`;
           await set(ref(database, refPath), data);
+          await bumpLsccVersion();
           setShowKeywordEditModal(false);
       }} />
 
@@ -337,6 +360,7 @@ const LsccManager = () => {
           const injuryData = { name: data.keyword.trim(), words: data.definition.trim() };
           const path = id ? `lscc/injuries/${id}` : `lscc/injuries/${Date.now()}`;
           await set(ref(database, path), injuryData);
+          await bumpLsccVersion();
           setShowInjuryEditModal(false);
       }} />
     </div>

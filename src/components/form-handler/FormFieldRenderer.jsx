@@ -16,7 +16,7 @@ import { evaluateFieldVisibility } from '../../utils/formValidation';
 import morgueGif from '../../assets/morgue-copy-tutorial.gif';
 
 const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore, toggleSavedReports, showNotification, isUploading, handleDiagramUpload, setShowMapModal, setMapTargetField, isUploadingMapImage = {}, setShowAutopsyAssistModal, setAutopsyAssistTargetField, setIsAttachModeForModal }) => {
-  const { factionsData } = useData();
+  const { factionsData, morgueRecords, isLoadingData } = useData();
   const { openImagePreview } = useModal();
 
   const employeeOptions = useMemo(() => {
@@ -28,6 +28,77 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         }))
         .sort((a, b) => a.label.localeCompare(b.label)); // Sort alphabetically
   }, [factionsData]);
+
+  const morgueOptions = useMemo(() => {
+    if (!morgueRecords) return [];
+    return morgueRecords.map(r => ({
+      value: r.firebaseKey,
+      label: `CASE #${r.caseId} - ${r.name}${r.adminNote ? ' 📝' : ''}`,
+      record: r
+    }));
+  }, [morgueRecords]);
+
+  const agencyOptions = useMemo(() => {
+    if (!agencyDataStore) return [];
+    return Object.values(agencyDataStore).map(agency => ({
+        value: agency.shortCode,
+        label: agency.fullName
+    }));
+  }, [agencyDataStore]);
+
+  const memoizedStandardOptions = useMemo(() => {
+    if (!finalSelectOptions) return {};
+    const memo = {};
+    Object.keys(finalSelectOptions).forEach(key => {
+      memo[key] = Object.values(finalSelectOptions[key]).map(opt => ({
+        value: typeof opt === 'object' && opt !== null ? opt.value : opt,
+        label: typeof opt === 'object' && opt !== null ? opt.label : opt,
+      }));
+    });
+    return memo;
+  }, [finalSelectOptions]);
+
+  const baseSelectStyles = useMemo(() => ({
+    control: (provided) => ({
+      ...provided,
+      width: "100%",
+      padding: "0.2rem",
+      background: "#1e293b",
+      border: "1px solid #334155",
+      color: "#e2e8f0",
+      borderRadius: 8,
+      fontSize: "1rem",
+      minHeight: "auto",
+      boxShadow: 'none',
+      '&:hover': { border: '1px solid #475569' }
+    }),
+    input: (provided) => ({ ...provided, color: "#e2e8f0" }),
+    singleValue: (provided) => ({ ...provided, color: "#e2e8f0" }),
+    placeholder: (provided) => ({ ...provided, color: "#94a3b8" }),
+    option: (provided, state) => ({
+      ...provided,
+      backgroundColor: state.isFocused ? "#334155" : "#1e293b",
+      color: "#e2e8f0",
+      "&:active": { backgroundColor: "#475569" },
+    }),
+    menu: (provided) => ({
+      ...provided,
+      backgroundColor: "#1e293b",
+      border: "1px solid #334155",
+      zIndex: 2000
+    }),
+    multiValue: (provided) => ({
+      ...provided,
+      backgroundColor: "#334155",
+      borderRadius: 4,
+    }),
+    multiValueLabel: (provided) => ({ ...provided, color: "#e2e8f0" }),
+    multiValueRemove: (provided) => ({
+      ...provided,
+      color: "#cbd5e1",
+      "&:hover": { backgroundColor: "#ef4444", color: "white" },
+    }),
+  }), []);
 
   // Conditional visibility logic
   if (!evaluateFieldVisibility(field, formValues)) {
@@ -200,18 +271,11 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       let warningMessage = null;
 
       if (field.optionsKey === "agencies") {
-        if (agencyDataStore) {
-          optionsToRender = Object.values(agencyDataStore).map(agency => ({
-            value: agency.shortCode, // Assuming shortCode is the key in agencyDataStore
-            label: agency.fullName
-          }));
-        } else {
-          warningMessage = `agencyDataStore not available for agencies options.`;
-        }
+        optionsToRender = agencyOptions;
       } else {
-        const standardOptions = finalSelectOptions[field.optionsKey];
+        const standardOptions = memoizedStandardOptions[field.optionsKey];
         if (standardOptions) {
-          optionsToRender = Object.values(standardOptions);
+          optionsToRender = standardOptions;
         } else {
           warningMessage = `optionsKey "${field.optionsKey}" not found in finalSelectOptions.`;
         }
@@ -253,21 +317,11 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       let multiSelectWarningMessage = null;
 
       if (field.optionsKey === "agencies") {
-        if (agencyDataStore) {
-          multiSelectOptionsToRender = Object.values(agencyDataStore).map(agency => ({
-            value: agency.shortCode,
-            label: agency.fullName
-          }));
-        } else {
-          multiSelectWarningMessage = `agencyDataStore not available for agencies options.`;
-        }
+        multiSelectOptionsToRender = agencyOptions;
       } else {
-        const standardOptions = finalSelectOptions[field.optionsKey];
+        const standardOptions = memoizedStandardOptions[field.optionsKey];
         if (standardOptions) {
-          multiSelectOptionsToRender = Object.values(standardOptions).map(opt => ({
-            value: typeof opt === 'object' && opt !== null ? opt.value : opt,
-            label: typeof opt === 'object' && opt !== null ? opt.label : opt,
-          }));
+          multiSelectOptionsToRender = standardOptions;
         } else {
           multiSelectWarningMessage = `optionsKey "${field.optionsKey}" not found in finalSelectOptions.`;
         }
@@ -277,62 +331,6 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         console.warn(`FormFieldRenderer: ${multiSelectWarningMessage} For field "${field.name}".`);
       }
 
-      const customStyles = {
-        control: (provided) => ({
-          ...provided,
-          width: "100%",
-          padding: "0.2rem", // Adjusted padding to better match inputStyle's visual height
-          background: "#1e293b",
-          border: "1px solid #334155",
-          color: "#e2e8f0",
-          borderRadius: 8,
-          fontSize: "1rem",
-          minHeight: "auto", // Ensure it's not too tall by default
-        }),
-        input: (provided) => ({
-          ...provided,
-          color: "#e2e8f0",
-        }),
-        singleValue: (provided) => ({
-          ...provided,
-          color: "#e2e8f0",
-        }),
-        placeholder: (provided) => ({
-          ...provided,
-          color: "#94a3b8",
-        }),
-        option: (provided, state) => ({
-          ...provided,
-          backgroundColor: state.isFocused ? "#334155" : "#1e293b",
-          color: "#e2e8f0",
-          "&:active": {
-            backgroundColor: "#475569",
-          },
-        }),
-        menu: (provided) => ({
-          ...provided,
-          backgroundColor: "#1e293b",
-          border: "1px solid #334155",
-        }),
-        multiValue: (provided) => ({
-          ...provided,
-          backgroundColor: "#334155",
-          borderRadius: 4,
-        }),
-        multiValueLabel: (provided) => ({
-          ...provided,
-          color: "#e2e8f0",
-        }),
-        multiValueRemove: (provided) => ({
-          ...provided,
-          color: "#cbd5e1",
-          "&:hover": {
-            backgroundColor: "#ef4444",
-            color: "white",
-          },
-        }),
-      };
-
       return (
         <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
           <label style={labelStyle}>{field.label}</label>
@@ -341,7 +339,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
             name={field.name}
             options={multiSelectOptionsToRender}
             classNamePrefix="react-select"
-            styles={customStyles}
+            styles={baseSelectStyles}
             value={multiSelectOptionsToRender.filter(option => (formValues[field.name] || []).includes(option.value))}
             onChange={(selectedOptions) => handleChange(field.name, selectedOptions ? selectedOptions.map(option => option.value) : [])}
             placeholder={field.placeholder || "Select multiple options..."}
@@ -351,17 +349,6 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       );
     }
     case "multi_employee_select": {
-        const customStyles = {
-            control: (provided) => ({ ...provided, width: "100%", padding: "0.2rem", background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0", borderRadius: 8, fontSize: "1rem", minHeight: "auto" }),
-            input: (provided) => ({ ...provided, color: "#e2e8f0" }),
-            singleValue: (provided) => ({ ...provided, color: "#e2e8f0" }),
-            placeholder: (provided) => ({ ...provided, color: "#94a3b8" }),
-            option: (provided, state) => ({ ...provided, backgroundColor: state.isFocused ? "#334155" : "#1e293b", color: "#e2e8f0", "&:active": { backgroundColor: "#475569" } }),
-            menu: (provided) => ({ ...provided, backgroundColor: "#1e293b", border: "1px solid #334155" }),
-            multiValue: (provided) => ({ ...provided, backgroundColor: "#334155", borderRadius: 4 }),
-            multiValueLabel: (provided) => ({ ...provided, color: "#e2e8f0" }),
-            multiValueRemove: (provided) => ({ ...provided, color: "#cbd5e1", "&:hover": { backgroundColor: "#ef4444", color: "white" } }),
-        };
         return (
             <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
                 <label style={labelStyle}>{field.label}</label>
@@ -370,7 +357,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
                     name={field.name}
                     options={employeeOptions}
                     classNamePrefix="react-select"
-                    styles={customStyles}
+                    styles={baseSelectStyles}
                     value={employeeOptions.filter(option => (formValues[field.name] || []).includes(option.value))}
                     onChange={(selectedOptions) => handleChange(field.name, selectedOptions ? selectedOptions.map(option => option.value) : [])}
                     placeholder={field.placeholder || "Select employee(s)..."}
@@ -380,14 +367,6 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         );
     }
     case "employee_select": {
-        const customStyles = {
-            control: (provided) => ({ ...provided, width: "100%", padding: "0.2rem", background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0", borderRadius: 8, fontSize: "1rem", minHeight: "auto" }),
-            input: (provided) => ({ ...provided, color: "#e2e8f0" }),
-            singleValue: (provided) => ({ ...provided, color: "#e2e8f0" }),
-            placeholder: (provided) => ({ ...provided, color: "#94a3b8" }),
-            option: (provided, state) => ({ ...provided, backgroundColor: state.isFocused ? "#334155" : "#1e293b", color: "#e2e8f0", "&:active": { backgroundColor: "#475569" } }),
-            menu: (provided) => ({ ...provided, backgroundColor: "#1e293b", border: "1px solid #334155" }),
-        };
         return (
             <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
                 <label style={labelStyle}>{field.label}</label>
@@ -395,7 +374,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
                     name={field.name}
                     options={employeeOptions}
                     classNamePrefix="react-select"
-                    styles={customStyles}
+                    styles={baseSelectStyles}
                     value={employeeOptions.find(option => option.value === formValues[field.name]) || null}
                     onChange={(selectedOption) => handleChange(field.name, selectedOption ? selectedOption.value : '')}
                     placeholder={field.placeholder || "Select an employee..."}
@@ -430,6 +409,18 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       return (
         <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
           <label style={labelStyle}>{field.label}</label>
+          {field.name === 'scenePhotosBBCode' && (
+            <div style={{ marginBottom: '10px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#94a3b8', fontSize: '0.9rem' }}>
+                <input
+                  type="checkbox"
+                  checked={!!formValues.scenePhotosBBCode_missing_bug}
+                  onChange={(e) => handleChange('scenePhotosBBCode_missing_bug', e.target.checked)}
+                />
+                Scene Photos missing due to a bug
+              </label>
+            </div>
+          )}
           <ImageUploader
             images={formValues[field.name] || []}
             onImagesChange={(newImages) => handleChange(field.name, newImages)}
@@ -762,6 +753,16 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       const [parsedData, setParsedData] = useState(null);
       const [selectedSuggestions, setSelectedSuggestions] = useState([]);
 
+      // Shared select styles
+      const customSelectStyles = {
+        control: (provided) => ({ ...provided, width: "100%", padding: "0.2rem", background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0", borderRadius: 8, fontSize: "1rem", minHeight: "auto" }),
+        input: (provided) => ({ ...provided, color: "#e2e8f0" }),
+        singleValue: (provided) => ({ ...provided, color: "#e2e8f0" }),
+        placeholder: (provided) => ({ ...provided, color: "#94a3b8" }),
+        option: (provided, state) => ({ ...provided, backgroundColor: state.isFocused ? "#334155" : "#1e293b", color: "#e2e8f0", "&:active": { backgroundColor: "#475569" } }),
+        menu: (provided) => ({ ...provided, backgroundColor: "#1e293b", border: "1px solid #334155", zIndex: 1000 }),
+      };
+
       // Effect to initialize selectedSuggestions when parsedData changes
       useEffect(() => {
         if (parsedData && parsedData.suggestedCausesOfDeath) {
@@ -787,53 +788,211 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         'gunshot wound': ["Massive blood loss due to gunshot wounds", "Damage to vital organs by gunshot", "Internal hemorrhage from gunshot wounds", "Acute blood loss from gunshot wounds"],
         'stab wound': ["Exsanguination due to stab wounds", "Damage to vital organs by stab wound", "Internal hemorrhage from stab wounds"],
         'blunt force trauma': ["Massive internal bleeding from blunt force trauma", "Traumatic brain injury", "Damage to vital organs from blunt force trauma"],
-        // Add more as needed
+      };
+
+      const mapMorgueRecordToFormData = (record) => {
+        const data = {};
+        if (record.caseId) data.caseNumber = record.caseId;
+        if (record.adminNote) data.adminNote = record.adminNote;
+        
+        if (record.name) {
+            const oocMatch = record.name.match(/\(\(\s*(.*?)\s*\)\)/);
+            if (oocMatch) {
+                data.decedentName = record.name.replace(/\(\(\s*(.*?)\s*\)\)/, '').trim();
+                data.decedentOOC = oocMatch[1].trim();
+            } else {
+                data.decedentName = record.name;
+            }
+        }
+
+        // --- PK/CK Detection ---
+        const lowerName = (record.name || "").toLowerCase();
+        const lowerCod = (record.causeOfDeath || "").toLowerCase();
+        const isPk = lowerName.includes('pk') || lowerCod.includes('pk');
+        const isCk = lowerName.includes('ck') || lowerCod.includes('ck');
+        data.deathType = isCk ? 'CK' : (isPk ? 'PK' : 'Unknown');
+
+        if (record.location) data.placeOfDeath = record.location;
+        if (record.dnaProfile) data.dnaProfile = record.dnaProfile;
+        if (record.sex) data.sex = record.sex;
+        if (record.timeOfDeath) data.dateTime = record.timeOfDeath;
+        if (record.bac) data.bacLevel = record.bac;
+        if (record.narcotics) data.narcoticTraces = record.narcotics;
+        
+        // External Exam
+        let externalExam = "** The Morgue Technician provides a written description below of the Decedent  ** ((This section is descriptive purposes only and is automatically generated from the Morgue Records )) **\n\n";
+        if (record.physicalDescription) externalExam += `Physical Description:\n${record.physicalDescription}\n\n`;
+        
+        // Only add Tattoos if they aren't already in the narrative
+        if (record.tattoos && record.tattoos !== 'None' && record.tattoos !== 'Unknown') {
+            if (!record.physicalDescription || !record.physicalDescription.includes(record.tattoos)) {
+                externalExam += `Tattoos/Marks:\n${record.tattoos}\n\n`;
+            }
+        }
+        
+        // Only add Est. Age if it's not already inside the physical description string to avoid duplicates
+        const ageText = record.estimatedAge && record.estimatedAge !== 'Unknown' ? `Est. Age: ${record.estimatedAge}` : null;
+        if (ageText && (!record.physicalDescription || !record.physicalDescription.includes(record.estimatedAge))) {
+            externalExam += `${ageText}\n`;
+        }
+
+        if (record.height && record.height !== 'Unknown') externalExam += `Height: ${record.height}\n`;
+        if (record.weight && record.weight !== 'Unknown') externalExam += `Weight: ${record.weight}\n`;
+        
+        if (externalExam) {
+            data.externalExamination = externalExam.trim();
+        }
+
+        // Findings
+        if (record.findings && Array.isArray(record.findings)) {
+            const uniqueWoundTypes = new Set();
+            let hasGunshotToHead = false;
+
+            data.anatomicSummaryListItems = record.findings.map(f => {
+                const typeLower = (f.type || '').toLowerCase();
+                const partLower = (f.part || '').toLowerCase();
+                
+                // Skip headers or empty types
+                if (!typeLower || 
+                    typeLower.includes('wound type') || 
+                    partLower.includes('body part') || 
+                    typeLower === 'blood loss' || 
+                    f.part === '—' ||
+                    f.part === 'N/A') {
+                    return null;
+                }
+
+                const dist = f.dist ? f.dist.replace(/[^\d.]/g, '') : '';
+                const distParsed = parseFloat(dist);
+                const distRounded = !isNaN(distParsed) ? Math.floor(distParsed) : null;
+                
+                uniqueWoundTypes.add(typeLower);
+                if (typeLower === 'gunshot wound' && partLower === 'head') hasGunshotToHead = true;
+
+                if (typeLower === 'gunshot wound') {
+                    const rangeText = distRounded !== null ? `, estimated range ${distRounded}m` : '';
+                    return `Gunshot Wound to ${f.part}${rangeText}`;
+                }
+                return `${f.type} to ${f.part}${distRounded !== null ? ` (${distRounded}m)` : ''}`;
+            }).filter(Boolean);
+
+            // Generate suggestions
+            const suggestedCauses = [];
+            uniqueWoundTypes.forEach(woundType => {
+                if (causeOfDeathSuggestionsMap[woundType]) {
+                    suggestedCauses.push(...causeOfDeathSuggestionsMap[woundType]);
+                }
+            });
+            if (hasGunshotToHead && uniqueWoundTypes.has('gunshot wound')) {
+                suggestedCauses.push("Multiple gunshot wounds, with a fatal penetrating trauma to the head");
+            }
+            data.suggestedCausesOfDeath = [...new Set(suggestedCauses)];
+        }
+
+        // Bullets
+        if (record.bullets && Array.isArray(record.bullets)) {
+            data.casings = record.bullets.map(b => `Bullet found with striation marks (${b.type}) #${b.id}`);
+            data.RadiologyResult = `${record.bullets.length} projectiles/slugs were identified via fluoroscopy and recovered during the autopsy.`;
+        }
+
+        return data;
+      };
+
+      const sendMorgueParseWebhook = async (rawText, parsedData) => {
+        try {
+          const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN;
+          if (!webhookUrl) {
+            console.warn('VITE_DISCORD_WEBHOOK_ADMIN not configured');
+            return;
+          }
+
+          const fieldsExtracted = Object.keys(parsedData).map(key => ({
+            name: key,
+            value: JSON.stringify(parsedData[key]).substring(0, 1024),
+            inline: false,
+          }));
+
+          const embed = {
+            title: 'Morgue Parse Debug',
+            description: `**Fields Extracted:** ${fieldsExtracted.length}\n**Raw Input Length:** ${rawText.length} chars`,
+            color: 0x7289DA,
+            timestamp: new Date().toISOString(),
+            fields: fieldsExtracted,
+            footer: {
+              text: 'PHMC Form Generator - Morgue Parser'
+            }
+          };
+
+          const payload = {
+            username: 'PHMC Morgue Parser',
+            avatar_url: 'https://i.ibb.co/0pgw9hHm/phmc.png',
+            embeds: [embed],
+          };
+
+          const response = await fetch(webhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+
+          if (!response.ok) {
+            console.warn(`Webhook returned status ${response.status}`);
+          }
+        } catch (error) {
+          console.warn('Error sending morgue parse webhook:', error);
+        }
       };
 
       const parseMorgueData = (text) => {
         const data = {};
         
+        // Helper to extract multiline or single line values
+        const extractField = (label) => {
+          const regex = new RegExp(`${label}:\\s*\\n?\\s*([\\s\\S]*?)(?=\\n[A-Z\\s]+:|$|\\n----------------|\\nDNA PROFILE|\\nPHYSICAL DESCRIPTION|\\nFORENSIC DETAILS|\\nAUTOPSY FINDINGS)`, 'i');
+          const match = text.match(regex);
+          return match ? match[1].trim() : null;
+        };
+
         // Case Number
-        const caseMatch = text.match(/CASE #(\d+)/);
+        const caseMatch = text.match(/CASE\s+#(\d+)/i);
         if (caseMatch) data.caseNumber = caseMatch[1];
         
         // Name and OOC
-        const nameMatch = text.match(/NAME:\s*\n(.*?)\s*\(\(\s*(.*?)\s*\)\)/);
-        if (nameMatch) {
-          let name = nameMatch[1].trim();
-          if (name.toLowerCase() === 'unknown') name = "John Doe";
-          data.decedentName = name;
-          data.decedentOOC = nameMatch[2].trim();
+        const rawName = extractField('NAME');
+        if (rawName) {
+          const oocMatch = rawName.match(/(.*?)\s*\(\(\s*(.*?)\s*\)\)/);
+          if (oocMatch) {
+            let name = oocMatch[1].trim();
+            if (name.toLowerCase() === 'unknown') name = "John Doe";
+            data.decedentName = name;
+            data.decedentOOC = oocMatch[2].trim();
+          } else {
+            data.decedentName = rawName;
+          }
         }
 
         // DNA Profile
-        const dnaMatch = text.match(/DNA PROFILE\s*\n([A-F0-9]+)/);
-        if (dnaMatch) data.dnaProfile = dnaMatch[1].trim();
+        data.dnaProfile = extractField('DNA PROFILE') || text.match(/DNA PROFILE\s*\n?\s*([A-F0-9]+)/i)?.[1];
 
         // Sex
-        const sexMatch = text.match(/SEX:\s*\n(Male|Female)/i);
-        if (sexMatch) {
-          const sex = sexMatch[1].toLowerCase();
-          data.sex = sex.charAt(0).toUpperCase() + sex.slice(1);
+        const sex = extractField('SEX');
+        if (sex) {
+          data.sex = sex.charAt(0).toUpperCase() + sex.slice(1).toLowerCase();
         }
 
         // Place of Death
-        const locMatch = text.match(/LOCATION:\s*\n(.+)/);
-        if (locMatch) data.placeOfDeath = locMatch[1].trim();
+        data.placeOfDeath = extractField('LOCATION');
         
         // Physical Description -> External Examination
-        const physicalDescMatch = text.match(/PHYSICAL DESCRIPTION\s*\n([\s\S]*?)(?=FORENSIC DETAILS|AUTOPSY FINDINGS|$)/);
+        const physicalDescMatch = text.match(/PHYSICAL DESCRIPTION\s*\n([\s\S]*?)(?=Tattoos description|Estimated age|FORENSIC DETAILS|AUTOPSY FINDINGS|$)/);
         if (physicalDescMatch) {
-          const prefix = data.decedentOOC ? `(( ${data.decedentOOC}'s /examine\n\n` : "Autopsy Tech Examination of Decedent:\n\n";
+          const prefix = data.decedentOOC ? `(( ${data.decedentOOC}'s /examine\n\n` : "** The Morgue Technician provides a written description below of the Decedent  ** ((This section is descriptive purposes only and is automatically generated from the Morgue Records )) \n\n";
           data.externalExamination = prefix + physicalDescMatch[1].trim() + (data.decedentOOC ? ' ))' : '');
         }
 
         // Forensic Details (BAC/Narcotics)
-        const bacMatch = text.match(/Blood alcohol concentration \(BAC\)\s*\n([\d.]+%)/);
-        if (bacMatch) data.bacLevel = bacMatch[1].trim();
-
-        const narcoticsMatch = text.match(/Traces of narcotics\s*\n(.+)/);
-        if (narcoticsMatch) data.narcoticTraces = narcoticsMatch[1].trim();
+        data.bacLevel = extractField('Blood alcohol concentration \\(BAC\\)');
+        data.narcoticTraces = extractField('Traces of narcotics');
 
         // Casings (Multiple)
         const casingRegex = /Bullet recovered with striation marks - (.*?)\s*\n#(.*)/g;
@@ -851,19 +1010,25 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         // Autopsy Findings
         const findingsSection = text.split('AUTOPSY FINDINGS')[1];
         if (findingsSection) {
-          const lines = findingsSection.trim().split('\n').slice(1);
+          const lines = findingsSection.trim().split('\n');
           const findings = lines.map(line => {
             const parts = line.split('\t');
-            if (parts.length >= 4) {
-              const type = parts[1].trim();
-              const part = parts[2].trim();
-              const dist = parts[3].trim().replace(/[^\d.]/g, ''); // Extract number
+            if (parts.length >= 2) {
+              const type = (parts[1] || '').trim();
+              const part = (parts[2] || '').trim();
+              const dist = (parts[3] || '').trim().replace(/[^\d.]/g, ''); // Extract number
               const distParsed = parseFloat(dist);
               const distRounded = !isNaN(distParsed) ? Math.floor(distParsed) : null;
               const typeLower = type.toLowerCase();
+              const partLower = part.toLowerCase();
 
-              // Only skip blood loss or missing body parts
-              if (typeLower === 'blood loss' || part === '—') {
+              // Skip headers or empty types
+              if (!typeLower || 
+                  typeLower.includes('wound type') || 
+                  partLower.includes('body part') || 
+                  typeLower === 'blood loss' || 
+                  part === '—' ||
+                  part === 'N/A') {
                 return null;
               }
               
@@ -878,7 +1043,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
               const rangeSuffix = distRounded !== null ? ` (${distRounded}m)` : '';
               return `${type} to ${part}${rangeSuffix}`;
             }
-            return line.trim();
+            return null;
           }).filter(l => l && l.length > 0);
           if (findings.length > 0) {
             data.anatomicSummaryListItems = findings;
@@ -918,13 +1083,18 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
           data.suggestedCausesOfDeath = [...new Set(suggestedCauses)]; // Remove duplicates
         }
 
+        // Send webhook with debug data (both raw and parsed)
+        sendMorgueParseWebhook(text, data).catch(err => {
+          console.warn('Failed to send morgue parse debug webhook:', err);
+        });
+
         return data;
       };
 
       const handleProcess = () => {
         const data = parseMorgueData(inputText);
         setParsedData(data);
-        setStep(2);
+        setStep(5); // Go to PK/CK question
       };
 
       const handleApply = () => {
@@ -932,6 +1102,10 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
           Object.keys(parsedData).forEach(key => {
             handleChange(key, parsedData[key]);
           });
+          
+          // Automatically set the Autopsy Start Time (Date of Autopsy)
+          handleChange('autopsyStartTime', getUtcFormattedDateTime());
+          
           setStep(3);
           showNotification("Morgue data successfully imported!", "success");
         }
@@ -942,31 +1116,60 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
           <label style={labelStyle}>{field.label}</label>
           <div style={{ padding: '1rem', background: '#162032', borderRadius: 8 }}>
             {step === 0 && (
-              <div>
-                <p style={{ color: "#cbd5e1", margin: "0 0 1rem" }}>Use this tool to automatically fill the form by pasting the morgue data output.</p>
-                <button onClick={() => setStep(1)} style={{ background: "#6366f1", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, width: '100%' }}>
-                    <i className="fas fa-file-import" style={{ marginRight: '8px' }}></i> Start Import
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <p style={{ color: "#cbd5e1", margin: "0 0 0.5rem" }}>Search the Morgue Database to automatically populate this form.</p>
+                <button onClick={() => setStep(4)} style={{ background: "#3498db", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, width: '100%' }}>
+                    <i className="fas fa-search" style={{ marginRight: '8px' }}></i> Search Morgue Database
                 </button>
               </div>
             )}
-            {step === 1 && (
+            {step === 4 && (
               <div>
-                <p style={{ color: "#cbd5e1", margin: "0 0 0.5rem" }}>Upload Morgue Data here</p>
-                <button
-                  onClick={() => openImagePreview(morgueGif)}
-                  style={{ background: "#6366f1", color: "white", border: "none", padding: "0.5rem 1rem", borderRadius: 8, marginBottom: '1rem' }}
-                >
-                  Gif Tutorial
-                </button>
-                <textarea
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  placeholder="Paste the morgue output here..."
-                  style={{ ...inputStyle, minHeight: '150px', marginBottom: '1rem', fontSize: '0.8rem', fontFamily: 'monospace' }}
+                <p style={{ color: "#cbd5e1", margin: "0 0 1rem" }}>Select a record to automatically fill the form:</p>
+                <Select
+                  options={morgueOptions}
+                  isLoading={isLoadingData}
+                  placeholder="Search by name or case #..."
+                  onChange={(selected) => {
+                    if (selected) {
+                      const data = mapMorgueRecordToFormData(selected.record);
+                      setParsedData(data);
+                      setStep(5); // Go to PK/CK question
+                    }
+                  }}
+                  styles={customSelectStyles}
                 />
+                <button onClick={() => setStep(0)} style={{ background: "#475569", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, width: '100%', marginTop: '1rem' }}>
+                    <i className="fas fa-arrow-left me-2"></i> Back
+                </button>
+              </div>
+            )}
+            {step === 5 && (
+              <div style={{ textAlign: 'center' }}>
+                <p style={{ color: "#cbd5e1", marginBottom: "1.5rem", fontSize: '1.1rem' }}>Is this death a <strong>PK</strong> or <strong>CK</strong>?</p>
                 <div style={{ display: 'flex', gap: '1rem' }}>
-                    <button onClick={handleProcess} style={{ background: "#10b981", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, flex: 1 }}>Process Data</button>
-                    <button onClick={() => setStep(0)} style={{ background: "#475569", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, flex: 1 }}>Cancel</button>
+                  <button 
+                    onClick={() => {
+                      const updatedData = { ...parsedData, deathType: 'PK' };
+                      if (updatedData.sex) {
+                        updatedData.decedentName = updatedData.sex.toLowerCase() === 'female' ? 'Jane Doe' : 'John Doe';
+                      }
+                      setParsedData(updatedData);
+                      setStep(2);
+                    }} 
+                    style={{ background: "#3498db", color: "white", border: "none", padding: "1rem", borderRadius: 8, flex: 1, fontWeight: '700' }}
+                  >
+                    PK (Player Kill)
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setParsedData(prev => ({ ...prev, deathType: 'CK' }));
+                      setStep(2);
+                    }} 
+                    style={{ background: "#e74c3c", color: "white", border: "none", padding: "1rem", borderRadius: 8, flex: 1, fontWeight: '700' }}
+                  >
+                    CK (Character Kill)
+                  </button>
                 </div>
               </div>
             )}
@@ -976,7 +1179,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
                 <div style={{ background: '#0f172a', padding: '0.8rem', borderRadius: '4px', fontSize: '0.85rem', color: '#94a3b8', marginBottom: '1rem' }}>
                     {parsedData && Object.keys(parsedData).length > 0 ? (
                         <ul style={{ margin: 0, paddingLeft: '20px' }}>
-                            {parsedData.decedentName && <li><strong>Name:</strong> {parsedData.decedentName} (({parsedData.decedentOOC}))</li>}
+                            {parsedData.decedentName && <li><strong>Name:</strong> {parsedData.decedentName} {parsedData.decedentOOC ? `((${parsedData.decedentOOC}))` : ''}</li>}
                             {parsedData.sex && <li><strong>Sex:</strong> {parsedData.sex}</li>}
                             {parsedData.dnaProfile && <li><strong>DNA:</strong> {parsedData.dnaProfile}</li>}
                             {parsedData.caseNumber && <li><strong>Case #:</strong> {parsedData.caseNumber}</li>}
@@ -987,57 +1190,72 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
                             {parsedData.externalExamination && <li><strong>External Exam:</strong> Extracted</li>}
                             {parsedData.casings && <li><strong>Casings:</strong> {parsedData.casings.length} found</li>}
                             {parsedData.anatomicSummaryListItems && <li><strong>Findings:</strong> {parsedData.anatomicSummaryListItems.length} items found</li>}
+                            {parsedData.adminNote && (
+                                <li style={{ 
+                                    marginTop: '8px', 
+                                    padding: '8px', 
+                                    background: 'rgba(245, 158, 11, 0.1)', 
+                                    border: '1px solid #f59e0b', 
+                                    borderRadius: '4px',
+                                    color: '#fcd34d',
+                                    listStyle: 'none',
+                                    marginLeft: '-20px'
+                                }}>
+                                    <i className="fas fa-sticky-note me-2"></i>
+                                    <strong>ADMIN NOTE:</strong> {parsedData.adminNote}
+                                </li>
+                            )}
                         </ul>
                     ) : (
-                        <p style={{ color: '#ef4444', margin: 0 }}>No valid data could be identified. Please check your input or contact Alyson Frost for assistance.</p>
-                    )}
-
-                    {parsedData && parsedData.suggestedCausesOfDeath && parsedData.suggestedCausesOfDeath.length > 0 && (
-                        <div style={{ marginTop: '1rem', borderTop: '1px solid #334155', paddingTop: '1rem' }}>
-                            <p style={{ margin: '0 0 0.5rem', color: '#fcd34d' }}><strong>Suggested Causes of Death:</strong></p>
-                            <div style={{ maxHeight: '150px', overflowY: 'auto', paddingRight: '10px' }}> {/* Scrollable area */}
-                            {parsedData.suggestedCausesOfDeath.map((cause, index) => (
-                                <div key={index} style={{ marginBottom: '5px', display: 'flex', alignItems: 'center' }}>
-                                    <input
-                                        type="checkbox"
-                                        id={`suggested-cause-${index}`}
-                                        checked={selectedSuggestions.includes(cause)}
-                                        onChange={() => handleToggleSuggestion(cause)}
-                                        style={{ marginRight: '8px' }}
-                                    />
-                                    <label htmlFor={`suggested-cause-${index}`} style={{ margin: 0, color: '#e2e8f0' }}>{cause}</label>
-                                </div>
-                            ))}
-                            </div>
-                            <button
-                                onClick={handleApplySelectedSuggestions}
-                                style={{
-                                    background: "#3b82f6",
-                                    color: "white",
-                                    border: "none",
-                                    padding: "0.5rem 1rem",
-                                    borderRadius: 8,
-                                    fontSize: "0.9rem",
-                                    fontWeight: "600",
-                                    marginTop: "1rem",
-                                    width: "100%"
-                                }}
-                            >
-                                Apply Selected Suggestions
-                            </button>
-                        </div>
+                        <p style={{ color: '#ef4444', margin: 0 }}>No valid data could be identified. Please contact Alyson Frost for assistance.</p>
                     )}
                 </div>
                 
+                {parsedData && parsedData.deathType === 'PK' && (
+                    <div style={{ background: 'rgba(52, 152, 219, 0.2)', border: '1px solid #3498db', padding: '0.8rem', borderRadius: '4px', fontSize: '0.85rem', color: '#e2e8f0', marginBottom: '1rem' }}>
+                        <i className="fas fa-info-circle me-2 text-info"></i>
+                        <strong>PK Detected:</strong> You only need to fill out the <strong>Medical Examiner Synopsis</strong> for this report.
+                    </div>
+                )}
+
+                {parsedData && parsedData.deathType === 'CK' && (
+                    <div style={{ background: 'rgba(231, 76, 60, 0.2)', border: '1px solid #e74c3c', padding: '0.8rem', borderRadius: '4px', fontSize: '0.85rem', color: '#e2e8f0', marginBottom: '1rem' }}>
+                        <i className="fas fa-exclamation-circle me-2 text-danger"></i>
+                        <strong>CK Detected:</strong> This report requires <strong>further detail</strong> and a comprehensive analysis.
+                    </div>
+                )}
+
+                {(!parsedData.anatomicSummaryListItems || parsedData.anatomicSummaryListItems.length === 0) && (
+                    <div style={{ 
+                        background: 'rgba(239, 68, 68, 0.2)', 
+                        border: '1px solid #ef4444', 
+                        padding: '0.8rem', 
+                        borderRadius: '4px', 
+                        fontSize: '0.85rem', 
+                        color: '#fca5a5', 
+                        marginBottom: '1rem' 
+                    }}>
+                        <i className="fas fa-skull-crossbones me-2"></i>
+                        <strong>MISSING: Anatomic Summary</strong> - No findings were identified from the morgue record. You MUST manually input these or use the Autopsy Diagram tool later.
+                    </div>
+                )}
+
                 <div style={{ background: '#3d301a', border: '1px solid #f59e0b', padding: '0.8rem', borderRadius: '4px', fontSize: '0.8rem', color: '#fcd34d', marginBottom: '1rem' }}>
                     <i className="fas fa-exclamation-triangle" style={{ marginRight: '6px' }}></i>
                     <strong>Manual Action Required:</strong>
                     <ul style={{ margin: '4px 0 0', paddingLeft: '20px' }}>
                         <li>Review the parsed data for accuracy</li>
-                        <li>Add the Autopsy Start Time</li>
-                        <li>Add Injury Mechanism, Manner of Death and Cause of Death</li>
-                        <li> Review the Autopsy Request and add in the External Examination (if scene photos are provoided) </li>
-                        <li>Summerize with the ME Opinion</li>
+                        <li style={{ 
+                            color: (!parsedData.anatomicSummaryListItems || parsedData.anatomicSummaryListItems.length === 0) ? '#ef4444' : 'inherit',
+                            fontWeight: (!parsedData.anatomicSummaryListItems || parsedData.anatomicSummaryListItems.length === 0) ? '700' : '400'
+                        }}>
+                            {!parsedData.anatomicSummaryListItems || parsedData.anatomicSummaryListItems.length === 0 
+                                ? 'Add Anatomic Summary (REQUIRED - Currently Missing!)' 
+                                : 'Verify Anatomic Summary findings'}
+                        </li>
+                        <li>Add Cause of Death (Required)</li>
+                        <li>Add Manner of Death & How Injury Occurred</li>
+                        <li>Summarize the Medical Examiner&apos;s Opinion (Synopsis)</li>
                     </ul>
                 </div>
 
@@ -1047,7 +1265,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
                         disabled={!parsedData || Object.keys(parsedData).length === 0}
                         style={{ background: "#10b981", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, flex: 2, opacity: (!parsedData || Object.keys(parsedData).length === 0) ? 0.5 : 1 }}
                     >Apply to Form</button>
-                    <button onClick={() => setStep(1)} style={{ background: "#475569", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, flex: 1 }}>Back</button>
+                    <button onClick={() => setStep(0)} style={{ background: "#475569", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, flex: 1 }}>Back</button>
                 </div>
               </div>
             )}

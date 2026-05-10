@@ -3,16 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { onValue, ref } from 'firebase/database';
 import { database } from '../../firebase';
 import BaseModal from '../Modals/BaseModal';
-
-// Helper: escape HTML characters for safe insertion into DOM
-const escapeHtml = (unsafe) => {
-  return unsafe
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-};
+import { renderMarkdown, escapeHtml } from '../../utils/textUtils';
 
 // Helper: escape regex characters
 const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -37,7 +28,12 @@ export const KeywordHighlighter = ({ children }) => {
     .sort((a, b) => b.keyword.length - a.keyword.length); // longest first
 
   if (keywordList.length === 0) {
-    return <div style={{ wordWrap: 'break-word', overflowWrap: 'break-word' }}>{children}</div>;
+    return (
+      <div 
+        dangerouslySetInnerHTML={{ __html: renderMarkdown(children) }}
+        style={{ wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} 
+      />
+    );
   }
 
   let content = children;
@@ -46,31 +42,30 @@ export const KeywordHighlighter = ({ children }) => {
   keywordList.forEach(kw => {
     try {
       const escaped = escapeRegExp(kw.keyword);
-      // Check if the keyword contains any non-word characters that are not hyphens,
-      // as hyphens are often part of keywords and \b handles them correctly
-      const containsSpecialChars = /[^\w\s-]/.test(kw.keyword); // Exclude letters, numbers, underscore, space, hyphen
-
+      const containsSpecialChars = /[^\w\s-]/.test(kw.keyword);
       const regex = containsSpecialChars
-        ? new RegExp(`(${escaped})`, 'gi') // Match exact string if special chars are present
-        : new RegExp(`\\b(${escaped})\\b`, 'gi'); // Use word boundaries for regular words
+        ? new RegExp(`(${escaped})`, 'gi')
+        : new RegExp(`\\b(${escaped})\\b`, 'gi');
 
-      // Replace with a temporary token
+      // Replace with a temporary token that won't conflict with Markdown (no __ or **)
       content = content.replace(regex, match => {
         const escapedKeywordForData = escapeHtml(kw.keyword.toLowerCase());
         const escapedMatchContent = escapeHtml(match);
         const replacementHtml = `<span class="smart-keyword" data-kw="${escapedKeywordForData}">${escapedMatchContent}</span>`;
         finalReplacements.push(replacementHtml);
-        return `__KEYWORD_TOKEN_${finalReplacements.length - 1}__`; // Return a unique token
+        return `@@KWTOKEN_${finalReplacements.length - 1}@@`;
       });
     } catch (e) {
       console.warn('Keyword regex failed:', kw.keyword, e);
     }
   });
 
-  // After all keywords are processed, replace tokens with actual HTML
+  // Apply Markdown to the text (which now contains tokens)
+  content = renderMarkdown(content);
+
+  // After all keywords and Markdown are processed, replace tokens with actual HTML
   finalReplacements.forEach((html, index) => {
-    // Need to use a regex to replace all occurrences of the same token
-    const tokenRegex = new RegExp(`__KEYWORD_TOKEN_${index}__`, 'g');
+    const tokenRegex = new RegExp(`@@KWTOKEN_${index}@@`, 'g');
     content = content.replace(tokenRegex, html);
   });
 
@@ -127,16 +122,18 @@ export const KeywordHighlighter = ({ children }) => {
           <>
             <div style={{ marginBottom: 16 }}>
               <strong style={{ color: '#0066cc', fontSize: '1.1em', display: 'block', marginBottom: '4px' }}>CONSIDER</strong>
-              <p style={{ margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
-                {activeKeyword.definition || 'No definition provided.'}
-              </p>
+              <div 
+                style={{ margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap' }}
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(activeKeyword.definition || 'No definition provided.') }}
+              />
             </div>
             {activeKeyword.tip && (
               <div style={{ marginBottom: 16 }}>
                 <strong style={{ color: '#0066cc', fontSize: '1.1em', display: 'block', marginBottom: '4px' }}>TIP</strong>
-                <p style={{ margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
-                  {activeKeyword.tip}
-                </p>
+                <div 
+                  style={{ margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap' }}
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(activeKeyword.tip) }}
+                />
               </div>
             )}
           </>

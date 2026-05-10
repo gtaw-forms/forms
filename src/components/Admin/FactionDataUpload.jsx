@@ -2,7 +2,7 @@ import { logAdminAction, getUserContext } from '../../utils/adminLogger';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import useFactionPermissions from '../../hooks/useFactionPermissions';
 import React, { useState, useCallback, useEffect } from 'react';
-import { Card, Button, Alert, Table, Badge, Spinner, Tabs, Tab, Modal, Form, Row, Col } from 'react-bootstrap';
+import { Card, Button, Alert, Table, Badge, Spinner, Tabs, Tab, Form } from 'react-bootstrap';
 import { useDropzone } from 'react-dropzone';
 import { httpsCallable } from 'firebase/functions';
 import { ref, get, set } from 'firebase/database';
@@ -27,16 +27,6 @@ const FactionDataUpload = ({ showNotification }) => {
     const [loadingStored, setLoadingStored] = useState(false);
     const [activeTab, setActiveTab] = useState('upload');
     const [lastUpdateInfo, setLastUpdateInfo] = useState(null);
-
-    // Manual Add User State
-    const [showManualModal, setShowManualModal] = useState(false);
-    const [manualData, setManualData] = useState({
-        characterId: '',
-        characterName: '',
-        rank: '',
-        scriptRank: ''
-    });
-    const [submittingManual, setSubmittingManual] = useState(false);
 
     // Remote Sync State
     const [isSyncing, setIsSyncing] = useState(false);
@@ -90,148 +80,6 @@ const FactionDataUpload = ({ showNotification }) => {
             setIsUploadingAuth(false);
         }
     };
-
-    // Manual Add User Functions
-    const handleManualInputChange = (e) => {
-        const { name, value } = e.target;
-        setManualData(prev => ({
-            ...prev,
-            [name]: value
-        }));
-    };
-
-    const handleManualSubmit = async (e) => {
-        e.preventDefault();
-        
-        if (!manualData.characterId || !manualData.characterName || !manualData.rank || !manualData.scriptRank) {
-            showNotification('Please fill in all fields', 'warning');
-            return;
-        }
-
-        setSubmittingManual(true);
-
-        try {
-            const { userAgent, timeZone } = getUserContext();
-            logAdminAction(
-                gtawUsername,
-                'Manually Added Faction Member',
-                `Character ID: ${manualData.characterId}\nName: ${manualData.characterName}\nRank: ${manualData.rank}\nScript Rank: ${manualData.scriptRank}`,
-                'Faction Data Management',
-                userAgent,
-                timeZone,
-                gtawUsername,
-                gtawUser
-            );
-            const memberData = {
-                characterId: parseInt(manualData.characterId),
-                characterName: manualData.characterName,
-                rank: manualData.rank,
-                scriptRank: parseInt(manualData.scriptRank),
-                activity: 'MISSING_DATA',
-                lastDuty: null,
-                lastOnline: null,
-                manuallyAdded: true,
-                addedAt: new Date().toISOString()
-            };
-
-            await set(ref(database, `factions/364/members/${manualData.characterId}`), memberData);
-            
-            showNotification(`Successfully added ${manualData.characterName}`, 'success');
-            setShowManualModal(false);
-            setManualData({ characterId: '', characterName: '', rank: '', scriptRank: '' });
-            
-            // Refresh data if we're on the stored tab
-            if (activeTab === 'stored') {
-                loadStoredFactionData();
-            }
-        } catch (error) {
-            console.error('[Manual Add] Error:', error);
-            showNotification(`Failed to add user: ${error.message}`, 'error');
-        } finally {
-            setSubmittingManual(false);
-        }
-    };
-
-    const parseJSONFile = useCallback((file) => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    const text = e.target.result;
-                    let jsonData = JSON.parse(text);
-                    let isUcpFormat = false;
-
-                    if (jsonData && typeof jsonData === 'object' && jsonData.data && Array.isArray(jsonData.data)) {
-                        isUcpFormat = true;
-                        jsonData = jsonData.data;
-                    }
-
-                    if (!Array.isArray(jsonData)) {
-                        reject(new Error('JSON file must contain an array of faction members, or be a UCP export with a "data" property.'));
-                        return;
-                    }
-
-                    const parsed = [];
-                    const errors = [];
-
-                    jsonData.forEach((member, index) => {
-                        let characterId, characterName, rank, scriptRank, lastDuty, lastOnline, activity;
-
-                        if (isUcpFormat) {
-                            const idMatch = member.id ? String(member.id).match(/\/(\d+)/) : null;
-                            characterId = idMatch ? idMatch[1] : null;
-                            characterName = member.firstname && member.lastname ? `${member.firstname} ${member.lastname}` : null;
-                            rank = member.rank;
-                            scriptRank = member.scriptrank; // lowercase from UCP
-                            lastDuty = member.lastduty;
-                            lastOnline = member.lastonline;
-                            activity = member.abas;
-                        } else {
-                            // This is for the simple format I assumed before
-                            characterId = member.characterId;
-                            characterName = member.characterName;
-                            rank = member.rank;
-                            scriptRank = member.scriptRank;
-                            lastDuty = member.lastDuty;
-                            lastOnline = member.lastOnline;
-                            activity = member.activity;
-                        }
-
-                        if (!characterId || !characterName || !rank || scriptRank === undefined || scriptRank === null) {
-                            errors.push(`Row ${index + 1}: Missing or invalid data - ID: ${characterId}, Name: ${characterName}, Rank: ${rank}, ScriptRank: ${scriptRank}`);
-                            return;
-                        }
-
-                        parsed.push({
-                            characterId: parseInt(characterId),
-                            characterName,
-                            rank,
-                            scriptRank: parseInt(scriptRank),
-                            lastDuty: lastDuty || null,
-                            lastOnline: lastOnline || null,
-                            activity: activity || null,
-                            lineNumber: index + 1
-                        });
-                    });
-
-                    resolve({
-                        totalRows: jsonData.length,
-                        validRows: parsed.length,
-                        errors,
-                        data: parsed,
-                        fileName: file.name,
-                        fileSize: file.size,
-                        uploadTime: new Date().toISOString()
-                    });
-
-                } catch (error) {
-                    reject(new Error(`Failed to parse JSON: ${error.message}`));
-                }
-            };
-            reader.onerror = () => reject(new Error('Failed to read file'));
-            reader.readAsText(file);
-        });
-    }, []);
 
     // CSV file processing
     const parseCSVFile = useCallback((file) => {
@@ -475,16 +323,8 @@ const FactionDataUpload = ({ showNotification }) => {
         setUploadedFile(file);
 
         try {
-            let parsed;
-            const isJson = file.type === 'application/json' || file.name.toLowerCase().endsWith('.json');
-
-            if (isJson) {
-                console.log('[Faction Upload] Processing JSON file:', file.name);
-                parsed = await parseJSONFile(file);
-            } else {
-                console.log('[Faction Upload] Processing CSV file:', file.name);
-                parsed = await parseCSVFile(file);
-            }
+            console.log('[Faction Upload] Processing CSV file:', file.name);
+            const parsed = await parseCSVFile(file);
             
             console.log('[Faction Upload] Parsed data:', {
                 totalRows: parsed.totalRows,
@@ -495,15 +335,14 @@ const FactionDataUpload = ({ showNotification }) => {
             setParsedData(parsed);
             setUploadStatus('preview');
             
-            const fileType = isJson ? 'JSON' : 'CSV';
             if (parsed.errors.length > 0) {
                 showNotification && showNotification(
-                    `${fileType} parsed with ${parsed.errors.length} errors. Please review before uploading.`,
+                    `CSV parsed with ${parsed.errors.length} errors. Please review before uploading.`,
                     'warning'
                 );
             } else {
                 showNotification && showNotification(
-                    `Successfully parsed ${parsed.validRows} faction members from ${fileType}`,
+                    `Successfully parsed ${parsed.validRows} faction members from CSV`,
                     'success'
                 );
             }
@@ -514,14 +353,13 @@ const FactionDataUpload = ({ showNotification }) => {
             setUploadStatus('error');
             showNotification && showNotification(`Failed to parse file: ${error.message}`, 'error');
         }
-    }, [parseCSVFile, parseJSONFile, showNotification]);
+    }, [parseCSVFile, showNotification]);
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,
         accept: {
             'text/csv': ['.csv'],
-            'application/vnd.ms-excel': ['.csv'],
-            'application/json': ['.json']
+            'application/vnd.ms-excel': ['.csv']
         },
         multiple: false,
         disabled: uploadStatus === 'uploading'
@@ -652,47 +490,6 @@ const FactionDataUpload = ({ showNotification }) => {
         }
     };
 
-    // Expose a function for Playwright to call
-    useEffect(() => {
-        window.automateFactionUpload = async (jsonString) => {
-            console.log('[Automation] Received request to upload faction data.');
-            
-            try {
-                // We need a File-like object for parseJSONFile
-                const blob = new Blob([jsonString], { type: 'application/json' });
-                const pseudoFile = new File([blob], "automated_upload.json", { type: "application/json" });
-
-                // 1. Parse and validate the data using existing logic
-                const parsed = await parseJSONFile(pseudoFile);
-                if (parsed.errors && parsed.errors.length > 0) {
-                    console.error('[Automation] Upload failed: Data contains errors.', parsed.errors);
-                    return { success: false, message: 'Data parsing failed.', errors: parsed.errors };
-                }
-                
-                console.log(`[Automation] Successfully parsed ${parsed.validRows} records.`);
-
-                // 2. Perform the upload with the parsed data
-                const result = await performFactionDataUpload(parsed.data, 'automated_upload.json');
-                
-                if (result.success) {
-                    console.log('[Automation] Upload successful.');
-                    return { success: true, message: 'Faction data uploaded successfully.' };
-                } else {
-                    console.error('[Automation] Upload failed:', result.error);
-                    return { success: false, message: `Upload failed: ${result.error}` };
-                }
-            } catch (e) {
-                console.error('[Automation] An unexpected error occurred:', e);
-                return { success: false, message: `An unexpected error occurred: ${e.message}` };
-            }
-        };
-
-        // Cleanup function to remove the backdoor when the component unmounts
-        return () => {
-            delete window.automateFactionUpload;
-        };
-    }, [parseJSONFile, performFactionDataUpload]); // Dependencies
-
     // Reset for new upload
     const handleReset = () => {
         setUploadStatus('idle');
@@ -720,10 +517,10 @@ const FactionDataUpload = ({ showNotification }) => {
                     <>
                         <i className="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
                         <p className="mb-2">
-                            {isDragActive ? 'Drop the file here' : 'Drag & drop faction CSV or JSON file here, or click to select'}
+                            {isDragActive ? 'Drop the file here' : 'Drag & drop faction CSV file here, or click to select'}
                         </p>
                         <p className="text-muted small mb-0">
-                            Supports CSV files from GTA World UCP or a custom JSON array.
+                            Supports standard CSV exports from the GTA World UCP.
                         </p>
                     </>
                 )}
@@ -737,17 +534,11 @@ const FactionDataUpload = ({ showNotification }) => {
             <div className="d-flex justify-content-between align-items-center mb-3">
                 <h5>Data Preview</h5>
                 <div className="d-flex gap-2">
-                    <Button variant="outline-secondary" size="sm" onClick={handleReset}>
-                        Upload Different File
+                    <Button variant="outline-secondary" size="sm" onClick={handleReset} className="admin-btn">
+                        Different File
                     </Button>
-                    <Button 
-                        variant="success" 
-                        size="sm" 
-                        onClick={handleUploadToFirebase}
-                        disabled={parsedData?.errors?.length > 0}
-                    >
-                        <i className="fas fa-upload me-2"></i>
-                        Upload to Database
+                    <Button variant="success" size="sm" onClick={handleUploadToFirebase} disabled={parsedData?.errors?.length > 0} className="admin-btn">
+                        <i className="fas fa-upload me-2"></i> Sync Database
                     </Button>
                 </div>
             </div>
@@ -844,495 +635,215 @@ const FactionDataUpload = ({ showNotification }) => {
     );
 
     return (
-        <Card className="mb-4">
-            <Card.Header>
-                <h5 className="mb-0">
-                    <i className="fas fa-users me-2"></i>
-                    Faction Data Management
-                </h5>
-            </Card.Header>
-            <Card.Body>
-                <Tabs 
-                    activeKey={activeTab} 
-                    onSelect={(k) => setActiveTab(k)}
-                    className="mb-3"
-                >
-                    <Tab eventKey="upload" title={
-                        <span>
-                            <i className="fas fa-upload me-2"></i>
-                            Upload File
-                        </span>
-                    }>
-                    Hello! Please grab a copy of the faction CSV from the GTAWorld UCP and upload it here to manage faction data. <a href="https://ucp.gta.world/view/faction/364/populate?draw=2&columns[0][data]=actions&columns[0][name]=actions&columns[0][searchable]=true&columns[0][orderable]=true&columns[0][search][value]=&columns[0][search][regex]=false&columns[1][data]=id&columns[1][name]=characters.id&columns[1][searchable]=true&columns[1][orderable]=true&columns[1][search][value]=&columns[1][search][regex]=false&columns[2][data]=name&columns[2][name]=name&columns[2][searchable]=true&columns[2][orderable]=true&columns[2][search][value]=&columns[2][search][regex]=false&columns[3][data]=rank&columns[3][name]=rank&columns[3][searchable]=true&columns[3][orderable]=true&columns[3][search][value]=&columns[3][search][regex]=false&columns[4][data]=scriptrank&columns[4][name]=scriptrank&columns[4][searchable]=true&columns[4][orderable]=true&columns[4][search][value]=&columns[4][search][regex]=false&columns[5][data]=lastduty&columns[5][name]=lastduty&columns[5][searchable]=true&columns[5][orderable]=true&columns[5][search][value]=&columns[5][search][regex]=false&columns[6][data]=lastonline&columns[6][name]=lastonline&columns[6][searchable]=true&columns[6][orderable]=true&columns[6][search][value]=&columns[6][search][regex]=false&columns[7][data]=abas&columns[7][name]=abas&columns[7][searchable]=true&columns[7][orderable]=true&columns[7][search][value]=&columns[7][search][regex]=false&order[0][column]=3&order[0][dir]=desc&start=0&length=1000&search[value]=&search[regex]=false&type=members&filters=&searchTerm=&_=1766805327306" target="_blank" rel="noopener noreferrer">Grab a copy from the UCP (expand by &apos;all&apos;).</a> Alternatively, you can upload a JSON file with an array of member objects.
-                        {activeTab === 'upload' && (
-                            <>
-                                {uploadStatus === 'idle' && renderUploadArea()}
-                                
-                                {uploadStatus === 'uploading' && renderUploadArea()}
-                                
-                                {uploadStatus === 'preview' && renderPreview()}
-                                
-                                {uploadStatus === 'success' && (
-                                    <Alert variant="success">
-                                        <Alert.Heading>Upload Successful!</Alert.Heading>
-                                        <p>Faction data has been successfully uploaded to the database.</p>
-                                        <hr />
-                                        <div className="d-flex justify-content-between">
-                                            <Button variant="outline-success" onClick={handleReset}>
-                                                Upload Another File
-                                            </Button>
-                                            <Button variant="primary" onClick={() => setActiveTab('stored')}> 
-                                                View Stored Data
-                                            </Button>
-                                        </div>
-                                    </Alert>
-                                )}
-                                
-                                {error && (
-                                    <Alert variant="danger">
-                                        <Alert.Heading>Upload Error</Alert.Heading>
-                                        <p>{error}</p>
-                                        <hr />
-                                        <Button variant="outline-danger" onClick={handleReset}>
-                                            Try Again
-                                        </Button>
-                                    </Alert>
-                                )}
-                            </>
-                        )}
-                    </Tab>
-                    
-                    {permissions.includes('superadmin_access') && (
-                        <Tab eventKey="remote" title={
-                            <span>
-                                <i className="fas fa-sync-alt me-2"></i>
-                                Remote Sync (UCP)
-                            </span>
-                        }>
-                            {activeTab === 'remote' && (
-                                <div className="py-2">
-                                    <Alert variant="info">
-                                        <Alert.Heading>UCP Remote Synchronization</Alert.Heading>
-                                        <p>
-                                            This feature allows the system to automatically sync faction member data directly from the GTA World UCP 
-                                            using your session cookies. This eliminates the need for manual CSV uploads.
-                                        </p>
-                                        <hr />
-                                        <p className="mb-0">
-                                            <strong>How it works:</strong> You upload your <code>ucp-auth-state.json</code> (generated by the local sync script), 
-                                            and the server uses it to fetch data every morning at 09:00 UTC.
-                                        </p>
-                                    </Alert>
+        <div className="admin-section">
+            <div className="d-flex justify-content-between align-items-center mb-5">
+                <h2 className="mb-0 fw-800"><i className="fas fa-users me-3 text-indigo"></i>Faction Member Sync</h2>
+            </div>
 
-                                    <div className="row g-4">
-                                        <div className="col-md-6">
-                                            <Card className="h-100 border-primary">
-                                                <Card.Body>
-                                                    <h6>1. Update Authentication</h6>
-                                                    <p className="small text-muted">
-                                                        If the sync fails with "Session Expired", you need to upload a fresh <code>ucp-auth-state.json</code> file 
-                                                        from your <code>@tools/faction-data-helper/</code> directory.
-                                                    </p>
-                                                    <div className="d-grid gap-2">
-                                                        <input 
-                                                            type="file" 
-                                                            id="auth-file-input" 
-                                                            accept=".json" 
-                                                            style={{ display: 'none' }} 
-                                                            onChange={(e) => e.target.files[0] && handleUploadAuthState(e.target.files[0])}
-                                                        />
-                                                        <Button 
-                                                            variant="primary" 
-                                                            disabled={isUploadingAuth}
-                                                            onClick={() => document.getElementById('auth-file-input').click()}
-                                                        >
-                                                            {isUploadingAuth ? <Spinner size="sm" /> : <><i className="fas fa-key me-2"></i>Upload Auth State JSON</>}
-                                                        </Button>
-                                                    </div>
-                                                </Card.Body>
-                                            </Card>
-                                        </div>
-                                        <div className="col-md-6">
-                                            <Card className="h-100 border-success">
-                                                <Card.Body>
-                                                    <h6>2. Trigger Manual Sync</h6>
-                                                    <p className="small text-muted">
-                                                        Manually trigger the background sync process to update the database immediately.
-                                                    </p>
-                                                    <div className="d-grid gap-2">
-                                                        <Button 
-                                                            variant="success" 
-                                                            disabled={isSyncing}
-                                                            onClick={handleTriggerRemoteSync}
-                                                        >
-                                                            {isSyncing ? <Spinner size="sm" /> : <><i className="fas fa-sync me-2"></i>Trigger Sync Now</>}
-                                                        </Button>
-                                                    </div>
-                                                </Card.Body>
-                                            </Card>
-                                        </div>
-                                    </div>
+            <Tabs 
+                activeKey={activeTab} 
+                onSelect={(k) => setActiveTab(k)}
+                className="mb-4"
+                variant="pills"
+            >
+                <Tab eventKey="upload" title={<span><i className="fas fa-upload me-2"></i>Bulk Import</span>}>
+                    <div className="card border-0 shadow-sm">
+                        <div className="card-body p-4">
+                            <p className="text-muted small mb-4">
+                                <i className="fas fa-info-circle me-2 text-indigo"></i>
+                                Upload a CSV or Excel file exported from the GTAWorld UCP to sync member data.
+                                <a href="https://ucp.gta.world/view/faction/364/populate?..." target="_blank" rel="noopener noreferrer" className="ms-2 text-indigo text-decoration-none fw-bold">Open UCP Export <i className="fas fa-external-link-alt small"></i></a>
+                            </p>
 
-                                    {lastUpdateInfo && (
-                                        <Card className="mt-4 bg-dark text-light">
-                                            <Card.Body>
-                                                <h6 className="text-info"><i className="fas fa-history me-2"></i>Last Remote Sync Status</h6>
-                                                <div className="row small">
-                                                    <div className="col-sm-4"><strong>Last Updated:</strong></div>
-                                                    <div className="col-sm-8">{new Date(lastUpdateInfo.uploadTime).toLocaleString()}</div>
-                                                    
-                                                    <div className="col-sm-4"><strong>Source:</strong></div>
-                                                    <div className="col-sm-8">{lastUpdateInfo.uploadedBy}</div>
-
-                                                    {lastUpdateInfo.statistics && (
-                                                        <>
-                                                            <div className="col-sm-4"><strong>Valid Records:</strong></div>
-                                                            <div className="col-sm-8">{lastUpdateInfo.statistics.validRecords} members</div>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            </Card.Body>
-                                        </Card>
+                            {activeTab === 'upload' && (
+                                <div className="admin-section">
+                                    {uploadStatus === 'idle' && renderUploadArea()}
+                                    {uploadStatus === 'uploading' && renderUploadArea()}
+                                    {uploadStatus === 'preview' && renderPreview()}
+                                    
+                                    {uploadStatus === 'success' && (
+                                        <Alert variant="success" className="border-0 shadow-sm">
+                                            <Alert.Heading className="fw-bold">Synchronization Successful!</Alert.Heading>
+                                            <p>Faction member data has been verified and committed to the database.</p>
+                                            <hr className="opacity-10" />
+                                            <div className="d-flex gap-2">
+                                                <Button variant="outline-success" onClick={handleReset} className="admin-btn small">Import Another</Button>
+                                                <Button variant="primary" onClick={() => setActiveTab('stored')} className="admin-btn small">View Live Database</Button>
+                                            </div>
+                                        </Alert>
+                                    )}
+                                    
+                                    {error && (
+                                        <Alert variant="danger" className="border-0 shadow-sm">
+                                            <Alert.Heading className="fw-bold">Processing Error</Alert.Heading>
+                                            <p>{error}</p>
+                                            <hr className="opacity-10" />
+                                            <Button variant="outline-danger" onClick={handleReset} className="admin-btn small">Try Again</Button>
+                                        </Alert>
                                     )}
                                 </div>
                             )}
-                        </Tab>
-                    )}
+                        </div>
+                    </div>
+                </Tab>
+                
+                {permissions.includes('superadmin_access') && (
+                    <Tab eventKey="remote" title={<span><i className="fas fa-sync-alt me-2"></i>UCP Cloud Sync</span>}>
+                        {activeTab === 'remote' && (
+                            <div className="admin-section">
+                                <Alert variant="info" className="border-0 shadow-sm mb-4">
+                                    <Alert.Heading className="fw-bold">UCP Remote Synchronization</Alert.Heading>
+                                    <p>Automate member syncing using session cookies. The system fetches fresh data daily at 09:00 UTC.</p>
+                                </Alert>
 
-                    <Tab eventKey="stored" title={
-                        <span>
-                            <i className="fas fa-database me-2"></i>
-                            Stored Data ({storedData?.length || 0})
-                        </span>
-                    }>
-                        {activeTab === 'stored' && (
-                            <>
-                                {/* Stored Data Header */}
-                                <div className="d-flex justify-content-between align-items-center mb-3">
-                                    <div>
-                                        <h6 className="mb-1">Current Faction Database - Hit &apos;Refresh&apos; to get the latest data</h6>
-                                        {lastUpdateInfo && lastUpdateInfo.uploadTime && (
-                                            <small className="text-muted">
-                                                Last updated: {new Date(lastUpdateInfo.uploadTime).toLocaleString()} 
-                                                {lastUpdateInfo.uploadedBy && ` by ${lastUpdateInfo.uploadedBy}`}
-                                                {lastUpdateInfo.fileName && ` (${lastUpdateInfo.fileName})`}
-                                                {lastUpdateInfo.statistics && (
-                                                    <> • {lastUpdateInfo.statistics.validRecords} members</>
-                                                )}
-                                            </small>
-                                        )}
+                                <div className="row g-4">
+                                    <div className="col-md-6">
+                                        <div className="card h-100 border-indigo border-opacity-25 bg-indigo bg-opacity-5">
+                                            <div className="card-body p-4">
+                                                <h6 className="text-indigo uppercase fw-bold small mb-3">1. Identity Authentication</h6>
+                                                <p className="small text-muted mb-4">If sync fails with "Session Expired", upload a fresh <code>ucp-auth-state.json</code> file.</p>
+                                                <input type="file" id="auth-file-input" accept=".json" style={{ display: 'none' }} onChange={(e) => e.target.files[0] && handleUploadAuthState(e.target.files[0])} />
+                                                <Button variant="primary" disabled={isUploadingAuth} onClick={() => document.getElementById('auth-file-input').click()} className="w-100 admin-btn">
+                                                    {isUploadingAuth ? <Spinner size="sm" /> : <><i className="fas fa-key me-2"></i>Upload Session State</>}
+                                                </Button>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <Button 
-                                        variant="outline-primary" 
-                                        size="sm" 
-                                        onClick={loadStoredFactionData}
-                                        disabled={loadingStored}
-                                    >
-                                        {loadingStored ? (
-                                            <>
-                                                <Spinner animation="border" size="sm" className="me-2" />
-                                                Loading...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <i className="fas fa-refresh me-2"></i>
-                                                Refresh
-                                            </>
-                                        )}
-                                    </Button>
-                                    <Button
-                                        variant="success"
-                                        size="sm"
-                                        className="ms-2"
-                                        onClick={() => setShowManualModal(true)}
-                                    >
-                                        <i className="fas fa-plus me-2"></i>
-                                        Manually Add User
-                                    </Button>
+                                    <div className="col-md-6">
+                                        <div className="card h-100 border-success border-opacity-25 bg-success bg-opacity-5">
+                                            <div className="card-body p-4">
+                                                <h6 className="text-success uppercase fw-bold small mb-3">2. Manual Trigger</h6>
+                                                <p className="small text-muted mb-4">Force an immediate background sync to update the live database with UCP data.</p>
+                                                <Button variant="success" disabled={isSyncing} onClick={handleTriggerRemoteSync} className="w-100 admin-btn">
+                                                    {isSyncing ? <Spinner size="sm" /> : <><i className="fas fa-sync me-2"></i>Trigger Cloud Sync</>}
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
 
-                                {/* Stored Data Content */}
-                                {loadingStored && !storedData && (
-                                    <div className="text-center py-4">
-                                        <Spinner animation="border" />
-                                        <p className="mt-2">Loading stored faction data...</p>
+                                {lastUpdateInfo && (
+                                    <div className="card mt-4 border-0 shadow-sm bg-dark bg-opacity-50">
+                                        <div className="card-body p-4">
+                                            <h6 className="text-indigo small uppercase fw-bold mb-3"><i className="fas fa-history me-2"></i>Last Synchronization Status</h6>
+                                            <div className="row g-3 small">
+                                                <div className="col-sm-3 text-muted uppercase fw-bold x-small">Timestamp:</div>
+                                                <div className="col-sm-9 fw-bold">{new Date(lastUpdateInfo.uploadTime).toLocaleString()}</div>
+                                                <div className="col-sm-3 text-muted uppercase fw-bold x-small">Initiated By:</div>
+                                                <div className="col-sm-9 fw-bold">{lastUpdateInfo.uploadedBy}</div>
+                                                {lastUpdateInfo.statistics && (
+                                                    <>
+                                                        <div className="col-sm-3 text-muted uppercase fw-bold x-small">Records:</div>
+                                                        <div className="col-sm-9"><span className="admin-badge admin-badge-success">{lastUpdateInfo.statistics.validRecords} members</span></div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
-
-                                {storedData && storedData.length > 0 && (
-                                    <>
-                                        {/* Activity Overview */}
-                                        {(() => {
-                                            const inactiveMembers = storedData.filter(member => {
-                                                const activity = parseFloat(member.activity || '0');
-                                                return activity < 0.25;
-                                            });
-                                            const activeMembers = storedData.filter(member => {
-                                                const activity = parseFloat(member.activity || '0');
-                                                return activity >= 0.25;
-                                            });
-                                            
-                                            return (
-                                                <>
-                                                    <Alert variant="info">
-                                                        <div className="d-flex justify-content-between align-items-center">
-                                                            <div>
-                                                                <strong>{storedData.length} faction members</strong> currently stored in database.
-                                                                <br />
-                                                                <small>Data is used for authentication and permission management throughout the system.</small>
-                                                            </div>
-                                                            <div className="text-end">
-                                                                <Badge bg="success" className="me-2">
-                                                                    Active: {activeMembers.length}
-                                                                </Badge>
-                                                                {inactiveMembers.length > 0 && (
-                                                                    <Badge bg="warning">
-                                                                        Inactive: {inactiveMembers.length}
-                                                                    </Badge>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </Alert>
-                                                    
-                                                    {/* Standard Inactivity Warning */}
-                                                    {inactiveMembers.length > 0 && (
-                                                        <Alert variant="warning" className="mb-3">
-                                                            <Alert.Heading>
-                                                                <i className="fas fa-exclamation-triangle me-2"></i>
-                                                                Inactivity Warning
-                                                            </Alert.Heading>
-                                                            <p className="mb-2">
-                                                                <strong>{inactiveMembers.length} members</strong> have an ABAS below 0.25 and are considered inactive.
-                                                            </p>
-                                                        </Alert>
-                                                    )}
-                                                </>
-                                            );
-                                        })()}
-                                        
-                                        {/* Active Members Table */}
-                                        
-                                        <Table striped bordered hover responsive>
-                                            <thead>
-                                                <tr>
-                                                    <th>#</th>
-                                                    <th>Character Name</th>
-                                                    <th>Rank</th>
-                                                    <th>Script Rank</th>
-                                                    <th>ABAS</th>
-                                                    <th>Access Level</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {storedData
-                                                    .map((member, index) => {
-                                                        const activityVal = member.activity;
-                                                        const isMissingData = activityVal === 'MISSING_DATA';
-                                                        const activity = isMissingData ? 0 : parseFloat(activityVal || '0');
-                                                        
-                                        // Determine access level based on script rank
-                                        let accessLevel = 'Member';
-                                        let badgeVariant = 'secondary';
-
-                                        if (member.scriptRank >= 15) {
-                                            accessLevel = 'Leadership';
-                                            badgeVariant = 'danger';
-                                        } else if (member.scriptRank >= 14) {
-                                            accessLevel = 'Leadership';
-                                            badgeVariant = 'warning';
-                                        } else if (member.scriptRank >= 13) {
-                                            accessLevel = 'Senior Management';
-                                            badgeVariant = 'info';
-                                        } else if (member.scriptRank >= 12) {
-                                            accessLevel = 'Middle Management';
-                                            badgeVariant = 'primary';
-                                        } else if (member.scriptRank >= 11) {
-                                            accessLevel = 'Supervisor';
-                                            badgeVariant = 'info';
-                                        } else if (member.scriptRank >= 10) {
-                                            accessLevel = 'Attending';
-                                            badgeVariant = 'primary';
-                                        } else if (member.scriptRank >= 9) {
-                                            accessLevel = 'Resident';
-                                            badgeVariant = 'success';
-                                        } else if (member.scriptRank >= 8) {
-                                            accessLevel = 'Upper Level';
-                                            badgeVariant = 'success';
-                                        } else if (member.scriptRank >= 7) {
-                                            accessLevel = 'Mid Level';
-                                            badgeVariant = 'secondary';
-                                        } else if (member.scriptRank >= 6) {
-                                            accessLevel = 'Administration';
-                                            badgeVariant = 'secondary';
-                                        } else if (member.scriptRank >= 5) {
-                                            accessLevel = 'Entry Level';
-                                            badgeVariant = 'secondary';
-                                        }                                                        // Activity badge color and inactivity check
-                                                        let activityBadge = 'success';
-                                                        let isInactive = false;
-                                                        
-                                                        if (isMissingData) {
-                                                            activityBadge = 'warning';
-                                                        } else if (activity < 0.25) {
-                                                            activityBadge = 'danger';
-                                                            isInactive = true;
-                                                        } else if (activity < 0.35) {
-                                                            activityBadge = 'warning';
-                                                        } else if (activity < 0.5) {
-                                                            activityBadge = 'info';
-                                                        }
-
-                                                        return (
-                                                            <tr key={member.characterId} className={isInactive ? 'table-danger' : ''}>
-                                                                <td>{member.characterId}</td>
-                                                                <td>
-                                                                    <strong>{member.characterName}</strong>
-                                                                    {isInactive && (
-                                                                        <i className="fas fa-exclamation-triangle text-danger ms-2" 
-                                                                           title="Inactive member (ABAS < 0.25)"></i>
-                                                                    )}
-                                                                </td>
-                                                                <td>{member.rank}</td>
-                                                                <td>
-                                                                    <Badge bg={badgeVariant}>
-                                                                        {member.scriptRank}
-                                                                    </Badge>
-                                                                </td>
-                                                                <td>
-                                                                    <Badge bg={activityBadge} title={isMissingData ? 'Data manually added/missing' : (isInactive ? 'Inactive - ABAS below 0.25 threshold' : `Active - ABAS ${activity.toFixed(2)}`)}>
-                                                                        {isMissingData ? 'MISSING_DATA' : activity.toFixed(2)}
-                                                                        {!isMissingData && isInactive && ' (INACTIVE)'}
-                                                                    </Badge>
-                                                                </td>
-                                                                <td>
-                                                                    <Badge bg={badgeVariant}>
-                                                                        {accessLevel}
-                                                                    </Badge>
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                            </tbody>
-                                        </Table>
-                                    </>
-                                )}
-
-                                {storedData && storedData.length === 0 && (
-                                    <Alert variant="warning">
-                                        <Alert.Heading>No Faction Data</Alert.Heading>
-                                        <p>No faction member data is currently stored in the database.</p>
-                                        <hr />
-                                        <Button variant="primary" onClick={() => setActiveTab('upload')}> 
-                                            Upload CSV Data
-                                        </Button>
-                                    </Alert>
-                                )}
-
-                                {error && (
-                                    <Alert variant="danger">
-                                        <Alert.Heading>Database Error</Alert.Heading>
-                                        <p>{error}</p>
-                                        <hr />
-                                        <Button variant="outline-danger" onClick={loadStoredFactionData}>
-                                            Retry Loading
-                                        </Button>
-                                    </Alert>
-                                )}
-                            </>
+                            </div>
                         )}
                     </Tab>
-                </Tabs>
-            </Card.Body>
+                )}
 
-            {/* Manual Add User Modal */}
-            <Modal show={showManualModal} onHide={() => setShowManualModal(false)}>
-                <Modal.Header closeButton>
-                    <Modal.Title>Manually Add Faction Member</Modal.Title>
-                </Modal.Header>
-                <Form onSubmit={handleManualSubmit}>
-                    <Modal.Body>
-                        <Row className="mb-3">
-                            <Col md={4}>
-                                <Form.Group>
-                                    <Form.Label>Character ID (#)</Form.Label>
-                                    <Form.Control
-                                        type="number"
-                                        name="characterId"
-                                        value={manualData.characterId}
-                                        onChange={handleManualInputChange}
-                                        placeholder="12345"
-                                        required
-                                    />
-                                </Form.Group>
-                            </Col>
-                            <Col md={8}>
-                                <Form.Group>
-                                    <Form.Label>Character Name</Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        name="characterName"
-                                        value={manualData.characterName}
-                                        onChange={handleManualInputChange}
-                                        placeholder="John Doe"
-                                        required
-                                    />
-                                </Form.Group>
-                            </Col>
-                        </Row>
-                        <Row className="mb-3">
-                            <Col md={6}>
-                                <Form.Group>
-                                    <Form.Label>Rank</Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        name="rank"
-                                        value={manualData.rank}
-                                        onChange={handleManualInputChange}
-                                        placeholder="Rank Name"
-                                        required
-                                    />
-                                </Form.Group>
-                            </Col>
-                            <Col md={6}>
-                                <Form.Group>
-                                    <Form.Label>Script Rank</Form.Label>
-                                    <Form.Control
-                                        type="number"
-                                        name="scriptRank"
-                                        value={manualData.scriptRank}
-                                        onChange={handleManualInputChange}
-                                        placeholder="0-15"
-                                        required
-                                    />
-                                    <Form.Text className="text-muted">
-                                        Determines access level
-                                    </Form.Text>
-                                </Form.Group>
-                            </Col>
-                        </Row>
-                        <Alert variant="info" className="mb-0">
-                            <i className="fas fa-info-circle me-2"></i>
-                            Activity (ABAS) data will be marked as <strong>MISSING_DATA</strong>.
-                        </Alert>
-                    </Modal.Body>
-                    <Modal.Footer>
-                        <Button variant="secondary" onClick={() => setShowManualModal(false)}>
-                            Cancel
-                        </Button>
-                        <Button variant="primary" type="submit" disabled={submittingManual}>
-                            {submittingManual ? (
-                                <>
-                                    <Spinner animation="border" size="sm" className="me-2" />
-                                    Saving...
-                                </>
-                            ) : (
-                                'Add Member'
-                            )}
-                        </Button>
-                    </Modal.Footer>
-                </Form>
-            </Modal>
-        </Card>
+                <Tab eventKey="stored" title={<span><i className="fas fa-database me-2"></i>Live Database ({storedData?.length || 0})</span>}>
+                    {activeTab === 'stored' && (
+                        <div className="admin-section">
+                            <div className="card border-0 shadow-sm mb-4">
+                                <div className="card-body p-4">
+                                    <div className="d-flex justify-content-between align-items-start mb-4">
+                                        <div>
+                                            <h6 className="mb-1 fw-bold">Live Member Registry</h6>
+                                            {lastUpdateInfo && lastUpdateInfo.uploadTime && (
+                                                <p className="text-muted small mb-0 italic">
+                                                    Last updated: {new Date(lastUpdateInfo.uploadTime).toLocaleString()} 
+                                                    {lastUpdateInfo.uploadedBy && ` by ${lastUpdateInfo.uploadedBy}`}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <Button variant="outline-primary" size="sm" onClick={loadStoredFactionData} disabled={loadingStored} className="admin-btn">
+                                            {loadingStored ? <Spinner animation="border" size="sm" /> : <><i className="fas fa-sync me-2"></i>Refresh Registry</>}
+                                        </Button>
+                                    </div>
+
+                                    {loadingStored && !storedData && (
+                                        <div className="text-center py-5"><Spinner animation="border" variant="primary" /></div>
+                                    )}
+
+                                    {storedData && storedData.length > 0 && (
+                                        <>
+                                            <div className="admin-stat-row mb-4">
+                                                <div className="admin-stat-card py-3">
+                                                    <span className="stat-label">Total Registry</span>
+                                                    <span className="stat-value">{storedData.length}</span>
+                                                </div>
+                                                <div className="admin-stat-card py-3">
+                                                    <span className="stat-label">Active (ABAS &gt;= 0.25)</span>
+                                                    <span className="stat-value text-success">{storedData.filter(m => parseFloat(m.activity || '0') >= 0.25).length}</span>
+                                                </div>
+                                                <div className="admin-stat-card py-3">
+                                                    <span className="stat-label">Inactive / Low Duty</span>
+                                                    <span className="stat-value text-warning">{storedData.filter(m => parseFloat(m.activity || '0') < 0.25).length}</span>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="admin-modern-table">
+                                                <Table hover responsive>
+                                                    <thead>
+                                                        <tr>
+                                                            <th>ID</th>
+                                                            <th>Character Name</th>
+                                                            <th>Rank</th>
+                                                            <th className="text-center">Script</th>
+                                                            <th className="text-center">ABAS</th>
+                                                            <th className="text-end">Access Level</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {storedData.map((member) => {
+                                                            const activityVal = member.activity;
+                                                            const isMissingData = activityVal === 'MISSING_DATA';
+                                                            const activity = isMissingData ? 0 : parseFloat(activityVal || '0');
+                                                            
+                                                            let accessLevel = 'Member';
+                                                            let levelClass = 'admin-badge-indigo';
+                                                            if (member.scriptRank >= 14) { accessLevel = 'Leadership'; levelClass = 'admin-badge-danger'; }
+                                                            else if (member.scriptRank >= 13) { accessLevel = 'Senior Mgmt'; levelClass = 'admin-badge-warning'; }
+                                                            else if (member.scriptRank >= 11) { accessLevel = 'Supervisor'; levelClass = 'admin-badge-indigo'; }
+
+                                                            let activityClass = 'admin-badge-success';
+                                                            if (isMissingData) activityClass = 'admin-badge-warning';
+                                                            else if (activity < 0.25) activityClass = 'admin-badge-danger';
+                                                            else if (activity < 0.45) activityClass = 'admin-badge-warning';
+
+                                                            return (
+                                                                <tr key={member.characterId}>
+                                                                    <td className="font-monospace small text-muted">{member.characterId}</td>
+                                                                    <td className="font-monospace small text-muted">{member.characterName}</td>
+                                                                    <td><small className="text-muted">{member.rank}</small></td>
+                                                                    <td className="text-center font-monospace">{member.scriptRank}</td>
+                                                                    <td className="text-center font-monospace">
+                                                                        <span className={`admin-badge ${activityClass}`}>{isMissingData ? 'MANUAL' : activity.toFixed(2)}</span>
+                                                                    </td>
+                                                                    <td className="text-end">
+                                                                        <span className={`admin-badge ${levelClass}`}>{accessLevel}</span>
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </Table>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </Tab>
+            </Tabs>
+
+        </div>
     );
 };
 

@@ -561,7 +561,10 @@ export const FormHandler = () => {
                 if (['hr', 'fake_line', 'section', 'information_state', 'autopsy_import_button', 'autopsy_diagram_button', 'payment_button', 'attach_report_button'].includes(field.type)) return;
                 
                 // Skip optional fields even for CK/PK
-                if (['additionalstaff', 'ReportRequested', 'evidenceLocker'].includes(field.name)) return;
+                if (['additionalStaff', 'additionalstaff', 'ReportRequested', 'evidenceLocker', 'evidenceLockerID'].includes(field.name)) return;
+
+                // Skip scene photos if the "missing due to bug" flag is set
+                if (field.name === 'scenePhotosBBCode' && formValues.scenePhotosBBCode_missing_bug) return;
 
                 if (evaluateFieldVisibility(field, formValues)) {
                     if (isValueEmpty(formValues[field.name])) {
@@ -580,7 +583,7 @@ export const FormHandler = () => {
         }
 
         // Check for images (both scene and morgue/additional are required for CK/PK)
-        const hasSceneImages = (formValues.scenePhotosBBCode && formValues.scenePhotosBBCode.length > 0) || (formValues.scenePhotos && formValues.scenePhotos.length > 0);
+        const hasSceneImages = (formValues.scenePhotosBBCode && formValues.scenePhotosBBCode.length > 0) || (formValues.scenePhotos && formValues.scenePhotos.length > 0) || formValues.scenePhotosBBCode_missing_bug;
         const hasMorgueImages = (formValues.additionalPhotos && formValues.additionalPhotos.length > 0) || (formValues.additionalImages && formValues.additionalImages.length > 0);
 
         if (!hasSceneImages || !hasMorgueImages) {
@@ -617,7 +620,10 @@ export const FormHandler = () => {
             // For mass fatality decedents, check all fields in the schema
             decedentItemSchema.forEach(field => {
                 if (field.type === 'section') return;
-                // decedentItemSchema doesn't have additionalstaff, but if it did we would skip it here too
+                
+                // Skip optional fields even for CK/PK
+                if (['evidenceLockerID', 'additionalStaff'].includes(field.name)) return;
+
                 if (isValueEmpty(dec[field.name])) {
                     errors.push(`[${name}] ${typeLabel} Requirement: Missing field: ${field.label}`);
                 }
@@ -1235,6 +1241,11 @@ export const FormHandler = () => {
       } else if (form.isHidden) {
           shouldDisplay = false;
           reason = "Hidden form";
+      } else if (form.firebaseKey === 'death_record') {
+          const userRank = factionData?.rank || '';
+          const isMedicalExaminer = userRank.toLowerCase().includes('medical examiner');
+          shouldDisplay = isMedicalExaminer;
+          reason = isMedicalExaminer ? "Medical Examiner access granted" : "Restricted to Medical Examiners";
       } else {
           const isRestricted = form.accessType === "PHMC" || form.accessType === "Coroner" || form.accessType === "Mental Health";
           const hasRequiredAccess = isAuthenticated && (isPhmcMember || (user && user.faction));
@@ -1288,7 +1299,7 @@ export const FormHandler = () => {
     });
 
     return [sortedGroupedForms, tempNotDisplayedFormsDetails];
-  }, [formsData, searchTerm, isAuthenticated, isPhmcMember, isDevelopment, user]);
+  }, [formsData, searchTerm, isAuthenticated, isPhmcMember, isDevelopment, user, factionData]);
 
   useEffect(() => {
     const updateUtcTime = () => {
@@ -1696,34 +1707,73 @@ export const FormHandler = () => {
 
 {generatedBBCode && (
   <>
-    {generatedBBCode && (
-      <div
-        style={{
-          background: "#0f172a",
-          padding: "1.5rem",
-          borderRadius: 12,
-          color: selectedForm?.category === 'DMEC' ? "#e2e8f0" : "#fbbf24",
-          fontSize: "1.1rem",
-          fontWeight: "700",
-          marginBottom: "1rem",
-          whiteSpace: "pre-wrap",
-          cursor: selectedForm?.category === 'DMEC' ? "pointer" : "default",
-          borderLeft: selectedForm?.category === 'DMEC' ? 'none' : '4px solid #f59e0b',
-          background: selectedForm?.category === 'DMEC' ? "#0f172a" : "rgba(245, 158, 11, 0.05)"
-        }}
-        onClick={() => {
-          if (selectedForm?.category === 'DMEC' && generatedTitle) {
-            navigator.clipboard.writeText(generatedTitle);
-            showNotification('Title copied to clipboard!', 'success');
-          }
-        }}
-        title={selectedForm?.category === 'DMEC' ? "Click to copy title" : ""}
-      >
-        {selectedForm?.category === 'DMEC' 
-          ? (generatedTitle || "No Title Generated") 
-          : "Please add this to the patient's thread, if one is missing, kindly make one"}
+    {selectedForm?.category === 'DMEC' && (
+      <div style={{ 
+        color: "#94a3b8", 
+        fontSize: "0.85rem", 
+        marginBottom: "0.6rem", 
+        fontWeight: "600",
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px'
+      }}>
+        <i className="fas fa-info-circle" style={{ color: '#60a5fa' }}></i>
+        Click this box to copy the generated title!
       </div>
     )}
+    <div
+      style={{
+        background: "#0f172a",
+        padding: "1.5rem",
+        borderRadius: 12,
+        color: selectedForm?.category === 'DMEC' ? "#e2e8f0" : "#fbbf24",
+        fontSize: "1.1rem",
+        fontWeight: "700",
+        marginBottom: "1rem",
+        whiteSpace: "pre-wrap",
+        cursor: selectedForm?.category === 'DMEC' ? "pointer" : "default",
+        borderLeft: selectedForm?.category === 'DMEC' ? 'none' : '4px solid #f59e0b',
+        backgroundColor: selectedForm?.category === 'DMEC' ? "#0f172a" : "rgba(245, 158, 11, 0.05)",
+        border: selectedForm?.category === 'DMEC' ? '1px solid #334155' : 'none',
+        transition: 'all 0.2s ease',
+        position: 'relative',
+        boxShadow: selectedForm?.category === 'DMEC' ? '0 4px 6px -1px rgba(0, 0, 0, 0.1)' : 'none'
+      }}
+      className={selectedForm?.category === 'DMEC' ? formStyles.titleBox : ''}
+      onClick={() => {
+        if (selectedForm?.category === 'DMEC' && generatedTitle) {
+          navigator.clipboard.writeText(generatedTitle);
+          showNotification('Title copied to clipboard!', 'success');
+        }
+      }}
+      onMouseEnter={(e) => {
+        if (selectedForm?.category === 'DMEC') {
+          e.currentTarget.style.borderColor = '#4f46e5';
+          e.currentTarget.style.backgroundColor = '#1e293b';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (selectedForm?.category === 'DMEC') {
+          e.currentTarget.style.borderColor = '#334155';
+          e.currentTarget.style.backgroundColor = '#0f172a';
+        }
+      }}
+      title={selectedForm?.category === 'DMEC' ? "Click to copy title" : ""}
+    >
+      {selectedForm?.category === 'DMEC' && (
+        <i className="fas fa-copy" style={{ 
+          position: 'absolute', 
+          right: '1rem', 
+          top: '1rem', 
+          fontSize: '0.9rem', 
+          opacity: 0.4,
+          color: '#94a3b8'
+        }}></i>
+      )}
+      {selectedForm?.category === 'DMEC' 
+        ? (generatedTitle || "No Title Generated") 
+        : "Please add this to the patient's thread, if one is missing, kindly make one"}
+    </div>
 
     <FormQuickLinks 
       form={selectedForm} 

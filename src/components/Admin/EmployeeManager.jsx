@@ -2,16 +2,8 @@ import React, { useState, useCallback, useMemo, Fragment } from 'react';
 import { database } from '../../firebase';
 import { ref, get } from 'firebase/database';
 import { useData } from '../../contexts/DataContext';
-import { Table, Button, Spinner, Alert, Card, Row, Col, Form, Tabs, Tab } from 'react-bootstrap';
+import { Table, Button, Spinner, Alert, Card, Row, Col, Form, Tabs, Tab, InputGroup  } from 'react-bootstrap';
 import './AdminDashboard.css'; // Reusing some styles
-
-const CATEGORY_STYLES = {
-    'DMEC': { backgroundColor: '#dc3545', color: 'white' },
-    'PHMC Staff': { backgroundColor: '#0d6efd', color: 'white' },
-    'OBGYN': { backgroundColor: '#ffc107', color: 'black' },
-    'Mental Health': { backgroundColor: '#0dcaf0', color: 'black' },
-    'Default': { backgroundColor: '#6c757d', color: 'white' }
-};
 
 const EmployeeManager = () => {
     const { formsData } = useData();
@@ -24,6 +16,14 @@ const EmployeeManager = () => {
     const [sortOrder, setSortOrder] = useState('desc');
     const [activeTab, setActiveTab] = useState('overview');
     const [expandedRow, setExpandedRow] = useState(null);
+
+    const getCategoryBadgeClass = (category) => {
+        if (category === 'DMEC') return 'admin-badge-danger';
+        if (category === 'PHMC Staff') return 'admin-badge-indigo';
+        if (category === 'OBGYN') return 'admin-badge-warning';
+        if (category === 'Mental Health') return 'admin-badge-success';
+        return '';
+    };
 
     const formMetaMap = useMemo(() => {
         if (!formsData) return {};
@@ -200,145 +200,166 @@ const EmployeeManager = () => {
     };
 
     return (
-        <div>
-            <div className="d-flex justify-content-between align-items-center mb-3">
-                <h3>Employee Report Analytics</h3>
-                <Button variant="success" onClick={fetchAndProcessData} disabled={loading} className="d-flex align-items-center">
+        <div className="admin-section">
+            <div className="d-flex justify-content-between align-items-center mb-5">
+                <h2 className="mb-0 fw-800"><i className="fas fa-users-cog me-3 text-indigo"></i>Performance Analytics</h2>
+                <Button variant="primary" onClick={fetchAndProcessData} disabled={loading} className="admin-btn shadow-sm">
                     {loading ? (
                         <>
                             <Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" className="me-2" />
-                            Loading Data...
+                            Processing...
                         </>
                     ) : (
                         <>
-                            <i className="fas fa-sync-alt me-2"></i> Load Report Data
+                            <i className="fas fa-sync-alt me-2"></i> Sync Report Data
                         </>
                     )}
                 </Button>
             </div>
 
-            {error && <Alert variant="danger">{error}</Alert>}
+            {error && <Alert variant="danger" className="border-0 shadow-sm">{error}</Alert>}
 
             {loading && (
-                 <div className="text-center">
+                 <div className="text-center py-5">
                     <Spinner animation="border" variant="primary" />
-                    <p className="mt-2">Fetching and processing thousands of reports... this may take a moment.</p>
+                    <p className="mt-3 text-muted">Analyzing historical report data...</p>
                 </div>
             )}
 
             {stats && (
                 <>
-                    <Row className="mb-4">
+                    <div className="admin-stat-row">
                         {Object.entries(summaryStats).map(([key, value]) => (
-                             <Col md={2} key={key}>
-                                <Card body className="text-center" style={CATEGORY_STYLES[key] || CATEGORY_STYLES['Default']}>
-                                    <h4 className="mb-0">{value}</h4>
-                                    <p className="mb-0 small">{key}</p>
-                                </Card>
-                            </Col>
+                             <div className="admin-stat-card" key={key}>
+                                <span className="stat-label text-truncate" title={key}>{key}</span>
+                                <span className="stat-value">{value.toLocaleString()}</span>
+                             </div>
                         ))}
-                    </Row>
+                    </div>
                 
-                    <Tabs activeKey={activeTab} onSelect={(k) => setActiveTab(k)} id="analytics-tabs" className="mb-3" variant="pills">
-                        <Tab eventKey="overview" title="Employee Overview">
-                            <Form.Group className="mb-3">
-                                <Form.Control 
-                                    type="text"
-                                    placeholder="Search by employee name..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                />
-                            </Form.Group>
+                    <Tabs activeKey={activeTab} onSelect={(k) => setActiveTab(k)} id="analytics-tabs" className="mb-4" variant="pills">
+                        <Tab eventKey="overview" title="Full Staff Overview">
+                            <div className="card border-0 shadow-sm mb-4">
+                                <div className="card-body p-4">
+                                    <Form.Group className="mb-4">
+                                        <InputGroup>
+                                            <InputGroup.Text className="bg-dark border-secondary text-muted"><i className="fas fa-search"></i></InputGroup.Text>
+                                            <Form.Control 
+                                                className="bg-dark border-secondary text-white"
+                                                type="text"
+                                                placeholder="Search by character name..."
+                                                value={searchTerm}
+                                                onChange={(e) => setSearchTerm(e.target.value)}
+                                            />
+                                        </InputGroup>
+                                    </Form.Group>
 
-                            <Table striped bordered hover responsive>
-                                <thead>
-                                    <tr>
-                                        <th onClick={() => handleSort('name')}>Name {getSortIcon('name')}</th>
-                                        <th onClick={() => handleSort('rank')}>Rank {getSortIcon('rank')}</th>
-                                        <th onClick={() => handleSort('total')}>Total Reports {getSortIcon('total')}</th>
-                                        <th onClick={() => handleSort('category-DMEC')}>DMEC {getSortIcon('category-DMEC')}</th>
-                                        <th onClick={() => handleSort('category-PHMC Staff')}>PHMC Staff {getSortIcon('category-PHMC Staff')}</th>
-                                        <th onClick={() => handleSort('category-OBGYN')}>OBGYN {getSortIcon('category-OBGYN')}</th>
-                                        <th onClick={() => handleSort('category-Mental Health')}>Mental Health {getSortIcon('category-Mental Health')}</th>
-                                        <th onClick={() => handleSort('category-Uncategorized')}>Uncategorized {getSortIcon('category-Uncategorized')}</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {filteredAndSortedStats.map(employee => (
-                                        <tr key={employee.name}>
-                                            <td>{employee.name}</td>
-                                            <td>{employee.rank}</td>
-                                            <td>{employee.total}</td>
-                                            <td>{employee.categories['DMEC'] || 0}</td>
-                                            <td>{employee.categories['PHMC Staff'] || 0}</td>
-                                            <td>{employee.categories['OBGYN'] || 0}</td>
-                                            <td>{employee.categories['Mental Health'] || 0}</td>
-                                            <td>{employee.categories['Uncategorized'] || 0}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </Table>
-                        </Tab>
-                        {categoryStats && Object.entries(categoryStats).sort(([a], [b]) => a.localeCompare(b)).map(([category, data]) => (
-                            <Tab eventKey={category} title={`${category} (${data.total})`} key={category}>
-                               <Card>
-                                    <Card.Header as="h5">Breakdown for {category}</Card.Header>
-                                    <Card.Body>
-                                        <Table striped bordered hover responsive>
+                                    <div className="admin-modern-table">
+                                        <Table hover responsive>
                                             <thead>
                                                 <tr>
-                                                    <th>Form Name</th>
-                                                    <th>Times Used</th>
-                                                    <th>% of Category</th>
+                                                    <th onClick={() => handleSort('name')} className="cursor-pointer">Name {getSortIcon('name')}</th>
+                                                    <th onClick={() => handleSort('rank')} className="cursor-pointer">Current Rank {getSortIcon('rank')}</th>
+                                                    <th onClick={() => handleSort('total')} className="text-center cursor-pointer">Total {getSortIcon('total')}</th>
+                                                    <th onClick={() => handleSort('category-DMEC')} className="text-center cursor-pointer">DMEC</th>
+                                                    <th onClick={() => handleSort('category-PHMC Staff')} className="text-center cursor-pointer">PHMC</th>
+                                                    <th onClick={() => handleSort('category-OBGYN')} className="text-center cursor-pointer">OBGYN</th>
+                                                    <th onClick={() => handleSort('category-Mental Health')} className="text-center cursor-pointer">Mental</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {Object.entries(data.forms).sort(([, a], [, b]) => b.total - a.total).map(([formName, formData]) => {
-                                                    const rowKey = `${category}-${formName}`;
-                                                    const isExpanded = expandedRow === rowKey;
-                                                    return(
-                                                    <Fragment key={rowKey}>
-                                                        <tr onClick={() => handleRowToggle(rowKey)} style={{ cursor: 'pointer' }}>
-                                                            <td><i className={`fas fa-chevron-${isExpanded ? 'down' : 'right'} me-2`}></i>{formName}</td>
-                                                            <td>{formData.total}</td>
-                                                            <td>{((formData.total / data.total) * 100).toFixed(1)}%</td>
-                                                        </tr>
-                                                        {isExpanded && (
-                                                            <tr>
-                                                                <td colSpan="3" style={{ backgroundColor: '#f8f9fa' }}>
-                                                                    <div style={{ padding: '1rem' }}>
-                                                                        <h6>Employee Usage for "{formName}"</h6>
-                                                                        <Table size="sm" bordered>
-                                                                            <thead>
-                                                                                <tr>
-                                                                                    <th>Employee Name</th>
-                                                                                    <th>Times Used</th>
-                                                                                </tr>
-                                                                            </thead>
-                                                                            <tbody>
-                                                                                {Object.entries(formData.employees).sort(([, a], [, b]) => b - a).map(([empName, count]) => (
-                                                                                    <tr key={empName}>
-                                                                                        <td>{empName}</td>
-                                                                                        <td>{count}</td>
-                                                                                    </tr>
-                                                                                ))}
-                                                                            </tbody>
-                                                                        </Table>
-                                                                    </div>
-                                                                </td>
-                                                            </tr>
-                                                        )}
-                                                    </Fragment>
-                                                )})}
+                                                {filteredAndSortedStats.map(employee => (
+                                                    <tr key={employee.name}>
+                                                        <td className="fw-bold text-indigo">{employee.name}</td>
+                                                        <td><small className="text-muted">{employee.rank}</small></td>
+                                                        <td className="text-center fw-bold">{employee.total}</td>
+                                                        <td className="text-center"><span className="admin-badge admin-badge-danger">{employee.categories['DMEC'] || 0}</span></td>
+                                                        <td className="text-center"><span className="admin-badge admin-badge-indigo">{employee.categories['PHMC Staff'] || 0}</span></td>
+                                                        <td className="text-center"><span className="admin-badge admin-badge-warning">{employee.categories['OBGYN'] || 0}</span></td>
+                                                        <td className="text-center"><span className="admin-badge admin-badge-success">{employee.categories['Mental Health'] || 0}</span></td>
+                                                    </tr>
+                                                ))}
                                             </tbody>
                                         </Table>
-                                    </Card.Body>
-                               </Card>
+                                    </div>
+                                </div>
+                            </div>
+                        </Tab>
+                        {categoryStats && Object.entries(categoryStats).sort(([a], [b]) => a.localeCompare(b)).map(([category, data]) => (
+                            <Tab eventKey={category} title={`${category} (${data.total})`} key={category}>
+                                <div className="card border-0 shadow-sm mb-4">
+                                    <div className="card-body p-4">
+                                        <div className="admin-modern-table mb-0">
+                                            <Table hover responsive>
+                                                <thead>
+                                                    <tr>
+                                                        <th>Form Name</th>
+                                                        <th className="text-center">Usage Count</th>
+                                                        <th className="text-center">Contribution</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {Object.entries(data.forms).sort(([, a], [, b]) => b.total - a.total).map(([formName, formData]) => {
+                                                        const rowKey = `${category}-${formName}`;
+                                                        const isExpanded = expandedRow === rowKey;
+                                                        return(
+                                                        <Fragment key={rowKey}>
+                                                            <tr onClick={() => handleRowToggle(rowKey)} className="cursor-pointer">
+                                                                <td className="fw-bold"><i className={`fas fa-chevron-${isExpanded ? 'down' : 'right'} me-3 text-indigo`}></i>{formName}</td>
+                                                                <td className="text-center fw-bold">{formData.total}</td>
+                                                                <td className="text-center">
+                                                                    <div className="progress bg-dark" style={{ height: '8px', borderRadius: '4px' }}>
+                                                                        <div 
+                                                                            className="progress-bar bg-indigo" 
+                                                                            style={{ width: `${((formData.total / data.total) * 100)}%` }}
+                                                                        ></div>
+                                                                    </div>
+                                                                    <small className="text-muted mt-1 d-block">{((formData.total / data.total) * 100).toFixed(1)}%</small>
+                                                                </td>
+                                                            </tr>
+                                                            {isExpanded && (
+                                                                <tr className="bg-black bg-opacity-25">
+                                                                    <td colSpan="3">
+                                                                        <div className="p-4 mx-4 my-2 rounded bg-dark border border-secondary border-opacity-25">
+                                                                            <h6 className="text-indigo mb-3 small uppercase fw-bold">Individual Usage Breakdown</h6>
+                                                                            <Table size="sm" className="table-dark table-borderless bg-transparent mb-0">
+                                                                                <thead>
+                                                                                    <tr className="border-bottom border-secondary border-opacity-25">
+                                                                                        <th className="pb-2">Employee Identity</th>
+                                                                                        <th className="text-end pb-2">Submissions</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody>
+                                                                                    {Object.entries(formData.employees).sort(([, a], [, b]) => b - a).map(([empName, count]) => (
+                                                                                        <tr key={empName}>
+                                                                                            <td className="py-2">{empName}</td>
+                                                                                            <td className="text-end py-2 fw-bold text-success">{count}</td>
+                                                                                        </tr>
+                                                                                    ))}
+                                                                                </tbody>
+                                                                            </Table>
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            )}
+                                                        </Fragment>
+                                                    )})}
+                                                </tbody>
+                                            </Table>
+                                        </div>
+                                    </div>
+                                </div>
                             </Tab>
                         ))}
                     </Tabs>
                 </>
             )}
+            <style>{`
+                .cursor-pointer { cursor: pointer; }
+                .bg-indigo { background-color: var(--admin-accent) !important; }
+                .fw-800 { font-weight: 800; }
+                .uppercase { text-transform: uppercase; }
+            `}</style>
         </div>
     );
 };
